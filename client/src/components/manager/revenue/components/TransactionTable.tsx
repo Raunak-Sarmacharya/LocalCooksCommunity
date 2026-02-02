@@ -153,13 +153,20 @@ export function TransactionTable({
     // Calculate totals for footer
     const totals = useMemo(() => {
         return filteredData.reduce(
-            (acc, t) => ({
-                totalPrice: acc.totalPrice + (t.totalPrice || 0),
-                taxAmount: acc.taxAmount + (t.taxAmount || 0),
-                stripeFee: acc.stripeFee + (t.stripeFee || 0),
-                netRevenue: acc.netRevenue + (t.netRevenue || 0),
-            }),
-            { totalPrice: 0, taxAmount: 0, stripeFee: 0, netRevenue: 0 }
+            (acc, t) => {
+                const refund = t.refundAmount || 0;
+                const net = t.netRevenue || 0;
+                // Effective net = net revenue minus refund amount
+                const effectiveNet = Math.max(0, net - refund);
+                return {
+                    totalPrice: acc.totalPrice + (t.totalPrice || 0),
+                    taxAmount: acc.taxAmount + (t.taxAmount || 0),
+                    stripeFee: acc.stripeFee + (t.stripeFee || 0),
+                    refundAmount: acc.refundAmount + refund,
+                    netRevenue: acc.netRevenue + effectiveNet,
+                };
+            },
+            { totalPrice: 0, taxAmount: 0, stripeFee: 0, refundAmount: 0, netRevenue: 0 }
         )
     }, [filteredData])
 
@@ -378,7 +385,10 @@ export function TransactionTable({
                                         <TableCell className="text-right text-violet-600">
                                             {formatCurrency(totals.stripeFee)}
                                         </TableCell>
-                                        <TableCell className="text-right text-primary">
+                                        <TableCell className="text-right text-red-600">
+                                            {totals.refundAmount > 0 ? `-${formatCurrency(totals.refundAmount)}` : '—'}
+                                        </TableCell>
+                                        <TableCell className={`text-right font-bold ${totals.refundAmount > 0 ? 'text-orange-600' : 'text-primary'}`}>
                                             {formatCurrency(totals.netRevenue)}
                                         </TableCell>
                                         <TableCell colSpan={2} />

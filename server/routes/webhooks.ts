@@ -1891,9 +1891,7 @@ async function handleChargeRefunded(
       return;
     }
 
-    // Check if it's a full or partial refund
-    const isPartial = charge.amount_refunded < charge.amount;
-    const refundStatus = isPartial ? "partially_refunded" : "refunded";
+    // Get refund amount from Stripe charge
     const refundAmountCents = charge.amount_refunded;
 
     // Update payment_transactions table
@@ -1901,7 +1899,16 @@ async function handleChargeRefunded(
       paymentIntentId,
       db,
     );
+    
+    // SIMPLE REFUND MODEL: Full refund = manager's entire balance refunded
+    // Compare to manager_revenue (what manager received), not charge.amount (what customer paid)
+    // This ensures "refunded" status when manager refunds their entire balance
+    let refundStatus: "refunded" | "partially_refunded";
     if (transaction) {
+      const managerRevenue = parseInt(String(transaction.manager_revenue || '0')) || 0;
+      const isFullRefund = refundAmountCents >= managerRevenue;
+      refundStatus = isFullRefund ? "refunded" : "partially_refunded";
+      
       await updatePaymentTransaction(
         transaction.id,
         {
@@ -1917,6 +1924,9 @@ async function handleChargeRefunded(
       logger.info(
         `[Webhook] Updated payment_transactions for refund on PaymentIntent ${paymentIntentId}`,
       );
+    } else {
+      // Fallback: use Stripe's determination if no transaction found
+      refundStatus = charge.amount_refunded < charge.amount ? "partially_refunded" : "refunded";
     }
 
     // Also update booking tables for backward compatibility

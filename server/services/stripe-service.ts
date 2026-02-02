@@ -580,8 +580,61 @@ export async function createRefund(
 }
 
 /**
+ * SIMPLE REFUND MODEL
+ * 
+ * Manager's available balance is the cap. No proportional calculations.
+ * The Stripe fee is a sunk cost — it's gone from day 1 and not refundable.
+ * 
+ * How it works:
+ * - Customer paid $40, Stripe took $1.46, Manager received $38.54
+ * - Manager's available balance = $38.54 (their balance minus any prior refunds)
+ * - Manager enters $20 → Customer gets $20, Manager debited $20
+ * - Manager's remaining balance = $18.54
+ * 
+ * @param totalChargedCents - Original transaction amount in cents
+ * @param managerReceivedCents - Amount manager received after Stripe fees (from transfer)
+ * @param alreadyRefundedCents - Amount already refunded in previous refunds (from manager's balance)
+ * @param stripeProcessingFeeCents - Original Stripe processing fee (for display only)
+ * @returns Refund breakdown with max refundable
+ */
+export function calculateRefundBreakdown(
+  totalChargedCents: number,
+  managerReceivedCents: number,
+  alreadyRefundedCents: number,
+  stripeProcessingFeeCents: number
+): {
+  maxRefundableToCustomer: number;
+  maxDeductibleFromManager: number;
+  remainingManagerBalance: number;
+  originalStripeFee: number;
+  explanation: string;
+} {
+  // Manager's remaining balance = what they received minus what's already been refunded
+  // Note: alreadyRefundedCents here represents the amount already taken from manager's balance
+  const managerRemainingBalance = Math.max(0, managerReceivedCents - alreadyRefundedCents);
+  
+  // Max refundable = manager's remaining balance (simple!)
+  // Customer gets X, Manager debited X — always equal
+  const maxRefundable = managerRemainingBalance;
+  
+  return {
+    maxRefundableToCustomer: maxRefundable,
+    maxDeductibleFromManager: maxRefundable, // Same value - no discrepancy!
+    remainingManagerBalance: managerRemainingBalance,
+    originalStripeFee: stripeProcessingFeeCents,
+    explanation: managerRemainingBalance > 0
+      ? `Available to refund from this transaction: $${(maxRefundable / 100).toFixed(2)}`
+      : 'No remaining balance to refund'
+  };
+}
+
+/**
  * Reverse the transfer (from connected account back to platform) and then refund the charge.
- * This is required when the manager is liable for the platform fee.
+ * 
+ * ENTERPRISE STANDARD - Unified Refund Model:
+ * - Customer receives exactly the specified refund amount
+ * - Manager's Stripe Connect account is debited the same amount (via explicit transfer reversal)
+ * - This ensures consistency between LocalCooks portal and Stripe dashboard
  * 
  * ENTERPRISE STANDARD - Automatic Refund Emails:
  * Stripe automatically sends refund receipt emails to customers if:

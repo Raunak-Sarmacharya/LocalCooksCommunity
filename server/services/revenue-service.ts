@@ -1038,7 +1038,9 @@ export async function getTransactionHistory(
         createdAt: row.created_at,
         paidAt: row.pt_paid_at || null,
         refundAmount: ptRefundAmount,
-        refundableAmount: Math.max(0, totalPriceCents - ptRefundAmount),
+        // SIMPLE REFUND MODEL: Manager's balance is the cap
+        // refundableAmount = managerRevenue - already refunded (not totalPrice - refunded)
+        refundableAmount: Math.max(0, (managerRevenue || 0) - ptRefundAmount),
       };
     });
 
@@ -1142,7 +1144,8 @@ export async function getTransactionHistory(
         createdAt: row.created_at,
         paidAt: row.pt_paid_at || null,
         refundAmount: ptRefundAmount,
-        refundableAmount: Math.max(0, ptAmount - ptRefundAmount),
+        // SIMPLE REFUND MODEL: Manager's balance is the cap
+        refundableAmount: Math.max(0, (ptManagerRevenue || ptAmount) - ptRefundAmount),
       };
     });
 

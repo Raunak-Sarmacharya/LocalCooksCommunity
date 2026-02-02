@@ -239,6 +239,32 @@ export function getTransactionColumns({
             },
         },
         {
+            accessorKey: "refundAmount",
+            header: () => (
+                <div className="text-right">Refunded</div>
+            ),
+            cell: ({ row }) => {
+                const refundAmount = row.original.refundAmount ?? 0;
+                if (refundAmount === 0) {
+                    return <div className="text-right text-muted-foreground text-sm">—</div>;
+                }
+                return (
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="text-right text-red-600 text-sm font-medium">
+                                    -{formatCurrency(refundAmount)}
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p className="text-sm">Amount refunded to customer</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                );
+            },
+        },
+        {
             accessorKey: "netRevenue",
             header: ({ column }) => (
                 <Button
@@ -252,10 +278,31 @@ export function getTransactionColumns({
             ),
             cell: ({ row }) => {
                 const netRevenue = row.original.netRevenue ?? 0;
+                const refundAmount = row.original.refundAmount ?? 0;
+                // Show effective net revenue (after refunds)
+                const effectiveNet = Math.max(0, netRevenue - refundAmount);
+                const hasRefund = refundAmount > 0;
                 return (
-                    <div className="text-right font-semibold text-primary">
-                        {formatCurrency(netRevenue)}
-                    </div>
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className={`text-right font-semibold ${hasRefund ? 'text-orange-600' : 'text-primary'}`}>
+                                    {formatCurrency(effectiveNet)}
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                {hasRefund ? (
+                                    <div className="text-sm space-y-1">
+                                        <p>Original: {formatCurrency(netRevenue)}</p>
+                                        <p className="text-red-500">Refund: -{formatCurrency(refundAmount)}</p>
+                                        <p className="font-semibold">Effective: {formatCurrency(effectiveNet)}</p>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm">Net revenue after tax and Stripe fees</p>
+                                )}
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
                 );
             },
         },

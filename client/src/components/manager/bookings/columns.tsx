@@ -67,10 +67,11 @@ export type Booking = {
     paymentIntentId?: string;
     transactionId?: number;
     refundAmount?: number; // in cents - amount already refunded
-    refundableAmount?: number; // in cents - net amount customer receives (after Stripe fee deduction)
-    grossRefundableAmount?: number; // in cents - gross refundable before fee deduction
-    stripeProcessingFee?: number; // in cents - total Stripe processing fee for this transaction
-    proportionalStripeFee?: number; // in cents - Stripe fee portion for refundable amount
+    // SIMPLE REFUND MODEL: Manager's balance is the cap
+    // Stripe fee is sunk cost — manager enters $X, customer gets $X, manager debited $X
+    refundableAmount?: number; // in cents - max refundable = manager's remaining balance
+    stripeProcessingFee?: number; // in cents - total Stripe processing fee (display only)
+    managerRemainingBalance?: number; // in cents - manager's remaining balance from this transaction
     taxRatePercent?: number; // kitchen's tax rate percentage for revenue calculations
     taxAmount?: number; // in cents - tax = kb.total_price * tax_rate / 100 (same as transaction history)
     netRevenue?: number; // in cents - net = transactionAmount - taxAmount - stripeFee (same as transaction history)

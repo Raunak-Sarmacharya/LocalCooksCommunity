@@ -360,7 +360,20 @@ router.get("/revenue/transactions", requireFirebaseAuthWithUser, requireManager,
     }
 });
 
-// Refund a transaction (full or partial) - manager initiated
+/**
+ * ENTERPRISE-GRADE REFUND ENDPOINT
+ * 
+ * Unified Refund Model: Customer Refund = Manager Deduction
+ * This ensures consistency between LocalCooks portal and Stripe dashboard.
+ * 
+ * Key Principle:
+ * - Manager enters refund amount (e.g., $20)
+ * - Customer receives exactly $20
+ * - Manager's Stripe Connect account is debited exactly $20
+ * - No discrepancy, no confusion
+ * 
+ * The max refundable is limited by the manager's remaining balance from this transaction.
+ */
 router.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const managerId = req.neonUser!.id;
@@ -404,26 +417,30 @@ router.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWi
             return res.status(400).json({ error: `Refunds are only allowed for paid transactions. Current status: ${transaction.status}` });
         }
 
+        // Extract transaction amounts
         const totalAmount = parseInt(String(transaction.amount || '0')) || 0;
         const currentRefundAmount = parseInt(String(transaction.refund_amount || '0')) || 0;
-        const remainingGrossAmount = totalAmount - currentRefundAmount;
-        
-        // Option A: Customer absorbs Stripe processing fee on refunds (Airbnb model)
-        // Calculate proportional Stripe fee that will be retained
+        const managerRevenue = parseInt(String(transaction.manager_revenue || '0')) || 0;
         const stripeProcessingFee = parseInt(String(transaction.stripe_processing_fee || '0')) || 0;
-        const proportionalStripeFee = totalAmount > 0 && remainingGrossAmount > 0
-            ? Math.round(stripeProcessingFee * (remainingGrossAmount / totalAmount))
-            : 0;
-        // Max refundable to customer = gross remaining - stripe fee
-        const maxNetRefundable = Math.max(0, remainingGrossAmount - proportionalStripeFee);
+        
+        // UNIFIED REFUND MODEL: Customer Refund = Manager Deduction
+        // Calculate using the enterprise-grade refund breakdown
+        const { calculateRefundBreakdown } = await import('../services/stripe-service');
+        const refundBreakdown = calculateRefundBreakdown(
+            totalAmount,
+            managerRevenue,
+            currentRefundAmount,
+            stripeProcessingFee
+        );
 
-        // Validate the requested amount doesn't exceed net refundable
-        if (amountCents > maxNetRefundable) {
+        // Validate the requested amount doesn't exceed max refundable
+        // Max refundable = manager's remaining balance (ensures customer refund = manager deduction)
+        if (amountCents > refundBreakdown.maxRefundableToCustomer) {
             return res.status(400).json({ 
-                error: `Refund amount exceeds maximum refundable. Max: $${(maxNetRefundable / 100).toFixed(2)} (after $${(proportionalStripeFee / 100).toFixed(2)} processing fee retention)`,
-                maxRefundable: maxNetRefundable,
-                stripeFeeRetained: proportionalStripeFee,
-                grossRemaining: remainingGrossAmount
+                error: `Refund amount exceeds maximum. Max refundable: $${(refundBreakdown.maxRefundableToCustomer / 100).toFixed(2)}`,
+                maxRefundable: refundBreakdown.maxRefundableToCustomer,
+                managerBalance: refundBreakdown.remainingManagerBalance,
+                explanation: refundBreakdown.explanation
             });
         }
 
@@ -438,18 +455,9 @@ router.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWi
             return res.status(400).json({ error: "Manager Stripe Connect account not found" });
         }
 
-        const serviceFee = parseInt(String(transaction.service_fee || '0')) || 0;
-        const managerRevenue = parseInt(String(transaction.manager_revenue || '0')) || 0;
-        
-        // Option A (Airbnb model): Customer receives the requested amount
-        // The Stripe fee was already validated above - customer can only request up to maxNetRefundable
-        const netRefundToCustomer = amountCents; // What customer actually receives
-        
-        // Manager's share is proportional to the net refund amount
-        const managerShare = Math.max(0, totalAmount - serviceFee, managerRevenue);
-        const expectedReverseAmount = totalAmount > 0
-            ? Math.round(netRefundToCustomer * (managerShare / totalAmount))
-            : netRefundToCustomer;
+        // UNIFIED MODEL: Both amounts are the same - no discrepancy!
+        const refundToCustomer = amountCents;
+        const deductFromManager = amountCents; // Same value for consistency
 
         const { reverseTransferAndRefund } = await import('../services/stripe-service');
         const allowedStripeReasons = ['duplicate', 'fraudulent', 'requested_by_customer'] as const;
@@ -460,10 +468,10 @@ router.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWi
 
         const refund = await reverseTransferAndRefund(
             transaction.payment_intent_id,
-            amountCents,
+            refundToCustomer, // Customer receives this amount
             stripeReason,
             {
-                reverseTransferAmount: expectedReverseAmount,
+                reverseTransferAmount: deductFromManager, // Manager is debited this exact same amount
                 refundApplicationFee: false,
                 metadata: {
                     transaction_id: String(transaction.id),
@@ -471,6 +479,9 @@ router.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWi
                     booking_type: String(transaction.booking_type),
                     manager_id: String(managerId),
                     refund_reason: refundReason ? String(refundReason) : '',
+                    refund_model: 'unified', // Track that we used unified model
+                    customer_receives: String(refundToCustomer),
+                    manager_debited: String(deductFromManager),
                 },
                 transferMetadata: {
                     transaction_id: String(transaction.id),
@@ -484,7 +495,10 @@ router.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWi
 
         // Update payment transaction totals
         const newRefundTotal = currentRefundAmount + amountCents;
-        const newStatus = newRefundTotal >= totalAmount ? 'refunded' : 'partially_refunded';
+        // SIMPLE REFUND MODEL: Full refund = manager's entire balance refunded
+        // Compare to managerRevenue (what manager received), not totalAmount (what customer paid)
+        // Manager can only refund up to their balance, so when newRefundTotal >= managerRevenue, it's fully refunded
+        const newStatus = newRefundTotal >= managerRevenue ? 'refunded' : 'partially_refunded';
 
         // Append refund details to metadata
         let currentMetadata: any = {};
@@ -506,16 +520,19 @@ router.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWi
                 ...existingRefunds,
                 {
                     id: refund.refundId,
-                    amount: amountCents,
+                    customerReceived: refundToCustomer,
+                    managerDebited: deductFromManager,
                     reason: refundReason || null,
                     createdAt: new Date().toISOString(),
                     createdBy: managerId,
                     transferReversalId: refund.transferReversalId,
+                    model: 'unified',
                 }
             ],
             lastRefund: {
                 id: refund.refundId,
-                amount: amountCents,
+                customerReceived: refundToCustomer,
+                managerDebited: deductFromManager,
                 reason: refundReason || null,
                 createdAt: new Date().toISOString(),
                 createdBy: managerId,
@@ -554,26 +571,29 @@ router.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWi
                 .where(eq(equipmentBookingsTable.id, transaction.booking_id));
         }
 
-        // Calculate new remaining amounts for response
-        const newRemainingGross = totalAmount - newRefundTotal;
-        const newProportionalFee = totalAmount > 0 && newRemainingGross > 0
-            ? Math.round(stripeProcessingFee * (newRemainingGross / totalAmount))
-            : 0;
-        const newMaxNetRefundable = Math.max(0, newRemainingGross - newProportionalFee);
+        // Calculate new remaining amounts for response using unified model
+        const newBreakdown = calculateRefundBreakdown(
+            totalAmount,
+            managerRevenue,
+            newRefundTotal,
+            stripeProcessingFee
+        );
 
         res.json({
             success: true,
             refundId: refund.refundId,
             status: newStatus,
-            // What customer received in this refund
-            refundAmount: amountCents,
-            // Total refunded so far (gross)
+            // UNIFIED: Both values are the same - no discrepancy!
+            customerReceived: refundToCustomer,
+            managerDebited: deductFromManager,
+            // Total refunded so far
             totalRefunded: newRefundTotal,
-            // Remaining amounts
-            remainingGrossAmount: newRemainingGross,
-            remainingNetRefundable: newMaxNetRefundable,
+            // Remaining amounts (using unified model)
+            remainingCharged: totalAmount - newRefundTotal,
+            maxRefundable: newBreakdown.maxRefundableToCustomer,
+            managerRemainingBalance: newBreakdown.remainingManagerBalance,
             // Fee info for transparency
-            stripeFeeRetained: stripeProcessingFee,
+            originalStripeFee: stripeProcessingFee,
             transferReversalId: refund.transferReversalId,
         });
     } catch (error: any) {
@@ -2096,46 +2116,48 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
                         : totalPrice;
 
                     if (transactionAmount > 0) {
-                    // Option A: Customer absorbs Stripe processing fee on refunds
+                    // UNIFIED REFUND MODEL: Customer Refund = Manager Deduction
+                    // This ensures consistency between LocalCooks portal and Stripe dashboard
+                    const { calculateRefundBreakdown } = await import("../services/stripe-service");
+                    
                     const stripeProcessingFee = paymentTransaction
                         ? parseInt(String(paymentTransaction.stripe_processing_fee || "0")) || 0
                         : 0;
                     const currentRefundAmount = paymentTransaction
                         ? parseInt(String(paymentTransaction.refund_amount || "0")) || 0
                         : 0;
-                    const remainingGross = transactionAmount - currentRefundAmount;
-                    const proportionalStripeFee = transactionAmount > 0 && remainingGross > 0
-                        ? Math.round(stripeProcessingFee * (remainingGross / transactionAmount))
-                        : 0;
-                    // Net refund = gross - Stripe fee (customer absorbs fee)
-                    const netRefundAmount = Math.max(0, remainingGross - proportionalStripeFee);
+                    const managerRevenue = paymentTransaction
+                        ? parseInt(String(paymentTransaction.manager_revenue || "0")) || 0
+                        : transactionAmount;
+                    
+                    // Use unified refund breakdown calculator
+                    const refundBreakdown = calculateRefundBreakdown(
+                        transactionAmount,
+                        managerRevenue,
+                        currentRefundAmount,
+                        stripeProcessingFee
+                    );
+                    
+                    // UNIFIED: Both amounts are the same - no discrepancy!
+                    const refundToCustomer = refundBreakdown.maxRefundableToCustomer;
+                    const deductFromManager = refundBreakdown.maxDeductibleFromManager;
 
-                    // Calculate manager's share for transfer reversal
-                    let reverseTransferAmount = netRefundAmount;
-                    if (paymentTransaction) {
-                        const serviceFee = parseInt(String(paymentTransaction.service_fee || "0")) || 0;
-                        const managerRevenue = parseInt(String(paymentTransaction.manager_revenue || "0")) || 0;
-                        const managerShare = Math.max(0, transactionAmount - serviceFee, managerRevenue);
-                        reverseTransferAmount = transactionAmount > 0
-                            ? Math.round(netRefundAmount * (managerShare / transactionAmount))
-                            : netRefundAmount;
-                    }
-
-                    // Process refund with transfer reversal (net amount after fee deduction)
+                    // Process refund with transfer reversal (unified model)
                     refundResult = await reverseTransferAndRefund(
                         bookingPaymentIntentId,
-                        netRefundAmount, // Option A: Customer receives net amount (minus Stripe fee)
+                        refundToCustomer, // Customer receives this amount
                         "requested_by_customer",
                         {
-                            reverseTransferAmount,
+                            reverseTransferAmount: deductFromManager, // Manager debited same amount
                             refundApplicationFee: false,
                             metadata: {
                                 booking_id: String(id),
                                 booking_type: 'kitchen',
-                                cancellation_reason: "Booking cancelled by manager",
+                                cancellation_reason: "Booking rejected by manager",
                                 manager_id: String(user.id),
-                                stripe_fee_retained: String(proportionalStripeFee),
-                                gross_refundable: String(remainingGross),
+                                refund_model: 'unified',
+                                customer_receives: String(refundToCustomer),
+                                manager_debited: String(deductFromManager),
                             },
                         }
                     );

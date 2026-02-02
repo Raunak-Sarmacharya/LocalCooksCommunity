@@ -189,16 +189,18 @@ export class BookingRepository {
             // Net revenue = total charged - tax - stripe fee (same as transaction history)
             const totalCharged = transactionAmount ?? kbTotalPrice;
             const netRevenue = totalCharged - taxAmount - stripeProcessingFee;
-            // Calculate refundable amount (total - already refunded - stripe fee)
-            // Option A: Customer absorbs Stripe processing fee on refunds
-            const grossRefundableAmount = transactionAmount 
-                ? Math.max(0, transactionAmount - refundAmount)
+            
+            // SIMPLE REFUND MODEL: Manager's balance is the cap
+            // Stripe fee is a sunk cost — it's gone from day 1 and not refundable
+            // Manager enters $20 → Customer gets $20, Manager debited $20
+            
+            // Manager's remaining balance = what they received minus what's already been refunded
+            const managerRemainingBalance = managerRevenue 
+                ? Math.max(0, managerRevenue - refundAmount)
                 : 0;
-            // Net refundable = gross - proportional Stripe fee
-            const proportionalStripeFee = transactionAmount && grossRefundableAmount > 0
-                ? Math.round(stripeProcessingFee * (grossRefundableAmount / transactionAmount))
-                : 0;
-            const refundableAmount = Math.max(0, grossRefundableAmount - proportionalStripeFee);
+            
+            // Max refundable = manager's remaining balance (simple!)
+            const refundableAmount = managerRemainingBalance;
             return {
                 ...mappedBooking,
                 kitchen: row.kitchen,
@@ -222,10 +224,9 @@ export class BookingRepository {
                 managerRevenue,    // What manager receives (from payment_transactions)
                 netRevenue,        // Net = transactionAmount - taxAmount - stripeFee (same as transaction history) = $96.51
                 refundAmount,      // Amount already refunded
-                refundableAmount,  // Net amount customer receives (after Stripe fee deduction)
-                grossRefundableAmount, // Gross refundable before fee deduction
-                stripeProcessingFee,   // Total Stripe processing fee for this transaction
-                proportionalStripeFee, // Stripe fee portion for refundable amount
+                refundableAmount,  // SIMPLE: Max refundable = manager's remaining balance
+                stripeProcessingFee,   // Total Stripe processing fee (display only - sunk cost)
+                managerRemainingBalance, // Manager's remaining balance from this transaction
             };
         });
     }

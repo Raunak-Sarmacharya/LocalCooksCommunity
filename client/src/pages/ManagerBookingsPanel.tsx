@@ -40,10 +40,12 @@ interface Booking {
   transactionAmount?: number;
   transactionId?: number;
   refundAmount?: number;
-  refundableAmount?: number; // Net amount customer receives (after Stripe fee deduction)
-  grossRefundableAmount?: number; // Gross refundable before fee deduction
-  stripeProcessingFee?: number; // Total Stripe processing fee
-  proportionalStripeFee?: number; // Stripe fee portion for refundable amount
+  // SIMPLE REFUND MODEL: Manager's balance is the cap
+  // Stripe fee is a sunk cost — manager enters $X, customer gets $X, manager debited $X
+  refundableAmount?: number; // Max refundable = manager's remaining balance
+  stripeProcessingFee?: number; // Total Stripe processing fee (display only)
+  managerRemainingBalance?: number; // Manager's remaining balance from this transaction
+  managerRevenue?: number; // What manager originally received
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -713,42 +715,64 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                         <span>${((bookingToRefund.refundAmount || 0) / 100).toFixed(2)}</span>
                       </div>
                     )}
-                    {/* Option A Fee Breakdown */}
-                    <div className="border-t pt-2 mt-2 space-y-1">
-                      <div className="flex items-center justify-between text-muted-foreground">
-                        <span>Gross Refundable:</span>
-                        <span>${((bookingToRefund.grossRefundableAmount || 0) / 100).toFixed(2)}</span>
-                      </div>
-                      {(bookingToRefund.proportionalStripeFee || 0) > 0 && (
-                        <div className="flex items-center justify-between text-red-600">
-                          <span>Processing Fee (non-refundable):</span>
-                          <span>-${((bookingToRefund.proportionalStripeFee || 0) / 100).toFixed(2)}</span>
+                    {/* SIMPLE REFUND MODEL: Available balance is the cap */}
+                    <div className="border-t pt-3 mt-3 space-y-2">
+                      {(bookingToRefund.stripeProcessingFee || 0) > 0 && (
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Stripe Fee (non-refundable):</span>
+                          <span>${((bookingToRefund.stripeProcessingFee || 0) / 100).toFixed(2)}</span>
                         </div>
                       )}
-                      <div className="flex items-center justify-between font-semibold text-green-600 border-t pt-1">
-                        <span>Max Refund to Customer:</span>
+                      <div className="flex items-center justify-between font-semibold text-green-600 bg-green-50 p-2 rounded-md">
+                        <span>Available to Refund:</span>
                         <span>${((bookingToRefund.refundableAmount || 0) / 100).toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
                 )}
-                <div className="space-y-2">
-                  <label htmlFor="refundAmount" className="text-sm font-medium">
-                    Refund Amount ($)
-                  </label>
-                  <input
-                    id="refundAmount"
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    value={refundAmount}
-                    onChange={(e) => setRefundAmount(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    placeholder="Enter amount"
-                  />
+                
+                {/* Refund Input with Real-time Preview */}
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label htmlFor="refundAmount" className="text-sm font-medium">
+                      Refund Amount ($)
+                    </label>
+                    <input
+                      id="refundAmount"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      max={((bookingToRefund?.refundableAmount || 0) / 100).toFixed(2)}
+                      value={refundAmount}
+                      onChange={(e) => setRefundAmount(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      placeholder="Enter amount"
+                    />
+                  </div>
+                  
+                  {/* Real-time Refund Preview */}
+                  {refundAmount && parseFloat(refundAmount) > 0 && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
+                      <div className="text-sm font-medium text-blue-800">Refund Preview</div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="text-blue-700">Customer Receives:</span>
+                          <span className="font-semibold text-blue-900">${parseFloat(refundAmount).toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-blue-700">Your Account Debited:</span>
+                          <span className="font-semibold text-blue-900">${parseFloat(refundAmount).toFixed(2)}</span>
+                        </div>
+                      </div>
+                      <div className="text-xs text-blue-600 mt-1">
+                        ✓ Same amount for both — consistent with your Stripe dashboard
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <p className="text-muted-foreground text-sm">
-                  <strong>Note:</strong> Processing fees are non-refundable per Stripe policy. The customer will receive the refund amount minus the proportional processing fee shown above. Refunds typically arrive within 5-10 business days.
+                
+                <p className="text-muted-foreground text-xs">
+                  Refunds typically arrive within 5-10 business days. The amount shown will be debited from your Stripe Connect balance and credited to the customer's original payment method.
                 </p>
               </div>
             </AlertDialogDescription>
