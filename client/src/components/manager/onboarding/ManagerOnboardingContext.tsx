@@ -448,6 +448,15 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   }, [isOpen]);
 
+  // [ENTERPRISE FIX] Reset auto-skip flag when wizard opens
+  // This ensures auto-skip runs fresh each time user enters the wizard
+  useEffect(() => {
+    if (isOpen) {
+      hasPerformedInitialAutoSkip.current = false;
+      console.log('[Onboarding] Wizard opened - reset auto-skip flag');
+    }
+  }, [isOpen]);
+
 
   // Auto-select location and initialize form state from existing data
   useEffect(() => {

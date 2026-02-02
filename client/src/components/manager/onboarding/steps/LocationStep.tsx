@@ -30,10 +30,18 @@ export default function LocationStep() {
     handleBack,
     isFirstStep,
     skipCurrentStep,
-    isSubmitting
+    isSubmitting,
+    completedSteps
   } = useManagerOnboarding();
 
   const { toast } = useToast();
+
+  // [ENTERPRISE] Check if Business step is already complete (both docs uploaded)
+  // If complete, show read-only view - replacement is handled from dashboard
+  const isStepComplete = completedSteps['location'] === true;
+  const hasExistingLicense = !!(selectedLocation?.kitchenLicenseUrl || (selectedLocation as any)?.kitchen_license_url);
+  const hasExistingTerms = !!(selectedLocation?.kitchenTermsUrl || (selectedLocation as any)?.kitchen_terms_url);
+  const isReadOnly = isStepComplete && hasExistingLicense && hasExistingTerms;
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -361,87 +369,108 @@ export default function LocationStep() {
             <Label htmlFor="license-file" className="text-sm font-medium text-slate-700 dark:text-slate-300">
               License File
             </Label>
-            <div className={cn(
-              "relative border-2 border-dashed rounded-xl p-6 transition-all duration-200",
-              (licenseForm.file || licenseForm.uploadedUrl)
-                ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-700" 
-                : "border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50"
-            )}>
-              <input
-                type="file"
-                id="license-file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              <label htmlFor="license-file" className="cursor-pointer block text-center w-full h-full">
-                {licenseForm.file || licenseForm.uploadedUrl ? (
-                  <div className="flex items-center justify-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
-                      <FileText className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                    </div>
-                    <div className="text-left">
-                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                        {licenseForm.file?.name || (licenseForm.uploadedUrl ? "License uploaded" : "File")}
-                      </p>
-                      {licenseForm.file && licenseForm.file.size > 0 && (
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {formatFileSize(licenseForm.file.size)}
-                        </p>
-                      )}
-                      {!licenseForm.file && licenseForm.uploadedUrl && (
-                        <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                          Uploaded to cloud
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        licenseForm.setFile(null);
-                      }}
-                      className="ml-auto h-8 w-8 p-0 hover:bg-slate-100 dark:hover:bg-slate-700"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+            {/* [ENTERPRISE] Read-only view when step is complete - no re-upload during onboarding */}
+            {isReadOnly ? (
+              <div className="border-2 border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-700 rounded-xl p-6">
+                <div className="flex items-center justify-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
+                    <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto">
-                      <Upload className="w-6 h-6 text-slate-400 dark:text-slate-500" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Upload license file
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        PDF, JPG, or PNG (max 10MB)
-                      </p>
-                    </div>
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                      License on file
+                    </p>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                      Document uploaded • Update from Settings
+                    </p>
                   </div>
-                )}
-              </label>
-            </div>
+                </div>
+              </div>
+            ) : (
+              <div className={cn(
+                "relative border-2 border-dashed rounded-xl p-6 transition-all duration-200",
+                (licenseForm.file || licenseForm.uploadedUrl)
+                  ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-700" 
+                  : "border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+              )}>
+                <input
+                  type="file"
+                  id="license-file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                <label htmlFor="license-file" className="cursor-pointer block text-center w-full h-full">
+                  {licenseForm.file || licenseForm.uploadedUrl ? (
+                    <div className="flex items-center justify-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                      <div className="text-left">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                          {licenseForm.file?.name || (licenseForm.uploadedUrl ? "License uploaded" : "File")}
+                        </p>
+                        {licenseForm.file && licenseForm.file.size > 0 && (
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {formatFileSize(licenseForm.file.size)}
+                          </p>
+                        )}
+                        {!licenseForm.file && licenseForm.uploadedUrl && (
+                          <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                            Uploaded to cloud
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          licenseForm.setFile(null);
+                        }}
+                        className="ml-auto h-8 w-8 p-0 hover:bg-slate-100 dark:hover:bg-slate-700"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto">
+                        <Upload className="w-6 h-6 text-slate-400 dark:text-slate-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Upload license file
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          PDF, JPG, or PNG (max 10MB)
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </label>
+              </div>
+            )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="license-expiry-date" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              <Calendar className="w-4 h-4 inline mr-1" />
-              Expiration Date
-              {licenseForm.file && <span className="text-destructive ml-1">*</span>}
-            </Label>
-            <Input
-              id="license-expiry-date"
-              type="date"
-              value={licenseForm.expiryDate}
-              onChange={(e) => licenseForm.setExpiryDate(e.target.value)}
-              min={new Date().toISOString().split('T')[0]}
-              className="h-10"
-            />
-          </div>
+          {!isReadOnly && (
+            <div className="space-y-2">
+              <Label htmlFor="license-expiry-date" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                <Calendar className="w-4 h-4 inline mr-1" />
+                Expiration Date
+                {licenseForm.file && <span className="text-destructive ml-1">*</span>}
+              </Label>
+              <Input
+                id="license-expiry-date"
+                type="date"
+                value={licenseForm.expiryDate}
+                onChange={(e) => licenseForm.setExpiryDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                className="h-10"
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -464,7 +493,7 @@ export default function LocationStep() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {selectedLocation?.kitchenTermsUrl && (
+          {hasExistingTerms && (
             <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300">
               <CheckCircle className="h-4 w-4" />
               <AlertDescription>
@@ -477,70 +506,89 @@ export default function LocationStep() {
             <Label htmlFor="terms-file" className="text-sm font-medium text-slate-700 dark:text-slate-300">
               Terms & Policies File
             </Label>
-            <div className={cn(
-              "relative border-2 border-dashed rounded-xl p-6 transition-all duration-200",
-              (termsForm.file || termsForm.uploadedUrl)
-                ? "border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700" 
-                : "border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50"
-            )}>
-              <input
-                type="file"
-                id="terms-file"
-                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                onChange={handleTermsFileChange}
-                className="hidden"
-              />
-              <label htmlFor="terms-file" className="cursor-pointer block text-center w-full h-full">
-                {termsForm.file || termsForm.uploadedUrl ? (
-                  <div className="flex items-center justify-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
-                      <FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                    </div>
-                    <div className="text-left">
-                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                        {termsForm.file?.name || (termsForm.uploadedUrl ? "Terms uploaded" : "File")}
-                      </p>
-                      {termsForm.file && termsForm.file.size > 0 && (
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {formatFileSize(termsForm.file.size)}
-                        </p>
-                      )}
-                      {!termsForm.file && termsForm.uploadedUrl && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400">
-                          Uploaded to cloud
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        termsForm.setFile(null);
-                      }}
-                      className="ml-auto h-8 w-8 p-0 hover:bg-slate-100 dark:hover:bg-slate-700"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+            {/* [ENTERPRISE] Read-only view when step is complete - no re-upload during onboarding */}
+            {isReadOnly ? (
+              <div className="border-2 border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700 rounded-xl p-6">
+                <div className="flex items-center justify-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
+                    <CheckCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto">
-                      <Upload className="w-6 h-6 text-slate-400 dark:text-slate-500" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Upload terms document
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        PDF, JPG, PNG, or DOC (max 10MB)
-                      </p>
-                    </div>
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                      Terms on file
+                    </p>
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      Document uploaded • Update from Settings
+                    </p>
                   </div>
-                )}
-              </label>
-            </div>
+                </div>
+              </div>
+            ) : (
+              <div className={cn(
+                "relative border-2 border-dashed rounded-xl p-6 transition-all duration-200",
+                (termsForm.file || termsForm.uploadedUrl)
+                  ? "border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700" 
+                  : "border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+              )}>
+                <input
+                  type="file"
+                  id="terms-file"
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                  onChange={handleTermsFileChange}
+                  className="hidden"
+                />
+                <label htmlFor="terms-file" className="cursor-pointer block text-center w-full h-full">
+                  {termsForm.file || termsForm.uploadedUrl ? (
+                    <div className="flex items-center justify-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="text-left">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                          {termsForm.file?.name || (termsForm.uploadedUrl ? "Terms uploaded" : "File")}
+                        </p>
+                        {termsForm.file && termsForm.file.size > 0 && (
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {formatFileSize(termsForm.file.size)}
+                          </p>
+                        )}
+                        {!termsForm.file && termsForm.uploadedUrl && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            Uploaded to cloud
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          termsForm.setFile(null);
+                        }}
+                        className="ml-auto h-8 w-8 p-0 hover:bg-slate-100 dark:hover:bg-slate-700"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto">
+                        <Upload className="w-6 h-6 text-slate-400 dark:text-slate-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Upload terms document
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          PDF, JPG, PNG, or DOC (max 10MB)
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </label>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
