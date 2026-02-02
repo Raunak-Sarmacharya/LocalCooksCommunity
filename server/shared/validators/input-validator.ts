@@ -100,6 +100,14 @@ export async function validateLocationInput(data: unknown) {
     kitchenLicenseUrl: z.string().optional(),
     kitchenLicenseStatus: z.enum(['pending', 'approved', 'rejected']).optional(),
     kitchenLicenseExpiry: z.string().optional(),
+    // Terms & Policies document URL
+    kitchenTermsUrl: z.string().optional(),
+    // Contact fields
+    contactEmail: z.string().email('Invalid contact email format').optional().or(z.literal('')),
+    contactPhone: z.string().optional(),
+    preferredContactMethod: z.enum(['email', 'phone', 'both']).optional(),
+    description: z.string().optional(),
+    customOnboardingLink: z.string().optional(),
   });
 
   try {
