@@ -29,7 +29,8 @@ export default function LocationStep() {
     handleNext,
     handleBack,
     isFirstStep,
-    skipCurrentStep
+    skipCurrentStep,
+    isSubmitting
   } = useManagerOnboarding();
 
   const { toast } = useToast();
@@ -550,7 +551,9 @@ export default function LocationStep() {
         onSkip={skipCurrentStep}
         showBack={!isFirstStep}
         showSkip={true}
+        isLoading={isSubmitting}
         isNextDisabled={
+          isSubmitting ||
           !locationForm.name || 
           !locationForm.address || 
           !isContactValid() ||

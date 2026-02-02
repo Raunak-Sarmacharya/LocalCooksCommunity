@@ -51,6 +51,7 @@ function ManagerSetupPageContent() {
         currentStepIndex,
         visibleSteps,
         completedSteps,
+        saveAndExit,
     } = useManagerOnboarding();
 
     const [, setLocation] = useLocation();
@@ -65,8 +66,9 @@ function ManagerSetupPageContent() {
         prevStepIndex.current = currentStepIndex;
     }, [currentStepIndex]);
 
-    const handleExit = () => {
-        setLocation("/manager/dashboard");
+    // [ENTERPRISE] Use context's saveAndExit which persists progress before navigating
+    const handleExit = async () => {
+        await saveAndExit();
     };
 
     // Get the component for the current step

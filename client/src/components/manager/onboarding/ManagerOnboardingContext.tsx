@@ -10,6 +10,15 @@ import { useOnboarding } from '@onboardjs/react';
 import { steps } from "@/config/onboarding-steps";
 import { Link, useLocation } from "wouter";
 
+// [ENTERPRISE] Generate unique submission ID using crypto API or fallback
+const generateSubmissionId = (): string => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for older browsers
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+};
+
 // Step ID mapping for backwards compatibility with legacy numeric format in database
 // MUST match the order in onboarding-steps.ts
 const STEP_ID_MAP: Record<string, number> = {
@@ -139,6 +148,12 @@ interface ManagerOnboardingContextType {
   createKitchen: () => Promise<void>;
   uploadLicense: () => Promise<string | null>;
   startNewLocation: () => void;
+  
+  // [ENTERPRISE] Save and exit functionality - allows exiting at any step
+  saveAndExit: () => Promise<void>;
+  
+  // [ENTERPRISE] Submission state for race condition prevention
+  isSubmitting: boolean;
 }
 
 const ManagerOnboardingContext = createContext<ManagerOnboardingContextType | undefined>(undefined);
@@ -217,6 +232,11 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
   // Multi-location State
   const [isAddingLocation, setIsAddingLocation] = useState(false);
+
+  // [ENTERPRISE] Submission State - Prevents race conditions and duplicate submissions
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submissionIdRef = useRef<string | null>(null);
+  const lastSubmittedLocationIdRef = useRef<number | null>(null);
 
   // --- Auth & Profile Queries ---
   const { data: firebaseUserData } = useQuery({
@@ -426,27 +446,54 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   }, [isOpen]);
 
 
-  // Auto-select location
+  // Auto-select location and initialize form state from existing data
   useEffect(() => {
     if (!isLoadingLocations && hasExistingLocation && !selectedLocationId && locations.length > 0) {
       const loc = locations[0] as any;
       setSelectedLocationId(loc.id);
       setLocationName(loc.name || "");
       setLocationAddress(loc.address || "");
-      setNotificationEmail(loc.notificationEmail || "");
-      setNotificationPhone(loc.notificationPhone || "");
+      setNotificationEmail(loc.notificationEmail || loc.notification_email || "");
+      setNotificationPhone(loc.notificationPhone || loc.notification_phone || "");
       // Contact fields
-      setContactEmail(loc.contactEmail || "");
-      setContactPhone(loc.contactPhone || "");
-      setPreferredContactMethod(loc.preferredContactMethod || "email");
+      setContactEmail(loc.contactEmail || loc.contact_email || "");
+      setContactPhone(loc.contactPhone || loc.contact_phone || "");
+      setPreferredContactMethod(loc.preferredContactMethod || loc.preferred_contact_method || "email");
+
+      // [ENTERPRISE FIX] Initialize uploaded URLs from existing location data
+      // This ensures that when returning to the Business step, files already on location
+      // are recognized and won't trigger re-uploads or show as missing
+      const existingLicenseUrl = loc.kitchenLicenseUrl || loc.kitchen_license_url;
+      const existingTermsUrl = loc.kitchenTermsUrl || loc.kitchen_terms_url;
+      const existingLicenseExpiry = loc.kitchenLicenseExpiry || loc.kitchen_license_expiry;
+      
+      if (existingLicenseUrl) {
+        setLicenseUploadedUrl(existingLicenseUrl);
+      }
+      if (existingTermsUrl) {
+        setTermsUploadedUrl(existingTermsUrl);
+      }
+      if (existingLicenseExpiry) {
+        // Format date for input if needed
+        const expiryDate = new Date(existingLicenseExpiry);
+        if (!isNaN(expiryDate.getTime())) {
+          setLicenseExpiryDate(expiryDate.toISOString().split('T')[0]);
+        }
+      }
+      
+      // [ENTERPRISE FIX] Initialize lastSubmittedLocationIdRef to prevent duplicate creates
+      lastSubmittedLocationIdRef.current = loc.id;
 
       // Reset loading flags when location switches/initializes
       setKitchensLoaded(false);
       setRequirementsLoaded(false);
 
-      // If we have a location, we might want to fast-forward the OnboardJS state if it's on step 0 or 1.
-      // However, OnboardJS doesn't expose a direct "jump to index" easily without loop, 
-      // or we rely on the persistence of OnboardJS itself.
+      console.log('[Onboarding] Auto-selected location and initialized state:', {
+        locationId: loc.id,
+        hasLicenseUrl: !!existingLicenseUrl,
+        hasTermsUrl: !!existingTermsUrl,
+        licenseExpiry: existingLicenseExpiry
+      });
     }
   }, [isLoadingLocations, hasExistingLocation, locations, selectedLocationId]);
 
@@ -762,34 +809,61 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   };
 
+  // [ENTERPRISE] updateLocation with race condition prevention
+  // - Submission deduplication via submissionIdRef
+  // - Prevents double file uploads by checking uploadedUrl first
+  // - Prevents duplicate location creation via lastSubmittedLocationIdRef
+  // - Proper async state handling before navigation
   const updateLocation = async () => {
     if (!locationName || !locationAddress) {
       toast({ title: "Error", description: "Missing location details", variant: "destructive" });
       return;
     }
 
+    // [GUARD 1] Prevent concurrent submissions
+    if (isSubmitting) {
+      console.log('[Onboarding] ⚠️ Submission already in progress, ignoring duplicate click');
+      return;
+    }
+
+    // [GUARD 2] Generate unique submission ID for this request
+    const thisSubmissionId = generateSubmissionId();
+    submissionIdRef.current = thisSubmissionId;
+
+    setIsSubmitting(true);
+
     try {
       console.log('[Onboarding] updateLocation called', { 
+        submissionId: thisSubmissionId,
         licenseFile: licenseFile?.name, 
+        licenseUploadedUrl,
         termsFile: termsFile?.name,
+        termsUploadedUrl,
         selectedLocationId,
+        lastSubmittedLocationId: lastSubmittedLocationIdRef.current,
         locationsLength: locations.length
       });
 
-      let licenseUrl = null;
-      if (licenseFile) {
+      // [FIX 1] Use already-uploaded URL if available, don't re-upload
+      // Files are uploaded immediately on selection via uploadLicenseFile/uploadTermsFile
+      let licenseUrl = licenseUploadedUrl;
+      if (!licenseUrl && licenseFile) {
+        // Only upload if not already uploaded
         if (!licenseExpiryDate) {
           toast({ title: "Error", description: "Missing license expiry", variant: "destructive" });
+          setIsSubmitting(false);
           return;
         }
         licenseUrl = await uploadLicense();
-        console.log('[Onboarding] License uploaded:', licenseUrl);
+        console.log('[Onboarding] License uploaded (fresh):', licenseUrl);
+      } else if (licenseUrl) {
+        console.log('[Onboarding] Using pre-uploaded license URL:', licenseUrl);
       }
 
-      // Upload terms file if provided
-      let termsUrl = null;
-      if (termsFile) {
-        console.log('[Onboarding] Uploading terms file:', termsFile.name);
+      // [FIX 2] Use already-uploaded terms URL if available
+      let termsUrl = termsUploadedUrl;
+      if (!termsUrl && termsFile) {
+        console.log('[Onboarding] Uploading terms file (fresh):', termsFile.name);
         setUploadingTerms(true);
         const token = await auth.currentUser?.getIdToken();
         const formData = new FormData();
@@ -802,10 +876,17 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         if (!uploadRes.ok) throw new Error("Failed to upload terms file");
         const uploadResult = await uploadRes.json();
         termsUrl = uploadResult.url;
-        console.log('[Onboarding] Terms uploaded:', termsUrl);
+        setTermsUploadedUrl(termsUrl);
+        console.log('[Onboarding] Terms uploaded (fresh):', termsUrl);
         setUploadingTerms(false);
-      } else {
-        console.log('[Onboarding] No terms file to upload');
+      } else if (termsUrl) {
+        console.log('[Onboarding] Using pre-uploaded terms URL:', termsUrl);
+      }
+
+      // [GUARD 3] Check if submission was superseded
+      if (submissionIdRef.current !== thisSubmissionId) {
+        console.log('[Onboarding] ⚠️ Submission superseded, aborting:', thisSubmissionId);
+        return;
       }
 
       const token = await auth.currentUser?.getIdToken();
@@ -817,7 +898,6 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         phone = p.data || "";
       }
 
-      // Validate contact phone if provided
       let contactPhoneValidated = contactPhone;
       if (contactPhoneValidated) {
         const cp = optionalPhoneNumberSchema.safeParse(contactPhoneValidated);
@@ -834,29 +914,42 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         contactPhone: contactPhoneValidated,
         preferredContactMethod
       };
+      
+      // Include license URL (pre-uploaded or freshly uploaded)
       if (licenseUrl) {
         body.kitchenLicenseUrl = licenseUrl;
         body.kitchenLicenseStatus = "pending";
-        body.kitchenLicenseExpiry = licenseExpiryDate;
-      } else if (licenseExpiryDate && !licenseFile) {
+        if (licenseExpiryDate) {
+          body.kitchenLicenseExpiry = licenseExpiryDate;
+        }
+      } else if (licenseExpiryDate) {
         body.kitchenLicenseExpiry = licenseExpiryDate;
       }
 
-      // Add terms URL if uploaded
+      // Include terms URL (pre-uploaded or freshly uploaded)
       if (termsUrl) {
         body.kitchenTermsUrl = termsUrl;
       }
 
-      console.log('[Onboarding] Request body:', JSON.stringify(body, null, 2));
-      console.log('[Onboarding] termsUrl value:', termsUrl);
-      console.log('[Onboarding] body.kitchenTermsUrl:', body.kitchenTermsUrl);
+      // [FIX 3] Robust POST vs PUT decision - check multiple sources to prevent duplicates
+      // Priority: lastSubmittedLocationIdRef > selectedLocationId > first location in array
+      const effectiveLocationId = 
+        lastSubmittedLocationIdRef.current || 
+        selectedLocationId || 
+        (locations.length > 0 ? locations[0].id : null);
 
-      const endpoint = (!selectedLocationId || locations.length === 0)
+      const shouldCreate = !effectiveLocationId;
+      const endpoint = shouldCreate
         ? `/api/manager/locations`
-        : `/api/manager/locations/${selectedLocationId}`;
-      const method = (!selectedLocationId || locations.length === 0) ? "POST" : "PUT";
+        : `/api/manager/locations/${effectiveLocationId}`;
+      const method = shouldCreate ? "POST" : "PUT";
 
-      console.log('[Onboarding] Using endpoint:', endpoint, 'method:', method);
+      console.log('[Onboarding] Request:', { 
+        method, 
+        endpoint, 
+        effectiveLocationId,
+        body: JSON.stringify(body, null, 2) 
+      });
 
       const res = await fetch(endpoint, {
         method,
@@ -869,16 +962,42 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
       if (!res.ok) throw new Error(data.error || "Failed to save location");
 
-      if (method === "POST") setSelectedLocationId(data.id);
+      // [FIX 4] Track the created/updated location ID immediately via ref (sync)
+      const savedLocationId = data.id || effectiveLocationId;
+      lastSubmittedLocationIdRef.current = savedLocationId;
+      
+      // Also update React state (async, but ref provides immediate protection)
+      if (method === "POST" || !selectedLocationId) {
+        setSelectedLocationId(savedLocationId);
+      }
 
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
+      // [FIX 5] Await query invalidation to ensure data is fresh before navigation
+      await queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
+      
+      // Give React Query time to refetch and update the locations array
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // [GUARD 4] Final check - ensure this submission wasn't superseded
+      if (submissionIdRef.current !== thisSubmissionId) {
+        console.log('[Onboarding] ⚠️ Submission superseded before navigation, aborting:', thisSubmissionId);
+        return;
+      }
+
       toast({ title: "Success", description: "Location saved" });
 
       await trackStepCompletion(currentStep?.id || 'location');
+      
+      // Clear file state after successful save (files are now persisted to location)
+      setLicenseFile(null);
+      setTermsFile(null);
+      
       next(); // Move to next step via OnboardJS
 
     } catch (e: any) {
+      console.error('[Onboarding] Error in updateLocation:', e);
       toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1158,6 +1277,63 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     },
 
     updateLocation, createKitchen, uploadLicense,
+    
+    // [ENTERPRISE] Save and Exit - Persists current step progress and navigates to dashboard
+    // This allows users to exit at ANY step (including welcome) and resume later
+    saveAndExit: async () => {
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) {
+          console.warn('[Onboarding] No auth token for saveAndExit');
+          setLocation('/manager/dashboard');
+          return;
+        }
+
+        const stepId = currentStep?.id;
+        console.log('[Onboarding] Save & Exit from step:', stepId);
+
+        // 1. Mark current step as "seen" (partial progress tracking)
+        if (stepId) {
+          await fetch("/api/manager/onboarding/step", {
+            method: "POST",
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+              stepId: stepId, 
+              locationId: selectedLocationId || undefined 
+            }),
+          });
+        }
+
+        // 2. For welcome step specifically, also mark has_seen_welcome
+        if (stepId === 'welcome') {
+          await fetch("/api/user/has-seen-welcome", {
+            method: "POST",
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+        }
+
+        // 3. Invalidate queries to refresh state on next visit
+        queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
+
+        toast({ 
+          title: "Progress Saved", 
+          description: "You can continue setup anytime from where you left off." 
+        });
+
+        // 4. Navigate to dashboard
+        setLocation('/manager/dashboard');
+
+      } catch (error) {
+        console.error('[Onboarding] Error in saveAndExit:', error);
+        // Still navigate even if save fails - don't trap the user
+        setLocation('/manager/dashboard');
+      }
+    },
+    
     startNewLocation: () => {
       setSelectedLocationId(null);
       setLocationName("");
@@ -1172,11 +1348,19 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setPreferredContactMethod("email");
       setLicenseFile(null);
       setLicenseExpiryDate("");
+      setLicenseUploadedUrl(null);
       setTermsFile(null);
+      setTermsUploadedUrl(null);
       setIsAddingLocation(true);
+      // [ENTERPRISE] Reset submission tracking for new location flow
+      lastSubmittedLocationIdRef.current = null;
+      submissionIdRef.current = null;
       // setIsOpen(true); // OLD MODAL
       setLocation('/manager/setup'); // NEW FULL PAGE
-    }
+    },
+    
+    // [ENTERPRISE] Expose submission state for UI
+    isSubmitting
   };
 
   return (
