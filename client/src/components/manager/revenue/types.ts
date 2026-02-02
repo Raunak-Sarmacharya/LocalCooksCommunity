@@ -92,7 +92,9 @@ export interface RevenueMetrics {
     bookingCount: number;
     paidBookingCount: number;
     averageBookingValue: number;   // In cents
-    completedPayments: number;     // In cents
+    completedPayments: number;     // In cents - gross amount from succeeded transactions
+    completedNetRevenue?: number;  // In cents - net revenue from succeeded transactions (payout-ready)
+    taxRatePercent?: number;       // Actual tax rate from kitchens table
     pendingPayments: number;       // In cents
     refundedAmount: number;        // In cents
     // Comparison with previous period

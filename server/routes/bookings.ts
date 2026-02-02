@@ -912,6 +912,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                 description: kitchen.description,
                 photos: kitchen.galleryImages || (kitchen.imageUrl ? [kitchen.imageUrl] : []),
                 locationId: kitchen.locationId,
+                taxRatePercent: kitchen.taxRatePercent || 0, // Tax rate for payment breakdown display
             } : null,
             location,
             storageBookings: storageBookingsWithDetails,

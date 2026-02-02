@@ -1,7 +1,7 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign, Eye } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign, Eye, RotateCcw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -64,12 +64,23 @@ export type Booking = {
     hourlyRate?: number; // in cents
     durationHours?: number;
     paymentStatus?: string;
+    paymentIntentId?: string;
+    transactionId?: number;
+    refundAmount?: number; // in cents - amount already refunded
+    refundableAmount?: number; // in cents - net amount customer receives (after Stripe fee deduction)
+    grossRefundableAmount?: number; // in cents - gross refundable before fee deduction
+    stripeProcessingFee?: number; // in cents - total Stripe processing fee for this transaction
+    proportionalStripeFee?: number; // in cents - Stripe fee portion for refundable amount
+    taxRatePercent?: number; // kitchen's tax rate percentage for revenue calculations
+    taxAmount?: number; // in cents - tax = kb.total_price * tax_rate / 100 (same as transaction history)
+    netRevenue?: number; // in cents - net = transactionAmount - taxAmount - stripeFee (same as transaction history)
 }
 
 interface BookingColumnsProps {
     onConfirm: (bookingId: number) => void;
     onReject: (booking: Booking) => void;
     onCancel: (booking: Booking) => void;
+    onRefund?: (booking: Booking) => void;
     hasApprovedLicense: boolean;
 }
 
@@ -90,7 +101,7 @@ const formatTime = (time: string) => {
     return `${displayHour}:${minutes} ${ampm}`;
 };
 
-export const getBookingColumns = ({ onConfirm, onReject, onCancel, hasApprovedLicense }: BookingColumnsProps): ColumnDef<Booking>[] => [
+export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, hasApprovedLicense }: BookingColumnsProps): ColumnDef<Booking>[] => [
     {
         accessorKey: "kitchenName",
         header: ({ column }) => {
@@ -337,12 +348,17 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, hasApprovedLi
         cell: ({ row }) => {
             // Use actual Stripe transaction data when available
             const transactionAmount = row.original.transactionAmount;
-            const serviceFee = row.original.serviceFee ?? 0;
-            const managerRevenue = row.original.managerRevenue;
+            const stripeFee = row.original.stripeProcessingFee ?? 0;
             
             // Fall back to booking totalPrice if no transaction data
             const displayAmount = transactionAmount ?? row.original.totalPrice ?? 0;
-            const netAmount = managerRevenue ?? displayAmount;
+            
+            // ENTERPRISE STANDARD: Use values calculated EXACTLY like transaction history
+            // Tax = kb.total_price * tax_rate_percent / 100 (calculated in booking.repository.ts)
+            // Net = transactionAmount - taxAmount - stripeFee (calculated in booking.repository.ts)
+            const taxRatePercent = row.original.taxRatePercent ?? 0;
+            const taxAmount = row.original.taxAmount ?? 0; // From API (same calc as transaction history)
+            const netAmount = row.original.netRevenue ?? (displayAmount - taxAmount - stripeFee);
             
             const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
             
@@ -372,10 +388,16 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, hasApprovedLi
                                     <span>Total Charged:</span>
                                     <span className="font-medium">{formatPrice(displayAmount)}</span>
                                 </div>
-                                {hasTransactionData && serviceFee > 0 && (
-                                    <div className="flex justify-between gap-4 text-violet-600">
-                                        <span>Platform Fee:</span>
-                                        <span>-{formatPrice(serviceFee)}</span>
+                                {hasTransactionData && taxAmount > 0 && (
+                                    <div className="flex justify-between gap-4 text-amber-600">
+                                        <span>Tax ({taxRatePercent}%):</span>
+                                        <span>-{formatPrice(taxAmount)}</span>
+                                    </div>
+                                )}
+                                {hasTransactionData && stripeFee > 0 && (
+                                    <div className="flex justify-between gap-4 text-red-600">
+                                        <span>Stripe Fee:</span>
+                                        <span>-{formatPrice(stripeFee)}</span>
                                     </div>
                                 )}
                                 {hasTransactionData && (
@@ -464,8 +486,18 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, hasApprovedLi
             const canCancel = isConfirmed && !isPast;
 
 
-            if (isCancelled || (isConfirmed && isPast)) {
-                return null; // No actions for past/cancelled
+            // Check if booking has refundable amount (for cancelled bookings that need manual refund)
+            const hasRefundableAmount = booking.paymentStatus && 
+                ['paid', 'partially_refunded'].includes(booking.paymentStatus) && 
+                (booking.refundableAmount === undefined || booking.refundableAmount > 0);
+            
+            // For cancelled bookings, only show refund action if there's refundable amount
+            if (isCancelled && !hasRefundableAmount) {
+                return null; // No actions for fully refunded cancelled bookings
+            }
+            
+            if (isConfirmed && isPast) {
+                return null; // No actions for past confirmed bookings
             }
 
             return (
@@ -506,6 +538,20 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, hasApprovedLi
                             >
                                 <XCircle className="mr-2 h-4 w-4" />
                                 Cancel Booking
+                            </DropdownMenuItem>
+                        )}
+
+                        {/* Refund action - show for paid/partially_refunded bookings with refundable amount
+                            This covers both:
+                            - Cancelled confirmed bookings (need manual refund)
+                            - Active bookings where manager wants to issue partial refund */}
+                        {onRefund && hasRefundableAmount && (
+                            <DropdownMenuItem
+                                onClick={() => onRefund(booking)}
+                                className="text-orange-600 focus:text-orange-700 focus:bg-orange-50"
+                            >
+                                <RotateCcw className="mr-2 h-4 w-4" />
+                                Issue Refund
                             </DropdownMenuItem>
                         )}
 

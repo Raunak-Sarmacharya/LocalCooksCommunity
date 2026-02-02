@@ -7491,7 +7491,7 @@ async function notifyNewBooking(data) {
       startTime: data.startTime,
       endTime: data.endTime
     },
-    actionUrl: "/manager/booking/${data.bookingId}",
+    actionUrl: `/manager/booking/${data.bookingId}`,
     actionLabel: "Review Booking"
   });
 }
@@ -9888,9 +9888,9 @@ var init_files = __esm({
             const searchPattern = `%${filename}`;
             const { kitchens: kitchens3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
             const { db: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-            const { or: or4, like, sql: sql16 } = await import("drizzle-orm");
+            const { or: or5, like, sql: sql16 } = await import("drizzle-orm");
             const [kitchenMatch] = await db2.select({ id: kitchens3.id }).from(kitchens3).where(
-              or4(
+              or5(
                 like(kitchens3.imageUrl, searchPattern),
                 sql16`${kitchens3.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
                 // also try with just filename if that's how it's stored in array
@@ -10335,7 +10335,7 @@ var init_config = __esm({
 });
 
 // server/domains/bookings/booking.repository.ts
-import { eq as eq13, and as and9, desc as desc7, asc, lt, not, sql as sql4, ne as ne2 } from "drizzle-orm";
+import { eq as eq13, and as and9, desc as desc7, asc, lt, not, or as or2, sql as sql4, ne as ne2 } from "drizzle-orm";
 function getKitchenBookingSelection() {
   return {
     id: kitchenBookings.id,
@@ -10453,17 +10453,26 @@ var init_booking_repository = __esm({
           chef: users,
           // Chef's full name from chef_kitchen_applications table
           chefFullName: chefKitchenApplications.fullName,
+          // Kitchen tax rate for revenue calculations
+          taxRatePercent: kitchens.taxRatePercent,
           // Payment transaction data for accurate display (actual Stripe data)
+          transactionId: paymentTransactions.id,
           transactionAmount: paymentTransactions.amount,
           transactionServiceFee: paymentTransactions.serviceFee,
           transactionManagerRevenue: paymentTransactions.managerRevenue,
-          transactionStatus: paymentTransactions.status
+          transactionStatus: paymentTransactions.status,
+          transactionRefundAmount: paymentTransactions.refundAmount,
+          transactionStripeProcessingFee: paymentTransactions.stripeProcessingFee
         }).from(kitchenBookings).innerJoin(kitchens, eq13(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq13(kitchens.locationId, locations.id)).leftJoin(users, eq13(kitchenBookings.chefId, users.id)).leftJoin(chefKitchenApplications, and9(
           eq13(chefKitchenApplications.chefId, kitchenBookings.chefId),
           eq13(chefKitchenApplications.locationId, locations.id)
         )).leftJoin(paymentTransactions, and9(
           eq13(paymentTransactions.bookingId, kitchenBookings.id),
-          eq13(paymentTransactions.bookingType, "kitchen")
+          // Include both 'kitchen' and 'bundle' booking types for accurate payment data
+          or2(
+            eq13(paymentTransactions.bookingType, "kitchen"),
+            eq13(paymentTransactions.bookingType, "bundle")
+          )
         )).where(and9(
           eq13(locations.managerId, managerId),
           // CRITICAL: Only show bookings where payment has been initiated (not abandoned at checkout)
@@ -10472,9 +10481,20 @@ var init_booking_repository = __esm({
         )).orderBy(desc7(kitchenBookings.bookingDate));
         return results.map((row) => {
           const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
+          const transactionId = row.transactionId || null;
           const transactionAmount = row.transactionAmount ? parseFloat(row.transactionAmount) : null;
           const serviceFee = row.transactionServiceFee ? parseFloat(row.transactionServiceFee) : 0;
           const managerRevenue = row.transactionManagerRevenue ? parseFloat(row.transactionManagerRevenue) : null;
+          const refundAmount = row.transactionRefundAmount ? parseFloat(row.transactionRefundAmount) : 0;
+          const stripeProcessingFee = row.transactionStripeProcessingFee ? parseFloat(row.transactionStripeProcessingFee) : 0;
+          const kbTotalPrice = mappedBooking.totalPrice || 0;
+          const taxRatePercent = row.taxRatePercent ? parseFloat(String(row.taxRatePercent)) : 0;
+          const taxAmount = Math.round(kbTotalPrice * taxRatePercent / 100);
+          const totalCharged = transactionAmount ?? kbTotalPrice;
+          const netRevenue = totalCharged - taxAmount - stripeProcessingFee;
+          const grossRefundableAmount = transactionAmount ? Math.max(0, transactionAmount - refundAmount) : 0;
+          const proportionalStripeFee = transactionAmount && grossRefundableAmount > 0 ? Math.round(stripeProcessingFee * (grossRefundableAmount / transactionAmount)) : 0;
+          const refundableAmount = Math.max(0, grossRefundableAmount - proportionalStripeFee);
           return {
             ...mappedBooking,
             kitchen: row.kitchen,
@@ -10488,13 +10508,31 @@ var init_booking_repository = __esm({
             // Include storage and equipment items from JSONB fields
             storageItems: row.booking.storageItems || [],
             equipmentItems: row.booking.equipmentItems || [],
+            // Kitchen's tax rate for revenue calculations (consistent with transaction history)
+            taxRatePercent,
             // Use actual Stripe transaction data for accurate payment display
+            transactionId,
+            // Payment transaction ID (for refunds)
             transactionAmount,
-            // Actual amount charged (from payment_transactions)
+            // Actual amount charged (from payment_transactions) = $110
+            taxAmount,
+            // Tax = kb.total_price * tax_rate / 100 (same as transaction history) = $10
             serviceFee,
             // Platform fee (from payment_transactions)
-            managerRevenue
+            managerRevenue,
             // What manager receives (from payment_transactions)
+            netRevenue,
+            // Net = transactionAmount - taxAmount - stripeFee (same as transaction history) = $96.51
+            refundAmount,
+            // Amount already refunded
+            refundableAmount,
+            // Net amount customer receives (after Stripe fee deduction)
+            grossRefundableAmount,
+            // Gross refundable before fee deduction
+            stripeProcessingFee,
+            // Total Stripe processing fee for this transaction
+            proportionalStripeFee
+            // Stripe fee portion for refundable amount
           };
         });
       }
@@ -11108,6 +11146,7 @@ __export(payment_transactions_service_exports, {
   getPaymentHistory: () => getPaymentHistory,
   syncExistingPaymentTransactionsFromStripe: () => syncExistingPaymentTransactionsFromStripe,
   syncStripeAmountsToBookings: () => syncStripeAmountsToBookings,
+  syncStripeFees: () => syncStripeFees,
   updatePaymentTransaction: () => updatePaymentTransaction
 });
 import { sql as sql5 } from "drizzle-orm";
@@ -11715,6 +11754,79 @@ async function getManagerPaymentTransactions(managerId, db2, filters) {
     total
   };
 }
+async function syncStripeFees(db2, managerId, limit = 100) {
+  const Stripe6 = (await import("stripe")).default;
+  const stripeSecretKey5 = process.env.STRIPE_SECRET_KEY;
+  if (!stripeSecretKey5) {
+    throw new Error("STRIPE_SECRET_KEY not configured");
+  }
+  const stripe5 = new Stripe6(stripeSecretKey5, {
+    apiVersion: "2025-12-15.clover"
+  });
+  const whereConditions = [
+    sql5`payment_intent_id IS NOT NULL`,
+    sql5`(stripe_processing_fee IS NULL OR stripe_processing_fee = '0')`,
+    sql5`status IN ('succeeded', 'partially_refunded')`
+  ];
+  if (managerId) {
+    whereConditions.push(sql5`manager_id = ${managerId}`);
+  }
+  const whereClause = sql5`WHERE ${sql5.join(whereConditions, sql5` AND `)}`;
+  const result = await db2.execute(sql5`
+    SELECT id, payment_intent_id, amount, manager_id
+    FROM payment_transactions
+    ${whereClause}
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `);
+  let synced = 0;
+  let failed = 0;
+  const errors = [];
+  for (const row of result.rows) {
+    const transactionId = row.id;
+    const paymentIntentId = row.payment_intent_id;
+    try {
+      const paymentIntent = await stripe5.paymentIntents.retrieve(paymentIntentId, {
+        expand: ["latest_charge"]
+      });
+      if (!paymentIntent.latest_charge) {
+        errors.push(`Transaction ${transactionId}: No charge found for PaymentIntent ${paymentIntentId}`);
+        failed++;
+        continue;
+      }
+      const charge = typeof paymentIntent.latest_charge === "string" ? await stripe5.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
+      if (!charge.balance_transaction) {
+        errors.push(`Transaction ${transactionId}: No balance_transaction for charge ${charge.id}`);
+        failed++;
+        continue;
+      }
+      const balanceTransactionId = typeof charge.balance_transaction === "string" ? charge.balance_transaction : charge.balance_transaction.id;
+      const balanceTransaction = await stripe5.balanceTransactions.retrieve(balanceTransactionId);
+      const stripeProcessingFee = balanceTransaction.fee;
+      const stripeAmount = paymentIntent.amount;
+      const stripePlatformFee = paymentIntent.application_fee_amount || 0;
+      const stripeNetAmount = stripePlatformFee > 0 ? stripeAmount - stripePlatformFee : stripeAmount - stripeProcessingFee;
+      await updatePaymentTransaction(
+        transactionId,
+        {
+          stripeAmount,
+          stripeNetAmount,
+          stripeProcessingFee,
+          stripePlatformFee,
+          lastSyncedAt: /* @__PURE__ */ new Date()
+        },
+        db2
+      );
+      console.log(`[Stripe Sync] \u2705 Synced transaction ${transactionId}: fee=${stripeProcessingFee} cents`);
+      synced++;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } catch (error) {
+      errors.push(`Transaction ${transactionId}: ${error.message}`);
+      failed++;
+    }
+  }
+  return { synced, failed, errors };
+}
 var init_payment_transactions_service = __esm({
   "server/services/payment-transactions-service.ts"() {
     "use strict";
@@ -11911,21 +12023,35 @@ async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId)
     let stripeProcessingFee = 0;
     let stripePlatformFee = 0;
     if (balanceTransaction) {
-      stripeNetAmount = balanceTransaction.net;
+      stripeProcessingFee = balanceTransaction.fee;
       if (managerConnectAccountId && paymentIntent.application_fee_amount) {
         stripePlatformFee = paymentIntent.application_fee_amount;
-        stripeProcessingFee = stripeAmount - stripePlatformFee - stripeNetAmount;
+        stripeNetAmount = stripeAmount - stripePlatformFee;
       } else {
-        stripeProcessingFee = balanceTransaction.fee;
         stripeNetAmount = stripeAmount - stripeProcessingFee;
       }
     } else {
-      stripeProcessingFee = Math.round(stripeAmount * 0.029 + 30);
-      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
-        stripePlatformFee = paymentIntent.application_fee_amount;
-        stripeNetAmount = stripeAmount - stripePlatformFee - stripeProcessingFee;
+      console.log(`[Stripe] balance_transaction not immediately available for ${paymentIntentId}, retrying in 2s...`);
+      await new Promise((resolve) => setTimeout(resolve, 2e3));
+      const retryCharge = await stripe.charges.retrieve(chargeId);
+      if (retryCharge.balance_transaction) {
+        const retryBalanceTransactionId = typeof retryCharge.balance_transaction === "string" ? retryCharge.balance_transaction : retryCharge.balance_transaction.id;
+        const retryBalanceTransaction = await stripe.balanceTransactions.retrieve(retryBalanceTransactionId);
+        stripeProcessingFee = retryBalanceTransaction.fee;
+        if (managerConnectAccountId && paymentIntent.application_fee_amount) {
+          stripePlatformFee = paymentIntent.application_fee_amount;
+          stripeNetAmount = stripeAmount - stripePlatformFee;
+        } else {
+          stripeNetAmount = stripeAmount - stripeProcessingFee;
+        }
+        console.log(`[Stripe] \u2705 Retry successful - got actual fee: ${stripeProcessingFee} cents`);
       } else {
-        stripeNetAmount = stripeAmount - stripeProcessingFee;
+        console.log(`[Stripe] balance_transaction still not available for ${paymentIntentId} - charge.updated webhook will sync fees`);
+        stripeProcessingFee = 0;
+        if (managerConnectAccountId && paymentIntent.application_fee_amount) {
+          stripePlatformFee = paymentIntent.application_fee_amount;
+          stripeNetAmount = stripeAmount - stripePlatformFee;
+        }
       }
     }
     return {
@@ -12834,13 +12960,33 @@ async function createPenaltyPaymentCheckout(overstayRecordId, chefId, successUrl
         managerId: managerId?.toString() || ""
       },
       success_url: successUrl,
-      cancel_url: cancelUrl
+      cancel_url: cancelUrl,
+      // ENTERPRISE STANDARD: Enable automatic invoice generation
+      // Stripe sends paid invoice email to customer when payment succeeds
+      // Requires "Successful payments" enabled in Stripe Dashboard > Customer emails settings
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          description: `Overstay Penalty - ${storageName} at ${kitchenName}`,
+          metadata: {
+            booking_type: "overstay_penalty",
+            overstay_record_id: overstayRecordId.toString(),
+            chef_id: chefId.toString()
+          }
+        }
+      }
     };
     if (managerStripeAccountId) {
       sessionParams.payment_intent_data = {
         transfer_data: {
           destination: managerStripeAccountId
-        }
+        },
+        // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
+        receipt_email: chef.email
+      };
+    } else {
+      sessionParams.payment_intent_data = {
+        receipt_email: chef.email
       };
     }
     const session = await stripe2.checkout.sessions.create(sessionParams);
@@ -14022,7 +14168,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       FROM payment_transactions pt
       WHERE pt.manager_id = ${managerIdParam}
         AND pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')
-        AND (pt.status = 'succeeded' OR pt.status = 'processing')
+        AND (pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')
     `);
     const transactionCount = parseInt(countCheck.rows[0]?.count || "0");
     console.log(`[Revenue Service V2] Found ${transactionCount} payment_transactions for manager ${managerId}`);
@@ -14056,7 +14202,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     }
     const simpleWhereConditions = [
       sql7`pt.manager_id = ${managerIdParam}`,
-      sql7`(pt.status = 'succeeded' OR pt.status = 'processing')`,
+      sql7`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`,
       sql7`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`
     ];
     if (startDate || endDate) {
@@ -14129,15 +14275,52 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
         COALESCE(SUM(CASE WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
         COALESCE(SUM(CASE WHEN pt.status IN ('refunded', 'partially_refunded') THEN pt.refund_amount::numeric ELSE 0 END), 0)::bigint as refunded_amount,
         COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value,
-        -- Actual Stripe fees from database (fetched from Stripe Balance Transaction API)
-        -- Use stripe_processing_fee column which is populated by webhook from Stripe BalanceTransaction
-        COALESCE(SUM(CASE WHEN pt.stripe_processing_fee::numeric > 0 THEN pt.stripe_processing_fee::numeric ELSE 0 END), 0)::bigint as actual_stripe_fee,
-        -- Tax amount from database
-        COALESCE(SUM(CASE WHEN pt.tax_amount::numeric > 0 THEN pt.tax_amount::numeric ELSE 0 END), 0)::bigint as actual_tax_amount
+        -- ENTERPRISE STANDARD: Stripe fee proportional to effective amount (amount - refund)
+        -- Manager only pays Stripe fee on non-refunded portion
+        -- Formula: original_fee * (effective_amount / original_amount)
+        COALESCE(SUM(
+          CASE 
+            WHEN pt.amount::numeric > 0 THEN
+              ROUND(pt.stripe_processing_fee::numeric * (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric)
+            ELSE 0
+          END
+        ), 0)::bigint as actual_stripe_fee
       FROM payment_transactions pt
       ${simpleWhereClause}
     `);
+    const taxResult = await db2.execute(sql7`
+      SELECT 
+        COALESCE(SUM(
+          -- Tax = kb.total_price * tax_rate / 100 (same formula as transaction history)
+          -- For partial refunds: multiply by (1 - refund_ratio) to get effective tax
+          ROUND(
+            (kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100) *
+            CASE 
+              WHEN pt.amount::numeric > 0 THEN 
+                (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric
+              ELSE 1
+            END
+          )
+        ), 0)::bigint as calculated_tax_amount,
+        -- ENTERPRISE STANDARD: Calculate PAYOUT amount for COMPLETED (succeeded) transactions
+        -- Manager collects tax and keeps it (remits to tax authorities themselves)
+        -- Payout = Amount - Stripe Fee - Refunds (tax is NOT subtracted - manager keeps it)
+        COALESCE(SUM(
+          CASE WHEN pt.status = 'succeeded' THEN
+            pt.amount::numeric 
+            - COALESCE(pt.stripe_processing_fee::numeric, 0)
+            - COALESCE(pt.refund_amount::numeric, 0)
+          ELSE 0 END
+        ), 0)::bigint as completed_net_revenue,
+        -- Get the actual tax rate from kitchens table (use MAX since it should be same for all kitchens of this manager)
+        MAX(COALESCE(k.tax_rate_percent, 0))::numeric as tax_rate_percent
+      FROM payment_transactions pt
+      LEFT JOIN kitchen_bookings kb ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
+      LEFT JOIN kitchens k ON kb.kitchen_id = k.id
+      ${simpleWhereClause}
+    `);
     const row = result.rows[0] || {};
+    const taxRow = taxResult.rows[0] || {};
     console.log("[Revenue Service V2] Query result:", {
       managerId,
       startDate: startDate ? typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0] : "none",
@@ -14166,19 +14349,27 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     const paidBookingCount = parseInt(row.paid_booking_count) || 0;
     const cancelledBookingCount = 0;
     const averageBookingValue = row.avg_booking_value ? Math.round(parseFloat(String(row.avg_booking_value))) : 0;
-    const totalRevenue = parseNumeric(row.total_revenue);
+    const grossRevenue = parseNumeric(row.total_revenue);
+    const totalRevenue = grossRevenue - refundedAmount;
     const finalManagerRevenue = managerRevenue;
     const actualStripeFee = parseNumeric(row.actual_stripe_fee);
-    const actualTaxAmount = parseNumeric(row.actual_tax_amount);
-    const stripeFee = actualStripeFee > 0 ? actualStripeFee : Math.round(completedPayments * 0.029 + paidBookingCount * 30);
+    const actualTaxAmount = parseNumeric(taxRow.calculated_tax_amount);
+    const completedNetRevenue = parseNumeric(taxRow.completed_net_revenue);
+    const taxRatePercent = taxRow.tax_rate_percent ? parseFloat(String(taxRow.tax_rate_percent)) : 0;
+    const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
     const taxAmount = actualTaxAmount;
     const netRevenue = totalRevenue - taxAmount - stripeFee;
+    const effectiveCompletedPayments = Math.max(0, completedPayments - refundedAmount);
     console.log("[Revenue Service V2] Fee breakdown:", {
+      grossRevenue,
+      refundedAmount,
+      totalRevenue,
       actualStripeFee,
       actualTaxAmount,
       stripeFee,
       taxAmount,
       netRevenue,
+      effectiveCompletedPayments,
       usingActualStripeFee: actualStripeFee > 0,
       usingActualTaxAmount: actualTaxAmount > 0
     });
@@ -14193,7 +14384,12 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : depositedManagerRevenue,
       // Only succeeded transactions (what's in bank)
       pendingPayments: isNaN(pendingPayments) ? 0 : pendingPayments,
-      completedPayments: isNaN(completedPayments) ? 0 : completedPayments,
+      completedPayments: isNaN(effectiveCompletedPayments) ? 0 : effectiveCompletedPayments,
+      // ENTERPRISE STANDARD: Net revenue from completed transactions only (payout-ready amount)
+      // This is calculated server-side: Amount - Tax - Stripe Fee - Refunds for succeeded transactions
+      completedNetRevenue: isNaN(completedNetRevenue) ? 0 : Math.max(0, completedNetRevenue),
+      taxRatePercent: isNaN(taxRatePercent) ? 0 : taxRatePercent,
+      // Actual tax rate from kitchens table
       averageBookingValue: isNaN(averageBookingValue) ? 0 : averageBookingValue,
       bookingCount: isNaN(bookingCount) ? 0 : bookingCount,
       paidBookingCount: isNaN(paidBookingCount) ? 0 : paidBookingCount,
@@ -14221,7 +14417,7 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
     }
     const whereConditions = [sql7`pt.manager_id = ${managerId}`];
     whereConditions.push(sql7`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
-    whereConditions.push(sql7`(pt.status = 'succeeded' OR pt.status = 'processing')`);
+    whereConditions.push(sql7`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`);
     whereConditions.push(sql7`
       NOT (
         pt.booking_type = 'kitchen' 
@@ -14647,7 +14843,18 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       const managerRevenue2 = totalRevenueWithAllPayments2 - totalServiceFee2;
       const depositedManagerRevenue2 = allCompletedPayments - completedServiceFee;
       const paidCount = parseInt(completedRow.completed_count_all) || 0;
-      const estimatedStripeFee = Math.round(allCompletedPayments * 0.029 + paidCount * 30);
+      let actualStripeFeeFromDb = 0;
+      try {
+        const feeResult = await db2.execute(sql8`
+          SELECT COALESCE(SUM(stripe_processing_fee::numeric), 0)::bigint as total_stripe_fee
+          FROM payment_transactions
+          WHERE manager_id = ${managerId} AND status = 'succeeded' AND stripe_processing_fee > 0
+        `);
+        actualStripeFeeFromDb = parseInt(feeResult.rows[0]?.total_stripe_fee || "0") || 0;
+      } catch (feeError) {
+        console.warn("[Revenue Service] Could not fetch actual Stripe fees:", feeError);
+      }
+      const estimatedStripeFee = actualStripeFeeFromDb > 0 ? actualStripeFeeFromDb : 0;
       const taxAmount2 = pendingTaxAmount + completedTaxAmount;
       const netRevenue2 = totalRevenueWithAllPayments2 - taxAmount2 - estimatedStripeFee;
       return {
@@ -14735,7 +14942,8 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     try {
       const stripeFeeConditions = [
         sql8`pt.manager_id = ${managerId}`,
-        sql8`pt.status = 'succeeded'`,
+        sql8`pt.status IN ('succeeded', 'partially_refunded')`,
+        // Include partially refunded but not fully refunded
         sql8`pt.stripe_processing_fee IS NOT NULL`,
         sql8`pt.stripe_processing_fee > 0`
       ];
@@ -14749,7 +14957,13 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
         )`);
       }
       const stripeFeeResult = await db2.execute(sql8`
-        SELECT COALESCE(SUM(pt.stripe_processing_fee::numeric), 0)::bigint as total_stripe_fee
+        SELECT COALESCE(SUM(
+          CASE 
+            WHEN pt.amount::numeric > 0 THEN
+              ROUND(pt.stripe_processing_fee::numeric * (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric)
+            ELSE 0
+          END
+        ), 0)::bigint as total_stripe_fee
         FROM payment_transactions pt
         WHERE ${sql8.join(stripeFeeConditions, sql8` AND `)}
       `);
@@ -14760,17 +14974,46 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
         stripeFeeSource = "stripe";
         console.log(`[Revenue Service] Using actual Stripe fees from payment_transactions: ${actualStripeFee} cents`);
       } else {
-        actualStripeFee = Math.round(allCompletedPayments * 0.029 + paidBookingCountVal * 30);
-        console.log(`[Revenue Service] No stored Stripe fees found, using estimate: ${actualStripeFee} cents`);
+        actualStripeFee = 0;
+        console.log(`[Revenue Service] No stored Stripe fees found - fees will sync via charge.updated webhook`);
       }
     } catch (error) {
-      console.warn("[Revenue Service] Error fetching Stripe fees from payment_transactions, using estimate:", error);
-      actualStripeFee = Math.round(allCompletedPayments * 0.029 + paidBookingCountVal * 30);
+      console.warn("[Revenue Service] Error fetching Stripe fees from payment_transactions:", error);
+      actualStripeFee = 0;
     }
-    const taxAmount = pendingTaxAmount2 + completedTaxAmount2;
-    const netRevenue = totalRevenueWithAllPayments - taxAmount - actualStripeFee;
+    const grossTaxAmount = pendingTaxAmount2 + completedTaxAmount2;
+    const refundedAmount = typeof row.refunded_amount === "string" ? isNaN(parseInt(row.refunded_amount)) ? 0 : parseInt(row.refunded_amount) || 0 : row.refunded_amount ? isNaN(parseInt(String(row.refunded_amount))) ? 0 : parseInt(String(row.refunded_amount)) : 0;
+    let effectiveTaxAmount = 0;
+    try {
+      const effectiveTaxResult = await db2.execute(sql8`
+        SELECT COALESCE(SUM(
+          -- Tax = kb.total_price * tax_rate / 100 (same formula as transaction history)
+          -- For partial refunds: multiply by (1 - refund_ratio) to get effective tax
+          ROUND(
+            (kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100) *
+            CASE 
+              WHEN pt.amount::numeric > 0 THEN 
+                (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric
+              ELSE 1
+            END
+          )
+        ), 0)::bigint as effective_tax
+        FROM payment_transactions pt
+        LEFT JOIN kitchen_bookings kb ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
+        LEFT JOIN kitchens k ON kb.kitchen_id = k.id
+        WHERE pt.manager_id = ${managerId}
+      `);
+      const effectiveTaxRow = effectiveTaxResult.rows[0] || {};
+      effectiveTaxAmount = typeof effectiveTaxRow.effective_tax === "string" ? parseInt(effectiveTaxRow.effective_tax) || 0 : effectiveTaxRow.effective_tax ? parseInt(String(effectiveTaxRow.effective_tax)) : 0;
+    } catch (error) {
+      console.warn("[Revenue Service] Error calculating effective tax amount:", error);
+    }
+    const taxAmount = effectiveTaxAmount > 0 ? effectiveTaxAmount : grossTaxAmount;
+    const effectiveGrossRevenue = totalRevenueWithAllPayments - refundedAmount;
+    const netRevenue = effectiveGrossRevenue - taxAmount - actualStripeFee;
+    const effectiveCompletedPayments = Math.max(0, allCompletedPayments - refundedAmount);
     return {
-      totalRevenue: isNaN(totalRevenueWithAllPayments) ? 0 : totalRevenueWithAllPayments || 0,
+      totalRevenue: isNaN(effectiveGrossRevenue) ? 0 : effectiveGrossRevenue || 0,
       platformFee: isNaN(totalServiceFee) ? 0 : totalServiceFee || 0,
       taxAmount: isNaN(taxAmount) ? 0 : taxAmount || 0,
       stripeFee: isNaN(actualStripeFee) ? 0 : actualStripeFee || 0,
@@ -14779,13 +15022,13 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : depositedManagerRevenue || 0,
       pendingPayments: allPendingPayments,
       // Use ALL pending payments, not just those in date range
-      completedPayments: allCompletedPayments,
-      // Use ALL completed payments, not just those in date range
+      completedPayments: isNaN(effectiveCompletedPayments) ? 0 : effectiveCompletedPayments,
+      // Deduct refunds
       averageBookingValue: row.avg_booking_value ? isNaN(Math.round(parseFloat(String(row.avg_booking_value)))) ? 0 : Math.round(parseFloat(String(row.avg_booking_value))) : 0,
       bookingCount: isNaN(parseInt(row.booking_count)) ? 0 : parseInt(row.booking_count) || 0,
       paidBookingCount: paidBookingCountVal,
       cancelledBookingCount: isNaN(parseInt(row.cancelled_count)) ? 0 : parseInt(row.cancelled_count) || 0,
-      refundedAmount: typeof row.refunded_amount === "string" ? isNaN(parseInt(row.refunded_amount)) ? 0 : parseInt(row.refunded_amount) || 0 : row.refunded_amount ? isNaN(parseInt(String(row.refunded_amount))) ? 0 : parseInt(String(row.refunded_amount)) : 0
+      refundedAmount
     };
   } catch (error) {
     console.error("Error getting revenue metrics:", error);
@@ -15015,8 +15258,7 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       }
       const calculatedManagerRevenue = totalPriceCents - serviceFeeCents;
       const managerRevenue = ptManagerRevenue > 0 ? ptManagerRevenue : calculatedManagerRevenue;
-      const estimatedStripeFee = Math.round(totalPriceCents * 0.029 + 30);
-      const stripeFee = actualStripeFee > 0 ? actualStripeFee : estimatedStripeFee;
+      const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
       const netRevenue = totalPriceCents - taxCents - stripeFee;
       const resolvedBookingType = row.pt_booking_type || "kitchen";
       const transactionId = row.transaction_id != null ? parseInt(String(row.transaction_id)) : null;
@@ -15094,7 +15336,7 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       LEFT JOIN users u ON sb.chef_id = u.id
       WHERE pt.manager_id = ${managerId}
         AND pt.booking_type = 'storage'
-        AND (pt.status = 'succeeded' OR pt.status = 'processing')
+        AND (pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')
       ORDER BY pt.created_at DESC
     `);
     const storageTransactions = storageResult.rows.map((row) => {
@@ -15114,8 +15356,7 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       }
       const transactionId = row.transaction_id != null ? parseInt(String(row.transaction_id)) : null;
       const bookingId = parseInt(String(row.booking_id));
-      const estimatedStripeFee = Math.round(ptAmount * 0.029 + 30);
-      const stripeFee = actualStripeFee > 0 ? actualStripeFee : estimatedStripeFee;
+      const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
       const netRevenue = ptAmount - stripeFee;
       return {
         id: bookingId,
@@ -15263,7 +15504,7 @@ async function getCompleteRevenueMetrics(managerId, db2, startDate, endDate, loc
     const depositedManagerRevenue = completedPaymentsTotal - (completedPlatformFee + storageCompletedPlatformFee + equipmentCompletedPlatformFee);
     const totalBookingCount = kitchenMetrics.bookingCount + parseNumeric(storageRow.booking_count) + parseNumeric(equipmentRow.booking_count);
     const totalPaidCount = kitchenMetrics.paidBookingCount + parseNumeric(storageRow.paid_count) + parseNumeric(equipmentRow.paid_count);
-    const estimatedStripeFee = Math.round(completedPaymentsTotal * 0.029 + totalPaidCount * 30);
+    const estimatedStripeFee = kitchenMetrics.stripeFee;
     const taxAmount = kitchenMetrics.taxAmount || 0;
     const netRevenue = totalRevenue - taxAmount - estimatedStripeFee;
     const finalMetrics = {
@@ -15860,14 +16101,6 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
       doc.text("Date:", valueStartX, rightY, { width: labelWidth, align: "right" });
       doc.font("Helvetica");
       doc.text(invoiceDate, valueStartX + labelWidth + 5, rightY);
-      rightY += 15;
-      if (paymentIntentId) {
-        doc.font("Helvetica-Bold");
-        doc.text("Payment ID:", valueStartX, rightY, { width: labelWidth, align: "right" });
-        doc.font("Helvetica");
-        const paymentIdDisplay = paymentIntentId.length > 20 ? paymentIntentId.substring(0, 20) + "..." : paymentIntentId;
-        doc.text(paymentIdDisplay, valueStartX + labelWidth + 5, rightY);
-      }
       let leftY = 120;
       doc.fontSize(14).font("Helvetica-Bold").text("Local Cooks Community", 50, leftY);
       leftY += 18;
@@ -15988,9 +16221,9 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
           dataSource = stripeDataForManager.dataSource;
         } else {
           actualPlatformFee = platformFee;
-          stripeProcessingFee = grossRevenue * 0.029 + 0.3;
-          stripeNetPayout = grossRevenue - actualPlatformFee - stripeProcessingFee;
-          dataSource = "calculated";
+          stripeProcessingFee = 0;
+          stripeNetPayout = grossRevenue - actualPlatformFee;
+          dataSource = "pending_sync";
         }
         doc.fontSize(11).font("Helvetica-Bold").fillColor("#1f2937");
         doc.text("EARNINGS BREAKDOWN", 60, currentY);
@@ -16011,7 +16244,7 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
         if (actualPlatformFee > 0) {
           addTotalRow("Platform Fee:", actualPlatformFee, true);
         }
-        const stripeFeeLabel = dataSource === "stripe" ? "Stripe Processing Fee:" : "Est. Stripe Fee (~2.9% + $0.30):";
+        const stripeFeeLabel = dataSource === "stripe" ? "Stripe Processing Fee:" : dataSource === "pending_sync" ? "Stripe Fee (pending sync):" : "Stripe Processing Fee:";
         addTotalRow(stripeFeeLabel, stripeProcessingFee, true);
         doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
         currentY += 10;
@@ -16459,7 +16692,7 @@ __export(manager_exports, {
   default: () => manager_default
 });
 import { Router as Router14 } from "express";
-import { eq as eq24, inArray as inArray5, and as and15, desc as desc12, sql as sql10 } from "drizzle-orm";
+import { eq as eq24, inArray as inArray5, and as and15, desc as desc12, sql as sql10, or as or3 } from "drizzle-orm";
 async function getManagerIdForBooking(bookingId, bookingType, db2) {
   if (bookingType === "kitchen" || bookingType === "bundle") {
     const [row] = await db2.select({ managerId: locations.managerId }).from(kitchenBookings).innerJoin(kitchens, eq24(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq24(kitchens.locationId, locations.id)).where(eq24(kitchenBookings.id, bookingId)).limit(1);
@@ -16719,9 +16952,17 @@ var init_manager = __esm({
         }
         const totalAmount = parseInt(String(transaction.amount || "0")) || 0;
         const currentRefundAmount = parseInt(String(transaction.refund_amount || "0")) || 0;
-        const remainingAmount = totalAmount - currentRefundAmount;
-        if (amountCents > remainingAmount) {
-          return res.status(400).json({ error: "Refund amount exceeds remaining refundable amount" });
+        const remainingGrossAmount = totalAmount - currentRefundAmount;
+        const stripeProcessingFee = parseInt(String(transaction.stripe_processing_fee || "0")) || 0;
+        const proportionalStripeFee = totalAmount > 0 && remainingGrossAmount > 0 ? Math.round(stripeProcessingFee * (remainingGrossAmount / totalAmount)) : 0;
+        const maxNetRefundable = Math.max(0, remainingGrossAmount - proportionalStripeFee);
+        if (amountCents > maxNetRefundable) {
+          return res.status(400).json({
+            error: `Refund amount exceeds maximum refundable. Max: $${(maxNetRefundable / 100).toFixed(2)} (after $${(proportionalStripeFee / 100).toFixed(2)} processing fee retention)`,
+            maxRefundable: maxNetRefundable,
+            stripeFeeRetained: proportionalStripeFee,
+            grossRemaining: remainingGrossAmount
+          });
         }
         const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq24(users.id, managerId)).limit(1);
         if (!manager?.stripeConnectAccountId) {
@@ -16729,8 +16970,9 @@ var init_manager = __esm({
         }
         const serviceFee = parseInt(String(transaction.service_fee || "0")) || 0;
         const managerRevenue = parseInt(String(transaction.manager_revenue || "0")) || 0;
+        const netRefundToCustomer = amountCents;
         const managerShare = Math.max(0, totalAmount - serviceFee, managerRevenue);
-        const expectedReverseAmount = totalAmount > 0 ? Math.round(amountCents * (managerShare / totalAmount)) : amountCents;
+        const expectedReverseAmount = totalAmount > 0 ? Math.round(netRefundToCustomer * (managerShare / totalAmount)) : netRefundToCustomer;
         const { reverseTransferAndRefund: reverseTransferAndRefund2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
         const allowedStripeReasons = ["duplicate", "fraudulent", "requested_by_customer"];
         const stripeReason = refundReason && allowedStripeReasons.includes(refundReason) ? refundReason : "requested_by_customer";
@@ -16816,12 +17058,22 @@ var init_manager = __esm({
         } else if (transaction.booking_type === "equipment") {
           await db.update(equipmentBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq24(equipmentBookings.id, transaction.booking_id));
         }
+        const newRemainingGross = totalAmount - newRefundTotal;
+        const newProportionalFee = totalAmount > 0 && newRemainingGross > 0 ? Math.round(stripeProcessingFee * (newRemainingGross / totalAmount)) : 0;
+        const newMaxNetRefundable = Math.max(0, newRemainingGross - newProportionalFee);
         res.json({
           success: true,
           refundId: refund.refundId,
           status: newStatus,
-          refundAmount: newRefundTotal,
-          remainingAmount: totalAmount - newRefundTotal,
+          // What customer received in this refund
+          refundAmount: amountCents,
+          // Total refunded so far (gross)
+          totalRefunded: newRefundTotal,
+          // Remaining amounts
+          remainingGrossAmount: newRemainingGross,
+          remainingNetRefundable: newMaxNetRefundable,
+          // Fee info for transparency
+          stripeFeeRetained: stripeProcessingFee,
           transferReversalId: refund.transferReversalId
         });
       } catch (error) {
@@ -17037,6 +17289,40 @@ var init_manager = __esm({
         });
       } catch (error) {
         console.error("[Stripe Sync] Error:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router14.get("/revenue/stripe-balance", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const [userResult] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq24(users.id, managerId)).limit(1);
+        if (!userResult?.stripeConnectAccountId) {
+          return res.json({
+            available: 0,
+            pending: 0,
+            inTransit: 0,
+            currency: "cad",
+            hasStripeAccount: false
+          });
+        }
+        const accountId = userResult.stripeConnectAccountId;
+        const { getAccountBalance: getAccountBalance2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+        const balance = await getAccountBalance2(accountId);
+        const availableBalance = balance.available?.reduce((sum, b) => sum + b.amount, 0) || 0;
+        const pendingBalance = balance.pending?.reduce((sum, b) => sum + b.amount, 0) || 0;
+        const connectReserved = balance.connect_reserved?.reduce((sum, b) => sum + b.amount, 0) || 0;
+        const currency = balance.available?.[0]?.currency || "cad";
+        res.json({
+          available: availableBalance,
+          pending: pendingBalance,
+          inTransit: connectReserved,
+          currency,
+          hasStripeAccount: true,
+          // Include raw balance for debugging if needed
+          _raw: process.env.NODE_ENV === "development" ? balance : void 0
+        });
+      } catch (error) {
+        console.error("[Stripe Balance] Error fetching balance:", error);
         return errorResponse(res, error);
       }
     });
@@ -17526,7 +17812,14 @@ var init_manager = __esm({
             name: loc.name,
             address: loc.address,
             timezone: loc.timezone,
-            logoUrl: loc.logoUrl
+            logoUrl: loc.logoUrl,
+            // Primary contact fields
+            contactEmail: loc.contactEmail,
+            contactPhone: loc.contactPhone,
+            preferredContactMethod: loc.preferredContactMethod || "email",
+            // Notification fields
+            notificationEmail: loc.notificationEmail,
+            notificationPhone: loc.notificationPhone
           }))
         });
       } catch (error) {
@@ -17734,6 +18027,8 @@ var init_manager = __esm({
         try {
           const [txn] = await db.select({
             amount: paymentTransactions.amount,
+            baseAmount: paymentTransactions.baseAmount,
+            // Base amount before tax
             serviceFee: paymentTransactions.serviceFee,
             managerRevenue: paymentTransactions.managerRevenue,
             status: paymentTransactions.status,
@@ -17742,13 +18037,19 @@ var init_manager = __esm({
           }).from(paymentTransactions).where(
             and15(
               eq24(paymentTransactions.bookingId, id),
-              eq24(paymentTransactions.bookingType, "kitchen")
+              // Include both 'kitchen' and 'bundle' booking types for accurate payment data
+              or3(
+                eq24(paymentTransactions.bookingType, "kitchen"),
+                eq24(paymentTransactions.bookingType, "bundle")
+              )
             )
           ).limit(1);
           if (txn) {
             paymentTransaction = {
               ...txn,
               amount: txn.amount ? parseFloat(txn.amount) : null,
+              baseAmount: txn.baseAmount ? parseFloat(txn.baseAmount) : null,
+              // Base before tax
               serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
               managerRevenue: txn.managerRevenue ? parseFloat(txn.managerRevenue) : null,
               stripeProcessingFee: txn.stripeProcessingFee ? parseFloat(txn.stripeProcessingFee) : null
@@ -17764,7 +18065,9 @@ var init_manager = __esm({
             name: kitchen.name,
             description: kitchen.description,
             photos: kitchen.galleryImages || (kitchen.imageUrl ? [kitchen.imageUrl] : []),
-            locationId: kitchen.locationId
+            locationId: kitchen.locationId,
+            taxRatePercent: kitchen.taxRatePercent || 0
+            // Include tax rate for revenue calculation
           },
           location: {
             id: location.id,
@@ -17822,6 +18125,79 @@ var init_manager = __esm({
           }
         } catch (storageUpdateError) {
           logger.error(`[Manager] Error updating storage bookings for kitchen booking ${id}:`, storageUpdateError);
+        }
+        let refundResult = null;
+        const previousStatus = booking.status;
+        const isRejection = previousStatus === "pending" && status === "cancelled";
+        const isCancellation = previousStatus === "confirmed" && status === "cancelled";
+        if (status === "cancelled") {
+          const bookingPaymentIntentId = booking.paymentIntentId;
+          const bookingPaymentStatus = booking.paymentStatus;
+          if (isRejection && bookingPaymentIntentId && (bookingPaymentStatus === "paid" || bookingPaymentStatus === "processing")) {
+            try {
+              const { reverseTransferAndRefund: reverseTransferAndRefund2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+              const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+              const paymentTransaction = await findPaymentTransactionByIntentId2(
+                bookingPaymentIntentId,
+                db
+              );
+              const totalPrice = booking.totalPrice || 0;
+              const transactionAmount = paymentTransaction ? parseInt(String(paymentTransaction.amount || "0")) || totalPrice : totalPrice;
+              if (transactionAmount > 0) {
+                const stripeProcessingFee = paymentTransaction ? parseInt(String(paymentTransaction.stripe_processing_fee || "0")) || 0 : 0;
+                const currentRefundAmount = paymentTransaction ? parseInt(String(paymentTransaction.refund_amount || "0")) || 0 : 0;
+                const remainingGross = transactionAmount - currentRefundAmount;
+                const proportionalStripeFee = transactionAmount > 0 && remainingGross > 0 ? Math.round(stripeProcessingFee * (remainingGross / transactionAmount)) : 0;
+                const netRefundAmount = Math.max(0, remainingGross - proportionalStripeFee);
+                let reverseTransferAmount = netRefundAmount;
+                if (paymentTransaction) {
+                  const serviceFee = parseInt(String(paymentTransaction.service_fee || "0")) || 0;
+                  const managerRevenue = parseInt(String(paymentTransaction.manager_revenue || "0")) || 0;
+                  const managerShare = Math.max(0, transactionAmount - serviceFee, managerRevenue);
+                  reverseTransferAmount = transactionAmount > 0 ? Math.round(netRefundAmount * (managerShare / transactionAmount)) : netRefundAmount;
+                }
+                refundResult = await reverseTransferAndRefund2(
+                  bookingPaymentIntentId,
+                  netRefundAmount,
+                  // Option A: Customer receives net amount (minus Stripe fee)
+                  "requested_by_customer",
+                  {
+                    reverseTransferAmount,
+                    refundApplicationFee: false,
+                    metadata: {
+                      booking_id: String(id),
+                      booking_type: "kitchen",
+                      cancellation_reason: "Booking cancelled by manager",
+                      manager_id: String(user.id),
+                      stripe_fee_retained: String(proportionalStripeFee),
+                      gross_refundable: String(remainingGross)
+                    }
+                  }
+                );
+                logger.info(`[Manager] Refund processed for booking ${id}`, {
+                  refundId: refundResult.refundId,
+                  refundAmount: refundResult.refundAmount,
+                  transferReversalId: refundResult.transferReversalId
+                });
+                await db.update(kitchenBookings).set({ paymentStatus: "refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq24(kitchenBookings.id, id));
+                if (paymentTransaction) {
+                  await updatePaymentTransaction2(
+                    paymentTransaction.id,
+                    {
+                      status: "refunded",
+                      refundAmount: refundResult.refundAmount,
+                      refundId: refundResult.refundId,
+                      refundReason: "Booking cancelled by manager",
+                      refundedAt: /* @__PURE__ */ new Date()
+                    },
+                    db
+                  );
+                }
+              }
+            } catch (refundError) {
+              logger.error(`[Manager] Failed to process refund for booking ${id}:`, refundError);
+            }
+          }
         }
         try {
           let chef = null;
@@ -17929,7 +18305,22 @@ var init_manager = __esm({
         } catch (emailError) {
           console.error("Error sending booking status change emails:", emailError);
         }
-        res.json({ success: true, message: `Booking ${status === "confirmed" ? "approved" : status}` });
+        const responseData = {
+          success: true,
+          message: `Booking ${status === "confirmed" ? "approved" : status}`
+        };
+        if (refundResult) {
+          responseData.refund = {
+            refundId: refundResult.refundId,
+            amount: refundResult.refundAmount,
+            message: "Full refund processed successfully (customer absorbs Stripe processing fee)"
+          };
+          responseData.message = "Booking rejected and refund processed";
+        } else if (isCancellation) {
+          responseData.requiresManualRefund = true;
+          responseData.message = "Booking cancelled. Use 'Issue Refund' to process refund manually.";
+        }
+        res.json(responseData);
       } catch (e) {
         console.error("Error updating booking status:", e);
         res.status(500).json({ error: e.message || "Failed to update booking status" });
@@ -18245,6 +18636,10 @@ var init_manager = __esm({
           ...loc,
           notificationEmail: loc.notificationEmail || loc.notification_email || null,
           notificationPhone: loc.notificationPhone || loc.notification_phone || null,
+          // Primary contact fields
+          contactEmail: loc.contactEmail || loc.contact_email || null,
+          contactPhone: loc.contactPhone || loc.contact_phone || null,
+          preferredContactMethod: loc.preferredContactMethod || loc.preferred_contact_method || "email",
           cancellationPolicyHours: loc.cancellationPolicyHours || loc.cancellation_policy_hours,
           cancellationPolicyMessage: loc.cancellationPolicyMessage || loc.cancellation_policy_message,
           defaultDailyBookingLimit: loc.defaultDailyBookingLimit || loc.default_daily_booking_limit,
@@ -18377,6 +18772,9 @@ var init_manager = __esm({
           address,
           notificationEmail,
           notificationPhone,
+          contactEmail,
+          contactPhone,
+          preferredContactMethod,
           kitchenLicenseUrl,
           kitchenLicenseStatus,
           kitchenLicenseExpiry,
@@ -18398,6 +18796,31 @@ var init_manager = __esm({
           } else {
             updates.notificationPhone = null;
           }
+        }
+        if (contactEmail !== void 0) {
+          if (contactEmail && contactEmail.trim() !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+            return res.status(400).json({ error: "Invalid contact email format" });
+          }
+          updates.contactEmail = contactEmail && contactEmail.trim() !== "" ? contactEmail.trim() : null;
+        }
+        if (contactPhone !== void 0) {
+          if (contactPhone && contactPhone.trim() !== "") {
+            const normalized = normalizePhoneForStorage(contactPhone);
+            if (!normalized) {
+              return res.status(400).json({
+                error: "Invalid contact phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
+              });
+            }
+            updates.contactPhone = normalized;
+          } else {
+            updates.contactPhone = null;
+          }
+        }
+        if (preferredContactMethod !== void 0) {
+          if (!["email", "phone", "both"].includes(preferredContactMethod)) {
+            return res.status(400).json({ error: "Invalid preferred contact method. Must be 'email', 'phone', or 'both'" });
+          }
+          updates.preferredContactMethod = preferredContactMethod;
         }
         if (kitchenLicenseUrl !== void 0) {
           updates.kitchenLicenseUrl = kitchenLicenseUrl || null;
@@ -20141,10 +20564,28 @@ async function createPendingCheckoutSession(params) {
       mode: "payment",
       customer_email: customerEmail,
       line_items: lineItems,
-      payment_intent_data: paymentIntentData,
+      payment_intent_data: {
+        ...paymentIntentData,
+        // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
+        receipt_email: customerEmail
+      },
       success_url: successUrl,
       cancel_url: cancelUrl,
-      metadata: sessionMetadata
+      metadata: sessionMetadata,
+      // ENTERPRISE STANDARD: Enable automatic invoice generation
+      // Stripe sends paid invoice email to customer when payment succeeds
+      // Requires "Successful payments" enabled in Stripe Dashboard > Customer emails settings
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          description: `Kitchen Booking - ${bookingData.kitchenId}`,
+          metadata: {
+            booking_type: "kitchen",
+            kitchen_id: String(bookingData.kitchenId),
+            chef_id: String(bookingData.chefId)
+          }
+        }
+      }
     });
     if (!session.url) {
       throw new Error("Failed to create checkout session URL");
@@ -20226,7 +20667,11 @@ async function createCheckoutSession(params) {
       mode: "payment",
       customer_email: customerEmail,
       line_items: lineItems,
-      payment_intent_data: paymentIntentData,
+      payment_intent_data: {
+        ...paymentIntentData,
+        // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
+        receipt_email: customerEmail
+      },
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: {
@@ -20236,6 +20681,19 @@ async function createCheckoutSession(params) {
         total_cents: totalAmountInCents.toString(),
         manager_account_id: managerStripeAccountId,
         ...metadata
+      },
+      // ENTERPRISE STANDARD: Enable automatic invoice generation
+      // Stripe sends paid invoice email to customer when payment succeeds
+      // Requires "Successful payments" enabled in Stripe Dashboard > Customer emails settings
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          description: lineItemName,
+          metadata: {
+            booking_id: bookingId.toString(),
+            booking_type: metadata.booking_type || "kitchen"
+          }
+        }
       }
     });
     if (!session.url) {
@@ -20956,7 +21414,9 @@ var init_bookings = __esm({
             name: kitchen.name,
             description: kitchen.description,
             photos: kitchen.galleryImages || (kitchen.imageUrl ? [kitchen.imageUrl] : []),
-            locationId: kitchen.locationId
+            locationId: kitchen.locationId,
+            taxRatePercent: kitchen.taxRatePercent || 0
+            // Tax rate for payment breakdown display
           } : null,
           location,
           storageBookings: storageBookingsWithDetails,
@@ -23984,6 +24444,26 @@ var init_admin = __esm({
         });
       }
     });
+    router21.post("/sync-stripe-fees", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const { managerId, limit = 100 } = req.body;
+        console.log("[Admin] Starting Stripe fee sync...", { managerId, limit });
+        const { syncStripeFees: syncStripeFees2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+        const result = await syncStripeFees2(db, managerId, limit);
+        console.log("[Admin] Stripe fee sync completed:", result);
+        res.json({
+          success: true,
+          message: `Synced ${result.synced} transactions, ${result.failed} failed`,
+          ...result
+        });
+      } catch (error) {
+        console.error("Error syncing Stripe fees:", error);
+        res.status(500).json({
+          error: "Failed to sync Stripe fees",
+          message: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    });
     admin_default = router21;
   }
 });
@@ -24204,24 +24684,51 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
     if (paymentIntentId) {
       try {
         const { findPaymentTransactionByMetadata: findPaymentTransactionByMetadata2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+        const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
         const ptRecord = await findPaymentTransactionByMetadata2(
           "checkout_session_id",
           session.id,
           db
         );
         if (ptRecord) {
-          await updatePaymentTransaction2(
-            ptRecord.id,
-            {
-              paymentIntentId,
-              chargeId,
-              status: "processing",
-              stripeStatus: "processing"
-            },
-            db
-          );
+          const paymentSucceeded = expandedSession.payment_status === "paid";
+          const correctStatus = paymentSucceeded ? "succeeded" : "processing";
+          const updateParams2 = {
+            paymentIntentId,
+            chargeId,
+            status: correctStatus,
+            stripeStatus: correctStatus,
+            paidAt: paymentSucceeded ? /* @__PURE__ */ new Date() : void 0
+          };
+          if (paymentSucceeded) {
+            try {
+              let managerConnectAccountId;
+              if (ptRecord.manager_id) {
+                const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq30(users.id, ptRecord.manager_id)).limit(1);
+                if (manager?.stripeConnectAccountId) {
+                  managerConnectAccountId = manager.stripeConnectAccountId;
+                }
+              }
+              const stripeAmounts = await getStripePaymentAmounts2(paymentIntentId, managerConnectAccountId);
+              if (stripeAmounts) {
+                updateParams2.stripeAmount = stripeAmounts.stripeAmount;
+                updateParams2.stripeNetAmount = stripeAmounts.stripeNetAmount;
+                updateParams2.stripeProcessingFee = stripeAmounts.stripeProcessingFee;
+                updateParams2.stripePlatformFee = stripeAmounts.stripePlatformFee;
+                updateParams2.lastSyncedAt = /* @__PURE__ */ new Date();
+                logger.info(`[Webhook] Syncing Stripe amounts for existing payment_transactions:`, {
+                  sessionId: session.id,
+                  amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
+                  processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`
+                });
+              }
+            } catch (feeError) {
+              logger.warn(`[Webhook] Could not fetch Stripe amounts for existing record:`, feeError);
+            }
+          }
+          await updatePaymentTransaction2(ptRecord.id, updateParams2, db);
           logger.info(
-            `[Webhook] Updated payment_transactions with paymentIntentId for session ${session.id}`
+            `[Webhook] Updated payment_transactions with paymentIntentId for session ${session.id}, status: ${correctStatus}`
           );
         }
       } catch (ptError) {
@@ -24618,9 +25125,11 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
       try {
         const bookingId = parseInt(metadata.booking_id);
         if (!isNaN(bookingId)) {
+          const paymentSucceeded = expandedSession.payment_status === "paid";
+          const newPaymentStatus = paymentSucceeded ? "paid" : "processing";
           await db.update(kitchenBookings).set({
             paymentIntentId,
-            paymentStatus: "processing",
+            paymentStatus: newPaymentStatus,
             updatedAt: /* @__PURE__ */ new Date()
           }).where(
             and19(
@@ -24628,7 +25137,87 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
               eq30(kitchenBookings.paymentStatus, "pending")
             )
           );
-          logger.info(`[Webhook] Updated legacy booking ${bookingId} with paymentIntentId`);
+          logger.info(`[Webhook] Updated legacy booking ${bookingId} with paymentIntentId, paymentStatus: ${newPaymentStatus}`);
+          if (paymentSucceeded) {
+            try {
+              const { createPaymentTransaction: createPaymentTransaction2, findPaymentTransactionByBooking: findPaymentTransactionByBooking2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+              const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+              const [booking] = await db.select({
+                id: kitchenBookings.id,
+                totalPrice: kitchenBookings.totalPrice,
+                serviceFee: kitchenBookings.serviceFee,
+                chefId: kitchenBookings.chefId,
+                kitchenId: kitchenBookings.kitchenId,
+                taxRatePercent: kitchens.taxRatePercent,
+                managerId: locations.managerId,
+                stripeConnectAccountId: users.stripeConnectAccountId
+              }).from(kitchenBookings).innerJoin(kitchens, eq30(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).leftJoin(users, eq30(locations.managerId, users.id)).where(eq30(kitchenBookings.id, bookingId)).limit(1);
+              if (booking) {
+                let ptRecord = await findPaymentTransactionByBooking2(bookingId, "kitchen", db);
+                const stripeAmounts = await getStripePaymentAmounts2(
+                  paymentIntentId,
+                  booking.stripeConnectAccountId || void 0
+                );
+                if (ptRecord) {
+                  const updateParams2 = {
+                    paymentIntentId,
+                    chargeId,
+                    status: "succeeded",
+                    stripeStatus: "succeeded",
+                    paidAt: /* @__PURE__ */ new Date(),
+                    lastSyncedAt: /* @__PURE__ */ new Date()
+                  };
+                  if (stripeAmounts) {
+                    updateParams2.stripeAmount = stripeAmounts.stripeAmount;
+                    updateParams2.stripeNetAmount = stripeAmounts.stripeNetAmount;
+                    updateParams2.stripeProcessingFee = stripeAmounts.stripeProcessingFee;
+                    updateParams2.stripePlatformFee = stripeAmounts.stripePlatformFee;
+                  }
+                  await updatePaymentTransaction2(ptRecord.id, updateParams2, db);
+                  logger.info(`[Webhook] Updated legacy payment_transactions ${ptRecord.id} with Stripe data`);
+                } else {
+                  const subtotalCents = booking.totalPrice ? parseInt(String(booking.totalPrice)) : 0;
+                  const serviceFeeCents = booking.serviceFee ? parseInt(String(booking.serviceFee)) : 0;
+                  const taxRatePercent = booking.taxRatePercent ? Number(booking.taxRatePercent) : 0;
+                  const taxCents = Math.round(subtotalCents * taxRatePercent / 100);
+                  const totalAmountCents = subtotalCents + taxCents;
+                  ptRecord = await createPaymentTransaction2({
+                    bookingId,
+                    bookingType: "kitchen",
+                    chefId: booking.chefId,
+                    managerId: booking.managerId,
+                    amount: totalAmountCents,
+                    baseAmount: subtotalCents,
+                    serviceFee: serviceFeeCents,
+                    managerRevenue: subtotalCents - serviceFeeCents,
+                    currency: "CAD",
+                    paymentIntentId,
+                    chargeId,
+                    status: "succeeded",
+                    stripeStatus: "succeeded",
+                    metadata: {
+                      checkout_session_id: session.id,
+                      booking_id: bookingId.toString(),
+                      legacy_flow: true
+                    }
+                  }, db);
+                  if (ptRecord && stripeAmounts) {
+                    await updatePaymentTransaction2(ptRecord.id, {
+                      stripeAmount: stripeAmounts.stripeAmount,
+                      stripeNetAmount: stripeAmounts.stripeNetAmount,
+                      stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+                      stripePlatformFee: stripeAmounts.stripePlatformFee,
+                      paidAt: /* @__PURE__ */ new Date(),
+                      lastSyncedAt: /* @__PURE__ */ new Date()
+                    }, db);
+                  }
+                  logger.info(`[Webhook] Created legacy payment_transactions for booking ${bookingId} with Stripe fees`);
+                }
+              }
+            } catch (ptError) {
+              logger.warn(`[Webhook] Could not create/update payment_transactions for legacy booking:`, ptError);
+            }
+          }
         }
       } catch (bookingError) {
         logger.error(`[Webhook] Error updating legacy booking:`, bookingError);
@@ -25491,6 +26080,76 @@ async function handleOverstayPenaltyPaymentCompleted(sessionId, paymentIntentId,
     logger.error(`[Webhook] Error handling overstay penalty payment:`, error);
   }
 }
+async function handleChargeUpdated(charge, previousAttributes, _webhookEventId) {
+  if (!pool) {
+    logger.error("[Webhook] Database pool not available for charge.updated");
+    return;
+  }
+  try {
+    const balanceTransactionWasNull = previousAttributes?.balance_transaction === null;
+    const balanceTransactionNowAvailable = charge.balance_transaction !== null;
+    if (!balanceTransactionWasNull || !balanceTransactionNowAvailable) {
+      return;
+    }
+    const paymentIntentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+    if (!paymentIntentId) {
+      logger.warn(`[Webhook] charge.updated: No payment_intent on charge ${charge.id}`);
+      return;
+    }
+    logger.info(`[Webhook] charge.updated: balance_transaction now available for charge ${charge.id}, payment_intent ${paymentIntentId}`);
+    const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+    const paymentTransaction = await findPaymentTransactionByIntentId2(paymentIntentId, db);
+    if (!paymentTransaction) {
+      logger.warn(`[Webhook] charge.updated: No payment_transaction found for ${paymentIntentId}`);
+      return;
+    }
+    const existingFee = parseInt(String(paymentTransaction.stripe_processing_fee || "0")) || 0;
+    if (existingFee > 0) {
+      logger.info(`[Webhook] charge.updated: Stripe fee already synced for ${paymentIntentId}: ${existingFee} cents`);
+      return;
+    }
+    const stripeSecretKey5 = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey5) {
+      logger.error("[Webhook] STRIPE_SECRET_KEY not configured");
+      return;
+    }
+    const stripe5 = new Stripe5(stripeSecretKey5, {
+      apiVersion: "2025-12-15.clover"
+    });
+    const balanceTransactionId = typeof charge.balance_transaction === "string" ? charge.balance_transaction : charge.balance_transaction?.id;
+    if (!balanceTransactionId) {
+      logger.warn(`[Webhook] charge.updated: balance_transaction ID not available for charge ${charge.id}`);
+      return;
+    }
+    const balanceTransaction = await stripe5.balanceTransactions.retrieve(balanceTransactionId);
+    const stripeAmount = charge.amount;
+    const stripeNetAmount = balanceTransaction.net;
+    const stripeProcessingFee = balanceTransaction.fee;
+    let stripePlatformFee = 0;
+    if (charge.application_fee_amount) {
+      stripePlatformFee = charge.application_fee_amount;
+    }
+    await updatePaymentTransaction2(
+      paymentTransaction.id,
+      {
+        stripeAmount,
+        stripeNetAmount,
+        stripeProcessingFee,
+        stripePlatformFee,
+        lastSyncedAt: /* @__PURE__ */ new Date()
+      },
+      db
+    );
+    logger.info(`[Webhook] \u2705 charge.updated: Synced actual Stripe fees for ${paymentIntentId}:`, {
+      amount: `$${(stripeAmount / 100).toFixed(2)}`,
+      netAmount: `$${(stripeNetAmount / 100).toFixed(2)}`,
+      processingFee: `$${(stripeProcessingFee / 100).toFixed(2)}`,
+      platformFee: `$${(stripePlatformFee / 100).toFixed(2)}`
+    });
+  } catch (error) {
+    logger.error(`[Webhook] Error handling charge.updated:`, error);
+  }
+}
 var router22, webhooks_default;
 var init_webhooks = __esm({
   "server/routes/webhooks.ts"() {
@@ -25580,6 +26239,13 @@ var init_webhooks = __esm({
           case "charge.refunded":
             await handleChargeRefunded(
               event.data.object,
+              webhookEventId
+            );
+            break;
+          case "charge.updated":
+            await handleChargeUpdated(
+              event.data.object,
+              event.data.previous_attributes,
               webhookEventId
             );
             break;

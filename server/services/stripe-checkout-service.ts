@@ -184,10 +184,28 @@ export async function createPendingCheckoutSession(
       mode: 'payment',
       customer_email: customerEmail,
       line_items: lineItems,
-      payment_intent_data: paymentIntentData,
+      payment_intent_data: {
+        ...paymentIntentData,
+        // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
+        receipt_email: customerEmail,
+      },
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: sessionMetadata,
+      // ENTERPRISE STANDARD: Enable automatic invoice generation
+      // Stripe sends paid invoice email to customer when payment succeeds
+      // Requires "Successful payments" enabled in Stripe Dashboard > Customer emails settings
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          description: `Kitchen Booking - ${bookingData.kitchenId}`,
+          metadata: {
+            booking_type: 'kitchen',
+            kitchen_id: String(bookingData.kitchenId),
+            chef_id: String(bookingData.chefId),
+          },
+        },
+      },
     });
 
     if (!session.url) {
@@ -316,7 +334,11 @@ export async function createCheckoutSession(
       mode: 'payment',
       customer_email: customerEmail,
       line_items: lineItems,
-      payment_intent_data: paymentIntentData,
+      payment_intent_data: {
+        ...paymentIntentData,
+        // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
+        receipt_email: customerEmail,
+      },
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: {
@@ -326,6 +348,19 @@ export async function createCheckoutSession(
         total_cents: totalAmountInCents.toString(),
         manager_account_id: managerStripeAccountId,
         ...metadata,
+      },
+      // ENTERPRISE STANDARD: Enable automatic invoice generation
+      // Stripe sends paid invoice email to customer when payment succeeds
+      // Requires "Successful payments" enabled in Stripe Dashboard > Customer emails settings
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          description: lineItemName,
+          metadata: {
+            booking_id: bookingId.toString(),
+            booking_type: metadata.booking_type || 'kitchen',
+          },
+        },
       },
     });
 

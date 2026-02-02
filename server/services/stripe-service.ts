@@ -338,38 +338,74 @@ export async function getStripePaymentAmounts(
     let stripePlatformFee = 0;
 
     if (balanceTransaction) {
-      // For Stripe Connect payments:
+      // ENTERPRISE STANDARD: balanceTransaction.fee ALWAYS contains the actual Stripe processing fee
+      // This is true for ALL charge types (direct, destination, separate charges and transfers)
+      // Never calculate processing fee - always use the actual value from Stripe
+      stripeProcessingFee = balanceTransaction.fee;
+      
+      // For Stripe Connect destination charges:
       // - Total amount = what customer paid (paymentIntent.amount)
-      // - Application fee (platform fee) = goes to platform account
-      // - Net amount = what goes to connected account (manager) after all fees
-      // - Balance transaction net = amount - application_fee - processing_fee
+      // - Application fee = what platform receives (includes Stripe fee in break-even mode)
+      // - Manager net = total - application_fee (what gets transferred to connected account)
+      // - Platform's balanceTransaction.net = application_fee - stripeProcessingFee (platform's actual take)
+      //
+      // For non-Connect charges:
+      // - Manager net = total - stripeProcessingFee
       
-      // Net amount is what actually gets transferred to the connected account
-      stripeNetAmount = balanceTransaction.net;
-      
-      // If using Stripe Connect, get the application fee (platform fee)
       if (managerConnectAccountId && paymentIntent.application_fee_amount) {
         stripePlatformFee = paymentIntent.application_fee_amount;
-        // For connected accounts: net = amount - platform_fee - processing_fee
-        // Therefore: processing_fee = amount - platform_fee - net
-        stripeProcessingFee = stripeAmount - stripePlatformFee - stripeNetAmount;
+        // Manager receives the full amount minus the application fee
+        // The application fee covers Stripe processing + platform commission (if any)
+        stripeNetAmount = stripeAmount - stripePlatformFee;
       } else {
-        // No Connect account - query balance transaction from platform account perspective
-        // In this case, net = amount - processing_fee
-        stripeProcessingFee = balanceTransaction.fee;
+        // No Connect account - platform is the merchant
+        // Net = amount - processing_fee
         stripeNetAmount = stripeAmount - stripeProcessingFee;
       }
     } else {
-      // Fallback: estimate fees if balance transaction not available
-      // Stripe's standard fee is approximately 2.9% + $0.30
-      stripeProcessingFee = Math.round(stripeAmount * 0.029 + 30);
+      // ENTERPRISE STANDARD: Do NOT use manual fee calculation fallback
+      // balance_transaction may be null immediately after payment - this is normal
+      // The charge.updated webhook will sync actual fees when balance_transaction becomes available
+      // 
+      // Retry logic: wait briefly and retry once for balance_transaction
+      console.log(`[Stripe] balance_transaction not immediately available for ${paymentIntentId}, retrying in 2s...`);
       
-      // If using Connect, subtract platform fee
-      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
-        stripePlatformFee = paymentIntent.application_fee_amount;
-        stripeNetAmount = stripeAmount - stripePlatformFee - stripeProcessingFee;
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Retry: fetch charge again to check if balance_transaction is now available
+      const retryCharge = await stripe.charges.retrieve(chargeId);
+      if (retryCharge.balance_transaction) {
+        const retryBalanceTransactionId = typeof retryCharge.balance_transaction === 'string'
+          ? retryCharge.balance_transaction
+          : retryCharge.balance_transaction.id;
+        
+        const retryBalanceTransaction = await stripe.balanceTransactions.retrieve(retryBalanceTransactionId);
+        
+        // ENTERPRISE STANDARD: Always use balanceTransaction.fee for actual Stripe processing fee
+        stripeProcessingFee = retryBalanceTransaction.fee;
+        
+        if (managerConnectAccountId && paymentIntent.application_fee_amount) {
+          stripePlatformFee = paymentIntent.application_fee_amount;
+          // Manager receives the full amount minus the application fee
+          stripeNetAmount = stripeAmount - stripePlatformFee;
+        } else {
+          // No Connect account - net = amount - processing_fee
+          stripeNetAmount = stripeAmount - stripeProcessingFee;
+        }
+        
+        console.log(`[Stripe] ✅ Retry successful - got actual fee: ${stripeProcessingFee} cents`);
       } else {
-        stripeNetAmount = stripeAmount - stripeProcessingFee;
+        // Still not available - leave fees as 0, charge.updated webhook will sync later
+        // This is the enterprise-grade approach: never estimate, always use actual data
+        console.log(`[Stripe] balance_transaction still not available for ${paymentIntentId} - charge.updated webhook will sync fees`);
+        stripeProcessingFee = 0; // Will be synced by charge.updated webhook
+        
+        // If using Connect, we can still get the platform fee from the payment intent
+        if (managerConnectAccountId && paymentIntent.application_fee_amount) {
+          stripePlatformFee = paymentIntent.application_fee_amount;
+          // Net amount estimate without processing fee (will be corrected by webhook)
+          stripeNetAmount = stripeAmount - stripePlatformFee;
+        }
       }
     }
 
@@ -477,6 +513,12 @@ export async function createRefund(
   }
 
   try {
+    // ENTERPRISE STANDARD - Automatic Refund Emails:
+    // Stripe automatically sends refund receipt emails to customers if:
+    // 1. "Refunds" is enabled in Stripe Dashboard > Settings > Customer emails
+    // 2. The original charge had a receipt_email set (we set this in checkout session creation)
+    // For card refunds, Stripe uses the receipt_email from the original charge.
+
     // First, retrieve the payment intent to get the charge ID
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
     
@@ -540,6 +582,14 @@ export async function createRefund(
 /**
  * Reverse the transfer (from connected account back to platform) and then refund the charge.
  * This is required when the manager is liable for the platform fee.
+ * 
+ * ENTERPRISE STANDARD - Automatic Refund Emails:
+ * Stripe automatically sends refund receipt emails to customers if:
+ * 1. "Refunds" is enabled in Stripe Dashboard > Settings > Customer emails
+ * 2. The original charge had a receipt_email set (we set this in checkout session creation)
+ * 
+ * For card refunds, Stripe uses the receipt_email from the original charge.
+ * No additional parameters needed - just ensure Dashboard settings are configured.
  */
 export async function reverseTransferAndRefund(
   paymentIntentId: string,

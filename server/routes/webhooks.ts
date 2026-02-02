@@ -127,6 +127,13 @@ router.post("/stripe", async (req: Request, res: Response) => {
           webhookEventId,
         );
         break;
+      case "charge.updated":
+        await handleChargeUpdated(
+          event.data.object as Stripe.Charge,
+          event.data.previous_attributes as Record<string, unknown> | undefined,
+          webhookEventId,
+        );
+        break;
       case "account.updated":
         await handleAccountUpdated(
           event.data.object as Stripe.Account,
@@ -338,28 +345,68 @@ async function handleCheckoutSessionCompleted(
 
     // Also update payment_transactions record with paymentIntentId
     // This links the payment_transactions record to the Stripe payment for fee syncing
+    // FIXED: Use "succeeded" status since checkout.session.completed with payment_status=paid means payment succeeded
     if (paymentIntentId) {
       try {
         const { findPaymentTransactionByMetadata, updatePaymentTransaction } =
           await import("../services/payment-transactions-service");
+        const { getStripePaymentAmounts } = await import("../services/stripe-service");
+        
         const ptRecord = await findPaymentTransactionByMetadata(
           "checkout_session_id",
           session.id,
           db,
         );
         if (ptRecord) {
-          await updatePaymentTransaction(
-            ptRecord.id,
-            {
-              paymentIntentId,
-              chargeId,
-              status: "processing",
-              stripeStatus: "processing",
-            },
-            db,
-          );
+          // Determine correct status based on payment_status
+          const paymentSucceeded = expandedSession.payment_status === "paid";
+          const correctStatus = paymentSucceeded ? "succeeded" : "processing";
+          
+          const updateParams: Record<string, unknown> = {
+            paymentIntentId,
+            chargeId,
+            status: correctStatus,
+            stripeStatus: correctStatus,
+            paidAt: paymentSucceeded ? new Date() : undefined,
+          };
+          
+          // If payment succeeded, try to fetch Stripe amounts
+          if (paymentSucceeded) {
+            try {
+              // Get manager's Connect account for fee lookup
+              let managerConnectAccountId: string | undefined;
+              if (ptRecord.manager_id) {
+                const [manager] = await db
+                  .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+                  .from(users)
+                  .where(eq(users.id, ptRecord.manager_id))
+                  .limit(1);
+                if (manager?.stripeConnectAccountId) {
+                  managerConnectAccountId = manager.stripeConnectAccountId;
+                }
+              }
+              
+              const stripeAmounts = await getStripePaymentAmounts(paymentIntentId, managerConnectAccountId);
+              if (stripeAmounts) {
+                updateParams.stripeAmount = stripeAmounts.stripeAmount;
+                updateParams.stripeNetAmount = stripeAmounts.stripeNetAmount;
+                updateParams.stripeProcessingFee = stripeAmounts.stripeProcessingFee;
+                updateParams.stripePlatformFee = stripeAmounts.stripePlatformFee;
+                updateParams.lastSyncedAt = new Date();
+                logger.info(`[Webhook] Syncing Stripe amounts for existing payment_transactions:`, {
+                  sessionId: session.id,
+                  amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
+                  processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
+                });
+              }
+            } catch (feeError) {
+              logger.warn(`[Webhook] Could not fetch Stripe amounts for existing record:`, feeError as Error);
+            }
+          }
+          
+          await updatePaymentTransaction(ptRecord.id, updateParams, db);
           logger.info(
-            `[Webhook] Updated payment_transactions with paymentIntentId for session ${session.id}`,
+            `[Webhook] Updated payment_transactions with paymentIntentId for session ${session.id}, status: ${correctStatus}`,
           );
         }
       } catch (ptError) {
@@ -906,14 +953,18 @@ async function handleCheckoutSessionCompleted(
       }
     } else if (paymentIntentId && metadata.booking_id && metadata.type === "kitchen_booking") {
       // Legacy flow: Update existing booking (for backward compatibility)
+      // FIXED: Set paymentStatus to "paid" if payment succeeded, not "processing"
       try {
         const bookingId = parseInt(metadata.booking_id);
         if (!isNaN(bookingId)) {
+          const paymentSucceeded = expandedSession.payment_status === "paid";
+          const newPaymentStatus = paymentSucceeded ? "paid" : "processing";
+          
           await db
             .update(kitchenBookings)
             .set({
               paymentIntentId: paymentIntentId,
-              paymentStatus: "processing",
+              paymentStatus: newPaymentStatus,
               updatedAt: new Date(),
             })
             .where(
@@ -922,7 +973,112 @@ async function handleCheckoutSessionCompleted(
                 eq(kitchenBookings.paymentStatus, "pending"),
               ),
             );
-          logger.info(`[Webhook] Updated legacy booking ${bookingId} with paymentIntentId`);
+          logger.info(`[Webhook] Updated legacy booking ${bookingId} with paymentIntentId, paymentStatus: ${newPaymentStatus}`);
+          
+          // If payment succeeded, also create/update payment_transactions with Stripe fees
+          if (paymentSucceeded) {
+            try {
+              const { createPaymentTransaction, findPaymentTransactionByBooking, updatePaymentTransaction } = 
+                await import("../services/payment-transactions-service");
+              const { getStripePaymentAmounts } = await import("../services/stripe-service");
+              
+              // Get booking details for payment_transactions
+              const [booking] = await db
+                .select({
+                  id: kitchenBookings.id,
+                  totalPrice: kitchenBookings.totalPrice,
+                  serviceFee: kitchenBookings.serviceFee,
+                  chefId: kitchenBookings.chefId,
+                  kitchenId: kitchenBookings.kitchenId,
+                  taxRatePercent: kitchens.taxRatePercent,
+                  managerId: locations.managerId,
+                  stripeConnectAccountId: users.stripeConnectAccountId,
+                })
+                .from(kitchenBookings)
+                .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .leftJoin(users, eq(locations.managerId, users.id))
+                .where(eq(kitchenBookings.id, bookingId))
+                .limit(1);
+              
+              if (booking) {
+                // Check if payment_transactions already exists
+                let ptRecord = await findPaymentTransactionByBooking(bookingId, 'kitchen', db);
+                
+                // Fetch Stripe amounts
+                const stripeAmounts = await getStripePaymentAmounts(
+                  paymentIntentId, 
+                  booking.stripeConnectAccountId || undefined
+                );
+                
+                if (ptRecord) {
+                  // Update existing record
+                  const updateParams: Record<string, unknown> = {
+                    paymentIntentId,
+                    chargeId,
+                    status: "succeeded",
+                    stripeStatus: "succeeded",
+                    paidAt: new Date(),
+                    lastSyncedAt: new Date(),
+                  };
+                  
+                  if (stripeAmounts) {
+                    updateParams.stripeAmount = stripeAmounts.stripeAmount;
+                    updateParams.stripeNetAmount = stripeAmounts.stripeNetAmount;
+                    updateParams.stripeProcessingFee = stripeAmounts.stripeProcessingFee;
+                    updateParams.stripePlatformFee = stripeAmounts.stripePlatformFee;
+                  }
+                  
+                  await updatePaymentTransaction(ptRecord.id, updateParams, db);
+                  logger.info(`[Webhook] Updated legacy payment_transactions ${ptRecord.id} with Stripe data`);
+                } else {
+                  // Create new record
+                  const subtotalCents = booking.totalPrice ? parseInt(String(booking.totalPrice)) : 0;
+                  const serviceFeeCents = booking.serviceFee ? parseInt(String(booking.serviceFee)) : 0;
+                  const taxRatePercent = booking.taxRatePercent ? Number(booking.taxRatePercent) : 0;
+                  const taxCents = Math.round((subtotalCents * taxRatePercent) / 100);
+                  const totalAmountCents = subtotalCents + taxCents;
+                  
+                  ptRecord = await createPaymentTransaction({
+                    bookingId,
+                    bookingType: 'kitchen',
+                    chefId: booking.chefId,
+                    managerId: booking.managerId,
+                    amount: totalAmountCents,
+                    baseAmount: subtotalCents,
+                    serviceFee: serviceFeeCents,
+                    managerRevenue: subtotalCents - serviceFeeCents,
+                    currency: 'CAD',
+                    paymentIntentId,
+                    chargeId,
+                    status: 'succeeded',
+                    stripeStatus: 'succeeded',
+                    metadata: {
+                      checkout_session_id: session.id,
+                      booking_id: bookingId.toString(),
+                      legacy_flow: true,
+                    },
+                  }, db);
+                  
+                  // Update with Stripe amounts if available
+                  if (ptRecord && stripeAmounts) {
+                    await updatePaymentTransaction(ptRecord.id, {
+                      stripeAmount: stripeAmounts.stripeAmount,
+                      stripeNetAmount: stripeAmounts.stripeNetAmount,
+                      stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+                      stripePlatformFee: stripeAmounts.stripePlatformFee,
+                      paidAt: new Date(),
+                      lastSyncedAt: new Date(),
+                    }, db);
+                  }
+                  
+                  logger.info(`[Webhook] Created legacy payment_transactions for booking ${bookingId} with Stripe fees`);
+                }
+              }
+            } catch (ptError) {
+              logger.warn(`[Webhook] Could not create/update payment_transactions for legacy booking:`, ptError as Error);
+            }
+          }
         }
       } catch (bookingError) {
         logger.error(`[Webhook] Error updating legacy booking:`, bookingError as any);
@@ -2160,6 +2316,123 @@ async function handleOverstayPenaltyPaymentCompleted(
 
   } catch (error) {
     logger.error(`[Webhook] Error handling overstay penalty payment:`, error);
+  }
+}
+
+/**
+ * Handle charge.updated webhook - INDUSTRY STANDARD for syncing actual Stripe fees
+ * 
+ * This webhook fires when balance_transaction becomes available after payment processing.
+ * Stripe's SLA: balance_transaction is available within 1 hour of payment, usually seconds.
+ * 
+ * This replaces the need for manual fee calculation fallbacks (2.9% + $0.30).
+ */
+async function handleChargeUpdated(
+  charge: Stripe.Charge,
+  previousAttributes: Record<string, unknown> | undefined,
+  _webhookEventId: string,
+) {
+  if (!pool) {
+    logger.error("[Webhook] Database pool not available for charge.updated");
+    return;
+  }
+
+  try {
+    // Only process if balance_transaction just became available (was null, now has value)
+    const balanceTransactionWasNull = previousAttributes?.balance_transaction === null;
+    const balanceTransactionNowAvailable = charge.balance_transaction !== null;
+
+    if (!balanceTransactionWasNull || !balanceTransactionNowAvailable) {
+      // This update wasn't about balance_transaction becoming available - skip
+      return;
+    }
+
+    const paymentIntentId = typeof charge.payment_intent === 'string' 
+      ? charge.payment_intent 
+      : charge.payment_intent?.id;
+
+    if (!paymentIntentId) {
+      logger.warn(`[Webhook] charge.updated: No payment_intent on charge ${charge.id}`);
+      return;
+    }
+
+    logger.info(`[Webhook] charge.updated: balance_transaction now available for charge ${charge.id}, payment_intent ${paymentIntentId}`);
+
+    // Import services
+    const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import(
+      "../services/payment-transactions-service"
+    );
+
+    // Find the payment transaction record
+    const paymentTransaction = await findPaymentTransactionByIntentId(paymentIntentId, db);
+
+    if (!paymentTransaction) {
+      logger.warn(`[Webhook] charge.updated: No payment_transaction found for ${paymentIntentId}`);
+      return;
+    }
+
+    // Check if we already have the Stripe fee synced
+    const existingFee = parseInt(String(paymentTransaction.stripe_processing_fee || '0')) || 0;
+    if (existingFee > 0) {
+      logger.info(`[Webhook] charge.updated: Stripe fee already synced for ${paymentIntentId}: ${existingFee} cents`);
+      return;
+    }
+
+    // Get the balance transaction to retrieve actual fee
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      logger.error("[Webhook] STRIPE_SECRET_KEY not configured");
+      return;
+    }
+
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: "2025-12-15.clover",
+    });
+
+    const balanceTransactionId = typeof charge.balance_transaction === 'string'
+      ? charge.balance_transaction
+      : charge.balance_transaction?.id;
+
+    if (!balanceTransactionId) {
+      logger.warn(`[Webhook] charge.updated: balance_transaction ID not available for charge ${charge.id}`);
+      return;
+    }
+
+    const balanceTransaction = await stripe.balanceTransactions.retrieve(balanceTransactionId);
+
+    // Calculate actual fees from balance transaction
+    const stripeAmount = charge.amount;
+    const stripeNetAmount = balanceTransaction.net;
+    const stripeProcessingFee = balanceTransaction.fee;
+
+    // Get application fee (platform fee) if applicable
+    let stripePlatformFee = 0;
+    if (charge.application_fee_amount) {
+      stripePlatformFee = charge.application_fee_amount;
+    }
+
+    // Update the payment transaction with actual Stripe data
+    await updatePaymentTransaction(
+      paymentTransaction.id,
+      {
+        stripeAmount,
+        stripeNetAmount,
+        stripeProcessingFee,
+        stripePlatformFee,
+        lastSyncedAt: new Date(),
+      },
+      db
+    );
+
+    logger.info(`[Webhook] ✅ charge.updated: Synced actual Stripe fees for ${paymentIntentId}:`, {
+      amount: `$${(stripeAmount / 100).toFixed(2)}`,
+      netAmount: `$${(stripeNetAmount / 100).toFixed(2)}`,
+      processingFee: `$${(stripeProcessingFee / 100).toFixed(2)}`,
+      platformFee: `$${(stripePlatformFee / 100).toFixed(2)}`,
+    });
+
+  } catch (error) {
+    logger.error(`[Webhook] Error handling charge.updated:`, error);
   }
 }
 

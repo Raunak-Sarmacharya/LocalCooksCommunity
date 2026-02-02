@@ -62,6 +62,7 @@ export interface PaymentTransactionRecord {
   manager_revenue: string;
   refund_amount: string;
   net_amount: string;
+  stripe_processing_fee: string | null;
   currency: string;
   payment_intent_id: string | null;
   charge_id: string | null;
@@ -962,4 +963,123 @@ export async function getManagerPaymentTransactions(
     transactions: result.rows as PaymentTransactionRecord[],
     total,
   };
+}
+
+/**
+ * ENTERPRISE STANDARD: Sync actual Stripe fees for existing transactions
+ * 
+ * This function re-fetches actual Stripe processing fees from the Balance Transaction API
+ * for transactions that have stripe_processing_fee = 0 but have a valid payment_intent_id.
+ * 
+ * This is needed to fix historical data where fees were incorrectly calculated.
+ */
+export async function syncStripeFees(
+  db: any,
+  managerId?: number,
+  limit: number = 100
+): Promise<{ synced: number; failed: number; errors: string[] }> {
+  const Stripe = (await import('stripe')).default;
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+  
+  if (!stripeSecretKey) {
+    throw new Error('STRIPE_SECRET_KEY not configured');
+  }
+  
+  const stripe = new Stripe(stripeSecretKey, {
+    apiVersion: '2025-12-15.clover' as any,
+  });
+  
+  // Find transactions with missing Stripe fees
+  const whereConditions = [
+    sql`payment_intent_id IS NOT NULL`,
+    sql`(stripe_processing_fee IS NULL OR stripe_processing_fee = '0')`,
+    sql`status IN ('succeeded', 'partially_refunded')`,
+  ];
+  
+  if (managerId) {
+    whereConditions.push(sql`manager_id = ${managerId}`);
+  }
+  
+  const whereClause = sql`WHERE ${sql.join(whereConditions, sql` AND `)}`;
+  
+  const result = await db.execute(sql`
+    SELECT id, payment_intent_id, amount, manager_id
+    FROM payment_transactions
+    ${whereClause}
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `);
+  
+  let synced = 0;
+  let failed = 0;
+  const errors: string[] = [];
+  
+  for (const row of result.rows as any[]) {
+    const transactionId = row.id;
+    const paymentIntentId = row.payment_intent_id;
+    
+    try {
+      // Retrieve PaymentIntent with expanded charge
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+        expand: ['latest_charge'],
+      });
+      
+      if (!paymentIntent.latest_charge) {
+        errors.push(`Transaction ${transactionId}: No charge found for PaymentIntent ${paymentIntentId}`);
+        failed++;
+        continue;
+      }
+      
+      const charge = typeof paymentIntent.latest_charge === 'string'
+        ? await stripe.charges.retrieve(paymentIntent.latest_charge)
+        : paymentIntent.latest_charge;
+      
+      if (!charge.balance_transaction) {
+        errors.push(`Transaction ${transactionId}: No balance_transaction for charge ${charge.id}`);
+        failed++;
+        continue;
+      }
+      
+      const balanceTransactionId = typeof charge.balance_transaction === 'string'
+        ? charge.balance_transaction
+        : charge.balance_transaction.id;
+      
+      const balanceTransaction = await stripe.balanceTransactions.retrieve(balanceTransactionId);
+      
+      // ENTERPRISE STANDARD: Always use balanceTransaction.fee for actual Stripe processing fee
+      const stripeProcessingFee = balanceTransaction.fee;
+      const stripeAmount = paymentIntent.amount;
+      const stripePlatformFee = paymentIntent.application_fee_amount || 0;
+      
+      // For destination charges, manager receives: amount - application_fee
+      const stripeNetAmount = stripePlatformFee > 0 
+        ? stripeAmount - stripePlatformFee 
+        : stripeAmount - stripeProcessingFee;
+      
+      // Update the transaction
+      await updatePaymentTransaction(
+        transactionId,
+        {
+          stripeAmount,
+          stripeNetAmount,
+          stripeProcessingFee,
+          stripePlatformFee,
+          lastSyncedAt: new Date(),
+        },
+        db
+      );
+      
+      console.log(`[Stripe Sync] ✅ Synced transaction ${transactionId}: fee=${stripeProcessingFee} cents`);
+      synced++;
+      
+      // Rate limiting: wait 100ms between API calls to avoid hitting Stripe rate limits
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+    } catch (error: any) {
+      errors.push(`Transaction ${transactionId}: ${error.message}`);
+      failed++;
+    }
+  }
+  
+  return { synced, failed, errors };
 }

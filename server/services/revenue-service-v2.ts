@@ -60,7 +60,7 @@ export async function getRevenueMetricsFromTransactions(
       FROM payment_transactions pt
       WHERE pt.manager_id = ${managerIdParam}
         AND pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')
-        AND (pt.status = 'succeeded' OR pt.status = 'processing')
+        AND (pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')
     `);
 
     const transactionCount = parseInt(countCheck.rows[0]?.count || '0');
@@ -108,9 +108,10 @@ export async function getRevenueMetricsFromTransactions(
 
     // Simplified WHERE clause - use manager_id directly from payment_transactions
     // This works for all booking types (kitchen, storage, equipment, overstay penalties)
+    // Include refunded/partially_refunded to track refund amounts properly
     const simpleWhereConditions = [
       sql`pt.manager_id = ${managerIdParam}`,
-      sql`(pt.status = 'succeeded' OR pt.status = 'processing')`,
+      sql`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`,
       sql`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`
     ];
 
@@ -167,6 +168,9 @@ export async function getRevenueMetricsFromTransactions(
 
     const simpleWhereClause = sql`WHERE ${sql.join(simpleWhereConditions, sql` AND `)}`;
 
+    // Query revenue metrics from payment_transactions
+    // IMPORTANT: Stripe fees and tax must EXCLUDE fully refunded transactions
+    // For partially refunded, we calculate proportional amounts
     const result = await db.execute(sql`
       SELECT 
         COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
@@ -190,16 +194,59 @@ export async function getRevenueMetricsFromTransactions(
         COALESCE(SUM(CASE WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
         COALESCE(SUM(CASE WHEN pt.status IN ('refunded', 'partially_refunded') THEN pt.refund_amount::numeric ELSE 0 END), 0)::bigint as refunded_amount,
         COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value,
-        -- Actual Stripe fees from database (fetched from Stripe Balance Transaction API)
-        -- Use stripe_processing_fee column which is populated by webhook from Stripe BalanceTransaction
-        COALESCE(SUM(CASE WHEN pt.stripe_processing_fee::numeric > 0 THEN pt.stripe_processing_fee::numeric ELSE 0 END), 0)::bigint as actual_stripe_fee,
-        -- Tax amount from database
-        COALESCE(SUM(CASE WHEN pt.tax_amount::numeric > 0 THEN pt.tax_amount::numeric ELSE 0 END), 0)::bigint as actual_tax_amount
+        -- ENTERPRISE STANDARD: Stripe fee proportional to effective amount (amount - refund)
+        -- Manager only pays Stripe fee on non-refunded portion
+        -- Formula: original_fee * (effective_amount / original_amount)
+        COALESCE(SUM(
+          CASE 
+            WHEN pt.amount::numeric > 0 THEN
+              ROUND(pt.stripe_processing_fee::numeric * (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric)
+            ELSE 0
+          END
+        ), 0)::bigint as actual_stripe_fee
       FROM payment_transactions pt
+      ${simpleWhereClause}
+    `);
+    
+    // Calculate tax from kitchen's tax_rate_percent (for kitchen/bundle bookings)
+    // ENTERPRISE STANDARD: Tax = kb.total_price * tax_rate / 100 (SAME as transaction history)
+    // kb.total_price is the SUBTOTAL before tax (e.g., $100)
+    // pt.amount is the TOTAL after tax (e.g., $110)
+    // For refunds: proportionally reduce tax based on refund ratio
+    const taxResult = await db.execute(sql`
+      SELECT 
+        COALESCE(SUM(
+          -- Tax = kb.total_price * tax_rate / 100 (same formula as transaction history)
+          -- For partial refunds: multiply by (1 - refund_ratio) to get effective tax
+          ROUND(
+            (kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100) *
+            CASE 
+              WHEN pt.amount::numeric > 0 THEN 
+                (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric
+              ELSE 1
+            END
+          )
+        ), 0)::bigint as calculated_tax_amount,
+        -- ENTERPRISE STANDARD: Calculate PAYOUT amount for COMPLETED (succeeded) transactions
+        -- Manager collects tax and keeps it (remits to tax authorities themselves)
+        -- Payout = Amount - Stripe Fee - Refunds (tax is NOT subtracted - manager keeps it)
+        COALESCE(SUM(
+          CASE WHEN pt.status = 'succeeded' THEN
+            pt.amount::numeric 
+            - COALESCE(pt.stripe_processing_fee::numeric, 0)
+            - COALESCE(pt.refund_amount::numeric, 0)
+          ELSE 0 END
+        ), 0)::bigint as completed_net_revenue,
+        -- Get the actual tax rate from kitchens table (use MAX since it should be same for all kitchens of this manager)
+        MAX(COALESCE(k.tax_rate_percent, 0))::numeric as tax_rate_percent
+      FROM payment_transactions pt
+      LEFT JOIN kitchen_bookings kb ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
+      LEFT JOIN kitchens k ON kb.kitchen_id = k.id
       ${simpleWhereClause}
     `);
 
     const row: any = result.rows[0] || {};
+    const taxRow: any = taxResult.rows[0] || {};
 
     // Log the actual values returned for debugging
     console.log('[Revenue Service V2] Query result:', {
@@ -237,7 +284,11 @@ export async function getRevenueMetricsFromTransactions(
       : 0;
 
     // Total revenue = sum of all amounts charged (from query)
-    const totalRevenue = parseNumeric(row.total_revenue);
+    const grossRevenue = parseNumeric(row.total_revenue);
+    
+    // ENTERPRISE STANDARD: Effective gross revenue = gross - refunds
+    // This gives managers an accurate picture of actual revenue after refunds
+    const totalRevenue = grossRevenue - refundedAmount;
 
     // Use manager_revenue directly from database (source of truth from Stripe)
     // Don't recalculate - the database value is accurate and comes from Stripe webhooks
@@ -245,26 +296,40 @@ export async function getRevenueMetricsFromTransactions(
 
     // Get actual Stripe fees from database (fetched from Stripe Balance Transaction API)
     const actualStripeFee = parseNumeric(row.actual_stripe_fee);
-    const actualTaxAmount = parseNumeric(row.actual_tax_amount);
+    // Get tax amount calculated from kitchen's tax_rate_percent
+    const actualTaxAmount = parseNumeric(taxRow.calculated_tax_amount);
+    // ENTERPRISE STANDARD: Net revenue from COMPLETED transactions only (payout-ready amount)
+    const completedNetRevenue = parseNumeric(taxRow.completed_net_revenue);
+    // Get actual tax rate from kitchens table
+    const taxRatePercent = taxRow.tax_rate_percent ? parseFloat(String(taxRow.tax_rate_percent)) : 0;
     
-    // Use actual Stripe fee if available, otherwise estimate (2.9% + $0.30 per transaction)
-    const stripeFee = actualStripeFee > 0 
-      ? actualStripeFee 
-      : Math.round((completedPayments * 0.029) + (paidBookingCount * 30));
+    // ENTERPRISE STANDARD: Use actual Stripe fee only - do not estimate
+    // If actual fee is 0, it will be synced via charge.updated webhook
+    // Never use manual calculation (2.9% + $0.30) as it's inaccurate for international cards, AMEX, etc.
+    const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
     
     // Tax amount - use actual from database (only show if explicitly set, don't fall back to platformFee)
     // platformFee is the service fee, NOT tax - they are different concepts
     const taxAmount = actualTaxAmount;
     
-    // Net revenue = total - tax - stripe fees
+    // ENTERPRISE STANDARD: Net revenue = total (already deducted refunds) - tax - stripe fees
+    // Since totalRevenue already has refunds deducted, net revenue is accurate
     const netRevenue = totalRevenue - taxAmount - stripeFee;
     
+    // Also adjust completed payments to account for refunds
+    // This ensures "In Your Account" metric reflects actual available funds
+    const effectiveCompletedPayments = Math.max(0, completedPayments - refundedAmount);
+    
     console.log('[Revenue Service V2] Fee breakdown:', {
+      grossRevenue,
+      refundedAmount,
+      totalRevenue,
       actualStripeFee,
       actualTaxAmount,
       stripeFee,
       taxAmount,
       netRevenue,
+      effectiveCompletedPayments,
       usingActualStripeFee: actualStripeFee > 0,
       usingActualTaxAmount: actualTaxAmount > 0,
     });
@@ -279,7 +344,11 @@ export async function getRevenueMetricsFromTransactions(
       managerRevenue: isNaN(finalManagerRevenue) ? 0 : finalManagerRevenue, // Use database value from Stripe (includes processing)
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : depositedManagerRevenue, // Only succeeded transactions (what's in bank)
       pendingPayments: isNaN(pendingPayments) ? 0 : pendingPayments,
-      completedPayments: isNaN(completedPayments) ? 0 : completedPayments,
+      completedPayments: isNaN(effectiveCompletedPayments) ? 0 : effectiveCompletedPayments,
+      // ENTERPRISE STANDARD: Net revenue from completed transactions only (payout-ready amount)
+      // This is calculated server-side: Amount - Tax - Stripe Fee - Refunds for succeeded transactions
+      completedNetRevenue: isNaN(completedNetRevenue) ? 0 : Math.max(0, completedNetRevenue),
+      taxRatePercent: isNaN(taxRatePercent) ? 0 : taxRatePercent, // Actual tax rate from kitchens table
       averageBookingValue: isNaN(averageBookingValue) ? 0 : averageBookingValue,
       bookingCount: isNaN(bookingCount) ? 0 : bookingCount,
       paidBookingCount: isNaN(paidBookingCount) ? 0 : paidBookingCount,
@@ -319,9 +388,10 @@ export async function getRevenueByLocationFromTransactions(
     }
 
     // Prepare filter conditions
+    // Include refunded/partially_refunded to show complete transaction history
     const whereConditions = [sql`pt.manager_id = ${managerId}`];
     whereConditions.push(sql`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
-    whereConditions.push(sql`(pt.status = 'succeeded' OR pt.status = 'processing')`);
+    whereConditions.push(sql`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`);
 
     // Exclude kitchen transactions that are part of a bundle
     whereConditions.push(sql`

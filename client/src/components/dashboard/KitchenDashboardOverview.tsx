@@ -77,6 +77,15 @@ interface KitchenDashboardOverviewProps {
   onSelectLocation?: (location: Location | null) => void;
 }
 
+// Interface for live Stripe balance data
+interface StripeBalanceData {
+  available: number;
+  pending: number;
+  inTransit: number;
+  currency: string;
+  hasStripeAccount: boolean;
+}
+
 // Helper function to get auth headers
 async function getAuthHeaders(): Promise<HeadersInit> {
   const token = localStorage.getItem('firebaseToken');
@@ -279,6 +288,32 @@ export default function KitchenDashboardOverview({
       console.error('[Overview] Revenue metrics query error:', revenueError);
     }
   }, [revenueError]);
+
+  // Fetch live Stripe balance for real-time payout data
+  const { data: stripeBalance, isLoading: isLoadingStripeBalance } = useQuery<StripeBalanceData>({
+    queryKey: ['stripeBalance'],
+    queryFn: async () => {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      const token = await currentFirebaseUser.getIdToken();
+      const response = await fetch('/api/manager/revenue/stripe-balance', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch Stripe balance');
+      }
+      return response.json();
+    },
+    enabled: !!firebaseUser,
+    staleTime: 1000 * 30, // Cache for 30 seconds
+    refetchInterval: 1000 * 60, // Refresh every minute
+  });
 
   // Calculate dashboard metrics (using filtered bookings)
   const dashboardMetrics = useMemo(() => {
@@ -816,7 +851,7 @@ export default function KitchenDashboardOverview({
             </CardContent>
           </Card>
 
-          {/* Your Earnings This Month */}
+          {/* Your Earnings - Live Stripe Balance (Available) */}
           <Card 
             className="relative overflow-hidden border-0 bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-300 hover:-translate-y-1 cursor-pointer"
             onClick={() => onNavigate('revenue')}
@@ -824,20 +859,22 @@ export default function KitchenDashboardOverview({
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-blue-100 text-[10px] font-medium uppercase tracking-wider">Your Revenue</p>
+                  <p className="text-blue-100 text-[10px] font-medium uppercase tracking-wider">Available Balance</p>
                   <p className="text-2xl font-bold mt-1">
-                    {isLoadingRevenue ? (
+                    {isLoadingStripeBalance ? (
                       <span className="text-blue-100">...</span>
-                    ) : revenueMetrics ? (
-                      formatCurrency(revenueMetrics.depositedManagerRevenue || revenueMetrics.managerRevenue || 0)
+                    ) : stripeBalance ? (
+                      formatCurrency(stripeBalance.available || 0)
                     ) : (
                       '$0.00'
                     )}
                   </p>
-                  <p className="text-blue-100 text-xs mt-1">Deposited in bank</p>
+                  <p className="text-blue-100 text-xs mt-1">
+                    {stripeBalance?.hasStripeAccount ? 'Ready for payout' : 'No Stripe account'}
+                  </p>
                 </div>
                 <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm">
-                  <TrendingUp className="h-4 w-4" />
+                  <DollarSign className="h-4 w-4" />
                 </div>
               </div>
               <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
@@ -848,10 +885,10 @@ export default function KitchenDashboardOverview({
             </CardContent>
           </Card>
 
-          {/* Pending Payments */}
+          {/* Pending Balance - Live Stripe Balance */}
           <Card
             className={`relative overflow-hidden border-0 shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer ${
-              revenueMetrics && (revenueMetrics as any).pendingPayments > 0
+              stripeBalance && stripeBalance.pending > 0
                 ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-amber-500/25 hover:shadow-xl hover:shadow-amber-500/30'
                 : 'bg-white border border-gray-100 text-gray-900 hover:shadow-xl'
             }`}
@@ -861,36 +898,34 @@ export default function KitchenDashboardOverview({
               <div className="flex items-start justify-between">
                 <div>
                   <p className={`text-[10px] font-medium uppercase tracking-wider ${
-                    revenueMetrics && (revenueMetrics as any).pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'
+                    stripeBalance && stripeBalance.pending > 0 ? 'text-amber-100' : 'text-gray-500'
                   }`}>
                     Pending
                   </p>
                   <p className="text-2xl font-bold mt-1">
-                    {isLoadingRevenue ? (
-                      <span className={revenueMetrics && (revenueMetrics as any).pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'}>...</span>
-                    ) : revenueMetrics ? (
-                      formatCurrency((revenueMetrics as any).pendingPayments || 0)
+                    {isLoadingStripeBalance ? (
+                      <span className="text-gray-500">...</span>
                     ) : (
-                      '$0.00'
+                      formatCurrency(stripeBalance?.pending ?? 0)
                     )}
                   </p>
                   <p className={`text-xs mt-1 ${
-                    revenueMetrics && (revenueMetrics.pendingPayments ?? 0) > 0 ? 'text-amber-100' : 'text-gray-500'
+                    stripeBalance && stripeBalance.pending > 0 ? 'text-amber-100' : 'text-gray-500'
                   }`}>
-                    Awaiting payment
+                    Processing (2-7 days)
                   </p>
                 </div>
                 <div className={`p-1.5 rounded-lg ${
-                  revenueMetrics && (revenueMetrics.pendingPayments ?? 0) > 0
+                  stripeBalance && stripeBalance.pending > 0
                     ? 'bg-white/20 backdrop-blur-sm'
                     : 'bg-amber-100'
                 }`}>
                   <Clock className={`h-4 w-4 ${
-                    revenueMetrics && (revenueMetrics.pendingPayments ?? 0) > 0 ? 'text-white' : 'text-amber-600'
+                    stripeBalance && stripeBalance.pending > 0 ? 'text-white' : 'text-amber-600'
                   }`} />
                 </div>
               </div>
-              {revenueMetrics && (revenueMetrics.pendingPayments ?? 0) > 0 && (
+              {stripeBalance && stripeBalance.pending > 0 && (
                 <>
                   <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
                   <div className="mt-3 pt-3 border-t border-white/20 flex items-center gap-1 text-xs text-amber-100">

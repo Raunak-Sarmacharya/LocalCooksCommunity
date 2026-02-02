@@ -1162,6 +1162,20 @@ export async function createPenaltyPaymentCheckout(
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
+      // ENTERPRISE STANDARD: Enable automatic invoice generation
+      // Stripe sends paid invoice email to customer when payment succeeds
+      // Requires "Successful payments" enabled in Stripe Dashboard > Customer emails settings
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          description: `Overstay Penalty - ${storageName} at ${kitchenName}`,
+          metadata: {
+            booking_type: 'overstay_penalty',
+            overstay_record_id: overstayRecordId.toString(),
+            chef_id: chefId.toString(),
+          },
+        },
+      },
     };
 
     // If manager has Stripe Connect, use destination charges
@@ -1170,6 +1184,13 @@ export async function createPenaltyPaymentCheckout(
         transfer_data: {
           destination: managerStripeAccountId,
         },
+        // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
+        receipt_email: chef.email,
+      };
+    } else {
+      // Even without Connect, set receipt_email for Stripe receipt
+      sessionParams.payment_intent_data = {
+        receipt_email: chef.email,
       };
     }
 

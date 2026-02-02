@@ -2043,4 +2043,39 @@ router.post("/fees/simulate", requireFirebaseAuthWithUser, requireAdmin, async (
     }
 });
 
+/**
+ * POST /admin/sync-stripe-fees
+ * ENTERPRISE STANDARD: Sync actual Stripe fees for existing transactions
+ * 
+ * Re-fetches actual Stripe processing fees from the Balance Transaction API
+ * for transactions that have stripe_processing_fee = 0 but have a valid payment_intent_id.
+ * 
+ * This is needed to fix historical data where fees were incorrectly calculated
+ * due to a bug in the destination charge fee calculation.
+ */
+router.post("/sync-stripe-fees", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { managerId, limit = 100 } = req.body;
+
+        console.log('[Admin] Starting Stripe fee sync...', { managerId, limit });
+
+        const { syncStripeFees } = await import('../services/payment-transactions-service');
+        const result = await syncStripeFees(db, managerId, limit);
+
+        console.log('[Admin] Stripe fee sync completed:', result);
+
+        res.json({
+            success: true,
+            message: `Synced ${result.synced} transactions, ${result.failed} failed`,
+            ...result,
+        });
+    } catch (error) {
+        console.error('Error syncing Stripe fees:', error);
+        res.status(500).json({
+            error: 'Failed to sync Stripe fees',
+            message: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+});
+
 export default router;
