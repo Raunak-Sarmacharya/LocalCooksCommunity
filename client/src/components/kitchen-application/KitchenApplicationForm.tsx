@@ -192,6 +192,9 @@ export default function KitchenApplicationForm({
   const [insuranceFile, setInsuranceFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  
+  // Custom field file uploads - map of field ID to File object
+  const [customFieldFiles, setCustomFieldFiles] = useState<Record<string, File>>({});
 
 
 
@@ -594,8 +597,18 @@ export default function KitchenApplicationForm({
           }
         }
       });
+      
+      console.log('[KitchenApplicationForm] Custom fields data:', {
+        fieldsToUse: fieldsToUse.map(f => ({ id: f.id, label: f.label, type: f.type })),
+        customFieldsData,
+        formValues: Object.keys(data).filter(k => k.startsWith('custom_')).map(k => ({ key: k, value: data[k as keyof typeof data] }))
+      });
+      
       if (Object.keys(customFieldsData).length > 0) {
         formData.append("customFieldsData", JSON.stringify(customFieldsData));
+        console.log('[KitchenApplicationForm] Appending customFieldsData:', JSON.stringify(customFieldsData));
+      } else {
+        console.warn('[KitchenApplicationForm] No custom fields data to append');
       }
 
       // Add tier data if submitting for higher tiers (currently supporting Tier 2)
@@ -610,6 +623,12 @@ export default function KitchenApplicationForm({
       // Add tier-specific file uploads
       if (insuranceFile) formData.append("tier2_insurance_document", insuranceFile);
 
+      // Add custom field file uploads
+      // Files are appended with prefix 'customFile_' + fieldId so server can identify them
+      Object.entries(customFieldFiles).forEach(([fieldId, file]) => {
+        formData.append(`customFile_${fieldId}`, file);
+        console.log(`[KitchenApplicationForm] Appending custom file: customFile_${fieldId}`, file.name);
+      });
 
       await createApplication.mutateAsync(formData);
 
@@ -1469,6 +1488,63 @@ export default function KitchenApplicationForm({
                                       value={formField.value as string || ''}
                                     />
                                   );
+                                } else if (field.type === 'file' || field.type === 'cloudflare_upload') {
+                                  // File upload field - stores actual File object for upload on submit
+                                  const existingFile = customFieldFiles[field.id];
+                                  const hasFile = !!existingFile || !!formField.value;
+                                  inputElement = (
+                                    <div className="space-y-2">
+                                      <label
+                                        className={`flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                                          hasFile 
+                                            ? 'border-green-400 bg-green-50 hover:border-green-500' 
+                                            : 'border-gray-300 hover:border-[#208D80]'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-2 text-gray-600">
+                                          <Upload className={`h-5 w-5 ${hasFile ? 'text-green-600' : ''}`} />
+                                          <span className="text-sm">
+                                            {existingFile ? existingFile.name : (formField.value ? 'File uploaded - Click to replace' : (field.placeholder || 'Click to upload file'))}
+                                          </span>
+                                        </div>
+                                        <input
+                                          type="file"
+                                          className="hidden"
+                                          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                                          onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                              if (file.size > 10 * 1024 * 1024) {
+                                                toast({
+                                                  title: "File Too Large",
+                                                  description: "Maximum file size is 10MB",
+                                                  variant: "destructive",
+                                                });
+                                                return;
+                                              }
+                                              // Store actual File object in state for upload on form submit
+                                              setCustomFieldFiles(prev => ({
+                                                ...prev,
+                                                [field.id]: file
+                                              }));
+                                              // Store filename in form for validation
+                                              formField.onChange(file.name);
+                                            }
+                                          }}
+                                        />
+                                        <span className="text-xs text-gray-500 mt-1">PDF, JPG, PNG, DOC (max 10MB)</span>
+                                      </label>
+                                      {existingFile && (
+                                        <p className="text-xs text-green-600 flex items-center gap-1">
+                                          <Check className="h-3 w-3" />
+                                          Ready to upload: {existingFile.name}
+                                        </p>
+                                      )}
+                                      {!existingFile && formField.value && (
+                                        <p className="text-xs text-blue-600">Previously uploaded</p>
+                                      )}
+                                    </div>
+                                  );
                                 }
 
                                 // If no input element was created, return a fallback element
@@ -1908,34 +1984,59 @@ export default function KitchenApplicationForm({
                                         />
                                       );
                                     } else if (field.type === 'file' || field.type === 'cloudflare_upload') {
-                                      // File upload field
+                                      // File upload field - stores actual File object for upload on submit
+                                      const existingFile = customFieldFiles[field.id];
+                                      const hasFile = !!existingFile || !!formField.value;
                                       inputElement = (
                                         <div className="space-y-2">
                                           <label
-                                            className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-[#208D80] transition-colors"
+                                            className={`flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                                              hasFile 
+                                                ? 'border-green-400 bg-green-50 hover:border-green-500' 
+                                                : 'border-gray-300 hover:border-[#208D80]'
+                                            }`}
                                           >
                                             <div className="flex items-center gap-2 text-gray-600">
-                                              <Upload className="h-5 w-5" />
+                                              <Upload className={`h-5 w-5 ${hasFile ? 'text-green-600' : ''}`} />
                                               <span className="text-sm">
-                                                {formField.value ? 'File selected - Click to change' : (field.placeholder || 'Click to upload file')}
+                                                {existingFile ? existingFile.name : (formField.value ? 'File uploaded - Click to replace' : (field.placeholder || 'Click to upload file'))}
                                               </span>
                                             </div>
                                             <input
                                               type="file"
                                               className="hidden"
-                                              accept=".pdf,.jpg,.jpeg,.png"
+                                              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
                                               onChange={(e) => {
                                                 const file = e.target.files?.[0];
                                                 if (file) {
-                                                  // Store file info for upload on form submit
+                                                  if (file.size > 10 * 1024 * 1024) {
+                                                    toast({
+                                                      title: "File Too Large",
+                                                      description: "Maximum file size is 10MB",
+                                                      variant: "destructive",
+                                                    });
+                                                    return;
+                                                  }
+                                                  // Store actual File object in state for upload on form submit
+                                                  setCustomFieldFiles(prev => ({
+                                                    ...prev,
+                                                    [field.id]: file
+                                                  }));
+                                                  // Store filename in form for validation
                                                   formField.onChange(file.name);
                                                 }
                                               }}
                                             />
-                                            <span className="text-xs text-gray-500 mt-1">PDF, JPG, PNG (max 10MB)</span>
+                                            <span className="text-xs text-gray-500 mt-1">PDF, JPG, PNG, DOC (max 10MB)</span>
                                           </label>
-                                          {formField.value && (
-                                            <p className="text-xs text-green-600">Selected: {formField.value as string}</p>
+                                          {existingFile && (
+                                            <p className="text-xs text-green-600 flex items-center gap-1">
+                                              <Check className="h-3 w-3" />
+                                              Ready to upload: {existingFile.name}
+                                            </p>
+                                          )}
+                                          {!existingFile && formField.value && (
+                                            <p className="text-xs text-blue-600">Previously uploaded</p>
                                           )}
                                         </div>
                                       );

@@ -389,7 +389,7 @@ export default function LocationStep() {
             ) : (
               <div className={cn(
                 "relative border-2 border-dashed rounded-xl p-6 transition-all duration-200",
-                (licenseForm.file || licenseForm.uploadedUrl)
+                (licenseForm.file || licenseForm.uploadedUrl || hasExistingLicense)
                   ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-700" 
                   : "border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50"
               )}>
@@ -401,21 +401,21 @@ export default function LocationStep() {
                   className="hidden"
                 />
                 <label htmlFor="license-file" className="cursor-pointer block text-center w-full h-full">
-                  {licenseForm.file || licenseForm.uploadedUrl ? (
+                  {licenseForm.file || licenseForm.uploadedUrl || hasExistingLicense ? (
                     <div className="flex items-center justify-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
                         <FileText className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                       </div>
                       <div className="text-left">
                         <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                          {licenseForm.file?.name || (licenseForm.uploadedUrl ? "License uploaded" : "File")}
+                          {licenseForm.file?.name || (licenseForm.uploadedUrl || hasExistingLicense ? "License on file" : "File")}
                         </p>
                         {licenseForm.file && licenseForm.file.size > 0 && (
                           <p className="text-xs text-slate-500 dark:text-slate-400">
                             {formatFileSize(licenseForm.file.size)}
                           </p>
                         )}
-                        {!licenseForm.file && licenseForm.uploadedUrl && (
+                        {!licenseForm.file && (licenseForm.uploadedUrl || hasExistingLicense) && (
                           <p className="text-xs text-emerald-600 dark:text-emerald-400">
                             Uploaded to cloud
                           </p>
@@ -526,7 +526,7 @@ export default function LocationStep() {
             ) : (
               <div className={cn(
                 "relative border-2 border-dashed rounded-xl p-6 transition-all duration-200",
-                (termsForm.file || termsForm.uploadedUrl)
+                (termsForm.file || termsForm.uploadedUrl || hasExistingTerms)
                   ? "border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700" 
                   : "border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50"
               )}>
@@ -538,21 +538,21 @@ export default function LocationStep() {
                   className="hidden"
                 />
                 <label htmlFor="terms-file" className="cursor-pointer block text-center w-full h-full">
-                  {termsForm.file || termsForm.uploadedUrl ? (
+                  {termsForm.file || termsForm.uploadedUrl || hasExistingTerms ? (
                     <div className="flex items-center justify-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
                         <FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                       </div>
                       <div className="text-left">
                         <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                          {termsForm.file?.name || (termsForm.uploadedUrl ? "Terms uploaded" : "File")}
+                          {termsForm.file?.name || (termsForm.uploadedUrl || hasExistingTerms ? "Terms on file" : "File")}
                         </p>
                         {termsForm.file && termsForm.file.size > 0 && (
                           <p className="text-xs text-slate-500 dark:text-slate-400">
                             {formatFileSize(termsForm.file.size)}
                           </p>
                         )}
-                        {!termsForm.file && termsForm.uploadedUrl && (
+                        {!termsForm.file && (termsForm.uploadedUrl || hasExistingTerms) && (
                           <p className="text-xs text-amber-600 dark:text-amber-400">
                             Uploaded to cloud
                           </p>

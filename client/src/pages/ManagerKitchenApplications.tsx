@@ -471,6 +471,22 @@ export function ManagerKitchenApplicationsContent({
     if (field.type === 'date') {
       return <span className="font-medium">{new Date(value).toLocaleDateString()}</span>;
     }
+    // Handle file uploads - value is a URL to the uploaded document
+    if (field.type === 'file' || field.type === 'cloudflare_upload') {
+      // Check if value looks like a URL (uploaded file) or just a filename (legacy)
+      const isUrl = typeof value === 'string' && (value.startsWith('http') || value.startsWith('/'));
+      if (isUrl) {
+        return (
+          <SecureDocumentLink
+            url={value}
+            fileName={field.label}
+            label="View Document"
+          />
+        );
+      }
+      // Legacy: just a filename without URL
+      return <span className="font-medium text-amber-600">{String(value)} (not uploaded)</span>;
+    }
     return <span className="font-medium">{String(value)}</span>;
   };
 

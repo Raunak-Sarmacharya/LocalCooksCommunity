@@ -92,6 +92,7 @@ export default function ApplicationRequirementsStep() {
         onSaveSuccess={refreshRequirements}
         compact
         hideNavigation
+        autoSaveOnStepChange
         activeStepOverride={currentWizardStep}
         onStepChange={handleWizardStepChange}
       />

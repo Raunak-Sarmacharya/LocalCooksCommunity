@@ -42,18 +42,25 @@ const applicationService = new ApplicationService(applicationRepository);
  * POST /api/firebase/chef/kitchen-applications
  */
 router.post('/firebase/chef/kitchen-applications',
-    upload.fields([
-        { name: 'foodSafetyLicenseFile', maxCount: 1 },
-        { name: 'foodEstablishmentCertFile', maxCount: 1 },
-        { name: 'tier2_insurance_document', maxCount: 1 },
-    ]),
+    upload.any(), // Use any() to accept dynamic custom field file uploads (customFile_*)
     requireFirebaseAuthWithUser,
     async (req: Request, res: Response) => {
         try {
             console.log(`🍳 POST /api/firebase/chef/kitchen-applications - Chef ${req.neonUser!.id} submitting kitchen application`);
 
             // Handle file uploads if present
-            const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+            // Convert array format from upload.any() to object format for easier access
+            const filesArray = req.files as Express.Multer.File[] | undefined;
+            const files: { [fieldname: string]: Express.Multer.File[] } = {};
+            if (filesArray) {
+                filesArray.forEach(file => {
+                    if (!files[file.fieldname]) {
+                        files[file.fieldname] = [];
+                    }
+                    files[file.fieldname].push(file);
+                });
+            }
+            
             let foodSafetyLicenseUrl: string | undefined;
             let foodEstablishmentCertUrl: string | undefined;
             const tierFileUrls: Record<string, string> = {};
@@ -112,9 +119,35 @@ router.post('/firebase/chef/kitchen-applications',
                     customFieldsData = typeof req.body.customFieldsData === 'string'
                         ? JSON.parse(req.body.customFieldsData)
                         : req.body.customFieldsData;
+                    console.log('✅ Parsed customFieldsData:', JSON.stringify(customFieldsData));
                 } catch (error) {
                     console.error('Error parsing customFieldsData:', error);
                     customFieldsData = undefined;
+                }
+            } else {
+                console.log('⚠️ No customFieldsData in request body');
+            }
+            
+            // Upload custom field files (prefixed with customFile_) and store URLs in customFieldsData
+            if (files) {
+                const customFileFields = Object.keys(files).filter(key => key.startsWith('customFile_'));
+                for (const fieldKey of customFileFields) {
+                    const fieldId = fieldKey.replace('customFile_', '');
+                    const file = files[fieldKey]?.[0];
+                    if (file) {
+                        try {
+                            const url = await uploadToBlob(file, req.neonUser!.id, 'documents');
+                            console.log(`✅ Uploaded custom field file ${fieldId}: ${url}`);
+                            // Initialize customFieldsData if not exists
+                            if (!customFieldsData) {
+                                customFieldsData = {};
+                            }
+                            // Store the URL in customFieldsData (overwrites filename with URL)
+                            customFieldsData[fieldId] = url;
+                        } catch (uploadError) {
+                            console.error(`❌ Failed to upload custom field file ${fieldId}:`, uploadError);
+                        }
+                    }
                 }
             }
 
@@ -505,15 +538,25 @@ router.post('/firebase/chef/kitchen-applications',
             }
 
             // Create/update the application - merge extra tier fields that Zod strips
+            // IMPORTANT: customFieldsData must be set AFTER parsedData.data spread to override any empty default
             const applicationData = {
                 ...parsedData.data,
                 // Include tier fields (not in Zod schema but needed for storage)
                 ...(formData.current_tier && { current_tier: formData.current_tier }),
                 ...(formData.tier_data && { tier_data: formData.tier_data }),
                 ...(formData.tier2_completed_at && { tier2_completed_at: formData.tier2_completed_at }),
-                ...(formData.customFieldsData && { customFieldsData: formData.customFieldsData }),
                 ...(foodEstablishmentCertUrl && { foodEstablishmentCertUrl }),
+                // [FIX] Explicitly set customFieldsData from formData (not from Zod which may have empty default)
+                customFieldsData: formData.customFieldsData || parsedData.data.customFieldsData || {},
             };
+            
+            console.log('📦 Application data being saved:', {
+                hasCustomFieldsData: !!applicationData.customFieldsData && Object.keys(applicationData.customFieldsData).length > 0,
+                customFieldsData: applicationData.customFieldsData,
+                formDataCustomFields: formData.customFieldsData,
+                parsedDataCustomFields: parsedData.data.customFieldsData
+            });
+            
             const application = await chefApplicationService.createApplication(applicationData as any);
 
             console.log(`✅ Kitchen application created/updated: Chef ${req.neonUser!.id} → Location ${parsedData.data.locationId}, ID: ${application.id}`);

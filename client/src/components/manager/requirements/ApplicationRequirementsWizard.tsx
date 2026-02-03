@@ -4,7 +4,7 @@
  * Reusable component for both manager settings and onboarding flow
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +44,8 @@ interface ApplicationRequirementsWizardProps {
   onStepChange?: (step: WizardStep, isLastStep: boolean) => void;
   /** Controlled active step (if provided, component becomes controlled) */
   activeStepOverride?: WizardStep;
+  /** Auto-save when step changes (for onboarding flow where navigation is hidden) */
+  autoSaveOnStepChange?: boolean;
 }
 
 const STEP_ICONS: Record<WizardStep, React.ReactNode> = {
@@ -73,6 +75,7 @@ export function ApplicationRequirementsWizard({
   initialStep = 'step1',
   onStepChange,
   activeStepOverride,
+  autoSaveOnStepChange = false,
 }: ApplicationRequirementsWizardProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -187,9 +190,25 @@ export function ApplicationRequirementsWizard({
     setHasUnsavedChanges(true);
   }, []);
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     saveMutation.mutate(requirements);
-  };
+  }, [saveMutation, requirements]);
+
+  // Track previous step for auto-save on step change
+  const prevStepRef = useRef<WizardStep | null>(null);
+  
+  // Auto-save when step changes (for onboarding flow where navigation is hidden)
+  useEffect(() => {
+    if (!autoSaveOnStepChange) return;
+    
+    // Only trigger save if step actually changed and we have unsaved changes
+    if (prevStepRef.current !== null && prevStepRef.current !== activeStep && hasUnsavedChanges) {
+      console.log('[ApplicationRequirementsWizard] Auto-saving on step change');
+      handleSave();
+    }
+    
+    prevStepRef.current = activeStep;
+  }, [activeStep, autoSaveOnStepChange, hasUnsavedChanges, handleSave]);
 
   const goToStep = (step: WizardStep) => {
     setActiveStep(step);

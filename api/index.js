@@ -2414,12 +2414,18 @@ var init_fileUpload = __esm({
         "image/jpeg",
         "image/jpg",
         "image/png",
-        "image/webp"
+        "image/webp",
+        // DOC and DOCX support for terms & policies
+        "application/msword",
+        // .doc
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        // .docx
       ];
       if (allowedMimes.includes(file.mimetype)) {
         cb(null, true);
       } else {
-        cb(new Error("Invalid file type. Only PDF, JPG, JPEG, PNG, and WebP files are allowed."));
+        console.log(`[FileUpload] Rejected file with mimetype: ${file.mimetype}`);
+        cb(new Error("Invalid file type. Only PDF, JPG, JPEG, PNG, WebP, DOC, and DOCX files are allowed."));
       }
     };
     console.log(` File Upload Config: R2 configured = ${isR2Configured()}, using ${useCloudStorage ? "memory (R2)" : "disk (local)"} storage`);
@@ -5967,7 +5973,15 @@ async function validateLocationInput(data) {
     timezone: z3.string().optional(),
     kitchenLicenseUrl: z3.string().optional(),
     kitchenLicenseStatus: z3.enum(["pending", "approved", "rejected"]).optional(),
-    kitchenLicenseExpiry: z3.string().optional()
+    kitchenLicenseExpiry: z3.string().optional(),
+    // Terms & Policies document URL
+    kitchenTermsUrl: z3.string().optional(),
+    // Contact fields
+    contactEmail: z3.string().email("Invalid contact email format").optional().or(z3.literal("")),
+    contactPhone: z3.string().optional(),
+    preferredContactMethod: z3.enum(["email", "phone", "both"]).optional(),
+    description: z3.string().optional(),
+    customOnboardingLink: z3.string().optional()
   });
   try {
     return locationSchema.parse(data);
@@ -10492,9 +10506,8 @@ var init_booking_repository = __esm({
           const taxAmount = Math.round(kbTotalPrice * taxRatePercent / 100);
           const totalCharged = transactionAmount ?? kbTotalPrice;
           const netRevenue = totalCharged - taxAmount - stripeProcessingFee;
-          const grossRefundableAmount = transactionAmount ? Math.max(0, transactionAmount - refundAmount) : 0;
-          const proportionalStripeFee = transactionAmount && grossRefundableAmount > 0 ? Math.round(stripeProcessingFee * (grossRefundableAmount / transactionAmount)) : 0;
-          const refundableAmount = Math.max(0, grossRefundableAmount - proportionalStripeFee);
+          const managerRemainingBalance = managerRevenue ? Math.max(0, managerRevenue - refundAmount) : 0;
+          const refundableAmount = managerRemainingBalance;
           return {
             ...mappedBooking,
             kitchen: row.kitchen,
@@ -10526,13 +10539,11 @@ var init_booking_repository = __esm({
             refundAmount,
             // Amount already refunded
             refundableAmount,
-            // Net amount customer receives (after Stripe fee deduction)
-            grossRefundableAmount,
-            // Gross refundable before fee deduction
+            // SIMPLE: Max refundable = manager's remaining balance
             stripeProcessingFee,
-            // Total Stripe processing fee for this transaction
-            proportionalStripeFee
-            // Stripe fee portion for refundable amount
+            // Total Stripe processing fee (display only - sunk cost)
+            managerRemainingBalance
+            // Manager's remaining balance from this transaction
           };
         });
       }
@@ -11836,6 +11847,7 @@ var init_payment_transactions_service = __esm({
 // server/services/stripe-service.ts
 var stripe_service_exports = {};
 __export(stripe_service_exports, {
+  calculateRefundBreakdown: () => calculateRefundBreakdown,
   cancelPaymentIntent: () => cancelPaymentIntent,
   capturePaymentIntent: () => capturePaymentIntent,
   confirmPaymentIntent: () => confirmPaymentIntent,
@@ -12149,6 +12161,18 @@ async function createRefund(paymentIntentId, amount, reason = "requested_by_cust
     console.error("Error creating refund:", error);
     throw new Error(`Failed to create refund: ${error.message}`);
   }
+}
+function calculateRefundBreakdown(totalChargedCents, managerReceivedCents, alreadyRefundedCents, stripeProcessingFeeCents) {
+  const managerRemainingBalance = Math.max(0, managerReceivedCents - alreadyRefundedCents);
+  const maxRefundable = managerRemainingBalance;
+  return {
+    maxRefundableToCustomer: maxRefundable,
+    maxDeductibleFromManager: maxRefundable,
+    // Same value - no discrepancy!
+    remainingManagerBalance: managerRemainingBalance,
+    originalStripeFee: stripeProcessingFeeCents,
+    explanation: managerRemainingBalance > 0 ? `Available to refund from this transaction: $${(maxRefundable / 100).toFixed(2)}` : "No remaining balance to refund"
+  };
 }
 async function reverseTransferAndRefund(paymentIntentId, amount, reason = "requested_by_customer", options) {
   if (!stripe) {
@@ -15299,7 +15323,9 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         createdAt: row.created_at,
         paidAt: row.pt_paid_at || null,
         refundAmount: ptRefundAmount,
-        refundableAmount: Math.max(0, totalPriceCents - ptRefundAmount)
+        // SIMPLE REFUND MODEL: Manager's balance is the cap
+        // refundableAmount = managerRevenue - already refunded (not totalPrice - refunded)
+        refundableAmount: Math.max(0, (managerRevenue || 0) - ptRefundAmount)
       };
     });
     const storageResult = await db2.execute(sql8`
@@ -15391,7 +15417,8 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         createdAt: row.created_at,
         paidAt: row.pt_paid_at || null,
         refundAmount: ptRefundAmount,
-        refundableAmount: Math.max(0, ptAmount - ptRefundAmount)
+        // SIMPLE REFUND MODEL: Manager's balance is the cap
+        refundableAmount: Math.max(0, (ptManagerRevenue || ptAmount) - ptRefundAmount)
       };
     });
     let allTransactions = [...kitchenTransactions, ...storageTransactions];
@@ -16952,43 +16979,51 @@ var init_manager = __esm({
         }
         const totalAmount = parseInt(String(transaction.amount || "0")) || 0;
         const currentRefundAmount = parseInt(String(transaction.refund_amount || "0")) || 0;
-        const remainingGrossAmount = totalAmount - currentRefundAmount;
+        const managerRevenue = parseInt(String(transaction.manager_revenue || "0")) || 0;
         const stripeProcessingFee = parseInt(String(transaction.stripe_processing_fee || "0")) || 0;
-        const proportionalStripeFee = totalAmount > 0 && remainingGrossAmount > 0 ? Math.round(stripeProcessingFee * (remainingGrossAmount / totalAmount)) : 0;
-        const maxNetRefundable = Math.max(0, remainingGrossAmount - proportionalStripeFee);
-        if (amountCents > maxNetRefundable) {
+        const { calculateRefundBreakdown: calculateRefundBreakdown2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+        const refundBreakdown = calculateRefundBreakdown2(
+          totalAmount,
+          managerRevenue,
+          currentRefundAmount,
+          stripeProcessingFee
+        );
+        if (amountCents > refundBreakdown.maxRefundableToCustomer) {
           return res.status(400).json({
-            error: `Refund amount exceeds maximum refundable. Max: $${(maxNetRefundable / 100).toFixed(2)} (after $${(proportionalStripeFee / 100).toFixed(2)} processing fee retention)`,
-            maxRefundable: maxNetRefundable,
-            stripeFeeRetained: proportionalStripeFee,
-            grossRemaining: remainingGrossAmount
+            error: `Refund amount exceeds maximum. Max refundable: $${(refundBreakdown.maxRefundableToCustomer / 100).toFixed(2)}`,
+            maxRefundable: refundBreakdown.maxRefundableToCustomer,
+            managerBalance: refundBreakdown.remainingManagerBalance,
+            explanation: refundBreakdown.explanation
           });
         }
         const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq24(users.id, managerId)).limit(1);
         if (!manager?.stripeConnectAccountId) {
           return res.status(400).json({ error: "Manager Stripe Connect account not found" });
         }
-        const serviceFee = parseInt(String(transaction.service_fee || "0")) || 0;
-        const managerRevenue = parseInt(String(transaction.manager_revenue || "0")) || 0;
-        const netRefundToCustomer = amountCents;
-        const managerShare = Math.max(0, totalAmount - serviceFee, managerRevenue);
-        const expectedReverseAmount = totalAmount > 0 ? Math.round(netRefundToCustomer * (managerShare / totalAmount)) : netRefundToCustomer;
+        const refundToCustomer = amountCents;
+        const deductFromManager = amountCents;
         const { reverseTransferAndRefund: reverseTransferAndRefund2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
         const allowedStripeReasons = ["duplicate", "fraudulent", "requested_by_customer"];
         const stripeReason = refundReason && allowedStripeReasons.includes(refundReason) ? refundReason : "requested_by_customer";
         const refund = await reverseTransferAndRefund2(
           transaction.payment_intent_id,
-          amountCents,
+          refundToCustomer,
+          // Customer receives this amount
           stripeReason,
           {
-            reverseTransferAmount: expectedReverseAmount,
+            reverseTransferAmount: deductFromManager,
+            // Manager is debited this exact same amount
             refundApplicationFee: false,
             metadata: {
               transaction_id: String(transaction.id),
               booking_id: String(transaction.booking_id),
               booking_type: String(transaction.booking_type),
               manager_id: String(managerId),
-              refund_reason: refundReason ? String(refundReason) : ""
+              refund_reason: refundReason ? String(refundReason) : "",
+              refund_model: "unified",
+              // Track that we used unified model
+              customer_receives: String(refundToCustomer),
+              manager_debited: String(deductFromManager)
             },
             transferMetadata: {
               transaction_id: String(transaction.id),
@@ -17000,7 +17035,7 @@ var init_manager = __esm({
           }
         );
         const newRefundTotal = currentRefundAmount + amountCents;
-        const newStatus = newRefundTotal >= totalAmount ? "refunded" : "partially_refunded";
+        const newStatus = newRefundTotal >= managerRevenue ? "refunded" : "partially_refunded";
         let currentMetadata = {};
         if (transaction.metadata) {
           if (typeof transaction.metadata === "string") {
@@ -17020,16 +17055,19 @@ var init_manager = __esm({
             ...existingRefunds,
             {
               id: refund.refundId,
-              amount: amountCents,
+              customerReceived: refundToCustomer,
+              managerDebited: deductFromManager,
               reason: refundReason || null,
               createdAt: (/* @__PURE__ */ new Date()).toISOString(),
               createdBy: managerId,
-              transferReversalId: refund.transferReversalId
+              transferReversalId: refund.transferReversalId,
+              model: "unified"
             }
           ],
           lastRefund: {
             id: refund.refundId,
-            amount: amountCents,
+            customerReceived: refundToCustomer,
+            managerDebited: deductFromManager,
             reason: refundReason || null,
             createdAt: (/* @__PURE__ */ new Date()).toISOString(),
             createdBy: managerId,
@@ -17058,22 +17096,27 @@ var init_manager = __esm({
         } else if (transaction.booking_type === "equipment") {
           await db.update(equipmentBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq24(equipmentBookings.id, transaction.booking_id));
         }
-        const newRemainingGross = totalAmount - newRefundTotal;
-        const newProportionalFee = totalAmount > 0 && newRemainingGross > 0 ? Math.round(stripeProcessingFee * (newRemainingGross / totalAmount)) : 0;
-        const newMaxNetRefundable = Math.max(0, newRemainingGross - newProportionalFee);
+        const newBreakdown = calculateRefundBreakdown2(
+          totalAmount,
+          managerRevenue,
+          newRefundTotal,
+          stripeProcessingFee
+        );
         res.json({
           success: true,
           refundId: refund.refundId,
           status: newStatus,
-          // What customer received in this refund
-          refundAmount: amountCents,
-          // Total refunded so far (gross)
+          // UNIFIED: Both values are the same - no discrepancy!
+          customerReceived: refundToCustomer,
+          managerDebited: deductFromManager,
+          // Total refunded so far
           totalRefunded: newRefundTotal,
-          // Remaining amounts
-          remainingGrossAmount: newRemainingGross,
-          remainingNetRefundable: newMaxNetRefundable,
+          // Remaining amounts (using unified model)
+          remainingCharged: totalAmount - newRefundTotal,
+          maxRefundable: newBreakdown.maxRefundableToCustomer,
+          managerRemainingBalance: newBreakdown.remainingManagerBalance,
           // Fee info for transparency
-          stripeFeeRetained: stripeProcessingFee,
+          originalStripeFee: stripeProcessingFee,
           transferReversalId: refund.transferReversalId
         });
       } catch (error) {
@@ -18144,33 +18187,35 @@ var init_manager = __esm({
               const totalPrice = booking.totalPrice || 0;
               const transactionAmount = paymentTransaction ? parseInt(String(paymentTransaction.amount || "0")) || totalPrice : totalPrice;
               if (transactionAmount > 0) {
+                const { calculateRefundBreakdown: calculateRefundBreakdown2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
                 const stripeProcessingFee = paymentTransaction ? parseInt(String(paymentTransaction.stripe_processing_fee || "0")) || 0 : 0;
                 const currentRefundAmount = paymentTransaction ? parseInt(String(paymentTransaction.refund_amount || "0")) || 0 : 0;
-                const remainingGross = transactionAmount - currentRefundAmount;
-                const proportionalStripeFee = transactionAmount > 0 && remainingGross > 0 ? Math.round(stripeProcessingFee * (remainingGross / transactionAmount)) : 0;
-                const netRefundAmount = Math.max(0, remainingGross - proportionalStripeFee);
-                let reverseTransferAmount = netRefundAmount;
-                if (paymentTransaction) {
-                  const serviceFee = parseInt(String(paymentTransaction.service_fee || "0")) || 0;
-                  const managerRevenue = parseInt(String(paymentTransaction.manager_revenue || "0")) || 0;
-                  const managerShare = Math.max(0, transactionAmount - serviceFee, managerRevenue);
-                  reverseTransferAmount = transactionAmount > 0 ? Math.round(netRefundAmount * (managerShare / transactionAmount)) : netRefundAmount;
-                }
+                const managerRevenue = paymentTransaction ? parseInt(String(paymentTransaction.manager_revenue || "0")) || 0 : transactionAmount;
+                const refundBreakdown = calculateRefundBreakdown2(
+                  transactionAmount,
+                  managerRevenue,
+                  currentRefundAmount,
+                  stripeProcessingFee
+                );
+                const refundToCustomer = refundBreakdown.maxRefundableToCustomer;
+                const deductFromManager = refundBreakdown.maxDeductibleFromManager;
                 refundResult = await reverseTransferAndRefund2(
                   bookingPaymentIntentId,
-                  netRefundAmount,
-                  // Option A: Customer receives net amount (minus Stripe fee)
+                  refundToCustomer,
+                  // Customer receives this amount
                   "requested_by_customer",
                   {
-                    reverseTransferAmount,
+                    reverseTransferAmount: deductFromManager,
+                    // Manager debited same amount
                     refundApplicationFee: false,
                     metadata: {
                       booking_id: String(id),
                       booking_type: "kitchen",
-                      cancellation_reason: "Booking cancelled by manager",
+                      cancellation_reason: "Booking rejected by manager",
                       manager_id: String(user.id),
-                      stripe_fee_retained: String(proportionalStripeFee),
-                      gross_refundable: String(remainingGross)
+                      refund_model: "unified",
+                      customer_receives: String(refundToCustomer),
+                      manager_debited: String(deductFromManager)
                     }
                   }
                 );
@@ -25798,14 +25843,16 @@ async function handleChargeRefunded(charge, webhookEventId) {
       logger.warn(`[Webhook] Charge ${charge.id} has no payment_intent`);
       return;
     }
-    const isPartial = charge.amount_refunded < charge.amount;
-    const refundStatus = isPartial ? "partially_refunded" : "refunded";
     const refundAmountCents = charge.amount_refunded;
     const transaction = await findPaymentTransactionByIntentId2(
       paymentIntentId,
       db
     );
+    let refundStatus;
     if (transaction) {
+      const managerRevenue = parseInt(String(transaction.manager_revenue || "0")) || 0;
+      const isFullRefund = refundAmountCents >= managerRevenue;
+      refundStatus = isFullRefund ? "refunded" : "partially_refunded";
       await updatePaymentTransaction2(
         transaction.id,
         {
@@ -25821,6 +25868,8 @@ async function handleChargeRefunded(charge, webhookEventId) {
       logger.info(
         `[Webhook] Updated payment_transactions for refund on PaymentIntent ${paymentIntentId}`
       );
+    } else {
+      refundStatus = charge.amount_refunded < charge.amount ? "partially_refunded" : "refunded";
     }
     await db.transaction(async (tx) => {
       await tx.update(kitchenBookings).set({
@@ -28953,16 +29002,22 @@ var applicationRepository = new ApplicationRepository();
 var applicationService2 = new ApplicationService(applicationRepository);
 router7.post(
   "/firebase/chef/kitchen-applications",
-  upload.fields([
-    { name: "foodSafetyLicenseFile", maxCount: 1 },
-    { name: "foodEstablishmentCertFile", maxCount: 1 },
-    { name: "tier2_insurance_document", maxCount: 1 }
-  ]),
+  upload.any(),
+  // Use any() to accept dynamic custom field file uploads (customFile_*)
   requireFirebaseAuthWithUser,
   async (req, res) => {
     try {
       console.log(`\u{1F373} POST /api/firebase/chef/kitchen-applications - Chef ${req.neonUser.id} submitting kitchen application`);
-      const files = req.files;
+      const filesArray = req.files;
+      const files = {};
+      if (filesArray) {
+        filesArray.forEach((file) => {
+          if (!files[file.fieldname]) {
+            files[file.fieldname] = [];
+          }
+          files[file.fieldname].push(file);
+        });
+      }
       let foodSafetyLicenseUrl;
       let foodEstablishmentCertUrl;
       const tierFileUrls = {};
@@ -29010,9 +29065,31 @@ router7.post(
       if (req.body.customFieldsData) {
         try {
           customFieldsData = typeof req.body.customFieldsData === "string" ? JSON.parse(req.body.customFieldsData) : req.body.customFieldsData;
+          console.log("\u2705 Parsed customFieldsData:", JSON.stringify(customFieldsData));
         } catch (error) {
           console.error("Error parsing customFieldsData:", error);
           customFieldsData = void 0;
+        }
+      } else {
+        console.log("\u26A0\uFE0F No customFieldsData in request body");
+      }
+      if (files) {
+        const customFileFields = Object.keys(files).filter((key) => key.startsWith("customFile_"));
+        for (const fieldKey of customFileFields) {
+          const fieldId = fieldKey.replace("customFile_", "");
+          const file = files[fieldKey]?.[0];
+          if (file) {
+            try {
+              const url = await uploadToBlob(file, req.neonUser.id, "documents");
+              console.log(`\u2705 Uploaded custom field file ${fieldId}: ${url}`);
+              if (!customFieldsData) {
+                customFieldsData = {};
+              }
+              customFieldsData[fieldId] = url;
+            } catch (uploadError) {
+              console.error(`\u274C Failed to upload custom field file ${fieldId}:`, uploadError);
+            }
+          }
         }
       }
       let tierData;
@@ -29334,9 +29411,16 @@ router7.post(
         ...formData.current_tier && { current_tier: formData.current_tier },
         ...formData.tier_data && { tier_data: formData.tier_data },
         ...formData.tier2_completed_at && { tier2_completed_at: formData.tier2_completed_at },
-        ...formData.customFieldsData && { customFieldsData: formData.customFieldsData },
-        ...foodEstablishmentCertUrl && { foodEstablishmentCertUrl }
+        ...foodEstablishmentCertUrl && { foodEstablishmentCertUrl },
+        // [FIX] Explicitly set customFieldsData from formData (not from Zod which may have empty default)
+        customFieldsData: formData.customFieldsData || parsedData.data.customFieldsData || {}
       };
+      console.log("\u{1F4E6} Application data being saved:", {
+        hasCustomFieldsData: !!applicationData.customFieldsData && Object.keys(applicationData.customFieldsData).length > 0,
+        customFieldsData: applicationData.customFieldsData,
+        formDataCustomFields: formData.customFieldsData,
+        parsedDataCustomFields: parsedData.data.customFieldsData
+      });
       const application = await chefApplicationService.createApplication(applicationData);
       console.log(`\u2705 Kitchen application created/updated: Chef ${req.neonUser.id} \u2192 Location ${parsedData.data.locationId}, ID: ${application.id}`);
       try {

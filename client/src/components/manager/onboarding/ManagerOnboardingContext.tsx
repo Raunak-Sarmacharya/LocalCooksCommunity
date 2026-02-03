@@ -229,6 +229,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // Availability State
   const [hasAvailability, setHasAvailability] = useState(false);
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
+  const [availabilityLoaded, setAvailabilityLoaded] = useState(false); // [FIX] Track when availability check completes
 
   // Requirements State [NEW] - tracks if location_requirements record exists
   const [hasRequirements, setHasRequirements] = useState(false);
@@ -336,6 +337,18 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       const hasLicense = loc?.kitchenLicenseUrl || loc?.kitchen_license_url;
       const hasTerms = loc?.kitchenTermsUrl || loc?.kitchen_terms_url;
       
+      console.log('[completedSteps] Location check:', {
+        selectedLocationId,
+        locFound: !!loc,
+        hasLicense: !!hasLicense,
+        hasTerms: !!hasTerms,
+        kitchenLicenseUrl: loc?.kitchenLicenseUrl,
+        kitchen_license_url: loc?.kitchen_license_url,
+        kitchenTermsUrl: loc?.kitchenTermsUrl,
+        kitchen_terms_url: loc?.kitchen_terms_url,
+        dbCompletedSteps: dbCompletedSteps['location']
+      });
+      
       // Primary check: actual data has both URLs
       // Secondary check: dbCompletedSteps marked true (handles race condition during save)
       if ((hasLicense && hasTerms) || dbCompletedSteps['location']) {
@@ -377,7 +390,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
 
     return result;
-  }, [userData, locations.length, selectedLocationId, kitchens.length,
+  }, [userData, locations, selectedLocationId, kitchens.length,
     hasRequirements, hasAvailability, isStripeOnboardingComplete,
     dbCompletedSteps, existingStorageListings.length, existingEquipmentListings.length]);
 
@@ -452,12 +465,18 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   }, [isOpen]);
 
-  // [ENTERPRISE FIX] Reset auto-skip flag when wizard opens
-  // This ensures auto-skip runs fresh each time user enters the wizard
+  // [ENTERPRISE FIX] Reset auto-skip flag on mount and when wizard opens
+  // This ensures auto-skip runs fresh each time user enters the wizard (dialog or page)
+  useEffect(() => {
+    // Reset on mount (handles page-based flow at /manager/setup)
+    hasPerformedInitialAutoSkip.current = false;
+    console.log('[Onboarding] Component mounted - reset auto-skip flag');
+  }, []); // Empty deps = runs once on mount
+
   useEffect(() => {
     if (isOpen) {
       hasPerformedInitialAutoSkip.current = false;
-      console.log('[Onboarding] Wizard opened - reset auto-skip flag');
+      console.log('[Onboarding] Wizard dialog opened - reset auto-skip flag');
     }
   }, [isOpen]);
 
@@ -515,6 +534,33 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   }, [isLoadingLocations, hasExistingLocation, locations, selectedLocationId]);
 
+  // [ENTERPRISE FIX] Sync uploaded URLs from selectedLocation whenever location data changes
+  // This ensures the form state reflects persisted data when user returns to setup page
+  useEffect(() => {
+    if (!selectedLocation) return;
+    
+    const loc = selectedLocation as any;
+    const existingLicenseUrl = loc.kitchenLicenseUrl || loc.kitchen_license_url;
+    const existingTermsUrl = loc.kitchenTermsUrl || loc.kitchen_terms_url;
+    const existingLicenseExpiry = loc.kitchenLicenseExpiry || loc.kitchen_license_expiry;
+    
+    // Only update if we have URLs from the location and state is empty
+    if (existingLicenseUrl && !licenseUploadedUrl) {
+      setLicenseUploadedUrl(existingLicenseUrl);
+      licenseUploadedUrlRef.current = existingLicenseUrl;
+    }
+    if (existingTermsUrl && !termsUploadedUrl) {
+      setTermsUploadedUrl(existingTermsUrl);
+      termsUploadedUrlRef.current = existingTermsUrl;
+    }
+    if (existingLicenseExpiry && !licenseExpiryDate) {
+      const expiryDate = new Date(existingLicenseExpiry);
+      if (!isNaN(expiryDate.getTime())) {
+        setLicenseExpiryDate(expiryDate.toISOString().split('T')[0]);
+      }
+    }
+  }, [selectedLocation, licenseUploadedUrl, termsUploadedUrl, licenseExpiryDate]);
+
   // Manual navigation flag to prevent auto-skip when user explicitly navigates
   const isManualNavigation = useRef(false);
 
@@ -527,23 +573,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // Ref to track if we've already performed the initial auto-skip
   const hasPerformedInitialAutoSkip = useRef(false);
 
+  // [ENTERPRISE FIX] Auto-skip to first incomplete step - runs ONCE when data is ready
+  // We include completedSteps in deps but guard with hasPerformedInitialAutoSkip to run only once
   useEffect(() => {
     if (!engine || !hasExistingLocation || isLoadingLocations || isAddingLocation) return;
-
-    // Skip auto-advance if user manually navigated
-    if (isManualNavigation.current) {
-      console.log('[Onboarding] Skipping auto-advance due to manual navigation');
-      isManualNavigation.current = false;
-      return;
-    }
-
-    // [FIX] Wait for critical data to load before making any skip decisions
-    // If we have a location selected, we MUST wait for kitchens and requirements to load
-    if (selectedLocationId) {
-      if (!kitchensLoaded || !requirementsLoaded) {
-        return;
-      }
-    }
 
     // [FIX] Only perform auto-skip logic ONCE per session (on initial load)
     // This prevents jarring auto-navigation when a user completes a step actively
@@ -552,11 +585,51 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       return;
     }
 
+    // [FIX] Wait for location to be auto-selected before making any skip decisions
+    // hasExistingLocation is true but selectedLocationId might not be set yet
+    if (!selectedLocationId) {
+      console.log('[Onboarding] Waiting for location to be auto-selected...');
+      return;
+    }
+
+    // [FIX] Wait for critical data to load before making any skip decisions
+    if (!kitchensLoaded || !requirementsLoaded || !availabilityLoaded) {
+      console.log('[Onboarding] Waiting for kitchens/requirements/availability to load...', {
+        kitchensLoaded, requirementsLoaded, availabilityLoaded
+      });
+      return;
+    }
+
+    // Get current step ID from engine state
     const currentId = currentStep?.id;
     if (!currentId) return;
 
+    // [FIX] Wait for completedSteps to reflect the selected location data
+    // This prevents race condition where auto-skip runs before completedSteps memo updates
+    // Only wait if the location actually has the required data (license + terms)
+    if (!completedSteps['location']) {
+      const loc = locations.find(l => l.id === selectedLocationId) as any;
+      const hasLicense = loc?.kitchenLicenseUrl || loc?.kitchen_license_url;
+      const hasTerms = loc?.kitchenTermsUrl || loc?.kitchen_terms_url;
+      
+      // If location has both URLs but completedSteps hasn't updated yet, wait
+      if (hasLicense && hasTerms) {
+        console.log('[Onboarding] Waiting for completedSteps to reflect location data...');
+        return;
+      }
+    }
+
+    // Mark as performed IMMEDIATELY to prevent any re-runs
+    hasPerformedInitialAutoSkip.current = true;
+
+    // Use the LIVE completedSteps value (not ref) since we need the latest data
+    // The hasPerformedInitialAutoSkip guard ensures this only runs once
+    const currentCompletedSteps = completedSteps;
+
+    console.log(`[Onboarding] Auto-skip check - currentStep: ${currentId}, completedSteps:`, currentCompletedSteps);
+
     // Check if current step is already completed - if so, auto-navigate to first incomplete
-    const isCurrentStepComplete = completedSteps[String(currentId)];
+    const isCurrentStepComplete = currentCompletedSteps[String(currentId)];
 
     // Find first incomplete REQUIRED step in order
     // Required for bookings: location -> kitchen -> availability -> requirements -> payment
@@ -566,9 +639,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     if (isCurrentStepComplete) {
       for (const stepId of requiredStepOrder) {
         // If this step is incomplete, navigate to it
-        if (!completedSteps[stepId]) {
+        if (!currentCompletedSteps[stepId]) {
           console.log(`[Onboarding] Enterprise auto-skip: ${currentId} → ${stepId}`);
-          hasPerformedInitialAutoSkip.current = true;
           engine.goToStep(stepId);
           return;
         }
@@ -580,20 +652,16 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         const nextStep = steps[currentIndex + 1];
         if (nextStep && nextStep.id) {
           console.log(`[Onboarding] Advancing from completed required step to: ${nextStep.id}`);
-          hasPerformedInitialAutoSkip.current = true;
           engine.goToStep(nextStep.id);
           return;
         }
       }
     }
 
-    // Current step is NOT complete - user should stay here
-    // Mark as performed so we don't keep checking on every render
-    hasPerformedInitialAutoSkip.current = true;
     console.log(`[Onboarding] User on incomplete step: ${currentId}, staying here`);
 
-  }, [engine, hasExistingLocation, isLoadingLocations, isLoadingKitchens, isLoadingRequirements, selectedLocationId, isAddingLocation, currentStep?.id,
-    completedSteps, kitchensLoaded, requirementsLoaded]);
+  }, [engine, hasExistingLocation, isLoadingLocations, selectedLocationId, isAddingLocation,
+    kitchensLoaded, requirementsLoaded, availabilityLoaded, completedSteps, currentStep?.id, locations]);
 
   // Load kitchens when location selected
   useEffect(() => {
@@ -661,9 +729,11 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     const checkAvailability = async () => {
       if (!selectedKitchenId) {
         setHasAvailability(false);
+        setAvailabilityLoaded(false); // Reset when no kitchen selected
         return;
       }
       setIsLoadingAvailability(true);
+      setAvailabilityLoaded(false); // Reset before loading
       try {
         const token = await auth.currentUser?.getIdToken();
         if (!token) return;
@@ -682,6 +752,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         console.error("Failed to check availability", e);
       } finally {
         setIsLoadingAvailability(false);
+        setAvailabilityLoaded(true); // [FIX] Mark as loaded when check completes
       }
     };
     checkAvailability();
