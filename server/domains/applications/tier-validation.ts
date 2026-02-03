@@ -7,9 +7,28 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 
+/**
+ * Tier Validation Service
+ * 
+ * Enterprise-grade validation layer for chef application tier progression.
+ * Validates that applications meet all manager-configured requirements
+ * before advancing to the next tier.
+ * 
+ * Data Storage Architecture:
+ * - Tier 1 custom fields: stored in `application.customFieldsData`
+ * - Tier 2 custom fields: stored in `application.tier_data.tier2_custom_fields_data`
+ * - Tier file uploads: stored in `application.tier_data.tierFiles`
+ */
+
 export interface ValidationResult {
     valid: boolean;
     missingRequirements: string[];
+}
+
+export interface CustomFieldValue {
+    fieldId: string;
+    value: any;
+    isFile: boolean;
 }
 
 export class TierValidationService {
@@ -27,21 +46,19 @@ export class TierValidationService {
 
         // --- Tier 1 Requirements (Basic) ---
         if (targetTier >= 1) {
-            // Check Tier 1 Custom Fields
+            // Validate Tier 1 Custom Fields
             // @ts-ignore - jsonb typing
             const tier1Fields = (requirements.tier1_custom_fields as z.infer<typeof customFieldSchema>[]) || [];
-            this.validateCustomFields(application, tier1Fields, missing);
+            this.validateTier1CustomFields(application, tier1Fields, missing);
         }
 
         // --- Tier 2 Requirements (Kitchen Coordination) ---
         if (targetTier >= 2) {
             // 1. Food Establishment Certificate
             if (requirements.tier2_food_establishment_cert_required) {
-                // Must have the cert AND be approved
                 if (application.foodEstablishmentCertStatus !== 'approved') {
                     missing.push("Food Establishment Certificate must be approved");
                 }
-                // Check expiry if required
                 if (requirements.tier2_food_establishment_expiry_required && !application.foodEstablishmentCertExpiry) {
                     missing.push("Food Establishment Certificate expiry date is required");
                 }
@@ -49,48 +66,49 @@ export class TierValidationService {
 
             // 2. Insurance Document
             if (requirements.tier2_insurance_document_required) {
-                // Tier data stores insurance info usually? 
-                // schema.ts doesn't explicitly have insurance columns on application table.
-                // It's likely in `tier_data`.
-                const tierData = (application.tier_data as any) || {};
-
-                // We need to decide how insurance status is tracked. 
-                // If it's a file upload in tier_data, we need a status for it.
-                // Current system might just check existence of URL in `tierFiles` (from kitchen-applications.ts line 123)
-                // But "Enterprise" implies approval.
-                // If the system doesn't have an explicit approval field for insurance yet, 
-                // we should at least check existence.
-                // However, user said "options that will talk directly to this application flow".
-                // Let's assume for now we check existence of the document if required.
-
-                // In kitchen-applications.ts: tierFileUrls['tier2_insurance_document']
+                const tierData = this.getTierData(application);
                 const hasInsurance = tierData.tierFiles?.['tier2_insurance_document'] || tierData.insuranceUrl;
                 if (!hasInsurance) {
                     missing.push("Insurance Document is required");
                 }
-
-                // If we want to check "Approved" status, we'd look for `tierData.insuranceDetails.status === 'approved'`
-                // But without seeing that code, I'll stick to existence for now + maybe a generic "is verified" check if available.
             }
 
-            // 3. Boolean Requirements
+            // 3. Allergen Plan
             if (requirements.tier2_allergen_plan_required) {
-                // Check if chef has acknowledged or uploaded an allergen plan. 
-                // Usually stored in tier_data or just a confirmation?
-                // Let's check tier_data for these keys
-                const tierData = (application.tier_data as any) || {};
+                const tierData = this.getTierData(application);
                 if (!tierData.allergen_plan_confirmed && !tierData.tierFiles?.['tier2_allergen_plan']) {
                     missing.push("Allergen Plan is required");
                 }
             }
 
-            // ... (implement other boolean checks similarly if they map to specific fields)
-            // For brevity and robustness, let's look at Custom Fields which are the main "dynamic" part.
+            // 4. Supplier List
+            if (requirements.tier2_supplier_list_required) {
+                const tierData = this.getTierData(application);
+                if (!tierData.supplier_list_confirmed && !tierData.tierFiles?.['tier2_supplier_list']) {
+                    missing.push("Supplier List is required");
+                }
+            }
 
-            // 4. Tier 2 Custom Fields
-            // @ts-ignore
+            // 5. Quality Control Plan
+            if (requirements.tier2_quality_control_required) {
+                const tierData = this.getTierData(application);
+                if (!tierData.quality_control_confirmed && !tierData.tierFiles?.['tier2_quality_control']) {
+                    missing.push("Quality Control Plan is required");
+                }
+            }
+
+            // 6. Traceability System
+            if (requirements.tier2_traceability_system_required) {
+                const tierData = this.getTierData(application);
+                if (!tierData.traceability_confirmed && !tierData.tierFiles?.['tier2_traceability']) {
+                    missing.push("Traceability System documentation is required");
+                }
+            }
+
+            // 7. Tier 2 Custom Fields
+            // @ts-ignore - jsonb typing
             const tier2Fields = (requirements.tier2_custom_fields as z.infer<typeof customFieldSchema>[]) || [];
-            this.validateCustomFields(application, tier2Fields, missing);
+            this.validateTier2CustomFields(application, tier2Fields, missing);
         }
 
         return {
@@ -99,32 +117,80 @@ export class TierValidationService {
         };
     }
 
-    private validateCustomFields(
+    /**
+     * Extract tier_data from application with proper typing
+     */
+    private getTierData(application: typeof chefKitchenApplications.$inferSelect): Record<string, any> {
+        return (application.tier_data as Record<string, any>) || {};
+    }
+
+    /**
+     * Validate Tier 1 custom fields
+     * Tier 1 fields are stored in `application.customFieldsData`
+     */
+    private validateTier1CustomFields(
         application: typeof chefKitchenApplications.$inferSelect,
         fields: z.infer<typeof customFieldSchema>[],
         missing: string[]
-    ) {
+    ): void {
         if (!fields || fields.length === 0) return;
 
-        const tierData = (application.tier_data as any) || {};
-        const customData = tierData.custom_fields || {}; // Assuming structure
-
-        // Also check root customFieldsData if these are old-style custom fields?
-        // schema.ts has `tier2_custom_fields`. usage in `kitchen-applications.ts` implies `customFieldsData` (line 394).
-        // BUT tier 2 fields likely go into `tier_data`.
-        // Let's check both or prioritize `tier_data` for Tier 2.
+        // Tier 1 custom fields are stored in customFieldsData column
+        const customData = (application.customFieldsData as Record<string, any>) || {};
+        const tierData = this.getTierData(application);
 
         for (const field of fields) {
             if (field.required) {
                 const value = customData[field.id];
-                // Also check if it's a file upload
+                // File uploads might also be in tierFiles with field.id as key
                 const fileValue = tierData.tierFiles?.[field.id];
 
-                if ((value === undefined || value === null || value === '') && !fileValue) {
+                if (!this.hasValidValue(value) && !fileValue) {
                     missing.push(`Missing required field: ${field.label}`);
                 }
             }
         }
+    }
+
+    /**
+     * Validate Tier 2 custom fields
+     * Tier 2 fields are stored in `application.tier_data.tier2_custom_fields_data`
+     */
+    private validateTier2CustomFields(
+        application: typeof chefKitchenApplications.$inferSelect,
+        fields: z.infer<typeof customFieldSchema>[],
+        missing: string[]
+    ): void {
+        if (!fields || fields.length === 0) return;
+
+        const tierData = this.getTierData(application);
+        // Tier 2 custom fields are stored in tier_data.tier2_custom_fields_data
+        const tier2CustomData = tierData.tier2_custom_fields_data || {};
+
+        for (const field of fields) {
+            if (field.required) {
+                const value = tier2CustomData[field.id];
+                // File uploads are stored in tierFiles with field.id as key
+                const fileValue = tierData.tierFiles?.[field.id];
+
+                if (!this.hasValidValue(value) && !fileValue) {
+                    missing.push(`Missing required field: ${field.label}`);
+                }
+            }
+        }
+    }
+
+    /**
+     * Check if a value is considered "filled" for validation purposes
+     * Handles different field types: strings, numbers, booleans, arrays
+     */
+    private hasValidValue(value: any): boolean {
+        if (value === undefined || value === null) return false;
+        if (typeof value === 'string' && value.trim() === '') return false;
+        if (Array.isArray(value) && value.length === 0) return false;
+        // For booleans, we consider `false` as a valid value (user explicitly unchecked)
+        // But for required checkboxes, the form validation should handle requiring `true`
+        return true;
     }
 }
 

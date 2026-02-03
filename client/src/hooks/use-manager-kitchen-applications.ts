@@ -25,6 +25,10 @@ export interface KitchenApplicationForManager {
   foodEstablishmentCert: "yes" | "no" | "notSure";
   foodEstablishmentCertUrl?: string | null;
   foodEstablishmentCertStatus: "pending" | "approved" | "rejected";
+  foodEstablishmentCertExpiry?: string | null;
+  
+  // Expiry dates
+  foodSafetyLicenseExpiry?: string | null;
 
   // Status
   status: "inReview" | "approved" | "rejected" | "cancelled";

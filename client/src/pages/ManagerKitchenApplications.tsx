@@ -1,3 +1,27 @@
+/**
+ * Manager Kitchen Applications Page - Enterprise Edition
+ * 
+ * This file re-exports the V2 implementation with enhanced UI/UX:
+ * - TanStack Table with sorting, filtering, and column visibility
+ * - Sheet-based detail panel (replaces modal for better UX)
+ * - Step 1/Step 2 tabbed navigation in detail view
+ * - Real-time unread chat indicators
+ * - Enterprise-grade styling inspired by Notion
+ * 
+ * The V2 implementation is in ManagerKitchenApplicationsV2.tsx
+ */
+
+// Re-export the V2 implementation as the default
+export { default } from "./ManagerKitchenApplicationsV2";
+
+// Re-export the Content component for use in ManagerBookingDashboard
+export { ManagerKitchenApplicationsContent } from "./ManagerKitchenApplicationsV2";
+
+// =============================================================================
+// LEGACY CODE BELOW - Kept for reference during transition
+// This code is no longer used but preserved for rollback if needed
+// =============================================================================
+
 import { useManagerKitchenApplications } from "@/hooks/use-manager-kitchen-applications";
 import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -48,13 +72,13 @@ import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
 import { parseBusinessInfo } from "@/utils/parseBusinessInfo";
 
 /**
- * Manager Kitchen Applications Page
+ * @deprecated Legacy Manager Kitchen Applications Page - Use default export instead
  * 
  * This page shows chef applications to kitchens that the manager owns.
  * Chefs apply directly to kitchens via the KitchenApplicationForm.
  * Managers can approve/reject applications and view chef documents.
  */
-export default function ManagerKitchenApplications() {
+function ManagerKitchenApplicationsLegacy() {
   const [, setLocation] = useLocation();
   return (
     <ManagerPageLayout
@@ -63,7 +87,7 @@ export default function ManagerKitchenApplications() {
       showKitchenSelector={false} // Applications are currently location-based, so kitchen filter is not needed. [BUSINESS LOGIC]
     >
       {({ selectedLocationId, isLoading: isLayoutLoading }) => (
-        <ManagerKitchenApplicationsContent
+        <ManagerKitchenApplicationsContentLegacy
           selectedLocationId={selectedLocationId}
           isLayoutLoading={isLayoutLoading}
           setLocation={setLocation}
@@ -73,7 +97,7 @@ export default function ManagerKitchenApplications() {
   );
 }
 
-export function ManagerKitchenApplicationsContent({
+function ManagerKitchenApplicationsContentLegacy({
   selectedLocationId,
   isLayoutLoading,
   setLocation

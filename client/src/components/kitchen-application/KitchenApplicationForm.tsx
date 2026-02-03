@@ -495,16 +495,17 @@ export default function KitchenApplicationForm({
       return;
     }
 
-    // Validate expiry date only if required AND on Tier 1 (must be at least 6 months from now)
+    // Validate expiry date - certificate must not be expired (expiry date must be today or later)
+    // Note: Managers control whether to accept certificates expiring soon through their review process
     if (currentTier === 1 && requirements?.requireFoodHandlerExpiry !== false && data.foodHandlerCertExpiry) {
       const expiryDate = new Date(data.foodHandlerCertExpiry);
-      const sixMonthsFromNow = new Date();
-      sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 6);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Reset to start of day for fair comparison
 
-      if (expiryDate < sixMonthsFromNow) {
+      if (expiryDate < today) {
         toast({
-          title: "Certificate Expiring Soon",
-          description: "Your certificate must be valid for at least 6 months",
+          title: "Certificate Expired",
+          description: "Your certificate has expired. Please upload a valid certificate.",
           variant: "destructive",
         });
         return;

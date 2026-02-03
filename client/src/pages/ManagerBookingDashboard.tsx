@@ -173,6 +173,19 @@ export default function ManagerBookingDashboard() {
   // State for Create Location Sheet
   const [showCreateLocation, setShowCreateLocation] = useState(false);
 
+  // Handle locationId from URL for direct navigation to views like application-requirements
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const locationIdFromUrl = params.get('locationId');
+    if (locationIdFromUrl && !selectedLocation && locations.length > 0) {
+      const locationId = parseInt(locationIdFromUrl, 10);
+      const foundLocation = locations.find((l: Location) => l.id === locationId);
+      if (foundLocation) {
+        setSelectedLocation(foundLocation);
+      }
+    }
+  }, [locations, selectedLocation]);
+
 
   // Check onboarding status using Firebase auth
   const { user: firebaseUser } = useFirebaseAuth();
@@ -580,6 +593,7 @@ export default function ManagerBookingDashboard() {
           selectedLocationId={selectedLocation?.id ?? null}
           isLayoutLoading={isLoadingLocations}
           setLocation={setLocation}
+          onNavigateToView={(view: string) => setActiveView(view as ViewType)}
         />
       )}
 
