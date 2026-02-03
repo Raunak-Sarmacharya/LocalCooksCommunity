@@ -270,6 +270,18 @@ async function handleCheckoutSessionCompleted(
     let paymentIntentId: string | undefined;
     let chargeId: string | undefined;
 
+    // ENTERPRISE STANDARD: Extract Stripe Customer ID for off-session charging
+    // With customer_creation: 'always' and setup_future_usage: 'off_session',
+    // Stripe creates a Customer and saves the payment method for future charges
+    let stripeCustomerId: string | undefined;
+    let stripePaymentMethodId: string | undefined;
+
+    if (expandedSession.customer) {
+      stripeCustomerId = typeof expandedSession.customer === 'string' 
+        ? expandedSession.customer 
+        : expandedSession.customer.id;
+    }
+
     if (typeof paymentIntent === "object" && paymentIntent !== null) {
       paymentIntentId = paymentIntent.id;
       // Get charge ID from payment intent
@@ -279,9 +291,15 @@ async function handleCheckoutSessionCompleted(
             ? paymentIntent.latest_charge
             : paymentIntent.latest_charge.id;
       }
+      // Get payment method ID for off-session charging
+      if (paymentIntent.payment_method) {
+        stripePaymentMethodId = typeof paymentIntent.payment_method === 'string'
+          ? paymentIntent.payment_method
+          : paymentIntent.payment_method.id;
+      }
     } else if (typeof paymentIntent === "string") {
       paymentIntentId = paymentIntent;
-      // Fetch payment intent to get charge ID
+      // Fetch payment intent to get charge ID and payment method
       try {
         const pi = await stripe.paymentIntents.retrieve(paymentIntent);
         if (pi.latest_charge) {
@@ -290,9 +308,24 @@ async function handleCheckoutSessionCompleted(
               ? pi.latest_charge
               : pi.latest_charge.id;
         }
+        if (pi.payment_method) {
+          stripePaymentMethodId = typeof pi.payment_method === 'string'
+            ? pi.payment_method
+            : pi.payment_method.id;
+        }
       } catch (error) {
         logger.warn("Could not fetch payment intent details:", { error });
       }
+    }
+
+    // Log extracted Stripe IDs for debugging
+    if (stripeCustomerId || stripePaymentMethodId) {
+      logger.info(`[Webhook] Extracted Stripe IDs for off-session charging:`, {
+        sessionId: session.id,
+        stripeCustomerId,
+        stripePaymentMethodId,
+        paymentIntentId,
+      });
     }
 
     // Update transaction record
@@ -429,12 +462,16 @@ async function handleCheckoutSessionCompleted(
       logger.info(`[Webhook] Processing storage extension payment for session ${session.id}`, {
         paymentIntentId,
         chargeId,
+        stripeCustomerId,
+        stripePaymentMethodId,
       });
       await handleStorageExtensionPaymentCompleted(
         session.id,
         paymentIntentId,
         chargeId,
         metadata,
+        stripeCustomerId,
+        stripePaymentMethodId,
       );
     }
 
@@ -584,6 +621,24 @@ async function handleCheckoutSessionCompleted(
         
         logger.info(`[Webhook] Verified booking ${booking.id} exists in database`);
 
+        // ENTERPRISE STANDARD: Save Stripe Customer ID to users table for future off-session charging
+        // This allows reusing the same customer for overstay penalties, damage deposits, etc.
+        if (stripeCustomerId && chefId) {
+          try {
+            await db
+              .update(users)
+              .set({
+                stripeCustomerId: stripeCustomerId,
+                updatedAt: new Date(),
+              })
+              .where(eq(users.id, chefId));
+            logger.info(`[Webhook] Saved Stripe Customer ID to user ${chefId}: ${stripeCustomerId}`);
+          } catch (userUpdateError) {
+            // Non-critical - log but don't fail the booking
+            logger.warn(`[Webhook] Could not save Stripe Customer ID to user:`, userUpdateError as Error);
+          }
+        }
+
         // Create storage bookings if any were selected
         const storageItemsForJson: Array<{id: number, storageListingId: number, name: string, storageType: string, totalPrice: number, startDate: string, endDate: string}> = [];
         if (selectedStorage && selectedStorage.length > 0) {
@@ -626,10 +681,10 @@ async function handleCheckoutSessionCompleted(
                     pricingModel: storageListing.pricingModel || 'daily',
                     serviceFee: '0',
                     currency: 'CAD',
-                    // Store Stripe customer/payment info for potential penalty charging
-                    stripeCustomerId: session.customer ? String(session.customer) : null,
-                    stripePaymentMethodId: session.payment_intent ? 
-                      (typeof session.payment_intent === 'string' ? null : session.payment_intent.payment_method as string | null) : null,
+                    // ENTERPRISE STANDARD: Store Stripe customer/payment info for off-session penalty charging
+                    // These are extracted from the expanded session with setup_future_usage: 'off_session'
+                    stripeCustomerId: stripeCustomerId || null,
+                    stripePaymentMethodId: stripePaymentMethodId || null,
                   })
                   .returning();
 
@@ -1089,6 +1144,57 @@ async function handleCheckoutSessionCompleted(
   }
 }
 
+// Helper function to update storage booking with Stripe IDs for off-session charging
+async function updateStorageBookingStripeIds(
+  storageBookingId: number,
+  chefId: number,
+  stripeCustomerId: string | undefined,
+  stripePaymentMethodId: string | undefined,
+) {
+  console.log(`🔒 [OFF-SESSION] updateStorageBookingStripeIds called:`, {
+    storageBookingId,
+    chefId,
+    stripeCustomerId: stripeCustomerId || 'UNDEFINED',
+    stripePaymentMethodId: stripePaymentMethodId || 'UNDEFINED',
+  });
+  logger.info(`[Webhook] Updating storage booking ${storageBookingId} with Stripe IDs:`, {
+    stripeCustomerId: stripeCustomerId || 'undefined',
+    stripePaymentMethodId: stripePaymentMethodId || 'undefined',
+  });
+
+  if (stripeCustomerId || stripePaymentMethodId) {
+    try {
+      await db
+        .update(storageBookings)
+        .set({
+          stripeCustomerId: stripeCustomerId || null,
+          stripePaymentMethodId: stripePaymentMethodId || null,
+          updatedAt: new Date(),
+        })
+        .where(eq(storageBookings.id, storageBookingId));
+      logger.info(`[Webhook] Updated storage booking ${storageBookingId} with Stripe IDs for off-session charging`);
+    } catch (updateError) {
+      logger.warn(`[Webhook] Could not update storage booking with Stripe IDs:`, updateError as Error);
+    }
+  }
+
+  // Also save to users table
+  if (stripeCustomerId && !isNaN(chefId)) {
+    try {
+      await db
+        .update(users)
+        .set({
+          stripeCustomerId: stripeCustomerId,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, chefId));
+      logger.info(`[Webhook] Saved Stripe Customer ID to user ${chefId}: ${stripeCustomerId}`);
+    } catch (userUpdateError) {
+      logger.warn(`[Webhook] Could not save Stripe Customer ID to user:`, userUpdateError as Error);
+    }
+  }
+}
+
 // Handle storage extension payment completion
 // ENTERPRISE-GRADE: Create pending_storage_extensions and payment_transactions ONLY when payment succeeds
 // This eliminates orphan records from abandoned checkouts
@@ -1097,6 +1203,8 @@ async function handleStorageExtensionPaymentCompleted(
   paymentIntentId: string | undefined,
   chargeId: string | undefined,
   metadata: Record<string, string>,
+  stripeCustomerId: string | undefined,
+  stripePaymentMethodId: string | undefined,
 ) {
   try {
     const { bookingService } = await import(
@@ -1129,11 +1237,13 @@ async function handleStorageExtensionPaymentCompleted(
     );
 
     if (existingExtension) {
-      // Already processed - skip
+      // Already processed - but still update Stripe IDs if we have them
       if (existingExtension.status === "paid" || existingExtension.status === "completed" || existingExtension.status === "approved") {
         logger.info(
           `[Webhook] Storage extension already processed for session ${sessionId} (status: ${existingExtension.status})`,
         );
+        // Still update storage booking with Stripe IDs for off-session charging
+        await updateStorageBookingStripeIds(storageBookingId, chefId, stripeCustomerId, stripePaymentMethodId);
         return;
       }
       // Update existing record if it was somehow created with pending status
@@ -1142,6 +1252,8 @@ async function handleStorageExtensionPaymentCompleted(
         stripePaymentIntentId: paymentIntentId,
       });
       logger.info(`[Webhook] Updated existing storage extension ${existingExtension.id} to paid`);
+      // Still update storage booking with Stripe IDs for off-session charging
+      await updateStorageBookingStripeIds(storageBookingId, chefId, stripeCustomerId, stripePaymentMethodId);
       return;
     }
 
@@ -1159,6 +1271,9 @@ async function handleStorageExtensionPaymentCompleted(
     });
 
     logger.info(`[Webhook] Created pending_storage_extensions ${pendingExtension.id} for storage booking ${storageBookingId}`);
+
+    // Update storage booking with Stripe IDs for off-session charging
+    await updateStorageBookingStripeIds(storageBookingId, chefId, stripeCustomerId, stripePaymentMethodId);
 
     // Create payment_transactions record with full Stripe data
     try {

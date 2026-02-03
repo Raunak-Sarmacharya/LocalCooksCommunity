@@ -12636,13 +12636,30 @@ async function chargeApprovedPenalty(overstayRecordId) {
     );
     return { success: false, error: "No saved payment method available for off-session charging" };
   }
+  let managerStripeAccountId = null;
+  let managerId = null;
+  const [storageBooking] = await db.select({ storageListingId: storageBookings.storageListingId }).from(storageBookings).where(eq17(storageBookings.id, record.storageBookingId)).limit(1);
+  if (storageBooking) {
+    const [listing] = await db.select({ kitchenId: storageListings.kitchenId }).from(storageListings).where(eq17(storageListings.id, storageBooking.storageListingId)).limit(1);
+    if (listing?.kitchenId) {
+      const [kitchen] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq17(kitchens.id, listing.kitchenId)).limit(1);
+      if (kitchen?.locationId) {
+        const [location] = await db.select({ managerId: locations.managerId }).from(locations).where(eq17(locations.id, kitchen.locationId)).limit(1);
+        if (location?.managerId) {
+          managerId = location.managerId;
+          const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq17(users.id, location.managerId)).limit(1);
+          managerStripeAccountId = manager?.stripeConnectAccountId || null;
+        }
+      }
+    }
+  }
   await db.update(storageOverstayRecords).set({
     status: "charge_pending",
     chargeAttemptedAt: /* @__PURE__ */ new Date(),
     updatedAt: /* @__PURE__ */ new Date()
   }).where(eq17(storageOverstayRecords.id, overstayRecordId));
   try {
-    const paymentIntent = await stripe2.paymentIntents.create({
+    const paymentIntentParams = {
       amount: record.finalPenaltyCents,
       currency: "cad",
       customer: customerId,
@@ -12653,10 +12670,18 @@ async function chargeApprovedPenalty(overstayRecordId) {
         type: "overstay_penalty",
         overstay_record_id: overstayRecordId.toString(),
         storage_booking_id: record.storageBookingId.toString(),
-        days_overdue: record.daysOverdue.toString()
+        days_overdue: record.daysOverdue.toString(),
+        manager_id: managerId?.toString() || ""
       },
       statement_descriptor_suffix: "OVERSTAY FEE"
-    });
+    };
+    if (managerStripeAccountId) {
+      paymentIntentParams.transfer_data = {
+        destination: managerStripeAccountId
+      };
+      logger.info(`[OverstayService] Using destination charge to manager account: ${managerStripeAccountId}`);
+    }
+    const paymentIntent = await stripe2.paymentIntents.create(paymentIntentParams);
     if (paymentIntent.status === "succeeded") {
       const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge?.id;
       await db.update(storageOverstayRecords).set({
@@ -12680,23 +12705,12 @@ async function chargeApprovedPenalty(overstayRecordId) {
       try {
         const { createPaymentTransaction: createPaymentTransaction2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
         const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-        let managerId = null;
-        const [storageBooking] = await db.select({ storageListingId: storageBookings.storageListingId, chefId: storageBookings.chefId }).from(storageBookings).where(eq17(storageBookings.id, record.storageBookingId)).limit(1);
-        if (storageBooking) {
-          const [listing] = await db.select({ kitchenId: storageListings.kitchenId }).from(storageListings).where(eq17(storageListings.id, storageBooking.storageListingId)).limit(1);
-          if (listing?.kitchenId) {
-            const [kitchen] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq17(kitchens.id, listing.kitchenId)).limit(1);
-            if (kitchen?.locationId) {
-              const [location] = await db.select({ managerId: locations.managerId }).from(locations).where(eq17(locations.id, kitchen.locationId)).limit(1);
-              managerId = location?.managerId || null;
-            }
-          }
-        }
         const ptRecord = await createPaymentTransaction2({
           bookingId: record.storageBookingId,
           bookingType: "storage",
-          chefId: storageBooking?.chefId || null,
+          chefId: booking.chefId || null,
           managerId,
+          // Already fetched above for destination charge
           amount: record.finalPenaltyCents,
           baseAmount: record.finalPenaltyCents,
           serviceFee: 0,
@@ -12717,14 +12731,7 @@ async function chargeApprovedPenalty(overstayRecordId) {
           }
         }, db);
         if (ptRecord) {
-          let managerConnectAccountId;
-          if (managerId) {
-            const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq17(users.id, managerId)).limit(1);
-            if (manager?.stripeConnectAccountId) {
-              managerConnectAccountId = manager.stripeConnectAccountId;
-            }
-          }
-          const stripeAmounts = await getStripePaymentAmounts2(paymentIntent.id, managerConnectAccountId);
+          const stripeAmounts = await getStripePaymentAmounts2(paymentIntent.id, managerStripeAccountId || void 0);
           if (stripeAmounts) {
             await updatePaymentTransaction2(ptRecord.id, {
               paidAt: /* @__PURE__ */ new Date(),
@@ -19717,15 +19724,20 @@ var init_manager = __esm({
         if (!result.success) {
           return res.status(400).json({ error: result.error });
         }
-        const { autoCharge } = req.body;
+        const { skipAutoCharge } = req.body;
         let chargeResult = null;
-        if (autoCharge) {
+        if (!skipAutoCharge) {
+          logger.info(`[Manager] Auto-charging overstay penalty ${overstayId} after manager approval`);
           chargeResult = await overstayPenaltyService.chargeApprovedPenalty(overstayId);
+          if (!chargeResult.success) {
+            logger.warn(`[Manager] Auto-charge failed for overstay ${overstayId}: ${chargeResult.error}`);
+          }
         }
         res.json({
           success: true,
-          message: "Penalty approved successfully",
-          chargeResult
+          message: chargeResult?.success ? "Penalty approved and charged successfully" : skipAutoCharge ? "Penalty approved (auto-charge skipped)" : `Penalty approved but charge failed: ${chargeResult?.error || "Unknown error"}`,
+          chargeResult,
+          autoCharged: !skipAutoCharge
         });
       } catch (error) {
         logger.error("Error approving penalty:", error);
@@ -20933,11 +20945,18 @@ async function createPendingCheckoutSession(params) {
     const session = await stripe4.checkout.sessions.create({
       mode: "payment",
       customer_email: customerEmail,
+      // ENTERPRISE STANDARD: Always create a Stripe Customer for off-session charging
+      // This enables future charges for overstay penalties, damage deposits, etc.
+      customer_creation: "always",
       line_items: lineItems,
       payment_intent_data: {
         ...paymentIntentData,
         // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
-        receipt_email: customerEmail
+        receipt_email: customerEmail,
+        // ENTERPRISE STANDARD: Save payment method for off-session charging
+        // Enables automatic charging for overstay penalties and damage deposits
+        // The payment method is saved to the platform's Stripe Customer (not connected account)
+        setup_future_usage: "off_session"
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
@@ -21036,11 +21055,17 @@ async function createCheckoutSession(params) {
     const session = await stripe4.checkout.sessions.create({
       mode: "payment",
       customer_email: customerEmail,
+      // ENTERPRISE STANDARD: Always create a Stripe Customer for off-session charging
+      // This enables future charges for overstay penalties, damage deposits, etc.
+      customer_creation: "always",
       line_items: lineItems,
       payment_intent_data: {
         ...paymentIntentData,
         // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
-        receipt_email: customerEmail
+        receipt_email: customerEmail,
+        // ENTERPRISE STANDARD: Save payment method for off-session charging
+        // Enables automatic charging for overstay penalties and damage deposits
+        setup_future_usage: "off_session"
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
@@ -24999,10 +25024,18 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
     const paymentIntent = expandedSession.payment_intent;
     let paymentIntentId;
     let chargeId;
+    let stripeCustomerId;
+    let stripePaymentMethodId;
+    if (expandedSession.customer) {
+      stripeCustomerId = typeof expandedSession.customer === "string" ? expandedSession.customer : expandedSession.customer.id;
+    }
     if (typeof paymentIntent === "object" && paymentIntent !== null) {
       paymentIntentId = paymentIntent.id;
       if (paymentIntent.latest_charge) {
         chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
+      }
+      if (paymentIntent.payment_method) {
+        stripePaymentMethodId = typeof paymentIntent.payment_method === "string" ? paymentIntent.payment_method : paymentIntent.payment_method.id;
       }
     } else if (typeof paymentIntent === "string") {
       paymentIntentId = paymentIntent;
@@ -25011,9 +25044,20 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
         if (pi.latest_charge) {
           chargeId = typeof pi.latest_charge === "string" ? pi.latest_charge : pi.latest_charge.id;
         }
+        if (pi.payment_method) {
+          stripePaymentMethodId = typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method.id;
+        }
       } catch (error) {
         logger.warn("Could not fetch payment intent details:", { error });
       }
+    }
+    if (stripeCustomerId || stripePaymentMethodId) {
+      logger.info(`[Webhook] Extracted Stripe IDs for off-session charging:`, {
+        sessionId: session.id,
+        stripeCustomerId,
+        stripePaymentMethodId,
+        paymentIntentId
+      });
     }
     const updateParams = {
       status: "completed",
@@ -25117,13 +25161,17 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
     if (metadata.type === "storage_extension") {
       logger.info(`[Webhook] Processing storage extension payment for session ${session.id}`, {
         paymentIntentId,
-        chargeId
+        chargeId,
+        stripeCustomerId,
+        stripePaymentMethodId
       });
       await handleStorageExtensionPaymentCompleted(
         session.id,
         paymentIntentId,
         chargeId,
-        metadata
+        metadata,
+        stripeCustomerId,
+        stripePaymentMethodId
       );
     }
     if (metadata.type === "overstay_penalty") {
@@ -25234,6 +25282,17 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
           throw new Error(`Booking ${booking.id} was not persisted to database`);
         }
         logger.info(`[Webhook] Verified booking ${booking.id} exists in database`);
+        if (stripeCustomerId && chefId) {
+          try {
+            await db.update(users).set({
+              stripeCustomerId,
+              updatedAt: /* @__PURE__ */ new Date()
+            }).where(eq30(users.id, chefId));
+            logger.info(`[Webhook] Saved Stripe Customer ID to user ${chefId}: ${stripeCustomerId}`);
+          } catch (userUpdateError) {
+            logger.warn(`[Webhook] Could not save Stripe Customer ID to user:`, userUpdateError);
+          }
+        }
         const storageItemsForJson = [];
         if (selectedStorage && selectedStorage.length > 0) {
           try {
@@ -25265,9 +25324,10 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
                   pricingModel: storageListing.pricingModel || "daily",
                   serviceFee: "0",
                   currency: "CAD",
-                  // Store Stripe customer/payment info for potential penalty charging
-                  stripeCustomerId: session.customer ? String(session.customer) : null,
-                  stripePaymentMethodId: session.payment_intent ? typeof session.payment_intent === "string" ? null : session.payment_intent.payment_method : null
+                  // ENTERPRISE STANDARD: Store Stripe customer/payment info for off-session penalty charging
+                  // These are extracted from the expanded session with setup_future_usage: 'off_session'
+                  stripeCustomerId: stripeCustomerId || null,
+                  stripePaymentMethodId: stripePaymentMethodId || null
                 }).returning();
                 if (storageBooking) {
                   storageItemsForJson.push({
@@ -25597,7 +25657,42 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
     logger.error(`[Webhook] Error handling checkout.session.completed:`, error);
   }
 }
-async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId, chargeId, metadata) {
+async function updateStorageBookingStripeIds(storageBookingId, chefId, stripeCustomerId, stripePaymentMethodId) {
+  console.log(`\u{1F512} [OFF-SESSION] updateStorageBookingStripeIds called:`, {
+    storageBookingId,
+    chefId,
+    stripeCustomerId: stripeCustomerId || "UNDEFINED",
+    stripePaymentMethodId: stripePaymentMethodId || "UNDEFINED"
+  });
+  logger.info(`[Webhook] Updating storage booking ${storageBookingId} with Stripe IDs:`, {
+    stripeCustomerId: stripeCustomerId || "undefined",
+    stripePaymentMethodId: stripePaymentMethodId || "undefined"
+  });
+  if (stripeCustomerId || stripePaymentMethodId) {
+    try {
+      await db.update(storageBookings).set({
+        stripeCustomerId: stripeCustomerId || null,
+        stripePaymentMethodId: stripePaymentMethodId || null,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq30(storageBookings.id, storageBookingId));
+      logger.info(`[Webhook] Updated storage booking ${storageBookingId} with Stripe IDs for off-session charging`);
+    } catch (updateError) {
+      logger.warn(`[Webhook] Could not update storage booking with Stripe IDs:`, updateError);
+    }
+  }
+  if (stripeCustomerId && !isNaN(chefId)) {
+    try {
+      await db.update(users).set({
+        stripeCustomerId,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq30(users.id, chefId));
+      logger.info(`[Webhook] Saved Stripe Customer ID to user ${chefId}: ${stripeCustomerId}`);
+    } catch (userUpdateError) {
+      logger.warn(`[Webhook] Could not save Stripe Customer ID to user:`, userUpdateError);
+    }
+  }
+}
+async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId, chargeId, metadata, stripeCustomerId, stripePaymentMethodId) {
   try {
     const { bookingService: bookingService2 } = await Promise.resolve().then(() => (init_booking_service(), booking_service_exports));
     const storageBookingId = parseInt(metadata.storage_booking_id);
@@ -25622,6 +25717,7 @@ async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId
         logger.info(
           `[Webhook] Storage extension already processed for session ${sessionId} (status: ${existingExtension.status})`
         );
+        await updateStorageBookingStripeIds(storageBookingId, chefId, stripeCustomerId, stripePaymentMethodId);
         return;
       }
       await bookingService2.updatePendingStorageExtension(existingExtension.id, {
@@ -25629,6 +25725,7 @@ async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId
         stripePaymentIntentId: paymentIntentId
       });
       logger.info(`[Webhook] Updated existing storage extension ${existingExtension.id} to paid`);
+      await updateStorageBookingStripeIds(storageBookingId, chefId, stripeCustomerId, stripePaymentMethodId);
       return;
     }
     const pendingExtension = await bookingService2.createPendingStorageExtension({
@@ -25644,6 +25741,7 @@ async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId
       // Payment already confirmed
     });
     logger.info(`[Webhook] Created pending_storage_extensions ${pendingExtension.id} for storage booking ${storageBookingId}`);
+    await updateStorageBookingStripeIds(storageBookingId, chefId, stripeCustomerId, stripePaymentMethodId);
     try {
       const { createPaymentTransaction: createPaymentTransaction2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
       const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));

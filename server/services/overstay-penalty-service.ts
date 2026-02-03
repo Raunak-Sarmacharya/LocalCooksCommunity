@@ -585,6 +585,51 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
     return { success: false, error: 'No saved payment method available for off-session charging' };
   }
 
+  // ENTERPRISE STANDARD: Get manager's Stripe Connect account for destination charges
+  // Overstay penalties should be transferred to the manager (same as booking payments)
+  let managerStripeAccountId: string | null = null;
+  let managerId: number | null = null;
+
+  const [storageBooking] = await db
+    .select({ storageListingId: storageBookings.storageListingId })
+    .from(storageBookings)
+    .where(eq(storageBookings.id, record.storageBookingId))
+    .limit(1);
+
+  if (storageBooking) {
+    const [listing] = await db
+      .select({ kitchenId: storageListings.kitchenId })
+      .from(storageListings)
+      .where(eq(storageListings.id, storageBooking.storageListingId))
+      .limit(1);
+
+    if (listing?.kitchenId) {
+      const [kitchen] = await db
+        .select({ locationId: kitchens.locationId })
+        .from(kitchens)
+        .where(eq(kitchens.id, listing.kitchenId))
+        .limit(1);
+
+      if (kitchen?.locationId) {
+        const [location] = await db
+          .select({ managerId: locations.managerId })
+          .from(locations)
+          .where(eq(locations.id, kitchen.locationId))
+          .limit(1);
+        
+        if (location?.managerId) {
+          managerId = location.managerId;
+          const [manager] = await db
+            .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+            .from(users)
+            .where(eq(users.id, location.managerId))
+            .limit(1);
+          managerStripeAccountId = manager?.stripeConnectAccountId || null;
+        }
+      }
+    }
+  }
+
   // Update status to charge_pending
   await db
     .update(storageOverstayRecords)
@@ -596,8 +641,19 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
     .where(eq(storageOverstayRecords.id, overstayRecordId));
 
   try {
-    // Create off-session PaymentIntent
-    const paymentIntent = await stripe.paymentIntents.create({
+    // ENTERPRISE STANDARD: Create off-session PaymentIntent with destination charge
+    // This automatically transfers funds to the manager's Stripe Connect account
+    const paymentIntentParams: {
+      amount: number;
+      currency: string;
+      customer: string;
+      payment_method: string;
+      off_session: boolean;
+      confirm: boolean;
+      metadata: Record<string, string>;
+      statement_descriptor_suffix: string;
+      transfer_data?: { destination: string };
+    } = {
       amount: record.finalPenaltyCents,
       currency: 'cad',
       customer: customerId,
@@ -609,9 +665,21 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
         overstay_record_id: overstayRecordId.toString(),
         storage_booking_id: record.storageBookingId.toString(),
         days_overdue: record.daysOverdue.toString(),
+        manager_id: managerId?.toString() || '',
       },
       statement_descriptor_suffix: 'OVERSTAY FEE',
-    });
+    };
+
+    // Add destination charge if manager has Stripe Connect
+    // Full amount goes to manager (no platform fee on penalties)
+    if (managerStripeAccountId) {
+      paymentIntentParams.transfer_data = {
+        destination: managerStripeAccountId,
+      };
+      logger.info(`[OverstayService] Using destination charge to manager account: ${managerStripeAccountId}`);
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
 
     if (paymentIntent.status === 'succeeded') {
       // Get charge ID
@@ -648,44 +716,11 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
         const { createPaymentTransaction, updatePaymentTransaction } = await import("./payment-transactions-service");
         const { getStripePaymentAmounts } = await import("./stripe-service");
 
-        // Get manager ID through the booking chain
-        let managerId: number | null = null;
-        const [storageBooking] = await db
-          .select({ storageListingId: storageBookings.storageListingId, chefId: storageBookings.chefId })
-          .from(storageBookings)
-          .where(eq(storageBookings.id, record.storageBookingId))
-          .limit(1);
-
-        if (storageBooking) {
-          const [listing] = await db
-            .select({ kitchenId: storageListings.kitchenId })
-            .from(storageListings)
-            .where(eq(storageListings.id, storageBooking.storageListingId))
-            .limit(1);
-
-          if (listing?.kitchenId) {
-            const [kitchen] = await db
-              .select({ locationId: kitchens.locationId })
-              .from(kitchens)
-              .where(eq(kitchens.id, listing.kitchenId))
-              .limit(1);
-
-            if (kitchen?.locationId) {
-              const [location] = await db
-                .select({ managerId: locations.managerId })
-                .from(locations)
-                .where(eq(locations.id, kitchen.locationId))
-                .limit(1);
-              managerId = location?.managerId || null;
-            }
-          }
-        }
-
         const ptRecord = await createPaymentTransaction({
           bookingId: record.storageBookingId,
           bookingType: "storage",
-          chefId: storageBooking?.chefId || null,
-          managerId,
+          chefId: booking.chefId || null,
+          managerId,  // Already fetched above for destination charge
           amount: record.finalPenaltyCents,
           baseAmount: record.finalPenaltyCents,
           serviceFee: 0, // No service fee on penalties
@@ -705,20 +740,8 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
 
         // Fetch and sync actual Stripe fees
         if (ptRecord) {
-          // Get manager's Stripe Connect account for fee lookup
-          let managerConnectAccountId: string | undefined;
-          if (managerId) {
-            const [manager] = await db
-              .select({ stripeConnectAccountId: users.stripeConnectAccountId })
-              .from(users)
-              .where(eq(users.id, managerId))
-              .limit(1);
-            if (manager?.stripeConnectAccountId) {
-              managerConnectAccountId = manager.stripeConnectAccountId;
-            }
-          }
-
-          const stripeAmounts = await getStripePaymentAmounts(paymentIntent.id, managerConnectAccountId);
+          // Use managerStripeAccountId already fetched above for destination charge
+          const stripeAmounts = await getStripePaymentAmounts(paymentIntent.id, managerStripeAccountId || undefined);
           if (stripeAmounts) {
             await updatePaymentTransaction(ptRecord.id, {
               paidAt: new Date(),

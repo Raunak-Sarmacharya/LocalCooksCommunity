@@ -183,11 +183,18 @@ export async function createPendingCheckoutSession(
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: customerEmail,
+      // ENTERPRISE STANDARD: Always create a Stripe Customer for off-session charging
+      // This enables future charges for overstay penalties, damage deposits, etc.
+      customer_creation: 'always',
       line_items: lineItems,
       payment_intent_data: {
         ...paymentIntentData,
         // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
         receipt_email: customerEmail,
+        // ENTERPRISE STANDARD: Save payment method for off-session charging
+        // Enables automatic charging for overstay penalties and damage deposits
+        // The payment method is saved to the platform's Stripe Customer (not connected account)
+        setup_future_usage: 'off_session',
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
@@ -333,11 +340,17 @@ export async function createCheckoutSession(
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: customerEmail,
+      // ENTERPRISE STANDARD: Always create a Stripe Customer for off-session charging
+      // This enables future charges for overstay penalties, damage deposits, etc.
+      customer_creation: 'always',
       line_items: lineItems,
       payment_intent_data: {
         ...paymentIntentData,
         // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
         receipt_email: customerEmail,
+        // ENTERPRISE STANDARD: Save payment method for off-session charging
+        // Enables automatic charging for overstay penalties and damage deposits
+        setup_future_usage: 'off_session',
       },
       success_url: successUrl,
       cancel_url: cancelUrl,

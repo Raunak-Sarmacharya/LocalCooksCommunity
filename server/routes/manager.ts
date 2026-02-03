@@ -3867,17 +3867,33 @@ router.post("/overstays/:id/approve", requireFirebaseAuthWithUser, requireManage
             return res.status(400).json({ error: result.error });
         }
 
-        // Optionally auto-charge if requested
-        const { autoCharge } = req.body;
+        // ENTERPRISE STANDARD: Auto-charge the saved payment method when manager approves
+        // This follows the Turo model - customer's card is charged automatically without their intervention
+        // The payment method was saved during booking checkout with setup_future_usage: 'off_session'
+        // Manager can opt-out by setting skipAutoCharge: true (e.g., for manual resolution)
+        const { skipAutoCharge } = req.body;
         let chargeResult = null;
-        if (autoCharge) {
+        
+        if (!skipAutoCharge) {
+            logger.info(`[Manager] Auto-charging overstay penalty ${overstayId} after manager approval`);
             chargeResult = await overstayPenaltyService.chargeApprovedPenalty(overstayId);
+            
+            if (!chargeResult.success) {
+                // Charge failed - log but don't fail the approval
+                // The penalty is still approved, but payment needs manual resolution
+                logger.warn(`[Manager] Auto-charge failed for overstay ${overstayId}: ${chargeResult.error}`);
+            }
         }
 
         res.json({
             success: true,
-            message: "Penalty approved successfully",
+            message: chargeResult?.success 
+                ? "Penalty approved and charged successfully" 
+                : skipAutoCharge 
+                    ? "Penalty approved (auto-charge skipped)"
+                    : `Penalty approved but charge failed: ${chargeResult?.error || 'Unknown error'}`,
             chargeResult,
+            autoCharged: !skipAutoCharge,
         });
     } catch (error) {
         logger.error("Error approving penalty:", error);
