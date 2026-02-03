@@ -1,4 +1,3 @@
-// @ts-ignore - pdfkit doesn't have type definitions
 import PDFDocument from 'pdfkit';
 import { db } from "../db";
 import { paymentTransactions } from "@shared/schema";
@@ -349,12 +348,14 @@ export async function generateInvoicePDF(
       doc.fontSize(10).font('Helvetica').text('support@localcook.shop', 50, leftY);
       leftY += 30;
 
-      // Bill To section
+      // Bill To section - use fullName from chef_kitchen_applications
       doc.fontSize(12).font('Helvetica-Bold').text('Bill To:', 50, leftY);
       leftY += 18;
       doc.fontSize(10).font('Helvetica');
       if (chef) {
-        doc.text(chef.username || chef.email || 'Chef', 50, leftY);
+        // full_name comes from chef_kitchen_applications table join
+        const chefName = chef.full_name || chef.fullName || chef.username || 'Chef';
+        doc.text(chefName, 50, leftY);
         leftY += 15;
         if (chef.email) {
           doc.text(chef.email, 50, leftY);
@@ -426,41 +427,59 @@ export async function generateInvoicePDF(
       doc.text(`Time: ${timeDisplay}`, 50, leftY);
       leftY += 30;
 
-      // Items table
+      // Items table - define column positions and widths for proper table layout
       const tableTop = leftY;
+      const tableLeft = 50;
+      const tableWidth = 500;
+      const rowHeight = 25;
+      const col1Width = 280; // Description
+      const col2Width = 50;  // Qty
+      const col3Width = 70;  // Rate
+      const col4Width = 100; // Amount
+      const col1X = tableLeft;
+      const col2X = tableLeft + col1Width;
+      const col3X = col2X + col2Width;
+      const col4X = col3X + col3Width;
 
-      // Table header with background
-      doc.rect(50, tableTop, 500, 25).fill('#f3f4f6');
-      doc.fontSize(10).font('Helvetica-Bold');
-      doc.fillColor('#000000');
-      doc.text('Description', 60, tableTop + 8, { width: 250 });
-      doc.text('Qty', 320, tableTop + 8, { width: 50 });
-      doc.text('Rate', 380, tableTop + 8, { width: 110, align: 'right' });
-      doc.text('Amount', 500, tableTop + 8, { width: 50, align: 'right' });
+      // Table Header with borders and column separators
+      doc.rect(tableLeft, tableTop, tableWidth, rowHeight).fill('#f3f4f6');
+      doc.rect(tableLeft, tableTop, tableWidth, rowHeight).stroke('#d1d5db');
+      // Vertical column separators for header
+      doc.moveTo(col2X, tableTop).lineTo(col2X, tableTop + rowHeight).stroke('#d1d5db');
+      doc.moveTo(col3X, tableTop).lineTo(col3X, tableTop + rowHeight).stroke('#d1d5db');
+      doc.moveTo(col4X, tableTop).lineTo(col4X, tableTop + rowHeight).stroke('#d1d5db');
+      
+      doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold');
+      doc.text('Description', col1X + 5, tableTop + 8, { width: col1Width - 10 });
+      doc.text('Qty', col2X + 5, tableTop + 8, { width: col2Width - 10, align: 'center' });
+      doc.text('Rate', col3X + 5, tableTop + 8, { width: col3Width - 10, align: 'center' });
+      doc.text('Amount', col4X + 5, tableTop + 8, { width: col4Width - 10, align: 'right' });
 
-      // Draw header border
-      doc.moveTo(50, tableTop + 25).lineTo(550, tableTop + 25).stroke();
+      let currentY = tableTop + rowHeight;
 
-      let currentY = tableTop + 35;
-
-      // Items rows
+      // Items rows with borders and column separators
       items.forEach((item, index) => {
+        // Draw row border
+        doc.rect(tableLeft, currentY, tableWidth, rowHeight).stroke('#d1d5db');
+        // Vertical column separators
+        doc.moveTo(col2X, currentY).lineTo(col2X, currentY + rowHeight).stroke('#d1d5db');
+        doc.moveTo(col3X, currentY).lineTo(col3X, currentY + rowHeight).stroke('#d1d5db');
+        doc.moveTo(col4X, currentY).lineTo(col4X, currentY + rowHeight).stroke('#d1d5db');
+        
         // Alternate row background
         if (index % 2 === 0) {
-          doc.rect(50, currentY - 5, 500, 20).fill('#fafafa');
+          doc.rect(tableLeft + 1, currentY + 1, tableWidth - 2, rowHeight - 2).fill('#fafafa');
         }
 
-        doc.fontSize(10).font('Helvetica').fillColor('#000000');
-        doc.text(item.description, 60, currentY, { width: 250 });
-        doc.text(item.quantity.toString(), 320, currentY);
-        doc.text(`$${item.rate.toFixed(2)}`, 380, currentY, { align: 'right', width: 110 });
-        doc.text(`$${item.amount.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
-        currentY += 20;
+        doc.fontSize(9).font('Helvetica').fillColor('#000000');
+        doc.text(item.description, col1X + 5, currentY + 8, { width: col1Width - 10 });
+        doc.text(item.quantity.toString(), col2X + 5, currentY + 8, { width: col2Width - 10, align: 'center' });
+        doc.text(`$${item.rate.toFixed(2)}`, col3X + 5, currentY + 8, { width: col3Width - 10, align: 'center' });
+        doc.text(`$${item.amount.toFixed(2)}`, col4X + 5, currentY + 8, { width: col4Width - 10, align: 'right' });
+        currentY += rowHeight;
       });
 
       // Totals section
-      currentY += 10;
-      doc.moveTo(50, currentY).lineTo(550, currentY).stroke();
       currentY += 15;
 
       // Totals
@@ -590,8 +609,206 @@ export async function generateInvoicePDF(
       const footerY = pageHeight - 80;
 
       doc.moveTo(50, footerY).lineTo(550, footerY).stroke('#e5e7eb');
-      doc.fontSize(9).fillColor('#6b7280').text('Thank you for your business!', 50, footerY + 15, { align: 'center', width: 500 });
-      doc.text('For questions, contact support@localcook.shop', 50, footerY + 30, { align: 'center', width: 500 });
+      doc.fontSize(9).fillColor('#6b7280').text('For questions, contact support@localcook.shop', 50, footerY + 15, { align: 'center', width: 500 });
+      doc.fillColor('#000000');
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+/**
+ * Generate invoice PDF for standalone storage extension transactions
+ * This is used when storage extensions are paid separately from kitchen bookings
+ */
+export async function generateStorageInvoicePDF(
+  transaction: any,
+  storageBooking: any,
+  chef: any,
+  extensionDetails: any,
+  options?: { viewer?: 'chef' | 'manager' }
+): Promise<Buffer> {
+  const invoiceViewer = options?.viewer ?? 'chef';
+
+  return new Promise((resolve, reject) => {
+    try {
+      const chunks: Buffer[] = [];
+      const doc = new PDFDocument({ margin: 50 });
+
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+
+      // Parse amounts - support both camelCase and snake_case for backwards compatibility
+      const totalAmount = parseInt(String(transaction.amount || '0')) || 0;
+      const baseAmount = parseInt(String(transaction.baseAmount || transaction.base_amount || '0')) || 0;
+      const taxAmount = totalAmount - baseAmount;
+      const taxRatePercent = storageBooking.taxRatePercent || 0;
+
+      // Determine if this is an extension with proper details
+      const isExtension = !!extensionDetails;
+      const extensionDays = extensionDetails?.extension_days || 0;
+      const extensionBasePrice = extensionDetails?.extension_base_price_cents || 0;
+      const extensionTotalPrice = extensionDetails?.extension_total_price_cents || 0;
+      const dailyRateCents = extensionDetails?.daily_rate_cents || 0;
+      
+      // Use extension values if available, otherwise fall back to transaction values
+      const displayBaseAmount = extensionBasePrice || baseAmount;
+      const displayTotalAmount = extensionTotalPrice || totalAmount;
+      const displayTaxAmount = displayTotalAmount - displayBaseAmount;
+      const displayDays = extensionDays || 1;
+      const displayDailyRate = dailyRateCents || (displayDays > 0 ? Math.round(displayBaseAmount / displayDays) : displayBaseAmount);
+
+      // Generate standardized invoice ID: LC-STR-YYYY-XXXXXX (LC = LocalCook, STR = Storage)
+      const invoiceDate = new Date(transaction.paidAt || transaction.paid_at || transaction.createdAt || transaction.created_at);
+      const year = invoiceDate.getFullYear();
+      const bookingIdPadded = String(storageBooking.id).padStart(6, '0');
+      const invoiceId = isExtension 
+        ? `LC-EXT-${year}-${bookingIdPadded}`
+        : `LC-STR-${year}-${bookingIdPadded}`;
+
+      // Header
+      doc.fontSize(24).font('Helvetica-Bold').text('INVOICE', 50, 50);
+      doc.fontSize(12).font('Helvetica').fillColor('#6b7280');
+      doc.text(`Invoice #: ${invoiceId}`, 50, 80);
+      doc.text(`Date: ${invoiceDate.toLocaleDateString()}`, 50, 95);
+      doc.fillColor('#000000');
+
+      // Billing Info - use fullName from applications table
+      doc.fontSize(14).font('Helvetica-Bold').text('Billed To:', 50, 130);
+      doc.fontSize(11).font('Helvetica');
+      if (chef) {
+        // full_name comes from applications table join
+        const chefName = chef.full_name || chef.fullName || chef.username || 'Chef';
+        doc.text(chefName, 50, 150);
+      } else {
+        doc.text('Chef', 50, 150);
+      }
+
+      // Kitchen/Location Info
+      doc.fontSize(14).font('Helvetica-Bold').text('From:', 350, 130);
+      doc.fontSize(11).font('Helvetica');
+      doc.text(storageBooking.kitchenName || 'Kitchen', 350, 150);
+      doc.text(storageBooking.locationName || 'Location', 350, 165);
+
+      // Storage Extension Details
+      let currentY = 210;
+      doc.fontSize(14).font('Helvetica-Bold').text(isExtension ? 'Storage Extension Details' : 'Storage Booking Details', 50, currentY);
+      currentY += 25;
+
+      // Define column positions and widths for proper table layout
+      const tableLeft = 50;
+      const tableWidth = 500;
+      const rowHeight = 25;
+      const col1Width = 280; // Description
+      const col2Width = 50;  // Qty
+      const col3Width = 70;  // Rate
+      const col4Width = 100; // Amount
+      const col1X = tableLeft;
+      const col2X = tableLeft + col1Width;
+      const col3X = col2X + col2Width;
+      const col4X = col3X + col3Width;
+
+      // Table Header with borders and column separators
+      doc.rect(tableLeft, currentY, tableWidth, rowHeight).fill('#f3f4f6');
+      doc.rect(tableLeft, currentY, tableWidth, rowHeight).stroke('#d1d5db');
+      // Vertical column separators for header
+      doc.moveTo(col2X, currentY).lineTo(col2X, currentY + rowHeight).stroke('#d1d5db');
+      doc.moveTo(col3X, currentY).lineTo(col3X, currentY + rowHeight).stroke('#d1d5db');
+      doc.moveTo(col4X, currentY).lineTo(col4X, currentY + rowHeight).stroke('#d1d5db');
+      
+      doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold');
+      doc.text('Description', col1X + 5, currentY + 8, { width: col1Width - 10 });
+      doc.text('Qty', col2X + 5, currentY + 8, { width: col2Width - 10, align: 'center' });
+      doc.text('Rate', col3X + 5, currentY + 8, { width: col3Width - 10, align: 'center' });
+      doc.text('Amount', col4X + 5, currentY + 8, { width: col4Width - 10, align: 'right' });
+      currentY += rowHeight;
+
+      // Item row with borders and column separators
+      doc.rect(tableLeft, currentY, tableWidth, rowHeight).stroke('#d1d5db');
+      // Vertical column separators for data row
+      doc.moveTo(col2X, currentY).lineTo(col2X, currentY + rowHeight).stroke('#d1d5db');
+      doc.moveTo(col3X, currentY).lineTo(col3X, currentY + rowHeight).stroke('#d1d5db');
+      doc.moveTo(col4X, currentY).lineTo(col4X, currentY + rowHeight).stroke('#d1d5db');
+      
+      doc.fontSize(9).font('Helvetica');
+      const storageName = extensionDetails?.storage_name || storageBooking.storageName || 'Storage';
+      const description = isExtension 
+        ? `Storage Ext - ${storageName} (${displayDays}d)`
+        : `Storage - ${storageName}`;
+
+      doc.text(description, col1X + 5, currentY + 8, { width: col1Width - 10 });
+      doc.text(String(displayDays), col2X + 5, currentY + 8, { width: col2Width - 10, align: 'center' });
+      doc.text(`$${(displayDailyRate / 100).toFixed(2)}`, col3X + 5, currentY + 8, { width: col3Width - 10, align: 'center' });
+      doc.text(`$${(displayBaseAmount / 100).toFixed(2)}`, col4X + 5, currentY + 8, { width: col4Width - 10, align: 'right' });
+      currentY += rowHeight + 5;
+
+      // Totals section
+      currentY += 20;
+      doc.fontSize(10).font('Helvetica');
+      
+      // Subtotal
+      doc.text('Subtotal:', 380, currentY);
+      doc.text(`$${(displayBaseAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+      currentY += 18;
+
+      // Tax (if applicable)
+      if (displayTaxAmount > 0 && taxRatePercent > 0) {
+        doc.text(`Tax (${taxRatePercent}%):`, 380, currentY);
+        doc.text(`$${(displayTaxAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+        currentY += 18;
+      }
+
+      // Total
+      doc.fontSize(12).font('Helvetica-Bold');
+      doc.text('Total:', 380, currentY);
+      doc.text(`$${(displayTotalAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+      currentY += 30;
+
+      // MANAGER VIEW: Show Stripe fee deduction and net amount
+      if (invoiceViewer === 'manager') {
+        // Get Stripe fee from transaction
+        const stripeProcessingFee = parseInt(String(transaction.stripeProcessingFee || transaction.stripe_processing_fee || '0')) || 0;
+        const managerRevenue = parseInt(String(transaction.managerRevenue || transaction.manager_revenue || '0')) || 0;
+        
+        if (stripeProcessingFee > 0) {
+          currentY += 10;
+          doc.moveTo(380, currentY).lineTo(550, currentY).stroke('#e5e7eb');
+          currentY += 15;
+          
+          doc.fontSize(10).font('Helvetica').fillColor('#6b7280');
+          doc.text('Stripe Processing Fee:', 380, currentY);
+          doc.fillColor('#dc2626'); // Red color for deduction
+          doc.text(`-$${(stripeProcessingFee / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+          doc.fillColor('#000000');
+          currentY += 18;
+          
+          // Net amount manager receives
+          doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669'); // Green for net
+          doc.text('You Receive:', 380, currentY);
+          const netAmount = managerRevenue > 0 ? managerRevenue : (displayTotalAmount - stripeProcessingFee);
+          doc.text(`$${(netAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+          doc.fillColor('#000000');
+          currentY += 20;
+        }
+      }
+
+      // Payment Info
+      currentY += 20;
+      doc.fontSize(12).font('Helvetica-Bold').text('Payment Information', 50, currentY);
+      currentY += 20;
+      doc.fontSize(10).font('Helvetica');
+      doc.text('Payment Method: Credit/Debit Card', 60, currentY);
+      currentY += 15;
+      doc.text('Payment Status: Paid', 60, currentY);
+
+      // Footer
+      const pageHeight = doc.page.height;
+      const footerY = pageHeight - 80;
+
+      doc.moveTo(50, footerY).lineTo(550, footerY).stroke('#e5e7eb');
+      doc.fontSize(9).fillColor('#6b7280').text('For questions, contact support@localcook.shop', 50, footerY + 15, { align: 'center', width: 500 });
       doc.fillColor('#000000');
 
       doc.end();

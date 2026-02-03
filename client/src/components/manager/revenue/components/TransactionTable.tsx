@@ -56,7 +56,7 @@ import type { Transaction, PaymentStatus } from "../types"
 interface TransactionTableProps {
     transactions: Transaction[]
     isLoading: boolean
-    onDownloadInvoice: (bookingId: number) => void
+    onDownloadInvoice: (bookingId: number, bookingType?: string, transactionId?: number) => void
     onViewDetails?: (transaction: Transaction) => void
     onRefundTransaction?: (transaction: Transaction, amountCents: number, reason?: string) => Promise<void> | void
 }

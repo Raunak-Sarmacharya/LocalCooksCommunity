@@ -352,9 +352,17 @@ export function useStripeConnectStatus(enabled: boolean = true) {
 // INVOICE DOWNLOAD HANDLER
 // ═══════════════════════════════════════════════════════════════════════
 
-export async function downloadInvoice(bookingId: number): Promise<void> {
+export async function downloadInvoice(bookingId: number, bookingType?: string, transactionId?: number): Promise<void> {
     const headers = await getAuthHeaders()
-    const response = await fetch(`/api/manager/revenue/invoices/${bookingId}`, {
+    
+    // For storage transactions (including extensions), use the storage-specific endpoint
+    // bookingId for storage is the storage_bookings.id
+    const isStorage = bookingType === 'storage' || bookingType === 'storage_extension'
+    const endpoint = isStorage
+        ? `/api/manager/revenue/invoices/storage/${bookingId}`
+        : `/api/manager/revenue/invoices/${bookingId}`
+    
+    const response = await fetch(endpoint, {
         headers,
         credentials: 'include',
     })
@@ -365,7 +373,10 @@ export async function downloadInvoice(bookingId: number): Promise<void> {
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `invoice-${bookingId}.pdf`
+    const filename = isStorage 
+        ? `storage-invoice-${bookingId}.pdf`
+        : `invoice-${bookingId}.pdf`
+    a.download = filename
     document.body.appendChild(a)
     a.click()
     window.URL.revokeObjectURL(url)

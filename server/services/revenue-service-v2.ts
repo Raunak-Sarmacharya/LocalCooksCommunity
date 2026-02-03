@@ -194,16 +194,10 @@ export async function getRevenueMetricsFromTransactions(
         COALESCE(SUM(CASE WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
         COALESCE(SUM(CASE WHEN pt.status IN ('refunded', 'partially_refunded') THEN pt.refund_amount::numeric ELSE 0 END), 0)::bigint as refunded_amount,
         COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value,
-        -- ENTERPRISE STANDARD: Stripe fee proportional to effective amount (amount - refund)
-        -- Manager only pays Stripe fee on non-refunded portion
-        -- Formula: original_fee * (effective_amount / original_amount)
-        COALESCE(SUM(
-          CASE 
-            WHEN pt.amount::numeric > 0 THEN
-              ROUND(pt.stripe_processing_fee::numeric * (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric)
-            ELSE 0
-          END
-        ), 0)::bigint as actual_stripe_fee
+        -- ENTERPRISE STANDARD: Stripe does NOT refund processing fees on refunds
+        -- Manager pays the FULL original Stripe fee regardless of refunds
+        -- This gives managers accurate picture of actual fees paid to Stripe
+        COALESCE(SUM(pt.stripe_processing_fee::numeric), 0)::bigint as actual_stripe_fee
       FROM payment_transactions pt
       ${simpleWhereClause}
     `);
@@ -213,7 +207,7 @@ export async function getRevenueMetricsFromTransactions(
     // kb.total_price is the SUBTOTAL before tax (e.g., $100)
     // pt.amount is the TOTAL after tax (e.g., $110)
     // For refunds: proportionally reduce tax based on refund ratio
-    const taxResult = await db.execute(sql`
+    const kitchenTaxResult = await db.execute(sql`
       SELECT 
         COALESCE(SUM(
           -- Tax = kb.total_price * tax_rate / 100 (same formula as transaction history)
@@ -245,8 +239,64 @@ export async function getRevenueMetricsFromTransactions(
       ${simpleWhereClause}
     `);
 
+    // Calculate tax for storage transactions (storage bookings, extensions, overstay penalties)
+    // IMPORTANT: For storage, pt.base_amount may have incorrect data, so we ALWAYS reverse-calculate
+    // Formula: base = total / (1 + rate/100), then tax = base * rate / 100
+    // Simplified: tax = total - (total / (1 + rate/100)) = total * rate / (100 + rate)
+    // But to match transaction history exactly, we use: base = ROUND(total / (1 + rate/100)), tax = ROUND(base * rate / 100)
+    const storageTaxResult = await db.execute(sql`
+      SELECT 
+        COALESCE(SUM(
+          CASE 
+            WHEN COALESCE(k.tax_rate_percent, 0) > 0 AND pt.amount::numeric > 0 
+              AND pt.status NOT IN ('refunded') THEN
+              -- For non-refunded: tax = ROUND(base * rate / 100) where base = ROUND(total / (1 + rate/100))
+              ROUND(
+                ROUND(pt.amount::numeric / (1 + COALESCE(k.tax_rate_percent, 0)::numeric / 100)) 
+                * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+              )
+            WHEN COALESCE(k.tax_rate_percent, 0) > 0 AND pt.amount::numeric > 0 
+              AND pt.status = 'partially_refunded' THEN
+              -- For partially refunded: proportionally reduce tax
+              ROUND(
+                ROUND(pt.amount::numeric / (1 + COALESCE(k.tax_rate_percent, 0)::numeric / 100)) 
+                * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+                * (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric
+              )
+            ELSE 0
+          END
+        ), 0)::bigint as storage_tax_amount
+      FROM payment_transactions pt
+      JOIN storage_bookings sb ON pt.booking_id = sb.id AND pt.booking_type = 'storage'
+      JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+      JOIN kitchens k ON sl.kitchen_id = k.id
+      WHERE pt.manager_id = ${managerId}
+        AND (pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'partially_refunded')
+    `);
+
     const row: any = result.rows[0] || {};
-    const taxRow: any = taxResult.rows[0] || {};
+    const kitchenTaxRow: any = kitchenTaxResult.rows[0] || {};
+    const storageTaxRow: any = storageTaxResult.rows[0] || {};
+    
+    // Combine kitchen and storage tax
+    const kitchenTax = kitchenTaxRow.calculated_tax_amount != null ? parseInt(String(kitchenTaxRow.calculated_tax_amount)) : 0;
+    const storageTax = storageTaxRow.storage_tax_amount != null ? parseInt(String(storageTaxRow.storage_tax_amount)) : 0;
+    const combinedTaxAmount = kitchenTax + storageTax;
+    
+    console.log('[Revenue Service V2] Tax breakdown:', {
+      kitchenTax,
+      storageTax,
+      combinedTaxAmount,
+      kitchenTaxRaw: kitchenTaxRow.calculated_tax_amount,
+      storageTaxRaw: storageTaxRow.storage_tax_amount,
+    });
+    
+    // Use kitchenTaxRow for other fields (completed_net_revenue, tax_rate_percent)
+    const taxRow: any = {
+      calculated_tax_amount: combinedTaxAmount,
+      completed_net_revenue: kitchenTaxRow.completed_net_revenue,
+      tax_rate_percent: kitchenTaxRow.tax_rate_percent,
+    };
 
     // Log the actual values returned for debugging
     console.log('[Revenue Service V2] Query result:', {
@@ -284,18 +334,23 @@ export async function getRevenueMetricsFromTransactions(
       : 0;
 
     // Total revenue = sum of all amounts charged (from query)
-    const grossRevenue = parseNumeric(row.total_revenue);
+    const grossRevenueRaw = parseNumeric(row.total_revenue);
     
-    // ENTERPRISE STANDARD: Effective gross revenue = gross - refunds
-    // This gives managers an accurate picture of actual revenue after refunds
-    const totalRevenue = grossRevenue - refundedAmount;
+    // Get actual Stripe fees from database (fetched from Stripe Balance Transaction API)
+    const actualStripeFee = parseNumeric(row.actual_stripe_fee);
+    
+    // ENTERPRISE STANDARD: Use actual Stripe fee only - do not estimate
+    // If actual fee is 0, it will be synced via charge.updated webhook
+    // Never use manual calculation (2.9% + $0.30) as it's inaccurate for international cards, AMEX, etc.
+    const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
+
+    // GROSS REVENUE: Total amount charged minus refunds (includes Stripe fees)
+    const totalRevenue = grossRevenueRaw - refundedAmount;
 
     // Use manager_revenue directly from database (source of truth from Stripe)
     // Don't recalculate - the database value is accurate and comes from Stripe webhooks
     const finalManagerRevenue = managerRevenue;
 
-    // Get actual Stripe fees from database (fetched from Stripe Balance Transaction API)
-    const actualStripeFee = parseNumeric(row.actual_stripe_fee);
     // Get tax amount calculated from kitchen's tax_rate_percent
     const actualTaxAmount = parseNumeric(taxRow.calculated_tax_amount);
     // ENTERPRISE STANDARD: Net revenue from COMPLETED transactions only (payout-ready amount)
@@ -303,17 +358,11 @@ export async function getRevenueMetricsFromTransactions(
     // Get actual tax rate from kitchens table
     const taxRatePercent = taxRow.tax_rate_percent ? parseFloat(String(taxRow.tax_rate_percent)) : 0;
     
-    // ENTERPRISE STANDARD: Use actual Stripe fee only - do not estimate
-    // If actual fee is 0, it will be synced via charge.updated webhook
-    // Never use manual calculation (2.9% + $0.30) as it's inaccurate for international cards, AMEX, etc.
-    const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
-    
     // Tax amount - use actual from database (only show if explicitly set, don't fall back to platformFee)
     // platformFee is the service fee, NOT tax - they are different concepts
     const taxAmount = actualTaxAmount;
     
-    // ENTERPRISE STANDARD: Net revenue = total (already deducted refunds) - tax - stripe fees
-    // Since totalRevenue already has refunds deducted, net revenue is accurate
+    // NET REVENUE: Gross revenue minus tax and Stripe fees
     const netRevenue = totalRevenue - taxAmount - stripeFee;
     
     // Also adjust completed payments to account for refunds
@@ -321,7 +370,7 @@ export async function getRevenueMetricsFromTransactions(
     const effectiveCompletedPayments = Math.max(0, completedPayments - refundedAmount);
     
     console.log('[Revenue Service V2] Fee breakdown:', {
-      grossRevenue,
+      grossRevenueRaw,
       refundedAmount,
       totalRevenue,
       actualStripeFee,

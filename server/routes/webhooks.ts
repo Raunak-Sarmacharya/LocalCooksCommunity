@@ -1188,6 +1188,8 @@ async function handleStorageExtensionPaymentCompleted(
           storage_extension_id: pendingExtension.id.toString(),
           extension_days: extensionDays.toString(),
           new_end_date: newEndDate.toISOString(),
+          // Include base price for accurate tax calculation in transaction history
+          extension_base_price_cents: extensionBasePriceCents.toString(),
         },
       }, db);
 

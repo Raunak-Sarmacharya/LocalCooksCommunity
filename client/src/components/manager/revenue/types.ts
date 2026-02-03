@@ -59,6 +59,7 @@ export interface Transaction {
 // Invoice type for invoice list
 export interface Invoice {
     bookingId: number;
+    bookingType: BookingType;  // Added to support storage extension downloads
     invoiceNumber: string;     // Format: INV-YYYY-XXXXXX
     bookingDate: string;
     chefName: string | null;

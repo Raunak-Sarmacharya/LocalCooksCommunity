@@ -198,15 +198,20 @@ router.get("/revenue/invoices/:bookingId", requireFirebaseAuthWithUser, requireM
             return res.status(400).json({ error: "Invoice cannot be downloaded for cancelled bookings without payment information" });
         }
 
-        // Get chef info
+        // Get chef info with fullName from chef_kitchen_applications table
         let chef = null;
         if (booking.chefId) {
-            const [chefData] = await db
-                .select({ id: users.id, username: users.username })
-                .from(users)
-                .where(eq(users.id, booking.chefId))
-                .limit(1);
-            chef = chefData || null;
+            const chefResult = await db.execute(sql`
+                SELECT u.id, u.username, cka.full_name
+                FROM users u
+                LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
+                WHERE u.id = ${booking.chefId}
+                LIMIT 1
+            `);
+            const chefRows = chefResult.rows || chefResult;
+            if (Array.isArray(chefRows) && chefRows.length > 0) {
+                chef = chefRows[0];
+            }
         }
 
         // Get storage and equipment bookings with listing details for invoice
@@ -256,6 +261,147 @@ router.get("/revenue/invoices/:bookingId", requireFirebaseAuthWithUser, requireM
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="invoice-${bookingId}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        return errorResponse(res, error);
+    }
+});
+
+// Download invoice PDF for storage extension transactions (standalone)
+router.get("/revenue/invoices/storage/:storageBookingId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        const storageBookingId = parseInt(req.params.storageBookingId);
+
+        if (isNaN(storageBookingId) || storageBookingId <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        // Get storage booking details directly
+        const [storageBooking] = await db
+            .select({
+                id: storageBookingsTable.id,
+                kitchenBookingId: storageBookingsTable.kitchenBookingId,
+                storageListingId: storageBookingsTable.storageListingId,
+                startDate: storageBookingsTable.startDate,
+                endDate: storageBookingsTable.endDate,
+                status: storageBookingsTable.status,
+                totalPrice: storageBookingsTable.totalPrice,
+                paymentStatus: storageBookingsTable.paymentStatus,
+                paymentIntentId: storageBookingsTable.paymentIntentId,
+                chefId: storageBookingsTable.chefId,
+                storageName: storageListings.name,
+                storageType: storageListings.storageType,
+                kitchenId: storageListings.kitchenId,
+                kitchenName: kitchens.name,
+                locationName: locations.name,
+                locationId: locations.id,
+                taxRatePercent: kitchens.taxRatePercent,
+            })
+            .from(storageBookingsTable)
+            .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
+            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .where(eq(storageBookingsTable.id, storageBookingId))
+            .limit(1);
+
+        if (!storageBooking) {
+            return res.status(404).json({ error: "Storage booking not found" });
+        }
+
+        // Verify manager owns this storage booking
+        const managerOwnsLocation = await db
+            .select({ id: locations.id })
+            .from(locations)
+            .where(and(
+                eq(locations.id, storageBooking.locationId),
+                eq(locations.managerId, managerId)
+            ))
+            .limit(1);
+
+        if (managerOwnsLocation.length === 0) {
+            return res.status(403).json({ error: "Access denied to this storage booking" });
+        }
+
+        // Get the payment transaction for this storage booking
+        const [transaction] = await db
+            .select({
+                id: paymentTransactions.id,
+                amount: paymentTransactions.amount,
+                baseAmount: paymentTransactions.baseAmount,
+                paymentIntentId: paymentTransactions.paymentIntentId,
+                paidAt: paymentTransactions.paidAt,
+                createdAt: paymentTransactions.createdAt,
+                metadata: paymentTransactions.metadata,
+                stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+                managerRevenue: paymentTransactions.managerRevenue,
+            })
+            .from(paymentTransactions)
+            .where(and(
+                eq(paymentTransactions.bookingId, storageBookingId),
+                eq(paymentTransactions.bookingType, 'storage'),
+                eq(paymentTransactions.status, 'succeeded')
+            ))
+            .orderBy(desc(paymentTransactions.createdAt))
+            .limit(1);
+
+        // Check if this is a storage extension by looking at metadata
+        let extensionDetails = null;
+        const metadata = transaction?.metadata as Record<string, any> | undefined;
+        if (metadata?.storage_extension_id) {
+            const extensionId = parseInt(String(metadata.storage_extension_id));
+            if (!isNaN(extensionId)) {
+                const extensionResult = await db.execute(sql`
+                    SELECT 
+                        pse.id,
+                        pse.extension_days,
+                        pse.extension_base_price_cents,
+                        pse.extension_total_price_cents,
+                        pse.new_end_date,
+                        sl.name as storage_name,
+                        sl.base_price as daily_rate_cents,
+                        sl.storage_type::text as storage_type
+                    FROM pending_storage_extensions pse
+                    JOIN storage_bookings sb ON pse.storage_booking_id = sb.id
+                    JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+                    WHERE pse.id = ${extensionId}
+                    LIMIT 1
+                `);
+                const extensionRows = extensionResult.rows || extensionResult;
+                if (Array.isArray(extensionRows) && extensionRows.length > 0) {
+                    extensionDetails = extensionRows[0];
+                }
+            }
+        }
+
+        // Get chef info with fullName from chef_kitchen_applications table
+        let chef = null;
+        if (storageBooking.chefId) {
+            const chefResult = await db.execute(sql`
+                SELECT u.id, u.username, cka.full_name
+                FROM users u
+                LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
+                WHERE u.id = ${storageBooking.chefId}
+                LIMIT 1
+            `);
+            const chefRows = chefResult.rows || chefResult;
+            if (Array.isArray(chefRows) && chefRows.length > 0) {
+                chef = chefRows[0];
+            }
+        }
+
+        // Generate a simple invoice for storage extension
+        const { generateStorageInvoicePDF } = await import('../services/invoice-service');
+        const pdfBuffer = await generateStorageInvoicePDF(
+            transaction || { amount: storageBooking.totalPrice, baseAmount: storageBooking.totalPrice },
+            storageBooking,
+            chef,
+            extensionDetails,
+            { viewer: 'manager' }
+        );
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="storage-invoice-${storageBookingId}.pdf"`);
         res.send(pdfBuffer);
     } catch (error) {
         return errorResponse(res, error);

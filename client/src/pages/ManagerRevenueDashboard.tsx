@@ -153,17 +153,17 @@ export default function ManagerRevenueDashboard({
   }, [transactionsData])
 
   // Handlers
-  const handleDownloadInvoice = useCallback(async (bookingId: number) => {
+  const handleDownloadInvoice = useCallback(async (bookingId: number, bookingType?: string, transactionId?: number) => {
     try {
-      await downloadInvoice(bookingId)
+      await downloadInvoice(bookingId, bookingType, transactionId)
       toast({
         title: "Invoice Downloaded",
         description: `Invoice ${generateInvoiceNumber(bookingId)} downloaded successfully`,
       })
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Download Failed",
-        description: "Failed to download invoice. Please try again.",
+        description: error?.message || "Failed to download invoice. Please try again.",
         variant: "destructive",
       })
     }
@@ -355,7 +355,7 @@ export default function ManagerRevenueDashboard({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleDownloadInvoice(invoice.bookingId)}
+                    onClick={() => handleDownloadInvoice(invoice.bookingId, invoice.bookingType)}
                     className="gap-2"
                   >
                     <Download className="h-4 w-4" />

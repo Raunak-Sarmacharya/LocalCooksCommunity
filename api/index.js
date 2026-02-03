@@ -14075,13 +14075,13 @@ var init_manager_repository = __esm({
           locationName: locations.name,
           chefName: users.username,
           chefEmail: users.username,
-          // Using username as email fallback if needed, or users.email is ideal but schema uses username often
-          createdAt: kitchenBookings.createdAt
+          createdAt: kitchenBookings.createdAt,
+          bookingType: sql6`'kitchen'`.as("booking_type")
         }).from(kitchenBookings).innerJoin(kitchens, eq21(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq21(kitchens.locationId, locations.id)).leftJoin(users, eq21(kitchenBookings.chefId, users.id)).where(and14(...conditions)).orderBy(desc11(kitchenBookings.createdAt), desc11(kitchenBookings.bookingDate)).limit(limit).offset(offset);
         logger.info(`[ManagerRepository] Kitchen invoices query for manager ${managerId}: Found ${rows.length} invoices`);
         const storageRows = await db.execute(sql6`
             SELECT 
-                pt.id as id,
+                pt.booking_id as id,
                 sb.start_date as booking_date,
                 NULL as start_time,
                 NULL as end_time,
@@ -14299,20 +14299,14 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
         COALESCE(SUM(CASE WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
         COALESCE(SUM(CASE WHEN pt.status IN ('refunded', 'partially_refunded') THEN pt.refund_amount::numeric ELSE 0 END), 0)::bigint as refunded_amount,
         COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value,
-        -- ENTERPRISE STANDARD: Stripe fee proportional to effective amount (amount - refund)
-        -- Manager only pays Stripe fee on non-refunded portion
-        -- Formula: original_fee * (effective_amount / original_amount)
-        COALESCE(SUM(
-          CASE 
-            WHEN pt.amount::numeric > 0 THEN
-              ROUND(pt.stripe_processing_fee::numeric * (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric)
-            ELSE 0
-          END
-        ), 0)::bigint as actual_stripe_fee
+        -- ENTERPRISE STANDARD: Stripe does NOT refund processing fees on refunds
+        -- Manager pays the FULL original Stripe fee regardless of refunds
+        -- This gives managers accurate picture of actual fees paid to Stripe
+        COALESCE(SUM(pt.stripe_processing_fee::numeric), 0)::bigint as actual_stripe_fee
       FROM payment_transactions pt
       ${simpleWhereClause}
     `);
-    const taxResult = await db2.execute(sql7`
+    const kitchenTaxResult = await db2.execute(sql7`
       SELECT 
         COALESCE(SUM(
           -- Tax = kb.total_price * tax_rate / 100 (same formula as transaction history)
@@ -14343,8 +14337,53 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       LEFT JOIN kitchens k ON kb.kitchen_id = k.id
       ${simpleWhereClause}
     `);
+    const storageTaxResult = await db2.execute(sql7`
+      SELECT 
+        COALESCE(SUM(
+          CASE 
+            WHEN COALESCE(k.tax_rate_percent, 0) > 0 AND pt.amount::numeric > 0 
+              AND pt.status NOT IN ('refunded') THEN
+              -- For non-refunded: tax = ROUND(base * rate / 100) where base = ROUND(total / (1 + rate/100))
+              ROUND(
+                ROUND(pt.amount::numeric / (1 + COALESCE(k.tax_rate_percent, 0)::numeric / 100)) 
+                * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+              )
+            WHEN COALESCE(k.tax_rate_percent, 0) > 0 AND pt.amount::numeric > 0 
+              AND pt.status = 'partially_refunded' THEN
+              -- For partially refunded: proportionally reduce tax
+              ROUND(
+                ROUND(pt.amount::numeric / (1 + COALESCE(k.tax_rate_percent, 0)::numeric / 100)) 
+                * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+                * (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric
+              )
+            ELSE 0
+          END
+        ), 0)::bigint as storage_tax_amount
+      FROM payment_transactions pt
+      JOIN storage_bookings sb ON pt.booking_id = sb.id AND pt.booking_type = 'storage'
+      JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+      JOIN kitchens k ON sl.kitchen_id = k.id
+      WHERE pt.manager_id = ${managerId}
+        AND (pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'partially_refunded')
+    `);
     const row = result.rows[0] || {};
-    const taxRow = taxResult.rows[0] || {};
+    const kitchenTaxRow = kitchenTaxResult.rows[0] || {};
+    const storageTaxRow = storageTaxResult.rows[0] || {};
+    const kitchenTax = kitchenTaxRow.calculated_tax_amount != null ? parseInt(String(kitchenTaxRow.calculated_tax_amount)) : 0;
+    const storageTax = storageTaxRow.storage_tax_amount != null ? parseInt(String(storageTaxRow.storage_tax_amount)) : 0;
+    const combinedTaxAmount = kitchenTax + storageTax;
+    console.log("[Revenue Service V2] Tax breakdown:", {
+      kitchenTax,
+      storageTax,
+      combinedTaxAmount,
+      kitchenTaxRaw: kitchenTaxRow.calculated_tax_amount,
+      storageTaxRaw: storageTaxRow.storage_tax_amount
+    });
+    const taxRow = {
+      calculated_tax_amount: combinedTaxAmount,
+      completed_net_revenue: kitchenTaxRow.completed_net_revenue,
+      tax_rate_percent: kitchenTaxRow.tax_rate_percent
+    };
     console.log("[Revenue Service V2] Query result:", {
       managerId,
       startDate: startDate ? typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0] : "none",
@@ -14373,19 +14412,19 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     const paidBookingCount = parseInt(row.paid_booking_count) || 0;
     const cancelledBookingCount = 0;
     const averageBookingValue = row.avg_booking_value ? Math.round(parseFloat(String(row.avg_booking_value))) : 0;
-    const grossRevenue = parseNumeric(row.total_revenue);
-    const totalRevenue = grossRevenue - refundedAmount;
-    const finalManagerRevenue = managerRevenue;
+    const grossRevenueRaw = parseNumeric(row.total_revenue);
     const actualStripeFee = parseNumeric(row.actual_stripe_fee);
+    const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
+    const totalRevenue = grossRevenueRaw - refundedAmount;
+    const finalManagerRevenue = managerRevenue;
     const actualTaxAmount = parseNumeric(taxRow.calculated_tax_amount);
     const completedNetRevenue = parseNumeric(taxRow.completed_net_revenue);
     const taxRatePercent = taxRow.tax_rate_percent ? parseFloat(String(taxRow.tax_rate_percent)) : 0;
-    const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
     const taxAmount = actualTaxAmount;
     const netRevenue = totalRevenue - taxAmount - stripeFee;
     const effectiveCompletedPayments = Math.max(0, completedPayments - refundedAmount);
     console.log("[Revenue Service V2] Fee breakdown:", {
-      grossRevenue,
+      grossRevenueRaw,
       refundedAmount,
       totalRevenue,
       actualStripeFee,
@@ -15346,6 +15385,8 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         pt.metadata as pt_metadata,
         -- Actual Stripe fee from payment_transactions (fetched from Stripe Balance Transaction API)
         COALESCE(pt.stripe_processing_fee, 0)::bigint as actual_stripe_fee,
+        -- Tax rate from kitchen (same as kitchen bookings)
+        COALESCE(k.tax_rate_percent, 0)::numeric as tax_rate_percent,
         sb.start_date as booking_date,
         sb.chef_id,
         sl.name as storage_name,
@@ -15367,13 +15408,30 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
     `);
     const storageTransactions = storageResult.rows.map((row) => {
       const ptAmount = row.pt_amount != null ? parseInt(String(row.pt_amount)) : 0;
+      const ptBaseAmountFromDb = row.pt_base_amount != null ? parseInt(String(row.pt_base_amount)) : 0;
       const ptServiceFee = row.pt_service_fee != null ? parseInt(String(row.pt_service_fee)) : 0;
       const ptManagerRevenue = row.pt_manager_revenue != null ? parseInt(String(row.pt_manager_revenue)) : 0;
       const ptRefundAmount = row.pt_refund_amount != null ? parseInt(String(row.pt_refund_amount)) : 0;
       const actualStripeFee = row.actual_stripe_fee != null ? parseInt(String(row.actual_stripe_fee)) : 0;
+      const taxRatePercent = row.tax_rate_percent != null ? parseFloat(String(row.tax_rate_percent)) : 0;
       const metadata = row.pt_metadata || {};
       const isOverstayPenalty = metadata.type === "overstay_penalty";
       const isStorageExtension = metadata.storage_extension_id != null;
+      let ptBaseAmount;
+      if (isStorageExtension && metadata.extension_base_price_cents) {
+        const metadataBaseAmount = parseInt(String(metadata.extension_base_price_cents));
+        if (!isNaN(metadataBaseAmount) && metadataBaseAmount > 0) {
+          ptBaseAmount = metadataBaseAmount;
+        } else if (taxRatePercent > 0 && ptAmount > 0) {
+          ptBaseAmount = Math.round(ptAmount / (1 + taxRatePercent / 100));
+        } else {
+          ptBaseAmount = ptBaseAmountFromDb;
+        }
+      } else if (isStorageExtension && taxRatePercent > 0 && ptAmount > 0) {
+        ptBaseAmount = Math.round(ptAmount / (1 + taxRatePercent / 100));
+      } else {
+        ptBaseAmount = ptBaseAmountFromDb;
+      }
       let description = row.storage_name || "Storage";
       if (isOverstayPenalty) {
         description = `Overstay Penalty - ${row.storage_name || "Storage"}`;
@@ -15383,7 +15441,8 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       const transactionId = row.transaction_id != null ? parseInt(String(row.transaction_id)) : null;
       const bookingId = parseInt(String(row.booking_id));
       const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
-      const netRevenue = ptAmount - stripeFee;
+      const taxCents = Math.round(ptBaseAmount * taxRatePercent / 100);
+      const netRevenue = ptAmount - taxCents - stripeFee;
       return {
         id: bookingId,
         transactionId,
@@ -15396,8 +15455,8 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         totalPrice: ptAmount,
         serviceFee: ptServiceFee,
         platformFee: ptServiceFee,
-        taxAmount: 0,
-        taxRatePercent: 0,
+        taxAmount: taxCents,
+        taxRatePercent,
         stripeFee,
         // Actual Stripe processing fee (from Stripe API or estimated)
         managerRevenue: ptManagerRevenue || ptAmount,
@@ -15851,6 +15910,7 @@ var init_manager_service = __esm({
           const serviceFeeCents = row.serviceFee != null ? parseInt(String(row.serviceFee)) : 0;
           return {
             bookingId: row.id,
+            bookingType: row.bookingType || "kitchen",
             bookingDate: row.bookingDate,
             startTime: row.startTime,
             endTime: row.endTime,
@@ -15908,7 +15968,8 @@ var init_manager_service = __esm({
 // server/services/invoice-service.ts
 var invoice_service_exports = {};
 __export(invoice_service_exports, {
-  generateInvoicePDF: () => generateInvoicePDF
+  generateInvoicePDF: () => generateInvoicePDF,
+  generateStorageInvoicePDF: () => generateStorageInvoicePDF
 });
 import PDFDocument from "pdfkit";
 import { eq as eq23 } from "drizzle-orm";
@@ -16137,7 +16198,8 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
       leftY += 18;
       doc.fontSize(10).font("Helvetica");
       if (chef) {
-        doc.text(chef.username || chef.email || "Chef", 50, leftY);
+        const chefName = chef.full_name || chef.fullName || chef.username || "Chef";
+        doc.text(chefName, 50, leftY);
         leftY += 15;
         if (chef.email) {
           doc.text(chef.email, 50, leftY);
@@ -16197,28 +16259,43 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
       doc.text(`Time: ${timeDisplay}`, 50, leftY);
       leftY += 30;
       const tableTop = leftY;
-      doc.rect(50, tableTop, 500, 25).fill("#f3f4f6");
-      doc.fontSize(10).font("Helvetica-Bold");
-      doc.fillColor("#000000");
-      doc.text("Description", 60, tableTop + 8, { width: 250 });
-      doc.text("Qty", 320, tableTop + 8, { width: 50 });
-      doc.text("Rate", 380, tableTop + 8, { width: 110, align: "right" });
-      doc.text("Amount", 500, tableTop + 8, { width: 50, align: "right" });
-      doc.moveTo(50, tableTop + 25).lineTo(550, tableTop + 25).stroke();
-      let currentY = tableTop + 35;
+      const tableLeft = 50;
+      const tableWidth = 500;
+      const rowHeight = 25;
+      const col1Width = 280;
+      const col2Width = 50;
+      const col3Width = 70;
+      const col4Width = 100;
+      const col1X = tableLeft;
+      const col2X = tableLeft + col1Width;
+      const col3X = col2X + col2Width;
+      const col4X = col3X + col3Width;
+      doc.rect(tableLeft, tableTop, tableWidth, rowHeight).fill("#f3f4f6");
+      doc.rect(tableLeft, tableTop, tableWidth, rowHeight).stroke("#d1d5db");
+      doc.moveTo(col2X, tableTop).lineTo(col2X, tableTop + rowHeight).stroke("#d1d5db");
+      doc.moveTo(col3X, tableTop).lineTo(col3X, tableTop + rowHeight).stroke("#d1d5db");
+      doc.moveTo(col4X, tableTop).lineTo(col4X, tableTop + rowHeight).stroke("#d1d5db");
+      doc.fillColor("#000000").fontSize(9).font("Helvetica-Bold");
+      doc.text("Description", col1X + 5, tableTop + 8, { width: col1Width - 10 });
+      doc.text("Qty", col2X + 5, tableTop + 8, { width: col2Width - 10, align: "center" });
+      doc.text("Rate", col3X + 5, tableTop + 8, { width: col3Width - 10, align: "center" });
+      doc.text("Amount", col4X + 5, tableTop + 8, { width: col4Width - 10, align: "right" });
+      let currentY = tableTop + rowHeight;
       items.forEach((item, index) => {
+        doc.rect(tableLeft, currentY, tableWidth, rowHeight).stroke("#d1d5db");
+        doc.moveTo(col2X, currentY).lineTo(col2X, currentY + rowHeight).stroke("#d1d5db");
+        doc.moveTo(col3X, currentY).lineTo(col3X, currentY + rowHeight).stroke("#d1d5db");
+        doc.moveTo(col4X, currentY).lineTo(col4X, currentY + rowHeight).stroke("#d1d5db");
         if (index % 2 === 0) {
-          doc.rect(50, currentY - 5, 500, 20).fill("#fafafa");
+          doc.rect(tableLeft + 1, currentY + 1, tableWidth - 2, rowHeight - 2).fill("#fafafa");
         }
-        doc.fontSize(10).font("Helvetica").fillColor("#000000");
-        doc.text(item.description, 60, currentY, { width: 250 });
-        doc.text(item.quantity.toString(), 320, currentY);
-        doc.text(`$${item.rate.toFixed(2)}`, 380, currentY, { align: "right", width: 110 });
-        doc.text(`$${item.amount.toFixed(2)}`, 500, currentY, { align: "right", width: 50 });
-        currentY += 20;
+        doc.fontSize(9).font("Helvetica").fillColor("#000000");
+        doc.text(item.description, col1X + 5, currentY + 8, { width: col1Width - 10 });
+        doc.text(item.quantity.toString(), col2X + 5, currentY + 8, { width: col2Width - 10, align: "center" });
+        doc.text(`$${item.rate.toFixed(2)}`, col3X + 5, currentY + 8, { width: col3Width - 10, align: "center" });
+        doc.text(`$${item.amount.toFixed(2)}`, col4X + 5, currentY + 8, { width: col4Width - 10, align: "right" });
+        currentY += rowHeight;
       });
-      currentY += 10;
-      doc.moveTo(50, currentY).lineTo(550, currentY).stroke();
       currentY += 15;
       const formatAmount = (amount, negative = false) => {
         const normalized = Math.abs(amount);
@@ -16313,8 +16390,140 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
       const pageHeight = doc.page.height;
       const footerY = pageHeight - 80;
       doc.moveTo(50, footerY).lineTo(550, footerY).stroke("#e5e7eb");
-      doc.fontSize(9).fillColor("#6b7280").text("Thank you for your business!", 50, footerY + 15, { align: "center", width: 500 });
-      doc.text("For questions, contact support@localcook.shop", 50, footerY + 30, { align: "center", width: 500 });
+      doc.fontSize(9).fillColor("#6b7280").text("For questions, contact support@localcook.shop", 50, footerY + 15, { align: "center", width: 500 });
+      doc.fillColor("#000000");
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+async function generateStorageInvoicePDF(transaction, storageBooking, chef, extensionDetails, options) {
+  const invoiceViewer = options?.viewer ?? "chef";
+  return new Promise((resolve, reject) => {
+    try {
+      const chunks = [];
+      const doc = new PDFDocument({ margin: 50 });
+      doc.on("data", (chunk) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      const totalAmount = parseInt(String(transaction.amount || "0")) || 0;
+      const baseAmount = parseInt(String(transaction.baseAmount || transaction.base_amount || "0")) || 0;
+      const taxAmount = totalAmount - baseAmount;
+      const taxRatePercent = storageBooking.taxRatePercent || 0;
+      const isExtension = !!extensionDetails;
+      const extensionDays = extensionDetails?.extension_days || 0;
+      const extensionBasePrice = extensionDetails?.extension_base_price_cents || 0;
+      const extensionTotalPrice = extensionDetails?.extension_total_price_cents || 0;
+      const dailyRateCents = extensionDetails?.daily_rate_cents || 0;
+      const displayBaseAmount = extensionBasePrice || baseAmount;
+      const displayTotalAmount = extensionTotalPrice || totalAmount;
+      const displayTaxAmount = displayTotalAmount - displayBaseAmount;
+      const displayDays = extensionDays || 1;
+      const displayDailyRate = dailyRateCents || (displayDays > 0 ? Math.round(displayBaseAmount / displayDays) : displayBaseAmount);
+      const invoiceDate = new Date(transaction.paidAt || transaction.paid_at || transaction.createdAt || transaction.created_at);
+      const year = invoiceDate.getFullYear();
+      const bookingIdPadded = String(storageBooking.id).padStart(6, "0");
+      const invoiceId = isExtension ? `LC-EXT-${year}-${bookingIdPadded}` : `LC-STR-${year}-${bookingIdPadded}`;
+      doc.fontSize(24).font("Helvetica-Bold").text("INVOICE", 50, 50);
+      doc.fontSize(12).font("Helvetica").fillColor("#6b7280");
+      doc.text(`Invoice #: ${invoiceId}`, 50, 80);
+      doc.text(`Date: ${invoiceDate.toLocaleDateString()}`, 50, 95);
+      doc.fillColor("#000000");
+      doc.fontSize(14).font("Helvetica-Bold").text("Billed To:", 50, 130);
+      doc.fontSize(11).font("Helvetica");
+      if (chef) {
+        const chefName = chef.full_name || chef.fullName || chef.username || "Chef";
+        doc.text(chefName, 50, 150);
+      } else {
+        doc.text("Chef", 50, 150);
+      }
+      doc.fontSize(14).font("Helvetica-Bold").text("From:", 350, 130);
+      doc.fontSize(11).font("Helvetica");
+      doc.text(storageBooking.kitchenName || "Kitchen", 350, 150);
+      doc.text(storageBooking.locationName || "Location", 350, 165);
+      let currentY = 210;
+      doc.fontSize(14).font("Helvetica-Bold").text(isExtension ? "Storage Extension Details" : "Storage Booking Details", 50, currentY);
+      currentY += 25;
+      const tableLeft = 50;
+      const tableWidth = 500;
+      const rowHeight = 25;
+      const col1Width = 280;
+      const col2Width = 50;
+      const col3Width = 70;
+      const col4Width = 100;
+      const col1X = tableLeft;
+      const col2X = tableLeft + col1Width;
+      const col3X = col2X + col2Width;
+      const col4X = col3X + col3Width;
+      doc.rect(tableLeft, currentY, tableWidth, rowHeight).fill("#f3f4f6");
+      doc.rect(tableLeft, currentY, tableWidth, rowHeight).stroke("#d1d5db");
+      doc.moveTo(col2X, currentY).lineTo(col2X, currentY + rowHeight).stroke("#d1d5db");
+      doc.moveTo(col3X, currentY).lineTo(col3X, currentY + rowHeight).stroke("#d1d5db");
+      doc.moveTo(col4X, currentY).lineTo(col4X, currentY + rowHeight).stroke("#d1d5db");
+      doc.fillColor("#000000").fontSize(9).font("Helvetica-Bold");
+      doc.text("Description", col1X + 5, currentY + 8, { width: col1Width - 10 });
+      doc.text("Qty", col2X + 5, currentY + 8, { width: col2Width - 10, align: "center" });
+      doc.text("Rate", col3X + 5, currentY + 8, { width: col3Width - 10, align: "center" });
+      doc.text("Amount", col4X + 5, currentY + 8, { width: col4Width - 10, align: "right" });
+      currentY += rowHeight;
+      doc.rect(tableLeft, currentY, tableWidth, rowHeight).stroke("#d1d5db");
+      doc.moveTo(col2X, currentY).lineTo(col2X, currentY + rowHeight).stroke("#d1d5db");
+      doc.moveTo(col3X, currentY).lineTo(col3X, currentY + rowHeight).stroke("#d1d5db");
+      doc.moveTo(col4X, currentY).lineTo(col4X, currentY + rowHeight).stroke("#d1d5db");
+      doc.fontSize(9).font("Helvetica");
+      const storageName = extensionDetails?.storage_name || storageBooking.storageName || "Storage";
+      const description = isExtension ? `Storage Ext - ${storageName} (${displayDays}d)` : `Storage - ${storageName}`;
+      doc.text(description, col1X + 5, currentY + 8, { width: col1Width - 10 });
+      doc.text(String(displayDays), col2X + 5, currentY + 8, { width: col2Width - 10, align: "center" });
+      doc.text(`$${(displayDailyRate / 100).toFixed(2)}`, col3X + 5, currentY + 8, { width: col3Width - 10, align: "center" });
+      doc.text(`$${(displayBaseAmount / 100).toFixed(2)}`, col4X + 5, currentY + 8, { width: col4Width - 10, align: "right" });
+      currentY += rowHeight + 5;
+      currentY += 20;
+      doc.fontSize(10).font("Helvetica");
+      doc.text("Subtotal:", 380, currentY);
+      doc.text(`$${(displayBaseAmount / 100).toFixed(2)}`, 480, currentY, { align: "right" });
+      currentY += 18;
+      if (displayTaxAmount > 0 && taxRatePercent > 0) {
+        doc.text(`Tax (${taxRatePercent}%):`, 380, currentY);
+        doc.text(`$${(displayTaxAmount / 100).toFixed(2)}`, 480, currentY, { align: "right" });
+        currentY += 18;
+      }
+      doc.fontSize(12).font("Helvetica-Bold");
+      doc.text("Total:", 380, currentY);
+      doc.text(`$${(displayTotalAmount / 100).toFixed(2)}`, 480, currentY, { align: "right" });
+      currentY += 30;
+      if (invoiceViewer === "manager") {
+        const stripeProcessingFee = parseInt(String(transaction.stripeProcessingFee || transaction.stripe_processing_fee || "0")) || 0;
+        const managerRevenue = parseInt(String(transaction.managerRevenue || transaction.manager_revenue || "0")) || 0;
+        if (stripeProcessingFee > 0) {
+          currentY += 10;
+          doc.moveTo(380, currentY).lineTo(550, currentY).stroke("#e5e7eb");
+          currentY += 15;
+          doc.fontSize(10).font("Helvetica").fillColor("#6b7280");
+          doc.text("Stripe Processing Fee:", 380, currentY);
+          doc.fillColor("#dc2626");
+          doc.text(`-$${(stripeProcessingFee / 100).toFixed(2)}`, 480, currentY, { align: "right" });
+          doc.fillColor("#000000");
+          currentY += 18;
+          doc.fontSize(12).font("Helvetica-Bold").fillColor("#059669");
+          doc.text("You Receive:", 380, currentY);
+          const netAmount = managerRevenue > 0 ? managerRevenue : displayTotalAmount - stripeProcessingFee;
+          doc.text(`$${(netAmount / 100).toFixed(2)}`, 480, currentY, { align: "right" });
+          doc.fillColor("#000000");
+          currentY += 20;
+        }
+      }
+      currentY += 20;
+      doc.fontSize(12).font("Helvetica-Bold").text("Payment Information", 50, currentY);
+      currentY += 20;
+      doc.fontSize(10).font("Helvetica");
+      doc.text("Payment Method: Credit/Debit Card", 60, currentY);
+      currentY += 15;
+      doc.text("Payment Status: Paid", 60, currentY);
+      const pageHeight = doc.page.height;
+      const footerY = pageHeight - 80;
+      doc.moveTo(50, footerY).lineTo(550, footerY).stroke("#e5e7eb");
+      doc.fontSize(9).fillColor("#6b7280").text("For questions, contact support@localcook.shop", 50, footerY + 15, { align: "center", width: 500 });
       doc.fillColor("#000000");
       doc.end();
     } catch (error) {
@@ -16823,8 +17032,17 @@ var init_manager = __esm({
         }
         let chef = null;
         if (booking.chefId) {
-          const [chefData] = await db.select({ id: users.id, username: users.username }).from(users).where(eq24(users.id, booking.chefId)).limit(1);
-          chef = chefData || null;
+          const chefResult = await db.execute(sql10`
+                SELECT u.id, u.username, cka.full_name
+                FROM users u
+                LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
+                WHERE u.id = ${booking.chefId}
+                LIMIT 1
+            `);
+          const chefRows = chefResult.rows || chefResult;
+          if (Array.isArray(chefRows) && chefRows.length > 0) {
+            chef = chefRows[0];
+          }
         }
         const storageRows = await db.select({
           id: storageBookings.id,
@@ -16861,6 +17079,113 @@ var init_manager = __esm({
         );
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename="invoice-${bookingId}.pdf"`);
+        res.send(pdfBuffer);
+      } catch (error) {
+        return errorResponse(res, error);
+      }
+    });
+    router14.get("/revenue/invoices/storage/:storageBookingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const storageBookingId = parseInt(req.params.storageBookingId);
+        if (isNaN(storageBookingId) || storageBookingId <= 0) {
+          return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+        const [storageBooking] = await db.select({
+          id: storageBookings.id,
+          kitchenBookingId: storageBookings.kitchenBookingId,
+          storageListingId: storageBookings.storageListingId,
+          startDate: storageBookings.startDate,
+          endDate: storageBookings.endDate,
+          status: storageBookings.status,
+          totalPrice: storageBookings.totalPrice,
+          paymentStatus: storageBookings.paymentStatus,
+          paymentIntentId: storageBookings.paymentIntentId,
+          chefId: storageBookings.chefId,
+          storageName: storageListings.name,
+          storageType: storageListings.storageType,
+          kitchenId: storageListings.kitchenId,
+          kitchenName: kitchens.name,
+          locationName: locations.name,
+          locationId: locations.id,
+          taxRatePercent: kitchens.taxRatePercent
+        }).from(storageBookings).innerJoin(storageListings, eq24(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq24(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq24(kitchens.locationId, locations.id)).where(eq24(storageBookings.id, storageBookingId)).limit(1);
+        if (!storageBooking) {
+          return res.status(404).json({ error: "Storage booking not found" });
+        }
+        const managerOwnsLocation = await db.select({ id: locations.id }).from(locations).where(and15(
+          eq24(locations.id, storageBooking.locationId),
+          eq24(locations.managerId, managerId)
+        )).limit(1);
+        if (managerOwnsLocation.length === 0) {
+          return res.status(403).json({ error: "Access denied to this storage booking" });
+        }
+        const [transaction] = await db.select({
+          id: paymentTransactions.id,
+          amount: paymentTransactions.amount,
+          baseAmount: paymentTransactions.baseAmount,
+          paymentIntentId: paymentTransactions.paymentIntentId,
+          paidAt: paymentTransactions.paidAt,
+          createdAt: paymentTransactions.createdAt,
+          metadata: paymentTransactions.metadata,
+          stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+          managerRevenue: paymentTransactions.managerRevenue
+        }).from(paymentTransactions).where(and15(
+          eq24(paymentTransactions.bookingId, storageBookingId),
+          eq24(paymentTransactions.bookingType, "storage"),
+          eq24(paymentTransactions.status, "succeeded")
+        )).orderBy(desc12(paymentTransactions.createdAt)).limit(1);
+        let extensionDetails = null;
+        const metadata = transaction?.metadata;
+        if (metadata?.storage_extension_id) {
+          const extensionId = parseInt(String(metadata.storage_extension_id));
+          if (!isNaN(extensionId)) {
+            const extensionResult = await db.execute(sql10`
+                    SELECT 
+                        pse.id,
+                        pse.extension_days,
+                        pse.extension_base_price_cents,
+                        pse.extension_total_price_cents,
+                        pse.new_end_date,
+                        sl.name as storage_name,
+                        sl.base_price as daily_rate_cents,
+                        sl.storage_type::text as storage_type
+                    FROM pending_storage_extensions pse
+                    JOIN storage_bookings sb ON pse.storage_booking_id = sb.id
+                    JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+                    WHERE pse.id = ${extensionId}
+                    LIMIT 1
+                `);
+            const extensionRows = extensionResult.rows || extensionResult;
+            if (Array.isArray(extensionRows) && extensionRows.length > 0) {
+              extensionDetails = extensionRows[0];
+            }
+          }
+        }
+        let chef = null;
+        if (storageBooking.chefId) {
+          const chefResult = await db.execute(sql10`
+                SELECT u.id, u.username, cka.full_name
+                FROM users u
+                LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
+                WHERE u.id = ${storageBooking.chefId}
+                LIMIT 1
+            `);
+          const chefRows = chefResult.rows || chefResult;
+          if (Array.isArray(chefRows) && chefRows.length > 0) {
+            chef = chefRows[0];
+          }
+        }
+        const { generateStorageInvoicePDF: generateStorageInvoicePDF2 } = await Promise.resolve().then(() => (init_invoice_service(), invoice_service_exports));
+        const pdfBuffer = await generateStorageInvoicePDF2(
+          transaction || { amount: storageBooking.totalPrice, baseAmount: storageBooking.totalPrice },
+          storageBooking,
+          chef,
+          extensionDetails,
+          { viewer: "manager" }
+        );
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="storage-invoice-${storageBookingId}.pdf"`);
         res.send(pdfBuffer);
       } catch (error) {
         return errorResponse(res, error);
@@ -25344,7 +25669,9 @@ async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId
           storage_booking_id: storageBookingId.toString(),
           storage_extension_id: pendingExtension.id.toString(),
           extension_days: extensionDays.toString(),
-          new_end_date: newEndDate.toISOString()
+          new_end_date: newEndDate.toISOString(),
+          // Include base price for accurate tax calculation in transaction history
+          extension_base_price_cents: extensionBasePriceCents.toString()
         }
       }, db);
       if (ptRecord && paymentIntentId) {

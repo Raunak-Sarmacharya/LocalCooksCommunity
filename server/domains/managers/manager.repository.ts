@@ -79,8 +79,9 @@ export class ManagerRepository implements IManagerRepository {
                 kitchenName: kitchens.name,
                 locationName: locations.name,
                 chefName: users.username,
-                chefEmail: users.username, // Using username as email fallback if needed, or users.email is ideal but schema uses username often
-                createdAt: kitchenBookings.createdAt
+                chefEmail: users.username,
+                createdAt: kitchenBookings.createdAt,
+                bookingType: sql<'kitchen' | 'bundle'>`'kitchen'`.as('booking_type'),
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
@@ -96,7 +97,7 @@ export class ManagerRepository implements IManagerRepository {
         // Also fetch storage transactions (storage bookings, extensions, overstay penalties)
         const storageRows = await db.execute(sql`
             SELECT 
-                pt.id as id,
+                pt.booking_id as id,
                 sb.start_date as booking_date,
                 NULL as start_time,
                 NULL as end_time,

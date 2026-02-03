@@ -1063,6 +1063,8 @@ export async function getTransactionHistory(
         pt.metadata as pt_metadata,
         -- Actual Stripe fee from payment_transactions (fetched from Stripe Balance Transaction API)
         COALESCE(pt.stripe_processing_fee, 0)::bigint as actual_stripe_fee,
+        -- Tax rate from kitchen (same as kitchen bookings)
+        COALESCE(k.tax_rate_percent, 0)::numeric as tax_rate_percent,
         sb.start_date as booking_date,
         sb.chef_id,
         sl.name as storage_name,
@@ -1085,15 +1087,41 @@ export async function getTransactionHistory(
 
     const storageTransactions = storageResult.rows.map((row: any) => {
       const ptAmount = row.pt_amount != null ? parseInt(String(row.pt_amount)) : 0;
+      const ptBaseAmountFromDb = row.pt_base_amount != null ? parseInt(String(row.pt_base_amount)) : 0;
       const ptServiceFee = row.pt_service_fee != null ? parseInt(String(row.pt_service_fee)) : 0;
       const ptManagerRevenue = row.pt_manager_revenue != null ? parseInt(String(row.pt_manager_revenue)) : 0;
       const ptRefundAmount = row.pt_refund_amount != null ? parseInt(String(row.pt_refund_amount)) : 0;
       const actualStripeFee = row.actual_stripe_fee != null ? parseInt(String(row.actual_stripe_fee)) : 0;
+      const taxRatePercent = row.tax_rate_percent != null ? parseFloat(String(row.tax_rate_percent)) : 0;
       
       // Determine if this is an overstay penalty or storage extension
       const metadata = row.pt_metadata || {};
       const isOverstayPenalty = metadata.type === 'overstay_penalty';
       const isStorageExtension = metadata.storage_extension_id != null;
+      
+      // Get base amount for tax calculation
+      // For storage extensions, we need the SUBTOTAL before tax (same as kitchen bookings use kb.total_price)
+      // Priority:
+      // 1. metadata.extension_base_price_cents (source of truth, added in newer transactions)
+      // 2. Reverse-calculate from total: base = total / (1 + tax_rate/100)
+      // 3. Fall back to pt.base_amount (may be incorrect for older transactions)
+      let ptBaseAmount: number;
+      if (isStorageExtension && metadata.extension_base_price_cents) {
+        const metadataBaseAmount = parseInt(String(metadata.extension_base_price_cents));
+        if (!isNaN(metadataBaseAmount) && metadataBaseAmount > 0) {
+          ptBaseAmount = metadataBaseAmount;
+        } else if (taxRatePercent > 0 && ptAmount > 0) {
+          // Reverse-calculate: total = base * (1 + rate/100), so base = total / (1 + rate/100)
+          ptBaseAmount = Math.round(ptAmount / (1 + taxRatePercent / 100));
+        } else {
+          ptBaseAmount = ptBaseAmountFromDb;
+        }
+      } else if (isStorageExtension && taxRatePercent > 0 && ptAmount > 0) {
+        // For older storage extensions without metadata, reverse-calculate base from total
+        ptBaseAmount = Math.round(ptAmount / (1 + taxRatePercent / 100));
+      } else {
+        ptBaseAmount = ptBaseAmountFromDb;
+      }
       
       let description = row.storage_name || 'Storage';
       if (isOverstayPenalty) {
@@ -1109,8 +1137,16 @@ export async function getTransactionHistory(
       // If actual fee is 0, it will be synced via charge.updated webhook
       const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
       
-      // Net revenue = total - stripe fees (storage doesn't have tax currently)
-      const netRevenue = ptAmount - stripeFee;
+      // Calculate tax EXACTLY like kitchen bookings:
+      // Kitchen: taxCents = Math.round((kbTotalPrice * taxRatePercent) / 100)
+      // where kbTotalPrice is the SUBTOTAL before tax (from kitchen_bookings.total_price)
+      // 
+      // For storage: use pt.base_amount which is the SUBTOTAL before tax
+      // This matches how kitchen bookings use kb.total_price
+      const taxCents = Math.round((ptBaseAmount * taxRatePercent) / 100);
+      
+      // Net revenue = total - tax - stripe fees
+      const netRevenue = ptAmount - taxCents - stripeFee;
 
       return {
         id: bookingId,
@@ -1124,8 +1160,8 @@ export async function getTransactionHistory(
         totalPrice: ptAmount,
         serviceFee: ptServiceFee,
         platformFee: ptServiceFee,
-        taxAmount: 0,
-        taxRatePercent: 0,
+        taxAmount: taxCents,
+        taxRatePercent: taxRatePercent,
         stripeFee: stripeFee, // Actual Stripe processing fee (from Stripe API or estimated)
         managerRevenue: ptManagerRevenue || ptAmount,
         netRevenue: netRevenue,

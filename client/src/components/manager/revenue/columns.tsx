@@ -122,7 +122,7 @@ function PayoutStatusBadge({ status }: { status: string }) {
 // ═══════════════════════════════════════════════════════════════════════
 
 interface TransactionColumnsProps {
-    onDownloadInvoice: (bookingId: number) => void
+    onDownloadInvoice: (bookingId: number, bookingType?: string, transactionId?: number) => void
     onViewDetails?: (transaction: Transaction) => void
     onRefund?: (transaction: Transaction) => void
 }
@@ -323,7 +323,7 @@ export function getTransactionColumns({
                 const canRefund = !!transaction.transactionId
                     && transaction.refundableAmount > 0
                     && (transaction.paymentStatus === 'paid' || transaction.paymentStatus === 'partially_refunded')
-                const canDownloadInvoice = transaction.bookingType === 'kitchen' || transaction.bookingType === 'bundle'
+                const canDownloadInvoice = transaction.bookingType === 'kitchen' || transaction.bookingType === 'bundle' || transaction.bookingType === 'storage' 
 
                 return (
                     <DropdownMenu>
@@ -336,7 +336,11 @@ export function getTransactionColumns({
                         <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuItem
-                                onClick={() => onDownloadInvoice(transaction.bookingId)}
+                                onClick={() => onDownloadInvoice(
+                                    transaction.bookingId,
+                                    transaction.bookingType,
+                                    transaction.transactionId ?? undefined
+                                )}
                                 disabled={!canDownloadInvoice}
                             >
                                 <Download className="mr-2 h-4 w-4" />
@@ -377,7 +381,7 @@ export function getTransactionColumns({
 // ═══════════════════════════════════════════════════════════════════════
 
 interface InvoiceColumnsProps {
-    onDownload: (bookingId: number) => void
+    onDownload: (bookingId: number, bookingType?: string) => void
 }
 
 export function getInvoiceColumns({ onDownload }: InvoiceColumnsProps): ColumnDef<Invoice>[] {
@@ -436,7 +440,7 @@ export function getInvoiceColumns({ onDownload }: InvoiceColumnsProps): ColumnDe
                 <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => onDownload(row.original.bookingId)}
+                    onClick={() => onDownload(row.original.bookingId, row.original.bookingType)}
                     className="gap-2"
                 >
                     <Download className="h-4 w-4" />

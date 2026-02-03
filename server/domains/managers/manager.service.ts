@@ -57,6 +57,7 @@ export class ManagerService implements IManagerService {
 
             return {
                 bookingId: row.id,
+                bookingType: row.bookingType || 'kitchen',
                 bookingDate: row.bookingDate,
                 startTime: row.startTime,
                 endTime: row.endTime,
