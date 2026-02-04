@@ -18,9 +18,18 @@ import {
   serverTimestamp,
   setDoc
 } from "firebase/firestore";
-import { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useState, useRef, useCallback } from "react";
 import { getSubdomainFromHostname } from "@shared/subdomain-utils";
 import { User, UserWithFlags } from "@shared/schema";
+
+// ENTERPRISE: Auth Phase State Machine
+// Separates Firebase Auth State from Sync State to prevent timing issues
+export type AuthPhase = 
+  | 'idle'           // Not authenticated
+  | 'authenticating' // Firebase auth in progress (popup open, etc.)
+  | 'syncing'        // Backend sync in progress
+  | 'ready'          // Fully authenticated, sync complete
+  | 'error';         // Auth failed
 
 interface AuthUser extends Partial<AuthUserLegacyFields> {
   uid: string;
@@ -50,6 +59,7 @@ interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
   error: string | null;
+  authPhase: AuthPhase; // ENTERPRISE: Explicit auth phase for state machine
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, displayName?: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -73,6 +83,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isInitializing, setIsInitializing] = useState(true);
   const [pendingSync, setPendingSync] = useState(false);
   const [pendingRegistration, setPendingRegistration] = useState(false);
+
+  // ENTERPRISE: Auth Phase State Machine
+  // Tracks the full auth lifecycle: idle → authenticating → syncing → ready
+  const [authPhase, setAuthPhase] = useState<AuthPhase>('idle');
+
+  // ENTERPRISE: Refs to prevent duplicate syncs and access current values in callbacks
+  // Using refs instead of state in useEffect dependencies prevents multiple listener creation
+  const hasSyncedThisSession = useRef(false);
+  const pendingSyncRef = useRef(false);
+  const pendingRegistrationRef = useRef(false);
+  const isInitializingRef = useRef(true);
+
+  // Keep refs in sync with state for access in callbacks
+  useEffect(() => {
+    pendingSyncRef.current = pendingSync;
+  }, [pendingSync]);
+
+  useEffect(() => {
+    pendingRegistrationRef.current = pendingRegistration;
+  }, [pendingRegistration]);
+
+  useEffect(() => {
+    isInitializingRef.current = isInitializing;
+  }, [isInitializing]);
 
   const syncUserWithBackend = async (firebaseUser: any, role?: string, isRegistration = false, password?: string) => {
     try {
@@ -173,11 +207,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // ENTERPRISE: Single stable onAuthStateChanged listener
+  // Uses refs to access current state values, preventing multiple listener creation
+  // Empty dependency array ensures this effect only runs once on mount
   useEffect(() => {
+    console.log('📊 AUTH PHASE: Setting up onAuthStateChanged listener (runs once)');
+    
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
         if (firebaseUser) {
           console.log('🔥 AUTH STATE CHANGE - User detected:', firebaseUser.uid);
+          console.log('📊 AUTH PHASE: authenticating → syncing');
+          
+          // Only set to syncing if we're in authenticating phase (login/register in progress)
+          // For session restoration, we skip the authenticating phase
+          if (pendingSyncRef.current || pendingRegistrationRef.current) {
+            setAuthPhase('syncing');
+          }
 
           // Check if this is a verification redirect from email
           const urlParams = new URLSearchParams(window.location.search);
@@ -225,6 +271,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 isManager: userData.isManager,
                 isPortalUser: userData.isPortalUser
               });
+              
+              // ENTERPRISE: User exists in backend, mark as synced
+              hasSyncedThisSession.current = true;
             } else {
               console.log('🔥 NEW USER - No backend profile found, will need to sync');
             }
@@ -233,24 +282,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Continue without default role if backend fails
           }
 
-          // **IMPROVED SYNC LOGIC WITH VERIFICATION HANDLING**
-          // Sync if this is the first initialization, pending sync is requested, pending registration, OR verification redirect
-          const shouldSync = isInitializing || pendingSync || pendingRegistration || isVerificationRedirect;
+          // ENTERPRISE: Use refs to check sync conditions (prevents stale closures)
+          const shouldSync = isInitializingRef.current || pendingSyncRef.current || pendingRegistrationRef.current || isVerificationRedirect;
 
-          if (shouldSync) {
+          if (shouldSync && !hasSyncedThisSession.current) {
             console.log('🔥 SYNCING USER - Conditions met:', {
-              isInitializing,
-              pendingSync,
-              pendingRegistration,
+              isInitializing: isInitializingRef.current,
+              pendingSync: pendingSyncRef.current,
+              pendingRegistration: pendingRegistrationRef.current,
               isVerificationRedirect,
+              hasSyncedThisSession: hasSyncedThisSession.current,
               uid: firebaseUser.uid,
               emailVerified: firebaseUser.emailVerified
             });
 
-            const syncSuccess = await syncUserWithBackend(firebaseUser, role, pendingRegistration);
+            const syncSuccess = await syncUserWithBackend(firebaseUser, role, pendingRegistrationRef.current);
             if (syncSuccess) {
               setPendingSync(false);
               setPendingRegistration(false);
+              hasSyncedThisSession.current = true;
               console.log('✅ USER SYNCED - Backend sync complete');
 
               // If this was a verification redirect, clean up the URL
@@ -260,8 +310,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             } else {
               console.error('❌ USER SYNC FAILED - Will retry on next auth state change');
-              // Keep pendingSync true to retry on next auth state change
+              setAuthPhase('error');
             }
+          } else if (hasSyncedThisSession.current) {
+            console.log('ℹ️ SKIPPING SYNC - Already synced this session');
           } else {
             console.log('ℹ️ SKIPPING SYNC - Session restoration or no sync needed');
           }
@@ -283,18 +335,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             has_seen_welcome: applicationData?.has_seen_welcome,
             hasSeenWelcome: applicationData?.hasSeenWelcome,
           });
+          
+          // ENTERPRISE: Set auth phase to ready after successful user setup
+          console.log('📊 AUTH PHASE: syncing → ready');
+          setAuthPhase('ready');
         } else {
           console.log('🔥 AUTH STATE CHANGE - No user (logged out)');
           setUser(null);
           setPendingSync(false);
           setPendingRegistration(false);
+          hasSyncedThisSession.current = false;
+          setAuthPhase('idle');
         }
       } catch (err) {
         console.error("Auth state change error:", err);
         setError("Authentication error occurred");
+        setAuthPhase('error');
       } finally {
         setLoading(false);
-        if (isInitializing) {
+        if (isInitializingRef.current) {
           // Small delay to prevent flickering on initial load
           setTimeout(() => setIsInitializing(false), 50);
         }
@@ -302,11 +361,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [isInitializing, pendingSync, pendingRegistration]);
+  }, []); // ENTERPRISE: Empty deps - create listener ONCE on mount
 
   const login = async (email: string, password: string) => {
     setError(null);
     setLoading(true);
+    setAuthPhase('authenticating'); // ENTERPRISE: Set auth phase to authenticating
+    console.log('📊 AUTH PHASE: idle → authenticating (login)');
     try {
       // First, sign in to Firebase to verify credentials
       const cred = await signInWithEmailAndPassword(auth, email, password);
@@ -340,6 +401,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } else {
             // User not verified in Firebase either
             console.log('❌ User not verified in Firebase - signing out');
+            setAuthPhase('error');
             await signOut(auth);
             throw new Error('Please verify your email before logging in. Check your inbox for a verification link from Firebase.');
           }
@@ -351,14 +413,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       } else {
         // User doesn't exist in our database
+        setAuthPhase('error');
         await signOut(auth);
         throw new Error('Account not found. Please register first.');
       }
 
     } catch (firebaseError: any) {
       console.error('Login failed:', firebaseError.message);
-      // Don't set raw Firebase error - let the components handle user-friendly messages
-      // setError(firebaseError.message);
+      setAuthPhase('error');
       setPendingSync(false);
 
       // Re-throw the error so components can handle it with user-friendly messages
@@ -371,6 +433,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signup = async (email: string, password: string, displayName?: string) => {
     setError(null);
     setLoading(true);
+    setAuthPhase('authenticating'); // ENTERPRISE: Set auth phase to authenticating
+    console.log('📊 AUTH PHASE: idle → authenticating (signup)');
     try {
       setPendingSync(true); // Force sync on new signup
       setPendingRegistration(true); // Mark as registration
@@ -587,6 +651,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       await signOut(auth);
+      
+      // ENTERPRISE: Reset auth phase and session sync flag on logout
+      hasSyncedThisSession.current = false;
+      setAuthPhase('idle');
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -597,8 +665,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = async (isRegistration = false) => {
     setError(null);
     setLoading(true);
+    setAuthPhase('authenticating'); // ENTERPRISE: Set auth phase to authenticating
+    console.log('📊 AUTH PHASE: idle → authenticating (Google sign-in)');
     try {
-      // Set up Google Auth Provider
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({
         prompt: 'select_account'
@@ -1068,10 +1137,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(updatedUser);
         console.log('✅ Auth context user updated with fresh data');
-
-        // Force a re-render by triggering a state update
-        setLoading(true);
-        setTimeout(() => setLoading(false), 100);
+        
+        // ENTERPRISE FIX: Set authPhase to ready after successful refresh
+        // Don't trigger artificial loading state - it causes onboarding reset
+        setAuthPhase('ready');
       } else {
         console.error('❌ Failed to refresh user data:', response.status);
       }
@@ -1086,6 +1155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         loading,
         error,
+        authPhase,
         login,
         signup,
         logout,
@@ -1103,7 +1173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
+};
 
 export function useFirebaseAuth() {
   const context = useContext(AuthContext);

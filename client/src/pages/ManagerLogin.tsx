@@ -19,7 +19,7 @@ import FadeInSection from "@/components/ui/FadeInSection";
 export default function ManagerLogin() {
   // Managers now use Firebase authentication (like chefs)
   const [location, setLocation] = useLocation();
-  const { user, loading, logout, refreshUserData } = useFirebaseAuth();
+  const { user, loading, authPhase, logout, refreshUserData } = useFirebaseAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
@@ -233,13 +233,24 @@ export default function ManagerLogin() {
     }
   }, [loading, userMetaLoading, user, userMetaData, location, setLocation]);
 
-  // Show loading state
-  if (loading || isInitialLoad || userMetaLoading) {
+  // ENTERPRISE: Show appropriate loading state based on auth phase
+  // This prevents the login form from flashing during Google sign-in
+  const isAuthenticating = authPhase === 'authenticating' || authPhase === 'syncing';
+  
+  if (loading || isInitialLoad || userMetaLoading || isAuthenticating) {
+    // Determine the message based on auth phase
+    let loadingText = "Loading...";
+    if (authPhase === 'authenticating') {
+      loadingText = "Signing you in...";
+    } else if (authPhase === 'syncing') {
+      loadingText = "Setting up your account...";
+    }
+    
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-          <p className="text-sm text-gray-600">Loading...</p>
+          <p className="text-sm text-gray-600">{loadingText}</p>
         </div>
       </div>
     );

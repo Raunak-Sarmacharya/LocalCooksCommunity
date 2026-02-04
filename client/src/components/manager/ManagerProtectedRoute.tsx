@@ -11,7 +11,7 @@ interface ManagerProtectedRouteProps {
 
 export default function ManagerProtectedRoute({ children }: ManagerProtectedRouteProps) {
   const [location] = useLocation();
-  const { user: firebaseUser, loading: firebaseLoading } = useFirebaseAuth();
+  const { user: firebaseUser, loading: firebaseLoading, authPhase } = useFirebaseAuth();
   
   // Fetch user profile
   const { data: firebaseUserData, isLoading: firebaseProfileLoading, error: firebaseProfileError } = useQuery({
@@ -83,14 +83,19 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
 
   // Firebase Auth only - no session fallback
   const user = firebaseUserData;
+  // ENTERPRISE: Include authPhase in loading check to prevent premature redirects during auth flow
+  // This ensures we don't redirect to login while Google sign-in popup is open or sync is in progress
+  const isAuthInProgress = authPhase === 'authenticating' || authPhase === 'syncing';
   // Include locations loading in overall loading state to prevent flash
-  const loading = firebaseLoading || firebaseProfileLoading || (!!firebaseUserData && locationsLoading);
+  const loading = firebaseLoading || firebaseProfileLoading || (!!firebaseUserData && locationsLoading) || isAuthInProgress;
   const error = firebaseProfileError;
   
   const isManager = user?.role === 'manager' || user?.isManager;
 
   console.log('ManagerProtectedRoute - Firebase auth state:', {
     loading,
+    authPhase,
+    isAuthInProgress,
     hasFirebaseUser: !!firebaseUser,
     hasFirebaseUserData: !!firebaseUserData,
     finalUser: !!user,
