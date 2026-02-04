@@ -340,10 +340,6 @@ export const locationRequirements = pgTable("location_requirements", {
   tier2_insurance_document_required: boolean("tier2_insurance_document_required").default(false).notNull(),
   tier2_insurance_minimum_amount: integer("tier2_insurance_minimum_amount").default(0).notNull(),
   tier2_kitchen_experience_required: boolean("tier2_kitchen_experience_required").default(false).notNull(),
-  tier2_allergen_plan_required: boolean("tier2_allergen_plan_required").default(false).notNull(),
-  tier2_supplier_list_required: boolean("tier2_supplier_list_required").default(false).notNull(),
-  tier2_quality_control_required: boolean("tier2_quality_control_required").default(false).notNull(),
-  tier2_traceability_system_required: boolean("tier2_traceability_system_required").default(false).notNull(),
   tier2_custom_fields: jsonb("tier2_custom_fields").default([]),
 
   // Facility Information (auto-shared with chefs)

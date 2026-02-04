@@ -89,10 +89,6 @@ router.post('/firebase/chef/kitchen-applications',
                 // Upload tier-specific files
                 const tierFileFields = [
                     'tier2_insurance_document',
-                    'tier2_allergen_plan',
-                    'tier2_supplier_list',
-                    'tier2_quality_control',
-                    'tier2_traceability',
                     'tier3_food_safety_plan',
                     'tier3_production_timeline',
                     'tier3_cleaning_schedule',
@@ -507,6 +503,22 @@ router.post('/firebase/chef/kitchen-applications',
                                 code: 'custom',
                                 message: 'Insurance Document is required',
                                 path: ['tier2_insurance_document']
+                            }]
+                        });
+                    }
+                }
+
+                // Check if Kitchen Experience Description is required and provided
+                if (requirements.tier2_kitchen_experience_required) {
+                    const kitchenExperienceDesc = tierData?.kitchen_experience_description;
+                    if (!kitchenExperienceDesc || kitchenExperienceDesc.trim() === '') {
+                        return res.status(400).json({
+                            error: 'Validation error',
+                            message: 'Kitchen Experience Description is required for Tier 2',
+                            details: [{
+                                code: 'custom',
+                                message: 'Kitchen Experience Description is required',
+                                path: ['kitchenExperienceDescription']
                             }]
                         });
                     }

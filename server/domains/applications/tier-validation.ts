@@ -73,39 +73,15 @@ export class TierValidationService {
                 }
             }
 
-            // 3. Allergen Plan
-            if (requirements.tier2_allergen_plan_required) {
+            // 3. Kitchen Experience Description
+            if (requirements.tier2_kitchen_experience_required) {
                 const tierData = this.getTierData(application);
-                if (!tierData.allergen_plan_confirmed && !tierData.tierFiles?.['tier2_allergen_plan']) {
-                    missing.push("Allergen Plan is required");
+                if (!tierData.kitchen_experience_description) {
+                    missing.push("Kitchen Experience Description is required");
                 }
             }
 
-            // 4. Supplier List
-            if (requirements.tier2_supplier_list_required) {
-                const tierData = this.getTierData(application);
-                if (!tierData.supplier_list_confirmed && !tierData.tierFiles?.['tier2_supplier_list']) {
-                    missing.push("Supplier List is required");
-                }
-            }
-
-            // 5. Quality Control Plan
-            if (requirements.tier2_quality_control_required) {
-                const tierData = this.getTierData(application);
-                if (!tierData.quality_control_confirmed && !tierData.tierFiles?.['tier2_quality_control']) {
-                    missing.push("Quality Control Plan is required");
-                }
-            }
-
-            // 6. Traceability System
-            if (requirements.tier2_traceability_system_required) {
-                const tierData = this.getTierData(application);
-                if (!tierData.traceability_confirmed && !tierData.tierFiles?.['tier2_traceability']) {
-                    missing.push("Traceability System documentation is required");
-                }
-            }
-
-            // 7. Tier 2 Custom Fields
+            // 4. Tier 2 Custom Fields
             // @ts-ignore - jsonb typing
             const tier2Fields = (requirements.tier2_custom_fields as z.infer<typeof customFieldSchema>[]) || [];
             this.validateTier2CustomFields(application, tier2Fields, missing);

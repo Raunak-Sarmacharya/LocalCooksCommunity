@@ -47,10 +47,6 @@ export interface LocationRequirements {
   tier2_insurance_document_required?: boolean;
   tier2_insurance_minimum_amount?: number;
   tier2_kitchen_experience_required?: boolean;
-  tier2_allergen_plan_required?: boolean;
-  tier2_supplier_list_required?: boolean;
-  tier2_quality_control_required?: boolean;
-  tier2_traceability_system_required?: boolean;
   tier2_custom_fields?: CustomField[];
   // Facility Information
   floor_plans_url?: string;
@@ -182,13 +178,10 @@ export const STEP2_BUILT_IN_FIELDS: FieldGroupConfig[] = [
     ]
   },
   {
-    title: 'Operational Documentation',
-    description: 'Plans and procedures for kitchen operations',
+    title: 'Experience & Background',
+    description: 'Chef experience with commercial kitchen operations',
     fields: [
-      { key: 'tier2_allergen_plan_required', label: 'Allergen Management Plan', description: 'How they handle allergen contamination' },
-      { key: 'tier2_supplier_list_required', label: 'Supplier List', description: 'List of their ingredient suppliers' },
-      { key: 'tier2_quality_control_required', label: 'Quality Control Plan', description: 'Their quality assurance procedures' },
-      { key: 'tier2_traceability_system_required', label: 'Traceability System', description: 'How they track ingredients and batches' },
+      { key: 'tier2_kitchen_experience_required', label: 'Kitchen Experience Description', description: 'Description of their commercial kitchen experience' },
     ]
   },
 ];

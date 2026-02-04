@@ -100,10 +100,6 @@ export default function KitchenRequirementsPage() {
         if (!requirements) return [];
         const items = [
             requirements.tier2_food_establishment_cert_required && "Food Establishment Certificate",
-            requirements.tier2_allergen_plan_required && "Allergen Management Plan",
-            requirements.tier2_supplier_list_required && "Supplier List",
-            requirements.tier2_quality_control_required && "Quality Control Plan",
-            requirements.tier2_traceability_system_required && "Traceability System",
             (requirements.tier2_insurance_document_required || requirements.tier2_insurance_minimum_amount > 0) &&
             `Insurance Document${requirements.tier2_insurance_minimum_amount > 0 ? ` (min $${requirements.tier2_insurance_minimum_amount})` : ''}`,
             requirements.tier2_kitchen_experience_required && "Kitchen Experience Description",

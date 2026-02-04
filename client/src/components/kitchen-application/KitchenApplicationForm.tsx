@@ -84,6 +84,8 @@ const baseKitchenApplicationSchema = z.object({
   sessionDuration: z.string().min(1, "Please select session duration"),
   termsAgree: z.boolean().refine(val => val === true, "You must agree to the terms"),
   accuracyAgree: z.boolean().refine(val => val === true, "You must certify accuracy"),
+  // Tier 2 field - kitchen experience description
+  kitchenExperienceDescription: z.string().optional(),
 });
 
 type KitchenApplicationFormData = z.infer<typeof baseKitchenApplicationSchema> & {
@@ -253,6 +255,10 @@ export default function KitchenApplicationForm({
       accuracyAgree: (!isTier2OrHigher && requirements.requireAccuracyAgree)
         ? z.boolean().refine(val => val === true, "You must certify accuracy")
         : z.boolean().optional(),
+      // Tier 2: Kitchen Experience Description
+      kitchenExperienceDescription: (isTier2OrHigher && requirements.tier2_kitchen_experience_required)
+        ? z.string().min(1, "Kitchen experience description is required")
+        : z.string().optional(),
     };
 
     // Merge custom fields based on tier
@@ -343,6 +349,7 @@ export default function KitchenApplicationForm({
       sessionDuration: "",
       termsAgree: false,
       accuracyAgree: false,
+      kitchenExperienceDescription: "",
     };
 
     // Load existing application data if available
@@ -391,6 +398,14 @@ export default function KitchenApplicationForm({
         Object.entries(application.customFieldsData).forEach(([fieldId, value]) => {
           defaults[`custom_${fieldId}`] = value;
         });
+      }
+
+      // Load tier_data fields (for Tier 2+)
+      if (application.tier_data) {
+        const tierDataParsed = application.tier_data as Record<string, any>;
+        if (tierDataParsed.kitchen_experience_description) {
+          defaults.kitchenExperienceDescription = tierDataParsed.kitchen_experience_description;
+        }
       }
     }
 
@@ -617,6 +632,10 @@ export default function KitchenApplicationForm({
         const tierDataObj: Record<string, any> = {
           tier2: {},
         };
+        // Add kitchen experience description if provided
+        if (data.kitchenExperienceDescription) {
+          tierDataObj.kitchen_experience_description = data.kitchenExperienceDescription;
+        }
         formData.append("tier_data", JSON.stringify(tierDataObj));
         formData.append("current_tier", currentTier.toString());
       }
@@ -1864,6 +1883,36 @@ export default function KitchenApplicationForm({
                             accept=".pdf,.jpg,.jpeg,.png"
                             onChange={(e) => setInsuranceFile(e.target.files?.[0] || null)}
                             className="hidden"
+                          />
+                        </div>
+                      )}
+
+                      {/* Kitchen Experience Description */}
+                      {requirements?.tier2_kitchen_experience_required && (
+                        <div className="pt-4 border-t border-gray-100">
+                          <FormField
+                            control={form.control}
+                            name="kitchenExperienceDescription"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-sm font-medium">
+                                  Kitchen Experience Description
+                                  <span className="text-red-500">*</span>
+                                </FormLabel>
+                                <FormControl>
+                                  <Textarea
+                                    {...field}
+                                    placeholder="Describe your experience working in commercial kitchens, including types of establishments, roles, and duration..."
+                                    className="min-h-[100px] resize-none"
+                                    value={field.value || ''}
+                                  />
+                                </FormControl>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Please describe your commercial kitchen experience, including any relevant training or certifications.
+                                </p>
+                                <FormMessage />
+                              </FormItem>
+                            )}
                           />
                         </div>
                       )}
