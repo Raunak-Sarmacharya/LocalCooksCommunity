@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import {
     CheckCircle2,
@@ -17,11 +17,14 @@ import {
     PartyPopper,
     AlertCircle,
     Shield,
-    Rocket
+    Rocket,
+    Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
+import { auth } from "@/lib/firebase";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface SetupItem {
     id: string;
@@ -35,6 +38,8 @@ interface SetupItem {
 
 export default function CompletionSummaryStep() {
     const [, setLocation] = useLocation();
+    const queryClient = useQueryClient();
+    const [isCompletingOnboarding, setIsCompletingOnboarding] = useState(false);
     const {
         selectedLocation,
         kitchens,
@@ -184,10 +189,44 @@ export default function CompletionSummaryStep() {
     // Items that still need action (not complete AND not pending)
     const incompleteRequired = requiredItems.filter(item => item.status === 'incomplete');
 
-    const handleClose = () => {
+    // [ENTERPRISE FIX] Mark onboarding as complete when user clicks "Go to Dashboard"
+    // This is ONLY called when isOnboardingComplete=true (all required steps done, license uploaded)
+    // The API sets manager_onboarding_completed=true, enabling early-exit in useOnboardingStatus
+    const handleClose = useCallback(async () => {
+        // Only mark as complete if all required steps are done
+        // License can be pending - that's checked separately via showLicenseReviewBanner
+        if (isOnboardingComplete) {
+            setIsCompletingOnboarding(true);
+            try {
+                const token = await auth.currentUser?.getIdToken();
+                if (token) {
+                    const response = await fetch('/api/manager/complete-onboarding', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ skipped: false })
+                    });
+
+                    if (response.ok) {
+                        console.log('[CompletionSummary] ✅ Onboarding marked as complete');
+                        // Invalidate user profile cache so useOnboardingStatus sees the update
+                        await queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+                    } else {
+                        console.error('[CompletionSummary] Failed to mark onboarding complete:', response.status);
+                    }
+                }
+            } catch (error) {
+                console.error('[CompletionSummary] Error marking onboarding complete:', error);
+            } finally {
+                setIsCompletingOnboarding(false);
+            }
+        }
+
         setIsOpen(false);
         setLocation('/manager/dashboard');
-    };
+    }, [isOnboardingComplete, setIsOpen, setLocation, queryClient]);
 
     return (
         <div className="animate-in fade-in duration-500">
@@ -329,19 +368,29 @@ export default function CompletionSummaryStep() {
                 <Button
                     size="lg"
                     onClick={handleClose}
+                    disabled={isCompletingOnboarding}
                     className={cn(
                         "h-12 px-8 text-base font-medium shadow-sm hover:shadow-md transition-all duration-200",
                         isFullyReady && "bg-emerald-600 hover:bg-emerald-700",
                         isOnboardingComplete && isLicensePending && "bg-amber-600 hover:bg-amber-700"
                     )}
                 >
-                    {isFullyReady 
-                        ? "Go to Dashboard" 
-                        : isOnboardingComplete 
-                            ? "Go to Dashboard"
-                            : "Continue to Dashboard"
-                    }
-                    <ArrowRight className="ml-2 w-4 h-4" />
+                    {isCompletingOnboarding ? (
+                        <>
+                            <Loader2 className="mr-2 w-4 h-4 animate-spin" />
+                            Completing...
+                        </>
+                    ) : (
+                        <>
+                            {isFullyReady 
+                                ? "Go to Dashboard" 
+                                : isOnboardingComplete 
+                                    ? "Go to Dashboard"
+                                    : "Continue to Dashboard"
+                            }
+                            <ArrowRight className="ml-2 w-4 h-4" />
+                        </>
+                    )}
                 </Button>
                 {isOnboardingComplete && isLicensePending && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 text-center max-w-xs font-medium">

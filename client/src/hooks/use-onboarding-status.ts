@@ -30,7 +30,7 @@ export interface OnboardingStatus {
 export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     const { user: firebaseUser } = useFirebaseAuth();
 
-    // 1. Fetch User Profile (Global)
+    // 1. Fetch User Profile (Global) - ALWAYS fetch to check manager_onboarding_completed
     const { data: userData, isLoading: isLoadingUser } = useQuery({
         queryKey: ["/api/user/profile", firebaseUser?.uid],
         queryFn: async () => {
@@ -46,24 +46,12 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         enabled: !!firebaseUser,
     });
 
-    // Fetch Stripe Connect status from dedicated endpoint (queries Stripe API for real status)
-    const { data: stripeConnectStatus, isLoading: isLoadingStripe } = useQuery({
-        queryKey: ['/api/manager/stripe-connect/status', firebaseUser?.uid],
-        queryFn: async () => {
-            if (!firebaseUser) return null;
-            const token = await auth.currentUser?.getIdToken();
-            if (!token) return null;
-            const res = await fetch('/api/manager/stripe-connect/status', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!res.ok) return null;
-            return res.json();
-        },
-        enabled: !!firebaseUser,
-        staleTime: 1000 * 30, // Cache for 30 seconds
-    });
+    // [ENTERPRISE OPTIMIZATION] Check if onboarding is already marked complete in the database
+    // If true, skip all the detailed API calls - they're not needed for the dashboard
+    const isOnboardingMarkedComplete = !!userData?.manager_onboarding_completed;
 
-    // 2. Fetch Location Details (License)
+    // 2. Fetch Location Details (License) - ALWAYS fetch for license status banner
+    // This is a lightweight call needed even after onboarding is complete
     const { data: locationData, isLoading: isLoadingLocation } = useQuery({
         queryKey: ['locationDetails', locationId],
         queryFn: async () => {
@@ -79,7 +67,30 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         enabled: !!locationId,
     });
 
+    // [ENTERPRISE OPTIMIZATION] Skip Stripe, Kitchens, Availability, Requirements queries
+    // when onboarding is already complete - these are only needed during setup
+    const shouldSkipDetailedQueries = isOnboardingMarkedComplete;
+
+    // Fetch Stripe Connect status from dedicated endpoint (queries Stripe API for real status)
+    // SKIP when onboarding is complete - Stripe status was already verified during onboarding
+    const { data: stripeConnectStatus, isLoading: isLoadingStripe } = useQuery({
+        queryKey: ['/api/manager/stripe-connect/status', firebaseUser?.uid],
+        queryFn: async () => {
+            if (!firebaseUser) return null;
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) return null;
+            const res = await fetch('/api/manager/stripe-connect/status', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) return null;
+            return res.json();
+        },
+        enabled: !!firebaseUser && !shouldSkipDetailedQueries,
+        staleTime: 1000 * 30, // Cache for 30 seconds
+    });
+
     // 3. Fetch Kitchens (Pricing & Count)
+    // SKIP when onboarding is complete
     const { data: kitchens, isLoading: isLoadingKitchens } = useQuery({
         queryKey: ['managerKitchens', locationId],
         queryFn: async () => {
@@ -91,10 +102,11 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
             if (!res.ok) return [];
             return res.json();
         },
-        enabled: !!locationId,
+        enabled: !!locationId && !shouldSkipDetailedQueries,
     });
 
     // 4. Fetch Availability (Check if any kitchen has days set)
+    // SKIP when onboarding is complete - this is the most expensive query (multiple requests)
     const { data: availabilityData } = useQuery({
         queryKey: ['locationAvailabilityStatus', locationId, kitchens?.map((k: any) => k.id)],
         queryFn: async () => {
@@ -117,12 +129,13 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
             }
             return false;
         },
-        enabled: !!locationId && !!kitchens?.length,
+        enabled: !!locationId && !!kitchens?.length && !shouldSkipDetailedQueries,
     });
 
-    const hasAvailability = !!availabilityData;
+    const hasAvailability = shouldSkipDetailedQueries ? true : !!availabilityData;
 
     // 5. Fetch Requirements Status
+    // SKIP when onboarding is complete
     const { data: requirementsData } = useQuery({
         queryKey: ['locationRequirements', locationId],
         queryFn: async () => {
@@ -135,67 +148,83 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
             if (!res.ok) return null;
             return res.json();
         },
-        enabled: !!locationId,
+        enabled: !!locationId && !shouldSkipDetailedQueries,
     });
 
-    const hasRequirements = !!(requirementsData && Number(requirementsData.id) > 0);
+    const hasRequirements = shouldSkipDetailedQueries ? true : !!(requirementsData && Number(requirementsData.id) > 0);
 
     // --- Logic ---
 
-    // Use Stripe API status (more accurate) - account is complete only when charges AND payouts are enabled
-    const isStripeComplete = stripeConnectStatus?.status === 'complete' && 
-        stripeConnectStatus?.chargesEnabled && stripeConnectStatus?.payoutsEnabled;
-    
     // License status logic - handle snake_case and camelCase
+    // This is needed even for completed onboarding (for license review banner)
     const rawLicenseStatus = locationData?.kitchen_license_status || locationData?.kitchenLicenseStatus;
     const licenseUrl = locationData?.kitchen_license_url || locationData?.kitchenLicenseUrl;
     
     // Determine license states
     const hasUploadedLicense = !!licenseUrl;
     const hasApprovedLicense = rawLicenseStatus === 'approved';
-    const hasPendingLicense = hasUploadedLicense && rawLicenseStatus === 'pending';
+    const hasPendingLicense = hasUploadedLicense && (rawLicenseStatus === 'pending' || !rawLicenseStatus);
     const licenseStatus: 'none' | 'pending' | 'approved' | 'rejected' = 
         !hasUploadedLicense ? 'none' :
         rawLicenseStatus === 'approved' ? 'approved' :
         rawLicenseStatus === 'rejected' ? 'rejected' : 'pending';
+
+    // [ENTERPRISE OPTIMIZATION] When onboarding is already marked complete in DB:
+    // - Skip detailed status checks (Stripe, kitchens, availability, requirements)
+    // - These were verified when manager_onboarding_completed was set to true
+    // - Only license status is checked for showLicenseReviewBanner
+    const isStripeComplete = shouldSkipDetailedQueries 
+        ? true  // Was verified during onboarding
+        : (stripeConnectStatus?.status === 'complete' && 
+           stripeConnectStatus?.chargesEnabled && stripeConnectStatus?.payoutsEnabled);
     
-    const hasKitchens = (kitchens?.length || 0) > 0;
+    const hasKitchens = shouldSkipDetailedQueries ? true : (kitchens?.length || 0) > 0;
 
     // Onboarding Complete = All steps done with license UPLOADED (not necessarily approved)
-    const isOnboardingComplete =
-        isStripeComplete &&
-        hasUploadedLicense && // Just needs to be uploaded
-        hasKitchens &&
-        hasAvailability &&
-        hasRequirements;
+    // When DB flag is set, trust it (manager already completed all required steps)
+    const isOnboardingComplete = shouldSkipDetailedQueries 
+        ? true 
+        : (isStripeComplete &&
+           hasUploadedLicense && // Just needs to be uploaded
+           hasKitchens &&
+           hasAvailability &&
+           hasRequirements);
 
     // Ready for Bookings = Can accept bookings (license must be APPROVED)
-    const isReadyForBookings =
-        isStripeComplete &&
-        hasApprovedLicense && // Must be approved to accept bookings
-        hasKitchens &&
-        hasAvailability &&
-        hasRequirements;
+    // Even when onboarding is complete, license approval determines booking readiness
+    const isReadyForBookings = shouldSkipDetailedQueries
+        ? hasApprovedLicense  // Only license approval matters post-onboarding
+        : (isStripeComplete &&
+           hasApprovedLicense && // Must be approved to accept bookings
+           hasKitchens &&
+           hasAvailability &&
+           hasRequirements);
 
     // Missing steps for setup banner (only show if onboarding not complete)
     const missingSteps: string[] = [];
-    if (!hasUploadedLicense) missingSteps.push("Upload Kitchen License");
-    if (!hasKitchens) missingSteps.push("Create a Kitchen");
-    if (!hasAvailability) missingSteps.push("Set Availability");
-    if (!hasRequirements) missingSteps.push("Configure Application Requirements");
-    if (!isStripeComplete) missingSteps.push("Connect Stripe");
+    if (!shouldSkipDetailedQueries) {
+        if (!hasUploadedLicense) missingSteps.push("Upload Kitchen License");
+        if (!hasKitchens) missingSteps.push("Create a Kitchen");
+        if (!hasAvailability) missingSteps.push("Set Availability");
+        if (!hasRequirements) missingSteps.push("Configure Application Requirements");
+        if (!isStripeComplete) missingSteps.push("Connect Stripe");
+    }
 
     const showOnboardingModal =
         !userData?.manager_onboarding_completed &&
         !userData?.has_seen_welcome;
 
-    // Show setup banner only if onboarding is NOT complete
-    const showSetupBanner = !isOnboardingComplete;
+    // Show setup banner only if onboarding is NOT complete (DB flag not set)
+    const showSetupBanner = !isOnboardingMarkedComplete && !isOnboardingComplete;
     
     // Show license review banner if onboarding is complete but license is pending
-    const showLicenseReviewBanner = isOnboardingComplete && hasPendingLicense;
+    // This banner still shows even after onboarding is marked complete in DB
+    const showLicenseReviewBanner = (isOnboardingMarkedComplete || isOnboardingComplete) && hasPendingLicense;
 
-    const isLoading = isLoadingUser || isLoadingStripe || (!!locationId && (isLoadingLocation || isLoadingKitchens));
+    // Simplified loading state when onboarding is complete
+    const isLoading = shouldSkipDetailedQueries 
+        ? (isLoadingUser || (!!locationId && isLoadingLocation))  // Only 2 queries
+        : (isLoadingUser || isLoadingStripe || (!!locationId && (isLoadingLocation || isLoadingKitchens)));
 
     return {
         isLoading,
