@@ -7,8 +7,7 @@ import { userService } from "../domains/users/user.service";
 import { requireChef } from "./middleware";
 import { storage } from "../storage";
 import { pool, db } from "../db";
-import { sql } from "drizzle-orm";
-import { eq } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import { users } from "@shared/schema";
 import { errorResponse } from "../api-response";
 import { getAppBaseUrl } from "../config";
@@ -270,7 +269,336 @@ router.get("/locations", requireChef, async (req: Request, res: Response) => {
     }
 });
 
+// ============================================================================
+// CHEF INVOICE DOWNLOAD ENDPOINTS
+// ============================================================================
 
+import { paymentTransactions } from "@shared/schema";
+import { and, desc } from "drizzle-orm";
 
+// Download invoice PDF for storage extension (chef view)
+router.get("/invoices/storage/:storageBookingId", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const storageBookingId = parseInt(req.params.storageBookingId);
+
+        if (isNaN(storageBookingId) || storageBookingId <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        // Import needed schemas
+        const { storageBookings: storageBookingsTable, storageListings, kitchens, locations } = await import("@shared/schema");
+
+        // Get storage booking details and verify chef ownership
+        const [storageBooking] = await db
+            .select({
+                id: storageBookingsTable.id,
+                kitchenBookingId: storageBookingsTable.kitchenBookingId,
+                storageListingId: storageBookingsTable.storageListingId,
+                startDate: storageBookingsTable.startDate,
+                endDate: storageBookingsTable.endDate,
+                status: storageBookingsTable.status,
+                totalPrice: storageBookingsTable.totalPrice,
+                paymentStatus: storageBookingsTable.paymentStatus,
+                paymentIntentId: storageBookingsTable.paymentIntentId,
+                chefId: storageBookingsTable.chefId,
+                storageName: storageListings.name,
+                storageType: storageListings.storageType,
+                kitchenId: storageListings.kitchenId,
+                kitchenName: kitchens.name,
+                locationName: locations.name,
+                locationId: locations.id,
+                taxRatePercent: kitchens.taxRatePercent,
+            })
+            .from(storageBookingsTable)
+            .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
+            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .where(eq(storageBookingsTable.id, storageBookingId))
+            .limit(1);
+
+        if (!storageBooking) {
+            return res.status(404).json({ error: "Storage booking not found" });
+        }
+
+        // Verify chef owns this booking
+        if (storageBooking.chefId !== chefId) {
+            return res.status(403).json({ error: "Access denied to this storage booking" });
+        }
+
+        // Get the payment transaction for this storage booking
+        const [transaction] = await db
+            .select({
+                id: paymentTransactions.id,
+                amount: paymentTransactions.amount,
+                baseAmount: paymentTransactions.baseAmount,
+                paymentIntentId: paymentTransactions.paymentIntentId,
+                paidAt: paymentTransactions.paidAt,
+                createdAt: paymentTransactions.createdAt,
+                metadata: paymentTransactions.metadata,
+                stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+                managerRevenue: paymentTransactions.managerRevenue,
+            })
+            .from(paymentTransactions)
+            .where(and(
+                eq(paymentTransactions.bookingId, storageBookingId),
+                eq(paymentTransactions.bookingType, 'storage'),
+                eq(paymentTransactions.status, 'succeeded')
+            ))
+            .orderBy(desc(paymentTransactions.createdAt))
+            .limit(1);
+
+        if (!transaction) {
+            return res.status(404).json({ error: "No payment found for this storage booking" });
+        }
+
+        // Check if this is a storage extension by looking at metadata
+        let extensionDetails = null;
+        const metadata = transaction.metadata as Record<string, any> | undefined;
+        if (metadata?.storage_extension_id) {
+            const extensionId = parseInt(String(metadata.storage_extension_id));
+            if (!isNaN(extensionId)) {
+                const extensionResult = await db.execute(sql`
+                    SELECT 
+                        pse.id,
+                        pse.extension_days,
+                        pse.extension_base_price_cents,
+                        pse.extension_total_price_cents,
+                        pse.new_end_date,
+                        sl.name as storage_name,
+                        sl.base_price as daily_rate_cents,
+                        sl.storage_type::text as storage_type
+                    FROM pending_storage_extensions pse
+                    JOIN storage_bookings sb ON pse.storage_booking_id = sb.id
+                    JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+                    WHERE pse.id = ${extensionId}
+                    LIMIT 1
+                `);
+                const extensionRows = extensionResult.rows || extensionResult;
+                if (Array.isArray(extensionRows) && extensionRows.length > 0) {
+                    extensionDetails = extensionRows[0];
+                }
+            }
+        }
+
+        // Get chef info
+        let chef = null;
+        const chefResult = await db.execute(sql`
+            SELECT u.id, u.username, cka.full_name
+            FROM users u
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
+            WHERE u.id = ${chefId}
+            LIMIT 1
+        `);
+        const chefRows = chefResult.rows || chefResult;
+        if (Array.isArray(chefRows) && chefRows.length > 0) {
+            chef = chefRows[0];
+        }
+
+        // Generate invoice PDF for chef view
+        const { generateStorageInvoicePDF } = await import('../services/invoice-service');
+        const pdfBuffer = await generateStorageInvoicePDF(
+            transaction,
+            storageBooking,
+            chef,
+            extensionDetails,
+            { viewer: 'chef' }
+        );
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="storage-invoice-${storageBookingId}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[Chef Invoice] Error downloading storage invoice:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Download invoice PDF for overstay penalty (chef view)
+router.get("/invoices/overstay/:overstayRecordId", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const overstayRecordId = parseInt(req.params.overstayRecordId);
+
+        if (isNaN(overstayRecordId) || overstayRecordId <= 0) {
+            return res.status(400).json({ error: "Invalid overstay record ID" });
+        }
+
+        // Import needed schemas
+        const { storageOverstayRecords, storageBookings, storageListings, kitchens, locations } = await import("@shared/schema");
+
+        // Get overstay record
+        const [overstayRecord] = await db
+            .select({
+                id: storageOverstayRecords.id,
+                storageBookingId: storageOverstayRecords.storageBookingId,
+                finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+                calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+                daysOverdue: storageOverstayRecords.daysOverdue,
+                chargeSucceededAt: storageOverstayRecords.chargeSucceededAt,
+                stripePaymentIntentId: storageOverstayRecords.stripePaymentIntentId,
+                stripeChargeId: storageOverstayRecords.stripeChargeId,
+            })
+            .from(storageOverstayRecords)
+            .where(eq(storageOverstayRecords.id, overstayRecordId))
+            .limit(1);
+
+        if (!overstayRecord) {
+            return res.status(404).json({ error: "Overstay record not found" });
+        }
+
+        // Get storage booking and verify chef ownership
+        const [storageBooking] = await db
+            .select({
+                id: storageBookings.id,
+                chefId: storageBookings.chefId,
+                startDate: storageBookings.startDate,
+                endDate: storageBookings.endDate,
+                storageListingId: storageBookings.storageListingId,
+            })
+            .from(storageBookings)
+            .where(eq(storageBookings.id, overstayRecord.storageBookingId))
+            .limit(1);
+
+        if (!storageBooking) {
+            return res.status(404).json({ error: "Storage booking not found" });
+        }
+
+        // Verify chef owns this booking
+        if (storageBooking.chefId !== chefId) {
+            return res.status(403).json({ error: "Access denied to this overstay record" });
+        }
+
+        // Get storage listing and kitchen details
+        const [listing] = await db
+            .select({
+                id: storageListings.id,
+                name: storageListings.name,
+                storageType: storageListings.storageType,
+                kitchenId: storageListings.kitchenId,
+            })
+            .from(storageListings)
+            .where(eq(storageListings.id, storageBooking.storageListingId))
+            .limit(1);
+
+        if (!listing) {
+            return res.status(404).json({ error: "Storage listing not found" });
+        }
+
+        // Get kitchen and location details
+        const [kitchen] = await db
+            .select({
+                id: kitchens.id,
+                name: kitchens.name,
+                locationId: kitchens.locationId,
+                taxRatePercent: kitchens.taxRatePercent,
+            })
+            .from(kitchens)
+            .where(eq(kitchens.id, listing.kitchenId))
+            .limit(1);
+
+        if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const [location] = await db
+            .select({
+                id: locations.id,
+                name: locations.name,
+            })
+            .from(locations)
+            .where(eq(locations.id, kitchen.locationId))
+            .limit(1);
+
+        // Get payment transaction for this overstay penalty
+        const [transaction] = await db
+            .select({
+                id: paymentTransactions.id,
+                amount: paymentTransactions.amount,
+                baseAmount: paymentTransactions.baseAmount,
+                paymentIntentId: paymentTransactions.paymentIntentId,
+                paidAt: paymentTransactions.paidAt,
+                createdAt: paymentTransactions.createdAt,
+                metadata: paymentTransactions.metadata,
+                stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+                managerRevenue: paymentTransactions.managerRevenue,
+            })
+            .from(paymentTransactions)
+            .where(and(
+                eq(paymentTransactions.bookingId, overstayRecord.storageBookingId),
+                eq(paymentTransactions.bookingType, 'storage'),
+                eq(paymentTransactions.status, 'succeeded')
+            ))
+            .orderBy(desc(paymentTransactions.createdAt))
+            .limit(1);
+
+        if (!transaction) {
+            return res.status(404).json({ error: "No payment found for this overstay penalty" });
+        }
+
+        // Verify this is an overstay penalty transaction
+        const metadata = transaction.metadata as Record<string, any> | undefined;
+        if (!metadata || metadata.type !== 'overstay_penalty') {
+            return res.status(404).json({ error: "No payment transaction found for this overstay penalty" });
+        }
+
+        // Get chef info
+        let chef = null;
+        const chefResult = await db.execute(sql`
+            SELECT u.id, u.username, cka.full_name
+            FROM users u
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
+            WHERE u.id = ${chefId}
+            LIMIT 1
+        `);
+        const chefRows = chefResult.rows || chefResult;
+        if (Array.isArray(chefRows) && chefRows.length > 0) {
+            chef = chefRows[0];
+        }
+
+        // Extract tax info from metadata
+        const taxRatePercent = parseFloat(String(metadata.tax_rate_percent || '0')) || 0;
+        const penaltyBaseCents = parseInt(String(metadata.penalty_base_cents || '0')) || 0;
+        const penaltyTaxCents = parseInt(String(metadata.penalty_tax_cents || '0')) || 0;
+
+        // Use stored values or calculate from transaction
+        const baseAmount = penaltyBaseCents || parseInt(String(transaction.baseAmount || '0'));
+        const totalAmount = parseInt(String(transaction.amount || '0'));
+        const displayTaxAmount = penaltyTaxCents || (totalAmount - baseAmount);
+
+        // Generate invoice for chef view
+        const { generateStorageInvoicePDF } = await import('../services/invoice-service');
+        
+        const overstayDetails = {
+            is_overstay_penalty: true,
+            days_overdue: overstayRecord.daysOverdue,
+            penalty_base_cents: baseAmount,
+            penalty_total_cents: totalAmount,
+            penalty_tax_cents: displayTaxAmount,
+            tax_rate_percent: taxRatePercent,
+        };
+
+        const pdfBuffer = await generateStorageInvoicePDF(
+            transaction,
+            {
+                id: storageBooking.id,
+                kitchenName: kitchen.name,
+                locationName: location?.name,
+                storageName: listing.name,
+                taxRatePercent: taxRatePercent,
+            },
+            chef,
+            overstayDetails,
+            { viewer: 'chef' }
+        );
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="overstay-invoice-${overstayRecordId}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[Chef Invoice] Error downloading overstay invoice:', error);
+        return errorResponse(res, error);
+    }
+});
 
 export default router;

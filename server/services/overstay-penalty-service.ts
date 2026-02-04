@@ -23,7 +23,7 @@ import {
   type StorageOverstayRecord,
   type OverstayStatus
 } from "@shared/schema";
-import { eq, and, lt, not, inArray, desc, asc } from "drizzle-orm";
+import { eq, and, lt, not, inArray, desc, asc, sql } from "drizzle-orm";
 import { logger } from "../logger";
 import Stripe from "stripe";
 import { getOverstayPlatformDefaults, getEffectivePenaltyConfig } from "./overstay-defaults-service";
@@ -108,6 +108,8 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
   today.setHours(0, 0, 0, 0);
 
   // Find all storage bookings that have ended and are not cancelled
+  // IMPORTANT: Skip bookings with checkout in progress (checkout_requested, checkout_approved, completed)
+  // This prevents unwarranted overstay penalties when chef has initiated checkout
   const expiredBookings = await db
     .select({
       id: storageBookings.id,
@@ -119,6 +121,7 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
       paymentStatus: storageBookings.paymentStatus,
       stripeCustomerId: storageBookings.stripeCustomerId,
       stripePaymentMethodId: storageBookings.stripePaymentMethodId,
+      checkoutStatus: storageBookings.checkoutStatus,
       // Storage listing config
       basePrice: storageListings.basePrice,
       gracePeriodDays: storageListings.overstayGracePeriodDays,
@@ -138,6 +141,15 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
 
   for (const booking of expiredBookings) {
     try {
+      // HYBRID VERIFICATION: Skip bookings with checkout in progress
+      // This prevents unwarranted overstay penalties when chef has initiated checkout
+      // Manager has 48-hour window to verify before penalties apply
+      const checkoutStatus = booking.checkoutStatus as string | null;
+      if (checkoutStatus === 'checkout_requested' || checkoutStatus === 'checkout_approved' || checkoutStatus === 'completed') {
+        logger.info(`[OverstayService] Skipping booking ${booking.id} - checkout in progress (status: ${checkoutStatus})`);
+        continue;
+      }
+
       const endDate = new Date(booking.endDate);
       endDate.setHours(0, 0, 0, 0);
       
@@ -162,11 +174,14 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
       const dailyRateCents = booking.basePrice ? Math.round(parseFloat(booking.basePrice.toString())) : 0;
 
       // Calculate penalty (only for days after grace period, capped at max)
+      // Formula: (dailyRate + dailyRate × penaltyRate) × penaltyDays
+      // Example: $20/day storage with 10% penalty = ($20 + $2) × days = $22/day
       let penaltyDays = 0;
       if (!isInGracePeriod) {
         penaltyDays = Math.min(daysOverdue - gracePeriodDays, maxPenaltyDays);
       }
-      const calculatedPenaltyCents = Math.round(dailyRateCents * penaltyRate * penaltyDays);
+      const dailyPenaltyChargeCents = Math.round(dailyRateCents * (1 + penaltyRate));
+      const calculatedPenaltyCents = dailyPenaltyChargeCents * penaltyDays;
 
       // Determine status
       let status: OverstayStatus = 'detected';
@@ -179,11 +194,17 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
       // Create idempotency key for this booking's current overstay period
       const idempotencyKey = `booking_${booking.id}_overstay_${endDate.toISOString().split('T')[0]}`;
 
-      // Check if record already exists
+      // Check if record already exists for this booking (regardless of end date changes from extensions)
       const [existingRecord] = await db
         .select()
         .from(storageOverstayRecords)
-        .where(eq(storageOverstayRecords.idempotencyKey, idempotencyKey))
+        .where(
+          and(
+            eq(storageOverstayRecords.storageBookingId, booking.id),
+            inArray(storageOverstayRecords.status, ['detected', 'grace_period', 'pending_review', 'charge_failed'])
+          )
+        )
+        .orderBy(desc(storageOverstayRecords.detectedAt))
         .limit(1);
 
       if (existingRecord) {
@@ -426,9 +447,26 @@ export async function getOverstayRecord(overstayId: number): Promise<StorageOver
 
 /**
  * Process manager's penalty decision
+ * 
+ * @param decision - Manager's decision including action type and optional adjusted amount
+ * @returns Success status and optional error message
+ * 
+ * Business Rules:
+ * - Only records in 'pending_review' or 'charge_failed' status can be processed
+ * - Penalty amount cannot exceed calculatedPenaltyCents (base + penalty rate)
+ * - Waive action requires a reason and sets finalPenaltyCents to 0
+ * - All decisions are logged in audit history
  */
 export async function processManagerDecision(decision: ManagerPenaltyDecision): Promise<{ success: boolean; error?: string }> {
   const { overstayRecordId, managerId, action, finalPenaltyCents, waiveReason, managerNotes } = decision;
+
+  // Input validation
+  if (!overstayRecordId || overstayRecordId <= 0) {
+    return { success: false, error: 'Invalid overstay record ID' };
+  }
+  if (!managerId || managerId <= 0) {
+    return { success: false, error: 'Invalid manager ID' };
+  }
 
   const record = await getOverstayRecord(overstayRecordId);
   if (!record) {
@@ -450,12 +488,33 @@ export async function processManagerDecision(decision: ManagerPenaltyDecision): 
     updatedAt: new Date(),
   };
 
+  // Helper function to validate penalty amount against maximum
+  const validatePenaltyAmount = (amount: number): { valid: boolean; error?: string } => {
+    if (amount < 0) {
+      return { valid: false, error: 'Penalty amount cannot be negative' };
+    }
+    if (amount > record.calculatedPenaltyCents) {
+      return { 
+        valid: false, 
+        error: `Penalty amount cannot exceed the calculated maximum of $${(record.calculatedPenaltyCents / 100).toFixed(2)}` 
+      };
+    }
+    return { valid: true };
+  };
+
   switch (action) {
-    case 'approve':
+    case 'approve': {
+      if (finalPenaltyCents !== undefined) {
+        const validation = validatePenaltyAmount(finalPenaltyCents);
+        if (!validation.valid) {
+          return { success: false, error: validation.error };
+        }
+      }
       newStatus = 'penalty_approved';
       updateData.finalPenaltyCents = finalPenaltyCents ?? record.calculatedPenaltyCents;
       updateData.status = newStatus;
       break;
+    }
 
     case 'waive':
       newStatus = 'penalty_waived';
@@ -467,17 +526,22 @@ export async function processManagerDecision(decision: ManagerPenaltyDecision): 
       updateData.resolutionType = 'waived';
       break;
 
-    case 'adjust':
+    case 'adjust': {
       if (finalPenaltyCents === undefined) {
         return { success: false, error: 'finalPenaltyCents required for adjust action' };
+      }
+      const adjustValidation = validatePenaltyAmount(finalPenaltyCents);
+      if (!adjustValidation.valid) {
+        return { success: false, error: adjustValidation.error };
       }
       newStatus = 'penalty_approved';
       updateData.finalPenaltyCents = finalPenaltyCents;
       updateData.status = newStatus;
       break;
+    }
 
     default:
-      return { success: false, error: 'Invalid action' };
+      return { success: false, error: `Invalid action: ${action}` };
   }
 
   await db
@@ -643,6 +707,52 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
   try {
     // ENTERPRISE STANDARD: Create off-session PaymentIntent with destination charge
     // This automatically transfers funds to the manager's Stripe Connect account
+    
+    // Get kitchen tax rate for tax calculation (same as storage extensions)
+    let taxRatePercent = 0;
+    try {
+      const [storageBooking] = await db
+        .select({ storageListingId: storageBookings.storageListingId })
+        .from(storageBookings)
+        .where(eq(storageBookings.id, record.storageBookingId))
+        .limit(1);
+
+      if (storageBooking) {
+        const [listing] = await db
+          .select({ kitchenId: storageListings.kitchenId })
+          .from(storageListings)
+          .where(eq(storageListings.id, storageBooking.storageListingId))
+          .limit(1);
+
+        if (listing?.kitchenId) {
+          const [kitchen] = await db
+            .select({ taxRatePercent: kitchens.taxRatePercent })
+            .from(kitchens)
+            .where(eq(kitchens.id, listing.kitchenId))
+            .limit(1);
+          
+          if (kitchen?.taxRatePercent) {
+            taxRatePercent = parseFloat(String(kitchen.taxRatePercent));
+          }
+        }
+      }
+    } catch (taxError: unknown) {
+      logger.warn(`[OverstayService] Could not fetch tax rate for penalty:`, taxError as object);
+    }
+
+    // Calculate penalty with tax (same logic as storage extensions)
+    const penaltyBaseCents = record.finalPenaltyCents;
+    const penaltyTaxCents = Math.round((penaltyBaseCents * taxRatePercent) / 100);
+    const penaltyTotalCents = penaltyBaseCents + penaltyTaxCents;
+    
+    logger.info(`[OverstayService] Calculated tax for overstay penalty:`, {
+      overstayRecordId,
+      penaltyBaseCents,
+      penaltyTaxCents,
+      penaltyTotalCents,
+      taxRatePercent,
+    });
+
     const paymentIntentParams: {
       amount: number;
       currency: string;
@@ -654,7 +764,7 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
       statement_descriptor_suffix: string;
       transfer_data?: { destination: string };
     } = {
-      amount: record.finalPenaltyCents,
+      amount: penaltyTotalCents,
       currency: 'cad',
       customer: customerId,
       payment_method: paymentMethodId,
@@ -666,6 +776,9 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
         storage_booking_id: record.storageBookingId.toString(),
         days_overdue: record.daysOverdue.toString(),
         manager_id: managerId?.toString() || '',
+        tax_rate_percent: taxRatePercent.toString(),
+        penalty_base_cents: penaltyBaseCents.toString(),
+        penalty_tax_cents: penaltyTaxCents.toString(),
       },
       statement_descriptor_suffix: 'OVERSTAY FEE',
     };
@@ -721,10 +834,10 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
           bookingType: "storage",
           chefId: booking.chefId || null,
           managerId,  // Already fetched above for destination charge
-          amount: record.finalPenaltyCents,
-          baseAmount: record.finalPenaltyCents,
+          amount: penaltyTotalCents,  // Total including tax
+          baseAmount: penaltyBaseCents,  // Base before tax
           serviceFee: 0, // No service fee on penalties
-          managerRevenue: record.finalPenaltyCents,
+          managerRevenue: penaltyTotalCents,  // Manager gets full amount (minus Stripe fees)
           currency: "CAD",
           paymentIntentId: paymentIntent.id, // CRITICAL: Save payment intent for fee syncing
           chargeId: chargeId || undefined,
@@ -735,6 +848,9 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
             overstay_record_id: overstayRecordId.toString(),
             storage_booking_id: record.storageBookingId.toString(),
             charged_via: "off_session", // Indicates this was charged directly, not via checkout
+            tax_rate_percent: taxRatePercent.toString(),
+            penalty_base_cents: penaltyBaseCents.toString(),
+            penalty_tax_cents: penaltyTaxCents.toString(),
           },
         }, db);
 
@@ -772,8 +888,8 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
       // Send penalty charged email to chef
       try {
         await sendPenaltyChargedEmail(overstayRecordId, record.finalPenaltyCents, record.daysOverdue);
-      } catch (emailError) {
-        logger.error(`[OverstayService] Error sending penalty charged email:`, emailError);
+      } catch (emailError: unknown) {
+        logger.error(`[OverstayService] Error sending penalty charged email:`, emailError as object);
       }
 
       return { 
@@ -890,6 +1006,15 @@ export async function resolveOverstay(
 
 /**
  * Create an audit history entry for an overstay record
+ * 
+ * @param overstayRecordId - The overstay record to log history for
+ * @param previousStatus - Previous status (null for initial creation)
+ * @param newStatus - New status (required by database schema)
+ * @param eventType - Type of event (status_change, notification_sent, charge_attempt, etc.)
+ * @param eventSource - Source of the event (system, manager, cron, stripe_webhook)
+ * @param description - Human-readable description of the event
+ * @param metadata - Additional structured data about the event
+ * @param createdBy - User ID who triggered the event (if applicable)
  */
 async function createOverstayHistoryEntry(
   overstayRecordId: number,
@@ -898,7 +1023,7 @@ async function createOverstayHistoryEntry(
   eventType: string,
   eventSource: string,
   description?: string,
-  metadata?: Record<string, any>,
+  metadata?: Record<string, unknown>,
   createdBy?: number
 ): Promise<void> {
   await db
@@ -979,6 +1104,11 @@ export async function getOverstayStats(locationId?: number) {
  * Mark that chef warning was sent
  */
 export async function markChefWarningSent(overstayRecordId: number): Promise<void> {
+  const record = await getOverstayRecord(overstayRecordId);
+  if (!record) return;
+
+  const currentStatus = record.status as OverstayStatus;
+
   await db
     .update(storageOverstayRecords)
     .set({
@@ -989,8 +1119,8 @@ export async function markChefWarningSent(overstayRecordId: number): Promise<voi
 
   await createOverstayHistoryEntry(
     overstayRecordId,
-    null as any,
-    null as any,
+    currentStatus,
+    currentStatus,
     'notification_sent',
     'system',
     'Chef warning email sent'
@@ -1001,6 +1131,11 @@ export async function markChefWarningSent(overstayRecordId: number): Promise<voi
  * Mark that manager was notified
  */
 export async function markManagerNotified(overstayRecordId: number): Promise<void> {
+  const record = await getOverstayRecord(overstayRecordId);
+  if (!record) return;
+
+  const currentStatus = record.status as OverstayStatus;
+
   await db
     .update(storageOverstayRecords)
     .set({
@@ -1011,8 +1146,8 @@ export async function markManagerNotified(overstayRecordId: number): Promise<voi
 
   await createOverstayHistoryEntry(
     overstayRecordId,
-    null as any,
-    null as any,
+    currentStatus,
+    currentStatus,
     'notification_sent',
     'system',
     'Manager notification sent'
@@ -1427,6 +1562,94 @@ async function sendPenaltyChargedEmail(
   }
 }
 
+/**
+ * Check if chef has any unpaid overstay penalties (blocking check)
+ * Returns true if chef has any penalties that need to be paid/resolved
+ * 
+ * Blocking statuses:
+ * - detected: Overstay detected, grace period may be active
+ * - grace_period: In grace period, penalty accumulating
+ * - pending_review: Awaiting manager approval
+ * - penalty_approved: Approved by manager, awaiting payment/charge
+ * - charge_pending: Payment/charge in progress
+ * - charge_failed: Charge failed, needs resolution
+ */
+export async function hasChefUnpaidPenalties(chefId: number): Promise<boolean> {
+  const blockingStatuses: OverstayStatus[] = [
+    'detected',
+    'grace_period', 
+    'pending_review',
+    'penalty_approved',
+    'charge_pending',
+    'charge_failed'
+  ];
+
+  const [result] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(storageOverstayRecords)
+    .innerJoin(storageBookings, eq(storageOverstayRecords.storageBookingId, storageBookings.id))
+    .where(
+      and(
+        eq(storageBookings.chefId, chefId),
+        inArray(storageOverstayRecords.status, blockingStatuses)
+      )
+    );
+
+  return (result?.count || 0) > 0;
+}
+
+/**
+ * Get all unpaid overstay penalties for a chef (with full details)
+ * Used for displaying to the chef what they need to pay
+ */
+export async function getChefUnpaidPenalties(chefId: number) {
+  const blockingStatuses: OverstayStatus[] = [
+    'detected',
+    'grace_period',
+    'pending_review', 
+    'penalty_approved',
+    'charge_pending',
+    'charge_failed'
+  ];
+
+  const records = await db
+    .select({
+      overstayId: storageOverstayRecords.id,
+      storageBookingId: storageOverstayRecords.storageBookingId,
+      status: storageOverstayRecords.status,
+      daysOverdue: storageOverstayRecords.daysOverdue,
+      calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+      finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+      detectedAt: storageOverstayRecords.detectedAt,
+      gracePeriodEndsAt: storageOverstayRecords.gracePeriodEndsAt,
+      penaltyApprovedAt: storageOverstayRecords.penaltyApprovedAt,
+      storageName: storageListings.name,
+      storageType: storageListings.storageType,
+      kitchenName: kitchens.name,
+      bookingEndDate: storageBookings.endDate,
+    })
+    .from(storageOverstayRecords)
+    .innerJoin(storageBookings, eq(storageOverstayRecords.storageBookingId, storageBookings.id))
+    .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+    .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+    .where(
+      and(
+        eq(storageBookings.chefId, chefId),
+        inArray(storageOverstayRecords.status, blockingStatuses)
+      )
+    )
+    .orderBy(desc(storageOverstayRecords.detectedAt));
+
+  return records.map(r => ({
+    ...r,
+    storageName: r.storageName || 'Storage',
+    storageType: r.storageType || 'dry',
+    kitchenName: r.kitchenName || 'Kitchen',
+    penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0,
+    requiresImmediatePayment: ['penalty_approved', 'charge_failed'].includes(r.status),
+  }));
+}
+
 // Export singleton-style functions
 export const overstayPenaltyService = {
   detectOverstays,
@@ -1444,4 +1667,6 @@ export const overstayPenaltyService = {
   createPenaltyPaymentCheckout,
   sendOverstayNotificationEmails,
   sendPenaltyChargedEmail,
+  hasChefUnpaidPenalties,
+  getChefUnpaidPenalties,
 };

@@ -3502,6 +3502,168 @@ export const generateKitchenLicenseSubmittedAdminEmail = (data: {
 };
 
 // ===================================
+// DAMAGE CLAIM NOTIFICATION EMAILS
+// ===================================
+
+// Notify chef when a damage claim is filed against them
+export const generateDamageClaimFiledEmail = (data: {
+  chefEmail: string;
+  chefName: string;
+  managerName: string;
+  locationName: string;
+  claimTitle: string;
+  claimedAmount: string;
+  damageDate: string;
+  responseDeadline: string;
+  claimId: number;
+}): EmailContent => {
+  const subject = `Damage Claim Filed - Action Required`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = `${baseUrl}/dashboard?view=damage-claims`;
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">A damage claim has been filed against your booking. Please review and respond before the deadline.</p><div class="info-box"><strong>📋 Claim:</strong> ${data.claimTitle}<br><strong>💰 Amount:</strong> ${data.claimedAmount}<br><strong>🏢 Location:</strong> ${data.locationName}<br><strong>👤 Filed by:</strong> ${data.managerName}<br><strong>📅 Damage Date:</strong> ${data.damageDate}<br><strong>⏰ Response Deadline:</strong> <span style="color: #dc2626; font-weight: 600;">${data.responseDeadline}</span></div><p class="message">You can accept the claim or dispute it for admin review. If you don't respond by the deadline, the claim may be automatically approved.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review & Respond</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.chefEmail,
+    subject,
+    text: `Hello ${data.chefName}, A damage claim has been filed against your booking at ${data.locationName}. Claim: ${data.claimTitle}. Amount: ${data.claimedAmount}. Please respond by ${data.responseDeadline}.`,
+    html
+  };
+};
+
+// Notify manager when chef responds to their damage claim
+export const generateDamageClaimResponseEmail = (data: {
+  managerEmail: string;
+  managerName: string;
+  chefName: string;
+  claimTitle: string;
+  claimedAmount: string;
+  response: 'accepted' | 'disputed';
+  chefResponse?: string;
+  claimId: number;
+}): EmailContent => {
+  const isAccepted = data.response === 'accepted';
+  const subject = `Damage Claim ${isAccepted ? 'Accepted' : 'Disputed'} - ${data.claimTitle}`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = `${baseUrl}/manager/booking-dashboard?view=damage-claims`;
+  
+  const statusColor = isAccepted ? '#16a34a' : '#dc2626';
+  const statusText = isAccepted ? 'ACCEPTED' : 'DISPUTED';
+  const nextSteps = isAccepted 
+    ? 'You can now charge the chef\'s saved payment method from your dashboard.'
+    : 'The claim has been escalated to admin for review. You will be notified of the decision.';
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.managerName},</h2><p class="message">${data.chefName} has responded to your damage claim.</p><div class="info-box"><strong>📋 Claim:</strong> ${data.claimTitle}<br><strong>💰 Amount:</strong> ${data.claimedAmount}<br><strong>📊 Status:</strong> <span style="color: ${statusColor}; font-weight: 600;">${statusText}</span>${data.chefResponse ? `<br><br><strong>💬 Chef's Response:</strong> ${data.chefResponse}` : ''}</div><p class="message">${nextSteps}</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Claim</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.managerEmail,
+    subject,
+    text: `Hello ${data.managerName}, ${data.chefName} has ${data.response} your damage claim "${data.claimTitle}" for ${data.claimedAmount}.${data.chefResponse ? ` Response: ${data.chefResponse}` : ''} ${nextSteps}`,
+    html
+  };
+};
+
+// Notify admin when a damage claim is disputed
+export const generateDamageClaimDisputedAdminEmail = (data: {
+  adminEmail: string;
+  chefName: string;
+  chefEmail: string;
+  managerName: string;
+  locationName: string;
+  claimTitle: string;
+  claimedAmount: string;
+  chefResponse: string;
+  claimId: number;
+}): EmailContent => {
+  const subject = `Damage Claim Disputed - Admin Review Required`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = `${baseUrl}/admin/damage-claims`;
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Damage Claim Dispute - Review Required</h2><p class="message">A chef has disputed a damage claim and requires your review:</p><div class="info-box"><strong>📋 Claim:</strong> ${data.claimTitle}<br><strong>💰 Amount:</strong> ${data.claimedAmount}<br><strong>🏢 Location:</strong> ${data.locationName}<br><strong>👤 Manager:</strong> ${data.managerName}<br><strong>👨‍🍳 Chef:</strong> ${data.chefName} (${data.chefEmail})<br><br><strong>💬 Chef's Dispute Reason:</strong><br>${data.chefResponse}</div><p class="message">Please review the evidence and make a decision.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review Dispute</a><div class="divider"></div></div><div class="footer"><p class="footer-text">This is an automated notification from Local Cooks Community.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.adminEmail,
+    subject,
+    text: `Damage Claim Dispute - Claim: ${data.claimTitle}, Amount: ${data.claimedAmount}, Location: ${data.locationName}, Manager: ${data.managerName}, Chef: ${data.chefName}. Chef's reason: ${data.chefResponse}. Please review from admin dashboard.`,
+    html
+  };
+};
+
+// Notify chef and manager of admin decision on disputed claim
+export const generateDamageClaimDecisionEmail = (data: {
+  recipientEmail: string;
+  recipientName: string;
+  recipientRole: 'chef' | 'manager';
+  claimTitle: string;
+  claimedAmount: string;
+  decision: 'approved' | 'partially_approved' | 'rejected';
+  finalAmount?: string;
+  decisionReason: string;
+  claimId: number;
+}): EmailContent => {
+  const isChef = data.recipientRole === 'chef';
+  const decisionLabels = {
+    approved: 'Approved',
+    partially_approved: 'Partially Approved',
+    rejected: 'Rejected'
+  };
+  const decisionColors = {
+    approved: '#16a34a',
+    partially_approved: '#f59e0b',
+    rejected: '#dc2626'
+  };
+  
+  const subject = `Damage Claim ${decisionLabels[data.decision]} - ${data.claimTitle}`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = isChef 
+    ? `${baseUrl}/dashboard?view=damage-claims`
+    : `${baseUrl}/manager/booking-dashboard?view=damage-claims`;
+  
+  const amountText = data.decision === 'partially_approved' && data.finalAmount
+    ? `<br><strong>💰 Final Amount:</strong> ${data.finalAmount} (originally ${data.claimedAmount})`
+    : `<br><strong>💰 Amount:</strong> ${data.claimedAmount}`;
+  
+  const nextStepsChef = data.decision === 'rejected' 
+    ? 'No payment will be charged to your account.'
+    : 'The approved amount will be charged to your saved payment method.';
+  const nextStepsManager = data.decision === 'rejected'
+    ? 'The claim has been rejected and no payment will be collected.'
+    : 'You can now charge the chef from your dashboard.';
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.recipientName},</h2><p class="message">The admin has made a decision on the disputed damage claim.</p><div class="info-box"><strong>📋 Claim:</strong> ${data.claimTitle}${amountText}<br><strong>📊 Decision:</strong> <span style="color: ${decisionColors[data.decision]}; font-weight: 600;">${decisionLabels[data.decision]}</span><br><br><strong>📝 Reason:</strong> ${data.decisionReason}</div><p class="message">${isChef ? nextStepsChef : nextStepsManager}</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Details</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.recipientEmail,
+    subject,
+    text: `Hello ${data.recipientName}, The admin has ${decisionLabels[data.decision].toLowerCase()} the damage claim "${data.claimTitle}". ${data.decisionReason}`,
+    html
+  };
+};
+
+// Notify chef when their card is charged for a damage claim
+export const generateDamageClaimChargedEmail = (data: {
+  chefEmail: string;
+  chefName: string;
+  claimTitle: string;
+  chargedAmount: string;
+  locationName: string;
+  claimId: number;
+}): EmailContent => {
+  const subject = `Payment Processed - Damage Claim`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = `${baseUrl}/dashboard?view=damage-claims`;
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">A payment has been processed for a damage claim.</p><div class="info-box"><strong>📋 Claim:</strong> ${data.claimTitle}<br><strong>💰 Amount Charged:</strong> ${data.chargedAmount}<br><strong>🏢 Location:</strong> ${data.locationName}<br><strong>📊 Status:</strong> <span style="color: #16a34a; font-weight: 600;">Payment Complete</span></div><p class="message">This charge was made to your saved payment method. A receipt has been sent to your email by Stripe.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Details</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.chefEmail,
+    subject,
+    text: `Hello ${data.chefName}, A payment of ${data.chargedAmount} has been processed for the damage claim "${data.claimTitle}" at ${data.locationName}.`,
+    html
+  };
+};
+
+// ===================================
 // NEW USER REGISTRATION NOTIFICATION EMAILS
 // ===================================
 

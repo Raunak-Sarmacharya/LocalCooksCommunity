@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
-import { eq, inArray, and, desc, count, ne, sql, or } from "drizzle-orm";
+import { eq, inArray, and, desc, count, ne, sql, or, gte } from "drizzle-orm";
+import { format } from "date-fns";
 import { db } from "../db";
 
 import { requireFirebaseAuthWithUser, requireManager } from "../firebase-auth-middleware";
@@ -10,7 +11,7 @@ import {
     portalUserLocationAccess,
     chefKitchenApplications,
     chefLocationProfiles,
-    kitchens
+    kitchens,
 } from "@shared/schema";
 
 // Import Domain Services
@@ -402,6 +403,197 @@ router.get("/revenue/invoices/storage/:storageBookingId", requireFirebaseAuthWit
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="storage-invoice-${storageBookingId}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        return errorResponse(res, error);
+    }
+});
+
+// Download invoice PDF for overstay penalty transactions
+router.get("/revenue/invoices/overstay/:overstayRecordId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        const overstayRecordId = parseInt(req.params.overstayRecordId);
+
+        if (isNaN(overstayRecordId) || overstayRecordId <= 0) {
+            return res.status(400).json({ error: "Invalid overstay record ID" });
+        }
+
+        // Get overstay record with related booking details
+        const { storageOverstayRecords, storageBookings, storageListings, kitchens, locations } = await import("@shared/schema");
+        
+        const [overstayRecord] = await db
+            .select({
+                id: storageOverstayRecords.id,
+                storageBookingId: storageOverstayRecords.storageBookingId,
+                finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+                calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+                daysOverdue: storageOverstayRecords.daysOverdue,
+                chargeSucceededAt: storageOverstayRecords.chargeSucceededAt,
+                stripePaymentIntentId: storageOverstayRecords.stripePaymentIntentId,
+                stripeChargeId: storageOverstayRecords.stripeChargeId,
+            })
+            .from(storageOverstayRecords)
+            .where(eq(storageOverstayRecords.id, overstayRecordId))
+            .limit(1);
+
+        if (!overstayRecord) {
+            return res.status(404).json({ error: "Overstay record not found" });
+        }
+
+        // Get storage booking details
+        const [storageBooking] = await db
+            .select({
+                id: storageBookings.id,
+                chefId: storageBookings.chefId,
+                startDate: storageBookings.startDate,
+                endDate: storageBookings.endDate,
+                storageListingId: storageBookings.storageListingId,
+            })
+            .from(storageBookings)
+            .where(eq(storageBookings.id, overstayRecord.storageBookingId))
+            .limit(1);
+
+        if (!storageBooking) {
+            return res.status(404).json({ error: "Storage booking not found" });
+        }
+
+        // Get storage listing and kitchen details
+        const [listing] = await db
+            .select({
+                id: storageListings.id,
+                name: storageListings.name,
+                storageType: storageListings.storageType,
+                kitchenId: storageListings.kitchenId,
+            })
+            .from(storageListings)
+            .where(eq(storageListings.id, storageBooking.storageListingId))
+            .limit(1);
+
+        if (!listing) {
+            return res.status(404).json({ error: "Storage listing not found" });
+        }
+
+        // Get kitchen and location to verify manager ownership
+        const [kitchen] = await db
+            .select({
+                id: kitchens.id,
+                name: kitchens.name,
+                locationId: kitchens.locationId,
+                taxRatePercent: kitchens.taxRatePercent,
+            })
+            .from(kitchens)
+            .where(eq(kitchens.id, listing.kitchenId))
+            .limit(1);
+
+        if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        // Verify manager owns this location
+        const [location] = await db
+            .select({
+                id: locations.id,
+                managerId: locations.managerId,
+                name: locations.name,
+            })
+            .from(locations)
+            .where(and(
+                eq(locations.id, kitchen.locationId),
+                eq(locations.managerId, managerId)
+            ))
+            .limit(1);
+
+        if (!location) {
+            return res.status(403).json({ error: "Access denied to this overstay record" });
+        }
+
+        // Get payment transaction for this overstay penalty
+        const [transaction] = await db
+            .select({
+                id: paymentTransactions.id,
+                amount: paymentTransactions.amount,
+                baseAmount: paymentTransactions.baseAmount,
+                paymentIntentId: paymentTransactions.paymentIntentId,
+                paidAt: paymentTransactions.paidAt,
+                createdAt: paymentTransactions.createdAt,
+                metadata: paymentTransactions.metadata,
+                stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+                managerRevenue: paymentTransactions.managerRevenue,
+            })
+            .from(paymentTransactions)
+            .where(and(
+                eq(paymentTransactions.bookingId, overstayRecord.storageBookingId),
+                eq(paymentTransactions.bookingType, 'storage'),
+                eq(paymentTransactions.status, 'succeeded')
+            ))
+            .orderBy(desc(paymentTransactions.createdAt))
+            .limit(1);
+
+        // Check if this transaction is for an overstay penalty
+        const metadata = transaction?.metadata as Record<string, any> | undefined;
+        if (!metadata || metadata.type !== 'overstay_penalty') {
+            return res.status(404).json({ error: "No payment transaction found for this overstay penalty" });
+        }
+
+        // Get chef info
+        let chef = null;
+        if (storageBooking.chefId) {
+            const chefResult = await db.execute(sql`
+                SELECT u.id, u.username, cka.full_name
+                FROM users u
+                LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
+                WHERE u.id = ${storageBooking.chefId}
+                LIMIT 1
+            `);
+            const chefRows = chefResult.rows || chefResult;
+            if (Array.isArray(chefRows) && chefRows.length > 0) {
+                chef = chefRows[0];
+            }
+        }
+
+        // Extract tax info from metadata
+        const taxRatePercent = parseFloat(String(metadata.tax_rate_percent || '0')) || 0;
+        const penaltyBaseCents = parseInt(String(metadata.penalty_base_cents || '0')) || 0;
+        const penaltyTaxCents = parseInt(String(metadata.penalty_tax_cents || '0')) || 0;
+
+        // Use stored values or calculate from transaction
+        const baseAmount = penaltyBaseCents || parseInt(String(transaction?.baseAmount || '0'));
+        const totalAmount = parseInt(String(transaction?.amount || '0'));
+        const displayTaxAmount = penaltyTaxCents || (totalAmount - baseAmount);
+
+        // Generate invoice using generateStorageInvoicePDF with overstay details
+        const { generateStorageInvoicePDF } = await import('../services/invoice-service');
+        
+        const overstayDetails = {
+            is_overstay_penalty: true,
+            days_overdue: overstayRecord.daysOverdue,
+            penalty_base_cents: baseAmount,
+            penalty_total_cents: totalAmount,
+            penalty_tax_cents: displayTaxAmount,
+            tax_rate_percent: taxRatePercent,
+        };
+
+        const pdfBuffer = await generateStorageInvoicePDF(
+            transaction || { 
+                amount: totalAmount || overstayRecord.finalPenaltyCents, 
+                baseAmount: baseAmount,
+                paidAt: overstayRecord.chargeSucceededAt 
+            },
+            {
+                id: storageBooking.id,
+                kitchenName: kitchen.name,
+                locationName: location.name,
+                storageName: listing.name,
+                taxRatePercent: taxRatePercent,
+            },
+            chef,
+            overstayDetails,
+            { viewer: 'manager' }
+        );
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="overstay-invoice-${overstayRecordId}.pdf"`);
         res.send(pdfBuffer);
     } catch (error) {
         return errorResponse(res, error);
@@ -3619,71 +3811,93 @@ router.post("/storage-extensions/:id/reject", requireFirebaseAuthWithUser, requi
                 const { reverseTransferAndRefund } = await import("../services/stripe-service");
                 const { findPaymentTransactionByMetadata, updatePaymentTransaction } = await import("../services/payment-transactions-service");
 
-                const refundAmount = extension.extensionTotalPriceCents;
-
-                // Get the payment transaction to calculate proper reversal amount
+                // Get the payment transaction to calculate proper refund and reversal amounts
                 const paymentTransaction = await findPaymentTransactionByMetadata(
                     "storage_extension_id",
                     String(extensionId),
                     db
                 );
 
-                // Calculate manager's share for transfer reversal
-                let reverseTransferAmount = refundAmount;
-                if (paymentTransaction) {
-                    const serviceFee = parseInt(String(paymentTransaction.service_fee || "0")) || 0;
-                    const managerRevenue = parseInt(String(paymentTransaction.manager_revenue || "0")) || 0;
-                    const totalAmount = parseInt(String(paymentTransaction.amount || "0")) || 0;
-                    const managerShare = Math.max(0, totalAmount - serviceFee, managerRevenue);
-                    reverseTransferAmount = totalAmount > 0
-                        ? Math.round(refundAmount * (managerShare / totalAmount))
-                        : refundAmount;
-                }
+                const extensionTotalPrice = extension.extensionTotalPriceCents || 0;
+                const transactionAmount = paymentTransaction
+                    ? parseInt(String(paymentTransaction.amount || "0")) || extensionTotalPrice
+                    : extensionTotalPrice;
 
-                // Process refund with transfer reversal
-                refundResult = await reverseTransferAndRefund(
-                    extension.stripePaymentIntentId,
-                    refundAmount,
-                    "requested_by_customer",
-                    {
-                        reverseTransferAmount,
-                        refundApplicationFee: false,
-                        metadata: {
-                            storage_extension_id: String(extensionId),
-                            storage_booking_id: String(extension.storageBookingId),
-                            rejection_reason: reason || "Extension declined by manager",
-                            manager_id: String(managerId),
-                        },
-                    }
-                );
+                if (transactionAmount > 0) {
+                    // UNIFIED REFUND MODEL: Customer Refund = Manager Deduction
+                    // This ensures consistency between LocalCooks portal and Stripe dashboard
+                    const { calculateRefundBreakdown } = await import("../services/stripe-service");
 
-                logger.info(`[Manager] Refund processed for storage extension ${extensionId}`, {
-                    refundId: refundResult.refundId,
-                    refundAmount: refundResult.refundAmount,
-                    transferReversalId: refundResult.transferReversalId,
-                });
+                    const stripeProcessingFee = paymentTransaction
+                        ? parseInt(String(paymentTransaction.stripe_processing_fee || "0")) || 0
+                        : 0;
+                    const currentRefundAmount = paymentTransaction
+                        ? parseInt(String(paymentTransaction.refund_amount || "0")) || 0
+                        : 0;
+                    const managerRevenue = paymentTransaction
+                        ? parseInt(String(paymentTransaction.manager_revenue || "0")) || transactionAmount
+                        : transactionAmount;
 
-                // Update extension status to refunded
-                await db
-                    .update(pendingStorageExtensions)
-                    .set({
-                        status: "refunded",
-                        updatedAt: new Date(),
-                    })
-                    .where(eq(pendingStorageExtensions.id, extensionId));
-
-                // Update payment transaction if exists
-                if (paymentTransaction) {
-                    await updatePaymentTransaction(
-                        paymentTransaction.id,
-                        {
-                            status: "refunded",
-                            refundAmount: refundResult.refundAmount,
-                            refundId: refundResult.refundId,
-                            refundedAt: new Date(),
-                        },
-                        db
+                    // Use unified refund breakdown calculator
+                    const refundBreakdown = calculateRefundBreakdown(
+                        transactionAmount,
+                        managerRevenue,
+                        currentRefundAmount,
+                        stripeProcessingFee
                     );
+
+                    // UNIFIED: Both amounts are the same - no discrepancy!
+                    const refundToCustomer = refundBreakdown.maxRefundableToCustomer;
+                    const deductFromManager = refundBreakdown.maxDeductibleFromManager;
+
+                    // Process refund with transfer reversal (unified model)
+                    refundResult = await reverseTransferAndRefund(
+                        extension.stripePaymentIntentId,
+                        refundToCustomer, // Customer receives this amount
+                        "requested_by_customer",
+                        {
+                            reverseTransferAmount: deductFromManager, // Manager debited same amount
+                            refundApplicationFee: false,
+                            metadata: {
+                                storage_extension_id: String(extensionId),
+                                storage_booking_id: String(extension.storageBookingId),
+                                rejection_reason: reason || "Extension declined by manager",
+                                manager_id: String(managerId),
+                                refund_model: 'unified',
+                                customer_receives: String(refundToCustomer),
+                                manager_debited: String(deductFromManager),
+                            },
+                        }
+                    );
+
+                    logger.info(`[Manager] Refund processed for storage extension ${extensionId}`, {
+                        refundId: refundResult.refundId,
+                        refundAmount: refundResult.refundAmount,
+                        transferReversalId: refundResult.transferReversalId,
+                    });
+
+                    // Update extension status to refunded
+                    await db
+                        .update(pendingStorageExtensions)
+                        .set({
+                            status: "refunded",
+                            updatedAt: new Date(),
+                        })
+                        .where(eq(pendingStorageExtensions.id, extensionId));
+
+                    // Update payment transaction if exists
+                    if (paymentTransaction) {
+                        await updatePaymentTransaction(
+                            paymentTransaction.id,
+                            {
+                                status: "refunded",
+                                refundAmount: refundResult.refundAmount,
+                                refundId: refundResult.refundId,
+                                refundedAt: new Date(),
+                            },
+                            db
+                        );
+                    }
                 }
             } catch (refundError: any) {
                 logger.error(`[Manager] Failed to process refund for extension ${extensionId}:`, refundError);
@@ -4046,6 +4260,128 @@ router.get("/overstays-stats", requireFirebaseAuthWithUser, requireManager, asyn
     }
 });
 
+// ============================================================================
+// STORAGE CHECKOUT VERIFICATION ENDPOINTS (Hybrid Verification System)
+// Chef initiates checkout -> Manager verifies -> Prevents unwarranted overstay penalties
+// ============================================================================
+
+/**
+ * GET /manager/storage-checkouts/pending
+ * Get all pending checkout requests for manager's locations
+ */
+router.get("/storage-checkouts/pending", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+
+        // Get manager's location IDs
+        const managerLocations = await db
+            .select({ id: locations.id })
+            .from(locations)
+            .where(eq(locations.managerId, managerId));
+
+        const locationIds = managerLocations.map(l => l.id);
+
+        if (locationIds.length === 0) {
+            return res.json({ pendingCheckouts: [] });
+        }
+
+        // Get pending checkout reviews
+        const { getPendingCheckoutReviews } = await import('../services/storage-checkout-service');
+        const allPending = await getPendingCheckoutReviews();
+        
+        // Filter to manager's locations
+        const pendingCheckouts = allPending.filter(c => locationIds.includes(c.locationId));
+
+        res.json({ pendingCheckouts });
+    } catch (error) {
+        logger.error("Error fetching pending checkouts:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * POST /manager/storage-bookings/:id/approve-checkout
+ * Manager approves a checkout request
+ */
+router.post("/storage-bookings/:id/approve-checkout", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const storageBookingId = parseInt(req.params.id);
+        const managerId = req.neonUser!.id;
+        const { managerNotes } = req.body;
+
+        if (isNaN(storageBookingId)) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        const { processCheckoutApproval } = await import('../services/storage-checkout-service');
+        
+        const result = await processCheckoutApproval(
+            storageBookingId,
+            managerId,
+            'approve',
+            managerNotes
+        );
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({
+            success: true,
+            message: "Checkout approved successfully. The storage booking has been completed.",
+            storageBookingId: result.storageBookingId,
+            checkoutStatus: result.checkoutStatus,
+        });
+    } catch (error) {
+        logger.error("Error approving checkout:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * POST /manager/storage-bookings/:id/deny-checkout
+ * Manager denies a checkout request (chef needs to fix issues)
+ */
+router.post("/storage-bookings/:id/deny-checkout", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const storageBookingId = parseInt(req.params.id);
+        const managerId = req.neonUser!.id;
+        const { denialReason, managerNotes } = req.body;
+
+        if (isNaN(storageBookingId)) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        if (!denialReason || typeof denialReason !== 'string' || denialReason.trim().length === 0) {
+            return res.status(400).json({ error: "Denial reason is required" });
+        }
+
+        const { processCheckoutApproval } = await import('../services/storage-checkout-service');
+        
+        const result = await processCheckoutApproval(
+            storageBookingId,
+            managerId,
+            'deny',
+            managerNotes,
+            denialReason.trim()
+        );
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({
+            success: true,
+            message: "Checkout denied. The chef has been notified to address the issues.",
+            storageBookingId: result.storageBookingId,
+            checkoutStatus: result.checkoutStatus,
+        });
+    } catch (error) {
+        logger.error("Error denying checkout:", error);
+        return errorResponse(res, error);
+    }
+});
+
 /**
  * PUT /manager/storage-listings/:id/penalty-config
  * Update overstay penalty configuration for a storage listing
@@ -4286,6 +4622,450 @@ router.put("/locations/:id/overstay-penalty-defaults", requireFirebaseAuthWithUs
         });
     } catch (error) {
         logger.error("Error updating location overstay penalty defaults:", error);
+        return errorResponse(res, error);
+    }
+});
+
+// ============================================================================
+// DAMAGE CLAIM MANAGEMENT ENDPOINTS
+// ============================================================================
+
+import { damageClaimService } from "../services/damage-claim-service";
+import { getDamageClaimLimits } from "../services/damage-claim-limits-service";
+
+/**
+ * GET /manager/damage-claims/recent-bookings
+ * Get recent bookings eligible for damage claims (within admin-controlled timeframe)
+ */
+router.get("/damage-claims/recent-bookings", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        
+        // Get the claim submission deadline from admin settings
+        const limits = await getDamageClaimLimits();
+        const deadlineDays = limits.claimSubmissionDeadlineDays;
+        
+        // Calculate cutoff date
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - deadlineDays);
+        
+        // Get manager's locations
+        const managerLocations = await db
+            .select({ id: locations.id })
+            .from(locations)
+            .where(eq(locations.managerId, managerId));
+        
+        const locationIds = managerLocations.map(l => l.id);
+        
+        if (locationIds.length === 0) {
+            return res.json({ bookings: [], deadlineDays });
+        }
+        
+        // Get recent kitchen bookings (bookingDate is the actual date, endTime is just HH:MM format)
+        const recentKitchenBookings = await db
+            .select({
+                id: kitchenBookings.id,
+                chefId: kitchenBookings.chefId,
+                kitchenId: kitchenBookings.kitchenId,
+                bookingDate: kitchenBookings.bookingDate,
+                startTime: kitchenBookings.startTime,
+                endTime: kitchenBookings.endTime,
+                status: kitchenBookings.status,
+                chefName: users.username,
+                kitchenName: kitchens.name,
+                locationName: locations.name,
+            })
+            .from(kitchenBookings)
+            .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .innerJoin(users, eq(kitchenBookings.chefId, users.id))
+            .where(
+                and(
+                    inArray(locations.id, locationIds),
+                    gte(kitchenBookings.bookingDate, cutoffDate),
+                    eq(kitchenBookings.status, 'confirmed')
+                )
+            )
+            .orderBy(desc(kitchenBookings.bookingDate))
+            .limit(50);
+        
+        // Get recent storage bookings
+        const recentStorageBookings = await db
+            .select({
+                id: storageBookingsTable.id,
+                chefId: storageBookingsTable.chefId,
+                storageListingId: storageBookingsTable.storageListingId,
+                startDate: storageBookingsTable.startDate,
+                endDate: storageBookingsTable.endDate,
+                status: storageBookingsTable.status,
+                chefName: users.username,
+                locationName: locations.name,
+            })
+            .from(storageBookingsTable)
+            .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
+            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .innerJoin(users, eq(storageBookingsTable.chefId, users.id))
+            .where(
+                and(
+                    inArray(locations.id, locationIds),
+                    gte(storageBookingsTable.endDate, cutoffDate),
+                    eq(storageBookingsTable.status, 'confirmed')
+                )
+            )
+            .orderBy(desc(storageBookingsTable.endDate))
+            .limit(50);
+        
+        // Format bookings for dropdown
+        const bookings = [
+            ...recentKitchenBookings.map(b => ({
+                id: b.id,
+                type: 'kitchen' as const,
+                chefId: b.chefId,
+                chefName: b.chefName,
+                locationName: b.locationName,
+                kitchenName: b.kitchenName,
+                startDate: b.bookingDate,
+                endDate: b.bookingDate,
+                status: b.status,
+                label: `Kitchen #${b.id} - ${b.chefName} @ ${b.kitchenName} (${format(new Date(b.bookingDate), 'MMM d')})`,
+            })),
+            ...recentStorageBookings.map(b => ({
+                id: b.id,
+                type: 'storage' as const,
+                chefId: b.chefId,
+                chefName: b.chefName,
+                locationName: b.locationName,
+                kitchenName: null,
+                startDate: b.startDate,
+                endDate: b.endDate,
+                status: b.status,
+                label: `Storage #${b.id} - ${b.chefName} @ ${b.locationName} (${format(new Date(b.endDate), 'MMM d')})`,
+            })),
+        ].sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
+        
+        res.json({ bookings, deadlineDays });
+    } catch (error) {
+        logger.error("Error fetching recent bookings for damage claims:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * GET /manager/damage-claims
+ * Get all damage claims for manager's locations
+ */
+router.get("/damage-claims", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        const includeAll = req.query.includeAll === 'true';
+
+        const claims = await damageClaimService.getManagerClaims(managerId, includeAll);
+
+        res.json({ claims });
+    } catch (error) {
+        logger.error("Error fetching damage claims:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * GET /manager/damage-claims/:id
+ * Get a single damage claim with full details
+ */
+router.get("/damage-claims/:id", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const claimId = parseInt(req.params.id);
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        const claim = await damageClaimService.getClaimById(claimId);
+        if (!claim) {
+            return res.status(404).json({ error: "Claim not found" });
+        }
+
+        // Get history
+        const history = await damageClaimService.getClaimHistory(claimId);
+
+        res.json({ claim, history });
+    } catch (error) {
+        logger.error("Error fetching damage claim:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * POST /manager/damage-claims
+ * Create a new damage claim
+ */
+router.post("/damage-claims", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        const {
+            bookingType,
+            kitchenBookingId,
+            storageBookingId,
+            claimTitle,
+            claimDescription,
+            damageDate,
+            claimedAmountCents,
+        } = req.body;
+
+        // Validate required fields
+        if (!bookingType || !['kitchen', 'storage'].includes(bookingType)) {
+            return res.status(400).json({ error: "Invalid booking type" });
+        }
+
+        if (!claimTitle || claimTitle.length < 5) {
+            return res.status(400).json({ error: "Claim title must be at least 5 characters" });
+        }
+
+        if (!claimDescription || claimDescription.length < 50) {
+            return res.status(400).json({ error: "Claim description must be at least 50 characters" });
+        }
+
+        if (!damageDate) {
+            return res.status(400).json({ error: "Damage date is required" });
+        }
+
+        if (!claimedAmountCents || claimedAmountCents < 1000) {
+            return res.status(400).json({ error: "Claimed amount must be at least $10" });
+        }
+
+        const result = await damageClaimService.createDamageClaim({
+            bookingType,
+            kitchenBookingId,
+            storageBookingId,
+            managerId,
+            claimTitle,
+            claimDescription,
+            damageDate,
+            claimedAmountCents,
+        });
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.status(201).json({
+            success: true,
+            claim: result.claim,
+        });
+    } catch (error) {
+        logger.error("Error creating damage claim:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * PUT /manager/damage-claims/:id
+ * Update a draft damage claim
+ */
+router.put("/damage-claims/:id", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const claimId = parseInt(req.params.id);
+        const managerId = req.neonUser!.id;
+
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        const { claimTitle, claimDescription, claimedAmountCents, damageDate } = req.body;
+
+        const result = await damageClaimService.updateDraftClaim(claimId, managerId, {
+            claimTitle,
+            claimDescription,
+            claimedAmountCents,
+            damageDate,
+        });
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        logger.error("Error updating damage claim:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * POST /manager/damage-claims/:id/submit
+ * Submit a claim to the chef for response
+ */
+router.post("/damage-claims/:id/submit", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const claimId = parseInt(req.params.id);
+        const managerId = req.neonUser!.id;
+
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        const result = await damageClaimService.submitClaim(claimId, managerId);
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({
+            success: true,
+            message: "Claim submitted to chef for response",
+        });
+    } catch (error) {
+        logger.error("Error submitting damage claim:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * GET /manager/damage-claims/:id/history
+ * Get the audit history for a damage claim
+ */
+router.get("/damage-claims/:id/history", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const claimId = parseInt(req.params.id);
+
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        const history = await damageClaimService.getClaimHistory(claimId);
+
+        res.json({ history });
+    } catch (error) {
+        logger.error("Error fetching claim history:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * DELETE /manager/damage-claims/:id
+ * Delete a draft damage claim
+ */
+router.delete("/damage-claims/:id", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const claimId = parseInt(req.params.id);
+        const managerId = req.neonUser!.id;
+
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        const result = await damageClaimService.deleteDraftClaim(claimId, managerId);
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({ success: true, message: "Draft claim deleted successfully" });
+    } catch (error) {
+        logger.error("Error deleting claim:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * POST /manager/damage-claims/:id/evidence
+ * Upload evidence to a claim
+ */
+router.post("/damage-claims/:id/evidence", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const claimId = parseInt(req.params.id);
+        const userId = req.neonUser!.id;
+
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        const { evidenceType, fileUrl, fileName, fileSize, mimeType, description, amountCents, vendorName } = req.body;
+
+        if (!evidenceType || !fileUrl) {
+            return res.status(400).json({ error: "Evidence type and file URL are required" });
+        }
+
+        const result = await damageClaimService.addEvidence(claimId, userId, {
+            evidenceType,
+            fileUrl,
+            fileName,
+            fileSize,
+            mimeType,
+            description,
+            amountCents,
+            vendorName,
+        });
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.status(201).json({
+            success: true,
+            evidence: result.evidence,
+        });
+    } catch (error) {
+        logger.error("Error adding evidence:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * DELETE /manager/damage-claims/:id/evidence/:evidenceId
+ * Remove evidence from a claim
+ */
+router.delete("/damage-claims/:id/evidence/:evidenceId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const evidenceId = parseInt(req.params.evidenceId);
+        const userId = req.neonUser!.id;
+
+        if (isNaN(evidenceId)) {
+            return res.status(400).json({ error: "Invalid evidence ID" });
+        }
+
+        const result = await damageClaimService.removeEvidence(evidenceId, userId);
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        logger.error("Error removing evidence:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * POST /manager/damage-claims/:id/charge
+ * Charge an approved damage claim
+ */
+router.post("/damage-claims/:id/charge", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const claimId = parseInt(req.params.id);
+
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        const result = await damageClaimService.chargeApprovedClaim(claimId);
+
+        if (!result.success) {
+            return res.status(400).json({
+                error: result.error,
+                message: "Failed to charge damage claim. The chef may need to update their payment method.",
+            });
+        }
+
+        res.json({
+            success: true,
+            message: "Damage claim charged successfully",
+            paymentIntentId: result.paymentIntentId,
+            chargeId: result.chargeId,
+        });
+    } catch (error) {
+        logger.error("Error charging damage claim:", error);
         return errorResponse(res, error);
     }
 });

@@ -532,6 +532,62 @@ export default function ChefBookingsView({
     }
   };
 
+  // Handle storage invoice download
+  const handleDownloadStorageInvoice = async (storageBookingId: number) => {
+    setDownloadingInvoiceId(storageBookingId);
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        toast.error("Please log in to download invoice");
+        setDownloadingInvoiceId(null);
+        return;
+      }
+
+      const token = await currentUser.getIdToken();
+      if (!token) {
+        toast.error("Failed to get authentication token");
+        setDownloadingInvoiceId(null);
+        return;
+      }
+
+      const response = await fetch(`/api/chef/invoices/storage/${storageBookingId}`, {
+        credentials: 'include',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to generate invoice';
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          }
+        } catch (parseError) {
+          errorMessage = `Server returned ${response.status}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `storage-invoice-${storageBookingId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast.success("Storage invoice downloaded successfully!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to download invoice");
+    } finally {
+      setDownloadingInvoiceId(null);
+    }
+  };
+
   const handleCancel = (bookingId: number, bookingDate: string, startTime: string, booking: Booking) => {
     try {
       const dateStr = bookingDate.split('T')[0];
@@ -1120,11 +1176,29 @@ export default function ChefBookingsView({
                             {/* Paid Penalty Section */}
                             {storageBooking.paidPenalty && (
                               <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <CheckCircle className="h-4 w-4 text-green-600" />
-                                  <span className="font-medium text-green-800 dark:text-green-200">Overstay Penalty Paid</span>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <CheckCircle className="h-4 w-4 text-green-600" />
+                                    <span className="font-medium text-green-800 dark:text-green-200">Overstay Penalty Paid</span>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDownloadStorageInvoice(storageBooking.id)}
+                                    disabled={downloadingInvoiceId === storageBooking.id}
+                                    className="text-green-700 hover:text-green-800 hover:bg-green-100"
+                                  >
+                                    {downloadingInvoiceId === storageBooking.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <FileText className="h-4 w-4 mr-1" />
+                                        Invoice
+                                      </>
+                                    )}
+                                  </Button>
                                 </div>
-                                <p className="text-sm text-green-700 dark:text-green-300">
+                                <p className="text-sm text-green-700 dark:text-green-300 mt-1">
                                   ${storageBooking.paidPenalty.amountDollars} CAD paid on {format(new Date(storageBooking.paidPenalty.paidAt), "MMM d, yyyy")}
                                   {storageBooking.paidPenalty.daysOverdue > 0 && (
                                     <span className="text-xs ml-1">
@@ -1133,6 +1207,29 @@ export default function ChefBookingsView({
                                   )}
                                 </p>
                               </div>
+                            )}
+
+                            {/* Download Invoice Button for Storage */}
+                            {!storageBooking.paidPenalty && (
+                              <Button
+                                onClick={() => handleDownloadStorageInvoice(storageBooking.id)}
+                                disabled={downloadingInvoiceId === storageBooking.id}
+                                variant="outline"
+                                className="w-full"
+                                size="sm"
+                              >
+                                {downloadingInvoiceId === storageBooking.id ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Generating Invoice...
+                                  </>
+                                ) : (
+                                  <>
+                                    <FileText className="mr-2 h-4 w-4" />
+                                    Download Invoice
+                                  </>
+                                )}
+                              </Button>
                             )}
 
                             {isExpiringSoon && (

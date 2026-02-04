@@ -182,66 +182,78 @@ function createMockOverstayRecord(overrides: Partial<{
 describe('Overstay Penalty Calculation', () => {
   describe('calculatePenalty', () => {
     /**
-     * Core penalty formula:
+     * Core penalty formula (base + penalty rate):
      * penaltyDays = min(daysOverdue - gracePeriodDays, maxPenaltyDays)
-     * calculatedPenaltyCents = dailyRateCents × penaltyRate × penaltyDays
+     * dailyPenaltyChargeCents = dailyRateCents × (1 + penaltyRate)
+     * calculatedPenaltyCents = dailyPenaltyChargeCents × penaltyDays
+     * 
+     * Example: $20/day storage with 10% penalty = $20 × 1.10 = $22/day
      */
 
     it('should calculate zero penalty within grace period', () => {
       const daysOverdue = 2;
       const gracePeriodDays = 3;
-      const dailyRateCents = 3333;
+      const dailyRateCents = 2000; // $20/day
       const penaltyRate = 0.10;
       const maxPenaltyDays = 30;
 
       // Within grace period = no penalty
       const penaltyDays = Math.max(0, Math.min(daysOverdue - gracePeriodDays, maxPenaltyDays));
-      const calculatedPenaltyCents = Math.round(dailyRateCents * penaltyRate * penaltyDays);
+      const dailyPenaltyChargeCents = Math.round(dailyRateCents * (1 + penaltyRate));
+      const calculatedPenaltyCents = dailyPenaltyChargeCents * penaltyDays;
 
       expect(penaltyDays).toBe(0);
       expect(calculatedPenaltyCents).toBe(0);
     });
 
-    it('should calculate penalty after grace period ends', () => {
+    it('should calculate penalty after grace period ends (base + penalty rate)', () => {
       const daysOverdue = 5;
       const gracePeriodDays = 3;
-      const dailyRateCents = 3333;
-      const penaltyRate = 0.10;
+      const dailyRateCents = 2000; // $20/day
+      const penaltyRate = 0.10; // 10%
       const maxPenaltyDays = 30;
 
       // 5 days overdue - 3 grace = 2 penalty days
+      // Daily charge = $20 × 1.10 = $22
+      // Total = $22 × 2 = $44
       const penaltyDays = Math.max(0, Math.min(daysOverdue - gracePeriodDays, maxPenaltyDays));
-      const calculatedPenaltyCents = Math.round(dailyRateCents * penaltyRate * penaltyDays);
+      const dailyPenaltyChargeCents = Math.round(dailyRateCents * (1 + penaltyRate));
+      const calculatedPenaltyCents = dailyPenaltyChargeCents * penaltyDays;
 
       expect(penaltyDays).toBe(2);
-      expect(calculatedPenaltyCents).toBe(667); // 3333 * 0.10 * 2 = 666.6 → 667
+      expect(dailyPenaltyChargeCents).toBe(2200); // $22
+      expect(calculatedPenaltyCents).toBe(4400); // $44
     });
 
     it('should cap penalty at maxPenaltyDays', () => {
       const daysOverdue = 50;
       const gracePeriodDays = 3;
-      const dailyRateCents = 3333;
+      const dailyRateCents = 2000; // $20/day
       const penaltyRate = 0.10;
       const maxPenaltyDays = 30;
 
       // 50 days overdue - 3 grace = 47, but capped at 30
+      // Daily charge = $20 × 1.10 = $22
+      // Total = $22 × 30 = $660
       const penaltyDays = Math.max(0, Math.min(daysOverdue - gracePeriodDays, maxPenaltyDays));
-      const calculatedPenaltyCents = Math.round(dailyRateCents * penaltyRate * penaltyDays);
+      const dailyPenaltyChargeCents = Math.round(dailyRateCents * (1 + penaltyRate));
+      const calculatedPenaltyCents = dailyPenaltyChargeCents * penaltyDays;
 
       expect(penaltyDays).toBe(30);
-      expect(calculatedPenaltyCents).toBe(9999); // 3333 * 0.10 * 30 = 9999
+      expect(calculatedPenaltyCents).toBe(66000); // $660
     });
 
     it('should handle exactly on grace period boundary', () => {
       const daysOverdue = 3;
       const gracePeriodDays = 3;
-      const dailyRateCents = 3333;
+      const dailyRateCents = 2000;
       const penaltyRate = 0.10;
       const maxPenaltyDays = 30;
 
       // Exactly at grace period = 0 penalty days
       const penaltyDays = Math.max(0, Math.min(daysOverdue - gracePeriodDays, maxPenaltyDays));
-      const calculatedPenaltyCents = Math.round(dailyRateCents * penaltyRate * penaltyDays);
+      const dailyPenaltyChargeCents = Math.round(dailyRateCents * (1 + penaltyRate));
+      const calculatedPenaltyCents = dailyPenaltyChargeCents * penaltyDays;
 
       expect(penaltyDays).toBe(0);
       expect(calculatedPenaltyCents).toBe(0);
@@ -250,16 +262,18 @@ describe('Overstay Penalty Calculation', () => {
     it('should handle first day after grace period', () => {
       const daysOverdue = 4;
       const gracePeriodDays = 3;
-      const dailyRateCents = 3333;
+      const dailyRateCents = 2000; // $20/day
       const penaltyRate = 0.10;
       const maxPenaltyDays = 30;
 
       // 4 days overdue - 3 grace = 1 penalty day
+      // Daily charge = $20 × 1.10 = $22
       const penaltyDays = Math.max(0, Math.min(daysOverdue - gracePeriodDays, maxPenaltyDays));
-      const calculatedPenaltyCents = Math.round(dailyRateCents * penaltyRate * penaltyDays);
+      const dailyPenaltyChargeCents = Math.round(dailyRateCents * (1 + penaltyRate));
+      const calculatedPenaltyCents = dailyPenaltyChargeCents * penaltyDays;
 
       expect(penaltyDays).toBe(1);
-      expect(calculatedPenaltyCents).toBe(333); // 3333 * 0.10 * 1 = 333.3 → 333
+      expect(calculatedPenaltyCents).toBe(2200); // $22
     });
 
     it('should handle different penalty rates', () => {
@@ -268,30 +282,34 @@ describe('Overstay Penalty Calculation', () => {
       const dailyRateCents = 5000; // $50/day
       const maxPenaltyDays = 30;
 
-      // Test 10% rate
-      const penaltyDays = Math.min(daysOverdue - gracePeriodDays, maxPenaltyDays);
-      expect(Math.round(dailyRateCents * 0.10 * penaltyDays)).toBe(3500); // 7 days * $5
+      const penaltyDays = Math.min(daysOverdue - gracePeriodDays, maxPenaltyDays); // 7 days
 
-      // Test 20% rate
-      expect(Math.round(dailyRateCents * 0.20 * penaltyDays)).toBe(7000); // 7 days * $10
+      // Test 10% rate: $50 × 1.10 = $55/day × 7 = $385
+      expect(Math.round(dailyRateCents * (1 + 0.10)) * penaltyDays).toBe(38500);
 
-      // Test 5% rate
-      expect(Math.round(dailyRateCents * 0.05 * penaltyDays)).toBe(1750); // 7 days * $2.50
+      // Test 20% rate: $50 × 1.20 = $60/day × 7 = $420
+      expect(Math.round(dailyRateCents * (1 + 0.20)) * penaltyDays).toBe(42000);
+
+      // Test 5% rate: $50 × 1.05 = $52.50/day × 7 = $367.50 → $368 (rounded daily)
+      expect(Math.round(dailyRateCents * (1 + 0.05)) * penaltyDays).toBe(36750);
     });
 
     it('should handle zero grace period', () => {
       const daysOverdue = 5;
       const gracePeriodDays = 0;
-      const dailyRateCents = 3333;
+      const dailyRateCents = 2000; // $20/day
       const penaltyRate = 0.10;
       const maxPenaltyDays = 30;
 
       // No grace period = penalty from day 1
+      // Daily charge = $20 × 1.10 = $22
+      // Total = $22 × 5 = $110
       const penaltyDays = Math.max(0, Math.min(daysOverdue - gracePeriodDays, maxPenaltyDays));
-      const calculatedPenaltyCents = Math.round(dailyRateCents * penaltyRate * penaltyDays);
+      const dailyPenaltyChargeCents = Math.round(dailyRateCents * (1 + penaltyRate));
+      const calculatedPenaltyCents = dailyPenaltyChargeCents * penaltyDays;
 
       expect(penaltyDays).toBe(5);
-      expect(calculatedPenaltyCents).toBe(1667); // 3333 * 0.10 * 5 = 1666.5 → 1667
+      expect(calculatedPenaltyCents).toBe(11000); // $110
     });
   });
 });
@@ -558,6 +576,42 @@ describe('Manager Decision Processing', () => {
       const isValid = typeof finalPenaltyCents === 'number' && finalPenaltyCents >= 0;
       
       expect(isValid).toBe(false);
+    });
+
+    it('should reject penalty amounts exceeding calculated maximum', () => {
+      const record = createMockOverstayRecord({ 
+        status: 'pending_review',
+        calculatedPenaltyCents: 667, // Max allowed
+      });
+      const decision = {
+        overstayRecordId: record.id,
+        managerId: 5,
+        action: 'adjust' as const,
+        finalPenaltyCents: 1000, // Exceeds max
+      };
+
+      // Validate that adjusted amount cannot exceed calculated maximum
+      const isValid = decision.finalPenaltyCents <= record.calculatedPenaltyCents;
+      expect(isValid).toBe(false);
+    });
+
+    it('should allow penalty amounts at or below calculated maximum', () => {
+      const record = createMockOverstayRecord({ 
+        status: 'pending_review',
+        calculatedPenaltyCents: 667,
+      });
+      
+      // Test exact match
+      const decision1 = { finalPenaltyCents: 667 };
+      expect(decision1.finalPenaltyCents <= record.calculatedPenaltyCents).toBe(true);
+      
+      // Test below max
+      const decision2 = { finalPenaltyCents: 500 };
+      expect(decision2.finalPenaltyCents <= record.calculatedPenaltyCents).toBe(true);
+      
+      // Test zero (waive)
+      const decision3 = { finalPenaltyCents: 0 };
+      expect(decision3.finalPenaltyCents <= record.calculatedPenaltyCents).toBe(true);
     });
   });
 });

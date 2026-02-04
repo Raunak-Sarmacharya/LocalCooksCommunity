@@ -75,6 +75,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
 import ApplicationFormPanel from "@/components/application/ApplicationFormPanel";
 import ChefSupportPage from "@/components/chef/ChefSupportPage";
+import { PendingDamageClaims } from "@/components/chef/PendingDamageClaims";
 import TidioController from "@/components/chat/TidioController";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
 import DocumentUpload, { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
@@ -127,7 +128,7 @@ export default function ApplicantDashboard() {
     const view = params.get('view');
     const action = params.get('action');
     
-    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages', 'support', 'feedback'].includes(view)) {
+    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages', 'support', 'feedback', 'damage-claims'].includes(view)) {
       setActiveTab(view);
       
       // If navigating to applications with action=new, open the form
@@ -1144,6 +1145,12 @@ export default function ApplicantDashboard() {
               userName={authUser?.displayName || undefined}
               userId={authUser?.uid}
             />
+          </div>
+        );
+      case "damage-claims":
+        return (
+          <div className="space-y-8 animate-in fade-in-50 duration-500">
+            <PendingDamageClaims />
           </div>
         );
       default:

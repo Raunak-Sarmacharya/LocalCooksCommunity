@@ -27,6 +27,9 @@ export const bookingStatusEnum = pgEnum('booking_status', ['pending', 'confirmed
 
 // Define enums for storage listings
 export const storageTypeEnum = pgEnum('storage_type', ['dry', 'cold', 'freezer']);
+
+// Define enum for storage checkout status (hybrid verification workflow)
+export const checkoutStatusEnum = pgEnum('checkout_status', ['active', 'checkout_requested', 'checkout_approved', 'completed']);
 export const storagePricingModelEnum = pgEnum('storage_pricing_model', ['monthly-flat', 'per-cubic-foot', 'hourly', 'daily']);
 export const bookingDurationUnitEnum = pgEnum('booking_duration_unit', ['hourly', 'daily', 'monthly']);
 export const listingStatusEnum = pgEnum('listing_status', ['draft', 'pending', 'approved', 'rejected', 'active', 'inactive']);
@@ -424,6 +427,9 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   equipmentItems: jsonb("equipment_items").default([]), // Array of equipment booking IDs: [{equipmentBookingId: 2, equipmentListingId: 8}]
   paymentStatus: paymentStatusEnum("payment_status").default("pending"), // Payment status
   paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (nullable, unique)
+  // Stripe fields for off-session damage claim charging
+  stripePaymentMethodId: text("stripe_payment_method_id"), // Saved payment method for damage claims
+  stripeCustomerId: text("stripe_customer_id"), // Denormalized for quick access
   damageDeposit: numeric("damage_deposit").default("0"), // Damage deposit amount (in cents)
   serviceFee: numeric("service_fee").default("0"), // Platform commission (in cents)
   currency: text("currency").default("CAD").notNull(), // Currency code
@@ -1052,6 +1058,19 @@ export const storageBookings = pgTable("storage_bookings", {
   // Stripe fields for off-session penalty charging
   stripePaymentMethodId: text("stripe_payment_method_id"), // Saved payment method for penalties
   stripeCustomerId: text("stripe_customer_id"), // Denormalized for quick access
+  
+  // Checkout workflow fields (hybrid verification system)
+  // Chef initiates checkout -> Manager verifies -> Prevents unwarranted overstay penalties
+  checkoutStatus: checkoutStatusEnum("checkout_status").default("active"),
+  checkoutRequestedAt: timestamp("checkout_requested_at"),
+  checkoutApprovedAt: timestamp("checkout_approved_at"),
+  checkoutApprovedBy: integer("checkout_approved_by").references(() => users.id, { onDelete: "set null" }),
+  checkoutNotes: text("checkout_notes"),
+  checkoutPhotoUrls: jsonb("checkout_photo_urls").default([]), // R2 URLs for verification photos
+  checkoutDeniedAt: timestamp("checkout_denied_at"),
+  checkoutDeniedBy: integer("checkout_denied_by").references(() => users.id, { onDelete: "set null" }),
+  checkoutDenialReason: text("checkout_denial_reason"),
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1082,6 +1101,10 @@ export const updateStorageBookingSchema = z.object({
   paymentStatus: z.enum(["pending", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
   paymentIntentId: z.string().optional(),
   serviceFee: z.number().int().min(0).optional(),
+  // Checkout workflow fields
+  checkoutStatus: z.enum(["active", "checkout_requested", "checkout_approved", "completed"]).optional(),
+  checkoutNotes: z.string().optional(),
+  checkoutPhotoUrls: z.array(z.string()).optional(),
 });
 
 export const updateStorageBookingStatusSchema = z.object({
@@ -1089,11 +1112,29 @@ export const updateStorageBookingStatusSchema = z.object({
   status: z.enum(["pending", "confirmed", "cancelled"]),
 });
 
+// Checkout request schema (chef initiates checkout)
+export const storageCheckoutRequestSchema = z.object({
+  storageBookingId: z.number(),
+  checkoutNotes: z.string().optional(),
+  checkoutPhotoUrls: z.array(z.string()).optional(), // R2 URLs for verification photos
+});
+
+// Checkout approval schema (manager approves/denies)
+export const storageCheckoutApprovalSchema = z.object({
+  storageBookingId: z.number(),
+  action: z.enum(["approve", "deny"]),
+  managerNotes: z.string().optional(),
+  denialReason: z.string().optional(), // Required if action is 'deny'
+});
+
 // Type exports for storage bookings
 export type StorageBooking = typeof storageBookings.$inferSelect;
 export type InsertStorageBooking = z.infer<typeof insertStorageBookingSchema>;
 export type UpdateStorageBooking = z.infer<typeof updateStorageBookingSchema>;
 export type UpdateStorageBookingStatus = z.infer<typeof updateStorageBookingStatusSchema>;
+export type StorageCheckoutRequest = z.infer<typeof storageCheckoutRequestSchema>;
+export type StorageCheckoutApproval = z.infer<typeof storageCheckoutApprovalSchema>;
+export type CheckoutStatus = "active" | "checkout_requested" | "checkout_approved" | "completed";
 
 // ===== EQUIPMENT BOOKINGS TABLE =====
 // CRITICAL: Equipment can ONLY be booked as part of a kitchen booking (not standalone)
@@ -1545,3 +1586,224 @@ export type InsertStorageOverstayRecord = z.infer<typeof insertStorageOverstayRe
 export type UpdateStorageOverstayRecord = z.infer<typeof updateStorageOverstayRecordSchema>;
 export type StorageOverstayHistory = typeof storageOverstayHistory.$inferSelect;
 export type OverstayStatus = 'detected' | 'grace_period' | 'pending_review' | 'penalty_approved' | 'penalty_waived' | 'charge_pending' | 'charge_succeeded' | 'charge_failed' | 'resolved' | 'escalated';
+
+// ===== DAMAGE CLAIM STATUS ENUM =====
+export const damageClaimStatusEnum = pgEnum('damage_claim_status', [
+  'draft',              // Manager started claim but hasn't submitted
+  'submitted',          // Claim submitted, awaiting chef response
+  'chef_accepted',      // Chef accepted responsibility
+  'chef_disputed',      // Chef disputes the claim
+  'under_review',       // Admin reviewing disputed claim
+  'approved',           // Claim approved (by chef acceptance or admin decision)
+  'partially_approved', // Admin approved partial amount
+  'rejected',           // Claim rejected by admin
+  'charge_pending',     // Payment initiated
+  'charge_succeeded',   // Payment collected
+  'charge_failed',      // Payment failed
+  'resolved',           // Claim closed
+  'expired',            // Claim expired (no response within deadline)
+]);
+
+// ===== EVIDENCE TYPE ENUM =====
+export const evidenceTypeEnum = pgEnum('evidence_type', [
+  'photo_before',       // Photo taken before booking
+  'photo_after',        // Photo showing damage after booking
+  'receipt',            // Repair/replacement receipt
+  'invoice',            // Professional assessment invoice
+  'video',              // Video evidence
+  'document',           // Other supporting document
+  'third_party_report', // Insurance or professional report
+]);
+
+// ===== DAMAGE CLAIMS TABLE =====
+// Tracks damage claims with full workflow for chef response and admin review
+export const damageClaims = pgTable("damage_claims", {
+  id: serial("id").primaryKey(),
+  
+  // Booking reference (polymorphic for kitchen or storage bookings)
+  bookingType: text("booking_type").notNull(), // 'kitchen' or 'storage'
+  kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "set null" }),
+  storageBookingId: integer("storage_booking_id").references(() => storageBookings.id, { onDelete: "set null" }),
+  
+  // Parties involved
+  chefId: integer("chef_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  managerId: integer("manager_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  locationId: integer("location_id").notNull().references(() => locations.id, { onDelete: "cascade" }),
+  
+  // Claim details
+  status: damageClaimStatusEnum("status").default("draft").notNull(),
+  claimTitle: text("claim_title").notNull(),
+  claimDescription: text("claim_description").notNull(),
+  damageDate: date("damage_date").notNull(),
+  
+  // Financial
+  claimedAmountCents: integer("claimed_amount_cents").notNull(),
+  approvedAmountCents: integer("approved_amount_cents"),
+  finalAmountCents: integer("final_amount_cents"),
+  
+  // Chef response
+  chefResponse: text("chef_response"),
+  chefRespondedAt: timestamp("chef_responded_at"),
+  chefResponseDeadline: timestamp("chef_response_deadline").notNull(),
+  
+  // Admin review
+  adminReviewerId: integer("admin_reviewer_id").references(() => users.id, { onDelete: "set null" }),
+  adminReviewedAt: timestamp("admin_reviewed_at"),
+  adminNotes: text("admin_notes"),
+  adminDecisionReason: text("admin_decision_reason"),
+  
+  // Payment
+  stripePaymentIntentId: text("stripe_payment_intent_id").unique(),
+  stripeChargeId: text("stripe_charge_id"),
+  paymentTransactionId: integer("payment_transaction_id").references(() => paymentTransactions.id, { onDelete: "set null" }),
+  chargeAttemptedAt: timestamp("charge_attempted_at"),
+  chargeSucceededAt: timestamp("charge_succeeded_at"),
+  chargeFailedAt: timestamp("charge_failed_at"),
+  chargeFailureReason: text("charge_failure_reason"),
+  
+  // Stripe IDs for off-session charging
+  stripeCustomerId: text("stripe_customer_id"),
+  stripePaymentMethodId: text("stripe_payment_method_id"),
+  
+  // Resolution
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: integer("resolved_by").references(() => users.id, { onDelete: "set null" }),
+  resolutionType: text("resolution_type"), // 'paid', 'waived', 'settled', 'expired', 'rejected'
+  resolutionNotes: text("resolution_notes"),
+  
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  submittedAt: timestamp("submitted_at"),
+});
+
+// ===== DAMAGE EVIDENCE TABLE =====
+// Stores evidence files for damage claims
+export const damageEvidence = pgTable("damage_evidence", {
+  id: serial("id").primaryKey(),
+  damageClaimId: integer("damage_claim_id").notNull().references(() => damageClaims.id, { onDelete: "cascade" }),
+  
+  evidenceType: evidenceTypeEnum("evidence_type").notNull(),
+  fileUrl: text("file_url").notNull(),
+  fileName: text("file_name"),
+  fileSize: integer("file_size"),
+  mimeType: text("mime_type"),
+  
+  description: text("description"),
+  uploadedBy: integer("uploaded_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  
+  // For receipts/invoices
+  amountCents: integer("amount_cents"),
+  vendorName: text("vendor_name"),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ===== DAMAGE CLAIM HISTORY TABLE =====
+// Complete audit trail for all damage claim changes
+export const damageClaimHistory = pgTable("damage_claim_history", {
+  id: serial("id").primaryKey(),
+  damageClaimId: integer("damage_claim_id").notNull().references(() => damageClaims.id, { onDelete: "cascade" }),
+  
+  previousStatus: damageClaimStatusEnum("previous_status"),
+  newStatus: damageClaimStatusEnum("new_status").notNull(),
+  
+  action: text("action").notNull(), // 'created', 'submitted', 'chef_response', 'admin_decision', 'charge_attempt', etc.
+  actionBy: text("action_by").notNull(), // 'manager', 'chef', 'admin', 'system', 'stripe_webhook'
+  actionByUserId: integer("action_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  
+  notes: text("notes"),
+  metadata: jsonb("metadata").default({}),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Zod validation schemas for damage claims
+const damageClaimStatusValues = ['draft', 'submitted', 'chef_accepted', 'chef_disputed', 'under_review', 'approved', 'partially_approved', 'rejected', 'charge_pending', 'charge_succeeded', 'charge_failed', 'resolved', 'expired'] as const;
+const evidenceTypeValues = ['photo_before', 'photo_after', 'receipt', 'invoice', 'video', 'document', 'third_party_report'] as const;
+
+export const insertDamageClaimSchema = z.object({
+  bookingType: z.enum(['kitchen', 'storage']),
+  kitchenBookingId: z.number().optional(),
+  storageBookingId: z.number().optional(),
+  chefId: z.number(),
+  managerId: z.number(),
+  locationId: z.number(),
+  claimTitle: z.string().min(5).max(200),
+  claimDescription: z.string().min(50),
+  damageDate: z.string(), // ISO date string
+  claimedAmountCents: z.number().int().min(1000), // Minimum $10
+  chefResponseDeadline: z.date(),
+}).refine(
+  (data) => {
+    if (data.bookingType === 'kitchen') return data.kitchenBookingId !== undefined;
+    if (data.bookingType === 'storage') return data.storageBookingId !== undefined;
+    return false;
+  },
+  { message: "Must provide booking ID matching booking type" }
+);
+
+export const updateDamageClaimSchema = z.object({
+  status: z.enum(damageClaimStatusValues).optional(),
+  claimTitle: z.string().min(5).max(200).optional(),
+  claimDescription: z.string().min(50).optional(),
+  claimedAmountCents: z.number().int().min(1000).optional(),
+  approvedAmountCents: z.number().int().min(0).optional(),
+  finalAmountCents: z.number().int().min(0).optional(),
+  chefResponse: z.string().optional(),
+  chefRespondedAt: z.date().optional(),
+  adminReviewerId: z.number().optional(),
+  adminReviewedAt: z.date().optional(),
+  adminNotes: z.string().optional(),
+  adminDecisionReason: z.string().optional(),
+  stripePaymentIntentId: z.string().optional(),
+  stripeChargeId: z.string().optional(),
+  paymentTransactionId: z.number().optional(),
+  chargeAttemptedAt: z.date().optional(),
+  chargeSucceededAt: z.date().optional(),
+  chargeFailedAt: z.date().optional(),
+  chargeFailureReason: z.string().optional(),
+  stripeCustomerId: z.string().optional(),
+  stripePaymentMethodId: z.string().optional(),
+  resolvedAt: z.date().optional(),
+  resolvedBy: z.number().optional(),
+  resolutionType: z.string().optional(),
+  resolutionNotes: z.string().optional(),
+  submittedAt: z.date().optional(),
+});
+
+export const insertDamageEvidenceSchema = z.object({
+  damageClaimId: z.number(),
+  evidenceType: z.enum(evidenceTypeValues),
+  fileUrl: z.string().url(),
+  fileName: z.string().optional(),
+  fileSize: z.number().int().positive().optional(),
+  mimeType: z.string().optional(),
+  description: z.string().optional(),
+  uploadedBy: z.number(),
+  amountCents: z.number().int().min(0).optional(),
+  vendorName: z.string().optional(),
+});
+
+export const chefDamageClaimResponseSchema = z.object({
+  action: z.enum(['accept', 'dispute']),
+  response: z.string().min(10),
+});
+
+export const adminDamageClaimDecisionSchema = z.object({
+  decision: z.enum(['approve', 'partially_approve', 'reject']),
+  approvedAmountCents: z.number().int().min(0).optional(),
+  decisionReason: z.string().min(20),
+  notes: z.string().optional(),
+});
+
+// Type exports for damage claims
+export type DamageClaim = typeof damageClaims.$inferSelect;
+export type InsertDamageClaim = z.infer<typeof insertDamageClaimSchema>;
+export type UpdateDamageClaim = z.infer<typeof updateDamageClaimSchema>;
+export type DamageEvidence = typeof damageEvidence.$inferSelect;
+export type InsertDamageEvidence = z.infer<typeof insertDamageEvidenceSchema>;
+export type DamageClaimHistory = typeof damageClaimHistory.$inferSelect;
+export type DamageClaimStatus = typeof damageClaimStatusValues[number];
+export type EvidenceType = typeof evidenceTypeValues[number];

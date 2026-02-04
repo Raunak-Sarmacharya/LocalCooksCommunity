@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, CreditCard, Package, Calendar, Building2 } from "lucide-react";
+import { AlertTriangle, CreditCard, Package, Calendar, Building2, FileDown } from "lucide-react";
 import { format } from "date-fns";
 import { auth } from "@/lib/firebase";
 import { toast } from "sonner";

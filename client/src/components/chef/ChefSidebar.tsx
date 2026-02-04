@@ -10,9 +10,8 @@ import {
     MessageCircle,
     Search,
     LifeBuoy,
-    Send,
+    AlertTriangle,
     ChefHat,
-    Shield,
 } from "lucide-react"
 
 import {
@@ -102,6 +101,16 @@ const navGroups: NavGroup[] = [
                 label: "Messages",
                 icon: MessageCircle,
                 badge: 0,
+            },
+        ],
+    },
+    {
+        title: "Account",
+        items: [
+            {
+                id: "damage-claims",
+                label: "Damage Claims",
+                icon: AlertTriangle,
             },
         ],
     },

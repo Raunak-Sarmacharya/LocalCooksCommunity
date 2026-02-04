@@ -43,6 +43,80 @@ export async function requireChef(req: Request, res: Response, next: NextFunctio
     next();
 }
 
+/**
+ * Middleware to check if chef has unpaid overstay penalties
+ * Blocks access to portal if chef has any penalties that need to be paid/resolved
+ * 
+ * This should be applied AFTER requireChef middleware
+ */
+export async function requireNoUnpaidPenalties(req: Request, res: Response, next: NextFunction) {
+    try {
+        // Skip if no user or not a chef (middleware should be used with requireChef)
+        if (!req.neonUser) {
+            return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        // Admins bypass penalty check
+        if (req.neonUser.role === 'admin') {
+            return next();
+        }
+
+        const chefId = req.neonUser.id;
+
+        // Check for unpaid penalties
+        const { hasChefUnpaidPenalties, getChefUnpaidPenalties } = await import("../services/overstay-penalty-service");
+        const hasUnpaidPenalties = await hasChefUnpaidPenalties(chefId);
+
+        if (hasUnpaidPenalties) {
+            const unpaidPenalties = await getChefUnpaidPenalties(chefId);
+            
+            // Calculate total amount owed
+            const totalOwedCents = unpaidPenalties.reduce((sum, p) => sum + p.penaltyAmountCents, 0);
+            const totalOwedDollars = (totalOwedCents / 100).toFixed(2);
+
+            // Get penalties that require immediate payment
+            const immediatePaymentPenalties = unpaidPenalties.filter(
+                p => p.requiresImmediatePayment
+            );
+
+            console.log(`[requireNoUnpaidPenalties] Chef ${chefId} blocked: ${unpaidPenalties.length} unpaid penalties, $${totalOwedDollars} owed`);
+
+            return res.status(403).json({
+                error: "Access denied. You have unpaid overstay penalties.",
+                code: "UNPAID_OVERSTAY_PENALTIES",
+                penalties: {
+                    totalCount: unpaidPenalties.length,
+                    totalOwedCents: totalOwedCents,
+                    totalOwed: `$${totalOwedDollars}`,
+                    items: unpaidPenalties.map(p => ({
+                        overstayId: p.overstayId,
+                        storageName: p.storageName,
+                        kitchenName: p.kitchenName,
+                        daysOverdue: p.daysOverdue,
+                        status: p.status,
+                        penaltyAmountCents: p.penaltyAmountCents,
+                        penaltyAmount: `$${(p.penaltyAmountCents / 100).toFixed(2)}`,
+                        requiresImmediatePayment: p.requiresImmediatePayment,
+                    })),
+                    canPayNow: immediatePaymentPenalties.length > 0,
+                    payNowItems: immediatePaymentPenalties.map(p => ({
+                        overstayId: p.overstayId,
+                        storageName: p.storageName,
+                        penaltyAmount: `$${(p.penaltyAmountCents / 100).toFixed(2)}`,
+                    })),
+                },
+                message: `You have ${unpaidPenalties.length} unpaid overstay penalty(ies) totaling $${totalOwedDollars}. Please resolve these penalties to continue using the portal.`,
+            });
+        }
+
+        next();
+    } catch (error) {
+        console.error('[requireNoUnpaidPenalties] Error checking penalties:', error);
+        // Allow access on error to prevent blocking legitimate users
+        next();
+    }
+}
+
 // Middleware to ensure user is a portal user and has application approved
 export async function requirePortalUser(req: Request, res: Response, next: NextFunction) {
     try {

@@ -2078,4 +2078,257 @@ router.post("/sync-stripe-fees", requireFirebaseAuthWithUser, requireAdmin, asyn
     }
 });
 
+// ============================================================================
+// DAMAGE CLAIM ADMIN ENDPOINTS
+// ============================================================================
+
+import { damageClaimService } from "../services/damage-claim-service";
+import { damageClaimLimitsService } from "../services/damage-claim-limits-service";
+
+/**
+ * GET /admin/damage-claim-limits
+ * Get current damage claim limits
+ */
+router.get("/damage-claim-limits", requireFirebaseAuthWithUser, requireAdmin, async (_req: Request, res: Response) => {
+    try {
+        const limits = await damageClaimLimitsService.getDamageClaimLimits();
+        const defaults = damageClaimLimitsService.getDefaultLimits();
+        res.json({ limits, defaults });
+    } catch (error) {
+        console.error("Error fetching damage claim limits:", error);
+        res.status(500).json({ error: "Failed to fetch damage claim limits" });
+    }
+});
+
+/**
+ * PUT /admin/damage-claim-limits
+ * Update damage claim limits (admin only)
+ */
+router.put("/damage-claim-limits", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const {
+            maxClaimAmountCents,
+            minClaimAmountCents,
+            maxClaimsPerBooking,
+            chefResponseDeadlineHours,
+            claimSubmissionDeadlineDays,
+        } = req.body;
+
+        const updates: { key: string; value: string; description: string }[] = [];
+
+        if (maxClaimAmountCents !== undefined) {
+            if (maxClaimAmountCents < 1000 || maxClaimAmountCents > 10000000) {
+                return res.status(400).json({ error: "Max claim amount must be between $10 and $100,000" });
+            }
+            updates.push({
+                key: 'damage_claim_max_amount_cents',
+                value: String(maxClaimAmountCents),
+                description: 'Maximum damage claim amount in cents (admin-controlled limit)',
+            });
+        }
+
+        if (minClaimAmountCents !== undefined) {
+            if (minClaimAmountCents < 100 || minClaimAmountCents > 10000) {
+                return res.status(400).json({ error: "Min claim amount must be between $1 and $100" });
+            }
+            updates.push({
+                key: 'damage_claim_min_amount_cents',
+                value: String(minClaimAmountCents),
+                description: 'Minimum damage claim amount in cents',
+            });
+        }
+
+        if (maxClaimsPerBooking !== undefined) {
+            if (maxClaimsPerBooking < 1 || maxClaimsPerBooking > 10) {
+                return res.status(400).json({ error: "Max claims per booking must be between 1 and 10" });
+            }
+            updates.push({
+                key: 'damage_claim_max_per_booking',
+                value: String(maxClaimsPerBooking),
+                description: 'Maximum number of damage claims allowed per booking',
+            });
+        }
+
+        if (chefResponseDeadlineHours !== undefined) {
+            if (chefResponseDeadlineHours < 24 || chefResponseDeadlineHours > 168) {
+                return res.status(400).json({ error: "Chef response deadline must be between 24 and 168 hours" });
+            }
+            updates.push({
+                key: 'damage_claim_response_deadline_hours',
+                value: String(chefResponseDeadlineHours),
+                description: 'Hours chef has to respond to a damage claim',
+            });
+        }
+
+        if (claimSubmissionDeadlineDays !== undefined) {
+            if (claimSubmissionDeadlineDays < 1 || claimSubmissionDeadlineDays > 30) {
+                return res.status(400).json({ error: "Claim submission deadline must be between 1 and 30 days" });
+            }
+            updates.push({
+                key: 'damage_claim_submission_deadline_days',
+                value: String(claimSubmissionDeadlineDays),
+                description: 'Days after booking ends to file a damage claim',
+            });
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ error: "No valid updates provided" });
+        }
+
+        // Upsert each setting
+        for (const update of updates) {
+            await db
+                .insert(platformSettings)
+                .values({
+                    key: update.key,
+                    value: update.value,
+                    description: update.description,
+                })
+                .onConflictDoUpdate({
+                    target: platformSettings.key,
+                    set: {
+                        value: update.value,
+                        updatedAt: new Date(),
+                    },
+                });
+        }
+
+        // Fetch updated limits
+        const newLimits = await damageClaimLimitsService.getDamageClaimLimits();
+
+        console.log('[Admin] Updated damage claim limits:', newLimits);
+
+        res.json({
+            success: true,
+            message: `Updated ${updates.length} damage claim limit(s)`,
+            limits: newLimits,
+        });
+    } catch (error) {
+        console.error("Error updating damage claim limits:", error);
+        res.status(500).json({ error: "Failed to update damage claim limits" });
+    }
+});
+
+/**
+ * GET /admin/damage-claims
+ * Get all disputed damage claims for admin review
+ */
+router.get("/damage-claims", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const claims = await damageClaimService.getDisputedClaims();
+        res.json({ claims });
+    } catch (error) {
+        console.error("Error fetching disputed damage claims:", error);
+        res.status(500).json({ error: "Failed to fetch damage claims" });
+    }
+});
+
+/**
+ * GET /admin/damage-claims/:id
+ * Get a single damage claim with full details for admin review
+ */
+router.get("/damage-claims/:id", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const claimId = parseInt(req.params.id);
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        const claim = await damageClaimService.getClaimById(claimId);
+        if (!claim) {
+            return res.status(404).json({ error: "Claim not found" });
+        }
+
+        const history = await damageClaimService.getClaimHistory(claimId);
+        res.json({ claim, history });
+    } catch (error) {
+        console.error("Error fetching damage claim:", error);
+        res.status(500).json({ error: "Failed to fetch damage claim" });
+    }
+});
+
+/**
+ * POST /admin/damage-claims/:id/review (alias: /decision)
+ * Admin makes a decision on a disputed damage claim
+ */
+const handleAdminDamageClaimDecision = async (req: Request, res: Response) => {
+    try {
+        const adminId = req.neonUser!.id;
+        const claimId = parseInt(req.params.id);
+        const { decision, approvedAmountCents, decisionReason, notes } = req.body;
+
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        if (!decision || !['approve', 'partially_approve', 'reject'].includes(decision)) {
+            return res.status(400).json({ error: "Decision must be 'approve', 'partially_approve', or 'reject'" });
+        }
+
+        if (!decisionReason || decisionReason.length < 20) {
+            return res.status(400).json({ error: "Decision reason must be at least 20 characters" });
+        }
+
+        if (decision === 'partially_approve' && (!approvedAmountCents || approvedAmountCents <= 0)) {
+            return res.status(400).json({ error: "Approved amount is required for partial approval" });
+        }
+
+        const result = await damageClaimService.adminDecision(claimId, adminId, {
+            decision,
+            approvedAmountCents,
+            decisionReason,
+            notes,
+        });
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({
+            success: true,
+            message: `Claim ${decision === 'reject' ? 'rejected' : 'approved'}`,
+        });
+    } catch (error) {
+        console.error("Error processing admin decision:", error);
+        res.status(500).json({ error: "Failed to process decision" });
+    }
+};
+
+// Register both /review and /decision endpoints for the same handler
+router.post("/damage-claims/:id/review", requireFirebaseAuthWithUser, requireAdmin, handleAdminDamageClaimDecision);
+router.post("/damage-claims/:id/decision", requireFirebaseAuthWithUser, requireAdmin, handleAdminDamageClaimDecision);
+
+/**
+ * POST /admin/damage-claims/:id/charge
+ * Admin forces a charge on an approved damage claim
+ */
+router.post("/damage-claims/:id/charge", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const claimId = parseInt(req.params.id);
+
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        const result = await damageClaimService.chargeApprovedClaim(claimId);
+
+        if (!result.success) {
+            return res.status(400).json({
+                error: result.error,
+                message: "Failed to charge damage claim",
+            });
+        }
+
+        res.json({
+            success: true,
+            message: "Damage claim charged successfully",
+            paymentIntentId: result.paymentIntentId,
+            chargeId: result.chargeId,
+        });
+    } catch (error) {
+        console.error("Error charging damage claim:", error);
+        res.status(500).json({ error: "Failed to charge damage claim" });
+    }
+});
+
 export default router;

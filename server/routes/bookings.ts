@@ -11,7 +11,7 @@ import {
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../logger";
-import { requireChef } from "./middleware";
+import { requireChef, requireNoUnpaidPenalties } from "./middleware";
 import { createPaymentIntent } from "../services/stripe-service";
 import { calculateKitchenBookingPrice } from "../services/pricing-service";
 import { userService } from "../domains/users/user.service";
@@ -168,21 +168,29 @@ router.get("/chef/storage-bookings/:id", requireChef, async (req: Request, res: 
 });
 
 // ============================================================================
-// OVERSTAY DETECTION ENDPOINT (Cron Job)
+// DAILY SCHEDULED TASKS ENDPOINT (Cron Job)
 // ============================================================================
-// This endpoint is called by Vercel cron to detect overstays daily.
-// It does NOT auto-charge - it only creates overstay records for manager review.
+// This endpoint is called by Vercel cron daily to run all scheduled tasks:
+// 1. Detect storage overstays
+// 2. Process expired damage claim deadlines
+// It does NOT auto-charge - it only creates records for manager review.
 
 import { overstayPenaltyService } from "../services/overstay-penalty-service";
+import { damageClaimService } from "../services/damage-claim-service";
 
 /**
  * POST /api/detect-overstays
- * Daily cron job to detect expired storage bookings and create overstay records.
+ * Daily cron job to run all scheduled tasks:
  * 
- * IMPORTANT: This does NOT charge customers. It only:
- * 1. Detects expired storage bookings
- * 2. Creates overstay records with calculated penalties
- * 3. Managers must manually review and approve charges
+ * 1. OVERSTAY DETECTION:
+ *    - Detects expired storage bookings
+ *    - Creates overstay records with calculated penalties
+ *    - Managers must manually review and approve charges
+ * 
+ * 2. DAMAGE CLAIM DEADLINE PROCESSING:
+ *    - Finds claims where chef didn't respond by deadline
+ *    - Auto-approves them (industry standard: silence = acceptance)
+ *    - Notifies both chef and manager
  * 
  * Security: Uses Vercel cron secret for authentication
  */
@@ -193,37 +201,60 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
         const authHeader = req.headers.authorization;
         
         if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-            console.warn("[Cron] Unauthorized overstay detection attempt");
+            console.warn("[Cron] Unauthorized cron job attempt");
             return res.status(401).json({ error: "Unauthorized" });
         }
 
-        console.log("[Cron] Starting overstay detection...");
+        console.log("[Cron] Starting daily scheduled tasks...");
         
-        const results = await overstayPenaltyService.detectOverstays();
+        // Task 1: Detect overstays
+        console.log("[Cron] Task 1: Detecting overstays...");
+        const overstayResults = await overstayPenaltyService.detectOverstays();
         
-        const summary = {
-            total: results.length,
-            inGracePeriod: results.filter(r => r.isInGracePeriod).length,
-            pendingReview: results.filter(r => r.status === 'pending_review').length,
-            totalCalculatedPenalty: results.reduce((sum, r) => sum + r.calculatedPenaltyCents, 0),
+        const overstaySummary = {
+            total: overstayResults.length,
+            inGracePeriod: overstayResults.filter(r => r.isInGracePeriod).length,
+            pendingReview: overstayResults.filter(r => r.status === 'pending_review').length,
+            totalCalculatedPenalty: overstayResults.reduce((sum, r) => sum + r.calculatedPenaltyCents, 0),
         };
+        console.log("[Cron] Overstay detection complete:", overstaySummary);
 
-        console.log("[Cron] Overstay detection complete:", summary);
+        // Task 2: Process expired damage claims
+        console.log("[Cron] Task 2: Processing expired damage claims...");
+        const expiredClaimResults = await damageClaimService.processExpiredClaims();
+        
+        const claimSummary = {
+            total: expiredClaimResults.length,
+            autoApproved: expiredClaimResults.filter(r => r.action === 'auto_approved').length,
+        };
+        console.log("[Cron] Expired claims processing complete:", claimSummary);
+
+        console.log("[Cron] All daily scheduled tasks complete");
 
         res.json({
             success: true,
-            message: `Detected ${results.length} overstay situations`,
-            summary,
-            results: results.map(r => ({
-                bookingId: r.bookingId,
-                daysOverdue: r.daysOverdue,
-                status: r.status,
-                calculatedPenaltyCents: r.calculatedPenaltyCents,
-            })),
+            message: `Daily tasks complete: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed`,
+            overstays: {
+                summary: overstaySummary,
+                results: overstayResults.map(r => ({
+                    bookingId: r.bookingId,
+                    daysOverdue: r.daysOverdue,
+                    status: r.status,
+                    calculatedPenaltyCents: r.calculatedPenaltyCents,
+                })),
+            },
+            expiredClaims: {
+                summary: claimSummary,
+                results: expiredClaimResults.map(r => ({
+                    claimId: r.claimId,
+                    action: r.action,
+                })),
+            },
         });
-    } catch (error: any) {
-        console.error("[Cron] Error detecting overstays:", error);
-        res.status(500).json({ error: error.message || "Failed to detect overstays" });
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : "Failed to run daily tasks";
+        console.error("[Cron] Error running daily tasks:", error);
+        res.status(500).json({ error: errorMessage });
     }
 });
 
@@ -379,7 +410,7 @@ router.post("/chef/storage-bookings/:id/extension-preview", requireChef, async (
 });
 
 // Create Stripe Checkout session for storage extension
-router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async (req: Request, res: Response) => {
+router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
     try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -752,6 +783,114 @@ router.put("/chef/storage-bookings/:id/extend", requireChef, async (req: Request
     } catch (error: any) {
         console.error("Error extending storage booking:", error);
         res.status(500).json({ error: error.message || "Failed to extend storage booking" });
+    }
+});
+
+// ============================================================================
+// STORAGE CHECKOUT WORKFLOW (Hybrid Verification System)
+// Chef initiates checkout -> Manager verifies -> Prevents unwarranted overstay penalties
+// ============================================================================
+
+// Chef requests checkout for a storage booking
+router.post("/chef/storage-bookings/:id/request-checkout", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        const { checkoutNotes, checkoutPhotoUrls } = req.body;
+        const chefId = req.neonUser!.id;
+
+        // Import the checkout service
+        const { requestStorageCheckout } = await import('../services/storage-checkout-service');
+        
+        const result = await requestStorageCheckout(
+            id,
+            chefId,
+            checkoutNotes,
+            checkoutPhotoUrls
+        );
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({
+            success: true,
+            storageBookingId: result.storageBookingId,
+            checkoutStatus: result.checkoutStatus,
+            message: "Checkout request submitted successfully. The manager will verify and approve your checkout.",
+        });
+    } catch (error: any) {
+        console.error("Error requesting storage checkout:", error);
+        res.status(500).json({ error: error.message || "Failed to request checkout" });
+    }
+});
+
+// Chef adds additional photos to an existing checkout request
+router.post("/chef/storage-bookings/:id/checkout-photos", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        const { photoUrls } = req.body;
+        if (!photoUrls || !Array.isArray(photoUrls) || photoUrls.length === 0) {
+            return res.status(400).json({ error: "photoUrls array is required" });
+        }
+
+        const chefId = req.neonUser!.id;
+
+        const { addCheckoutPhotos } = await import('../services/storage-checkout-service');
+        
+        const result = await addCheckoutPhotos(id, chefId, photoUrls);
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({
+            success: true,
+            storageBookingId: result.storageBookingId,
+            message: "Photos added to checkout request successfully.",
+        });
+    } catch (error: any) {
+        console.error("Error adding checkout photos:", error);
+        res.status(500).json({ error: error.message || "Failed to add checkout photos" });
+    }
+});
+
+// Get checkout status for a storage booking
+router.get("/chef/storage-bookings/:id/checkout-status", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        // Verify the booking belongs to this chef
+        const booking = await bookingService.getStorageBookingById(id);
+        if (!booking) {
+            return res.status(404).json({ error: "Storage booking not found" });
+        }
+
+        if (booking.chefId !== req.neonUser!.id) {
+            return res.status(403).json({ error: "You don't have permission to view this booking" });
+        }
+
+        const { getCheckoutStatus } = await import('../services/storage-checkout-service');
+        const status = await getCheckoutStatus(id);
+
+        if (!status) {
+            return res.status(404).json({ error: "Checkout status not found" });
+        }
+
+        res.json(status);
+    } catch (error: any) {
+        console.error("Error getting checkout status:", error);
+        res.status(500).json({ error: error.message || "Failed to get checkout status" });
     }
 });
 
@@ -1501,7 +1640,7 @@ router.post("/payments/cancel", requireChef, async (req: Request, res: Response)
 });
 
 // Create booking and redirect to Stripe Checkout (new flow - replaces embedded payment)
-router.post("/chef/bookings/checkout", requireChef, async (req: Request, res: Response) => {
+router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
     try {
         const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorage, selectedEquipmentIds } = req.body;
         const chefId = req.neonUser!.id;
@@ -1720,7 +1859,7 @@ router.post("/chef/bookings/checkout", requireChef, async (req: Request, res: Re
 });
 
 // Create a booking
-router.post("/chef/bookings", requireChef, async (req: Request, res: Response) => {
+router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
     try {
         const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser!.id;
@@ -2399,6 +2538,100 @@ router.post("/chef/overstay-penalties/:id/pay", requireChef, async (req: Request
     } catch (error) {
         logger.error("Error creating penalty payment checkout:", error);
         res.status(500).json({ error: "Failed to create payment session" });
+    }
+});
+
+// ============================================================================
+// CHEF DAMAGE CLAIM ENDPOINTS
+// ============================================================================
+// Note: damageClaimService is already imported above for the cron job
+
+/**
+ * GET /chef/damage-claims
+ * Get all pending damage claims for the authenticated chef
+ */
+router.get("/chef/damage-claims", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const claims = await damageClaimService.getChefPendingClaims(chefId);
+        res.json({ claims });
+    } catch (error) {
+        logger.error("Error fetching chef damage claims:", error);
+        res.status(500).json({ error: "Failed to fetch damage claims" });
+    }
+});
+
+/**
+ * GET /chef/damage-claims/:id
+ * Get a single damage claim with details
+ */
+router.get("/chef/damage-claims/:id", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const claimId = parseInt(req.params.id);
+
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        const claim = await damageClaimService.getClaimById(claimId);
+        if (!claim) {
+            return res.status(404).json({ error: "Claim not found" });
+        }
+
+        // Verify chef owns this claim
+        if (claim.chefId !== chefId) {
+            return res.status(403).json({ error: "Not authorized to view this claim" });
+        }
+
+        const history = await damageClaimService.getClaimHistory(claimId);
+        res.json({ claim, history });
+    } catch (error) {
+        logger.error("Error fetching damage claim:", error);
+        res.status(500).json({ error: "Failed to fetch damage claim" });
+    }
+});
+
+/**
+ * POST /chef/damage-claims/:id/respond
+ * Chef responds to a damage claim (accept or dispute)
+ */
+router.post("/chef/damage-claims/:id/respond", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const claimId = parseInt(req.params.id);
+        const { action, response } = req.body;
+
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        if (!action || !['accept', 'dispute'].includes(action)) {
+            return res.status(400).json({ error: "Action must be 'accept' or 'dispute'" });
+        }
+
+        if (!response || response.length < 10) {
+            return res.status(400).json({ error: "Response must be at least 10 characters" });
+        }
+
+        const result = await damageClaimService.chefRespondToClaim(claimId, chefId, {
+            action,
+            response,
+        });
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({
+            success: true,
+            message: action === 'accept' 
+                ? "You have accepted responsibility for this claim" 
+                : "Your dispute has been submitted for admin review",
+        });
+    } catch (error) {
+        logger.error("Error responding to damage claim:", error);
+        res.status(500).json({ error: "Failed to respond to damage claim" });
     }
 });
 

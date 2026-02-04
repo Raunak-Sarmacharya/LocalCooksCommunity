@@ -27,6 +27,7 @@ import EquipmentListingManagement from "./EquipmentListingManagement";
 import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOverview";
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import { OverstayPenaltyQueue } from "@/components/manager/overstays/OverstayPenaltyQueue";
+import { DamageClaimQueue } from "@/components/manager/damage-claims/DamageClaimQueue";
 import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
@@ -151,7 +152,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'application-requirements' | 'notifications' | 'overstays';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'application-requirements' | 'notifications' | 'overstays' | 'damage-claims';
 
 
 export default function ManagerBookingDashboard() {
@@ -164,7 +165,7 @@ export default function ManagerBookingDashboard() {
   const [activeView, setActiveView] = useState<ViewType>(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'application-requirements', 'notifications', 'overstays'];
+    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'application-requirements', 'notifications', 'overstays', 'damage-claims'];
     if (view && validViews.includes(view as ViewType)) {
       return view as ViewType;
     }
@@ -230,7 +231,7 @@ export default function ManagerBookingDashboard() {
     const handleLocationChange = () => {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
-      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'application-requirements', 'notifications', 'overstays'];
+      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'application-requirements', 'notifications', 'overstays', 'damage-claims'];
       if (view && validViews.includes(view as ViewType)) {
         setActiveView(view as ViewType);
       }
@@ -658,6 +659,12 @@ export default function ManagerBookingDashboard() {
       {activeView === 'overstays' && (
         <div className="space-y-6">
           <OverstayPenaltyQueue />
+        </div>
+      )}
+
+      {activeView === 'damage-claims' && (
+        <div className="space-y-6">
+          <DamageClaimQueue />
         </div>
       )}
 

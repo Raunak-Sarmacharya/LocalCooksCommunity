@@ -567,6 +567,9 @@ async function handleCheckoutSessionCompleted(
               selectedSlots: selectedSlots,
               storageItems: [],
               equipmentItems: [],
+              // ENTERPRISE STANDARD: Store Stripe customer/payment info for off-session damage claim charging
+              stripeCustomerId: stripeCustomerId || null,
+              stripePaymentMethodId: stripePaymentMethodId || null,
             })
             .returning();
           

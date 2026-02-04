@@ -327,12 +327,22 @@ function OverstayCard({
                 type="number"
                 step="0.01"
                 min="0"
+                max={(overstay.calculatedPenaltyCents / 100).toFixed(2)}
                 value={adjustedAmount}
-                onChange={(e) => setAdjustedAmount(e.target.value)}
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value);
+                  const maxAmount = overstay.calculatedPenaltyCents / 100;
+                  // Cap at maximum calculated penalty
+                  if (value > maxAmount) {
+                    setAdjustedAmount(maxAmount.toFixed(2));
+                  } else {
+                    setAdjustedAmount(e.target.value);
+                  }
+                }}
                 className="mt-1"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Calculated: {formatCurrency(overstay.calculatedPenaltyCents)}
+                Maximum allowed: {formatCurrency(overstay.calculatedPenaltyCents)} (based on ${(overstay.dailyRateCents / 100).toFixed(2)}/day × {(parseFloat(overstay.penaltyRate) * 100).toFixed(0)}% rate)
               </p>
             </div>
             <div>
@@ -363,10 +373,12 @@ function OverstayCard({
             <Button 
               onClick={() => {
                 const amountCents = Math.round(parseFloat(adjustedAmount) * 100);
-                onApprove(overstay.overstayId, amountCents, managerNotes, autoCharge);
+                // Enforce maximum penalty cap
+                const cappedAmountCents = Math.min(amountCents, overstay.calculatedPenaltyCents);
+                onApprove(overstay.overstayId, cappedAmountCents, managerNotes, autoCharge);
                 setShowApproveDialog(false);
               }}
-              disabled={isProcessing}
+              disabled={isProcessing || parseFloat(adjustedAmount) * 100 > overstay.calculatedPenaltyCents}
             >
               Approve
             </Button>

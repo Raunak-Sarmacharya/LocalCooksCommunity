@@ -15,6 +15,7 @@ import { format, differenceInDays, startOfToday, isBefore, addDays, addWeeks, ad
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { getAuthHeaders } from "@/lib/api";
+import { useUnpaidPenaltiesCheck } from "@/hooks/use-unpaid-penalties";
 
 interface StorageBooking {
   id: number;
@@ -48,6 +49,9 @@ export function StorageExtensionDialog({
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+
+  // Check for unpaid penalties
+  const { data: penaltyData } = useUnpaidPenaltiesCheck(open);
 
   // Memoize currentEndDate to prevent useMemo dependency changes on every render
   const currentEndDate = useMemo(() => new Date(booking.endDate), [booking.endDate]);
@@ -180,6 +184,17 @@ export function StorageExtensionDialog({
 
   const handleExtend = () => {
     if (!selectedDate || !extensionDetails || !extensionDetails.valid) {
+      return;
+    }
+
+    // Check for unpaid penalties first
+    if (penaltyData?.hasUnpaidPenalties) {
+      const totalOwed = (penaltyData.totalOwedCents / 100).toFixed(2);
+      toast({
+        title: "Extension Blocked - Unpaid Penalties",
+        description: `You have ${penaltyData.totalCount} unpaid penalty(ies) totaling $${totalOwed}. Please resolve these before extending storage.`,
+        variant: "destructive",
+      });
       return;
     }
 

@@ -7,6 +7,9 @@ import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { formatCurrency } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { StorageSelection } from "./StorageSelection";
+import { PendingOverstayPenalties } from "../chef/PendingOverstayPenalties";
+import { auth } from "@/lib/firebase";
+import { useUnpaidPenaltiesCheck } from "@/hooks/use-unpaid-penalties";
 
 import {
   Sheet,
@@ -126,6 +129,9 @@ export default function KitchenBookingSheet({
   // Payment state
   const [isRedirectingToCheckout, setIsRedirectingToCheckout] = useState(false);
   const [isProcessingBooking, setIsProcessingBooking] = useState(false);
+  
+  // Penalty check
+  const { data: penaltyData, isLoading: isCheckingPenalties } = useUnpaidPenaltiesCheck(open);
 
   // Calendar state
   const today = new Date();
@@ -667,6 +673,17 @@ export default function KitchenBookingSheet({
   const redirectToStripeCheckout = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
 
+    // Check for unpaid penalties first
+    if (penaltyData?.hasUnpaidPenalties) {
+      const totalOwed = (penaltyData.totalOwedCents / 100).toFixed(2);
+      toast({
+        title: "Booking Blocked - Unpaid Penalties",
+        description: `You have ${penaltyData.totalCount} unpaid penalty(ies) totaling $${totalOwed}. Please resolve these before making new bookings.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsRedirectingToCheckout(true);
     try {
       const sortedSlots = [...selectedSlots].sort();
@@ -746,6 +763,17 @@ export default function KitchenBookingSheet({
   // Handle free booking submission
   const handleFreeBookingSubmit = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
+
+    // Check for unpaid penalties first
+    if (penaltyData?.hasUnpaidPenalties) {
+      const totalOwed = (penaltyData.totalOwedCents / 100).toFixed(2);
+      toast({
+        title: "Booking Blocked - Unpaid Penalties",
+        description: `You have ${penaltyData.totalCount} unpaid penalty(ies) totaling $${totalOwed}. Please resolve these before making new bookings.`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsProcessingBooking(true);
 

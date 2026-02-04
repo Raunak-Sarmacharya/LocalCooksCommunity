@@ -194,6 +194,11 @@ const navData: { navMain: NavGroup[] } = {
                     url: "overstays",
                     icon: AlertTriangle,
                 },
+                {
+                    title: "Damage Claims",
+                    url: "damage-claims",
+                    icon: FileText,
+                },
             ],
         },
         {
