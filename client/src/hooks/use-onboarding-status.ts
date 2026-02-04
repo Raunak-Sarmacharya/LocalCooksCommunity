@@ -48,7 +48,17 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     // [ENTERPRISE OPTIMIZATION] Check if onboarding is already marked complete in the database
     // If true, skip all the detailed API calls - they're not needed for the dashboard
-    const isOnboardingMarkedComplete = !!userData?.manager_onboarding_completed;
+    // Note: Drizzle ORM returns camelCase field names (managerOnboardingCompleted)
+    const isOnboardingMarkedComplete = !!userData?.managerOnboardingCompleted;
+
+    // Debug logging for early-exit optimization
+    if (userData) {
+        console.log('[useOnboardingStatus] Early-exit check:', {
+            managerOnboardingCompleted: userData.managerOnboardingCompleted,
+            isOnboardingMarkedComplete,
+            willSkipDetailedQueries: isOnboardingMarkedComplete
+        });
+    }
 
     // 2. Fetch Location Details (License) - ALWAYS fetch for license status banner
     // This is a lightweight call needed even after onboarding is complete
@@ -211,7 +221,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     }
 
     const showOnboardingModal =
-        !userData?.manager_onboarding_completed &&
+        !userData?.managerOnboardingCompleted &&
         !userData?.has_seen_welcome;
 
     // Show setup banner only if onboarding is NOT complete (DB flag not set)
@@ -225,6 +235,19 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     const isLoading = shouldSkipDetailedQueries 
         ? (isLoadingUser || (!!locationId && isLoadingLocation))  // Only 2 queries
         : (isLoadingUser || isLoadingStripe || (!!locationId && (isLoadingLocation || isLoadingKitchens)));
+
+    // Debug logging for final values
+    if (userData && !isLoading) {
+        console.log('[useOnboardingStatus] Final status:', {
+            isOnboardingMarkedComplete,
+            showSetupBanner,
+            showLicenseReviewBanner,
+            isOnboardingComplete,
+            isReadyForBookings,
+            hasPendingLicense,
+            licenseStatus
+        });
+    }
 
     return {
         isLoading,

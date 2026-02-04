@@ -160,7 +160,7 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   // The OnboardingStatusBanner will prompt them to complete setup.
   const hasStartedOnboarding = user?.managerOnboardingStepsCompleted && 
                                 Object.keys(user.managerOnboardingStepsCompleted).length > 0;
-  const needsOnboarding = !user?.manager_onboarding_completed && 
+  const needsOnboarding = !user?.managerOnboardingCompleted && 
                           !hasStartedOnboarding &&
                           Array.isArray(managerLocations) && 
                           managerLocations.length === 0;
