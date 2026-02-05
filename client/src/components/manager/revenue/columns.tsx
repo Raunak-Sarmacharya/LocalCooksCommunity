@@ -163,11 +163,30 @@ export function getTransactionColumns({
             accessorKey: "locationName",
             header: "Location",
             cell: ({ row }) => {
+                const bookingType = row.original.bookingType;
+                const isDamageClaim = bookingType === 'damage_claim';
+                const isSpecialType = isDamageClaim || bookingType === 'overstay_penalty' || bookingType === 'storage_extension';
+                const description = row.original.description;
+                
                 return (
                     <div className="flex flex-col">
-                        <span className="text-sm font-medium">{row.original.kitchenName}</span>
+                        <span className="text-sm font-medium">
+                            {isDamageClaim ? (
+                                <span className="text-green-600 font-semibold">
+                                    {description || 'Damage Claim'}
+                                </span>
+                            ) : isSpecialType && description ? (
+                                description
+                            ) : (
+                                row.original.kitchenName
+                            )}
+                        </span>
                         <span className="text-xs text-muted-foreground">
-                            {row.getValue("locationName")}
+                            {isDamageClaim ? (
+                                <span className="text-green-600">Claim Payment</span>
+                            ) : (
+                                row.getValue("locationName")
+                            )}
                         </span>
                     </div>
                 )
@@ -323,6 +342,7 @@ export function getTransactionColumns({
                 const canRefund = !!transaction.transactionId
                     && transaction.refundableAmount > 0
                     && (transaction.paymentStatus === 'paid' || transaction.paymentStatus === 'partially_refunded')
+                // Damage claims, overstay penalties, and storage extensions don't have invoices
                 const canDownloadInvoice = transaction.bookingType === 'kitchen' || transaction.bookingType === 'bundle' || transaction.bookingType === 'storage' 
 
                 return (

@@ -297,7 +297,7 @@ export class BookingRepository {
             .where(eq(storageBookings.chefId, chefId))
             .orderBy(desc(storageBookings.startDate));
 
-        // Get paid penalties for these bookings
+        // Get paid/resolved penalties for these bookings (with backwards compatibility)
         const bookingIds = result.map(r => r.id);
         const paidPenalties = bookingIds.length > 0 ? await db
             .select({
@@ -308,17 +308,29 @@ export class BookingRepository {
                 daysOverdue: storageOverstayRecords.daysOverdue,
                 resolvedAt: storageOverstayRecords.resolvedAt,
                 resolutionType: storageOverstayRecords.resolutionType,
+                // BACKWARDS COMPATIBILITY: Include additional fields to determine payment status
+                chargeSucceededAt: storageOverstayRecords.chargeSucceededAt,
+                stripeChargeId: storageOverstayRecords.stripeChargeId,
             })
             .from(storageOverstayRecords)
             .where(
-                and(
-                    sql`${storageOverstayRecords.storageBookingId} IN (${sql.join(bookingIds.map(id => sql`${id}`), sql`, `)})`,
-                    eq(storageOverstayRecords.status, 'charge_succeeded')
-                )
+                sql`${storageOverstayRecords.storageBookingId} IN (${sql.join(bookingIds.map(id => sql`${id}`), sql`, `)})`
             ) : [];
 
-        // Create a map of booking ID to paid penalty
-        const penaltyMap = new Map(paidPenalties.map(p => [p.storageBookingId, p]));
+        // BACKWARDS COMPATIBILITY: Determine if penalty is paid using multiple indicators
+        const isPenaltyPaid = (p: typeof paidPenalties[0]) => {
+            return p.status === 'charge_succeeded' || 
+                   !!p.stripeChargeId || 
+                   p.resolutionType === 'paid' || 
+                   !!p.chargeSucceededAt;
+        };
+
+        // Filter to only paid penalties and create a map
+        const penaltyMap = new Map(
+            paidPenalties
+                .filter(isPenaltyPaid)
+                .map(p => [p.storageBookingId, p])
+        );
 
         return result.map(row => {
             const penalty = penaltyMap.get(row.id);
@@ -328,12 +340,12 @@ export class BookingRepository {
                 serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0,
                 basePrice: row.basePrice ? parseFloat(row.basePrice.toString()) : 0,
                 minimumBookingDuration: row.minimumBookingDuration || 1,
-                // Paid penalty info
+                // Paid penalty info (with backwards compatibility for paidAt field)
                 paidPenalty: penalty ? {
                     amountCents: penalty.finalPenaltyCents || penalty.calculatedPenaltyCents || 0,
                     amountDollars: ((penalty.finalPenaltyCents || penalty.calculatedPenaltyCents || 0) / 100).toFixed(2),
                     daysOverdue: penalty.daysOverdue,
-                    paidAt: penalty.resolvedAt,
+                    paidAt: penalty.chargeSucceededAt || penalty.resolvedAt,
                     resolutionType: penalty.resolutionType,
                 } : null,
             };
@@ -614,5 +626,13 @@ function getStorageBookingSelection() {
         currency: storageBookings.currency,
         createdAt: storageBookings.createdAt,
         updatedAt: storageBookings.updatedAt,
+        // Checkout workflow fields (hybrid verification system)
+        checkoutStatus: storageBookings.checkoutStatus,
+        checkoutRequestedAt: storageBookings.checkoutRequestedAt,
+        checkoutApprovedAt: storageBookings.checkoutApprovedAt,
+        checkoutDeniedAt: storageBookings.checkoutDeniedAt,
+        checkoutDenialReason: storageBookings.checkoutDenialReason,
+        checkoutNotes: storageBookings.checkoutNotes,
+        checkoutPhotoUrls: storageBookings.checkoutPhotoUrls,
     };
 }

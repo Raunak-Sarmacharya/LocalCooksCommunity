@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
+  CreditCard,
   FileText,
   Image,
   RefreshCw,
@@ -46,6 +47,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/components/ui/alert";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 
 // Types
 interface DamageEvidence {
@@ -83,6 +85,10 @@ interface DamageClaim {
   managerName: string | null;
   locationName: string | null;
   evidence: DamageEvidence[];
+  // Payment fields for charged claims
+  stripePaymentIntentId: string | null;
+  stripeChargeId: string | null;
+  chargeSucceededAt: string | null;
 }
 
 // Helper functions
@@ -178,18 +184,48 @@ function ResponseDialog({
     };
   }, [claim.chefResponseDeadline]);
 
+  // Check if claim is already resolved (no response allowed)
+  const isResolved = ['charge_succeeded', 'resolved', 'rejected', 'expired', 'charge_failed'].includes(claim.status);
+  const canRespond = claim.status === 'submitted' && !isExpired && !isResolved;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Respond to Damage Claim</DialogTitle>
+          <DialogTitle>{isResolved ? 'Damage Claim Details' : 'Respond to Damage Claim'}</DialogTitle>
           <DialogDescription>
-            Review the claim details and evidence, then choose to accept or dispute.
+            {isResolved 
+              ? 'View the details of this resolved damage claim.'
+              : 'Review the claim details and evidence, then choose to accept or dispute.'}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Deadline Warning */}
-        {!isExpired && hoursRemaining <= 24 && (
+        {/* Resolved Status Banner */}
+        {isResolved && (
+          <Alert className={claim.status === 'charge_succeeded' ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-gray-50'}>
+            <CheckCircle className={`h-4 w-4 ${claim.status === 'charge_succeeded' ? 'text-green-600' : 'text-gray-600'}`} />
+            <AlertTitle className={claim.status === 'charge_succeeded' ? 'text-green-800' : 'text-gray-800'}>
+              {claim.status === 'charge_succeeded' ? 'Payment Completed' : 
+               claim.status === 'rejected' ? 'Claim Rejected' :
+               claim.status === 'expired' ? 'Claim Expired' :
+               claim.status === 'charge_failed' ? 'Payment Failed' : 'Claim Resolved'}
+            </AlertTitle>
+            <AlertDescription className={claim.status === 'charge_succeeded' ? 'text-green-700' : 'text-gray-700'}>
+              {claim.status === 'charge_succeeded' 
+                ? `Your card was charged ${formatCurrency(claim.finalAmountCents || claim.claimedAmountCents)} for this damage claim.`
+                : claim.status === 'rejected'
+                ? 'This claim was rejected by the admin. No payment was required.'
+                : claim.status === 'expired'
+                ? 'This claim expired without a response.'
+                : claim.status === 'charge_failed'
+                ? 'The payment attempt failed. Please contact support.'
+                : 'This claim has been resolved.'}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Deadline Warning - only show if not resolved */}
+        {!isResolved && !isExpired && hoursRemaining <= 24 && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Response Deadline Approaching</AlertTitle>
@@ -199,7 +235,7 @@ function ResponseDialog({
           </Alert>
         )}
 
-        {isExpired && (
+        {!isResolved && isExpired && (
           <Alert variant="destructive">
             <XCircle className="h-4 w-4" />
             <AlertTitle>Response Deadline Passed</AlertTitle>
@@ -229,7 +265,7 @@ function ResponseDialog({
                 {claim.evidence.map((ev) => (
                   <a
                     key={ev.id}
-                    href={ev.fileUrl}
+                    href={getR2ProxyUrl(ev.fileUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 p-2 border rounded-lg hover:bg-muted transition-colors"
@@ -254,8 +290,20 @@ function ResponseDialog({
             </div>
           )}
 
-          {/* Response Options */}
-          {!isExpired && (
+          {/* Auto-Charge Warning - only show if can respond */}
+          {canRespond && (
+            <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950">
+              <CreditCard className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-800 dark:text-amber-200">Payment Method on File</AlertTitle>
+              <AlertDescription className="text-amber-700 dark:text-amber-300">
+                If you accept this claim, your card from the original booking will be <strong>automatically charged</strong> for {formatCurrency(claim.claimedAmountCents)}.
+                If you dispute and an admin approves the claim, your card will also be charged automatically.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Response Options - only show if can respond */}
+          {canRespond && (
             <div className="space-y-4">
               <Label>Your Response</Label>
               <div className="grid grid-cols-2 gap-4">
@@ -315,9 +363,9 @@ function ResponseDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {isResolved ? 'Close' : 'Cancel'}
           </Button>
-          {!isExpired && action && (
+          {canRespond && action && (
             <Button
               onClick={() => respondMutation.mutate()}
               disabled={
@@ -343,9 +391,11 @@ function ResponseDialog({
 function ClaimCard({
   claim,
   onRespond,
+  onDownloadInvoice,
 }: {
   claim: DamageClaim;
   onRespond: (claim: DamageClaim) => void;
+  onDownloadInvoice: (claimId: number) => void;
 }) {
   const { deadline, isExpired, hoursRemaining } = useMemo(() => {
     const d = new Date(claim.chefResponseDeadline);
@@ -433,6 +483,18 @@ function ClaimCard({
           </div>
         )}
 
+        {/* Charged claim info */}
+        {claim.status === 'charge_succeeded' && claim.chargeSucceededAt && (
+          <div className="bg-green-50 p-3 rounded-lg mb-4 border border-green-200">
+            <p className="text-sm font-medium text-green-800">
+              ✓ Payment Completed on {format(new Date(claim.chargeSucceededAt), 'MMM d, yyyy h:mm a')}
+            </p>
+            <p className="text-xs text-green-700 mt-1">
+              Amount charged: {formatCurrency(claim.finalAmountCents || claim.claimedAmountCents)}
+            </p>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex gap-2">
           {canRespond && (
@@ -447,6 +509,16 @@ function ClaimCard({
               View Details
             </Button>
           )}
+          {/* Download Invoice for charged claims */}
+          {claim.status === 'charge_succeeded' && (
+            <Button 
+              variant="outline" 
+              onClick={() => onDownloadInvoice(claim.id)}
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Download Invoice
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -455,8 +527,10 @@ function ClaimCard({
 
 // Main Component
 export function PendingDamageClaims() {
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedClaim, setSelectedClaim] = useState<DamageClaim | null>(null);
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<number | null>(null);
 
   // Fetch claims
   const { data, isLoading, error, refetch } = useQuery({
@@ -469,6 +543,39 @@ export function PendingDamageClaims() {
   });
 
   const claims: DamageClaim[] = data?.claims || [];
+
+  // Download invoice handler
+  const handleDownloadInvoice = async (claimId: number) => {
+    try {
+      setDownloadingInvoiceId(claimId);
+      const response = await apiRequest('GET', `/api/chef/damage-claims/${claimId}/invoice`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to download invoice');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `damage-claim-invoice-${claimId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast({ title: "Invoice Downloaded", description: "Your damage claim invoice has been downloaded." });
+    } catch (err) {
+      toast({ 
+        title: "Download Failed", 
+        description: err instanceof Error ? err.message : 'Failed to download invoice',
+        variant: "destructive" 
+      });
+    } finally {
+      setDownloadingInvoiceId(null);
+    }
+  };
 
   // Separate pending from resolved
   const pendingClaims = claims.filter(c => c.status === 'submitted');
@@ -556,6 +663,7 @@ export function PendingDamageClaims() {
                 key={claim.id}
                 claim={claim}
                 onRespond={setSelectedClaim}
+                onDownloadInvoice={handleDownloadInvoice}
               />
             ))}
           </div>
@@ -572,6 +680,7 @@ export function PendingDamageClaims() {
           <div className="space-y-4">
             {inProgressClaims.map(claim => (
               <ClaimCard
+                onDownloadInvoice={handleDownloadInvoice}
                 key={claim.id}
                 claim={claim}
                 onRespond={setSelectedClaim}
@@ -588,12 +697,13 @@ export function PendingDamageClaims() {
             <CheckCircle className="w-5 h-5 text-gray-500" />
             Resolved ({resolvedClaims.length})
           </h3>
-          <div className="space-y-4 opacity-75">
+          <div className="space-y-4">
             {resolvedClaims.map(claim => (
               <ClaimCard
                 key={claim.id}
                 claim={claim}
                 onRespond={setSelectedClaim}
+                onDownloadInvoice={handleDownloadInvoice}
               />
             ))}
           </div>

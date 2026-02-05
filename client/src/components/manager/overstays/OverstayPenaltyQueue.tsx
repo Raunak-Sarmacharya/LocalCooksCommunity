@@ -77,6 +77,7 @@ interface OverstayRecord {
   maxPenaltyDays: number;
   kitchenId: number;
   kitchenName: string;
+  kitchenTaxRatePercent: number;
   locationId: number;
   chefId: number | null;
   chefEmail: string | null;
@@ -205,6 +206,21 @@ function OverstayCard({
             </div>
           </div>
 
+          {/* Tax breakdown summary */}
+          {overstay.kitchenTaxRatePercent > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-3 mb-2">
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-200">Chef Total Charge (with tax):</p>
+              <div className="flex items-baseline gap-2 mt-1">
+                <span className="text-lg font-bold text-amber-700 dark:text-amber-300">
+                  {formatCurrency(Math.round(overstay.calculatedPenaltyCents * (1 + overstay.kitchenTaxRatePercent / 100)))}
+                </span>
+                <span className="text-xs text-amber-600 dark:text-amber-400">
+                  ({formatCurrency(overstay.calculatedPenaltyCents)} + {overstay.kitchenTaxRatePercent.toFixed(1)}% tax)
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Expandable details */}
           <Button 
             variant="ghost" 
@@ -238,6 +254,10 @@ function OverstayCard({
                 <div>
                   <p className="text-muted-foreground">Booking Total</p>
                   <p>{formatCurrency(parseInt(overstay.bookingTotalPrice))}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Tax Rate</p>
+                  <p>{overstay.kitchenTaxRatePercent > 0 ? `${overstay.kitchenTaxRatePercent.toFixed(1)}% HST` : 'No tax'}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Payment Method</p>
@@ -313,7 +333,7 @@ function OverstayCard({
 
       {/* Approve Dialog */}
       <Dialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Approve Penalty</DialogTitle>
             <DialogDescription>
@@ -345,6 +365,40 @@ function OverstayCard({
                 Maximum allowed: {formatCurrency(overstay.calculatedPenaltyCents)} (based on ${(overstay.dailyRateCents / 100).toFixed(2)}/day × {(parseFloat(overstay.penaltyRate) * 100).toFixed(0)}% rate)
               </p>
             </div>
+
+            {/* Tax Breakdown - Chef Charge Summary */}
+            {parseFloat(adjustedAmount) > 0 && (
+              <div className="bg-muted/50 border rounded-lg p-4 space-y-2">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <DollarSign className="w-4 h-4" />
+                  Chef Will Be Charged:
+                </p>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Base Penalty:</span>
+                    <span>${parseFloat(adjustedAmount).toFixed(2)}</span>
+                  </div>
+                  {overstay.kitchenTaxRatePercent > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        Tax ({overstay.kitchenTaxRatePercent.toFixed(1)}% HST):
+                      </span>
+                      <span>${(parseFloat(adjustedAmount) * overstay.kitchenTaxRatePercent / 100).toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-semibold pt-2 border-t">
+                    <span>Total Charge:</span>
+                    <span className="text-primary">
+                      ${(parseFloat(adjustedAmount) * (1 + overstay.kitchenTaxRatePercent / 100)).toFixed(2)} CAD
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  The chef&apos;s card on file will be automatically charged this amount.
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="text-sm font-medium">Notes (optional)</label>
               <Textarea

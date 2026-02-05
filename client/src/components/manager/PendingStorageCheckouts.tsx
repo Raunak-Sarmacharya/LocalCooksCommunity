@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 
 interface PendingCheckout {
   storageBookingId: number;
@@ -65,6 +66,9 @@ interface PendingCheckout {
   totalPrice: string;
   checkoutStatus: string;
   checkoutRequestedAt: string | null;
+  checkoutApprovedAt?: string | null;
+  checkoutDeniedAt?: string | null;
+  checkoutDenialReason?: string | null;
   checkoutNotes: string | null;
   checkoutPhotoUrls: string[];
   daysUntilEnd: number;
@@ -92,6 +96,7 @@ export function PendingStorageCheckouts() {
   const [denialReason, setDenialReason] = useState("");
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Fetch pending checkouts
   const { data, isLoading, error } = useQuery({
@@ -108,6 +113,23 @@ export function PendingStorageCheckouts() {
   });
 
   const pendingCheckouts: PendingCheckout[] = data?.pendingCheckouts || [];
+
+  // Fetch checkout history
+  const { data: historyData } = useQuery({
+    queryKey: ['/api/manager/storage-checkouts/history'],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/manager/storage-checkouts/history?limit=20', {
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to fetch checkout history');
+      return response.json();
+    },
+    enabled: showHistory,
+  });
+
+  const checkoutHistory: PendingCheckout[] = historyData?.checkoutHistory || [];
 
   // Approve mutation
   const approveMutation = useMutation({
@@ -131,6 +153,7 @@ export function PendingStorageCheckouts() {
         description: "The storage booking has been completed. The chef has been notified.",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/storage-checkouts/pending'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/storage-checkouts/history'] });
       setSelectedCheckout(null);
     },
     onError: (error: Error) => {
@@ -164,6 +187,7 @@ export function PendingStorageCheckouts() {
         description: "The chef has been notified to address the issues.",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/storage-checkouts/pending'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/storage-checkouts/history'] });
       setDenyDialogOpen(false);
       setDenialReason("");
       setSelectedCheckout(null);
@@ -230,24 +254,113 @@ export function PendingStorageCheckouts() {
 
   if (pendingCheckouts.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CheckCircle className="h-5 w-5 text-green-600" />
-            Pending Storage Checkouts
-          </CardTitle>
-          <CardDescription>
-            Review and approve chef checkout requests
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8 text-muted-foreground">
-            <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p>No pending checkout requests</p>
-            <p className="text-sm mt-1">Checkout requests from chefs will appear here</p>
-          </div>
-        </CardContent>
-      </Card>
+      <>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              Pending Storage Checkouts
+            </CardTitle>
+            <CardDescription>
+              Review and approve chef checkout requests
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center py-8 text-muted-foreground">
+              <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p>No pending checkout requests</p>
+              <p className="text-sm mt-1">Checkout requests from chefs will appear here</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Checkout History Section */}
+        <Card className="mt-6">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                Checkout History
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowHistory(!showHistory)}
+              >
+                {showHistory ? (
+                  <>
+                    <ChevronUp className="h-4 w-4 mr-1" />
+                    Hide
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4 mr-1" />
+                    Show
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardHeader>
+          {showHistory && (
+            <CardContent className="pt-0">
+              {checkoutHistory.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No checkout history yet
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {checkoutHistory.map((checkout) => (
+                    <div
+                      key={checkout.storageBookingId}
+                      className={cn(
+                        "border rounded-lg p-3 text-sm",
+                        checkout.checkoutStatus === 'completed' 
+                          ? "border-green-200 bg-green-50/50" 
+                          : "border-amber-200 bg-amber-50/50"
+                      )}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{checkout.storageName}</span>
+                            {checkout.checkoutStatus === 'completed' ? (
+                              <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 text-xs">
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Approved
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 text-xs">
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Denied
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-muted-foreground text-xs mt-1">
+                            {checkout.chefEmail} • {checkout.locationName}
+                          </p>
+                        </div>
+                        <div className="text-right text-xs text-muted-foreground">
+                          {checkout.checkoutStatus === 'completed' && checkout.checkoutApprovedAt && (
+                            <p>{format(new Date(checkout.checkoutApprovedAt), 'MMM d, yyyy')}</p>
+                          )}
+                          {checkout.checkoutStatus !== 'completed' && checkout.checkoutDeniedAt && (
+                            <p>{format(new Date(checkout.checkoutDeniedAt), 'MMM d, yyyy')}</p>
+                          )}
+                        </div>
+                      </div>
+                      {checkout.checkoutDenialReason && (
+                        <p className="text-xs text-amber-700 mt-2 bg-amber-100/50 rounded p-2">
+                          <strong>Denial reason:</strong> {checkout.checkoutDenialReason}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          )}
+        </Card>
+      </>
     );
   }
 
@@ -335,7 +448,7 @@ export function PendingStorageCheckouts() {
                           className="relative w-10 h-10 rounded overflow-hidden border hover:border-primary transition-colors"
                         >
                           <img
-                            src={url}
+                            src={getR2ProxyUrl(url)}
                             alt={`Photo ${index + 1}`}
                             className="w-full h-full object-cover"
                           />
@@ -378,7 +491,7 @@ export function PendingStorageCheckouts() {
                               className="relative aspect-square rounded-lg overflow-hidden border hover:border-primary transition-colors"
                             >
                               <img
-                                src={url}
+                                src={getR2ProxyUrl(url)}
                                 alt={`Photo ${index + 1}`}
                                 className="w-full h-full object-cover"
                               />
@@ -443,6 +556,93 @@ export function PendingStorageCheckouts() {
         </CardContent>
       </Card>
 
+      {/* Checkout History Section */}
+      <Card className="mt-6">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              Checkout History
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowHistory(!showHistory)}
+            >
+              {showHistory ? (
+                <>
+                  <ChevronUp className="h-4 w-4 mr-1" />
+                  Hide
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-4 w-4 mr-1" />
+                  Show
+                </>
+              )}
+            </Button>
+          </div>
+        </CardHeader>
+        {showHistory && (
+          <CardContent className="pt-0">
+            {checkoutHistory.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No checkout history yet
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {checkoutHistory.map((checkout) => (
+                  <div
+                    key={checkout.storageBookingId}
+                    className={cn(
+                      "border rounded-lg p-3 text-sm",
+                      checkout.checkoutStatus === 'completed' 
+                        ? "border-green-200 bg-green-50/50" 
+                        : "border-amber-200 bg-amber-50/50"
+                    )}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{checkout.storageName}</span>
+                          {checkout.checkoutStatus === 'completed' ? (
+                            <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 text-xs">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Approved
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 text-xs">
+                              <XCircle className="h-3 w-3 mr-1" />
+                              Denied
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-muted-foreground text-xs mt-1">
+                          {checkout.chefEmail} • {checkout.locationName}
+                        </p>
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground">
+                        {checkout.checkoutStatus === 'completed' && checkout.checkoutApprovedAt && (
+                          <p>{format(new Date(checkout.checkoutApprovedAt), 'MMM d, yyyy')}</p>
+                        )}
+                        {checkout.checkoutStatus !== 'completed' && checkout.checkoutDeniedAt && (
+                          <p>{format(new Date(checkout.checkoutDeniedAt), 'MMM d, yyyy')}</p>
+                        )}
+                      </div>
+                    </div>
+                    {checkout.checkoutDenialReason && (
+                      <p className="text-xs text-amber-700 mt-2 bg-amber-100/50 rounded p-2">
+                        <strong>Denial reason:</strong> {checkout.checkoutDenialReason}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
       {/* Deny Dialog */}
       <Dialog open={denyDialogOpen} onOpenChange={setDenyDialogOpen}>
         <DialogContent>
@@ -493,7 +693,7 @@ export function PendingStorageCheckouts() {
             <div className="space-y-4">
               <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
                 <img
-                  src={selectedCheckout.checkoutPhotoUrls[selectedPhotoIndex]}
+                  src={getR2ProxyUrl(selectedCheckout.checkoutPhotoUrls[selectedPhotoIndex])}
                   alt={`Photo ${selectedPhotoIndex + 1}`}
                   className="w-full h-full object-contain"
                 />
@@ -510,7 +710,7 @@ export function PendingStorageCheckouts() {
                       )}
                     >
                       <img
-                        src={url}
+                        src={getR2ProxyUrl(url)}
                         alt={`Thumbnail ${index + 1}`}
                         className="w-full h-full object-cover"
                       />

@@ -44,10 +44,12 @@ export async function requireChef(req: Request, res: Response, next: NextFunctio
 }
 
 /**
- * Middleware to check if chef has unpaid overstay penalties
- * Blocks access to portal if chef has any penalties that need to be paid/resolved
+ * Middleware to check if chef has unpaid overstay penalties OR damage claims
+ * Blocks access to portal if chef has any obligations that need to be paid/resolved
  * 
  * This should be applied AFTER requireChef middleware
+ * 
+ * ENTERPRISE STANDARD: Unified check for all chef obligations
  */
 export async function requireNoUnpaidPenalties(req: Request, res: Response, next: NextFunction) {
     try {
@@ -63,55 +65,137 @@ export async function requireNoUnpaidPenalties(req: Request, res: Response, next
 
         const chefId = req.neonUser.id;
 
-        // Check for unpaid penalties
+        // Check for unpaid overstay penalties
         const { hasChefUnpaidPenalties, getChefUnpaidPenalties } = await import("../services/overstay-penalty-service");
         const hasUnpaidPenalties = await hasChefUnpaidPenalties(chefId);
 
-        if (hasUnpaidPenalties) {
-            const unpaidPenalties = await getChefUnpaidPenalties(chefId);
-            
-            // Calculate total amount owed
-            const totalOwedCents = unpaidPenalties.reduce((sum, p) => sum + p.penaltyAmountCents, 0);
-            const totalOwedDollars = (totalOwedCents / 100).toFixed(2);
+        // Check for unpaid damage claims
+        const { hasChefUnpaidDamageClaims, getChefUnpaidDamageClaims } = await import("../services/damage-claim-service");
+        const hasUnpaidClaims = await hasChefUnpaidDamageClaims(chefId);
 
-            // Get penalties that require immediate payment
-            const immediatePaymentPenalties = unpaidPenalties.filter(
-                p => p.requiresImmediatePayment
-            );
-
-            console.log(`[requireNoUnpaidPenalties] Chef ${chefId} blocked: ${unpaidPenalties.length} unpaid penalties, $${totalOwedDollars} owed`);
-
-            return res.status(403).json({
-                error: "Access denied. You have unpaid overstay penalties.",
-                code: "UNPAID_OVERSTAY_PENALTIES",
-                penalties: {
-                    totalCount: unpaidPenalties.length,
-                    totalOwedCents: totalOwedCents,
-                    totalOwed: `$${totalOwedDollars}`,
-                    items: unpaidPenalties.map(p => ({
-                        overstayId: p.overstayId,
-                        storageName: p.storageName,
-                        kitchenName: p.kitchenName,
-                        daysOverdue: p.daysOverdue,
-                        status: p.status,
-                        penaltyAmountCents: p.penaltyAmountCents,
-                        penaltyAmount: `$${(p.penaltyAmountCents / 100).toFixed(2)}`,
-                        requiresImmediatePayment: p.requiresImmediatePayment,
-                    })),
-                    canPayNow: immediatePaymentPenalties.length > 0,
-                    payNowItems: immediatePaymentPenalties.map(p => ({
-                        overstayId: p.overstayId,
-                        storageName: p.storageName,
-                        penaltyAmount: `$${(p.penaltyAmountCents / 100).toFixed(2)}`,
-                    })),
-                },
-                message: `You have ${unpaidPenalties.length} unpaid overstay penalty(ies) totaling $${totalOwedDollars}. Please resolve these penalties to continue using the portal.`,
-            });
+        // If no unpaid obligations, allow access
+        if (!hasUnpaidPenalties && !hasUnpaidClaims) {
+            return next();
         }
 
-        next();
+        // Build comprehensive response with all obligations
+        const response: {
+            error: string;
+            code: string;
+            overstayPenalties?: {
+                totalCount: number;
+                totalOwedCents: number;
+                totalOwed: string;
+                items: Array<{
+                    overstayId: number;
+                    storageName: string;
+                    kitchenName: string;
+                    daysOverdue: number;
+                    status: string;
+                    penaltyAmountCents: number;
+                    penaltyAmount: string;
+                    requiresImmediatePayment: boolean;
+                }>;
+                canPayNow: boolean;
+            };
+            damageClaims?: {
+                totalCount: number;
+                totalOwedCents: number;
+                totalOwed: string;
+                items: Array<{
+                    claimId: number;
+                    claimTitle: string;
+                    kitchenName: string | null;
+                    bookingType: string;
+                    status: string;
+                    amountCents: number;
+                    amount: string;
+                    requiresImmediatePayment: boolean;
+                }>;
+                canPayNow: boolean;
+            };
+            totalOwedCents: number;
+            totalOwed: string;
+            message: string;
+        } = {
+            error: "Access denied. You have unpaid obligations.",
+            code: "UNPAID_OBLIGATIONS",
+            totalOwedCents: 0,
+            totalOwed: "$0.00",
+            message: "",
+        };
+
+        let totalPenaltiesOwed = 0;
+        let totalClaimsOwed = 0;
+
+        // Add overstay penalties if any
+        if (hasUnpaidPenalties) {
+            const unpaidPenalties = await getChefUnpaidPenalties(chefId);
+            totalPenaltiesOwed = unpaidPenalties.reduce((sum, p) => sum + p.penaltyAmountCents, 0);
+            const immediatePaymentPenalties = unpaidPenalties.filter(p => p.requiresImmediatePayment);
+
+            response.overstayPenalties = {
+                totalCount: unpaidPenalties.length,
+                totalOwedCents: totalPenaltiesOwed,
+                totalOwed: `$${(totalPenaltiesOwed / 100).toFixed(2)}`,
+                items: unpaidPenalties.map(p => ({
+                    overstayId: p.overstayId,
+                    storageName: p.storageName,
+                    kitchenName: p.kitchenName,
+                    daysOverdue: p.daysOverdue,
+                    status: p.status,
+                    penaltyAmountCents: p.penaltyAmountCents,
+                    penaltyAmount: `$${(p.penaltyAmountCents / 100).toFixed(2)}`,
+                    requiresImmediatePayment: p.requiresImmediatePayment,
+                })),
+                canPayNow: immediatePaymentPenalties.length > 0,
+            };
+        }
+
+        // Add damage claims if any
+        if (hasUnpaidClaims) {
+            const unpaidClaims = await getChefUnpaidDamageClaims(chefId);
+            totalClaimsOwed = unpaidClaims.reduce((sum, c) => sum + c.finalAmountCents, 0);
+            const immediatePaymentClaims = unpaidClaims.filter(c => c.requiresImmediatePayment);
+
+            response.damageClaims = {
+                totalCount: unpaidClaims.length,
+                totalOwedCents: totalClaimsOwed,
+                totalOwed: `$${(totalClaimsOwed / 100).toFixed(2)}`,
+                items: unpaidClaims.map(c => ({
+                    claimId: c.claimId,
+                    claimTitle: c.claimTitle,
+                    kitchenName: c.kitchenName,
+                    bookingType: c.bookingType,
+                    status: c.status,
+                    amountCents: c.finalAmountCents,
+                    amount: `$${(c.finalAmountCents / 100).toFixed(2)}`,
+                    requiresImmediatePayment: c.requiresImmediatePayment,
+                })),
+                canPayNow: immediatePaymentClaims.length > 0,
+            };
+        }
+
+        // Calculate totals
+        const grandTotal = totalPenaltiesOwed + totalClaimsOwed;
+        response.totalOwedCents = grandTotal;
+        response.totalOwed = `$${(grandTotal / 100).toFixed(2)}`;
+
+        // Build message
+        const parts: string[] = [];
+        if (hasUnpaidPenalties) {
+            parts.push(`${response.overstayPenalties!.totalCount} overstay penalty(ies)`);
+        }
+        if (hasUnpaidClaims) {
+            parts.push(`${response.damageClaims!.totalCount} damage claim(s)`);
+        }
+        response.message = `You have ${parts.join(' and ')} totaling ${response.totalOwed}. Please resolve these to continue using the portal.`;
+
+        console.log(`[requireNoUnpaidPenalties] Chef ${chefId} blocked: ${parts.join(' and ')}, $${(grandTotal / 100).toFixed(2)} owed`);
+
+        return res.status(403).json(response);
     } catch (error) {
-        console.error('[requireNoUnpaidPenalties] Error checking penalties:', error);
+        console.error('[requireNoUnpaidPenalties] Error checking obligations:', error);
         // Allow access on error to prevent blocking legitimate users
         next();
     }

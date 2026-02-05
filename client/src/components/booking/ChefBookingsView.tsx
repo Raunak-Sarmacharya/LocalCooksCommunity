@@ -23,6 +23,7 @@ import {
   Eye,
   Download,
   Ban,
+  LogOut,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ import {
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
 import { useQuery } from "@tanstack/react-query";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
+import { StorageCheckoutDialog } from "./StorageCheckoutDialog";
 import { ExpiringStorageNotification } from "./ExpiringStorageNotification";
 import { PendingOverstayPenalties } from "../chef/PendingOverstayPenalties";
 import { auth } from "@/lib/firebase";
@@ -115,6 +117,7 @@ export default function ChefBookingsView({
   const [expandedBookings, setExpandedBookings] = useState<Set<number>>(new Set());
   const [expandedStorageBookings, setExpandedStorageBookings] = useState<Set<number>>(new Set());
   const [extendDialogOpen, setExtendDialogOpen] = useState<number | null>(null);
+  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortType>("date");
   const [groupBy, setGroupBy] = useState<GroupType>("date");
@@ -1059,7 +1062,8 @@ export default function ChefBookingsView({
                       <div className={cn(
                         "border rounded-lg transition-all",
                         isExpiringSoon && "border-amber-300 bg-amber-50/50 dark:bg-amber-950/20",
-                        isExpired && "border-red-300 bg-red-50/50 dark:bg-red-950/20",
+                        isExpired && !storageBooking.paidPenalty && "border-red-300 bg-red-50/50 dark:bg-red-950/20",
+                        isExpired && storageBooking.paidPenalty && "border-green-300 bg-green-50/50 dark:bg-green-950/20",
                         !isExpiringSoon && !isExpired && "hover:shadow-md"
                       )}>
                         <CollapsibleTrigger asChild>
@@ -1068,14 +1072,40 @@ export default function ChefBookingsView({
                               <div className="flex-1 min-w-0 space-y-2">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   {getStatusBadge(storageBooking.status)}
+                                  {/* Checkout Status Badges */}
+                                  {storageBooking.checkoutStatus === 'checkout_requested' && (
+                                    <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400">
+                                      <Clock className="h-3 w-3 mr-1" />
+                                      Checkout Pending
+                                    </Badge>
+                                  )}
+                                  {storageBooking.checkoutStatus === 'completed' && (
+                                    <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400">
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      Checked Out
+                                    </Badge>
+                                  )}
+                                  {/* Previous denial warning */}
+                                  {storageBooking.checkoutStatus === 'active' && storageBooking.checkoutDenialReason && (
+                                    <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400">
+                                      <AlertCircle className="h-3 w-3 mr-1" />
+                                      Checkout Denied
+                                    </Badge>
+                                  )}
                                   {isExpiringSoon && (
                                     <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400">
                                       Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}
                                     </Badge>
                                   )}
-                                  {isExpired && (
+                                  {isExpired && !storageBooking.paidPenalty && (
                                     <Badge variant="destructive">
                                       Expired {Math.abs(daysUntilExpiry)} day{Math.abs(daysUntilExpiry) !== 1 ? 's' : ''} ago
+                                    </Badge>
+                                  )}
+                                  {storageBooking.paidPenalty && (
+                                    <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400">
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      Resolved
                                     </Badge>
                                   )}
                                 </div>
@@ -1102,6 +1132,28 @@ export default function ChefBookingsView({
                               </div>
 
                               <div className="flex items-center gap-2 flex-shrink-0">
+                                {/* Checkout Button - Show only when:
+                                    - Booking is confirmed (not pending or cancelled)
+                                    - Booking has started (start date is in the past or today)
+                                    - Not already checked out or checkout requested */}
+                                {storageBooking.status === 'confirmed' && 
+                                 new Date(storageBooking.startDate) <= new Date() &&
+                                 storageBooking.checkoutStatus !== 'checkout_requested' && 
+                                 storageBooking.checkoutStatus !== 'completed' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-green-600 border-green-300 hover:bg-green-50"
+                                    onClick={(e: React.MouseEvent) => {
+                                      e.stopPropagation();
+                                      setCheckoutDialogOpen(storageBooking.id);
+                                    }}
+                                  >
+                                    <LogOut className="h-3 w-3 mr-1" />
+                                    Checkout
+                                  </Button>
+                                )}
+                                {/* Extend Button - Show when not expired */}
                                 {!isExpired && storageBooking.status !== 'cancelled' && (
                                   <Button
                                     size="sm"
@@ -1173,6 +1225,57 @@ export default function ChefBookingsView({
                               </div>
                             </div>
 
+                            {/* Checkout Status Section */}
+                            {storageBooking.checkoutStatus === 'checkout_requested' && (
+                              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                                <div className="flex items-center gap-2">
+                                  <Clock className="h-4 w-4 text-blue-600" />
+                                  <span className="font-medium text-blue-800 dark:text-blue-200">Checkout Request Pending</span>
+                                </div>
+                                <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                                  Your checkout request is awaiting manager verification. You&apos;ll be notified once approved.
+                                </p>
+                                {storageBooking.checkoutRequestedAt && (
+                                  <p className="text-xs text-blue-600 mt-1">
+                                    Requested on {format(new Date(storageBooking.checkoutRequestedAt), "MMM d, yyyy 'at' h:mm a")}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {storageBooking.checkoutStatus === 'completed' && (
+                              <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle className="h-4 w-4 text-green-600" />
+                                  <span className="font-medium text-green-800 dark:text-green-200">Storage Checkout Complete</span>
+                                </div>
+                                <p className="text-sm text-green-700 dark:text-green-300 mt-1">
+                                  Your storage booking has been successfully completed.
+                                </p>
+                                {storageBooking.checkoutApprovedAt && (
+                                  <p className="text-xs text-green-600 mt-1">
+                                    Approved on {format(new Date(storageBooking.checkoutApprovedAt), "MMM d, yyyy 'at' h:mm a")}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Previous Denial Warning */}
+                            {storageBooking.checkoutStatus === 'active' && storageBooking.checkoutDenialReason && (
+                              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                                <div className="flex items-center gap-2">
+                                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                                  <span className="font-medium text-amber-800 dark:text-amber-200">Previous Checkout Denied</span>
+                                </div>
+                                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                                  <strong>Reason:</strong> {storageBooking.checkoutDenialReason}
+                                </p>
+                                <p className="text-xs text-amber-600 mt-2">
+                                  Please address the issues and submit a new checkout request.
+                                </p>
+                              </div>
+                            )}
+
                             {/* Paid Penalty Section */}
                             {storageBooking.paidPenalty && (
                               <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
@@ -1241,7 +1344,7 @@ export default function ChefBookingsView({
                               </div>
                             )}
 
-                            {isExpired && (
+                            {isExpired && !storageBooking.paidPenalty && (
                               <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
                                 <p className="text-xs text-red-800 dark:text-red-200">
                                   <strong>⚠️ Expired:</strong> Your storage expired {Math.abs(daysUntilExpiry)} day{Math.abs(daysUntilExpiry) !== 1 ? 's' : ''} ago. 
@@ -1267,6 +1370,21 @@ export default function ChefBookingsView({
           open={extendDialogOpen !== null}
           onOpenChange={(open) => !open && setExtendDialogOpen(null)}
           onSuccess={() => setExtendDialogOpen(null)}
+        />
+      )}
+
+      {/* Storage Checkout Dialog */}
+      {checkoutDialogOpen && (
+        <StorageCheckoutDialog
+          open={checkoutDialogOpen !== null}
+          onOpenChange={(open) => !open && setCheckoutDialogOpen(null)}
+          storageBooking={storageBookings.find((sb: any) => sb.id === checkoutDialogOpen) || {
+            id: checkoutDialogOpen,
+            storageName: 'Storage Unit',
+            storageType: 'dry',
+            endDate: new Date().toISOString(),
+          }}
+          onSuccess={() => setCheckoutDialogOpen(null)}
         />
       )}
     </div>

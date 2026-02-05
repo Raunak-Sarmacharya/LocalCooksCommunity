@@ -1032,8 +1032,10 @@ export default function BookingControlPanel({
                     className={`border rounded-lg transition-all ${
                       isExpiringSoon
                         ? 'border-amber-300 bg-amber-50/50'
-                        : isExpired
+                        : isExpired && !storageBooking.paidPenalty
                         ? 'border-red-300 bg-red-50/50'
+                        : isExpired && storageBooking.paidPenalty
+                        ? 'border-green-300 bg-green-50/50'
                         : 'border-gray-200 bg-white hover:border-purple-300 hover:shadow-md'
                     }`}
                   >
@@ -1060,9 +1062,15 @@ export default function BookingControlPanel({
                                 Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}
                               </span>
                             )}
-                            {isExpired && (
+                            {isExpired && !storageBooking.paidPenalty && (
                               <span className="text-xs text-red-700 font-medium bg-red-100 px-2 py-0.5 rounded">
                                 Expired {Math.abs(daysUntilExpiry)} day{Math.abs(daysUntilExpiry) !== 1 ? 's' : ''} ago
+                              </span>
+                            )}
+                            {storageBooking.paidPenalty && (
+                              <span className="text-xs text-green-700 font-medium bg-green-100 px-2 py-0.5 rounded flex items-center gap-1">
+                                <CheckCircle className="h-3 w-3" />
+                                Resolved
                               </span>
                             )}
                           </div>
@@ -1157,6 +1165,25 @@ export default function BookingControlPanel({
                           </div>
                         </div>
 
+                        {/* Paid Penalty Section */}
+                        {storageBooking.paidPenalty && (
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                              <span className="font-medium text-green-800">Overstay Penalty Resolved</span>
+                            </div>
+                            <p className="text-sm text-green-700 mt-1">
+                              ${storageBooking.paidPenalty.amountDollars} CAD paid
+                              {storageBooking.paidPenalty.paidAt && ` on ${format(new Date(storageBooking.paidPenalty.paidAt), "MMM d, yyyy")}`}
+                              {storageBooking.paidPenalty.daysOverdue > 0 && (
+                                <span className="text-xs ml-1">
+                                  ({storageBooking.paidPenalty.daysOverdue} day{storageBooking.paidPenalty.daysOverdue !== 1 ? 's' : ''} overdue)
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        )}
+
                         {isExpiringSoon && (
                           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                             <p className="text-xs text-amber-800">
@@ -1166,7 +1193,7 @@ export default function BookingControlPanel({
                           </div>
                         )}
 
-                        {isExpired && (
+                        {isExpired && !storageBooking.paidPenalty && (
                           <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                             <p className="text-xs text-red-800">
                               <strong>⚠️ Expired:</strong> Your storage expired {Math.abs(daysUntilExpiry)} day{Math.abs(daysUntilExpiry) !== 1 ? 's' : ''} ago. 

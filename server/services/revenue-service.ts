@@ -962,6 +962,10 @@ export async function getTransactionHistory(
       const actualStripeFee = row.actual_stripe_fee != null ? parseInt(String(row.actual_stripe_fee)) : 0;
       const ptRefundAmount = row.pt_refund_amount != null ? parseInt(String(row.pt_refund_amount)) : 0;
       
+      // Check if this is a damage claim (via payment transaction metadata)
+      const ptMetadata = row.pt_metadata || {};
+      const isDamageClaim = ptMetadata.type === 'damage_claim';
+      
       // Fallback values from kitchen_bookings
       const kbTotalPrice = row.kb_total_price != null ? parseInt(String(row.kb_total_price)) : 0;
       const kbServiceFee = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
@@ -980,7 +984,8 @@ export async function getTransactionHistory(
         // Use actual values from payment_transactions
         // pt.amount is the total charged to Stripe (subtotal + tax)
         totalPriceCents = ptAmount;
-        taxCents = Math.round((kbTotalPrice * taxRatePercent) / 100);
+        // EXCEPTION: Damage claims have NO TAX - they are reimbursements, not revenue
+        taxCents = isDamageClaim ? 0 : Math.round((kbTotalPrice * taxRatePercent) / 100);
         serviceFeeCents = ptServiceFee > 0 ? ptServiceFee : kbServiceFee;
       } else {
         // Fallback: use kitchen_bookings values
@@ -988,7 +993,7 @@ export async function getTransactionHistory(
         // For consistency with metric cards, we use total_price directly as the "gross revenue"
         // Tax is calculated separately for display purposes
         totalPriceCents = kbTotalPrice;
-        taxCents = Math.round((kbTotalPrice * taxRatePercent) / 100);
+        taxCents = isDamageClaim ? 0 : Math.round((kbTotalPrice * taxRatePercent) / 100);
         serviceFeeCents = kbServiceFee;
       }
       
@@ -1003,7 +1008,12 @@ export async function getTransactionHistory(
       // Net revenue = total - tax - stripe fees
       const netRevenue = totalPriceCents - taxCents - stripeFee;
 
-      const resolvedBookingType = row.pt_booking_type || 'kitchen';
+      // Determine booking type for UI display
+      // ENTERPRISE STANDARD: Damage claims get their own type for distinct UI treatment
+      const resolvedBookingType = isDamageClaim ? 'damage_claim' : (row.pt_booking_type || 'kitchen');
+      
+      // Description for damage claims - using industry standard terminology (Vrbo, Airbnb, Turo)
+      const description = isDamageClaim ? `Damage Claim - ${row.kitchen_name || 'Kitchen'}` : undefined;
 
       const transactionId = row.transaction_id != null ? parseInt(String(row.transaction_id)) : null;
       const bookingId = parseInt(String(row.id));
@@ -1021,7 +1031,7 @@ export async function getTransactionHistory(
         serviceFee: serviceFeeCents,
         platformFee: serviceFeeCents, // Alias for frontend compatibility - DEPRECATED
         taxAmount: taxCents, // Tax collected (from payment_transactions or calculated)
-        taxRatePercent: taxRatePercent, // Tax rate percentage applied
+        taxRatePercent: isDamageClaim ? 0 : taxRatePercent, // Tax rate percentage applied (0 for damage claims)
         stripeFee: stripeFee, // Actual Stripe processing fee (from Stripe API or estimated)
         managerRevenue: managerRevenue || 0,
         netRevenue: netRevenue, // Net after tax and Stripe fees
@@ -1041,6 +1051,8 @@ export async function getTransactionHistory(
         // SIMPLE REFUND MODEL: Manager's balance is the cap
         // refundableAmount = managerRevenue - already refunded (not totalPrice - refunded)
         refundableAmount: Math.max(0, (managerRevenue || 0) - ptRefundAmount),
+        // Add description field for damage claims
+        description: description,
       };
     });
 
@@ -1094,10 +1106,11 @@ export async function getTransactionHistory(
       const actualStripeFee = row.actual_stripe_fee != null ? parseInt(String(row.actual_stripe_fee)) : 0;
       const taxRatePercent = row.tax_rate_percent != null ? parseFloat(String(row.tax_rate_percent)) : 0;
       
-      // Determine if this is an overstay penalty or storage extension
+      // Determine if this is an overstay penalty, storage extension, or damage claim
       const metadata = row.pt_metadata || {};
       const isOverstayPenalty = metadata.type === 'overstay_penalty';
       const isStorageExtension = metadata.storage_extension_id != null;
+      const isDamageClaim = metadata.type === 'damage_claim';
       
       // Get base amount for tax calculation
       // For storage extensions, we need the SUBTOTAL before tax (same as kitchen bookings use kb.total_price)
@@ -1124,7 +1137,10 @@ export async function getTransactionHistory(
       }
       
       let description = row.storage_name || 'Storage';
-      if (isOverstayPenalty) {
+      if (isDamageClaim) {
+        // INDUSTRY STANDARD: Use "Damage Claim" terminology (Vrbo, Airbnb, Turo)
+        description = `Damage Claim - ${row.storage_name || 'Storage'}`;
+      } else if (isOverstayPenalty) {
         description = `Overstay Penalty - ${row.storage_name || 'Storage'}`;
       } else if (isStorageExtension) {
         description = `Storage Extension - ${row.storage_name || 'Storage'}`;
@@ -1143,16 +1159,30 @@ export async function getTransactionHistory(
       // 
       // For storage: use pt.base_amount which is the SUBTOTAL before tax
       // This matches how kitchen bookings use kb.total_price
-      const taxCents = Math.round((ptBaseAmount * taxRatePercent) / 100);
+      // EXCEPTION: Damage claims have NO TAX - they are reimbursements, not revenue
+      const taxCents = isDamageClaim ? 0 : Math.round((ptBaseAmount * taxRatePercent) / 100);
       
       // Net revenue = total - tax - stripe fees
       const netRevenue = ptAmount - taxCents - stripeFee;
+
+      // Determine booking type for UI display
+      // ENTERPRISE STANDARD: Damage claims get their own type for distinct UI treatment
+      let resolvedBookingType: string;
+      if (isDamageClaim) {
+        resolvedBookingType = 'damage_claim';
+      } else if (isOverstayPenalty) {
+        resolvedBookingType = 'overstay_penalty';
+      } else if (isStorageExtension) {
+        resolvedBookingType = 'storage_extension';
+      } else {
+        resolvedBookingType = 'storage';
+      }
 
       return {
         id: bookingId,
         transactionId,
         bookingId,
-        bookingType: isOverstayPenalty ? 'overstay_penalty' : (isStorageExtension ? 'storage_extension' : 'storage'),
+        bookingType: resolvedBookingType,
         bookingDate: row.booking_date,
         startTime: null,
         endTime: null,

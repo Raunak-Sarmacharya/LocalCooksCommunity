@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, CreditCard, Package, Calendar, Building2, FileDown } from "lucide-react";
+import { AlertTriangle, CreditCard, Package, Calendar, Building2 } from "lucide-react";
 import { format } from "date-fns";
 import { auth } from "@/lib/firebase";
 import { toast } from "sonner";
@@ -23,11 +23,14 @@ interface PendingPenalty {
   finalPenaltyCents: number | null;
   detectedAt: string;
   penaltyApprovedAt: string;
+  chargeSucceededAt?: string | null;
   storageName: string;
   storageType: string;
   kitchenName: string;
   bookingEndDate: string;
   penaltyAmountCents: number;
+  isResolved?: boolean;
+  isPaid?: boolean;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -93,8 +96,11 @@ export function PendingOverstayPenalties() {
     },
   });
 
-  // Don't render anything if no penalties
-  if (!isLoading && penalties.length === 0) {
+  // Separate pending and resolved penalties
+  const pendingPenalties = penalties.filter(p => !p.isResolved);
+
+  // Don't render anything if no PENDING penalties (resolved ones show on storage cards)
+  if (!isLoading && pendingPenalties.length === 0) {
     return null;
   }
 
@@ -115,19 +121,22 @@ export function PendingOverstayPenalties() {
     return null; // Silently fail - don't show error to user
   }
 
+  // Only show pending penalties - resolved ones show on storage cards
   return (
     <Card className="border-orange-300 bg-gradient-to-r from-orange-50 to-red-50">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 text-orange-600" />
-          <CardTitle className="text-lg text-orange-800">Outstanding Overstay Penalties</CardTitle>
+          <CardTitle className="text-lg text-orange-800">
+            Outstanding Overstay Penalties
+          </CardTitle>
         </div>
         <CardDescription className="text-orange-700">
-          You have {penalties.length} pending penalty{penalties.length !== 1 ? 'ies' : 'y'} that require payment.
+          You have {pendingPenalties.length} pending penalty{pendingPenalties.length !== 1 ? 'ies' : 'y'} that require{pendingPenalties.length === 1 ? 's' : ''} payment.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {penalties.map((penalty) => (
+        {pendingPenalties.map((penalty) => (
           <div
             key={penalty.overstayId}
             className="bg-white rounded-lg border border-orange-200 p-4 space-y-3"

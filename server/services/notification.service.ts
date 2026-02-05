@@ -12,6 +12,7 @@
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { logger } from "../logger";
+import { format } from "date-fns";
 
 // ===================================
 // TYPES
@@ -34,6 +35,24 @@ type NotificationType =
   | 'storage_expired'
   | 'storage_extension_approved'
   | 'storage_extension_rejected'
+  // Overstay penalty notifications
+  | 'overstay_detected'
+  | 'overstay_pending_review'
+  | 'overstay_penalty_approved'
+  | 'overstay_penalty_waived'
+  | 'overstay_penalty_charged'
+  | 'overstay_payment_required'
+  | 'overstay_escalated'
+  | 'overstay_refunded'
+  // Damage claim notifications
+  | 'damage_claim_filed'
+  | 'damage_claim_response_needed'
+  | 'damage_claim_response_received'
+  | 'damage_claim_disputed'
+  | 'damage_claim_approved'
+  | 'damage_claim_rejected'
+  | 'damage_claim_charged'
+  | 'damage_claim_refunded'
   // Payment notifications
   | 'payment_received' 
   | 'payment_failed'
@@ -793,6 +812,356 @@ async function notifyChefStorageExtensionRejected(data: StorageExtensionNotifica
 }
 
 // ===================================
+// OVERSTAY PENALTY NOTIFICATIONS
+// ===================================
+
+interface OverstayNotificationData {
+  overstayId: number;
+  storageName: string;
+  kitchenName: string;
+  daysOverdue: number;
+  penaltyAmountCents: number;
+  gracePeriodEndsAt?: Date;
+}
+
+// Chef: Overstay detected (warning)
+async function notifyChefOverstayDetected(data: { chefId: number } & OverstayNotificationData) {
+  const formattedAmount = (data.penaltyAmountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'overstay_detected',
+    priority: 'urgent',
+    title: '⚠️ Storage Overstay Detected',
+    message: `Your storage "${data.storageName}" at ${data.kitchenName} is ${data.daysOverdue} day(s) overdue. Potential penalty: $${formattedAmount}. Please extend or remove your items to avoid charges.`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      daysOverdue: data.daysOverdue,
+      penaltyAmountCents: data.penaltyAmountCents
+    },
+    actionUrl: `/dashboard?view=storage`,
+    actionLabel: 'Resolve Now'
+  });
+}
+
+// Manager: Overstay pending review
+async function notifyManagerOverstayPendingReview(data: { managerId: number; locationId: number; chefName: string } & OverstayNotificationData) {
+  const formattedAmount = (data.penaltyAmountCents / 100).toFixed(2);
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: 'overstay_pending_review',
+    priority: 'high',
+    title: 'Overstay Requires Review',
+    message: `${data.chefName}'s storage "${data.storageName}" is ${data.daysOverdue} day(s) overdue. Calculated penalty: $${formattedAmount}. Review and approve or waive the penalty.`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      chefName: data.chefName,
+      daysOverdue: data.daysOverdue,
+      penaltyAmountCents: data.penaltyAmountCents
+    },
+    actionUrl: `/manager/booking-dashboard?view=overstays`,
+    actionLabel: 'Review Penalty'
+  });
+}
+
+// Chef: Penalty approved by manager
+async function notifyChefPenaltyApproved(data: { chefId: number } & OverstayNotificationData) {
+  const formattedAmount = (data.penaltyAmountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'overstay_penalty_approved',
+    priority: 'urgent',
+    title: 'Overstay Penalty Approved',
+    message: `A $${formattedAmount} penalty for your storage "${data.storageName}" (${data.daysOverdue} days overdue) has been approved. Payment will be charged to your saved card.`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      daysOverdue: data.daysOverdue,
+      penaltyAmountCents: data.penaltyAmountCents
+    },
+    actionUrl: `/dashboard?view=payments`,
+    actionLabel: 'View Details'
+  });
+}
+
+// Chef: Penalty waived by manager
+async function notifyChefPenaltyWaived(data: { chefId: number; waiveReason?: string } & OverstayNotificationData) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'overstay_penalty_waived',
+    priority: 'normal',
+    title: 'Overstay Penalty Waived',
+    message: `Good news! The penalty for your storage "${data.storageName}" has been waived by the manager.${data.waiveReason ? ` Reason: ${data.waiveReason}` : ''}`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      waiveReason: data.waiveReason
+    },
+    actionUrl: `/dashboard?view=storage`,
+    actionLabel: 'View Storage'
+  });
+}
+
+// Chef: Penalty charged successfully
+async function notifyChefPenaltyCharged(data: { chefId: number } & OverstayNotificationData) {
+  const formattedAmount = (data.penaltyAmountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'overstay_penalty_charged',
+    priority: 'high',
+    title: 'Overstay Penalty Charged',
+    message: `$${formattedAmount} has been charged to your card for the storage overstay at "${data.storageName}" (${data.daysOverdue} days overdue).`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      daysOverdue: data.daysOverdue,
+      penaltyAmountCents: data.penaltyAmountCents
+    },
+    actionUrl: `/dashboard?view=payments`,
+    actionLabel: 'View Receipt'
+  });
+}
+
+// Manager: Penalty charged (payment received)
+async function notifyManagerPenaltyReceived(data: { managerId: number; locationId: number; chefName: string } & OverstayNotificationData) {
+  const formattedAmount = (data.penaltyAmountCents / 100).toFixed(2);
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: 'payment_received',
+    priority: 'normal',
+    title: 'Overstay Penalty Collected',
+    message: `$${formattedAmount} overstay penalty collected from ${data.chefName} for "${data.storageName}".`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      chefName: data.chefName,
+      penaltyAmountCents: data.penaltyAmountCents
+    },
+    actionUrl: `/manager/booking-dashboard?view=revenue`,
+    actionLabel: 'View Revenue'
+  });
+}
+
+// Chef: Payment required (3DS/SCA)
+async function notifyChefPaymentRequired(data: { chefId: number; paymentUrl?: string } & OverstayNotificationData) {
+  const formattedAmount = (data.penaltyAmountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'overstay_payment_required',
+    priority: 'urgent',
+    title: '⚠️ Payment Action Required',
+    message: `Your card requires additional verification to process the $${formattedAmount} overstay penalty. Please complete payment to avoid account restrictions.`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      penaltyAmountCents: data.penaltyAmountCents,
+      paymentUrl: data.paymentUrl
+    },
+    actionUrl: data.paymentUrl || `/dashboard?view=payments`,
+    actionLabel: 'Complete Payment'
+  });
+}
+
+// Chef: Overstay refunded
+async function notifyChefOverstayRefunded(data: { chefId: number; refundAmountCents: number; refundReason?: string } & OverstayNotificationData) {
+  const formattedAmount = (data.refundAmountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'overstay_refunded',
+    priority: 'normal',
+    title: 'Overstay Penalty Refunded',
+    message: `$${formattedAmount} has been refunded for the overstay penalty on "${data.storageName}".${data.refundReason ? ` Reason: ${data.refundReason}` : ''}`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      refundAmountCents: data.refundAmountCents,
+      refundReason: data.refundReason
+    },
+    actionUrl: `/dashboard?view=payments`,
+    actionLabel: 'View Details'
+  });
+}
+
+// ===================================
+// DAMAGE CLAIM NOTIFICATIONS
+// ===================================
+
+interface DamageClaimNotificationData {
+  claimId: number;
+  claimTitle: string;
+  amountCents: number;
+  locationName: string;
+  bookingType: string;
+}
+
+// Chef: Damage claim filed against them
+async function notifyChefDamageClaimFiled(data: { chefId: number; managerName: string; responseDeadline: Date } & DamageClaimNotificationData) {
+  const formattedAmount = (data.amountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'damage_claim_filed',
+    priority: 'urgent',
+    title: '⚠️ Damage Claim Filed',
+    message: `${data.managerName} has filed a $${formattedAmount} damage claim: "${data.claimTitle}" at ${data.locationName}. Please respond by ${format(data.responseDeadline, 'MMM d, yyyy h:mm a')}.`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      amountCents: data.amountCents,
+      locationName: data.locationName,
+      responseDeadline: data.responseDeadline.toISOString()
+    },
+    actionUrl: `/dashboard?view=damage-claims`,
+    actionLabel: 'Respond Now'
+  });
+}
+
+// Manager: Chef responded to claim
+async function notifyManagerClaimResponseReceived(data: { managerId: number; locationId: number; chefName: string; responseType: 'accepted' | 'disputed'; chefResponse?: string } & DamageClaimNotificationData) {
+  const formattedAmount = (data.amountCents / 100).toFixed(2);
+  const isAccepted = data.responseType === 'accepted';
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: 'damage_claim_response_received',
+    priority: 'high',
+    title: isAccepted ? 'Damage Claim Accepted' : 'Damage Claim Disputed',
+    message: isAccepted
+      ? `${data.chefName} accepted your $${formattedAmount} damage claim "${data.claimTitle}". Payment will be charged automatically.`
+      : `${data.chefName} disputed your damage claim "${data.claimTitle}". Admin review required.`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      chefName: data.chefName,
+      responseType: data.responseType,
+      chefResponse: data.chefResponse
+    },
+    actionUrl: `/manager/booking-dashboard?view=damage-claims`,
+    actionLabel: 'View Claim'
+  });
+}
+
+// Chef: Claim decision (approved/rejected)
+async function notifyChefClaimDecision(data: { chefId: number; decision: 'approved' | 'partially_approved' | 'rejected'; approvedAmountCents?: number; decisionReason?: string } & DamageClaimNotificationData) {
+  const isApproved = data.decision === 'approved' || data.decision === 'partially_approved';
+  const finalAmount = data.approvedAmountCents || data.amountCents;
+  const formattedAmount = (finalAmount / 100).toFixed(2);
+  
+  return createChefNotification({
+    chefId: data.chefId,
+    type: isApproved ? 'damage_claim_approved' : 'damage_claim_rejected',
+    priority: 'high',
+    title: isApproved 
+      ? `Damage Claim ${data.decision === 'partially_approved' ? 'Partially ' : ''}Approved`
+      : 'Damage Claim Rejected',
+    message: isApproved
+      ? `The damage claim "${data.claimTitle}" has been ${data.decision === 'partially_approved' ? 'partially ' : ''}approved for $${formattedAmount}. Payment will be charged to your card.`
+      : `The damage claim "${data.claimTitle}" has been rejected.${data.decisionReason ? ` Reason: ${data.decisionReason}` : ''}`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      decision: data.decision,
+      approvedAmountCents: data.approvedAmountCents,
+      decisionReason: data.decisionReason
+    },
+    actionUrl: `/dashboard?view=damage-claims`,
+    actionLabel: 'View Details'
+  });
+}
+
+// Manager: Claim decision notification
+async function notifyManagerClaimDecision(data: { managerId: number; locationId: number; decision: 'approved' | 'partially_approved' | 'rejected'; approvedAmountCents?: number; decisionReason?: string } & DamageClaimNotificationData) {
+  const isApproved = data.decision === 'approved' || data.decision === 'partially_approved';
+  const finalAmount = data.approvedAmountCents || data.amountCents;
+  const formattedAmount = (finalAmount / 100).toFixed(2);
+  
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: isApproved ? 'damage_claim_approved' : 'damage_claim_rejected',
+    priority: 'normal',
+    title: isApproved
+      ? `Damage Claim ${data.decision === 'partially_approved' ? 'Partially ' : ''}Approved`
+      : 'Damage Claim Rejected',
+    message: isApproved
+      ? `Admin approved your damage claim "${data.claimTitle}" for $${formattedAmount}.`
+      : `Admin rejected your damage claim "${data.claimTitle}".${data.decisionReason ? ` Reason: ${data.decisionReason}` : ''}`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      decision: data.decision,
+      approvedAmountCents: data.approvedAmountCents,
+      decisionReason: data.decisionReason
+    },
+    actionUrl: `/manager/booking-dashboard?view=damage-claims`,
+    actionLabel: 'View Claim'
+  });
+}
+
+// Chef: Damage claim charged
+async function notifyChefDamageClaimCharged(data: { chefId: number } & DamageClaimNotificationData) {
+  const formattedAmount = (data.amountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'damage_claim_charged',
+    priority: 'high',
+    title: 'Damage Claim Charged',
+    message: `$${formattedAmount} has been charged to your card for the damage claim "${data.claimTitle}" at ${data.locationName}.`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      amountCents: data.amountCents,
+      locationName: data.locationName
+    },
+    actionUrl: `/dashboard?view=payments`,
+    actionLabel: 'View Receipt'
+  });
+}
+
+// Manager: Damage claim payment received
+async function notifyManagerDamageClaimReceived(data: { managerId: number; locationId: number; chefName: string } & DamageClaimNotificationData) {
+  const formattedAmount = (data.amountCents / 100).toFixed(2);
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: 'payment_received',
+    priority: 'normal',
+    title: 'Damage Claim Payment Received',
+    message: `$${formattedAmount} collected from ${data.chefName} for damage claim "${data.claimTitle}".`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      chefName: data.chefName,
+      amountCents: data.amountCents
+    },
+    actionUrl: `/manager/booking-dashboard?view=revenue`,
+    actionLabel: 'View Revenue'
+  });
+}
+
+// Chef: Damage claim refunded
+async function notifyChefDamageClaimRefunded(data: { chefId: number; refundAmountCents: number; refundReason?: string } & DamageClaimNotificationData) {
+  const formattedAmount = (data.refundAmountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'damage_claim_refunded',
+    priority: 'normal',
+    title: 'Damage Claim Refunded',
+    message: `$${formattedAmount} has been refunded for the damage claim "${data.claimTitle}".${data.refundReason ? ` Reason: ${data.refundReason}` : ''}`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      refundAmountCents: data.refundAmountCents,
+      refundReason: data.refundReason
+    },
+    actionUrl: `/dashboard?view=payments`,
+    actionLabel: 'View Details'
+  });
+}
+
+// ===================================
 // EXPORTS
 // ===================================
 
@@ -843,7 +1212,26 @@ export const notificationService = {
   // Storage Extension
   notifyManagerStorageExtensionPending,
   notifyChefStorageExtensionApproved,
-  notifyChefStorageExtensionRejected
+  notifyChefStorageExtensionRejected,
+  
+  // Overstay Penalty
+  notifyChefOverstayDetected,
+  notifyManagerOverstayPendingReview,
+  notifyChefPenaltyApproved,
+  notifyChefPenaltyWaived,
+  notifyChefPenaltyCharged,
+  notifyManagerPenaltyReceived,
+  notifyChefPaymentRequired,
+  notifyChefOverstayRefunded,
+  
+  // Damage Claim
+  notifyChefDamageClaimFiled,
+  notifyManagerClaimResponseReceived,
+  notifyChefClaimDecision,
+  notifyManagerClaimDecision,
+  notifyChefDamageClaimCharged,
+  notifyManagerDamageClaimReceived,
+  notifyChefDamageClaimRefunded,
 };
 
 export type {

@@ -158,7 +158,62 @@ export class UserService {
     await this.repo.update(id, { has_seen_welcome: true });
   }
 
+  /**
+   * Check if user has any outstanding financial obligations
+   * ENTERPRISE STANDARD: Block account deletion if user owes money
+   */
+  async hasOutstandingObligations(userId: number): Promise<{
+    hasObligations: boolean;
+    overstayPenalties: number;
+    damageClaims: number;
+    totalOwedCents: number;
+  }> {
+    try {
+      const { hasChefUnpaidPenalties, getChefUnpaidPenalties } = await import('../../services/overstay-penalty-service');
+      const { hasChefUnpaidDamageClaims, getChefUnpaidDamageClaims } = await import('../../services/damage-claim-service');
+
+      const hasUnpaidPenalties = await hasChefUnpaidPenalties(userId);
+      const hasUnpaidClaims = await hasChefUnpaidDamageClaims(userId);
+
+      let penaltyTotal = 0;
+      let claimTotal = 0;
+
+      if (hasUnpaidPenalties) {
+        const penalties = await getChefUnpaidPenalties(userId);
+        penaltyTotal = penalties.reduce((sum, p) => sum + p.penaltyAmountCents, 0);
+      }
+
+      if (hasUnpaidClaims) {
+        const claims = await getChefUnpaidDamageClaims(userId);
+        claimTotal = claims.reduce((sum, c) => sum + c.finalAmountCents, 0);
+      }
+
+      return {
+        hasObligations: hasUnpaidPenalties || hasUnpaidClaims,
+        overstayPenalties: hasUnpaidPenalties ? (await getChefUnpaidPenalties(userId)).length : 0,
+        damageClaims: hasUnpaidClaims ? (await getChefUnpaidDamageClaims(userId)).length : 0,
+        totalOwedCents: penaltyTotal + claimTotal,
+      };
+    } catch (error) {
+      console.error(`[UserService] Error checking obligations for user ${userId}:`, error);
+      // On error, assume no obligations to avoid blocking legitimate deletions
+      return { hasObligations: false, overstayPenalties: 0, damageClaims: 0, totalOwedCents: 0 };
+    }
+  }
+
   async deleteUser(id: number): Promise<void> {
+    // ENTERPRISE STANDARD: Check for outstanding obligations before deletion
+    const obligations = await this.hasOutstandingObligations(id);
+    if (obligations.hasObligations) {
+      throw new Error(
+        `Cannot delete account with outstanding obligations. ` +
+        `${obligations.overstayPenalties} unpaid overstay penalty(ies), ` +
+        `${obligations.damageClaims} unpaid damage claim(s), ` +
+        `totaling $${(obligations.totalOwedCents / 100).toFixed(2)}. ` +
+        `Please resolve all obligations before deleting your account.`
+      );
+    }
+
     // Transactional delete ensuring referential integrity with locations
     await db.transaction(async (tx) => {
       // Remove manager assignment from locations

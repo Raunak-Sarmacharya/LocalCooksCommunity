@@ -48,6 +48,7 @@ import {
   Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 
 interface ClaimHistoryEntry {
   id: number;
@@ -553,7 +554,7 @@ export function DamageClaimDetailSheet({
                       <div className="w-16 h-16 rounded bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
                         {evidence.fileUrl.match(/\.(jpg|jpeg|png|webp|gif)$/i) ? (
                           <img
-                            src={evidence.fileUrl}
+                            src={getR2ProxyUrl(evidence.fileUrl)}
                             alt={evidence.fileName || 'Evidence'}
                             className="w-full h-full object-cover"
                           />
@@ -594,7 +595,7 @@ export function DamageClaimDetailSheet({
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => window.open(evidence.fileUrl, '_blank')}
+                          onClick={() => window.open(getR2ProxyUrl(evidence.fileUrl), '_blank')}
                         >
                           <ExternalLink className="h-4 w-4" />
                         </Button>

@@ -20,7 +20,7 @@ import {
   users,
   type CheckoutStatus
 } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, or, inArray, isNotNull } from "drizzle-orm";
 import { logger } from "../logger";
 
 // ============================================================================
@@ -59,6 +59,9 @@ export interface PendingCheckoutReview {
   totalPrice: string;
   checkoutStatus: CheckoutStatus;
   checkoutRequestedAt: Date | null;
+  checkoutApprovedAt?: Date | null;
+  checkoutDeniedAt?: Date | null;
+  checkoutDenialReason?: string | null;
   checkoutNotes: string | null;
   checkoutPhotoUrls: string[];
   daysUntilEnd: number;
@@ -108,9 +111,19 @@ export async function requestStorageCheckout(
       return { success: false, error: 'You do not have permission to checkout this storage booking' };
     }
 
-    // Verify booking status allows checkout
+    // Verify booking status allows checkout - must be confirmed (not pending or cancelled)
     if (booking.status === 'cancelled') {
       return { success: false, error: 'Cannot checkout a cancelled booking' };
+    }
+    if (booking.status === 'pending') {
+      return { success: false, error: 'Cannot checkout a pending booking. The booking must be confirmed first.' };
+    }
+    
+    // Verify the booking has started (start date must be in the past or today)
+    const now = new Date();
+    const startDate = new Date(booking.startDate);
+    if (startDate > now) {
+      return { success: false, error: 'Cannot checkout before the booking start date. Please wait until your booking period begins.' };
     }
 
     // Verify checkout status allows request
@@ -426,6 +439,94 @@ export async function getPendingCheckoutReviews(locationId?: number): Promise<Pe
     });
   } catch (error) {
     logger.error(`[StorageCheckout] Error getting pending checkout reviews:`, error);
+    return [];
+  }
+}
+
+/**
+ * Get checkout history (completed and denied checkouts) for manager's locations
+ */
+export async function getCheckoutHistory(locationIds: number[], limit: number = 20): Promise<PendingCheckoutReview[]> {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const results = await db
+      .select({
+        storageBookingId: storageBookings.id,
+        storageListingId: storageBookings.storageListingId,
+        storageName: storageListings.name,
+        storageType: storageListings.storageType,
+        kitchenId: kitchens.id,
+        kitchenName: kitchens.name,
+        locationId: locations.id,
+        locationName: locations.name,
+        chefId: storageBookings.chefId,
+        chefEmail: users.username,
+        startDate: storageBookings.startDate,
+        endDate: storageBookings.endDate,
+        totalPrice: storageBookings.totalPrice,
+        checkoutStatus: storageBookings.checkoutStatus,
+        checkoutRequestedAt: storageBookings.checkoutRequestedAt,
+        checkoutApprovedAt: storageBookings.checkoutApprovedAt,
+        checkoutDeniedAt: storageBookings.checkoutDeniedAt,
+        checkoutDenialReason: storageBookings.checkoutDenialReason,
+        checkoutNotes: storageBookings.checkoutNotes,
+        checkoutPhotoUrls: storageBookings.checkoutPhotoUrls,
+      })
+      .from(storageBookings)
+      .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+      .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+      .innerJoin(locations, eq(kitchens.locationId, locations.id))
+      .leftJoin(users, eq(storageBookings.chefId, users.id))
+      .where(
+        and(
+          inArray(locations.id, locationIds),
+          or(
+            eq(storageBookings.checkoutStatus, 'completed'),
+            // Include bookings that were denied (status reset to 'active' but have denial reason)
+            and(
+              eq(storageBookings.checkoutStatus, 'active'),
+              isNotNull(storageBookings.checkoutDeniedAt)
+            )
+          )
+        )
+      )
+      .orderBy(desc(storageBookings.checkoutApprovedAt), desc(storageBookings.checkoutDeniedAt))
+      .limit(limit);
+
+    return results.map(r => {
+      const endDate = new Date(r.endDate);
+      const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      
+      return {
+        storageBookingId: r.storageBookingId,
+        storageListingId: r.storageListingId,
+        storageName: r.storageName || 'Storage',
+        storageType: r.storageType || 'dry',
+        kitchenId: r.kitchenId,
+        kitchenName: r.kitchenName || 'Kitchen',
+        locationId: r.locationId,
+        locationName: r.locationName || 'Location',
+        chefId: r.chefId,
+        chefEmail: r.chefEmail,
+        chefName: r.chefEmail,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        totalPrice: r.totalPrice,
+        checkoutStatus: r.checkoutStatus as CheckoutStatus,
+        checkoutRequestedAt: r.checkoutRequestedAt,
+        checkoutApprovedAt: r.checkoutApprovedAt,
+        checkoutDeniedAt: r.checkoutDeniedAt,
+        checkoutDenialReason: r.checkoutDenialReason,
+        checkoutNotes: r.checkoutNotes,
+        checkoutPhotoUrls: (r.checkoutPhotoUrls as string[]) || [],
+        daysUntilEnd,
+        isOverdue: daysUntilEnd < 0,
+      };
+    });
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error getting checkout history:`, error);
     return [];
   }
 }

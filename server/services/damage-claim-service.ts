@@ -213,10 +213,14 @@ export async function createDamageClaim(input: CreateDamageClaimInput): Promise<
     // Get limits for response deadline
     const limits = await getDamageClaimLimits();
 
-    // Validate booking exists and get details
+    // Validate booking exists, is not cancelled, and get details
+    // ENTERPRISE STANDARD: Prevent damage claims on cancelled bookings
     let chefId: number | null = null;
     let locationId: number | null = null;
     const chefResponseDeadlineHours = limits.chefResponseDeadlineHours;
+
+    // Statuses that should NOT allow damage claims
+    const invalidBookingStatuses = ['cancelled', 'rejected', 'refunded'];
 
     if (input.bookingType === 'storage' && input.storageBookingId) {
       // Storage bookings don't have kitchenId directly - get via storageListings
@@ -224,6 +228,7 @@ export async function createDamageClaim(input: CreateDamageClaimInput): Promise<
         .select({
           chefId: storageBookings.chefId,
           endDate: storageBookings.endDate,
+          status: storageBookings.status,
           kitchenId: storageListings.kitchenId,
         })
         .from(storageBookings)
@@ -233,6 +238,14 @@ export async function createDamageClaim(input: CreateDamageClaimInput): Promise<
 
       if (!booking) {
         return { success: false, error: 'Storage booking not found' };
+      }
+
+      // Validate booking status
+      if (invalidBookingStatuses.includes(booking.status)) {
+        return { 
+          success: false, 
+          error: `Cannot file damage claim for a ${booking.status} booking. Only active or completed bookings are eligible.` 
+        };
       }
 
       chefId = booking.chefId;
@@ -251,6 +264,7 @@ export async function createDamageClaim(input: CreateDamageClaimInput): Promise<
         .select({
           chefId: kitchenBookings.chefId,
           kitchenId: kitchenBookings.kitchenId,
+          status: kitchenBookings.status,
         })
         .from(kitchenBookings)
         .where(eq(kitchenBookings.id, input.kitchenBookingId))
@@ -258,6 +272,14 @@ export async function createDamageClaim(input: CreateDamageClaimInput): Promise<
 
       if (!booking) {
         return { success: false, error: 'Kitchen booking not found' };
+      }
+
+      // Validate booking status
+      if (invalidBookingStatuses.includes(booking.status)) {
+        return { 
+          success: false, 
+          error: `Cannot file damage claim for a ${booking.status} booking. Only active or completed bookings are eligible.` 
+        };
       }
 
       chefId = booking.chefId;
@@ -510,6 +532,24 @@ export async function submitClaim(
           });
           await sendEmail(emailContent);
           logger.info(`[DamageClaimService] Sent claim filed email to chef ${chefUser.username}`);
+
+          // Send in-app notification to chef
+          try {
+            const { notificationService } = await import('./notification.service');
+            await notificationService.notifyChefDamageClaimFiled({
+              chefId: claim.chefId,
+              managerName: claimWithDetails.managerName || managerUser?.username || 'Manager',
+              responseDeadline: new Date(claim.chefResponseDeadline),
+              claimId: claim.id,
+              claimTitle: claim.claimTitle,
+              amountCents: claim.claimedAmountCents,
+              locationName: claimWithDetails.locationName || 'Unknown Location',
+              bookingType: claim.bookingType,
+            });
+            logger.info(`[DamageClaimService] Sent in-app notification to chef for claim ${claimId}`);
+          } catch (notifError) {
+            logger.error('[DamageClaimService] Failed to send in-app notification:', notifError);
+          }
         }
       }
     } catch (emailError) {
@@ -629,9 +669,25 @@ export async function removeEvidence(
 // ============================================================================
 
 /**
- * Get pending claims for a chef
+ * Get ALL claims for a chef (pending, in-progress, and resolved)
  */
 export async function getChefPendingClaims(chefId: number): Promise<DamageClaimWithDetails[]> {
+  // Include all relevant statuses for chef visibility (typed as DamageClaimStatus[])
+  const allChefStatuses: DamageClaimStatus[] = [
+    'submitted',           // Awaiting chef response
+    'chef_accepted',       // Chef accepted
+    'chef_disputed',       // Chef disputed
+    'under_review',        // Admin reviewing
+    'approved',            // Approved by admin
+    'partially_approved',  // Partially approved
+    'charge_pending',      // Payment processing
+    'charge_succeeded',    // Successfully charged (RESOLVED)
+    'charge_failed',       // Charge failed
+    'resolved',            // Resolved (RESOLVED)
+    'rejected',            // Rejected by admin (RESOLVED)
+    'expired',             // Expired (RESOLVED)
+  ];
+
   const claims = await db
     .select({
       claim: damageClaims,
@@ -644,7 +700,7 @@ export async function getChefPendingClaims(chefId: number): Promise<DamageClaimW
     .innerJoin(locations, eq(damageClaims.locationId, locations.id))
     .where(and(
       eq(damageClaims.chefId, chefId),
-      inArray(damageClaims.status, ['submitted', 'approved', 'charge_pending', 'charge_failed'])
+      inArray(damageClaims.status, allChefStatuses)
     ))
     .orderBy(desc(damageClaims.createdAt));
 
@@ -827,6 +883,26 @@ export async function chefRespondToClaim(
           });
           await sendEmail(emailContent);
           logger.info(`[DamageClaimService] Sent response notification to manager ${managerUser.username}`);
+
+          // Send in-app notification to manager
+          try {
+            const { notificationService } = await import('./notification.service');
+            await notificationService.notifyManagerClaimResponseReceived({
+              managerId: claim.managerId,
+              locationId: claim.locationId,
+              chefName: claimWithDetails.chefName || chefUser?.username || 'Chef',
+              responseType: response.action === 'accept' ? 'accepted' : 'disputed',
+              chefResponse: response.response,
+              claimId: claim.id,
+              claimTitle: claim.claimTitle,
+              amountCents: claim.claimedAmountCents,
+              locationName: claimWithDetails.locationName || 'Unknown Location',
+              bookingType: claim.bookingType,
+            });
+            logger.info(`[DamageClaimService] Sent in-app notification to manager for claim ${claimId} response`);
+          } catch (notifError) {
+            logger.error('[DamageClaimService] Failed to send manager in-app notification:', notifError);
+          }
         }
 
         // If disputed, notify admin
@@ -1033,6 +1109,42 @@ export async function adminDecision(
           await sendEmail(managerEmail);
         }
 
+        // Send in-app notifications for admin decision
+        try {
+          const { notificationService } = await import('./notification.service');
+          
+          // Notify chef of decision
+          await notificationService.notifyChefClaimDecision({
+            chefId: claim.chefId,
+            decision: decisionType as 'approved' | 'partially_approved' | 'rejected',
+            approvedAmountCents: finalAmount || undefined,
+            decisionReason: decision.decisionReason,
+            claimId: claim.id,
+            claimTitle: claim.claimTitle,
+            amountCents: claim.claimedAmountCents,
+            locationName: claimWithDetails.locationName || 'Unknown Location',
+            bookingType: claim.bookingType,
+          });
+
+          // Notify manager of decision
+          await notificationService.notifyManagerClaimDecision({
+            managerId: claim.managerId,
+            locationId: claim.locationId,
+            decision: decisionType as 'approved' | 'partially_approved' | 'rejected',
+            approvedAmountCents: finalAmount || undefined,
+            decisionReason: decision.decisionReason,
+            claimId: claim.id,
+            claimTitle: claim.claimTitle,
+            amountCents: claim.claimedAmountCents,
+            locationName: claimWithDetails.locationName || 'Unknown Location',
+            bookingType: claim.bookingType,
+          });
+
+          logger.info(`[DamageClaimService] Sent in-app decision notifications for claim ${claimId}`);
+        } catch (notifError) {
+          logger.error('[DamageClaimService] Failed to send in-app decision notifications:', notifError);
+        }
+
         logger.info(`[DamageClaimService] Sent decision emails for claim ${claimId}`);
       }
     } catch (emailError) {
@@ -1161,6 +1273,17 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
 
   managerStripeAccountId = manager?.stripeConnectAccountId || null;
 
+  // ENTERPRISE STANDARD: Calculate application_fee_amount for break-even on Stripe fees
+  // This ensures the platform doesn't absorb Stripe processing fees for damage claims
+  // Same approach as kitchen bookings: application_fee = Stripe processing fee (2.9% + $0.30)
+  let applicationFeeAmount: number | undefined;
+  if (managerStripeAccountId) {
+    const { calculateCheckoutFees } = await import('./stripe-checkout-fee-service');
+    const feeResult = calculateCheckoutFees(chargeAmount / 100); // Convert cents to dollars
+    applicationFeeAmount = feeResult.stripeProcessingFeeInCents;
+    logger.info(`[DamageClaimService] Calculated application fee for break-even: ${applicationFeeAmount} cents`);
+  }
+
   // Update status to charge_pending
   await db
     .update(damageClaims)
@@ -1182,6 +1305,7 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
       metadata: Record<string, string>;
       statement_descriptor_suffix: string;
       transfer_data?: { destination: string };
+      application_fee_amount?: number;
     } = {
       amount: chargeAmount,
       currency: 'cad',
@@ -1203,10 +1327,22 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
       paymentIntentParams.transfer_data = {
         destination: managerStripeAccountId,
       };
+      // ENTERPRISE STANDARD: Add application_fee_amount for break-even on Stripe fees
+      // This ensures the platform doesn't absorb Stripe processing fees
+      if (applicationFeeAmount && applicationFeeAmount > 0) {
+        paymentIntentParams.application_fee_amount = applicationFeeAmount;
+        logger.info(`[DamageClaimService] Setting application_fee_amount: ${applicationFeeAmount} cents for break-even`);
+      }
       logger.info(`[DamageClaimService] Using destination charge to manager: ${managerStripeAccountId}`);
     }
 
-    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
+    // ENTERPRISE STANDARD: Use idempotency key to prevent duplicate charges
+    // Key format: damage_claim_{claimId}_{timestamp_day} - allows retry within same day
+    const idempotencyKey = `damage_claim_${claimId}_${new Date().toISOString().split('T')[0]}`;
+    
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams, {
+      idempotencyKey,
+    });
 
     if (paymentIntent.status === 'succeeded') {
       const chargeId = typeof paymentIntent.latest_charge === 'string'
@@ -1238,17 +1374,22 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
       );
 
       // Create payment transaction record
+      // ENTERPRISE STANDARD: Include application_fee_amount as serviceFee for accurate tracking
+      // Manager revenue = chargeAmount - applicationFeeAmount (Stripe fee deducted)
       try {
         const { createPaymentTransaction } = await import("./payment-transactions-service");
+        const serviceFeeForTransaction = applicationFeeAmount || 0;
+        const managerRevenueForTransaction = chargeAmount - serviceFeeForTransaction;
+        
         await createPaymentTransaction({
           bookingId: claim.bookingType === 'storage' ? claim.storageBookingId! : claim.kitchenBookingId!,
           bookingType: claim.bookingType as 'kitchen' | 'storage',
           chefId: claim.chefId,
           managerId: claim.managerId,
           amount: chargeAmount,
-          baseAmount: chargeAmount,
-          serviceFee: 0,
-          managerRevenue: chargeAmount,
+          baseAmount: chargeAmount, // No tax on damage claims, so base = amount
+          serviceFee: serviceFeeForTransaction, // Platform fee (covers Stripe processing)
+          managerRevenue: managerRevenueForTransaction, // What manager actually receives
           currency: "CAD",
           paymentIntentId: paymentIntent.id,
           chargeId: chargeId || undefined,
@@ -1257,10 +1398,16 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
           metadata: {
             type: "damage_claim",
             damage_claim_id: claimId.toString(),
+            is_reimbursement: "true", // Flag to identify as reimbursement in UI
+            no_tax: "true", // Flag to indicate no tax should be displayed
           },
         }, db);
 
-        logger.info(`[DamageClaimService] Created payment transaction for damage claim ${claimId}`);
+        logger.info(`[DamageClaimService] Created payment transaction for damage claim ${claimId}`, {
+          amount: chargeAmount,
+          serviceFee: serviceFeeForTransaction,
+          managerRevenue: managerRevenueForTransaction,
+        });
       } catch (ptError) {
         logger.error(`[DamageClaimService] Failed to create payment transaction:`, ptError);
       }
@@ -1289,6 +1436,37 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
           });
           await sendEmail(chargeEmail);
           logger.info(`[DamageClaimService] Sent charge notification to chef ${chefUser.username}`);
+
+          // Send in-app notifications for successful charge
+          try {
+            const { notificationService } = await import('./notification.service');
+            
+            // Notify chef that claim was charged
+            await notificationService.notifyChefDamageClaimCharged({
+              chefId: claim.chefId,
+              claimId: claim.id,
+              claimTitle: claim.claimTitle,
+              amountCents: chargeAmount,
+              locationName: claimWithDetails.locationName || 'Unknown Location',
+              bookingType: claim.bookingType,
+            });
+
+            // Notify manager that payment was received
+            await notificationService.notifyManagerDamageClaimReceived({
+              managerId: claim.managerId,
+              locationId: claim.locationId,
+              chefName: claimWithDetails.chefName || chefUser.username || 'Chef',
+              claimId: claim.id,
+              claimTitle: claim.claimTitle,
+              amountCents: chargeAmount,
+              locationName: claimWithDetails.locationName || 'Unknown Location',
+              bookingType: claim.bookingType,
+            });
+
+            logger.info(`[DamageClaimService] Sent in-app charge notifications for claim ${claimId}`);
+          } catch (notifError) {
+            logger.error('[DamageClaimService] Failed to send in-app charge notifications:', notifError);
+          }
         }
       } catch (emailError) {
         logger.error('[DamageClaimService] Failed to send charge email:', emailError);
@@ -1686,6 +1864,313 @@ export async function processExpiredClaims(): Promise<ExpiredClaimResult[]> {
   }
 }
 
+// ============================================================================
+// REFUND FUNCTIONALITY
+// ============================================================================
+
+/**
+ * Refund a damage claim that was charged
+ * 
+ * Enterprise standard refund flow:
+ * 1. Validate claim was actually charged (status = charge_succeeded)
+ * 2. Issue Stripe refund
+ * 3. Update status to 'resolved' with refund info
+ * 4. Create history entry
+ * 5. Send notification to chef
+ * 
+ * @param claimId - The damage claim ID
+ * @param refundReason - Required reason for the refund
+ * @param refundedBy - User ID of the admin/manager issuing refund
+ * @param partialAmountCents - Optional partial refund amount (full refund if not specified)
+ */
+export async function refundDamageClaim(
+  claimId: number,
+  refundReason: string,
+  refundedBy: number,
+  partialAmountCents?: number
+): Promise<{ success: boolean; error?: string; refundId?: string }> {
+  try {
+    // Get the claim
+    const [claim] = await db
+      .select()
+      .from(damageClaims)
+      .where(eq(damageClaims.id, claimId))
+      .limit(1);
+
+    if (!claim) {
+      return { success: false, error: 'Damage claim not found' };
+    }
+
+    // Validate status - can only refund charged claims
+    if (claim.status !== 'charge_succeeded') {
+      return { 
+        success: false, 
+        error: `Cannot refund claim in status '${claim.status}'. Only 'charge_succeeded' claims can be refunded.` 
+      };
+    }
+
+    // Must have a payment intent ID to refund
+    if (!claim.stripePaymentIntentId) {
+      return { success: false, error: 'No payment intent found for this claim. Manual refund required in Stripe Dashboard.' };
+    }
+
+    const chargedAmount = claim.finalAmountCents || claim.approvedAmountCents || claim.claimedAmountCents;
+    const refundAmount = partialAmountCents || chargedAmount;
+
+    // Validate refund amount
+    if (refundAmount <= 0) {
+      return { success: false, error: 'Refund amount must be greater than 0' };
+    }
+    if (refundAmount > chargedAmount) {
+      return { success: false, error: `Refund amount ($${(refundAmount/100).toFixed(2)}) cannot exceed charged amount ($${(chargedAmount/100).toFixed(2)})` };
+    }
+
+    if (!stripe) {
+      return { success: false, error: 'Stripe not configured' };
+    }
+
+    // Issue Stripe refund
+    logger.info(`[DamageClaimService] Issuing refund for claim ${claimId}:`, {
+      paymentIntentId: claim.stripePaymentIntentId,
+      chargedAmount: `$${(chargedAmount/100).toFixed(2)}`,
+      refundAmount: `$${(refundAmount/100).toFixed(2)}`,
+      reason: refundReason,
+    });
+
+    const refund = await stripe.refunds.create({
+      payment_intent: claim.stripePaymentIntentId,
+      amount: refundAmount,
+      reason: 'requested_by_customer',
+      metadata: {
+        damage_claim_id: claimId.toString(),
+        refund_reason: refundReason,
+        refunded_by: refundedBy.toString(),
+      },
+    });
+
+    const isFullRefund = refundAmount >= chargedAmount;
+
+    // Update the claim
+    await db
+      .update(damageClaims)
+      .set({
+        status: 'resolved',
+        resolvedAt: new Date(),
+        resolvedBy: refundedBy,
+        resolutionType: isFullRefund ? 'refunded' : 'partially_refunded',
+        resolutionNotes: `${isFullRefund ? 'Full' : 'Partial'} refund of $${(refundAmount/100).toFixed(2)} issued. Reason: ${refundReason}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(damageClaims.id, claimId));
+
+    // Create history entry
+    await createHistoryEntry(
+      claimId,
+      'charge_succeeded',
+      'resolved',
+      'refund',
+      'admin',
+      refundedBy,
+      `${isFullRefund ? 'Full' : 'Partial'} refund of $${(refundAmount/100).toFixed(2)} issued. Reason: ${refundReason}`,
+      {
+        refundId: refund.id,
+        refundAmount,
+        chargedAmount,
+        isFullRefund,
+        reason: refundReason,
+      }
+    );
+
+    // Update payment_transactions if exists
+    if (claim.paymentTransactionId) {
+      try {
+        const { updatePaymentTransaction } = await import('./payment-transactions-service');
+        await updatePaymentTransaction(claim.paymentTransactionId, {
+          status: isFullRefund ? 'refunded' : 'partially_refunded',
+          refundAmount,
+          refundId: refund.id,
+          refundedAt: new Date(),
+        }, db);
+      } catch (ptError) {
+        logger.warn(`[DamageClaimService] Could not update payment_transactions for refund:`, ptError as object);
+      }
+    }
+
+    // Send refund notification email to chef
+    try {
+      const [chef] = await db
+        .select({ email: users.username })
+        .from(users)
+        .where(eq(users.id, claim.chefId))
+        .limit(1);
+
+      if (chef?.email) {
+        await sendEmail({
+          to: chef.email,
+          subject: `Damage Claim Refund - $${(refundAmount/100).toFixed(2)}`,
+          html: `
+            <h2>Damage Claim Refund</h2>
+            <p>A ${isFullRefund ? 'full' : 'partial'} refund has been issued for your damage claim.</p>
+            <p><strong>Claim:</strong> ${claim.claimTitle}</p>
+            <p><strong>Refund Amount:</strong> $${(refundAmount/100).toFixed(2)}</p>
+            <p><strong>Reason:</strong> ${refundReason}</p>
+            <p>The refund should appear on your statement within 5-10 business days.</p>
+          `,
+          text: `Damage Claim Refund\n\nA ${isFullRefund ? 'full' : 'partial'} refund of $${(refundAmount/100).toFixed(2)} has been issued for your damage claim.\n\nClaim: ${claim.claimTitle}\nReason: ${refundReason}`,
+        });
+        logger.info(`[DamageClaimService] Sent refund notification email to chef ${chef.email}`);
+      }
+    } catch (emailError) {
+      logger.error(`[DamageClaimService] Error sending refund notification email:`, emailError);
+    }
+
+    logger.info(`[DamageClaimService] ✅ Refund successful for claim ${claimId}:`, {
+      refundId: refund.id,
+      amount: `$${(refundAmount/100).toFixed(2)}`,
+      isFullRefund,
+    });
+
+    return { success: true, refundId: refund.id };
+  } catch (error: any) {
+    logger.error(`[DamageClaimService] Error refunding claim ${claimId}:`, error);
+    
+    // Handle Stripe-specific errors
+    if (error.type === 'StripeInvalidRequestError') {
+      return { success: false, error: `Stripe error: ${error.message}` };
+    }
+    
+    return { success: false, error: error.message || 'Failed to process refund' };
+  }
+}
+
+// ============================================================================
+// CHEF BLOCKING FUNCTIONS (Parity with Overstay Penalties)
+// ============================================================================
+
+/**
+ * Check if chef has any unpaid damage claims (blocking check)
+ * Returns true if chef has any claims that need to be paid/resolved
+ * 
+ * Blocking statuses:
+ * - approved: Claim approved, awaiting charge
+ * - partially_approved: Partial claim approved, awaiting charge
+ * - chef_accepted: Chef accepted, awaiting charge
+ * - charge_pending: Charge in progress
+ * - charge_failed: Charge failed, needs resolution
+ */
+export async function hasChefUnpaidDamageClaims(chefId: number): Promise<boolean> {
+  const blockingStatuses: DamageClaimStatus[] = [
+    'approved',
+    'partially_approved',
+    'chef_accepted',
+    'charge_pending',
+    'charge_failed',
+  ];
+
+  const [result] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(damageClaims)
+    .where(
+      and(
+        eq(damageClaims.chefId, chefId),
+        inArray(damageClaims.status, blockingStatuses)
+      )
+    );
+
+  return (result?.count || 0) > 0;
+}
+
+/**
+ * Get all unpaid damage claims for a chef
+ * Used for displaying blocking information in the chef portal
+ */
+export async function getChefUnpaidDamageClaims(chefId: number): Promise<{
+  claimId: number;
+  claimTitle: string;
+  status: DamageClaimStatus;
+  claimedAmountCents: number;
+  finalAmountCents: number;
+  approvedAmountCents: number | null;
+  requiresImmediatePayment: boolean;
+  kitchenName: string | null;
+  bookingType: string;
+  createdAt: Date;
+}[]> {
+  const blockingStatuses: DamageClaimStatus[] = [
+    'approved',
+    'partially_approved',
+    'chef_accepted',
+    'charge_pending',
+    'charge_failed',
+  ];
+
+  const claims = await db
+    .select({
+      claimId: damageClaims.id,
+      claimTitle: damageClaims.claimTitle,
+      status: damageClaims.status,
+      claimedAmountCents: damageClaims.claimedAmountCents,
+      approvedAmountCents: damageClaims.approvedAmountCents,
+      finalAmountCents: damageClaims.finalAmountCents,
+      bookingType: damageClaims.bookingType,
+      createdAt: damageClaims.createdAt,
+      kitchenBookingId: damageClaims.kitchenBookingId,
+      storageBookingId: damageClaims.storageBookingId,
+    })
+    .from(damageClaims)
+    .where(
+      and(
+        eq(damageClaims.chefId, chefId),
+        inArray(damageClaims.status, blockingStatuses)
+      )
+    )
+    .orderBy(desc(damageClaims.createdAt));
+
+  // Enrich with kitchen names
+  const enrichedClaims = await Promise.all(claims.map(async (claim) => {
+    let kitchenName: string | null = null;
+
+    if (claim.bookingType === 'kitchen' && claim.kitchenBookingId) {
+      const [booking] = await db
+        .select({ kitchenName: kitchens.name })
+        .from(kitchenBookings)
+        .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+        .where(eq(kitchenBookings.id, claim.kitchenBookingId))
+        .limit(1);
+      kitchenName = booking?.kitchenName || null;
+    } else if (claim.bookingType === 'storage' && claim.storageBookingId) {
+      const [booking] = await db
+        .select({ kitchenName: kitchens.name })
+        .from(storageBookings)
+        .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+        .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+        .where(eq(storageBookings.id, claim.storageBookingId))
+        .limit(1);
+      kitchenName = booking?.kitchenName || null;
+    }
+
+    // Determine final amount to pay
+    const finalAmount = claim.finalAmountCents 
+      || claim.approvedAmountCents 
+      || claim.claimedAmountCents;
+
+    return {
+      claimId: claim.claimId,
+      claimTitle: claim.claimTitle,
+      status: claim.status as DamageClaimStatus,
+      claimedAmountCents: claim.claimedAmountCents,
+      finalAmountCents: finalAmount,
+      approvedAmountCents: claim.approvedAmountCents,
+      requiresImmediatePayment: ['approved', 'partially_approved', 'chef_accepted', 'charge_failed'].includes(claim.status),
+      kitchenName,
+      bookingType: claim.bookingType,
+      createdAt: claim.createdAt,
+    };
+  }));
+
+  return enrichedClaims;
+}
+
 // Export service object for convenience
 export const damageClaimService = {
   createDamageClaim,
@@ -1703,4 +2188,7 @@ export const damageClaimService = {
   getManagerClaims,
   getClaimHistory,
   processExpiredClaims,
+  refundDamageClaim,
+  hasChefUnpaidDamageClaims,
+  getChefUnpaidDamageClaims,
 };

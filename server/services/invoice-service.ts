@@ -817,3 +817,150 @@ export async function generateStorageInvoicePDF(
     }
   });
 }
+
+/**
+ * Generate invoice PDF for a damage claim
+ */
+export async function generateDamageClaimInvoicePDF(claim: {
+  id: number;
+  claimTitle: string;
+  claimDescription: string;
+  damageDate: string | Date;
+  claimedAmountCents: number;
+  finalAmountCents: number | null;
+  chargeSucceededAt: Date | null;
+  stripePaymentIntentId: string | null;
+  chefId: number;
+  managerId: number;
+  locationId: number;
+  bookingType: string;
+  kitchenBookingId: number | null;
+  storageBookingId: number | null;
+}): Promise<Buffer> {
+  // Import schema here to avoid circular dependencies
+  const { users, locations } = await import("@shared/schema");
+  
+  return new Promise(async (resolve, reject) => {
+    try {
+      const chunks: Buffer[] = [];
+      const doc = new PDFDocument({ margin: 50 });
+
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+
+      // Get chef and location info
+      const [chef] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, claim.chefId))
+        .limit(1);
+
+      const [location] = await db
+        .select()
+        .from(locations)
+        .where(eq(locations.id, claim.locationId))
+        .limit(1);
+
+      const chargeDate = claim.chargeSucceededAt 
+        ? new Date(claim.chargeSucceededAt) 
+        : new Date();
+      const amountCents = claim.finalAmountCents || claim.claimedAmountCents;
+
+      // Header
+      doc.fontSize(24).font('Helvetica-Bold').text('DAMAGE CLAIM INVOICE', { align: 'center' });
+      doc.moveDown(0.5);
+      doc.fontSize(10).font('Helvetica').fillColor('#6b7280').text('LocalCooks Platform', { align: 'center' });
+      doc.fillColor('#000000');
+      doc.moveDown(2);
+
+      // Invoice details
+      doc.fontSize(12).font('Helvetica-Bold').text('Invoice Details');
+      doc.moveDown(0.5);
+      doc.fontSize(10).font('Helvetica');
+      doc.text(`Invoice Number: DC-${claim.id.toString().padStart(6, '0')}`);
+      doc.text(`Date: ${chargeDate.toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })}`);
+      doc.text(`Payment Status: Paid`);
+      doc.moveDown(1.5);
+
+      // Chef info
+      doc.fontSize(12).font('Helvetica-Bold').text('Billed To');
+      doc.moveDown(0.5);
+      doc.fontSize(10).font('Helvetica');
+      doc.text((chef as any)?.fullName || (chef as any)?.username || 'Chef');
+      doc.text((chef as any)?.email || '');
+      doc.moveDown(1.5);
+
+      // Location info
+      doc.fontSize(12).font('Helvetica-Bold').text('Location');
+      doc.moveDown(0.5);
+      doc.fontSize(10).font('Helvetica');
+      doc.text((location as any)?.name || 'Kitchen Location');
+      doc.text((location as any)?.address || '');
+      doc.moveDown(1.5);
+
+      // Claim details
+      doc.fontSize(12).font('Helvetica-Bold').text('Damage Claim Details');
+      doc.moveDown(0.5);
+      doc.fontSize(10).font('Helvetica');
+      doc.text(`Claim Title: ${claim.claimTitle}`);
+      doc.text(`Booking Type: ${claim.bookingType === 'storage' ? 'Storage' : 'Kitchen'}`);
+      doc.text(`Damage Date: ${new Date(claim.damageDate).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })}`);
+      doc.moveDown(0.5);
+      
+      // Description (wrapped)
+      doc.text('Description:', { continued: false });
+      doc.text(claim.claimDescription, { width: 450 });
+      doc.moveDown(1.5);
+
+      // Amount section
+      doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke('#e5e7eb');
+      doc.moveDown(0.5);
+
+      const tableY = doc.y;
+      doc.fontSize(10).font('Helvetica-Bold');
+      doc.text('Description', 50, tableY);
+      doc.text('Amount', 450, tableY, { align: 'right', width: 100 });
+      
+      doc.moveDown(0.5);
+      doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke('#e5e7eb');
+      doc.moveDown(0.5);
+
+      doc.font('Helvetica');
+      const itemY = doc.y;
+      doc.text('Damage Claim Payment', 50, itemY);
+      doc.text(`$${(amountCents / 100).toFixed(2)} CAD`, 450, itemY, { align: 'right', width: 100 });
+
+      doc.moveDown(1);
+      doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke('#e5e7eb');
+      doc.moveDown(0.5);
+
+      // Total
+      doc.font('Helvetica-Bold');
+      const totalY = doc.y;
+      doc.text('Total Charged', 50, totalY);
+      doc.text(`$${(amountCents / 100).toFixed(2)} CAD`, 450, totalY, { align: 'right', width: 100 });
+
+      doc.moveDown(2);
+
+      // Payment info
+      doc.fontSize(10).font('Helvetica');
+      doc.text('Payment Method: Credit/Debit Card');
+      doc.text(`Transaction Date: ${chargeDate.toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`);
+      if (claim.stripePaymentIntentId) {
+        doc.text(`Reference: ${claim.stripePaymentIntentId.slice(-8).toUpperCase()}`);
+      }
+
+      // Footer
+      const dcPageHeight = doc.page.height;
+      const dcFooterY = dcPageHeight - 80;
+
+      doc.moveTo(50, dcFooterY).lineTo(550, dcFooterY).stroke('#e5e7eb');
+      doc.fontSize(9).fillColor('#6b7280').text('For questions, contact support@localcook.shop', 50, dcFooterY + 15, { align: 'center', width: 500 });
+      doc.fillColor('#000000');
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}

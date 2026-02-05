@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { eq, inArray, and, desc, count, ne, sql, or, gte } from "drizzle-orm";
+import { eq, inArray, and, desc, count, ne, sql, or, gte, lte } from "drizzle-orm";
 import { format } from "date-fns";
 import { db } from "../db";
 
@@ -4289,12 +4289,49 @@ router.get("/storage-checkouts/pending", requireFirebaseAuthWithUser, requireMan
         const { getPendingCheckoutReviews } = await import('../services/storage-checkout-service');
         const allPending = await getPendingCheckoutReviews();
         
+        logger.info(`[StorageCheckouts] Manager ${managerId} locations: ${locationIds.join(', ')}`);
+        logger.info(`[StorageCheckouts] All pending checkouts: ${allPending.length}`);
+        
         // Filter to manager's locations
         const pendingCheckouts = allPending.filter(c => locationIds.includes(c.locationId));
+        
+        logger.info(`[StorageCheckouts] Filtered pending checkouts for manager: ${pendingCheckouts.length}`);
 
         res.json({ pendingCheckouts });
     } catch (error) {
         logger.error("Error fetching pending checkouts:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * GET /manager/storage-checkouts/history
+ * Get checkout history (completed and denied) for manager's locations
+ */
+router.get("/storage-checkouts/history", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        const limit = parseInt(req.query.limit as string) || 20;
+
+        // Get manager's location IDs
+        const managerLocations = await db
+            .select({ id: locations.id })
+            .from(locations)
+            .where(eq(locations.managerId, managerId));
+
+        const locationIds = managerLocations.map(l => l.id);
+
+        if (locationIds.length === 0) {
+            return res.json({ checkoutHistory: [] });
+        }
+
+        // Get checkout history
+        const { getCheckoutHistory } = await import('../services/storage-checkout-service');
+        const checkoutHistory = await getCheckoutHistory(locationIds, limit);
+
+        res.json({ checkoutHistory });
+    } catch (error) {
+        logger.error("Error fetching checkout history:", error);
         return errorResponse(res, error);
     }
 });
@@ -4662,6 +4699,8 @@ router.get("/damage-claims/recent-bookings", requireFirebaseAuthWithUser, requir
         }
         
         // Get recent kitchen bookings (bookingDate is the actual date, endTime is just HH:MM format)
+        // Only show PAST bookings that ended within the deadline window
+        const now = new Date();
         const recentKitchenBookings = await db
             .select({
                 id: kitchenBookings.id,
@@ -4682,7 +4721,8 @@ router.get("/damage-claims/recent-bookings", requireFirebaseAuthWithUser, requir
             .where(
                 and(
                     inArray(locations.id, locationIds),
-                    gte(kitchenBookings.bookingDate, cutoffDate),
+                    gte(kitchenBookings.bookingDate, cutoffDate), // Not older than deadline
+                    lte(kitchenBookings.bookingDate, now), // Must be in the past (booking date <= now)
                     eq(kitchenBookings.status, 'confirmed')
                 )
             )
@@ -4709,7 +4749,8 @@ router.get("/damage-claims/recent-bookings", requireFirebaseAuthWithUser, requir
             .where(
                 and(
                     inArray(locations.id, locationIds),
-                    gte(storageBookingsTable.endDate, cutoffDate),
+                    gte(storageBookingsTable.endDate, cutoffDate), // Not older than deadline
+                    lte(storageBookingsTable.endDate, now), // Must be in the past (end date <= now)
                     eq(storageBookingsTable.status, 'confirmed')
                 )
             )

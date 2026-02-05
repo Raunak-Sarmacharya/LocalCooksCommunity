@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 
 interface StorageCheckoutDialogProps {
   open: boolean;
@@ -217,7 +218,7 @@ export function StorageCheckoutDialog({
                 {uploadedPhotos.map((photoUrl, index) => (
                   <div key={index} className="relative group">
                     <img
-                      src={photoUrl}
+                      src={getR2ProxyUrl(photoUrl)}
                       alt={`Checkout photo ${index + 1}`}
                       className="w-full h-20 object-cover rounded-lg border"
                     />

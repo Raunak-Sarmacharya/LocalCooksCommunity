@@ -23,7 +23,7 @@ export type PaymentStatus =
     | 'partially_refunded'
     | 'canceled';
 
-export type BookingType = 'kitchen' | 'storage' | 'equipment' | 'bundle';
+export type BookingType = 'kitchen' | 'storage' | 'equipment' | 'bundle' | 'damage_claim' | 'overstay_penalty' | 'storage_extension';
 
 // Transaction type for transaction history
 export interface Transaction {
@@ -39,6 +39,7 @@ export interface Transaction {
     locationId: number;
     locationName: string;
     itemName?: string | null;
+    description?: string | null; // Description for special transaction types (damage claims, extensions, etc.)
     totalPrice: number;        // Amount in cents - gross amount charged
     managerRevenue: number;    // Amount in cents after fees
     platformFee: number;       // Platform fee in cents - DEPRECATED, use taxAmount

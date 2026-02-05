@@ -2080,848 +2080,2333 @@ var init_domain_error = __esm({
   }
 });
 
-// server/domains/users/user.service.ts
+// server/logger.ts
+var isProd, logger;
+var init_logger = __esm({
+  "server/logger.ts"() {
+    "use strict";
+    isProd = process.env.NODE_ENV === "production";
+    logger = {
+      info: (msg, data) => {
+        if (!isProd) console.log(`[INFO] ${msg}`, data || "");
+      },
+      warn: (msg, data) => {
+        console.warn(`[WARN] ${msg}`, data || "");
+      },
+      error: (msg, error) => {
+        console.error(`[ERROR] ${msg}`, error);
+      },
+      debug: (msg, data) => {
+        if (!isProd) console.log(`[DEBUG] ${msg}`, data || "");
+      }
+    };
+  }
+});
+
+// server/services/overstay-defaults-service.ts
+var overstay_defaults_service_exports = {};
+__export(overstay_defaults_service_exports, {
+  OVERSTAY_DEFAULTS: () => DEFAULTS,
+  getEffectivePenaltyConfig: () => getEffectivePenaltyConfig,
+  getOverstayLocationDefaults: () => getOverstayLocationDefaults,
+  getOverstayPlatformDefaults: () => getOverstayPlatformDefaults
+});
 import { eq as eq2 } from "drizzle-orm";
-var UserService, userService;
-var init_user_service = __esm({
-  "server/domains/users/user.service.ts"() {
+async function getOverstayPlatformDefaults() {
+  try {
+    const [gracePeriodSetting] = await db.select().from(platformSettings).where(eq2(platformSettings.key, "overstay_grace_period_days")).limit(1);
+    const [penaltyRateSetting] = await db.select().from(platformSettings).where(eq2(platformSettings.key, "overstay_penalty_rate")).limit(1);
+    const [maxDaysSetting] = await db.select().from(platformSettings).where(eq2(platformSettings.key, "overstay_max_penalty_days")).limit(1);
+    return {
+      gracePeriodDays: gracePeriodSetting ? parseInt(gracePeriodSetting.value) : DEFAULTS.gracePeriodDays,
+      penaltyRate: penaltyRateSetting ? parseFloat(penaltyRateSetting.value) : DEFAULTS.penaltyRate,
+      maxPenaltyDays: maxDaysSetting ? parseInt(maxDaysSetting.value) : DEFAULTS.maxPenaltyDays
+    };
+  } catch (error) {
+    console.error("[OverstayDefaultsService] Error fetching platform defaults:", error);
+    return DEFAULTS;
+  }
+}
+async function getOverstayLocationDefaults(locationId) {
+  try {
+    const [location] = await db.select({
+      overstayGracePeriodDays: locations.overstayGracePeriodDays,
+      overstayPenaltyRate: locations.overstayPenaltyRate,
+      overstayMaxPenaltyDays: locations.overstayMaxPenaltyDays,
+      overstayPolicyText: locations.overstayPolicyText
+    }).from(locations).where(eq2(locations.id, locationId)).limit(1);
+    if (!location) {
+      return { gracePeriodDays: null, penaltyRate: null, maxPenaltyDays: null, policyText: null };
+    }
+    return {
+      gracePeriodDays: location.overstayGracePeriodDays,
+      penaltyRate: location.overstayPenaltyRate ? parseFloat(location.overstayPenaltyRate.toString()) : null,
+      maxPenaltyDays: location.overstayMaxPenaltyDays,
+      policyText: location.overstayPolicyText
+    };
+  } catch (error) {
+    console.error("[OverstayDefaultsService] Error fetching location defaults:", error);
+    return { gracePeriodDays: null, penaltyRate: null, maxPenaltyDays: null, policyText: null };
+  }
+}
+async function getEffectivePenaltyConfig(listingGracePeriodDays, listingPenaltyRate, listingMaxPenaltyDays, locationId) {
+  const platformDefaults = await getOverstayPlatformDefaults();
+  const effectiveConfig = {
+    gracePeriodDays: platformDefaults.gracePeriodDays,
+    penaltyRate: platformDefaults.penaltyRate,
+    maxPenaltyDays: platformDefaults.maxPenaltyDays,
+    policyText: null
+  };
+  if (locationId) {
+    const locationDefaults = await getOverstayLocationDefaults(locationId);
+    if (locationDefaults.gracePeriodDays !== null) {
+      effectiveConfig.gracePeriodDays = locationDefaults.gracePeriodDays;
+    }
+    if (locationDefaults.penaltyRate !== null) {
+      effectiveConfig.penaltyRate = locationDefaults.penaltyRate;
+    }
+    if (locationDefaults.maxPenaltyDays !== null) {
+      effectiveConfig.maxPenaltyDays = locationDefaults.maxPenaltyDays;
+    }
+    if (locationDefaults.policyText !== null) {
+      effectiveConfig.policyText = locationDefaults.policyText;
+    }
+  }
+  if (listingGracePeriodDays !== null && listingGracePeriodDays !== void 0) {
+    effectiveConfig.gracePeriodDays = listingGracePeriodDays;
+  }
+  if (listingPenaltyRate !== null && listingPenaltyRate !== void 0) {
+    effectiveConfig.penaltyRate = typeof listingPenaltyRate === "string" ? parseFloat(listingPenaltyRate) : listingPenaltyRate;
+  }
+  if (listingMaxPenaltyDays !== null && listingMaxPenaltyDays !== void 0) {
+    effectiveConfig.maxPenaltyDays = listingMaxPenaltyDays;
+  }
+  return effectiveConfig;
+}
+var DEFAULTS;
+var init_overstay_defaults_service = __esm({
+  "server/services/overstay-defaults-service.ts"() {
     "use strict";
-    init_user_repository();
-    init_schema();
     init_db();
-    init_passwordUtils();
-    init_domain_error();
-    UserService = class {
-      repo;
-      constructor(repo) {
-        this.repo = repo || new UserRepository();
-      }
-      async checkUsernameExists(username) {
-        const user = await this.repo.findByUsername(username);
-        return !!user;
-      }
-      async getUser(id) {
-        return this.repo.findById(id);
-      }
-      async getUserByUsername(username) {
-        return this.repo.findByUsername(username);
-      }
-      async getUserByFirebaseUid(uid) {
-        return this.repo.findByFirebaseUid(uid);
-      }
-      async createUser(data) {
-        if (!data.username) {
-          throw new Error("Username is required");
-        }
-        const exists = await this.repo.usernameExists(data.username);
-        if (exists) {
-          throw new DomainError(
-            UserErrorCodes.USERNAME_TAKEN,
-            `Username ${data.username} is already taken`,
-            409
-          );
-        }
-        let hashedPassword = "";
-        if (data.password) {
-          hashedPassword = await hashPassword(data.password);
-        }
-        const userToCreate = {
-          ...data,
-          password: hashedPassword,
-          isVerified: data.isVerified ?? false,
-          has_seen_welcome: data.has_seen_welcome ?? false,
-          isChef: data.isChef ?? false,
-          isManager: data.isManager ?? false,
-          isPortalUser: data.isPortalUser ?? false
-        };
-        return this.repo.create(userToCreate);
-      }
-      async updateUser(id, data) {
-        if (data.password) {
-          data.password = await hashPassword(data.password);
-        }
-        return this.repo.update(id, data);
-      }
-      async updateUserFirebaseUid(id, firebaseUid) {
-        const user = await this.repo.findById(id);
-        if (user && user.firebaseUid) {
-          throw new DomainError(
-            UserErrorCodes.VALIDATION_ERROR,
-            "User already has a linked Firebase account",
-            400
-          );
-        }
-        return this.repo.update(id, { firebaseUid });
-      }
-      async setHasSeenWelcome(id) {
-        await this.repo.update(id, { has_seen_welcome: true });
-      }
-      async updateUserRoles(id, roles) {
-        const mainRole = roles.isChef ? "chef" : void 0;
-        const updateData = {
-          isChef: roles.isChef
-        };
-        if (mainRole) {
-          updateData.role = mainRole;
-        } else {
-          updateData.role = roles.isChef ? "chef" : null;
-        }
-        await this.repo.update(id, updateData);
-      }
-      async getCompleteProfile(id) {
-        const user = await this.repo.findById(id);
-        if (!user) {
-          throw new DomainError(
-            UserErrorCodes.USER_NOT_FOUND,
-            `User not found: ${id}`,
-            404
-          );
-        }
-        return {
-          ...user,
-          firebaseUser: {
-            uid: user.firebaseUid,
-            email: user.username,
-            // Assuming username is email
-            emailVerified: user.isVerified
-          }
-        };
-      }
-      async resetPassword(firebaseUid, newPassword) {
-        const user = await this.repo.findByFirebaseUid(firebaseUid);
-        if (!user) {
-          throw new Error(`User not found for firebaseUid: ${firebaseUid}`);
-        }
-        const hashedPassword = await hashPassword(newPassword);
-        await this.repo.update(user.id, { password: hashedPassword });
-      }
-      async verifyUser(id, isVerified) {
-        return this.repo.update(id, { isVerified });
-      }
-      async markWelcomeSeen(id) {
-        await this.repo.update(id, { has_seen_welcome: true });
-      }
-      async deleteUser(id) {
-        await db.transaction(async (tx) => {
-          const managedLocations = await tx.select().from(locations).where(eq2(locations.managerId, id));
-          if (managedLocations.length > 0) {
-            await tx.update(locations).set({ managerId: null }).where(eq2(locations.managerId, id));
-            console.log(`Removed manager ${id} from ${managedLocations.length} locations`);
-          }
-          await tx.delete(users).where(eq2(users.id, id));
-          console.log(`Deleted user ${id}`);
-        });
-      }
+    init_schema();
+    DEFAULTS = {
+      gracePeriodDays: 3,
+      penaltyRate: 0.1,
+      maxPenaltyDays: 30
     };
-    userService = new UserService();
   }
 });
 
-// server/firebase-auth-middleware.ts
-async function requireFirebaseAuthWithUser(req, res, next) {
+// server/services/notification.service.ts
+var notification_service_exports = {};
+__export(notification_service_exports, {
+  notificationService: () => notificationService
+});
+import { sql } from "drizzle-orm";
+import { format } from "date-fns";
+async function createNotification(params) {
+  const {
+    userId,
+    target,
+    locationId,
+    type,
+    priority = "normal",
+    title,
+    message,
+    metadata = {},
+    actionUrl,
+    actionLabel,
+    expiresAt
+  } = params;
   try {
-    if (res.headersSent) {
-      return;
+    let result;
+    if (target === "manager") {
+      result = await db.execute(sql`
+        INSERT INTO manager_notifications 
+        (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
+        VALUES (
+          ${userId}, 
+          ${locationId || null}, 
+          ${type}::notification_type, 
+          ${priority}::notification_priority, 
+          ${title}, 
+          ${message}, 
+          ${JSON.stringify(metadata)}::jsonb, 
+          ${actionUrl || null}, 
+          ${actionLabel || null}, 
+          ${expiresAt ? expiresAt.toISOString() : null}
+        )
+        RETURNING *
+      `);
+      logger.info(`[NotificationService] Created ${type} notification for manager ${userId}`);
+    } else {
+      result = await db.execute(sql`
+        INSERT INTO chef_notifications 
+        (chef_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
+        VALUES (
+          ${userId}, 
+          ${type}::chef_notification_type, 
+          ${priority}::chef_notification_priority, 
+          ${title}, 
+          ${message}, 
+          ${JSON.stringify(metadata)}::jsonb, 
+          ${actionUrl || null}, 
+          ${actionLabel || null}, 
+          ${expiresAt ? expiresAt.toISOString() : null}
+        )
+        RETURNING *
+      `);
+      logger.info(`[NotificationService] Created ${type} notification for chef ${userId}`);
     }
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({
-        error: "Unauthorized",
-        message: "No auth token provided"
-      });
-    }
-    const token = authHeader.substring(7);
-    const decodedToken = await verifyFirebaseToken(token);
-    if (!decodedToken) {
-      return res.status(401).json({
-        error: "Unauthorized",
-        message: "Invalid auth token"
-      });
-    }
-    req.firebaseUser = {
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-      email_verified: decodedToken.email_verified,
-      name: decodedToken.name,
-      picture: decodedToken.picture
-    };
-    const neonUser = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
-    if (!neonUser) {
-      return res.status(404).json({
-        error: "User not found",
-        message: "This account is not registered with Local Cooks. Please create an account first."
-      });
-    }
-    req.neonUser = {
-      ...neonUser,
-      uid: neonUser.firebaseUid || void 0
-      // Support legacy code that uses .uid
-    };
-    console.log(`\u{1F504} Auth translation: Firebase UID ${req.firebaseUser.uid} \u2192 Neon User ID ${neonUser.id}`, {
-      role: neonUser.role,
-      isChef: neonUser.isChef,
-      isManager: neonUser.isManager
-    });
-    next();
+    return result.rows[0];
   } catch (error) {
-    if (res.headersSent) {
-      console.error("Firebase auth with user verification error (response already sent):", error);
-      return;
-    }
-    console.error("Firebase auth with user verification error:", error);
-    return res.status(500).json({
-      error: "Internal server error",
-      message: "Authentication verification failed"
-    });
+    logger.error(`[NotificationService] Failed to create ${target} notification:`, error);
+    throw error;
   }
 }
-async function optionalFirebaseAuth(req, res, next) {
+async function createManagerNotification(params) {
+  return createNotification({
+    userId: params.managerId,
+    target: "manager",
+    locationId: params.locationId,
+    type: params.type,
+    priority: params.priority,
+    title: params.title,
+    message: params.message,
+    metadata: params.metadata,
+    actionUrl: params.actionUrl,
+    actionLabel: params.actionLabel,
+    expiresAt: params.expiresAt
+  });
+}
+async function createChefNotification(params) {
+  return createNotification({
+    userId: params.chefId,
+    target: "chef",
+    type: params.type,
+    priority: params.priority,
+    title: params.title,
+    message: params.message,
+    metadata: params.metadata,
+    actionUrl: params.actionUrl,
+    actionLabel: params.actionLabel,
+    expiresAt: params.expiresAt
+  });
+}
+async function notifyNewBooking(data) {
+  const actionUrl = `/manager/booking/${data.bookingId}`;
+  logger.info(`[NotificationService] Creating booking_new notification with actionUrl: ${actionUrl}`);
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "booking_new",
+    priority: "high",
+    title: "New Booking Request",
+    message: `${data.chefName} requested to book ${data.kitchenName} on ${data.bookingDate} from ${data.startTime} to ${data.endTime}. Awaiting your approval.`,
+    metadata: {
+      bookingId: data.bookingId,
+      chefName: data.chefName,
+      kitchenName: data.kitchenName,
+      bookingDate: data.bookingDate,
+      startTime: data.startTime,
+      endTime: data.endTime
+    },
+    actionUrl: `/manager/booking/${data.bookingId}`,
+    actionLabel: "Review Booking"
+  });
+}
+async function notifyBookingConfirmed(data) {
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "booking_confirmed",
+    priority: "normal",
+    title: "Booking Confirmed",
+    message: `You confirmed ${data.chefName}'s booking at ${data.kitchenName} on ${data.bookingDate}.`,
+    metadata: {
+      bookingId: data.bookingId,
+      chefName: data.chefName,
+      kitchenName: data.kitchenName
+    },
+    actionUrl: `/manager/booking/${data.bookingId}`,
+    actionLabel: "View Booking"
+  });
+}
+async function notifyBookingCancelled(data) {
+  const isByChef = data.cancelledBy === "chef";
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "booking_cancelled",
+    priority: "high",
+    title: isByChef ? "Booking Cancelled by Chef" : "Booking Cancelled",
+    message: isByChef ? `${data.chefName} cancelled their booking at ${data.kitchenName} on ${data.bookingDate}.` : `Booking at ${data.kitchenName} on ${data.bookingDate} was cancelled.`,
+    metadata: {
+      bookingId: data.bookingId,
+      chefName: data.chefName,
+      kitchenName: data.kitchenName,
+      cancelledBy: data.cancelledBy
+    },
+    actionUrl: `/manager/booking/${data.bookingId}`,
+    actionLabel: "View Details"
+  });
+}
+async function notifyPaymentReceived(data) {
+  const formattedAmount = (data.amount / 100).toFixed(2);
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "payment_received",
+    priority: "normal",
+    title: "Payment Received",
+    message: `Received $${formattedAmount} ${data.currency} from ${data.chefName} for booking at ${data.kitchenName}.`,
+    metadata: {
+      bookingId: data.bookingId,
+      amount: data.amount,
+      currency: data.currency,
+      chefName: data.chefName
+    },
+    actionUrl: `/manager/booking-dashboard?view=revenue`,
+    actionLabel: "View Revenue"
+  });
+}
+async function notifyPaymentFailed(data) {
+  const formattedAmount = (data.amount / 100).toFixed(2);
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "payment_failed",
+    priority: "urgent",
+    title: "Payment Failed",
+    message: `Payment of $${formattedAmount} ${data.currency} from ${data.chefName} failed.${data.reason ? ` Reason: ${data.reason}` : ""}`,
+    metadata: {
+      bookingId: data.bookingId,
+      amount: data.amount,
+      currency: data.currency,
+      chefName: data.chefName,
+      reason: data.reason
+    },
+    actionUrl: `/manager/booking/${data.bookingId}`,
+    actionLabel: "View Booking"
+  });
+}
+async function notifyNewApplication(data) {
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "application_new",
+    priority: "high",
+    title: "New Chef Application",
+    message: `${data.chefName} (${data.chefEmail}) has applied to use your kitchen. Review their application to approve or reject.`,
+    metadata: {
+      applicationId: data.applicationId,
+      chefName: data.chefName,
+      chefEmail: data.chefEmail
+    },
+    actionUrl: `/manager/booking-dashboard?view=applications`,
+    actionLabel: "Review Application"
+  });
+}
+async function notifyApplicationApproved(data) {
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "application_approved",
+    priority: "normal",
+    title: "Application Approved",
+    message: `You approved ${data.chefName}'s application. They can now book your kitchen.`,
+    metadata: {
+      applicationId: data.applicationId,
+      chefName: data.chefName
+    },
+    actionUrl: `/manager/booking-dashboard?view=applications`,
+    actionLabel: "View Applications"
+  });
+}
+async function notifyStorageExpiring(data) {
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "storage_expiring",
+    priority: "high",
+    title: "Storage Booking Expiring",
+    message: `${data.chefName}'s storage booking for "${data.storageName}" expires in ${data.daysUntilExpiry} day${data.daysUntilExpiry !== 1 ? "s" : ""} (${data.expiryDate}).`,
+    metadata: {
+      storageBookingId: data.storageBookingId,
+      chefName: data.chefName,
+      storageName: data.storageName,
+      expiryDate: data.expiryDate,
+      daysUntilExpiry: data.daysUntilExpiry
+    },
+    actionUrl: `/manager/booking-dashboard?view=storage`,
+    actionLabel: "View Storage"
+  });
+}
+async function notifyLicenseApproved(data) {
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "license_approved",
+    priority: "normal",
+    title: "Kitchen License Approved",
+    message: `Your kitchen license for ${data.locationName} has been approved by the admin.${data.expiryDate ? ` Valid until ${data.expiryDate}.` : ""}`,
+    metadata: {
+      locationName: data.locationName,
+      expiryDate: data.expiryDate
+    },
+    actionUrl: `/manager/booking-dashboard?view=settings`,
+    actionLabel: "View Settings"
+  });
+}
+async function notifyLicenseRejected(data) {
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "license_rejected",
+    priority: "urgent",
+    title: "Kitchen License Rejected",
+    message: `Your kitchen license for ${data.locationName} was rejected.${data.feedback ? ` Feedback: ${data.feedback}` : " Please upload a new license."}`,
+    metadata: {
+      locationName: data.locationName,
+      feedback: data.feedback
+    },
+    actionUrl: `/manager/booking-dashboard?view=settings`,
+    actionLabel: "Upload New License"
+  });
+}
+async function notifyLicenseExpiring(data) {
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "license_expiring",
+    priority: "high",
+    title: "Kitchen License Expiring Soon",
+    message: `Your kitchen license for ${data.locationName} expires in ${data.daysUntilExpiry} day${data.daysUntilExpiry !== 1 ? "s" : ""} (${data.expiryDate}). Please renew to avoid service interruption.`,
+    metadata: {
+      locationName: data.locationName,
+      expiryDate: data.expiryDate,
+      daysUntilExpiry: data.daysUntilExpiry
+    },
+    actionUrl: `/manager/booking-dashboard?view=settings`,
+    actionLabel: "Renew License"
+  });
+}
+async function notifyNewMessage(data) {
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "message_received",
+    priority: "normal",
+    title: `Message from ${data.senderName}`,
+    message: data.messagePreview.length > 100 ? `${data.messagePreview.substring(0, 100)}...` : data.messagePreview,
+    metadata: {
+      senderName: data.senderName,
+      conversationId: data.conversationId
+    },
+    actionUrl: `/manager/booking-dashboard?view=messages`,
+    actionLabel: "View Message"
+  });
+}
+async function notifySystemAnnouncement(managerId, data) {
+  return createManagerNotification({
+    managerId,
+    type: "system_announcement",
+    priority: data.priority || "normal",
+    title: data.title,
+    message: data.message,
+    metadata: { isSystemAnnouncement: true },
+    actionUrl: data.actionUrl,
+    actionLabel: data.actionLabel
+  });
+}
+async function broadcastSystemAnnouncement(data) {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return next();
-    }
-    const token = authHeader.substring(7);
-    const decodedToken = await verifyFirebaseToken(token);
-    if (decodedToken) {
-      req.firebaseUser = {
-        uid: decodedToken.uid,
-        email: decodedToken.email,
-        email_verified: decodedToken.email_verified,
-        name: decodedToken.name,
-        picture: decodedToken.picture
-      };
-      const neonUser = await userService.getUserByFirebaseUid(decodedToken.uid);
-      if (neonUser) {
-        req.neonUser = {
-          ...neonUser,
-          uid: neonUser.firebaseUid || void 0
-        };
-      }
-    }
-    next();
+    const result = await db.execute(sql`
+      SELECT id FROM users WHERE is_manager = true
+    `);
+    const managerIds = result.rows.map((row) => row.id);
+    const notifications = await Promise.all(
+      managerIds.map((managerId) => notifySystemAnnouncement(managerId, data))
+    );
+    logger.info(`[NotificationService] Broadcasted system announcement to ${managerIds.length} managers`);
+    return notifications;
   } catch (error) {
-    console.error("Optional Firebase auth error:", error);
-    next();
+    logger.error(`[NotificationService] Failed to broadcast announcement:`, error);
+    throw error;
   }
 }
-function requireAdmin(req, res, next) {
-  if (res.headersSent) {
-    return;
-  }
-  if (!req.neonUser) {
-    return res.status(401).json({
-      error: "Unauthorized",
-      message: "Authentication required"
-    });
-  }
-  if (req.neonUser.role !== "admin") {
-    return res.status(403).json({
-      error: "Forbidden",
-      message: "Admin access required"
-    });
-  }
-  next();
+async function notifyChefBookingConfirmed(data) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "booking_confirmed",
+    priority: "high",
+    title: "Booking Confirmed!",
+    message: `Your booking at ${data.kitchenName} on ${data.bookingDate} from ${data.startTime} to ${data.endTime} has been confirmed.`,
+    metadata: {
+      bookingId: data.bookingId,
+      kitchenName: data.kitchenName,
+      locationName: data.locationName,
+      bookingDate: data.bookingDate
+    },
+    actionUrl: `/dashboard?view=bookings`,
+    actionLabel: "View Booking"
+  });
 }
-function requireManager(req, res, next) {
-  if (res.headersSent) {
-    return;
-  }
-  if (!req.neonUser) {
-    return res.status(401).json({
-      error: "Unauthorized",
-      message: "Authentication required"
-    });
-  }
-  if (req.neonUser.role !== "manager") {
-    return res.status(403).json({
-      error: "Forbidden",
-      message: "Manager access required"
-    });
-  }
-  next();
+async function notifyChefBookingCancelled(data) {
+  const isByManager = data.cancelledBy === "manager";
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "booking_cancelled",
+    priority: "high",
+    title: isByManager ? "Booking Cancelled by Manager" : "Booking Cancelled",
+    message: isByManager ? `Your booking at ${data.kitchenName} on ${data.bookingDate} was cancelled by the manager.${data.reason ? ` Reason: ${data.reason}` : ""}` : `Your booking at ${data.kitchenName} on ${data.bookingDate} has been cancelled.`,
+    metadata: {
+      bookingId: data.bookingId,
+      kitchenName: data.kitchenName,
+      cancelledBy: data.cancelledBy,
+      reason: data.reason
+    },
+    actionUrl: `/dashboard?view=bookings`,
+    actionLabel: "View Details"
+  });
 }
-var init_firebase_auth_middleware = __esm({
-  "server/firebase-auth-middleware.ts"() {
+async function notifyChefApplicationApproved(data) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "application_approved",
+    priority: "high",
+    title: "Application Approved!",
+    message: `Congratulations! Your application to ${data.kitchenName} at ${data.locationName} has been approved. You can now book this kitchen.`,
+    metadata: {
+      kitchenName: data.kitchenName,
+      locationName: data.locationName
+    },
+    actionUrl: `/dashboard?view=discover`,
+    actionLabel: "Book Now"
+  });
+}
+async function notifyChefApplicationRejected(data) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "application_rejected",
+    priority: "normal",
+    title: "Application Update",
+    message: `Your application to ${data.kitchenName} at ${data.locationName} was not approved.${data.reason ? ` Reason: ${data.reason}` : ""}`,
+    metadata: {
+      kitchenName: data.kitchenName,
+      locationName: data.locationName,
+      reason: data.reason
+    },
+    actionUrl: `/dashboard?view=applications`,
+    actionLabel: "View Details"
+  });
+}
+async function notifyChefWelcome(chefId, chefName) {
+  return createChefNotification({
+    chefId,
+    type: "welcome",
+    priority: "normal",
+    title: `Welcome to LocalCooks, ${chefName}!`,
+    message: "Your account is set up. Start by exploring available kitchens and submitting your first application.",
+    metadata: { isWelcome: true },
+    actionUrl: `/dashboard?view=discover`,
+    actionLabel: "Explore Kitchens"
+  });
+}
+async function notifyChefPaymentReceived(data) {
+  const formattedAmount = (data.amount / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "payment_received",
+    priority: "normal",
+    title: "Payment Confirmed",
+    message: `Your payment of $${formattedAmount} ${data.currency} for ${data.kitchenName} has been processed.`,
+    metadata: {
+      amount: data.amount,
+      currency: data.currency,
+      bookingId: data.bookingId
+    },
+    actionUrl: `/dashboard?view=bookings`,
+    actionLabel: "View Booking"
+  });
+}
+async function notifyChefMessage(data) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "message_received",
+    priority: "normal",
+    title: `Message from ${data.senderName}`,
+    message: data.messagePreview.length > 100 ? `${data.messagePreview.substring(0, 100)}...` : data.messagePreview,
+    metadata: {
+      senderName: data.senderName,
+      conversationId: data.conversationId
+    },
+    actionUrl: `/dashboard?view=messages`,
+    actionLabel: "View Message"
+  });
+}
+async function broadcastChefAnnouncement(data) {
+  try {
+    const result = await db.execute(sql`
+      SELECT id FROM users WHERE is_chef = true OR role = 'chef'
+    `);
+    const chefIds = result.rows.map((row) => row.id);
+    const notifications = await Promise.all(
+      chefIds.map((chefId) => createChefNotification({
+        chefId,
+        type: "system_announcement",
+        priority: data.priority || "normal",
+        title: data.title,
+        message: data.message,
+        metadata: { isSystemAnnouncement: true },
+        actionUrl: data.actionUrl,
+        actionLabel: data.actionLabel
+      }))
+    );
+    logger.info(`[NotificationService] Broadcasted system announcement to ${chefIds.length} chefs`);
+    return notifications;
+  } catch (error) {
+    logger.error(`[NotificationService] Failed to broadcast chef announcement:`, error);
+    throw error;
+  }
+}
+async function notifyManagerStorageExtensionPending(data) {
+  if (!data.managerId) return;
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "storage_extension_approved",
+    // Using existing type
+    priority: "high",
+    title: "Storage Extension Request",
+    message: `${data.chefName} has requested a ${data.extensionDays}-day extension for "${data.storageName}". Payment received - awaiting your approval.`,
+    metadata: {
+      storageBookingId: data.storageBookingId,
+      storageName: data.storageName,
+      extensionDays: data.extensionDays,
+      newEndDate: data.newEndDate,
+      chefName: data.chefName
+    },
+    actionUrl: `/manager/booking-dashboard?view=storage`,
+    actionLabel: "Review Extension"
+  });
+}
+async function notifyChefStorageExtensionApproved(data) {
+  if (!data.chefId) return;
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "storage_extension_approved",
+    priority: "high",
+    title: "Storage Extension Approved!",
+    message: `Your ${data.extensionDays}-day extension for "${data.storageName}" has been approved. New end date: ${data.newEndDate}.`,
+    metadata: {
+      storageBookingId: data.storageBookingId,
+      storageName: data.storageName,
+      extensionDays: data.extensionDays,
+      newEndDate: data.newEndDate
+    },
+    actionUrl: `/dashboard?view=bookings`,
+    actionLabel: "View Booking"
+  });
+}
+async function notifyChefStorageExtensionRejected(data) {
+  if (!data.chefId) return;
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "storage_extension_rejected",
+    priority: "high",
+    title: "Storage Extension Declined",
+    message: `Your extension request for "${data.storageName}" was declined.${data.reason ? ` Reason: ${data.reason}` : ""} A refund will be processed.`,
+    metadata: {
+      storageBookingId: data.storageBookingId,
+      storageName: data.storageName,
+      extensionDays: data.extensionDays,
+      reason: data.reason
+    },
+    actionUrl: `/dashboard?view=bookings`,
+    actionLabel: "View Details"
+  });
+}
+async function notifyChefOverstayDetected(data) {
+  const formattedAmount = (data.penaltyAmountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "overstay_detected",
+    priority: "urgent",
+    title: "\u26A0\uFE0F Storage Overstay Detected",
+    message: `Your storage "${data.storageName}" at ${data.kitchenName} is ${data.daysOverdue} day(s) overdue. Potential penalty: $${formattedAmount}. Please extend or remove your items to avoid charges.`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      daysOverdue: data.daysOverdue,
+      penaltyAmountCents: data.penaltyAmountCents
+    },
+    actionUrl: `/dashboard?view=storage`,
+    actionLabel: "Resolve Now"
+  });
+}
+async function notifyManagerOverstayPendingReview(data) {
+  const formattedAmount = (data.penaltyAmountCents / 100).toFixed(2);
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "overstay_pending_review",
+    priority: "high",
+    title: "Overstay Requires Review",
+    message: `${data.chefName}'s storage "${data.storageName}" is ${data.daysOverdue} day(s) overdue. Calculated penalty: $${formattedAmount}. Review and approve or waive the penalty.`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      chefName: data.chefName,
+      daysOverdue: data.daysOverdue,
+      penaltyAmountCents: data.penaltyAmountCents
+    },
+    actionUrl: `/manager/booking-dashboard?view=overstays`,
+    actionLabel: "Review Penalty"
+  });
+}
+async function notifyChefPenaltyApproved(data) {
+  const formattedAmount = (data.penaltyAmountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "overstay_penalty_approved",
+    priority: "urgent",
+    title: "Overstay Penalty Approved",
+    message: `A $${formattedAmount} penalty for your storage "${data.storageName}" (${data.daysOverdue} days overdue) has been approved. Payment will be charged to your saved card.`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      daysOverdue: data.daysOverdue,
+      penaltyAmountCents: data.penaltyAmountCents
+    },
+    actionUrl: `/dashboard?view=payments`,
+    actionLabel: "View Details"
+  });
+}
+async function notifyChefPenaltyWaived(data) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "overstay_penalty_waived",
+    priority: "normal",
+    title: "Overstay Penalty Waived",
+    message: `Good news! The penalty for your storage "${data.storageName}" has been waived by the manager.${data.waiveReason ? ` Reason: ${data.waiveReason}` : ""}`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      waiveReason: data.waiveReason
+    },
+    actionUrl: `/dashboard?view=storage`,
+    actionLabel: "View Storage"
+  });
+}
+async function notifyChefPenaltyCharged(data) {
+  const formattedAmount = (data.penaltyAmountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "overstay_penalty_charged",
+    priority: "high",
+    title: "Overstay Penalty Charged",
+    message: `$${formattedAmount} has been charged to your card for the storage overstay at "${data.storageName}" (${data.daysOverdue} days overdue).`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      daysOverdue: data.daysOverdue,
+      penaltyAmountCents: data.penaltyAmountCents
+    },
+    actionUrl: `/dashboard?view=payments`,
+    actionLabel: "View Receipt"
+  });
+}
+async function notifyManagerPenaltyReceived(data) {
+  const formattedAmount = (data.penaltyAmountCents / 100).toFixed(2);
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "payment_received",
+    priority: "normal",
+    title: "Overstay Penalty Collected",
+    message: `$${formattedAmount} overstay penalty collected from ${data.chefName} for "${data.storageName}".`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      chefName: data.chefName,
+      penaltyAmountCents: data.penaltyAmountCents
+    },
+    actionUrl: `/manager/booking-dashboard?view=revenue`,
+    actionLabel: "View Revenue"
+  });
+}
+async function notifyChefPaymentRequired(data) {
+  const formattedAmount = (data.penaltyAmountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "overstay_payment_required",
+    priority: "urgent",
+    title: "\u26A0\uFE0F Payment Action Required",
+    message: `Your card requires additional verification to process the $${formattedAmount} overstay penalty. Please complete payment to avoid account restrictions.`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      penaltyAmountCents: data.penaltyAmountCents,
+      paymentUrl: data.paymentUrl
+    },
+    actionUrl: data.paymentUrl || `/dashboard?view=payments`,
+    actionLabel: "Complete Payment"
+  });
+}
+async function notifyChefOverstayRefunded(data) {
+  const formattedAmount = (data.refundAmountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "overstay_refunded",
+    priority: "normal",
+    title: "Overstay Penalty Refunded",
+    message: `$${formattedAmount} has been refunded for the overstay penalty on "${data.storageName}".${data.refundReason ? ` Reason: ${data.refundReason}` : ""}`,
+    metadata: {
+      overstayId: data.overstayId,
+      storageName: data.storageName,
+      refundAmountCents: data.refundAmountCents,
+      refundReason: data.refundReason
+    },
+    actionUrl: `/dashboard?view=payments`,
+    actionLabel: "View Details"
+  });
+}
+async function notifyChefDamageClaimFiled(data) {
+  const formattedAmount = (data.amountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "damage_claim_filed",
+    priority: "urgent",
+    title: "\u26A0\uFE0F Damage Claim Filed",
+    message: `${data.managerName} has filed a $${formattedAmount} damage claim: "${data.claimTitle}" at ${data.locationName}. Please respond by ${format(data.responseDeadline, "MMM d, yyyy h:mm a")}.`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      amountCents: data.amountCents,
+      locationName: data.locationName,
+      responseDeadline: data.responseDeadline.toISOString()
+    },
+    actionUrl: `/dashboard?view=damage-claims`,
+    actionLabel: "Respond Now"
+  });
+}
+async function notifyManagerClaimResponseReceived(data) {
+  const formattedAmount = (data.amountCents / 100).toFixed(2);
+  const isAccepted = data.responseType === "accepted";
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "damage_claim_response_received",
+    priority: "high",
+    title: isAccepted ? "Damage Claim Accepted" : "Damage Claim Disputed",
+    message: isAccepted ? `${data.chefName} accepted your $${formattedAmount} damage claim "${data.claimTitle}". Payment will be charged automatically.` : `${data.chefName} disputed your damage claim "${data.claimTitle}". Admin review required.`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      chefName: data.chefName,
+      responseType: data.responseType,
+      chefResponse: data.chefResponse
+    },
+    actionUrl: `/manager/booking-dashboard?view=damage-claims`,
+    actionLabel: "View Claim"
+  });
+}
+async function notifyChefClaimDecision(data) {
+  const isApproved = data.decision === "approved" || data.decision === "partially_approved";
+  const finalAmount = data.approvedAmountCents || data.amountCents;
+  const formattedAmount = (finalAmount / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: isApproved ? "damage_claim_approved" : "damage_claim_rejected",
+    priority: "high",
+    title: isApproved ? `Damage Claim ${data.decision === "partially_approved" ? "Partially " : ""}Approved` : "Damage Claim Rejected",
+    message: isApproved ? `The damage claim "${data.claimTitle}" has been ${data.decision === "partially_approved" ? "partially " : ""}approved for $${formattedAmount}. Payment will be charged to your card.` : `The damage claim "${data.claimTitle}" has been rejected.${data.decisionReason ? ` Reason: ${data.decisionReason}` : ""}`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      decision: data.decision,
+      approvedAmountCents: data.approvedAmountCents,
+      decisionReason: data.decisionReason
+    },
+    actionUrl: `/dashboard?view=damage-claims`,
+    actionLabel: "View Details"
+  });
+}
+async function notifyManagerClaimDecision(data) {
+  const isApproved = data.decision === "approved" || data.decision === "partially_approved";
+  const finalAmount = data.approvedAmountCents || data.amountCents;
+  const formattedAmount = (finalAmount / 100).toFixed(2);
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: isApproved ? "damage_claim_approved" : "damage_claim_rejected",
+    priority: "normal",
+    title: isApproved ? `Damage Claim ${data.decision === "partially_approved" ? "Partially " : ""}Approved` : "Damage Claim Rejected",
+    message: isApproved ? `Admin approved your damage claim "${data.claimTitle}" for $${formattedAmount}.` : `Admin rejected your damage claim "${data.claimTitle}".${data.decisionReason ? ` Reason: ${data.decisionReason}` : ""}`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      decision: data.decision,
+      approvedAmountCents: data.approvedAmountCents,
+      decisionReason: data.decisionReason
+    },
+    actionUrl: `/manager/booking-dashboard?view=damage-claims`,
+    actionLabel: "View Claim"
+  });
+}
+async function notifyChefDamageClaimCharged(data) {
+  const formattedAmount = (data.amountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "damage_claim_charged",
+    priority: "high",
+    title: "Damage Claim Charged",
+    message: `$${formattedAmount} has been charged to your card for the damage claim "${data.claimTitle}" at ${data.locationName}.`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      amountCents: data.amountCents,
+      locationName: data.locationName
+    },
+    actionUrl: `/dashboard?view=payments`,
+    actionLabel: "View Receipt"
+  });
+}
+async function notifyManagerDamageClaimReceived(data) {
+  const formattedAmount = (data.amountCents / 100).toFixed(2);
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "payment_received",
+    priority: "normal",
+    title: "Damage Claim Payment Received",
+    message: `$${formattedAmount} collected from ${data.chefName} for damage claim "${data.claimTitle}".`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      chefName: data.chefName,
+      amountCents: data.amountCents
+    },
+    actionUrl: `/manager/booking-dashboard?view=revenue`,
+    actionLabel: "View Revenue"
+  });
+}
+async function notifyChefDamageClaimRefunded(data) {
+  const formattedAmount = (data.refundAmountCents / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "damage_claim_refunded",
+    priority: "normal",
+    title: "Damage Claim Refunded",
+    message: `$${formattedAmount} has been refunded for the damage claim "${data.claimTitle}".${data.refundReason ? ` Reason: ${data.refundReason}` : ""}`,
+    metadata: {
+      claimId: data.claimId,
+      claimTitle: data.claimTitle,
+      refundAmountCents: data.refundAmountCents,
+      refundReason: data.refundReason
+    },
+    actionUrl: `/dashboard?view=payments`,
+    actionLabel: "View Details"
+  });
+}
+var notificationService;
+var init_notification_service = __esm({
+  "server/services/notification.service.ts"() {
     "use strict";
-    init_firebase_setup();
-    init_user_service();
+    init_db();
+    init_logger();
+    notificationService = {
+      // Core - Unified
+      create: createNotification,
+      createForManager: createManagerNotification,
+      createForChef: createChefNotification,
+      // Manager: Booking
+      notifyNewBooking,
+      notifyBookingConfirmed,
+      notifyBookingCancelled,
+      // Manager: Payment
+      notifyPaymentReceived,
+      notifyPaymentFailed,
+      // Manager: Application
+      notifyNewApplication,
+      notifyApplicationApproved,
+      // Manager: Storage & License
+      notifyStorageExpiring,
+      notifyLicenseApproved,
+      notifyLicenseRejected,
+      notifyLicenseExpiring,
+      // Manager: Message & System
+      notifyNewMessage,
+      notifySystemAnnouncement,
+      broadcastSystemAnnouncement,
+      // Chef: Booking
+      notifyChefBookingConfirmed,
+      notifyChefBookingCancelled,
+      // Chef: Application
+      notifyChefApplicationApproved,
+      notifyChefApplicationRejected,
+      // Chef: Other
+      notifyChefWelcome,
+      notifyChefPaymentReceived,
+      notifyChefMessage,
+      broadcastChefAnnouncement,
+      // Storage Extension
+      notifyManagerStorageExtensionPending,
+      notifyChefStorageExtensionApproved,
+      notifyChefStorageExtensionRejected,
+      // Overstay Penalty
+      notifyChefOverstayDetected,
+      notifyManagerOverstayPendingReview,
+      notifyChefPenaltyApproved,
+      notifyChefPenaltyWaived,
+      notifyChefPenaltyCharged,
+      notifyManagerPenaltyReceived,
+      notifyChefPaymentRequired,
+      notifyChefOverstayRefunded,
+      // Damage Claim
+      notifyChefDamageClaimFiled,
+      notifyManagerClaimResponseReceived,
+      notifyChefClaimDecision,
+      notifyManagerClaimDecision,
+      notifyChefDamageClaimCharged,
+      notifyManagerDamageClaimReceived,
+      notifyChefDamageClaimRefunded
+    };
   }
 });
 
-// server/r2-storage.ts
-var r2_storage_exports = {};
-__export(r2_storage_exports, {
-  deleteFromR2: () => deleteFromR2,
-  fileExistsInR2: () => fileExistsInR2,
-  getPresignedUrl: () => getPresignedUrl,
-  isR2Configured: () => isR2Configured,
-  uploadToR2: () => uploadToR2
+// server/services/stripe-checkout-fee-service.ts
+var stripe_checkout_fee_service_exports = {};
+__export(stripe_checkout_fee_service_exports, {
+  DEFAULT_FEE_CONFIG: () => DEFAULT_FEE_CONFIG,
+  FEE_CONFIG: () => FEE_CONFIG,
+  calculateCheckoutFees: () => calculateCheckoutFees,
+  calculateCheckoutFeesAsync: () => calculateCheckoutFeesAsync,
+  calculateCheckoutFeesWithRates: () => calculateCheckoutFeesWithRates,
+  clearFeeConfigCache: () => clearFeeConfigCache,
+  getFeeConfig: () => getFeeConfig
 });
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-function getR2Config() {
+async function getFeeConfig() {
+  if (feeConfigCache && Date.now() - feeConfigCache.timestamp < CACHE_TTL_MS) {
+    return feeConfigCache.config;
+  }
+  try {
+    const allSettings = await db.select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings);
+    const settingsMap = new Map(allSettings.map((s) => [s.key, s.value]));
+    const parseFloatOrDefault = (value, defaultValue) => {
+      if (value === void 0 || value === "") return defaultValue;
+      const parsed = parseFloat(value);
+      return isNaN(parsed) ? defaultValue : parsed;
+    };
+    const parseIntOrDefault = (value, defaultValue) => {
+      if (value === void 0 || value === "") return defaultValue;
+      const parsed = parseInt(value, 10);
+      return isNaN(parsed) ? defaultValue : parsed;
+    };
+    const config = {
+      stripePercentageFee: parseFloatOrDefault(settingsMap.get("stripe_percentage_fee"), DEFAULT_FEE_CONFIG.stripePercentageFee),
+      stripeFlatFeeCents: parseIntOrDefault(settingsMap.get("stripe_flat_fee_cents"), DEFAULT_FEE_CONFIG.stripeFlatFeeCents),
+      platformCommissionRate: parseFloatOrDefault(settingsMap.get("platform_commission_rate"), DEFAULT_FEE_CONFIG.platformCommissionRate),
+      minimumApplicationFeeCents: parseIntOrDefault(settingsMap.get("minimum_application_fee_cents"), DEFAULT_FEE_CONFIG.minimumApplicationFeeCents),
+      useStripePlatformPricing: settingsMap.get("use_stripe_platform_pricing") === "true"
+    };
+    if (config.stripePercentageFee < 0 || config.stripePercentageFee > 1) {
+      console.warn("Invalid stripe_percentage_fee, using default");
+      config.stripePercentageFee = DEFAULT_FEE_CONFIG.stripePercentageFee;
+    }
+    if (config.platformCommissionRate < 0 || config.platformCommissionRate > 1) {
+      console.warn("Invalid platform_commission_rate, using default");
+      config.platformCommissionRate = DEFAULT_FEE_CONFIG.platformCommissionRate;
+    }
+    feeConfigCache = { config, timestamp: Date.now() };
+    return config;
+  } catch (error) {
+    console.error("Error fetching fee config from database, using defaults:", error);
+    return DEFAULT_FEE_CONFIG;
+  }
+}
+function clearFeeConfigCache() {
+  feeConfigCache = null;
+}
+function calculateCheckoutFees(bookingPrice, options) {
+  if (bookingPrice <= 0) {
+    throw new Error("Booking price must be greater than 0");
+  }
+  const platformCommissionRate = options?.platformCommissionRate ?? FEE_CONFIG.PLATFORM_COMMISSION_RATE;
+  const chargeFeesToCustomer = options?.chargeFeesToCustomer ?? false;
+  const bookingPriceInCents = Math.round(bookingPrice * 100);
+  const stripeProcessingFeeInCents = Math.round(
+    bookingPriceInCents * FEE_CONFIG.STRIPE_PERCENTAGE_FEE + FEE_CONFIG.STRIPE_FLAT_FEE_CENTS
+  );
+  const platformCommissionInCents = Math.round(bookingPriceInCents * platformCommissionRate);
+  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
+  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, FEE_CONFIG.MINIMUM_APPLICATION_FEE_CENTS);
+  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
+  if (managerReceivesInCents <= 0) {
+    throw new Error(
+      `Application fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
+    );
+  }
+  const totalChargeInCents = chargeFeesToCustomer ? bookingPriceInCents + totalPlatformFeeInCents : bookingPriceInCents;
   return {
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-    accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
-    secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
-    bucketName: process.env.CLOUDFLARE_R2_BUCKET_NAME,
-    publicUrl: process.env.CLOUDFLARE_R2_PUBLIC_URL
+    bookingPriceInCents,
+    stripeProcessingFeeInCents,
+    platformCommissionInCents,
+    totalPlatformFeeInCents,
+    totalChargeInCents,
+    managerReceivesInCents,
+    // Legacy fields for backward compatibility
+    percentageFeeInCents: stripeProcessingFeeInCents,
+    flatFeeInCents: FEE_CONFIG.STRIPE_FLAT_FEE_CENTS
   };
 }
-function getR2PublicUrl() {
-  const config = getR2Config();
-  if (config.publicUrl) {
-    return config.publicUrl;
+function calculateCheckoutFeesWithRates(bookingPrice, stripePercentage, stripeFlatCents, platformCommissionRate, minimumFeeCents = 50) {
+  if (bookingPrice <= 0) {
+    throw new Error("Booking price must be greater than 0");
   }
-  if (config.accountId && config.bucketName) {
-    return `https://${config.accountId}.r2.cloudflarestorage.com/${config.bucketName}`;
+  const bookingPriceInCents = Math.round(bookingPrice * 100);
+  const stripeProcessingFeeInCents = Math.round(
+    bookingPriceInCents * stripePercentage + stripeFlatCents
+  );
+  const platformCommissionInCents = Math.round(bookingPriceInCents * platformCommissionRate);
+  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
+  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, minimumFeeCents);
+  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
+  if (managerReceivesInCents <= 0) {
+    throw new Error("Total fees exceed booking price");
   }
-  return "";
+  return {
+    bookingPriceInCents,
+    stripeProcessingFeeInCents,
+    platformCommissionInCents,
+    totalPlatformFeeInCents,
+    totalChargeInCents: bookingPriceInCents,
+    managerReceivesInCents,
+    percentageFeeInCents: stripeProcessingFeeInCents,
+    flatFeeInCents: stripeFlatCents
+  };
 }
-function getR2Endpoint() {
-  const config = getR2Config();
-  return config.accountId ? `https://${config.accountId}.r2.cloudflarestorage.com` : "";
+async function calculateCheckoutFeesAsync(bookingPriceInCents) {
+  if (bookingPriceInCents <= 0) {
+    throw new Error("Booking price must be greater than 0");
+  }
+  const config = await getFeeConfig();
+  if (config.useStripePlatformPricing) {
+    return {
+      bookingPriceInCents,
+      stripeProcessingFeeInCents: 0,
+      platformCommissionInCents: 0,
+      totalPlatformFeeInCents: 0,
+      totalChargeInCents: bookingPriceInCents,
+      managerReceivesInCents: bookingPriceInCents,
+      percentageFeeInCents: 0,
+      flatFeeInCents: 0,
+      useStripePlatformPricing: true
+    };
+  }
+  const stripeProcessingFeeInCents = Math.round(
+    bookingPriceInCents * config.stripePercentageFee + config.stripeFlatFeeCents
+  );
+  const platformCommissionInCents = Math.round(
+    bookingPriceInCents * config.platformCommissionRate
+  );
+  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
+  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, config.minimumApplicationFeeCents);
+  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
+  if (managerReceivesInCents <= 0) {
+    throw new Error(
+      `Application fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
+    );
+  }
+  return {
+    bookingPriceInCents,
+    stripeProcessingFeeInCents,
+    platformCommissionInCents,
+    totalPlatformFeeInCents,
+    totalChargeInCents: bookingPriceInCents,
+    managerReceivesInCents,
+    percentageFeeInCents: stripeProcessingFeeInCents,
+    flatFeeInCents: config.stripeFlatFeeCents,
+    useStripePlatformPricing: false
+  };
 }
-function getS3Client() {
-  if (!s3Client) {
-    const config = getR2Config();
-    const endpoint = getR2Endpoint();
-    if (!config.accountId || !config.accessKeyId || !config.secretAccessKey || !config.bucketName) {
-      throw new Error("Cloudflare R2 credentials not configured. Please set CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_R2_ACCESS_KEY_ID, CLOUDFLARE_R2_SECRET_ACCESS_KEY, and CLOUDFLARE_R2_BUCKET_NAME environment variables.");
+var DEFAULT_FEE_CONFIG, feeConfigCache, CACHE_TTL_MS, FEE_CONFIG;
+var init_stripe_checkout_fee_service = __esm({
+  "server/services/stripe-checkout-fee-service.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    DEFAULT_FEE_CONFIG = {
+      stripePercentageFee: 0.029,
+      // 2.9% - Stripe Canada card processing fee
+      stripeFlatFeeCents: 30,
+      // $0.30 CAD - Stripe Canada flat fee per transaction
+      platformCommissionRate: 0,
+      // 0% platform commission for break-even
+      minimumApplicationFeeCents: 0,
+      // No minimum for break-even mode
+      useStripePlatformPricing: false
+    };
+    feeConfigCache = null;
+    CACHE_TTL_MS = 5 * 60 * 1e3;
+    FEE_CONFIG = {
+      // Stripe processing fees (Canada)
+      STRIPE_PERCENTAGE_FEE: DEFAULT_FEE_CONFIG.stripePercentageFee,
+      // 2.9%
+      STRIPE_FLAT_FEE_CENTS: DEFAULT_FEE_CONFIG.stripeFlatFeeCents,
+      // $0.30 CAD
+      // Platform commission (0% for break-even)
+      PLATFORM_COMMISSION_RATE: DEFAULT_FEE_CONFIG.platformCommissionRate,
+      // 0%
+      MINIMUM_APPLICATION_FEE_CENTS: DEFAULT_FEE_CONFIG.minimumApplicationFeeCents
+      // 0
+    };
+  }
+});
+
+// server/services/payment-transactions-service.ts
+var payment_transactions_service_exports = {};
+__export(payment_transactions_service_exports, {
+  addPaymentHistory: () => addPaymentHistory,
+  createPaymentTransaction: () => createPaymentTransaction,
+  findPaymentTransactionByBooking: () => findPaymentTransactionByBooking,
+  findPaymentTransactionById: () => findPaymentTransactionById,
+  findPaymentTransactionByIntentId: () => findPaymentTransactionByIntentId,
+  findPaymentTransactionByMetadata: () => findPaymentTransactionByMetadata,
+  getManagerPaymentTransactions: () => getManagerPaymentTransactions,
+  getPaymentHistory: () => getPaymentHistory,
+  syncExistingPaymentTransactionsFromStripe: () => syncExistingPaymentTransactionsFromStripe,
+  syncStripeAmountsToBookings: () => syncStripeAmountsToBookings,
+  syncStripeFees: () => syncStripeFees,
+  updatePaymentTransaction: () => updatePaymentTransaction
+});
+import { sql as sql2 } from "drizzle-orm";
+async function createPaymentTransaction(params, db2) {
+  const {
+    bookingId,
+    bookingType,
+    chefId,
+    managerId,
+    amount,
+    baseAmount,
+    serviceFee,
+    managerRevenue,
+    currency = "CAD",
+    paymentIntentId,
+    chargeId,
+    paymentMethodId,
+    status = "pending",
+    stripeStatus,
+    metadata = {}
+  } = params;
+  const netAmount = amount;
+  const result = await db2.execute(sql2`
+    INSERT INTO payment_transactions (
+      booking_id,
+      booking_type,
+      chef_id,
+      manager_id,
+      amount,
+      base_amount,
+      service_fee,
+      manager_revenue,
+      refund_amount,
+      net_amount,
+      currency,
+      payment_intent_id,
+      charge_id,
+      payment_method_id,
+      status,
+      stripe_status,
+      metadata
+    ) VALUES (
+      ${bookingId},
+      ${bookingType},
+      ${chefId},
+      ${managerId},
+      ${amount.toString()},
+      ${baseAmount.toString()},
+      ${serviceFee.toString()},
+      ${managerRevenue.toString()},
+      '0',
+      ${netAmount.toString()},
+      ${currency},
+      ${paymentIntentId || null},
+      ${chargeId || null},
+      ${paymentMethodId || null},
+      ${status},
+      ${stripeStatus || null},
+      ${JSON.stringify(metadata)}
+    )
+    RETURNING *
+  `);
+  const record = result.rows[0];
+  await addPaymentHistory(
+    record.id,
+    {
+      previousStatus: null,
+      newStatus: status,
+      eventType: "created",
+      eventSource: "system",
+      description: `Payment transaction created for ${bookingType} booking ${bookingId}`,
+      metadata: { initialAmount: amount, baseAmount, serviceFee, managerRevenue }
+    },
+    db2
+  );
+  return record;
+}
+async function updatePaymentTransaction(transactionId, params, db2) {
+  const currentResult = await db2.execute(sql2`
+    SELECT status, refund_amount, amount
+    FROM payment_transactions
+    WHERE id = ${transactionId}
+  `);
+  if (currentResult.rows.length === 0) {
+    return null;
+  }
+  const current = currentResult.rows[0];
+  const previousStatus = current.status;
+  const currentRefundAmount = parseFloat(current.refund_amount || "0");
+  const currentAmount = parseFloat(current.amount || "0");
+  const updates = [];
+  if (params.status !== void 0) {
+    updates.push(sql2`status = ${params.status}`);
+  }
+  if (params.stripeStatus !== void 0) {
+    updates.push(sql2`stripe_status = ${params.stripeStatus}`);
+  }
+  if (params.paymentIntentId !== void 0) {
+    updates.push(sql2`payment_intent_id = ${params.paymentIntentId}`);
+  }
+  if (params.paymentMethodId !== void 0) {
+    updates.push(sql2`payment_method_id = ${params.paymentMethodId}`);
+  }
+  if (params.chargeId !== void 0) {
+    updates.push(sql2`charge_id = ${params.chargeId}`);
+  }
+  if (params.refundId !== void 0) {
+    updates.push(sql2`refund_id = ${params.refundId}`);
+  }
+  if (params.refundAmount !== void 0) {
+    updates.push(sql2`refund_amount = ${params.refundAmount.toString()}`);
+    const newRefundAmount = params.refundAmount;
+    const netAmount = currentAmount - newRefundAmount;
+    updates.push(sql2`net_amount = ${netAmount.toString()}`);
+  }
+  if (params.refundReason !== void 0) {
+    updates.push(sql2`refund_reason = ${params.refundReason}`);
+  }
+  if (params.failureReason !== void 0) {
+    updates.push(sql2`failure_reason = ${params.failureReason}`);
+  }
+  if (params.paidAt !== void 0) {
+    updates.push(sql2`paid_at = ${params.paidAt}`);
+  }
+  if (params.refundedAt !== void 0) {
+    updates.push(sql2`refunded_at = ${params.refundedAt}`);
+  }
+  if (params.lastSyncedAt !== void 0) {
+    updates.push(sql2`last_synced_at = ${params.lastSyncedAt}`);
+  }
+  if (params.webhookEventId !== void 0) {
+    updates.push(sql2`webhook_event_id = ${params.webhookEventId}`);
+  }
+  if (params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) {
+    if (params.stripeAmount !== void 0) {
+      updates.push(sql2`amount = ${params.stripeAmount.toString()}`);
     }
-    if (!endpoint) {
-      throw new Error("R2 endpoint could not be constructed. Please check CLOUDFLARE_ACCOUNT_ID is set.");
+    if (params.stripeNetAmount !== void 0) {
+      updates.push(sql2`net_amount = ${params.stripeNetAmount.toString()}`);
+      updates.push(sql2`manager_revenue = ${params.stripeNetAmount.toString()}`);
     }
-    s3Client = new S3Client({
-      region: "auto",
-      // R2 uses 'auto' as the region
-      endpoint,
-      credentials: {
-        accessKeyId: config.accessKeyId,
-        secretAccessKey: config.secretAccessKey
+    if (params.stripeProcessingFee !== void 0) {
+      updates.push(sql2`stripe_processing_fee = ${params.stripeProcessingFee.toString()}`);
+    }
+    if (params.stripePlatformFee !== void 0 && params.stripePlatformFee > 0) {
+      updates.push(sql2`service_fee = ${params.stripePlatformFee.toString()}`);
+    } else if (params.stripeAmount !== void 0 && params.stripeNetAmount !== void 0) {
+      const totalFees = params.stripeAmount - params.stripeNetAmount;
+      const processingFee = params.stripeProcessingFee || 0;
+      const actualPlatformFee = Math.max(0, totalFees - processingFee);
+      updates.push(sql2`service_fee = ${actualPlatformFee.toString()}`);
+    }
+    if (params.stripeAmount !== void 0) {
+      const platformFee = params.stripePlatformFee || (params.stripeAmount !== void 0 && params.stripeNetAmount !== void 0 ? Math.max(0, params.stripeAmount - params.stripeNetAmount - (params.stripeProcessingFee || 0)) : 0);
+      const baseAmount = params.stripeAmount - platformFee;
+      updates.push(sql2`base_amount = ${baseAmount.toString()}`);
+    }
+    const currentMetadataResult = await db2.execute(sql2`
+      SELECT metadata FROM payment_transactions WHERE id = ${transactionId}
+    `);
+    const currentMetadata = currentMetadataResult.rows[0]?.metadata ? typeof currentMetadataResult.rows[0].metadata === "string" ? JSON.parse(currentMetadataResult.rows[0].metadata) : currentMetadataResult.rows[0].metadata : {};
+    const stripeFees = {
+      processingFee: params.stripeProcessingFee || 0,
+      platformFee: params.stripePlatformFee || 0,
+      syncedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    const updatedMetadata = {
+      ...currentMetadata,
+      stripeFees
+    };
+    updates.push(sql2`metadata = ${JSON.stringify(updatedMetadata)}`);
+  } else if (params.metadata !== void 0) {
+    updates.push(sql2`metadata = ${JSON.stringify(params.metadata)}`);
+  }
+  if (updates.length === 0) {
+    const result2 = await db2.execute(sql2`
+      SELECT * FROM payment_transactions WHERE id = ${transactionId}
+    `);
+    return result2.rows[0];
+  }
+  const result = await db2.execute(sql2`
+    UPDATE payment_transactions
+    SET ${sql2.join(updates, sql2`, `)}, updated_at = NOW()
+    WHERE id = ${transactionId}
+    RETURNING *
+  `);
+  const updated = result.rows[0];
+  if (params.status !== void 0 && params.status !== previousStatus) {
+    const historyMetadata = { ...params.metadata || {} };
+    if (params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) {
+      historyMetadata.stripeAmounts = {
+        amount: params.stripeAmount,
+        netAmount: params.stripeNetAmount,
+        processingFee: params.stripeProcessingFee,
+        platformFee: params.stripePlatformFee,
+        syncedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+    }
+    await addPaymentHistory(
+      transactionId,
+      {
+        previousStatus,
+        newStatus: params.status,
+        eventType: "status_change",
+        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
+        description: `Status changed from ${previousStatus} to ${params.status}${params.stripeAmount !== void 0 ? " (Stripe amounts synced)" : ""}`,
+        stripeEventId: params.webhookEventId,
+        metadata: historyMetadata
       },
-      // Force path style for R2 compatibility
-      forcePathStyle: false
-    });
+      db2
+    );
   }
-  return s3Client;
-}
-async function uploadToR2(file, userId, folder = "documents") {
-  try {
-    const client = getS3Client();
-    const timestamp2 = Date.now();
-    const documentType = file.fieldname || "file";
-    const ext = file.originalname.split(".").pop() || "";
-    const baseName = file.originalname.replace(/\.[^/.]+$/, "");
-    const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9-_]/g, "_");
-    const filename = `${userId}_${documentType}_${timestamp2}_${sanitizedBaseName}.${ext}`;
-    const key = `${folder}/${filename}`;
-    let fileBuffer;
-    if (file.buffer) {
-      fileBuffer = file.buffer;
-    } else if (file.path) {
-      const fs7 = await import("fs");
-      fileBuffer = fs7.readFileSync(file.path);
-    } else {
-      throw new Error("File buffer or path not available");
-    }
-    const config = getR2Config();
-    const command = new PutObjectCommand({
-      Bucket: config.bucketName,
-      Key: key,
-      Body: fileBuffer,
-      ContentType: file.mimetype
-      // Make file publicly accessible (if your R2 bucket allows public access)
-      // Note: You need to configure CORS and public access in Cloudflare dashboard
-    });
-    await client.send(command);
-    let publicUrl;
-    const r2PublicUrl = getR2PublicUrl();
-    if (r2PublicUrl) {
-      publicUrl = r2PublicUrl.endsWith("/") ? `${r2PublicUrl}${key}` : `${r2PublicUrl}/${key}`;
-    } else {
-      publicUrl = `https://${config.accountId}.r2.cloudflarestorage.com/${config.bucketName}/${key}`;
-    }
-    console.log(`\u2705 File uploaded to R2: ${key} -> ${publicUrl}`);
-    return publicUrl;
-  } catch (error) {
-    console.error("\u274C Error uploading to R2:", error);
-    throw new Error(`Failed to upload file to R2: ${error instanceof Error ? error.message : "Unknown error"}`);
-  }
-}
-async function deleteFromR2(fileUrl) {
-  try {
-    const client = getS3Client();
-    let actualFileUrl = fileUrl;
-    if (fileUrl.includes("/api/files/r2-proxy")) {
-      try {
-        const urlObj2 = new URL(fileUrl, "http://localhost");
-        const urlParam = urlObj2.searchParams.get("url");
-        if (urlParam) {
-          actualFileUrl = decodeURIComponent(urlParam);
-          console.log(`\u{1F50D} Extracted R2 URL from proxy: ${actualFileUrl}`);
-        } else {
-          console.error("\u274C Proxy URL missing url parameter:", fileUrl);
-          return false;
-        }
-      } catch (urlError) {
-        console.error("\u274C Error parsing proxy URL:", urlError);
-        return false;
-      }
-    }
-    const urlObj = new URL(actualFileUrl);
-    const pathname = urlObj.pathname.startsWith("/") ? urlObj.pathname.slice(1) : urlObj.pathname;
-    const pathParts = pathname.split("/").filter((p) => p);
-    const config = getR2Config();
-    const bucketIndex = pathParts.indexOf(config.bucketName);
-    let key;
-    if (bucketIndex >= 0) {
-      key = pathParts.slice(bucketIndex + 1).join("/");
-    } else {
-      const knownFolders = ["documents", "kitchen-applications", "images", "profiles"];
-      const firstPart = pathParts[0];
-      if (knownFolders.includes(firstPart)) {
-        key = pathname;
-      } else {
-        key = pathname;
-      }
-    }
-    key = key.replace(/^\/+|\/+$/g, "");
-    if (!key || key.length === 0) {
-      console.error(`\u274C Invalid key extracted from URL: ${fileUrl} -> ${actualFileUrl}`);
-      return false;
-    }
-    console.log("\u{1F50D} R2 Delete Debug:", {
-      originalUrl: fileUrl,
-      actualFileUrl,
-      extractedKey: key,
-      bucketName: config.bucketName,
-      pathname: urlObj.pathname,
-      pathParts,
-      bucketIndex
-    });
-    const command = new DeleteObjectCommand({
-      Bucket: config.bucketName,
-      Key: key
-    });
-    await client.send(command);
-    console.log(`\u2705 File deleted from R2: ${key}`);
-    return true;
-  } catch (error) {
-    console.error("\u274C Error deleting from R2:", {
-      error: error instanceof Error ? error.message : "Unknown error",
-      fileUrl,
-      stack: error instanceof Error ? error.stack : void 0
-    });
-    return false;
-  }
-}
-async function fileExistsInR2(fileUrl) {
-  try {
-    const client = getS3Client();
-    const config = getR2Config();
-    const urlObj = new URL(fileUrl);
-    const key = urlObj.pathname.startsWith("/") ? urlObj.pathname.slice(1) : urlObj.pathname;
-    const keyParts = key.split("/");
-    const bucketIndex = keyParts.indexOf(config.bucketName);
-    const actualKey = bucketIndex >= 0 ? keyParts.slice(bucketIndex + 1).join("/") : key;
-    const command = new HeadObjectCommand({
-      Bucket: config.bucketName,
-      Key: actualKey
-    });
-    await client.send(command);
-    return true;
-  } catch (_error) {
-    return false;
-  }
-}
-async function getPresignedUrl(fileUrl, expiresIn = 3600) {
-  try {
-    const client = getS3Client();
-    const config = getR2Config();
-    const urlObj = new URL(fileUrl);
-    const pathname = urlObj.pathname.startsWith("/") ? urlObj.pathname.slice(1) : urlObj.pathname;
-    const pathParts = pathname.split("/").filter((p) => p);
-    const bucketIndex = pathParts.indexOf(config.bucketName);
-    let key;
-    if (bucketIndex >= 0) {
-      key = pathParts.slice(bucketIndex + 1).join("/");
-    } else {
-      const knownFolders = ["documents", "kitchen-applications", "images", "profiles"];
-      const firstPart = pathParts[0];
-      if (knownFolders.includes(firstPart)) {
-        key = pathname;
-      } else {
-        key = pathname;
-      }
-    }
-    key = key.replace(/^\/+|\/+$/g, "");
-    if (!key || key.length === 0) {
-      throw new Error(`Invalid key extracted from URL: ${fileUrl}`);
-    }
-    try {
-      await client.send(new HeadObjectCommand({ Bucket: config.bucketName, Key: key }));
-    } catch (headError) {
-      const err = headError;
-      if (err.name === "NotFound" || err.$metadata?.httpStatusCode === 404) {
-        if (key.startsWith("documents/") && (key.includes("foodSafetyLicenseFile") || key.includes("foodEstablishmentCert"))) {
-          const remappedKey = key.replace("documents/", "kitchen-applications/");
-          console.log(`[R2 Storage] Key ${key} not found. Checking remapped: ${remappedKey}`);
-          try {
-            await client.send(new HeadObjectCommand({ Bucket: config.bucketName, Key: remappedKey }));
-            key = remappedKey;
-            console.log(`[R2 Storage] Using remapped key: ${key}`);
-          } catch (_remapError) {
-            console.log(`[R2 Storage] Remapped key also not found: ${remappedKey}`);
+  if ((params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) && params.status === void 0) {
+    await addPaymentHistory(
+      transactionId,
+      {
+        previousStatus: updated.status,
+        newStatus: updated.status,
+        eventType: "stripe_sync",
+        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
+        description: `Stripe amounts synced: Amount $${((params.stripeAmount || parseFloat(updated.amount || "0")) / 100).toFixed(2)}, Net $${((params.stripeNetAmount || parseFloat(updated.net_amount || "0")) / 100).toFixed(2)}`,
+        stripeEventId: params.webhookEventId,
+        metadata: {
+          stripeAmounts: {
+            amount: params.stripeAmount,
+            netAmount: params.stripeNetAmount,
+            processingFee: params.stripeProcessingFee,
+            platformFee: params.stripePlatformFee,
+            syncedAt: (/* @__PURE__ */ new Date()).toISOString()
           }
         }
-      } else {
-        console.warn(`[R2 Storage] Warning: HeadObject validation failed for ${key}:`, err.message);
-      }
-    }
-    const command = new GetObjectCommand({
-      Bucket: config.bucketName,
-      Key: key
-    });
-    const presignedUrl = await getSignedUrl(client, command, { expiresIn });
-    return presignedUrl;
-  } catch (error) {
-    console.error("\u274C Error generating presigned URL:", {
-      error: error instanceof Error ? error.message : "Unknown error",
-      fileUrl,
-      stack: error instanceof Error ? error.stack : void 0
-    });
-    throw new Error(`Failed to generate presigned URL: ${error instanceof Error ? error.message : "Unknown error"}`);
-  }
-}
-function isR2Configured() {
-  const config = getR2Config();
-  return !!(config.accountId && config.accessKeyId && config.secretAccessKey && config.bucketName);
-}
-var s3Client;
-var init_r2_storage = __esm({
-  "server/r2-storage.ts"() {
-    "use strict";
-    s3Client = null;
-  }
-});
-
-// server/fileUpload.ts
-import multer from "multer";
-import path from "path";
-import fs from "fs";
-function getUploadsDir() {
-  if (isVercel) {
-    return "/tmp/uploads/documents";
-  }
-  return path.join(process.cwd(), "uploads", "documents");
-}
-function ensureUploadsDirExists() {
-  if (useCloudStorage) {
-    return;
-  }
-  const dir = getUploadsDir();
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
-var isVercel, isProduction, useCloudStorage, uploadsDir, diskStorage, memoryStorage, fileFilter, upload, uploadToBlob, getFileUrl;
-var init_fileUpload = __esm({
-  "server/fileUpload.ts"() {
-    "use strict";
-    init_r2_storage();
-    isVercel = !!process.env.VERCEL;
-    isProduction = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
-    useCloudStorage = isR2Configured() || isProduction || isVercel;
-    uploadsDir = getUploadsDir();
-    diskStorage = multer.diskStorage({
-      destination: (req, file, cb) => {
-        ensureUploadsDirExists();
-        cb(null, uploadsDir);
       },
-      filename: (req, file, cb) => {
-        const userId = req.neonUser?.id || req.user?.id || "unknown";
-        const timestamp2 = Date.now();
-        const documentType = file.fieldname;
-        const ext = path.extname(file.originalname);
-        const baseName = path.basename(file.originalname, ext);
-        const filename = `${userId}_${documentType}_${timestamp2}_${baseName}${ext}`;
-        cb(null, filename);
-      }
-    });
-    memoryStorage = multer.memoryStorage();
-    fileFilter = (req, file, cb) => {
-      const allowedMimes = [
-        "application/pdf",
-        "image/jpeg",
-        "image/jpg",
-        "image/png",
-        "image/webp",
-        // DOC and DOCX support for terms & policies
-        "application/msword",
-        // .doc
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        // .docx
-      ];
-      if (allowedMimes.includes(file.mimetype)) {
-        cb(null, true);
-      } else {
-        console.log(`[FileUpload] Rejected file with mimetype: ${file.mimetype}`);
-        cb(new Error("Invalid file type. Only PDF, JPG, JPEG, PNG, WebP, DOC, and DOCX files are allowed."));
-      }
-    };
-    console.log(` File Upload Config: R2 configured = ${isR2Configured()}, using ${useCloudStorage ? "memory (R2)" : "disk (local)"} storage`);
-    upload = multer({
-      storage: useCloudStorage ? memoryStorage : diskStorage,
-      limits: {
-        fileSize: 10 * 1024 * 1024
-        // 10MB limit
+      db2
+    );
+  }
+  if (params.refundAmount !== void 0 && params.refundAmount > currentRefundAmount) {
+    await addPaymentHistory(
+      transactionId,
+      {
+        previousStatus,
+        newStatus: updated.status,
+        eventType: params.refundAmount === parseFloat(updated.amount || "0") ? "refund" : "partial_refund",
+        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
+        description: `Refund of ${params.refundAmount / 100} ${updated.currency}${params.refundReason ? `: ${params.refundReason}` : ""}`,
+        stripeEventId: params.webhookEventId,
+        metadata: {
+          refundAmount: params.refundAmount,
+          refundReason: params.refundReason,
+          refundId: params.refundId
+        }
       },
-      fileFilter
-    });
-    uploadToBlob = async (file, userId, folder = "documents") => {
-      try {
-        const r2Available = isR2Configured();
-        console.log(`\u{1F4E6} uploadToBlob: R2 configured = ${r2Available}, file has buffer = ${!!file.buffer}, file has path = ${!!file.path}`);
-        if (r2Available) {
-          console.log(`\u2601\uFE0F Uploading to Cloudflare R2...`);
-          const url = await uploadToR2(file, userId, folder);
-          console.log(`\u2705 R2 upload complete: ${url}`);
-          return url;
-        } else {
-          console.log(`\u{1F4C1} R2 not configured, using local storage`);
-          const filename = file.filename || `${userId}_${Date.now()}_${file.originalname}`;
-          return getFileUrl(filename);
-        }
-      } catch (error) {
-        console.error("\u274C Error uploading file:", error);
-        throw new Error("Failed to upload file to cloud storage");
-      }
-    };
-    getFileUrl = (filename) => {
-      return `/api/files/documents/${filename}`;
-    };
+      db2
+    );
   }
-});
-
-// server/domains/applications/application.repository.ts
-import { eq as eq3, desc, and } from "drizzle-orm";
-var ApplicationRepository;
-var init_application_repository = __esm({
-  "server/domains/applications/application.repository.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    ApplicationRepository = class {
-      async getAll() {
-        return db.select().from(applications).orderBy(desc(applications.createdAt));
-      }
-      async findById(id) {
-        const [application] = await db.select().from(applications).where(eq3(applications.id, id));
-        return application || null;
-      }
-      async findByUserId(userId) {
-        return db.select().from(applications).where(eq3(applications.userId, userId)).orderBy(desc(applications.createdAt));
-      }
-      async hasPendingApplication(userId) {
-        const results = await db.select({ id: applications.id }).from(applications).where(
-          and(
-            eq3(applications.userId, userId),
-            eq3(applications.status, "inReview")
-          )
-        ).limit(1);
-        return results.length > 0;
-      }
-      async create(data) {
-        const now = /* @__PURE__ */ new Date();
-        const [application] = await db.insert(applications).values({
-          ...data,
-          status: "inReview",
-          createdAt: now,
-          foodSafetyLicenseStatus: data.foodSafetyLicenseUrl ? "pending" : "pending",
-          // Default
-          foodEstablishmentCertStatus: data.foodEstablishmentCertUrl ? "pending" : "pending"
-          // Default
-        }).returning();
-        return application;
-      }
-      async updateStatus(id, status) {
-        const [updated] = await db.update(applications).set({ status }).where(eq3(applications.id, id)).returning();
-        return updated || null;
-      }
-      async updateDocuments(id, updates) {
-        const resetStatus = {};
-        if (updates.foodSafetyLicenseUrl) resetStatus.foodSafetyLicenseStatus = "pending";
-        if (updates.foodEstablishmentCertUrl) resetStatus.foodEstablishmentCertStatus = "pending";
-        const [updated] = await db.update(applications).set({
-          ...updates,
-          ...resetStatus
-        }).where(eq3(applications.id, id)).returning();
-        return updated || null;
-      }
-      async verifyDocuments(data) {
-        const [updated] = await db.update(applications).set({
-          foodSafetyLicenseStatus: data.foodSafetyLicenseStatus,
-          foodEstablishmentCertStatus: data.foodEstablishmentCertStatus,
-          documentsAdminFeedback: data.documentsAdminFeedback,
-          documentsReviewedBy: data.documentsReviewedBy,
-          documentsReviewedAt: /* @__PURE__ */ new Date()
-        }).where(eq3(applications.id, data.id)).returning();
-        return updated || null;
-      }
-    };
-  }
-});
-
-// server/domains/applications/application.service.ts
-var ApplicationService, applicationService;
-var init_application_service = __esm({
-  "server/domains/applications/application.service.ts"() {
-    "use strict";
-    init_application_repository();
-    init_domain_error();
-    ApplicationService = class {
-      repo;
-      constructor(repo) {
-        this.repo = repo || new ApplicationRepository();
-      }
-      async getAllApplications() {
-        return this.repo.getAll();
-      }
-      async getApplicationById(id) {
-        const app2 = await this.repo.findById(id);
-        if (!app2) {
-          throw new DomainError("APPLICATION_NOT_FOUND", `Application ${id} not found`, 404);
-        }
-        return app2;
-      }
-      async getApplicationsByUserId(userId) {
-        return this.repo.findByUserId(userId);
-      }
-      async submitApplication(data) {
-        if (!data.userId) {
-          throw new DomainError(ApplicationErrorCodes.VALIDATION_ERROR, "User ID is required", 400);
-        }
-        const hasPending = await this.repo.hasPendingApplication(data.userId);
-        if (hasPending) {
-          throw new DomainError(
-            ApplicationErrorCodes.VALIDATION_ERROR,
-            "You already have a pending application. Please wait for it to be processed.",
-            409
-          );
-        }
-        return this.repo.create(data);
-      }
-      async approveApplication(id, adminId) {
-        const app2 = await this.repo.findById(id);
-        if (!app2) {
-          throw new DomainError(ApplicationErrorCodes.APPLICATION_NOT_FOUND, `Application ${id} not found`, 404);
-        }
-        if (app2.status !== "inReview") {
-          throw new DomainError(
-            ApplicationErrorCodes.VALIDATION_ERROR,
-            `Application is already processed (Status: ${app2.status})`,
-            400
-          );
-        }
-        const updated = await this.repo.updateStatus(id, "approved");
-        if (!updated) throw new Error("Failed to approve application");
-        return updated;
-      }
-      async updateStatus(id, status) {
-        const app2 = await this.repo.updateStatus(id, status);
-        if (!app2) {
-          throw new DomainError("APPLICATION_NOT_FOUND", `Application ${id} not found`, 404);
-        }
-        return app2;
-      }
-      async updateDocuments(id, updates) {
-        const app2 = await this.repo.updateDocuments(id, updates);
-        if (!app2) {
-          throw new DomainError("APPLICATION_NOT_FOUND", `Application ${id} not found`, 404);
-        }
-        return app2;
-      }
-      async cancelApplication(id, userId) {
-        const app2 = await this.repo.findById(id);
-        if (!app2) {
-          throw new DomainError("APPLICATION_NOT_FOUND", `Application ${id} not found`, 404);
-        }
-        if (app2.userId !== userId) {
-          throw new DomainError("FORBIDDEN", "You can only cancel your own applications", 403);
-        }
-        const updated = await this.repo.updateStatus(id, "cancelled");
-        if (!updated) throw new Error("Failed to cancel application");
-        return updated;
-      }
-      async verifyDocuments(data) {
-        const app2 = await this.repo.verifyDocuments(data);
-        if (!app2) {
-          throw new DomainError("APPLICATION_NOT_FOUND", `Application ${data.id} not found`, 404);
-        }
-        return app2;
-      }
-    };
-    applicationService = new ApplicationService();
-  }
-});
-
-// server/phone-utils.ts
-import { eq as eq4, and as and2, desc as desc2 } from "drizzle-orm";
-async function getManagerPhone(location, managerId, pool3) {
-  let phone = location?.notificationPhone || location?.notification_phone || null;
-  if (phone) {
-    const normalized = validateAndNormalizePhone(phone);
-    if (normalized) {
-      return normalized;
-    }
-    console.warn(`\u26A0\uFE0F Location notification phone is invalid format: ${phone}`);
-  }
-  if (!phone && managerId) {
-    try {
-      const result = await db.select({ phone: applications.phone }).from(applications).where(eq4(applications.userId, managerId)).orderBy(desc2(applications.createdAt)).limit(1);
-      if (result.length > 0 && result[0].phone) {
-        phone = result[0].phone;
-        const normalized = validateAndNormalizePhone(phone);
-        if (normalized) {
-          return normalized;
-        }
-        console.warn(`\u26A0\uFE0F Manager application phone is invalid format: ${phone}`);
-      }
-    } catch (error) {
-      console.warn("Could not retrieve manager phone from application:", error);
-    }
-  }
-  return null;
+  return updated;
 }
-async function getChefPhone(chefId, pool3) {
-  if (!chefId) return null;
+async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) {
   try {
-    const result = await db.select({ phone: applications.phone }).from(applications).where(eq4(applications.userId, chefId)).orderBy(desc2(applications.createdAt)).limit(1);
-    if (result.length > 0 && result[0].phone) {
-      const phone = result[0].phone;
-      const normalized = validateAndNormalizePhone(phone);
-      if (normalized) {
-        return normalized;
-      }
-      console.warn(`\u26A0\uFE0F Chef application phone is invalid format: ${phone}`);
+    const transactionResult = await db2.execute(sql2`
+      SELECT 
+        pt.id,
+        pt.booking_id,
+        pt.booking_type,
+        pt.base_amount,
+        pt.service_fee,
+        pt.amount as current_amount,
+        pt.manager_revenue as current_manager_revenue
+      FROM payment_transactions pt
+      WHERE pt.payment_intent_id = ${paymentIntentId}
+    `);
+    if (transactionResult.rows.length === 0) {
+      console.warn(`[Stripe Sync] No payment transaction found for PaymentIntent ${paymentIntentId}`);
+      return;
     }
+    const transaction = transactionResult.rows[0];
+    const bookingId = transaction.booking_id;
+    const bookingType = transaction.booking_type;
+    if (bookingType === "bundle") {
+      const kitchenBooking = await db2.execute(sql2`
+        SELECT id, total_price, service_fee
+        FROM kitchen_bookings
+        WHERE id = ${bookingId}
+      `);
+      const storageBookings2 = await db2.execute(sql2`
+        SELECT id, total_price, service_fee
+        FROM storage_bookings
+        WHERE kitchen_booking_id = ${bookingId}
+      `);
+      const equipmentBookings2 = await db2.execute(sql2`
+        SELECT id, total_price, service_fee
+        FROM equipment_bookings
+        WHERE kitchen_booking_id = ${bookingId}
+      `);
+      let totalBaseAmount = parseFloat(transaction.base_amount || "0");
+      if (totalBaseAmount === 0) {
+        const kbAmount = parseFloat(kitchenBooking.rows[0]?.total_price || "0");
+        const sbAmount = storageBookings2.rows.reduce((sum, sb) => sum + parseFloat(sb.total_price || "0"), 0);
+        const ebAmount = equipmentBookings2.rows.reduce((sum, eb) => sum + parseFloat(eb.total_price || "0"), 0);
+        totalBaseAmount = kbAmount + sbAmount + ebAmount;
+      }
+      if (kitchenBooking.rows.length > 0 && totalBaseAmount > 0) {
+        const kbBase = parseFloat(kitchenBooking.rows[0].total_price || "0");
+        const kbProportion = kbBase / totalBaseAmount;
+        const kbStripeAmount = Math.round(stripeAmounts.stripeAmount * kbProportion);
+        const kbStripeNet = Math.round(stripeAmounts.stripeNetAmount * kbProportion);
+        const kbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * kbProportion) : Math.round((kbStripeAmount - kbStripeNet) * 0.5);
+        await db2.execute(sql2`
+          UPDATE kitchen_bookings
+          SET 
+            total_price = ${kbStripeAmount.toString()},
+            service_fee = ${kbServiceFee.toString()},
+            updated_at = NOW()
+          WHERE id = ${bookingId}
+        `);
+      }
+      for (const sb of storageBookings2.rows) {
+        const sbBase = parseFloat(sb.total_price || "0");
+        if (totalBaseAmount > 0 && sbBase > 0) {
+          const sbProportion = sbBase / totalBaseAmount;
+          const sbStripeAmount = Math.round(stripeAmounts.stripeAmount * sbProportion);
+          const sbStripeNet = Math.round(stripeAmounts.stripeNetAmount * sbProportion);
+          const sbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * sbProportion) : Math.round((sbStripeAmount - sbStripeNet) * 0.5);
+          await db2.execute(sql2`
+            UPDATE storage_bookings
+            SET 
+              total_price = ${sbStripeAmount.toString()},
+              service_fee = ${sbServiceFee.toString()},
+              updated_at = NOW()
+            WHERE id = ${sb.id}
+          `);
+        }
+      }
+      for (const eb of equipmentBookings2.rows) {
+        const ebBase = parseFloat(eb.total_price || "0");
+        if (totalBaseAmount > 0 && ebBase > 0) {
+          const ebProportion = ebBase / totalBaseAmount;
+          const ebStripeAmount = Math.round(stripeAmounts.stripeAmount * ebProportion);
+          const ebStripeNet = Math.round(stripeAmounts.stripeNetAmount * ebProportion);
+          const ebServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * ebProportion) : Math.round((ebStripeAmount - ebStripeNet) * 0.5);
+          await db2.execute(sql2`
+            UPDATE equipment_bookings
+            SET 
+              total_price = ${ebStripeAmount.toString()},
+              service_fee = ${ebServiceFee.toString()},
+              updated_at = NOW()
+            WHERE id = ${eb.id}
+          `);
+        }
+      }
+    } else {
+      const serviceFee = stripeAmounts.stripePlatformFee > 0 ? stripeAmounts.stripePlatformFee : Math.max(0, stripeAmounts.stripeAmount - stripeAmounts.stripeNetAmount - stripeAmounts.stripeProcessingFee);
+      if (bookingType === "kitchen") {
+        await db2.execute(sql2`
+          UPDATE kitchen_bookings
+          SET 
+            total_price = ${stripeAmounts.stripeAmount.toString()},
+            service_fee = ${serviceFee.toString()},
+            updated_at = NOW()
+          WHERE id = ${bookingId}
+        `);
+      } else if (bookingType === "storage") {
+        await db2.execute(sql2`
+          UPDATE storage_bookings
+          SET 
+            total_price = ${stripeAmounts.stripeAmount.toString()},
+            service_fee = ${serviceFee.toString()},
+            updated_at = NOW()
+          WHERE id = ${bookingId}
+        `);
+      } else if (bookingType === "equipment") {
+        await db2.execute(sql2`
+          UPDATE equipment_bookings
+          SET 
+            total_price = ${stripeAmounts.stripeAmount.toString()},
+            service_fee = ${serviceFee.toString()},
+            updated_at = NOW()
+          WHERE id = ${bookingId}
+        `);
+      }
+    }
+    console.log(`[Stripe Sync] Synced Stripe amounts to ${bookingType} booking(s) for PaymentIntent ${paymentIntentId}`);
   } catch (error) {
-    console.warn("Could not retrieve chef phone from application:", error);
+    console.error(`[Stripe Sync] Error syncing Stripe amounts to bookings for ${paymentIntentId}:`, error);
   }
-  return null;
 }
-function normalizePhoneForStorage(phone) {
-  if (!phone) return null;
-  return validateAndNormalizePhone(phone);
+async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options) {
+  let getStripePaymentAmounts2;
+  const importPaths = [
+    "./stripe-service",
+    // Path 1: Relative without extension (works in some builds)
+    "./stripe-service.js",
+    // Path 2: Relative with .js extension (standard)
+    "../server/services/stripe-service.js"
+    // Path 3: From api/ perspective
+  ];
+  let lastError = null;
+  for (const importPath of importPaths) {
+    try {
+      const mod = await import(importPath);
+      if (mod.getStripePaymentAmounts) {
+        getStripePaymentAmounts2 = mod.getStripePaymentAmounts;
+        break;
+      }
+    } catch (e) {
+      lastError = e;
+      continue;
+    }
+  }
+  if (!getStripePaymentAmounts2) {
+    console.error("[Stripe Sync] Failed to import stripe-service from all paths:", importPaths);
+    throw new Error(`Cannot import stripe-service from any path. Last error: ${lastError?.message || "Unknown"}`);
+  }
+  const limit = options?.limit || 1e3;
+  const onlyUnsynced = options?.onlyUnsynced !== false;
+  try {
+    const params = [managerId];
+    const unsyncedFilter = onlyUnsynced ? sql2` AND (pt.last_synced_at IS NULL OR pt.metadata->>'stripeFees' IS NULL)` : sql2``;
+    const result = await db2.execute(sql2`
+      SELECT 
+        pt.id,
+        pt.payment_intent_id,
+        pt.manager_id,
+        pt.booking_id,
+        pt.booking_type,
+        pt.amount as current_amount,
+        pt.manager_revenue as current_manager_revenue,
+        pt.last_synced_at
+      FROM payment_transactions pt
+      WHERE pt.payment_intent_id IS NOT NULL
+        AND pt.status IN ('succeeded', 'processing')
+        AND (
+          pt.manager_id = ${managerId} 
+          OR EXISTS (
+            SELECT 1 FROM kitchen_bookings kb
+            JOIN kitchens k ON kb.kitchen_id = k.id
+            JOIN locations l ON k.location_id = l.id
+            WHERE kb.id = pt.booking_id 
+              AND l.manager_id = ${managerId}
+          )
+        )
+      ${unsyncedFilter}
+      ORDER BY pt.created_at DESC
+      LIMIT ${limit}
+    `);
+    const transactions = result.rows;
+    console.log(`[Stripe Sync] Found ${transactions.length} payment transactions to sync for manager ${managerId}`);
+    let synced = 0;
+    let failed = 0;
+    const errors = [];
+    for (const transaction of transactions) {
+      const paymentIntentId = transaction.payment_intent_id;
+      if (!paymentIntentId) continue;
+      try {
+        let managerConnectAccountId;
+        try {
+          const managerResult = await db2.execute(sql2`
+            SELECT stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${transaction.manager_id || managerId} AND stripe_connect_account_id IS NOT NULL
+          `);
+          if (managerResult.rows.length > 0) {
+            managerConnectAccountId = managerResult.rows[0].stripe_connect_account_id;
+          }
+        } catch (error) {
+          console.warn(`[Stripe Sync] Could not fetch manager Connect account:`, error);
+        }
+        const stripeAmounts = await getStripePaymentAmounts2(paymentIntentId, managerConnectAccountId);
+        if (!stripeAmounts) {
+          console.warn(`[Stripe Sync] Could not fetch Stripe amounts for ${paymentIntentId}`);
+          failed++;
+          errors.push({ paymentIntentId, error: "Could not fetch Stripe amounts" });
+          continue;
+        }
+        await updatePaymentTransaction(transaction.id, {
+          stripeAmount: stripeAmounts.stripeAmount,
+          stripeNetAmount: stripeAmounts.stripeNetAmount,
+          stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+          stripePlatformFee: stripeAmounts.stripePlatformFee,
+          lastSyncedAt: /* @__PURE__ */ new Date()
+        }, db2);
+        await syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2);
+        synced++;
+        console.log(`[Stripe Sync] Synced transaction ${transaction.id} (PaymentIntent: ${paymentIntentId})`);
+      } catch (error) {
+        console.error(`[Stripe Sync] Error syncing transaction ${transaction.id} (${paymentIntentId}):`, error);
+        failed++;
+        errors.push({ paymentIntentId, error: error.message || "Unknown error" });
+      }
+    }
+    console.log(`[Stripe Sync] Completed: ${synced} synced, ${failed} failed`);
+    return { synced, failed, errors };
+  } catch (error) {
+    console.error(`[Stripe Sync] Error syncing existing transactions:`, error);
+    throw error;
+  }
 }
-var init_phone_utils = __esm({
-  "server/phone-utils.ts"() {
+async function findPaymentTransactionByIntentId(paymentIntentId, db2) {
+  const result = await db2.execute(sql2`
+    SELECT * FROM payment_transactions
+    WHERE payment_intent_id = ${paymentIntentId}
+    LIMIT 1
+  `);
+  return result.rows[0];
+}
+async function findPaymentTransactionById(transactionId, db2) {
+  const result = await db2.execute(sql2`
+    SELECT * FROM payment_transactions
+    WHERE id = ${transactionId}
+    LIMIT 1
+  `);
+  return result.rows[0];
+}
+async function findPaymentTransactionByBooking(bookingId, bookingType, db2) {
+  const result = await db2.execute(sql2`
+    SELECT * FROM payment_transactions
+    WHERE booking_id = ${bookingId} AND booking_type = ${bookingType}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `);
+  return result.rows[0];
+}
+async function findPaymentTransactionByMetadata(metadataKey, metadataValue, db2) {
+  const result = await db2.execute(sql2`
+    SELECT * FROM payment_transactions
+    WHERE metadata->>${metadataKey} = ${metadataValue}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `);
+  return result.rows[0];
+}
+async function addPaymentHistory(transactionId, history, db2) {
+  await db2.execute(sql2`
+    INSERT INTO payment_history (
+      transaction_id,
+      previous_status,
+      new_status,
+      event_type,
+      event_source,
+      stripe_event_id,
+      description,
+      metadata,
+      created_by
+    ) VALUES (
+      ${transactionId},
+      ${history.previousStatus},
+      ${history.newStatus},
+      ${history.eventType},
+      ${history.eventSource || "system"},
+      ${history.stripeEventId || null},
+      ${history.description || null},
+      ${JSON.stringify(history.metadata || {})},
+      ${history.createdBy || null}
+    )
+  `);
+}
+async function getPaymentHistory(transactionId, db2) {
+  const result = await db2.execute(sql2`
+    SELECT * FROM payment_history
+    WHERE transaction_id = ${transactionId}
+    ORDER BY created_at ASC
+  `);
+  return result.rows;
+}
+async function getManagerPaymentTransactions(managerId, db2, filters) {
+  const whereConditions = [sql2`manager_id = ${managerId}`];
+  if (filters?.status) {
+    whereConditions.push(sql2`status = ${filters.status}`);
+  }
+  if (filters?.startDate) {
+    whereConditions.push(sql2`
+      (
+        (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at >= ${filters.startDate})
+        OR (status != 'succeeded' AND created_at >= ${filters.startDate})
+      )
+    `);
+  }
+  if (filters?.endDate) {
+    whereConditions.push(sql2`
+      (
+        (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at <= ${filters.endDate})
+        OR (status != 'succeeded' AND created_at <= ${filters.endDate})
+      )
+    `);
+  }
+  const whereClause = sql2`WHERE ${sql2.join(whereConditions, sql2` AND `)}`;
+  const countResult = await db2.execute(sql2`
+    SELECT COUNT(*) as total FROM payment_transactions ${whereClause}
+  `);
+  const total = parseInt(countResult.rows[0].total);
+  const limit = filters?.limit || 50;
+  const offset = filters?.offset || 0;
+  const result = await db2.execute(sql2`
+    SELECT * FROM payment_transactions
+    ${whereClause}
+    ORDER BY 
+      CASE 
+        WHEN status = 'succeeded' AND paid_at IS NOT NULL 
+        THEN paid_at 
+        ELSE created_at 
+      END DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+  return {
+    transactions: result.rows,
+    total
+  };
+}
+async function syncStripeFees(db2, managerId, limit = 100) {
+  const Stripe7 = (await import("stripe")).default;
+  const stripeSecretKey6 = process.env.STRIPE_SECRET_KEY;
+  if (!stripeSecretKey6) {
+    throw new Error("STRIPE_SECRET_KEY not configured");
+  }
+  const stripe6 = new Stripe7(stripeSecretKey6, {
+    apiVersion: "2025-12-15.clover"
+  });
+  const whereConditions = [
+    sql2`payment_intent_id IS NOT NULL`,
+    sql2`(stripe_processing_fee IS NULL OR stripe_processing_fee = '0')`,
+    sql2`status IN ('succeeded', 'partially_refunded')`
+  ];
+  if (managerId) {
+    whereConditions.push(sql2`manager_id = ${managerId}`);
+  }
+  const whereClause = sql2`WHERE ${sql2.join(whereConditions, sql2` AND `)}`;
+  const result = await db2.execute(sql2`
+    SELECT id, payment_intent_id, amount, manager_id
+    FROM payment_transactions
+    ${whereClause}
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `);
+  let synced = 0;
+  let failed = 0;
+  const errors = [];
+  for (const row of result.rows) {
+    const transactionId = row.id;
+    const paymentIntentId = row.payment_intent_id;
+    try {
+      const paymentIntent = await stripe6.paymentIntents.retrieve(paymentIntentId, {
+        expand: ["latest_charge"]
+      });
+      if (!paymentIntent.latest_charge) {
+        errors.push(`Transaction ${transactionId}: No charge found for PaymentIntent ${paymentIntentId}`);
+        failed++;
+        continue;
+      }
+      const charge = typeof paymentIntent.latest_charge === "string" ? await stripe6.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
+      if (!charge.balance_transaction) {
+        errors.push(`Transaction ${transactionId}: No balance_transaction for charge ${charge.id}`);
+        failed++;
+        continue;
+      }
+      const balanceTransactionId = typeof charge.balance_transaction === "string" ? charge.balance_transaction : charge.balance_transaction.id;
+      const balanceTransaction = await stripe6.balanceTransactions.retrieve(balanceTransactionId);
+      const stripeProcessingFee = balanceTransaction.fee;
+      const stripeAmount = paymentIntent.amount;
+      const stripePlatformFee = paymentIntent.application_fee_amount || 0;
+      const stripeNetAmount = stripePlatformFee > 0 ? stripeAmount - stripePlatformFee : stripeAmount - stripeProcessingFee;
+      await updatePaymentTransaction(
+        transactionId,
+        {
+          stripeAmount,
+          stripeNetAmount,
+          stripeProcessingFee,
+          stripePlatformFee,
+          lastSyncedAt: /* @__PURE__ */ new Date()
+        },
+        db2
+      );
+      console.log(`[Stripe Sync] \u2705 Synced transaction ${transactionId}: fee=${stripeProcessingFee} cents`);
+      synced++;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } catch (error) {
+      errors.push(`Transaction ${transactionId}: ${error.message}`);
+      failed++;
+    }
+  }
+  return { synced, failed, errors };
+}
+var init_payment_transactions_service = __esm({
+  "server/services/payment-transactions-service.ts"() {
     "use strict";
-    init_phone_validation();
-    init_db();
-    init_schema();
+  }
+});
+
+// server/services/stripe-service.ts
+var stripe_service_exports = {};
+__export(stripe_service_exports, {
+  calculateRefundBreakdown: () => calculateRefundBreakdown,
+  cancelPaymentIntent: () => cancelPaymentIntent,
+  capturePaymentIntent: () => capturePaymentIntent,
+  confirmPaymentIntent: () => confirmPaymentIntent,
+  createPaymentIntent: () => createPaymentIntent,
+  createRefund: () => createRefund,
+  getPaymentIntent: () => getPaymentIntent,
+  getStripePaymentAmounts: () => getStripePaymentAmounts,
+  reverseTransferAndRefund: () => reverseTransferAndRefund,
+  verifyPaymentIntentForBooking: () => verifyPaymentIntentForBooking
+});
+import Stripe from "stripe";
+async function createPaymentIntent(params) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  const {
+    amount,
+    currency = "cad",
+    chefId,
+    kitchenId,
+    metadata = {},
+    statementDescriptor = "LOCALCOOKS",
+    managerConnectAccountId,
+    applicationFeeAmount,
+    enableACSS = true,
+    // Default to true for ACSS debit support
+    enableCards = true,
+    // Default to true for standard card payments
+    useAuthorizationHold = true,
+    // DEPRECATED: No longer used - always uses automatic capture
+    saveCardForFuture = true,
+    // Default to true to save cards for future use
+    customerId
+  } = params;
+  if (amount <= 0) {
+    throw new Error("Payment amount must be greater than 0");
+  }
+  const hasApplicationFee = applicationFeeAmount !== void 0 && applicationFeeAmount !== null;
+  if (hasApplicationFee && !managerConnectAccountId) {
+    throw new Error("managerConnectAccountId is required when applicationFeeAmount is provided");
+  }
+  if (managerConnectAccountId && !hasApplicationFee) {
+  }
+  if (hasApplicationFee && applicationFeeAmount < 0) {
+    throw new Error("Application fee must be 0 or a positive amount");
+  }
+  if (hasApplicationFee && applicationFeeAmount >= amount) {
+    throw new Error("Application fee must be less than total amount");
+  }
+  if (!enableACSS && !enableCards) {
+    throw new Error("At least one payment method must be enabled");
+  }
+  const cleanDescriptor = statementDescriptor.replace(/[<>'"]/g, "").substring(0, 15).toUpperCase();
+  try {
+    const paymentMethodTypes = [];
+    if (enableCards) {
+      paymentMethodTypes.push("card");
+    }
+    if (enableACSS) {
+      paymentMethodTypes.push("acss_debit");
+    }
+    const paymentIntentParams = {
+      amount,
+      currency,
+      payment_method_types: paymentMethodTypes,
+      // Don't auto-confirm - we'll confirm after collecting payment method
+      confirm: false,
+      // Use automatic capture: payments are immediately processed when confirmed
+      capture_method: "automatic",
+      metadata: {
+        booking_type: "kitchen",
+        kitchen_id: kitchenId.toString(),
+        chef_id: chefId.toString(),
+        expected_amount: amount.toString(),
+        // Store expected amount for verification
+        ...metadata
+      }
+    };
+    if (enableCards) {
+      paymentIntentParams.statement_descriptor_suffix = cleanDescriptor.substring(0, 22);
+    } else if (enableACSS) {
+      paymentIntentParams.statement_descriptor = cleanDescriptor;
+    }
+    paymentIntentParams.payment_method_options = {};
+    if (enableACSS) {
+      paymentIntentParams.payment_method_options.acss_debit = {
+        mandate_options: {
+          payment_schedule: "combined",
+          // Creates a mandate for future debits
+          transaction_type: "personal",
+          // Default to personal, can be made configurable
+          interval_description: "Payment for kitchen booking and future bookings as authorized"
+          // Required for 'combined' or 'interval' payment schedules
+        }
+      };
+    }
+    if (saveCardForFuture && enableCards) {
+      paymentIntentParams.setup_future_usage = "off_session";
+    }
+    if (customerId) {
+      paymentIntentParams.customer = customerId;
+    }
+    if (managerConnectAccountId) {
+      paymentIntentParams.transfer_data = {
+        destination: managerConnectAccountId
+      };
+      paymentIntentParams.metadata.manager_connect_account_id = managerConnectAccountId;
+      if (hasApplicationFee) {
+        paymentIntentParams.application_fee_amount = applicationFeeAmount;
+        paymentIntentParams.metadata.platform_fee = applicationFeeAmount.toString();
+      }
+    }
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret,
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    console.error("Error creating PaymentIntent:", error);
+    throw new Error(`Failed to create payment intent: ${error.message}`);
+  }
+}
+async function confirmPaymentIntent(paymentIntentId, paymentMethodId) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
+      payment_method: paymentMethodId
+    });
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || "",
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    console.error("Error confirming PaymentIntent:", error);
+    throw new Error(`Failed to confirm payment intent: ${error.message}`);
+  }
+}
+async function getPaymentIntent(paymentIntentId) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || "",
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    if (error.code === "resource_missing") {
+      return null;
+    }
+    console.error("Error retrieving PaymentIntent:", error);
+    throw new Error(`Failed to retrieve payment intent: ${error.message}`);
+  }
+}
+async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge"]
+    });
+    if (!paymentIntent.latest_charge) {
+      console.warn(`[Stripe] No charge found for PaymentIntent ${paymentIntentId}`);
+      return null;
+    }
+    const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
+    const charge = typeof paymentIntent.latest_charge === "string" ? await stripe.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
+    let balanceTransaction = null;
+    if (charge.balance_transaction) {
+      const balanceTransactionId = typeof charge.balance_transaction === "string" ? charge.balance_transaction : charge.balance_transaction.id;
+      balanceTransaction = await stripe.balanceTransactions.retrieve(balanceTransactionId);
+    }
+    const stripeAmount = paymentIntent.amount;
+    let stripeNetAmount = stripeAmount;
+    let stripeProcessingFee = 0;
+    let stripePlatformFee = 0;
+    if (balanceTransaction) {
+      stripeProcessingFee = balanceTransaction.fee;
+      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
+        stripePlatformFee = paymentIntent.application_fee_amount;
+        stripeNetAmount = stripeAmount - stripePlatformFee;
+      } else {
+        stripeNetAmount = stripeAmount - stripeProcessingFee;
+      }
+    } else {
+      console.log(`[Stripe] balance_transaction not immediately available for ${paymentIntentId}, retrying in 2s...`);
+      await new Promise((resolve) => setTimeout(resolve, 2e3));
+      const retryCharge = await stripe.charges.retrieve(chargeId);
+      if (retryCharge.balance_transaction) {
+        const retryBalanceTransactionId = typeof retryCharge.balance_transaction === "string" ? retryCharge.balance_transaction : retryCharge.balance_transaction.id;
+        const retryBalanceTransaction = await stripe.balanceTransactions.retrieve(retryBalanceTransactionId);
+        stripeProcessingFee = retryBalanceTransaction.fee;
+        if (managerConnectAccountId && paymentIntent.application_fee_amount) {
+          stripePlatformFee = paymentIntent.application_fee_amount;
+          stripeNetAmount = stripeAmount - stripePlatformFee;
+        } else {
+          stripeNetAmount = stripeAmount - stripeProcessingFee;
+        }
+        console.log(`[Stripe] \u2705 Retry successful - got actual fee: ${stripeProcessingFee} cents`);
+      } else {
+        console.log(`[Stripe] balance_transaction still not available for ${paymentIntentId} - charge.updated webhook will sync fees`);
+        stripeProcessingFee = 0;
+        if (managerConnectAccountId && paymentIntent.application_fee_amount) {
+          stripePlatformFee = paymentIntent.application_fee_amount;
+          stripeNetAmount = stripeAmount - stripePlatformFee;
+        }
+      }
+    }
+    return {
+      stripeAmount,
+      stripeNetAmount,
+      stripeProcessingFee,
+      stripePlatformFee,
+      chargeId
+    };
+  } catch (error) {
+    console.error(`[Stripe] Error fetching payment amounts for ${paymentIntentId}:`, error);
+    return null;
+  }
+}
+async function capturePaymentIntent(paymentIntentId, amountToCapture) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const captureParams = {};
+    if (amountToCapture !== void 0) {
+      captureParams.amount_to_capture = amountToCapture;
+    }
+    const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId, captureParams);
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || "",
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    console.error("Error capturing PaymentIntent:", error);
+    throw new Error(`Failed to capture payment intent: ${error.message}`);
+  }
+}
+async function cancelPaymentIntent(paymentIntentId) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe.paymentIntents.cancel(paymentIntentId);
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || "",
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    console.error("Error canceling PaymentIntent:", error);
+    throw new Error(`Failed to cancel payment intent: ${error.message}`);
+  }
+}
+async function createRefund(paymentIntentId, amount, reason = "requested_by_customer", options) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (!paymentIntent.latest_charge) {
+      throw new Error("Payment intent has no charge to refund");
+    }
+    const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
+    const refundParams = {
+      charge: chargeId,
+      reason
+    };
+    if (amount !== void 0 && amount > 0) {
+      refundParams.amount = amount;
+    }
+    if (options?.reverseTransfer !== void 0) {
+      refundParams.reverse_transfer = options.reverseTransfer;
+    }
+    if (options?.refundApplicationFee !== void 0) {
+      refundParams.refund_application_fee = options.refundApplicationFee;
+    }
+    if (options?.metadata) {
+      refundParams.metadata = options.metadata;
+    }
+    const refund = await stripe.refunds.create(refundParams);
+    if (!refund.charge || typeof refund.charge !== "string") {
+      throw new Error("Refund created but charge ID is missing");
+    }
+    if (!refund.status || typeof refund.status !== "string") {
+      throw new Error("Refund created but status is missing");
+    }
+    const refundChargeId = refund.charge;
+    const refundStatus = refund.status;
+    return {
+      id: refund.id,
+      amount: refund.amount,
+      status: refundStatus,
+      charge: refundChargeId
+    };
+  } catch (error) {
+    console.error("Error creating refund:", error);
+    throw new Error(`Failed to create refund: ${error.message}`);
+  }
+}
+function calculateRefundBreakdown(totalChargedCents, managerReceivedCents, alreadyRefundedCents, stripeProcessingFeeCents) {
+  const managerRemainingBalance = Math.max(0, managerReceivedCents - alreadyRefundedCents);
+  const maxRefundable = managerRemainingBalance;
+  return {
+    maxRefundableToCustomer: maxRefundable,
+    maxDeductibleFromManager: maxRefundable,
+    // Same value - no discrepancy!
+    remainingManagerBalance: managerRemainingBalance,
+    originalStripeFee: stripeProcessingFeeCents,
+    explanation: managerRemainingBalance > 0 ? `Available to refund from this transaction: $${(maxRefundable / 100).toFixed(2)}` : "No remaining balance to refund"
+  };
+}
+async function reverseTransferAndRefund(paymentIntentId, amount, reason = "requested_by_customer", options) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  if (!amount || amount <= 0) {
+    throw new Error("Refund amount must be greater than 0");
+  }
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge"]
+    });
+    if (!paymentIntent.latest_charge) {
+      throw new Error("Payment intent has no charge to refund");
+    }
+    const charge = typeof paymentIntent.latest_charge === "string" ? await stripe.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
+    const chargeId = charge.id;
+    const transferId = typeof charge.transfer === "string" ? charge.transfer : charge.transfer?.id;
+    if (!transferId) {
+      throw new Error("No transfer found for this charge to reverse");
+    }
+    const reversalAmount = options?.reverseTransferAmount ?? amount;
+    if (reversalAmount <= 0) {
+      throw new Error("Transfer reversal amount must be greater than 0");
+    }
+    const reversal = await stripe.transfers.createReversal(transferId, {
+      amount: reversalAmount,
+      metadata: options?.transferMetadata || options?.metadata
+    });
+    const refundParams = {
+      charge: chargeId,
+      reason,
+      amount
+    };
+    if (options?.refundApplicationFee !== void 0) {
+      refundParams.refund_application_fee = options.refundApplicationFee;
+    }
+    if (options?.metadata) {
+      refundParams.metadata = options.metadata;
+    }
+    const refund = await stripe.refunds.create(refundParams);
+    if (!refund.charge || typeof refund.charge !== "string") {
+      throw new Error("Refund created but charge ID is missing");
+    }
+    if (!refund.status || typeof refund.status !== "string") {
+      throw new Error("Refund created but status is missing");
+    }
+    return {
+      refundId: refund.id,
+      refundAmount: refund.amount,
+      refundStatus: refund.status,
+      chargeId,
+      transferReversalId: reversal.id
+    };
+  } catch (error) {
+    console.error("Error reversing transfer and refunding:", error);
+    throw new Error(`Failed to reverse transfer and refund: ${error.message}`);
+  }
+}
+async function verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedAmount) {
+  try {
+    if (!stripe) {
+      return { valid: false, status: "error", error: "Stripe is not configured" };
+    }
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (!paymentIntent) {
+      return { valid: false, status: "not_found", error: "Payment intent not found" };
+    }
+    if (paymentIntent.metadata?.chef_id !== chefId.toString()) {
+      return { valid: false, status: paymentIntent.status, error: "Payment intent does not belong to this chef" };
+    }
+    const storedExpectedAmount = paymentIntent.metadata?.expected_amount ? parseInt(paymentIntent.metadata.expected_amount) : null;
+    const amountToCompare = storedExpectedAmount !== null ? storedExpectedAmount : expectedAmount;
+    const amountDifference = Math.abs(paymentIntent.amount - amountToCompare);
+    if (amountDifference > 5) {
+      console.error("Payment amount mismatch:", {
+        paymentIntentAmount: paymentIntent.amount,
+        expectedAmount: amountToCompare,
+        storedExpectedAmount,
+        calculatedExpectedAmount: expectedAmount,
+        difference: amountDifference,
+        differenceDollars: (amountDifference / 100).toFixed(2)
+      });
+      return { valid: false, status: paymentIntent.status, error: "Payment amount does not match booking amount" };
+    }
+    const validStatuses = ["succeeded", "processing"];
+    if (!validStatuses.includes(paymentIntent.status)) {
+      return {
+        valid: false,
+        status: paymentIntent.status,
+        error: `Payment is not in a valid state: ${paymentIntent.status}`
+      };
+    }
+    return { valid: true, status: paymentIntent.status };
+  } catch (error) {
+    console.error("Error verifying PaymentIntent:", error);
+    if (error.code === "resource_missing") {
+      return { valid: false, status: "not_found", error: "Payment intent not found" };
+    }
+    return { valid: false, status: "error", error: error.message };
+  }
+}
+var stripeSecretKey, stripe;
+var init_stripe_service = __esm({
+  "server/services/stripe-service.ts"() {
+    "use strict";
+    stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      console.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
+    }
+    stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
+      apiVersion: "2025-12-15.clover"
+    }) : null;
   }
 });
 
@@ -5754,8 +7239,3852 @@ Notes: ${bookingData.specialNotes}` : ""}`;
   }
 });
 
+// server/services/overstay-penalty-service.ts
+var overstay_penalty_service_exports = {};
+__export(overstay_penalty_service_exports, {
+  chargeApprovedPenalty: () => chargeApprovedPenalty,
+  checkAndEscalateOverstay: () => checkAndEscalateOverstay,
+  createPenaltyPaymentCheckout: () => createPenaltyPaymentCheckout,
+  detectOverstays: () => detectOverstays,
+  getAllOverstayRecords: () => getAllOverstayRecords,
+  getChefAllPenalties: () => getChefAllPenalties,
+  getChefPendingPenalties: () => getChefPendingPenalties,
+  getChefUnpaidPenalties: () => getChefUnpaidPenalties,
+  getOverstayHistory: () => getOverstayHistory,
+  getOverstayRecord: () => getOverstayRecord,
+  getOverstayStats: () => getOverstayStats,
+  getPendingOverstayReviews: () => getPendingOverstayReviews,
+  hasChefUnpaidPenalties: () => hasChefUnpaidPenalties,
+  markChefWarningSent: () => markChefWarningSent,
+  markManagerNotified: () => markManagerNotified,
+  overstayPenaltyService: () => overstayPenaltyService,
+  processManagerDecision: () => processManagerDecision,
+  refundOverstayPenalty: () => refundOverstayPenalty,
+  resolveOverstay: () => resolveOverstay
+});
+import { eq as eq3, and, lt, not, inArray, desc, asc, sql as sql3 } from "drizzle-orm";
+import Stripe2 from "stripe";
+async function detectOverstays() {
+  const today = /* @__PURE__ */ new Date();
+  today.setHours(0, 0, 0, 0);
+  const expiredBookings = await db.select({
+    id: storageBookings.id,
+    storageListingId: storageBookings.storageListingId,
+    chefId: storageBookings.chefId,
+    endDate: storageBookings.endDate,
+    totalPrice: storageBookings.totalPrice,
+    status: storageBookings.status,
+    paymentStatus: storageBookings.paymentStatus,
+    stripeCustomerId: storageBookings.stripeCustomerId,
+    stripePaymentMethodId: storageBookings.stripePaymentMethodId,
+    checkoutStatus: storageBookings.checkoutStatus,
+    // Storage listing config
+    basePrice: storageListings.basePrice,
+    gracePeriodDays: storageListings.overstayGracePeriodDays,
+    penaltyRate: storageListings.overstayPenaltyRate,
+    maxPenaltyDays: storageListings.overstayMaxPenaltyDays
+  }).from(storageBookings).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).where(and(
+    lt(storageBookings.endDate, today),
+    not(eq3(storageBookings.status, "cancelled")),
+    eq3(storageBookings.status, "confirmed")
+    // Only confirmed bookings can have overstay
+  )).orderBy(asc(storageBookings.endDate));
+  const results = [];
+  for (const booking of expiredBookings) {
+    try {
+      const checkoutStatus = booking.checkoutStatus;
+      if (checkoutStatus === "checkout_requested" || checkoutStatus === "checkout_approved" || checkoutStatus === "completed") {
+        logger.info(`[OverstayService] Skipping booking ${booking.id} - checkout in progress (status: ${checkoutStatus})`);
+        continue;
+      }
+      const endDate = new Date(booking.endDate);
+      endDate.setHours(0, 0, 0, 0);
+      const daysOverdue = Math.floor((today.getTime() - endDate.getTime()) / (1e3 * 60 * 60 * 24));
+      if (daysOverdue <= 0) continue;
+      const effectiveConfig = await getEffectivePenaltyConfig(
+        booking.gracePeriodDays,
+        booking.penaltyRate?.toString() || null,
+        booking.maxPenaltyDays
+      );
+      const gracePeriodDays = effectiveConfig.gracePeriodDays;
+      const gracePeriodEndsAt = new Date(endDate);
+      gracePeriodEndsAt.setDate(gracePeriodEndsAt.getDate() + gracePeriodDays);
+      const isInGracePeriod = today < gracePeriodEndsAt;
+      const penaltyRate = effectiveConfig.penaltyRate;
+      const maxPenaltyDays = effectiveConfig.maxPenaltyDays;
+      const dailyRateCents = booking.basePrice ? Math.round(parseFloat(booking.basePrice.toString())) : 0;
+      let penaltyDays = 0;
+      if (!isInGracePeriod) {
+        penaltyDays = Math.min(daysOverdue - gracePeriodDays, maxPenaltyDays);
+      }
+      const dailyPenaltyChargeCents = Math.round(dailyRateCents * (1 + penaltyRate));
+      const calculatedPenaltyCents = dailyPenaltyChargeCents * penaltyDays;
+      let status = "detected";
+      if (isInGracePeriod) {
+        status = "grace_period";
+      } else {
+        status = "pending_review";
+      }
+      const idempotencyKey = `booking_${booking.id}_overstay_${endDate.toISOString().split("T")[0]}`;
+      const [existingRecord] = await db.select().from(storageOverstayRecords).where(
+        and(
+          eq3(storageOverstayRecords.storageBookingId, booking.id),
+          inArray(storageOverstayRecords.status, ["detected", "grace_period", "pending_review", "charge_failed"])
+        )
+      ).orderBy(desc(storageOverstayRecords.detectedAt)).limit(1);
+      if (existingRecord) {
+        const shouldUpdate = existingRecord.status === "detected" || existingRecord.status === "grace_period" && status === "pending_review" || existingRecord.daysOverdue !== daysOverdue;
+        if (shouldUpdate && !["penalty_approved", "penalty_waived", "charge_pending", "charge_succeeded", "resolved", "escalated"].includes(existingRecord.status)) {
+          await db.update(storageOverstayRecords).set({
+            daysOverdue,
+            calculatedPenaltyCents,
+            status: existingRecord.status === "grace_period" && !isInGracePeriod ? "pending_review" : existingRecord.status,
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(eq3(storageOverstayRecords.id, existingRecord.id));
+          if (existingRecord.status !== status) {
+            await createOverstayHistoryEntry(existingRecord.id, existingRecord.status, status, "status_change", "cron", `Days overdue: ${daysOverdue}`);
+          }
+        }
+        results.push({
+          bookingId: booking.id,
+          chefId: booking.chefId,
+          daysOverdue,
+          gracePeriodEndsAt,
+          isInGracePeriod,
+          calculatedPenaltyCents,
+          dailyRateCents,
+          penaltyRate,
+          status: existingRecord.status
+        });
+      } else {
+        const [newRecord] = await db.insert(storageOverstayRecords).values({
+          storageBookingId: booking.id,
+          endDate: booking.endDate,
+          daysOverdue,
+          gracePeriodEndsAt,
+          status,
+          calculatedPenaltyCents,
+          dailyRateCents,
+          penaltyRate: penaltyRate.toString(),
+          idempotencyKey
+        }).returning();
+        await createOverstayHistoryEntry(newRecord.id, null, status, "status_change", "cron", `Overstay detected. Days overdue: ${daysOverdue}`);
+        results.push({
+          bookingId: booking.id,
+          chefId: booking.chefId,
+          daysOverdue,
+          gracePeriodEndsAt,
+          isInGracePeriod,
+          calculatedPenaltyCents,
+          dailyRateCents,
+          penaltyRate,
+          status
+        });
+        logger.info(`[OverstayService] Created overstay record for booking ${booking.id}`, {
+          daysOverdue,
+          isInGracePeriod,
+          calculatedPenaltyCents
+        });
+        try {
+          await sendOverstayNotificationEmails({
+            storageBookingId: booking.id,
+            chefId: booking.chefId,
+            daysOverdue,
+            gracePeriodEndsAt,
+            isInGracePeriod,
+            calculatedPenaltyCents,
+            endDate: new Date(booking.endDate)
+          });
+        } catch (emailError) {
+          logger.error(`[OverstayService] Error sending overstay notification emails for booking ${booking.id}:`, emailError);
+        }
+        try {
+          const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+          const [listingData] = await db.select({ name: storageListings.name, kitchenId: storageListings.kitchenId }).from(storageListings).where(eq3(storageListings.id, booking.storageListingId)).limit(1);
+          let kitchenName = "Kitchen";
+          let locationData;
+          if (listingData?.kitchenId) {
+            const [kitchenData] = await db.select({ name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq3(kitchens.id, listingData.kitchenId)).limit(1);
+            kitchenName = kitchenData?.name || "Kitchen";
+            if (kitchenData?.locationId) {
+              const [locData] = await db.select({ id: locations.id, managerId: locations.managerId }).from(locations).where(eq3(locations.id, kitchenData.locationId)).limit(1);
+              locationData = locData;
+            }
+          }
+          let chefName = "Chef";
+          if (booking.chefId) {
+            const [chefData] = await db.select({ email: users.username }).from(users).where(eq3(users.id, booking.chefId)).limit(1);
+            chefName = chefData?.email || "Chef";
+          }
+          if (booking.chefId) {
+            await notificationService2.notifyChefOverstayDetected({
+              chefId: booking.chefId,
+              overstayId: newRecord.id,
+              storageName: listingData?.name || "Storage",
+              kitchenName,
+              daysOverdue,
+              penaltyAmountCents: calculatedPenaltyCents,
+              gracePeriodEndsAt
+            });
+          }
+          if (!isInGracePeriod && locationData?.managerId && locationData.id) {
+            await notificationService2.notifyManagerOverstayPendingReview({
+              managerId: locationData.managerId,
+              locationId: locationData.id,
+              chefName,
+              overstayId: newRecord.id,
+              storageName: listingData?.name || "Storage",
+              kitchenName,
+              daysOverdue,
+              penaltyAmountCents: calculatedPenaltyCents
+            });
+          }
+        } catch (notifError) {
+          logger.error(`[OverstayService] Error sending in-app notifications for booking ${booking.id}:`, notifError);
+        }
+      }
+    } catch (error) {
+      logger.error(`[OverstayService] Error processing booking ${booking.id}:`, error);
+    }
+  }
+  return results;
+}
+async function getPendingOverstayReviews(locationId) {
+  const platformDefaults = await getOverstayPlatformDefaults();
+  const query = db.select({
+    overstayId: storageOverstayRecords.id,
+    storageBookingId: storageOverstayRecords.storageBookingId,
+    status: storageOverstayRecords.status,
+    daysOverdue: storageOverstayRecords.daysOverdue,
+    gracePeriodEndsAt: storageOverstayRecords.gracePeriodEndsAt,
+    calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+    finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+    detectedAt: storageOverstayRecords.detectedAt,
+    bookingStartDate: storageBookings.startDate,
+    bookingEndDate: storageBookings.endDate,
+    bookingTotalPrice: storageBookings.totalPrice,
+    storageListingId: storageListings.id,
+    storageName: storageListings.name,
+    storageType: storageListings.storageType,
+    dailyRateCents: storageOverstayRecords.dailyRateCents,
+    gracePeriodDays: storageListings.overstayGracePeriodDays,
+    penaltyRate: storageListings.overstayPenaltyRate,
+    maxPenaltyDays: storageListings.overstayMaxPenaltyDays,
+    kitchenId: kitchens.id,
+    kitchenName: kitchens.name,
+    kitchenTaxRatePercent: kitchens.taxRatePercent,
+    locationId: kitchens.locationId,
+    chefId: storageBookings.chefId,
+    chefEmail: users.username,
+    stripeCustomerId: storageBookings.stripeCustomerId,
+    stripePaymentMethodId: storageBookings.stripePaymentMethodId
+  }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq3(storageListings.kitchenId, kitchens.id)).leftJoin(users, eq3(storageBookings.chefId, users.id)).where(
+    inArray(storageOverstayRecords.status, ["detected", "grace_period", "pending_review", "charge_failed"])
+  ).orderBy(desc(storageOverstayRecords.daysOverdue));
+  const results = await query;
+  const filtered = locationId ? results.filter((r) => r.locationId === locationId) : results;
+  return filtered.map((r) => ({
+    ...r,
+    storageName: r.storageName || "Storage",
+    storageType: r.storageType || "dry",
+    kitchenName: r.kitchenName || "Kitchen",
+    kitchenTaxRatePercent: r.kitchenTaxRatePercent ? parseFloat(String(r.kitchenTaxRatePercent)) : 0,
+    gracePeriodDays: r.gracePeriodDays ?? platformDefaults.gracePeriodDays,
+    penaltyRate: r.penaltyRate?.toString() ?? platformDefaults.penaltyRate.toString(),
+    maxPenaltyDays: r.maxPenaltyDays ?? platformDefaults.maxPenaltyDays,
+    chefInfo: null
+  }));
+}
+async function getAllOverstayRecords(locationId) {
+  const platformDefaults = await getOverstayPlatformDefaults();
+  const query = db.select({
+    overstayId: storageOverstayRecords.id,
+    storageBookingId: storageOverstayRecords.storageBookingId,
+    status: storageOverstayRecords.status,
+    daysOverdue: storageOverstayRecords.daysOverdue,
+    gracePeriodEndsAt: storageOverstayRecords.gracePeriodEndsAt,
+    calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+    finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+    detectedAt: storageOverstayRecords.detectedAt,
+    bookingStartDate: storageBookings.startDate,
+    bookingEndDate: storageBookings.endDate,
+    bookingTotalPrice: storageBookings.totalPrice,
+    storageListingId: storageListings.id,
+    storageName: storageListings.name,
+    storageType: storageListings.storageType,
+    dailyRateCents: storageOverstayRecords.dailyRateCents,
+    gracePeriodDays: storageListings.overstayGracePeriodDays,
+    penaltyRate: storageListings.overstayPenaltyRate,
+    maxPenaltyDays: storageListings.overstayMaxPenaltyDays,
+    kitchenId: kitchens.id,
+    kitchenName: kitchens.name,
+    kitchenTaxRatePercent: kitchens.taxRatePercent,
+    locationId: kitchens.locationId,
+    chefId: storageBookings.chefId,
+    chefEmail: users.username,
+    stripeCustomerId: storageBookings.stripeCustomerId,
+    stripePaymentMethodId: storageBookings.stripePaymentMethodId
+  }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq3(storageListings.kitchenId, kitchens.id)).leftJoin(users, eq3(storageBookings.chefId, users.id)).orderBy(desc(storageOverstayRecords.detectedAt));
+  const results = await query;
+  const filtered = locationId ? results.filter((r) => r.locationId === locationId) : results;
+  return filtered.map((r) => ({
+    ...r,
+    storageName: r.storageName || "Storage",
+    storageType: r.storageType || "dry",
+    kitchenName: r.kitchenName || "Kitchen",
+    kitchenTaxRatePercent: r.kitchenTaxRatePercent ? parseFloat(String(r.kitchenTaxRatePercent)) : 0,
+    gracePeriodDays: r.gracePeriodDays ?? platformDefaults.gracePeriodDays,
+    penaltyRate: r.penaltyRate?.toString() ?? platformDefaults.penaltyRate.toString(),
+    maxPenaltyDays: r.maxPenaltyDays ?? platformDefaults.maxPenaltyDays,
+    chefInfo: null
+  }));
+}
+async function getOverstayRecord(overstayId) {
+  const [record] = await db.select().from(storageOverstayRecords).where(eq3(storageOverstayRecords.id, overstayId)).limit(1);
+  return record || null;
+}
+async function processManagerDecision(decision) {
+  const { overstayRecordId, managerId, action, finalPenaltyCents, waiveReason, managerNotes } = decision;
+  if (!overstayRecordId || overstayRecordId <= 0) {
+    return { success: false, error: "Invalid overstay record ID" };
+  }
+  if (!managerId || managerId <= 0) {
+    return { success: false, error: "Invalid manager ID" };
+  }
+  const record = await getOverstayRecord(overstayRecordId);
+  if (!record) {
+    return { success: false, error: "Overstay record not found" };
+  }
+  const allowedStatuses = ["pending_review", "charge_failed"];
+  if (!allowedStatuses.includes(record.status)) {
+    return { success: false, error: `Cannot process decision for record in status: ${record.status}` };
+  }
+  const previousStatus = record.status;
+  let newStatus;
+  const updateData = {
+    penaltyApprovedBy: managerId,
+    penaltyApprovedAt: /* @__PURE__ */ new Date(),
+    managerNotes: managerNotes || record.managerNotes,
+    updatedAt: /* @__PURE__ */ new Date()
+  };
+  const validatePenaltyAmount = (amount) => {
+    if (amount < 0) {
+      return { valid: false, error: "Penalty amount cannot be negative" };
+    }
+    if (amount > record.calculatedPenaltyCents) {
+      return {
+        valid: false,
+        error: `Penalty amount cannot exceed the calculated maximum of $${(record.calculatedPenaltyCents / 100).toFixed(2)}`
+      };
+    }
+    return { valid: true };
+  };
+  switch (action) {
+    case "approve": {
+      if (finalPenaltyCents !== void 0) {
+        const validation = validatePenaltyAmount(finalPenaltyCents);
+        if (!validation.valid) {
+          return { success: false, error: validation.error };
+        }
+      }
+      newStatus = "penalty_approved";
+      updateData.finalPenaltyCents = finalPenaltyCents ?? record.calculatedPenaltyCents;
+      updateData.status = newStatus;
+      break;
+    }
+    case "waive":
+      newStatus = "penalty_waived";
+      updateData.penaltyWaived = true;
+      updateData.waiveReason = waiveReason || "Manager waived penalty";
+      updateData.finalPenaltyCents = 0;
+      updateData.status = newStatus;
+      updateData.resolvedAt = /* @__PURE__ */ new Date();
+      updateData.resolutionType = "waived";
+      break;
+    case "adjust": {
+      if (finalPenaltyCents === void 0) {
+        return { success: false, error: "finalPenaltyCents required for adjust action" };
+      }
+      const adjustValidation = validatePenaltyAmount(finalPenaltyCents);
+      if (!adjustValidation.valid) {
+        return { success: false, error: adjustValidation.error };
+      }
+      newStatus = "penalty_approved";
+      updateData.finalPenaltyCents = finalPenaltyCents;
+      updateData.status = newStatus;
+      break;
+    }
+    default:
+      return { success: false, error: `Invalid action: ${action}` };
+  }
+  await db.update(storageOverstayRecords).set(updateData).where(eq3(storageOverstayRecords.id, overstayRecordId));
+  await createOverstayHistoryEntry(
+    overstayRecordId,
+    previousStatus,
+    newStatus,
+    action === "waive" ? "penalty_waived" : "penalty_approved",
+    "manager",
+    `Manager ${action}: ${action === "waive" ? waiveReason : `$${((finalPenaltyCents ?? record.calculatedPenaltyCents) / 100).toFixed(2)}`}`,
+    { managerId, action, finalPenaltyCents, waiveReason },
+    managerId
+  );
+  logger.info(`[OverstayService] Manager decision processed`, {
+    overstayRecordId,
+    managerId,
+    action,
+    finalPenaltyCents: updateData.finalPenaltyCents
+  });
+  return { success: true };
+}
+async function chargeApprovedPenalty(overstayRecordId) {
+  if (!stripe2) {
+    return { success: false, error: "Stripe not configured" };
+  }
+  const record = await getOverstayRecord(overstayRecordId);
+  if (!record) {
+    return { success: false, error: "Overstay record not found" };
+  }
+  if (record.status !== "penalty_approved") {
+    return { success: false, error: `Cannot charge record in status: ${record.status}` };
+  }
+  if (!record.finalPenaltyCents || record.finalPenaltyCents <= 0) {
+    return { success: false, error: "No penalty amount to charge" };
+  }
+  const [booking] = await db.select({
+    stripeCustomerId: storageBookings.stripeCustomerId,
+    stripePaymentMethodId: storageBookings.stripePaymentMethodId,
+    chefId: storageBookings.chefId
+  }).from(storageBookings).where(eq3(storageBookings.id, record.storageBookingId)).limit(1);
+  if (!booking) {
+    return { success: false, error: "Booking not found" };
+  }
+  let customerId = booking.stripeCustomerId;
+  const paymentMethodId = booking.stripePaymentMethodId;
+  if (!customerId && booking.chefId) {
+    const [user] = await db.select({ stripeCustomerId: users.stripeCustomerId }).from(users).where(eq3(users.id, booking.chefId)).limit(1);
+    customerId = user?.stripeCustomerId || null;
+  }
+  if (!customerId || !paymentMethodId) {
+    await db.update(storageOverstayRecords).set({
+      status: "charge_failed",
+      chargeFailedAt: /* @__PURE__ */ new Date(),
+      chargeFailureReason: "No saved payment method available",
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq3(storageOverstayRecords.id, overstayRecordId));
+    await createOverstayHistoryEntry(
+      overstayRecordId,
+      "penalty_approved",
+      "charge_failed",
+      "charge_attempt",
+      "system",
+      "No saved payment method available"
+    );
+    return { success: false, error: "No saved payment method available for off-session charging" };
+  }
+  let managerStripeAccountId = null;
+  let managerId = null;
+  const [storageBooking] = await db.select({ storageListingId: storageBookings.storageListingId }).from(storageBookings).where(eq3(storageBookings.id, record.storageBookingId)).limit(1);
+  if (storageBooking) {
+    const [listing] = await db.select({ kitchenId: storageListings.kitchenId }).from(storageListings).where(eq3(storageListings.id, storageBooking.storageListingId)).limit(1);
+    if (listing?.kitchenId) {
+      const [kitchen] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq3(kitchens.id, listing.kitchenId)).limit(1);
+      if (kitchen?.locationId) {
+        const [location] = await db.select({ managerId: locations.managerId }).from(locations).where(eq3(locations.id, kitchen.locationId)).limit(1);
+        if (location?.managerId) {
+          managerId = location.managerId;
+          const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq3(users.id, location.managerId)).limit(1);
+          managerStripeAccountId = manager?.stripeConnectAccountId || null;
+        }
+      }
+    }
+  }
+  await db.update(storageOverstayRecords).set({
+    status: "charge_pending",
+    chargeAttemptedAt: /* @__PURE__ */ new Date(),
+    updatedAt: /* @__PURE__ */ new Date()
+  }).where(eq3(storageOverstayRecords.id, overstayRecordId));
+  try {
+    let taxRatePercent = 0;
+    try {
+      const [storageBooking2] = await db.select({ storageListingId: storageBookings.storageListingId }).from(storageBookings).where(eq3(storageBookings.id, record.storageBookingId)).limit(1);
+      if (storageBooking2) {
+        const [listing] = await db.select({ kitchenId: storageListings.kitchenId }).from(storageListings).where(eq3(storageListings.id, storageBooking2.storageListingId)).limit(1);
+        if (listing?.kitchenId) {
+          const [kitchen] = await db.select({ taxRatePercent: kitchens.taxRatePercent }).from(kitchens).where(eq3(kitchens.id, listing.kitchenId)).limit(1);
+          if (kitchen?.taxRatePercent) {
+            taxRatePercent = parseFloat(String(kitchen.taxRatePercent));
+          }
+        }
+      }
+    } catch (taxError) {
+      logger.warn(`[OverstayService] Could not fetch tax rate for penalty:`, taxError);
+    }
+    const penaltyBaseCents = record.finalPenaltyCents;
+    const penaltyTaxCents = Math.round(penaltyBaseCents * taxRatePercent / 100);
+    const penaltyTotalCents = penaltyBaseCents + penaltyTaxCents;
+    logger.info(`[OverstayService] Calculated tax for overstay penalty:`, {
+      overstayRecordId,
+      penaltyBaseCents,
+      penaltyTaxCents,
+      penaltyTotalCents,
+      taxRatePercent
+    });
+    let applicationFeeAmount;
+    if (managerStripeAccountId) {
+      const { calculateCheckoutFees: calculateCheckoutFees2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
+      const feeResult = calculateCheckoutFees2(penaltyTotalCents / 100);
+      applicationFeeAmount = feeResult.stripeProcessingFeeInCents;
+      logger.info(`[OverstayService] Calculated application fee for break-even: ${applicationFeeAmount} cents`);
+    }
+    const paymentIntentParams = {
+      amount: penaltyTotalCents,
+      currency: "cad",
+      customer: customerId,
+      payment_method: paymentMethodId,
+      off_session: true,
+      confirm: true,
+      metadata: {
+        type: "overstay_penalty",
+        overstay_record_id: overstayRecordId.toString(),
+        storage_booking_id: record.storageBookingId.toString(),
+        days_overdue: record.daysOverdue.toString(),
+        manager_id: managerId?.toString() || "",
+        tax_rate_percent: taxRatePercent.toString(),
+        penalty_base_cents: penaltyBaseCents.toString(),
+        penalty_tax_cents: penaltyTaxCents.toString()
+      },
+      statement_descriptor_suffix: "OVERSTAY FEE"
+    };
+    if (managerStripeAccountId) {
+      paymentIntentParams.transfer_data = {
+        destination: managerStripeAccountId
+      };
+      if (applicationFeeAmount && applicationFeeAmount > 0) {
+        paymentIntentParams.application_fee_amount = applicationFeeAmount;
+        logger.info(`[OverstayService] Setting application_fee_amount: ${applicationFeeAmount} cents for break-even`);
+      }
+      logger.info(`[OverstayService] Using destination charge to manager account: ${managerStripeAccountId}`);
+    }
+    const idempotencyKey = `overstay_penalty_${overstayRecordId}_${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}`;
+    const paymentIntent = await stripe2.paymentIntents.create(paymentIntentParams, {
+      idempotencyKey
+    });
+    if (paymentIntent.status === "succeeded") {
+      const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge?.id;
+      await db.update(storageOverstayRecords).set({
+        status: "charge_succeeded",
+        stripePaymentIntentId: paymentIntent.id,
+        stripeChargeId: chargeId || null,
+        chargeSucceededAt: /* @__PURE__ */ new Date(),
+        resolvedAt: /* @__PURE__ */ new Date(),
+        resolutionType: "paid",
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq3(storageOverstayRecords.id, overstayRecordId));
+      await createOverstayHistoryEntry(
+        overstayRecordId,
+        "charge_pending",
+        "charge_succeeded",
+        "charge_attempt",
+        "stripe_webhook",
+        `Payment successful: ${paymentIntent.id}`,
+        { paymentIntentId: paymentIntent.id, chargeId }
+      );
+      try {
+        const { createPaymentTransaction: createPaymentTransaction2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+        const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+        const serviceFeeForTransaction = applicationFeeAmount || 0;
+        const managerRevenueForTransaction = penaltyTotalCents - serviceFeeForTransaction;
+        const ptRecord = await createPaymentTransaction2({
+          bookingId: record.storageBookingId,
+          bookingType: "storage",
+          chefId: booking.chefId || null,
+          managerId,
+          // Already fetched above for destination charge
+          amount: penaltyTotalCents,
+          // Total including tax
+          baseAmount: penaltyBaseCents,
+          // Base before tax
+          serviceFee: serviceFeeForTransaction,
+          // Platform fee (covers Stripe processing)
+          managerRevenue: managerRevenueForTransaction,
+          // What manager actually receives
+          currency: "CAD",
+          paymentIntentId: paymentIntent.id,
+          // CRITICAL: Save payment intent for fee syncing
+          chargeId: chargeId || void 0,
+          status: "succeeded",
+          stripeStatus: "succeeded",
+          metadata: {
+            type: "overstay_penalty",
+            overstay_record_id: overstayRecordId.toString(),
+            storage_booking_id: record.storageBookingId.toString(),
+            charged_via: "off_session",
+            // Indicates this was charged directly, not via checkout
+            tax_rate_percent: taxRatePercent.toString(),
+            penalty_base_cents: penaltyBaseCents.toString(),
+            penalty_tax_cents: penaltyTaxCents.toString(),
+            application_fee_cents: serviceFeeForTransaction.toString()
+          }
+        }, db);
+        if (ptRecord) {
+          const stripeAmounts = await getStripePaymentAmounts2(paymentIntent.id, managerStripeAccountId || void 0);
+          if (stripeAmounts) {
+            await updatePaymentTransaction2(ptRecord.id, {
+              paidAt: /* @__PURE__ */ new Date(),
+              lastSyncedAt: /* @__PURE__ */ new Date(),
+              stripeAmount: stripeAmounts.stripeAmount,
+              stripeNetAmount: stripeAmounts.stripeNetAmount,
+              stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+              stripePlatformFee: stripeAmounts.stripePlatformFee
+            }, db);
+            logger.info(`[OverstayService] Synced Stripe fees for overstay penalty ${overstayRecordId}:`, {
+              processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`
+            });
+          }
+        }
+        logger.info(`[OverstayService] Created payment_transactions for overstay penalty ${overstayRecordId}`);
+      } catch (ptError) {
+        logger.error(`[OverstayService] Failed to create payment_transactions for overstay penalty:`, ptError);
+      }
+      logger.info(`[OverstayService] Penalty charged successfully`, {
+        overstayRecordId,
+        paymentIntentId: paymentIntent.id,
+        amount: record.finalPenaltyCents
+      });
+      try {
+        await sendPenaltyChargedEmail(overstayRecordId, record.finalPenaltyCents, record.daysOverdue);
+      } catch (emailError) {
+        logger.error(`[OverstayService] Error sending penalty charged email:`, emailError);
+      }
+      try {
+        const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+        let storageName = "Storage";
+        let kitchenNameForNotif = "Kitchen";
+        let locationIdForNotif = null;
+        if (storageBooking?.storageListingId) {
+          const [listingInfo] = await db.select({ name: storageListings.name, kitchenId: storageListings.kitchenId }).from(storageListings).where(eq3(storageListings.id, storageBooking.storageListingId)).limit(1);
+          storageName = listingInfo?.name || "Storage";
+          if (listingInfo?.kitchenId) {
+            const [kitchenInfo] = await db.select({ name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq3(kitchens.id, listingInfo.kitchenId)).limit(1);
+            kitchenNameForNotif = kitchenInfo?.name || "Kitchen";
+            locationIdForNotif = kitchenInfo?.locationId || null;
+          }
+        }
+        if (booking.chefId) {
+          await notificationService2.notifyChefPenaltyCharged({
+            chefId: booking.chefId,
+            overstayId: overstayRecordId,
+            storageName,
+            kitchenName: kitchenNameForNotif,
+            daysOverdue: record.daysOverdue,
+            penaltyAmountCents: record.finalPenaltyCents || 0
+          });
+        }
+        if (managerId && locationIdForNotif) {
+          await notificationService2.notifyManagerPenaltyReceived({
+            managerId,
+            locationId: locationIdForNotif,
+            chefName: booking.chefId ? `Chef #${booking.chefId}` : "Chef",
+            overstayId: overstayRecordId,
+            storageName,
+            kitchenName: kitchenNameForNotif,
+            daysOverdue: record.daysOverdue,
+            penaltyAmountCents: record.finalPenaltyCents || 0
+          });
+        }
+      } catch (notifError) {
+        logger.error(`[OverstayService] Error sending in-app notifications for charge:`, notifError);
+      }
+      return {
+        success: true,
+        paymentIntentId: paymentIntent.id,
+        chargeId: chargeId || void 0
+      };
+    } else {
+      const requires3DS = paymentIntent.status === "requires_action" || paymentIntent.status === "requires_confirmation" || paymentIntent.status === "requires_payment_method";
+      await db.update(storageOverstayRecords).set({
+        status: "charge_failed",
+        stripePaymentIntentId: paymentIntent.id,
+        chargeFailedAt: /* @__PURE__ */ new Date(),
+        chargeFailureReason: requires3DS ? `Payment requires authentication (3DS/SCA). A payment link has been sent to the chef.` : `Payment status: ${paymentIntent.status}`,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq3(storageOverstayRecords.id, overstayRecordId));
+      await createOverstayHistoryEntry(
+        overstayRecordId,
+        "charge_pending",
+        "charge_failed",
+        "charge_attempt",
+        "system",
+        requires3DS ? `Payment requires 3DS/SCA authentication. Creating payment link for chef.` : `Payment failed: ${paymentIntent.status}`,
+        { paymentIntentId: paymentIntent.id, status: paymentIntent.status, requires3DS }
+      );
+      if (requires3DS && booking.chefId) {
+        try {
+          const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL || "https://localcooks.com";
+          const checkoutResult = await createPenaltyPaymentCheckout(
+            overstayRecordId,
+            booking.chefId,
+            `${baseUrl}/chef/payments/success?overstay=${overstayRecordId}`,
+            `${baseUrl}/chef/payments/cancel?overstay=${overstayRecordId}`
+          );
+          if ("checkoutUrl" in checkoutResult) {
+            const [chef] = await db.select({ email: users.username }).from(users).where(eq3(users.id, booking.chefId)).limit(1);
+            if (chef?.email) {
+              const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+              await sendEmail2({
+                to: chef.email,
+                subject: `Action Required: Complete Your Overstay Penalty Payment`,
+                html: `
+                  <h2>Payment Authentication Required</h2>
+                  <p>Your card requires additional verification (3D Secure) to complete the overstay penalty payment.</p>
+                  <p><strong>Amount:</strong> $${((record.finalPenaltyCents || 0) / 100).toFixed(2)}</p>
+                  <p><strong>Days Overdue:</strong> ${record.daysOverdue}</p>
+                  <p>Please click the link below to complete your payment:</p>
+                  <p><a href="${checkoutResult.checkoutUrl}" style="display: inline-block; padding: 12px 24px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 6px;">Complete Payment</a></p>
+                  <p>This link will expire in 24 hours.</p>
+                  <p><em>Note: You will not be able to make new bookings until this penalty is resolved.</em></p>
+                `,
+                text: `Payment Authentication Required
+
+Your card requires additional verification to complete the overstay penalty payment.
+
+Amount: $${((record.finalPenaltyCents || 0) / 100).toFixed(2)}
+Days Overdue: ${record.daysOverdue}
+
+Complete your payment here: ${checkoutResult.checkoutUrl}
+
+This link will expire in 24 hours.`
+              });
+              logger.info(`[OverstayService] Sent 3DS payment link email to chef ${chef.email} for overstay ${overstayRecordId}`);
+            }
+            await createOverstayHistoryEntry(
+              overstayRecordId,
+              "charge_failed",
+              "charge_failed",
+              "payment_link_sent",
+              "system",
+              `3DS/SCA payment link sent to chef`,
+              { checkoutUrl: checkoutResult.checkoutUrl }
+            );
+          }
+        } catch (checkoutError) {
+          logger.error(`[OverstayService] Failed to create 3DS payment link:`, checkoutError);
+        }
+      }
+      checkAndEscalateOverstay(overstayRecordId).catch(
+        (err) => logger.error(`[OverstayService] Escalation check failed:`, err)
+      );
+      return {
+        success: false,
+        error: requires3DS ? `Payment requires authentication. A payment link has been sent to the chef's email.` : `Payment failed: ${paymentIntent.status}`,
+        requires3DS
+      };
+    }
+  } catch (error) {
+    const errorMessage = error.message || "Unknown error";
+    await db.update(storageOverstayRecords).set({
+      status: "charge_failed",
+      chargeFailedAt: /* @__PURE__ */ new Date(),
+      chargeFailureReason: errorMessage,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq3(storageOverstayRecords.id, overstayRecordId));
+    await createOverstayHistoryEntry(
+      overstayRecordId,
+      "charge_pending",
+      "charge_failed",
+      "charge_attempt",
+      "system",
+      `Charge failed: ${errorMessage}`,
+      { error: errorMessage }
+    );
+    logger.error(`[OverstayService] Penalty charge failed`, {
+      overstayRecordId,
+      error: errorMessage
+    });
+    checkAndEscalateOverstay(overstayRecordId).catch(
+      (err) => logger.error(`[OverstayService] Escalation check failed:`, err)
+    );
+    return { success: false, error: errorMessage };
+  }
+}
+async function countFailedChargeAttempts(overstayRecordId) {
+  const [result] = await db.select({ count: sql3`count(*)` }).from(storageOverstayHistory).where(
+    and(
+      eq3(storageOverstayHistory.overstayRecordId, overstayRecordId),
+      eq3(storageOverstayHistory.eventType, "charge_attempt"),
+      eq3(storageOverstayHistory.newStatus, "charge_failed")
+    )
+  );
+  return result?.count || 0;
+}
+async function checkAndEscalateOverstay(overstayRecordId) {
+  try {
+    const record = await getOverstayRecord(overstayRecordId);
+    if (!record) {
+      return { escalated: false, reason: "Record not found" };
+    }
+    if (["charge_succeeded", "resolved", "escalated", "penalty_waived"].includes(record.status)) {
+      return { escalated: false, reason: "Already resolved or escalated" };
+    }
+    const failedAttempts = await countFailedChargeAttempts(overstayRecordId);
+    if (failedAttempts >= MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION) {
+      logger.info(`[OverstayService] Escalating overstay ${overstayRecordId} after ${failedAttempts} failed charge attempts`);
+      await db.update(storageOverstayRecords).set({
+        status: "escalated",
+        resolvedAt: /* @__PURE__ */ new Date(),
+        resolutionType: "escalated_collection",
+        resolutionNotes: `Auto-escalated after ${failedAttempts} failed charge attempts. Requires manual collection.`,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq3(storageOverstayRecords.id, overstayRecordId));
+      await createOverstayHistoryEntry(
+        overstayRecordId,
+        record.status,
+        "escalated",
+        "auto_escalation",
+        "system",
+        `Auto-escalated after ${failedAttempts} failed charge attempts`,
+        { failedAttempts, threshold: MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION }
+      );
+      try {
+        const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+        const adminEmail = process.env.ADMIN_EMAIL || process.env.SUPPORT_EMAIL;
+        if (adminEmail) {
+          const [booking] = await db.select({
+            storageName: storageListings.name,
+            chefId: storageBookings.chefId
+          }).from(storageBookings).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).where(eq3(storageBookings.id, record.storageBookingId)).limit(1);
+          let chefEmail = "Unknown";
+          if (booking?.chefId) {
+            const [chef] = await db.select({ email: users.username }).from(users).where(eq3(users.id, booking.chefId)).limit(1);
+            chefEmail = chef?.email || "Unknown";
+          }
+          await sendEmail2({
+            to: adminEmail,
+            subject: `\u26A0\uFE0F Escalated Overstay Penalty - Manual Collection Required`,
+            html: `
+              <h2>Overstay Penalty Escalated for Manual Collection</h2>
+              <p>An overstay penalty has been escalated after ${failedAttempts} failed charge attempts.</p>
+              <h3>Details:</h3>
+              <ul>
+                <li><strong>Overstay Record ID:</strong> ${overstayRecordId}</li>
+                <li><strong>Storage:</strong> ${booking?.storageName || "Unknown"}</li>
+                <li><strong>Chef Email:</strong> ${chefEmail}</li>
+                <li><strong>Penalty Amount:</strong> $${((record.finalPenaltyCents || record.calculatedPenaltyCents || 0) / 100).toFixed(2)}</li>
+                <li><strong>Days Overdue:</strong> ${record.daysOverdue}</li>
+                <li><strong>Failed Attempts:</strong> ${failedAttempts}</li>
+                <li><strong>Last Failure Reason:</strong> ${record.chargeFailureReason || "Unknown"}</li>
+              </ul>
+              <p>Please review and take appropriate collection action.</p>
+            `,
+            text: `Overstay Penalty Escalated
+
+Record ID: ${overstayRecordId}
+Chef: ${chefEmail}
+Amount: $${((record.finalPenaltyCents || record.calculatedPenaltyCents || 0) / 100).toFixed(2)}
+Failed Attempts: ${failedAttempts}`
+          });
+          logger.info(`[OverstayService] Sent escalation notification to admin for overstay ${overstayRecordId}`);
+        }
+      } catch (emailError) {
+        logger.error(`[OverstayService] Failed to send escalation email:`, emailError);
+      }
+      return { escalated: true, reason: `${failedAttempts} failed charge attempts` };
+    }
+    return { escalated: false, reason: `Only ${failedAttempts} failed attempts (threshold: ${MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION})` };
+  } catch (error) {
+    logger.error(`[OverstayService] Error checking escalation for overstay ${overstayRecordId}:`, error);
+    return { escalated: false, reason: "Error during escalation check" };
+  }
+}
+async function resolveOverstay(overstayRecordId, resolutionType, resolutionNotes, resolvedBy) {
+  const record = await getOverstayRecord(overstayRecordId);
+  if (!record) {
+    return { success: false, error: "Overstay record not found" };
+  }
+  const previousStatus = record.status;
+  const newStatus = resolutionType === "escalated" ? "escalated" : "resolved";
+  await db.update(storageOverstayRecords).set({
+    status: newStatus,
+    resolvedAt: /* @__PURE__ */ new Date(),
+    resolutionType,
+    resolutionNotes,
+    updatedAt: /* @__PURE__ */ new Date()
+  }).where(eq3(storageOverstayRecords.id, overstayRecordId));
+  await createOverstayHistoryEntry(
+    overstayRecordId,
+    previousStatus,
+    newStatus,
+    "resolution",
+    resolvedBy ? "manager" : "system",
+    `Resolved: ${resolutionType}${resolutionNotes ? ` - ${resolutionNotes}` : ""}`,
+    { resolutionType, resolutionNotes },
+    resolvedBy
+  );
+  return { success: true };
+}
+async function createOverstayHistoryEntry(overstayRecordId, previousStatus, newStatus, eventType, eventSource, description, metadata, createdBy) {
+  await db.insert(storageOverstayHistory).values({
+    overstayRecordId,
+    previousStatus,
+    newStatus,
+    eventType,
+    eventSource,
+    description,
+    metadata: metadata || {},
+    createdBy
+  });
+}
+async function getOverstayHistory(overstayRecordId) {
+  return db.select().from(storageOverstayHistory).where(eq3(storageOverstayHistory.overstayRecordId, overstayRecordId)).orderBy(desc(storageOverstayHistory.createdAt));
+}
+async function getOverstayStats(locationId) {
+  const allRecords = await db.select({
+    status: storageOverstayRecords.status,
+    calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+    finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+    locationId: kitchens.locationId
+  }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq3(storageListings.kitchenId, kitchens.id));
+  const filtered = locationId ? allRecords.filter((r) => r.locationId === locationId) : allRecords;
+  const stats = {
+    total: filtered.length,
+    pendingReview: filtered.filter((r) => r.status === "pending_review").length,
+    inGracePeriod: filtered.filter((r) => r.status === "grace_period").length,
+    approved: filtered.filter((r) => r.status === "penalty_approved").length,
+    waived: filtered.filter((r) => r.status === "penalty_waived").length,
+    charged: filtered.filter((r) => r.status === "charge_succeeded").length,
+    failed: filtered.filter((r) => r.status === "charge_failed").length,
+    resolved: filtered.filter((r) => r.status === "resolved").length,
+    escalated: filtered.filter((r) => r.status === "escalated").length,
+    totalPenaltiesCollected: filtered.filter((r) => r.status === "charge_succeeded").reduce((sum, r) => sum + (r.finalPenaltyCents || 0), 0),
+    totalPenaltiesWaived: filtered.filter((r) => r.status === "penalty_waived").reduce((sum, r) => sum + (r.calculatedPenaltyCents || 0), 0)
+  };
+  return stats;
+}
+async function markChefWarningSent(overstayRecordId) {
+  const record = await getOverstayRecord(overstayRecordId);
+  if (!record) return;
+  const currentStatus = record.status;
+  await db.update(storageOverstayRecords).set({
+    chefWarningSentAt: /* @__PURE__ */ new Date(),
+    updatedAt: /* @__PURE__ */ new Date()
+  }).where(eq3(storageOverstayRecords.id, overstayRecordId));
+  await createOverstayHistoryEntry(
+    overstayRecordId,
+    currentStatus,
+    currentStatus,
+    "notification_sent",
+    "system",
+    "Chef warning email sent"
+  );
+}
+async function markManagerNotified(overstayRecordId) {
+  const record = await getOverstayRecord(overstayRecordId);
+  if (!record) return;
+  const currentStatus = record.status;
+  await db.update(storageOverstayRecords).set({
+    managerNotifiedAt: /* @__PURE__ */ new Date(),
+    updatedAt: /* @__PURE__ */ new Date()
+  }).where(eq3(storageOverstayRecords.id, overstayRecordId));
+  await createOverstayHistoryEntry(
+    overstayRecordId,
+    currentStatus,
+    currentStatus,
+    "notification_sent",
+    "system",
+    "Manager notification sent"
+  );
+}
+async function getChefPendingPenalties(chefId) {
+  const records = await db.select({
+    overstayId: storageOverstayRecords.id,
+    storageBookingId: storageOverstayRecords.storageBookingId,
+    status: storageOverstayRecords.status,
+    daysOverdue: storageOverstayRecords.daysOverdue,
+    calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+    finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+    detectedAt: storageOverstayRecords.detectedAt,
+    penaltyApprovedAt: storageOverstayRecords.penaltyApprovedAt,
+    storageName: storageListings.name,
+    storageType: storageListings.storageType,
+    kitchenName: kitchens.name,
+    bookingEndDate: storageBookings.endDate
+  }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq3(storageListings.kitchenId, kitchens.id)).where(
+    and(
+      eq3(storageBookings.chefId, chefId),
+      eq3(storageOverstayRecords.status, "penalty_approved")
+    )
+  ).orderBy(desc(storageOverstayRecords.penaltyApprovedAt));
+  return records.map((r) => ({
+    ...r,
+    storageName: r.storageName || "Storage",
+    storageType: r.storageType || "dry",
+    kitchenName: r.kitchenName || "Kitchen",
+    penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0
+  }));
+}
+async function getChefAllPenalties(chefId) {
+  const relevantStatuses = ["penalty_approved", "charge_pending", "charge_succeeded", "charge_failed", "penalty_waived", "resolved"];
+  const records = await db.select({
+    overstayId: storageOverstayRecords.id,
+    storageBookingId: storageOverstayRecords.storageBookingId,
+    status: storageOverstayRecords.status,
+    daysOverdue: storageOverstayRecords.daysOverdue,
+    calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+    finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+    detectedAt: storageOverstayRecords.detectedAt,
+    penaltyApprovedAt: storageOverstayRecords.penaltyApprovedAt,
+    chargeSucceededAt: storageOverstayRecords.chargeSucceededAt,
+    // BACKWARDS COMPATIBILITY: Include fallback fields for older records
+    stripePaymentIntentId: storageOverstayRecords.stripePaymentIntentId,
+    stripeChargeId: storageOverstayRecords.stripeChargeId,
+    resolutionType: storageOverstayRecords.resolutionType,
+    resolvedAt: storageOverstayRecords.resolvedAt,
+    storageName: storageListings.name,
+    storageType: storageListings.storageType,
+    kitchenName: kitchens.name,
+    bookingEndDate: storageBookings.endDate
+  }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq3(storageListings.kitchenId, kitchens.id)).where(
+    and(
+      eq3(storageBookings.chefId, chefId),
+      inArray(storageOverstayRecords.status, relevantStatuses)
+    )
+  ).orderBy(desc(storageOverstayRecords.penaltyApprovedAt));
+  return records.map((r) => {
+    const statusIndicatesPaid = r.status === "charge_succeeded";
+    const hasStripeCharge = !!r.stripeChargeId;
+    const resolutionIndicatesPaid = r.resolutionType === "paid";
+    const hasChargeSucceededTimestamp = !!r.chargeSucceededAt;
+    const isPaid = statusIndicatesPaid || hasStripeCharge || resolutionIndicatesPaid || hasChargeSucceededTimestamp;
+    const isResolved = isPaid || r.status === "penalty_waived" || r.status === "resolved" || !!r.resolvedAt;
+    return {
+      ...r,
+      storageName: r.storageName || "Storage",
+      storageType: r.storageType || "dry",
+      kitchenName: r.kitchenName || "Kitchen",
+      penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0,
+      isResolved,
+      isPaid
+    };
+  });
+}
+async function createPenaltyPaymentCheckout(overstayRecordId, chefId, successUrl, cancelUrl) {
+  if (!stripe2) {
+    return { error: "Stripe not configured" };
+  }
+  try {
+    const [overstayRecord] = await db.select().from(storageOverstayRecords).where(eq3(storageOverstayRecords.id, overstayRecordId)).limit(1);
+    if (!overstayRecord) {
+      return { error: "Overstay record not found" };
+    }
+    const [booking] = await db.select().from(storageBookings).where(eq3(storageBookings.id, overstayRecord.storageBookingId)).limit(1);
+    if (!booking) {
+      return { error: "Storage booking not found" };
+    }
+    if (booking.chefId !== chefId) {
+      return { error: "Unauthorized: This penalty does not belong to you" };
+    }
+    if (overstayRecord.status !== "penalty_approved") {
+      return { error: `Cannot pay penalty in status: ${overstayRecord.status}` };
+    }
+    const [listing] = await db.select().from(storageListings).where(eq3(storageListings.id, booking.storageListingId)).limit(1);
+    const [kitchen] = listing?.kitchenId ? await db.select().from(kitchens).where(eq3(kitchens.id, listing.kitchenId)).limit(1) : [null];
+    const [location] = kitchen?.locationId ? await db.select().from(locations).where(eq3(locations.id, kitchen.locationId)).limit(1) : [null];
+    let managerStripeAccountId = null;
+    if (location?.managerId) {
+      const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq3(users.id, location.managerId)).limit(1);
+      managerStripeAccountId = manager?.stripeConnectAccountId || null;
+    }
+    const penaltyAmountCents = overstayRecord.finalPenaltyCents || overstayRecord.calculatedPenaltyCents || 0;
+    const storageName = listing?.name || "Storage";
+    const kitchenName = kitchen?.name || "Kitchen";
+    const managerId = location?.managerId;
+    if (penaltyAmountCents <= 0) {
+      return { error: "Invalid penalty amount" };
+    }
+    const [chef] = await db.select({ email: users.username }).from(users).where(eq3(users.id, chefId)).limit(1);
+    if (!chef) {
+      return { error: "Chef not found" };
+    }
+    const sessionParams = {
+      mode: "payment",
+      payment_method_types: ["card"],
+      customer_email: chef.email,
+      line_items: [
+        {
+          price_data: {
+            currency: "cad",
+            product_data: {
+              name: `Overstay Penalty - ${storageName}`,
+              description: `Storage overstay penalty for ${kitchenName}`
+            },
+            unit_amount: penaltyAmountCents
+          },
+          quantity: 1
+        }
+      ],
+      metadata: {
+        type: "overstay_penalty",
+        overstayRecordId: overstayRecordId.toString(),
+        chefId: chefId.toString(),
+        storageBookingId: overstayRecord.storageBookingId.toString(),
+        managerId: managerId?.toString() || ""
+      },
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      // ENTERPRISE STANDARD: Enable automatic invoice generation
+      // Stripe sends paid invoice email to customer when payment succeeds
+      // Requires "Successful payments" enabled in Stripe Dashboard > Customer emails settings
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          description: `Overstay Penalty - ${storageName} at ${kitchenName}`,
+          metadata: {
+            booking_type: "overstay_penalty",
+            overstay_record_id: overstayRecordId.toString(),
+            chef_id: chefId.toString()
+          }
+        }
+      }
+    };
+    if (managerStripeAccountId) {
+      const { calculateCheckoutFees: calculateCheckoutFees2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
+      const feeResult = calculateCheckoutFees2(penaltyAmountCents / 100);
+      const applicationFeeAmount = feeResult.stripeProcessingFeeInCents;
+      logger.info(`[OverstayService] Calculated application fee for checkout break-even: ${applicationFeeAmount} cents`);
+      sessionParams.payment_intent_data = {
+        transfer_data: {
+          destination: managerStripeAccountId
+        },
+        // ENTERPRISE STANDARD: Add application_fee_amount for break-even on Stripe fees
+        // Manager pays the Stripe fee, platform breaks even
+        application_fee_amount: applicationFeeAmount,
+        // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
+        receipt_email: chef.email
+      };
+    } else {
+      sessionParams.payment_intent_data = {
+        receipt_email: chef.email
+      };
+    }
+    const session = await stripe2.checkout.sessions.create(sessionParams);
+    await db.update(storageOverstayRecords).set({
+      status: "charge_pending",
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq3(storageOverstayRecords.id, overstayRecordId));
+    logger.info(`[OverstayService] Created penalty payment checkout`, {
+      overstayRecordId,
+      chefId,
+      penaltyAmountCents,
+      sessionId: session.id
+    });
+    return { checkoutUrl: session.url };
+  } catch (error) {
+    logger.error(`[OverstayService] Failed to create penalty checkout`, { error, overstayRecordId });
+    return { error: "Failed to create payment session" };
+  }
+}
+async function sendOverstayNotificationEmails(data) {
+  try {
+    const {
+      sendEmail: sendEmail2,
+      generateOverstayDetectedEmail: generateOverstayDetectedEmail2,
+      generateOverstayManagerNotificationEmail: generateOverstayManagerNotificationEmail2
+    } = await Promise.resolve().then(() => (init_email(), email_exports));
+    const [booking] = await db.select({
+      storageListingId: storageBookings.storageListingId,
+      chefId: storageBookings.chefId,
+      chefEmail: users.username
+    }).from(storageBookings).leftJoin(users, eq3(storageBookings.chefId, users.id)).where(eq3(storageBookings.id, data.storageBookingId)).limit(1);
+    if (!booking) {
+      logger.warn(`[OverstayService] No booking found for overstay email: ${data.storageBookingId}`);
+      return;
+    }
+    const [listing] = await db.select({
+      name: storageListings.name,
+      kitchenId: storageListings.kitchenId
+    }).from(storageListings).where(eq3(storageListings.id, booking.storageListingId)).limit(1);
+    if (!listing) {
+      logger.warn(`[OverstayService] No listing found for overstay email: ${booking.storageListingId}`);
+      return;
+    }
+    const [kitchen] = await db.select({
+      name: kitchens.name,
+      locationId: kitchens.locationId
+    }).from(kitchens).where(eq3(kitchens.id, listing.kitchenId)).limit(1);
+    if (!kitchen) {
+      logger.warn(`[OverstayService] No kitchen found for overstay email`);
+      return;
+    }
+    const [location] = await db.select({
+      name: locations.name,
+      managerId: locations.managerId,
+      notificationEmail: locations.notificationEmail
+    }).from(locations).where(eq3(locations.id, kitchen.locationId)).limit(1);
+    if (booking.chefEmail) {
+      const chefEmail = generateOverstayDetectedEmail2({
+        chefEmail: booking.chefEmail,
+        chefName: booking.chefEmail,
+        storageName: listing.name || "Storage",
+        endDate: data.endDate,
+        daysOverdue: data.daysOverdue,
+        gracePeriodEndsAt: data.gracePeriodEndsAt,
+        isInGracePeriod: data.isInGracePeriod,
+        calculatedPenaltyCents: data.calculatedPenaltyCents
+      });
+      await sendEmail2(chefEmail, {
+        trackingId: `overstay_chef_${data.storageBookingId}_${Date.now()}`
+      });
+      logger.info(`[OverstayService] Sent overstay notification email to chef: ${booking.chefEmail}`);
+    }
+    if (location && location.notificationEmail) {
+      const managerEmail = generateOverstayManagerNotificationEmail2({
+        managerEmail: location.notificationEmail,
+        chefName: booking.chefEmail || "Chef",
+        chefEmail: booking.chefEmail || "",
+        storageName: listing.name || "Storage",
+        kitchenName: kitchen.name || "Kitchen",
+        endDate: data.endDate,
+        daysOverdue: data.daysOverdue,
+        gracePeriodEndsAt: data.gracePeriodEndsAt,
+        isInGracePeriod: data.isInGracePeriod,
+        calculatedPenaltyCents: data.calculatedPenaltyCents
+      });
+      await sendEmail2(managerEmail, {
+        trackingId: `overstay_manager_${data.storageBookingId}_${Date.now()}`
+      });
+      logger.info(`[OverstayService] Sent overstay notification email to manager: ${location.notificationEmail}`);
+    }
+  } catch (error) {
+    logger.error(`[OverstayService] Error sending overstay notification emails:`, error);
+  }
+}
+async function sendPenaltyChargedEmail(overstayRecordId, penaltyAmountCents, daysOverdue) {
+  try {
+    const { sendEmail: sendEmail2, generatePenaltyChargedEmail: generatePenaltyChargedEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+    const [record] = await db.select({
+      storageBookingId: storageOverstayRecords.storageBookingId
+    }).from(storageOverstayRecords).where(eq3(storageOverstayRecords.id, overstayRecordId)).limit(1);
+    if (!record) return;
+    const [booking] = await db.select({
+      chefEmail: users.username,
+      storageListingId: storageBookings.storageListingId
+    }).from(storageBookings).leftJoin(users, eq3(storageBookings.chefId, users.id)).where(eq3(storageBookings.id, record.storageBookingId)).limit(1);
+    if (!booking || !booking.chefEmail) return;
+    const [listing] = await db.select({ name: storageListings.name }).from(storageListings).where(eq3(storageListings.id, booking.storageListingId)).limit(1);
+    const email = generatePenaltyChargedEmail2({
+      chefEmail: booking.chefEmail,
+      chefName: booking.chefEmail,
+      storageName: listing?.name || "Storage",
+      penaltyAmountCents,
+      daysOverdue,
+      chargeDate: /* @__PURE__ */ new Date()
+    });
+    await sendEmail2(email, {
+      trackingId: `penalty_charged_${overstayRecordId}_${Date.now()}`
+    });
+    logger.info(`[OverstayService] Sent penalty charged email to chef: ${booking.chefEmail}`);
+  } catch (error) {
+    logger.error(`[OverstayService] Error sending penalty charged email:`, error);
+  }
+}
+async function hasChefUnpaidPenalties(chefId) {
+  const blockingStatuses = [
+    "detected",
+    "grace_period",
+    "pending_review",
+    "penalty_approved",
+    "charge_pending",
+    "charge_failed"
+  ];
+  const [result] = await db.select({ count: sql3`count(*)` }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).where(
+    and(
+      eq3(storageBookings.chefId, chefId),
+      inArray(storageOverstayRecords.status, blockingStatuses)
+    )
+  );
+  return (result?.count || 0) > 0;
+}
+async function getChefUnpaidPenalties(chefId) {
+  const blockingStatuses = [
+    "detected",
+    "grace_period",
+    "pending_review",
+    "penalty_approved",
+    "charge_pending",
+    "charge_failed"
+  ];
+  const records = await db.select({
+    overstayId: storageOverstayRecords.id,
+    storageBookingId: storageOverstayRecords.storageBookingId,
+    status: storageOverstayRecords.status,
+    daysOverdue: storageOverstayRecords.daysOverdue,
+    calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+    finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+    detectedAt: storageOverstayRecords.detectedAt,
+    gracePeriodEndsAt: storageOverstayRecords.gracePeriodEndsAt,
+    penaltyApprovedAt: storageOverstayRecords.penaltyApprovedAt,
+    storageName: storageListings.name,
+    storageType: storageListings.storageType,
+    kitchenName: kitchens.name,
+    bookingEndDate: storageBookings.endDate
+  }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq3(storageListings.kitchenId, kitchens.id)).where(
+    and(
+      eq3(storageBookings.chefId, chefId),
+      inArray(storageOverstayRecords.status, blockingStatuses)
+    )
+  ).orderBy(desc(storageOverstayRecords.detectedAt));
+  return records.map((r) => ({
+    ...r,
+    storageName: r.storageName || "Storage",
+    storageType: r.storageType || "dry",
+    kitchenName: r.kitchenName || "Kitchen",
+    penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0,
+    requiresImmediatePayment: ["penalty_approved", "charge_failed"].includes(r.status)
+  }));
+}
+async function refundOverstayPenalty(overstayRecordId, refundReason, refundedBy, partialAmountCents) {
+  try {
+    const [record] = await db.select().from(storageOverstayRecords).where(eq3(storageOverstayRecords.id, overstayRecordId)).limit(1);
+    if (!record) {
+      return { success: false, error: "Overstay record not found" };
+    }
+    if (record.status !== "charge_succeeded") {
+      return {
+        success: false,
+        error: `Cannot refund penalty in status '${record.status}'. Only 'charge_succeeded' penalties can be refunded.`
+      };
+    }
+    if (!record.stripePaymentIntentId) {
+      return { success: false, error: "No payment intent found for this penalty. Manual refund required in Stripe Dashboard." };
+    }
+    const chargedAmount = record.finalPenaltyCents || record.calculatedPenaltyCents || 0;
+    const refundAmount = partialAmountCents || chargedAmount;
+    if (refundAmount <= 0) {
+      return { success: false, error: "Refund amount must be greater than 0" };
+    }
+    if (refundAmount > chargedAmount) {
+      return { success: false, error: `Refund amount ($${(refundAmount / 100).toFixed(2)}) cannot exceed charged amount ($${(chargedAmount / 100).toFixed(2)})` };
+    }
+    const stripeSecretKey6 = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey6) {
+      return { success: false, error: "Stripe not configured" };
+    }
+    const stripe6 = new Stripe2(stripeSecretKey6, {
+      apiVersion: "2025-12-15.clover"
+    });
+    logger.info(`[OverstayPenalty] Issuing refund for overstay ${overstayRecordId}:`, {
+      paymentIntentId: record.stripePaymentIntentId,
+      chargedAmount: `$${(chargedAmount / 100).toFixed(2)}`,
+      refundAmount: `$${(refundAmount / 100).toFixed(2)}`,
+      reason: refundReason
+    });
+    const refund = await stripe6.refunds.create({
+      payment_intent: record.stripePaymentIntentId,
+      amount: refundAmount,
+      reason: "requested_by_customer",
+      metadata: {
+        overstay_record_id: overstayRecordId.toString(),
+        refund_reason: refundReason,
+        refunded_by: refundedBy.toString()
+      }
+    });
+    const isFullRefund = refundAmount >= chargedAmount;
+    const newStatus = isFullRefund ? "resolved" : "charge_succeeded";
+    await db.update(storageOverstayRecords).set({
+      status: newStatus,
+      resolvedAt: isFullRefund ? /* @__PURE__ */ new Date() : record.resolvedAt,
+      resolutionType: isFullRefund ? "refunded" : record.resolutionType,
+      resolutionNotes: isFullRefund ? `Full refund issued: ${refundReason}` : `Partial refund of $${(refundAmount / 100).toFixed(2)}: ${refundReason}`,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq3(storageOverstayRecords.id, overstayRecordId));
+    await db.insert(storageOverstayHistory).values({
+      overstayRecordId,
+      previousStatus: "charge_succeeded",
+      newStatus,
+      eventType: "refund",
+      eventSource: "manager",
+      createdBy: refundedBy,
+      description: `${isFullRefund ? "Full" : "Partial"} refund of $${(refundAmount / 100).toFixed(2)} issued. Reason: ${refundReason}`,
+      metadata: {
+        refundId: refund.id,
+        refundAmount,
+        chargedAmount,
+        isFullRefund,
+        reason: refundReason
+      }
+    });
+    try {
+      const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+      const ptRecord = await findPaymentTransactionByIntentId2(record.stripePaymentIntentId, db);
+      if (ptRecord) {
+        await updatePaymentTransaction2(ptRecord.id, {
+          status: isFullRefund ? "refunded" : "partially_refunded",
+          refundAmount,
+          refundId: refund.id,
+          refundedAt: /* @__PURE__ */ new Date()
+        }, db);
+      }
+    } catch (ptError) {
+      logger.warn(`[OverstayPenalty] Could not update payment_transactions for refund:`, ptError);
+    }
+    try {
+      const [booking] = await db.select({
+        chefId: storageBookings.chefId,
+        storageName: storageListings.name
+      }).from(storageBookings).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).where(eq3(storageBookings.id, record.storageBookingId)).limit(1);
+      if (booking?.chefId) {
+        const [chef] = await db.select({ email: users.username }).from(users).where(eq3(users.id, booking.chefId)).limit(1);
+        if (chef?.email) {
+          const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+          await sendEmail2({
+            to: chef.email,
+            subject: `Overstay Penalty Refund - $${(refundAmount / 100).toFixed(2)}`,
+            html: `
+              <h2>Overstay Penalty Refund</h2>
+              <p>A ${isFullRefund ? "full" : "partial"} refund has been issued for your overstay penalty.</p>
+              <p><strong>Storage:</strong> ${booking.storageName || "Storage Unit"}</p>
+              <p><strong>Refund Amount:</strong> $${(refundAmount / 100).toFixed(2)}</p>
+              <p><strong>Reason:</strong> ${refundReason}</p>
+              <p>The refund should appear on your statement within 5-10 business days.</p>
+            `,
+            text: `Overstay Penalty Refund
+
+A ${isFullRefund ? "full" : "partial"} refund of $${(refundAmount / 100).toFixed(2)} has been issued for your overstay penalty.
+
+Storage: ${booking.storageName || "Storage Unit"}
+Reason: ${refundReason}`
+          });
+          logger.info(`[OverstayPenalty] Sent refund notification email to chef ${chef.email}`);
+        }
+      }
+    } catch (emailError) {
+      logger.error(`[OverstayPenalty] Error sending refund notification email:`, emailError);
+    }
+    logger.info(`[OverstayPenalty] \u2705 Refund successful for overstay ${overstayRecordId}:`, {
+      refundId: refund.id,
+      amount: `$${(refundAmount / 100).toFixed(2)}`,
+      isFullRefund
+    });
+    return { success: true, refundId: refund.id };
+  } catch (error) {
+    logger.error(`[OverstayPenalty] Error refunding penalty ${overstayRecordId}:`, error);
+    if (error.type === "StripeInvalidRequestError") {
+      return { success: false, error: `Stripe error: ${error.message}` };
+    }
+    return { success: false, error: error.message || "Failed to process refund" };
+  }
+}
+var stripeSecretKey2, stripe2, MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION, overstayPenaltyService;
+var init_overstay_penalty_service = __esm({
+  "server/services/overstay-penalty-service.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    init_logger();
+    init_overstay_defaults_service();
+    stripeSecretKey2 = process.env.STRIPE_SECRET_KEY;
+    stripe2 = stripeSecretKey2 ? new Stripe2(stripeSecretKey2, {
+      apiVersion: "2025-12-15.clover"
+    }) : null;
+    MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION = 3;
+    overstayPenaltyService = {
+      detectOverstays,
+      getPendingOverstayReviews,
+      getAllOverstayRecords,
+      getOverstayRecord,
+      processManagerDecision,
+      chargeApprovedPenalty,
+      resolveOverstay,
+      getOverstayHistory,
+      getOverstayStats,
+      markChefWarningSent,
+      markManagerNotified,
+      getChefPendingPenalties,
+      getChefAllPenalties,
+      createPenaltyPaymentCheckout,
+      sendOverstayNotificationEmails,
+      sendPenaltyChargedEmail,
+      hasChefUnpaidPenalties,
+      getChefUnpaidPenalties,
+      refundOverstayPenalty,
+      checkAndEscalateOverstay
+    };
+  }
+});
+
+// server/services/damage-claim-limits-service.ts
+var damage_claim_limits_service_exports = {};
+__export(damage_claim_limits_service_exports, {
+  canFileClaimForBooking: () => canFileClaimForBooking,
+  damageClaimLimitsService: () => damageClaimLimitsService,
+  getDamageClaimLimits: () => getDamageClaimLimits,
+  getDefaultLimits: () => getDefaultLimits,
+  validateClaimAmount: () => validateClaimAmount
+});
+import { eq as eq4 } from "drizzle-orm";
+async function getDamageClaimLimits() {
+  try {
+    const [maxClaimSetting] = await db.select().from(platformSettings).where(eq4(platformSettings.key, "damage_claim_max_amount_cents")).limit(1);
+    const [minClaimSetting] = await db.select().from(platformSettings).where(eq4(platformSettings.key, "damage_claim_min_amount_cents")).limit(1);
+    const [maxClaimsPerBookingSetting] = await db.select().from(platformSettings).where(eq4(platformSettings.key, "damage_claim_max_per_booking")).limit(1);
+    const [responseDeadlineSetting] = await db.select().from(platformSettings).where(eq4(platformSettings.key, "damage_claim_response_deadline_hours")).limit(1);
+    const [submissionDeadlineSetting] = await db.select().from(platformSettings).where(eq4(platformSettings.key, "damage_claim_submission_deadline_days")).limit(1);
+    return {
+      maxClaimAmountCents: maxClaimSetting ? parseInt(maxClaimSetting.value) : DEFAULTS2.maxClaimAmountCents,
+      minClaimAmountCents: minClaimSetting ? parseInt(minClaimSetting.value) : DEFAULTS2.minClaimAmountCents,
+      maxClaimsPerBooking: maxClaimsPerBookingSetting ? parseInt(maxClaimsPerBookingSetting.value) : DEFAULTS2.maxClaimsPerBooking,
+      chefResponseDeadlineHours: responseDeadlineSetting ? parseInt(responseDeadlineSetting.value) : DEFAULTS2.chefResponseDeadlineHours,
+      claimSubmissionDeadlineDays: submissionDeadlineSetting ? parseInt(submissionDeadlineSetting.value) : DEFAULTS2.claimSubmissionDeadlineDays
+    };
+  } catch (error) {
+    console.error("[DamageClaimLimitsService] Error fetching limits:", error);
+    return DEFAULTS2;
+  }
+}
+async function validateClaimAmount(amountCents) {
+  const limits = await getDamageClaimLimits();
+  if (amountCents < limits.minClaimAmountCents) {
+    return {
+      valid: false,
+      error: `Claim amount must be at least $${(limits.minClaimAmountCents / 100).toFixed(2)}`,
+      limits
+    };
+  }
+  if (amountCents > limits.maxClaimAmountCents) {
+    return {
+      valid: false,
+      error: `Claim amount cannot exceed $${(limits.maxClaimAmountCents / 100).toFixed(2)}. For larger claims, contact platform support.`,
+      limits
+    };
+  }
+  return { valid: true, limits };
+}
+async function canFileClaimForBooking(bookingType, bookingId) {
+  const limits = await getDamageClaimLimits();
+  const { damageClaims: damageClaims2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+  const { and: and24, eq: eq37, count: count3 } = await import("drizzle-orm");
+  const bookingColumn = bookingType === "kitchen" ? damageClaims2.kitchenBookingId : damageClaims2.storageBookingId;
+  const [result] = await db.select({ count: count3() }).from(damageClaims2).where(and24(
+    eq37(bookingColumn, bookingId),
+    eq37(damageClaims2.bookingType, bookingType)
+  ));
+  const currentCount = result?.count || 0;
+  if (currentCount >= limits.maxClaimsPerBooking) {
+    return {
+      allowed: false,
+      error: `Maximum of ${limits.maxClaimsPerBooking} claims per booking reached`,
+      currentCount,
+      maxAllowed: limits.maxClaimsPerBooking
+    };
+  }
+  return {
+    allowed: true,
+    currentCount,
+    maxAllowed: limits.maxClaimsPerBooking
+  };
+}
+function getDefaultLimits() {
+  return { ...DEFAULTS2 };
+}
+var DEFAULTS2, damageClaimLimitsService;
+var init_damage_claim_limits_service = __esm({
+  "server/services/damage-claim-limits-service.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    DEFAULTS2 = {
+      maxClaimAmountCents: 5e5,
+      // $5,000 CAD max per claim
+      minClaimAmountCents: 1e3,
+      // $10 CAD minimum
+      maxClaimsPerBooking: 3,
+      // Max 3 claims per booking
+      chefResponseDeadlineHours: 72,
+      // 72 hours to respond
+      claimSubmissionDeadlineDays: 14
+      // 14 days after booking ends
+    };
+    damageClaimLimitsService = {
+      getDamageClaimLimits,
+      validateClaimAmount,
+      canFileClaimForBooking,
+      getDefaultLimits
+    };
+  }
+});
+
+// server/services/damage-claim-service.ts
+var damage_claim_service_exports = {};
+__export(damage_claim_service_exports, {
+  addEvidence: () => addEvidence,
+  adminDecision: () => adminDecision,
+  chargeApprovedClaim: () => chargeApprovedClaim,
+  chefRespondToClaim: () => chefRespondToClaim,
+  createDamageClaim: () => createDamageClaim,
+  damageClaimService: () => damageClaimService,
+  deleteDraftClaim: () => deleteDraftClaim,
+  getChefPendingClaims: () => getChefPendingClaims,
+  getChefUnpaidDamageClaims: () => getChefUnpaidDamageClaims,
+  getClaimById: () => getClaimById,
+  getClaimHistory: () => getClaimHistory,
+  getDisputedClaims: () => getDisputedClaims,
+  getManagerClaims: () => getManagerClaims,
+  hasChefUnpaidDamageClaims: () => hasChefUnpaidDamageClaims,
+  processExpiredClaims: () => processExpiredClaims,
+  refundDamageClaim: () => refundDamageClaim,
+  removeEvidence: () => removeEvidence,
+  submitClaim: () => submitClaim,
+  updateDraftClaim: () => updateDraftClaim
+});
+import { eq as eq5, and as and2, inArray as inArray2, desc as desc2, sql as sql4 } from "drizzle-orm";
+import Stripe3 from "stripe";
+import { format as format2 } from "date-fns";
+async function createHistoryEntry(damageClaimId, previousStatus, newStatus, action, actionBy, actionByUserId, notes, metadata) {
+  await db.insert(damageClaimHistory).values({
+    damageClaimId,
+    previousStatus,
+    newStatus,
+    action,
+    actionBy,
+    actionByUserId,
+    notes,
+    metadata: metadata || {}
+  });
+}
+async function getBookingPaymentDetails(bookingType, bookingId) {
+  if (bookingType === "storage") {
+    const [booking] = await db.select({
+      stripeCustomerId: storageBookings.stripeCustomerId,
+      stripePaymentMethodId: storageBookings.stripePaymentMethodId,
+      chefId: storageBookings.chefId
+    }).from(storageBookings).where(eq5(storageBookings.id, bookingId)).limit(1);
+    return booking || { stripeCustomerId: null, stripePaymentMethodId: null, chefId: null };
+  } else {
+    const [booking] = await db.select({
+      chefId: kitchenBookings.chefId
+    }).from(kitchenBookings).where(eq5(kitchenBookings.id, bookingId)).limit(1);
+    if (!booking || !booking.chefId) {
+      return { stripeCustomerId: null, stripePaymentMethodId: null, chefId: null };
+    }
+    const [user] = await db.select({
+      stripeCustomerId: users.stripeCustomerId
+    }).from(users).where(eq5(users.id, booking.chefId)).limit(1);
+    return {
+      stripeCustomerId: user?.stripeCustomerId || null,
+      stripePaymentMethodId: null,
+      // Kitchen bookings don't store payment methods
+      chefId: booking.chefId
+    };
+  }
+}
+async function createDamageClaim(input) {
+  try {
+    const { validateClaimAmount: validateClaimAmount2, canFileClaimForBooking: canFileClaimForBooking2, getDamageClaimLimits: getDamageClaimLimits2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
+    const amountValidation = await validateClaimAmount2(input.claimedAmountCents);
+    if (!amountValidation.valid) {
+      return {
+        success: false,
+        error: amountValidation.error,
+        limits: {
+          maxClaimAmountCents: amountValidation.limits.maxClaimAmountCents,
+          minClaimAmountCents: amountValidation.limits.minClaimAmountCents
+        }
+      };
+    }
+    const bookingId = input.bookingType === "storage" ? input.storageBookingId : input.kitchenBookingId;
+    if (bookingId) {
+      const claimCheck = await canFileClaimForBooking2(input.bookingType, bookingId);
+      if (!claimCheck.allowed) {
+        return { success: false, error: claimCheck.error };
+      }
+    }
+    const limits = await getDamageClaimLimits2();
+    let chefId = null;
+    let locationId = null;
+    const chefResponseDeadlineHours = limits.chefResponseDeadlineHours;
+    const invalidBookingStatuses = ["cancelled", "rejected", "refunded"];
+    if (input.bookingType === "storage" && input.storageBookingId) {
+      const [booking] = await db.select({
+        chefId: storageBookings.chefId,
+        endDate: storageBookings.endDate,
+        status: storageBookings.status,
+        kitchenId: storageListings.kitchenId
+      }).from(storageBookings).innerJoin(storageListings, eq5(storageBookings.storageListingId, storageListings.id)).where(eq5(storageBookings.id, input.storageBookingId)).limit(1);
+      if (!booking) {
+        return { success: false, error: "Storage booking not found" };
+      }
+      if (invalidBookingStatuses.includes(booking.status)) {
+        return {
+          success: false,
+          error: `Cannot file damage claim for a ${booking.status} booking. Only active or completed bookings are eligible.`
+        };
+      }
+      chefId = booking.chefId;
+      if (booking.kitchenId) {
+        const [kitchen] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq5(kitchens.id, booking.kitchenId)).limit(1);
+        locationId = kitchen?.locationId || null;
+      }
+    } else if (input.bookingType === "kitchen" && input.kitchenBookingId) {
+      const [booking] = await db.select({
+        chefId: kitchenBookings.chefId,
+        kitchenId: kitchenBookings.kitchenId,
+        status: kitchenBookings.status
+      }).from(kitchenBookings).where(eq5(kitchenBookings.id, input.kitchenBookingId)).limit(1);
+      if (!booking) {
+        return { success: false, error: "Kitchen booking not found" };
+      }
+      if (invalidBookingStatuses.includes(booking.status)) {
+        return {
+          success: false,
+          error: `Cannot file damage claim for a ${booking.status} booking. Only active or completed bookings are eligible.`
+        };
+      }
+      chefId = booking.chefId;
+      if (booking.kitchenId) {
+        const [kitchen] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq5(kitchens.id, booking.kitchenId)).limit(1);
+        locationId = kitchen?.locationId || null;
+      }
+    } else {
+      return { success: false, error: "Invalid booking type or missing booking ID" };
+    }
+    if (!chefId) {
+      return { success: false, error: "Chef not found for this booking" };
+    }
+    if (!locationId) {
+      return { success: false, error: "Location not found for this booking" };
+    }
+    const chefResponseDeadline = /* @__PURE__ */ new Date();
+    chefResponseDeadline.setHours(chefResponseDeadline.getHours() + chefResponseDeadlineHours);
+    const [claim] = await db.insert(damageClaims).values({
+      bookingType: input.bookingType,
+      kitchenBookingId: input.kitchenBookingId || null,
+      storageBookingId: input.storageBookingId || null,
+      chefId,
+      managerId: input.managerId,
+      locationId,
+      claimTitle: input.claimTitle,
+      claimDescription: input.claimDescription,
+      damageDate: input.damageDate,
+      claimedAmountCents: input.claimedAmountCents,
+      chefResponseDeadline,
+      status: "draft"
+    }).returning();
+    await createHistoryEntry(
+      claim.id,
+      null,
+      "draft",
+      "created",
+      "manager",
+      input.managerId,
+      "Damage claim created"
+    );
+    logger.info(`[DamageClaimService] Created damage claim ${claim.id}`, {
+      bookingType: input.bookingType,
+      chefId,
+      managerId: input.managerId,
+      claimedAmountCents: input.claimedAmountCents
+    });
+    return { success: true, claim };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to create damage claim";
+    logger.error("[DamageClaimService] Error creating damage claim:", error);
+    return { success: false, error: errorMessage };
+  }
+}
+async function updateDraftClaim(claimId, managerId, updates) {
+  try {
+    const [claim] = await db.select().from(damageClaims).where(and2(eq5(damageClaims.id, claimId), eq5(damageClaims.managerId, managerId))).limit(1);
+    if (!claim) {
+      return { success: false, error: "Claim not found or unauthorized" };
+    }
+    if (claim.status !== "draft") {
+      return { success: false, error: "Can only update draft claims" };
+    }
+    await db.update(damageClaims).set({
+      ...updates,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq5(damageClaims.id, claimId));
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to update claim";
+    logger.error("[DamageClaimService] Error updating draft claim:", error);
+    return { success: false, error: errorMessage };
+  }
+}
+async function deleteDraftClaim(claimId, managerId) {
+  try {
+    const [claim] = await db.select().from(damageClaims).where(and2(eq5(damageClaims.id, claimId), eq5(damageClaims.managerId, managerId))).limit(1);
+    if (!claim) {
+      return { success: false, error: "Claim not found or unauthorized" };
+    }
+    if (claim.status !== "draft") {
+      return { success: false, error: "Can only delete draft claims" };
+    }
+    await db.delete(damageEvidence).where(eq5(damageEvidence.damageClaimId, claimId));
+    await db.delete(damageClaims).where(eq5(damageClaims.id, claimId));
+    logger.info(`[DamageClaimService] Deleted draft claim ${claimId}`, { managerId });
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to delete claim";
+    logger.error("[DamageClaimService] Error deleting draft claim:", error);
+    return { success: false, error: errorMessage };
+  }
+}
+async function submitClaim(claimId, managerId) {
+  try {
+    const [claim] = await db.select().from(damageClaims).where(and2(eq5(damageClaims.id, claimId), eq5(damageClaims.managerId, managerId))).limit(1);
+    if (!claim) {
+      return { success: false, error: "Claim not found or unauthorized" };
+    }
+    if (claim.status !== "draft") {
+      return { success: false, error: "Can only submit draft claims" };
+    }
+    const evidenceCount = await db.select({ count: sql4`count(*)` }).from(damageEvidence).where(eq5(damageEvidence.damageClaimId, claimId));
+    if (!evidenceCount[0] || evidenceCount[0].count < 2) {
+      return { success: false, error: "Minimum 2 pieces of evidence required" };
+    }
+    const bookingId = claim.bookingType === "storage" ? claim.storageBookingId : claim.kitchenBookingId;
+    if (bookingId) {
+      const paymentDetails = await getBookingPaymentDetails(claim.bookingType, bookingId);
+      await db.update(damageClaims).set({
+        status: "submitted",
+        submittedAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date(),
+        stripeCustomerId: paymentDetails.stripeCustomerId,
+        stripePaymentMethodId: paymentDetails.stripePaymentMethodId
+      }).where(eq5(damageClaims.id, claimId));
+    } else {
+      await db.update(damageClaims).set({
+        status: "submitted",
+        submittedAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq5(damageClaims.id, claimId));
+    }
+    await createHistoryEntry(
+      claimId,
+      "draft",
+      "submitted",
+      "submitted",
+      "manager",
+      managerId,
+      "Claim submitted to chef for response"
+    );
+    logger.info(`[DamageClaimService] Claim ${claimId} submitted`, { managerId });
+    try {
+      const claimWithDetails = await getClaimById(claimId);
+      if (claimWithDetails) {
+        const [chefUser] = await db.select({ username: users.username }).from(users).where(eq5(users.id, claim.chefId)).limit(1);
+        const [managerUser] = await db.select({ username: users.username }).from(users).where(eq5(users.id, claim.managerId)).limit(1);
+        if (chefUser?.username) {
+          const emailContent = generateDamageClaimFiledEmail({
+            chefEmail: chefUser.username,
+            chefName: claimWithDetails.chefName || chefUser.username || "Chef",
+            managerName: claimWithDetails.managerName || managerUser?.username || "Manager",
+            locationName: claimWithDetails.locationName || "Unknown Location",
+            claimTitle: claim.claimTitle,
+            claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
+            damageDate: format2(new Date(claim.damageDate), "MMM d, yyyy"),
+            responseDeadline: format2(new Date(claim.chefResponseDeadline), "MMM d, yyyy h:mm a"),
+            claimId: claim.id
+          });
+          await sendEmail(emailContent);
+          logger.info(`[DamageClaimService] Sent claim filed email to chef ${chefUser.username}`);
+          try {
+            const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+            await notificationService2.notifyChefDamageClaimFiled({
+              chefId: claim.chefId,
+              managerName: claimWithDetails.managerName || managerUser?.username || "Manager",
+              responseDeadline: new Date(claim.chefResponseDeadline),
+              claimId: claim.id,
+              claimTitle: claim.claimTitle,
+              amountCents: claim.claimedAmountCents,
+              locationName: claimWithDetails.locationName || "Unknown Location",
+              bookingType: claim.bookingType
+            });
+            logger.info(`[DamageClaimService] Sent in-app notification to chef for claim ${claimId}`);
+          } catch (notifError) {
+            logger.error("[DamageClaimService] Failed to send in-app notification:", notifError);
+          }
+        }
+      }
+    } catch (emailError) {
+      logger.error("[DamageClaimService] Failed to send claim filed email:", emailError);
+    }
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to submit claim";
+    logger.error("[DamageClaimService] Error submitting claim:", error);
+    return { success: false, error: errorMessage };
+  }
+}
+async function addEvidence(claimId, userId, evidence) {
+  try {
+    const [claim] = await db.select().from(damageClaims).where(eq5(damageClaims.id, claimId)).limit(1);
+    if (!claim) {
+      return { success: false, error: "Claim not found" };
+    }
+    if (!["draft", "submitted", "chef_disputed", "under_review"].includes(claim.status)) {
+      return { success: false, error: "Cannot add evidence to claim in current status" };
+    }
+    const [newEvidence] = await db.insert(damageEvidence).values({
+      damageClaimId: claimId,
+      evidenceType: evidence.evidenceType,
+      fileUrl: evidence.fileUrl,
+      fileName: evidence.fileName,
+      fileSize: evidence.fileSize,
+      mimeType: evidence.mimeType,
+      description: evidence.description,
+      uploadedBy: userId,
+      amountCents: evidence.amountCents,
+      vendorName: evidence.vendorName
+    }).returning();
+    logger.info(`[DamageClaimService] Evidence added to claim ${claimId}`, {
+      evidenceId: newEvidence.id,
+      evidenceType: evidence.evidenceType
+    });
+    return { success: true, evidence: newEvidence };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to add evidence";
+    logger.error("[DamageClaimService] Error adding evidence:", error);
+    return { success: false, error: errorMessage };
+  }
+}
+async function removeEvidence(evidenceId, _userId) {
+  try {
+    const [evidence] = await db.select().from(damageEvidence).where(eq5(damageEvidence.id, evidenceId)).limit(1);
+    if (!evidence) {
+      return { success: false, error: "Evidence not found" };
+    }
+    const [claim] = await db.select().from(damageClaims).where(eq5(damageClaims.id, evidence.damageClaimId)).limit(1);
+    if (!claim || claim.status !== "draft") {
+      return { success: false, error: "Can only remove evidence from draft claims" };
+    }
+    await db.delete(damageEvidence).where(eq5(damageEvidence.id, evidenceId));
+    logger.info(`[DamageClaimService] Evidence ${evidenceId} removed from claim ${evidence.damageClaimId}`);
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to remove evidence";
+    logger.error("[DamageClaimService] Error removing evidence:", error);
+    return { success: false, error: errorMessage };
+  }
+}
+async function getChefPendingClaims(chefId) {
+  const allChefStatuses = [
+    "submitted",
+    // Awaiting chef response
+    "chef_accepted",
+    // Chef accepted
+    "chef_disputed",
+    // Chef disputed
+    "under_review",
+    // Admin reviewing
+    "approved",
+    // Approved by admin
+    "partially_approved",
+    // Partially approved
+    "charge_pending",
+    // Payment processing
+    "charge_succeeded",
+    // Successfully charged (RESOLVED)
+    "charge_failed",
+    // Charge failed
+    "resolved",
+    // Resolved (RESOLVED)
+    "rejected",
+    // Rejected by admin (RESOLVED)
+    "expired"
+    // Expired (RESOLVED)
+  ];
+  const claims = await db.select({
+    claim: damageClaims,
+    chefEmail: users.username,
+    chefName: users.username,
+    // users table doesn't have fullName
+    locationName: locations.name
+  }).from(damageClaims).innerJoin(users, eq5(damageClaims.chefId, users.id)).innerJoin(locations, eq5(damageClaims.locationId, locations.id)).where(and2(
+    eq5(damageClaims.chefId, chefId),
+    inArray2(damageClaims.status, allChefStatuses)
+  )).orderBy(desc2(damageClaims.createdAt));
+  const result = [];
+  for (const row of claims) {
+    const evidence = await db.select().from(damageEvidence).where(eq5(damageEvidence.damageClaimId, row.claim.id));
+    result.push({
+      ...row.claim,
+      chefEmail: row.chefEmail,
+      chefName: row.chefName,
+      managerName: null,
+      locationName: row.locationName,
+      kitchenName: null,
+      bookingStartDate: null,
+      bookingEndDate: null,
+      evidence
+    });
+  }
+  return result;
+}
+async function chefRespondToClaim(claimId, chefId, response) {
+  try {
+    const [claim] = await db.select().from(damageClaims).where(and2(eq5(damageClaims.id, claimId), eq5(damageClaims.chefId, chefId))).limit(1);
+    if (!claim) {
+      return { success: false, error: "Claim not found or unauthorized" };
+    }
+    if (claim.status !== "submitted") {
+      return { success: false, error: "Can only respond to submitted claims" };
+    }
+    const previousStatus = claim.status;
+    let newStatus;
+    if (response.action === "accept") {
+      newStatus = "chef_accepted";
+      await db.update(damageClaims).set({
+        status: newStatus,
+        chefResponse: response.response,
+        chefRespondedAt: /* @__PURE__ */ new Date(),
+        approvedAmountCents: claim.claimedAmountCents,
+        finalAmountCents: claim.claimedAmountCents,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq5(damageClaims.id, claimId));
+      await db.update(damageClaims).set({
+        status: "approved",
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq5(damageClaims.id, claimId));
+      await createHistoryEntry(
+        claimId,
+        previousStatus,
+        "chef_accepted",
+        "chef_response",
+        "chef",
+        chefId,
+        `Chef accepted claim: ${response.response}`
+      );
+      await createHistoryEntry(
+        claimId,
+        "chef_accepted",
+        "approved",
+        "auto_approved",
+        "system",
+        void 0,
+        "Claim auto-approved after chef acceptance"
+      );
+      logger.info(`[DamageClaimService] Chef ${chefId} accepted claim ${claimId}`);
+      try {
+        const chargeResult = await chargeApprovedClaim(claimId);
+        if (chargeResult.success) {
+          logger.info(`[DamageClaimService] Auto-charged claim ${claimId} after chef acceptance`);
+        } else {
+          logger.warn(`[DamageClaimService] Auto-charge failed for claim ${claimId}: ${chargeResult.error}`);
+        }
+      } catch (chargeError) {
+        logger.error(`[DamageClaimService] Error auto-charging claim ${claimId}:`, chargeError);
+      }
+    } else {
+      newStatus = "chef_disputed";
+      await db.update(damageClaims).set({
+        status: newStatus,
+        chefResponse: response.response,
+        chefRespondedAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq5(damageClaims.id, claimId));
+      await db.update(damageClaims).set({
+        status: "under_review",
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq5(damageClaims.id, claimId));
+      await createHistoryEntry(
+        claimId,
+        previousStatus,
+        "chef_disputed",
+        "chef_response",
+        "chef",
+        chefId,
+        `Chef disputed claim: ${response.response}`
+      );
+      await createHistoryEntry(
+        claimId,
+        "chef_disputed",
+        "under_review",
+        "escalated_to_admin",
+        "system",
+        void 0,
+        "Disputed claim escalated to admin for review"
+      );
+      logger.info(`[DamageClaimService] Chef ${chefId} disputed claim ${claimId}`);
+    }
+    try {
+      const claimWithDetails = await getClaimById(claimId);
+      if (claimWithDetails) {
+        const [managerUser] = await db.select({ username: users.username }).from(users).where(eq5(users.id, claim.managerId)).limit(1);
+        const [chefUser] = await db.select({ username: users.username }).from(users).where(eq5(users.id, chefId)).limit(1);
+        if (managerUser?.username) {
+          const emailContent = generateDamageClaimResponseEmail({
+            managerEmail: managerUser.username,
+            managerName: claimWithDetails.managerName || managerUser.username || "Manager",
+            chefName: claimWithDetails.chefName || chefUser?.username || "Chef",
+            claimTitle: claim.claimTitle,
+            claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
+            response: response.action === "accept" ? "accepted" : "disputed",
+            chefResponse: response.response,
+            claimId: claim.id
+          });
+          await sendEmail(emailContent);
+          logger.info(`[DamageClaimService] Sent response notification to manager ${managerUser.username}`);
+          try {
+            const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+            await notificationService2.notifyManagerClaimResponseReceived({
+              managerId: claim.managerId,
+              locationId: claim.locationId,
+              chefName: claimWithDetails.chefName || chefUser?.username || "Chef",
+              responseType: response.action === "accept" ? "accepted" : "disputed",
+              chefResponse: response.response,
+              claimId: claim.id,
+              claimTitle: claim.claimTitle,
+              amountCents: claim.claimedAmountCents,
+              locationName: claimWithDetails.locationName || "Unknown Location",
+              bookingType: claim.bookingType
+            });
+            logger.info(`[DamageClaimService] Sent in-app notification to manager for claim ${claimId} response`);
+          } catch (notifError) {
+            logger.error("[DamageClaimService] Failed to send manager in-app notification:", notifError);
+          }
+        }
+        if (response.action === "dispute") {
+          const adminEmail = process.env.ADMIN_EMAIL;
+          if (adminEmail) {
+            const adminEmailContent = generateDamageClaimDisputedAdminEmail({
+              adminEmail,
+              chefName: claimWithDetails.chefName || chefUser?.username || "Chef",
+              chefEmail: claimWithDetails.chefEmail || chefUser?.username || "",
+              managerName: claimWithDetails.managerName || managerUser?.username || "Manager",
+              locationName: claimWithDetails.locationName || "Unknown Location",
+              claimTitle: claim.claimTitle,
+              claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
+              chefResponse: response.response,
+              claimId: claim.id
+            });
+            await sendEmail(adminEmailContent);
+            logger.info(`[DamageClaimService] Sent dispute notification to admin`);
+          }
+        }
+      }
+    } catch (emailError) {
+      logger.error("[DamageClaimService] Failed to send response emails:", emailError);
+    }
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to process response";
+    logger.error("[DamageClaimService] Error processing chef response:", error);
+    return { success: false, error: errorMessage };
+  }
+}
+async function getDisputedClaims() {
+  const claims = await db.select({
+    claim: damageClaims,
+    chefEmail: users.username,
+    chefName: users.username,
+    // users table doesn't have fullName
+    locationName: locations.name
+  }).from(damageClaims).innerJoin(users, eq5(damageClaims.chefId, users.id)).innerJoin(locations, eq5(damageClaims.locationId, locations.id)).where(eq5(damageClaims.status, "under_review")).orderBy(desc2(damageClaims.createdAt));
+  const result = [];
+  for (const row of claims) {
+    const evidence = await db.select().from(damageEvidence).where(eq5(damageEvidence.damageClaimId, row.claim.id));
+    result.push({
+      ...row.claim,
+      chefEmail: row.chefEmail,
+      chefName: row.chefName,
+      managerName: null,
+      locationName: row.locationName,
+      kitchenName: null,
+      bookingStartDate: null,
+      bookingEndDate: null,
+      evidence
+    });
+  }
+  return result;
+}
+async function adminDecision(claimId, adminId, decision) {
+  try {
+    const [claim] = await db.select().from(damageClaims).where(eq5(damageClaims.id, claimId)).limit(1);
+    if (!claim) {
+      return { success: false, error: "Claim not found" };
+    }
+    if (claim.status !== "under_review") {
+      return { success: false, error: "Can only review claims under review" };
+    }
+    const previousStatus = claim.status;
+    let newStatus;
+    let approvedAmount = null;
+    let finalAmount = null;
+    switch (decision.decision) {
+      case "approve":
+        newStatus = "approved";
+        approvedAmount = claim.claimedAmountCents;
+        finalAmount = claim.claimedAmountCents;
+        break;
+      case "partially_approve":
+        if (!decision.approvedAmountCents || decision.approvedAmountCents <= 0) {
+          return { success: false, error: "Approved amount required for partial approval" };
+        }
+        newStatus = "partially_approved";
+        approvedAmount = decision.approvedAmountCents;
+        finalAmount = decision.approvedAmountCents;
+        break;
+      case "reject":
+        newStatus = "rejected";
+        approvedAmount = 0;
+        finalAmount = 0;
+        break;
+      default:
+        return { success: false, error: "Invalid decision" };
+    }
+    await db.update(damageClaims).set({
+      status: newStatus,
+      adminReviewerId: adminId,
+      adminReviewedAt: /* @__PURE__ */ new Date(),
+      adminDecisionReason: decision.decisionReason,
+      adminNotes: decision.notes,
+      approvedAmountCents: approvedAmount,
+      finalAmountCents: finalAmount,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq5(damageClaims.id, claimId));
+    await createHistoryEntry(
+      claimId,
+      previousStatus,
+      newStatus,
+      "admin_decision",
+      "admin",
+      adminId,
+      `Admin ${decision.decision}: ${decision.decisionReason}`,
+      { approvedAmountCents: approvedAmount }
+    );
+    logger.info(`[DamageClaimService] Admin ${adminId} decided on claim ${claimId}: ${decision.decision}`);
+    try {
+      const claimWithDetails = await getClaimById(claimId);
+      if (claimWithDetails) {
+        const [chefUser] = await db.select({ username: users.username }).from(users).where(eq5(users.id, claim.chefId)).limit(1);
+        const [managerUser] = await db.select({ username: users.username }).from(users).where(eq5(users.id, claim.managerId)).limit(1);
+        const decisionType = decision.decision === "approve" ? "approved" : decision.decision === "partially_approve" ? "partially_approved" : "rejected";
+        if (chefUser?.username) {
+          const chefEmail = generateDamageClaimDecisionEmail({
+            recipientEmail: chefUser.username,
+            recipientName: claimWithDetails.chefName || chefUser.username || "Chef",
+            recipientRole: "chef",
+            claimTitle: claim.claimTitle,
+            claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
+            decision: decisionType,
+            finalAmount: finalAmount ? `$${(finalAmount / 100).toFixed(2)}` : void 0,
+            decisionReason: decision.decisionReason,
+            claimId: claim.id
+          });
+          await sendEmail(chefEmail);
+        }
+        if (managerUser?.username) {
+          const managerEmail = generateDamageClaimDecisionEmail({
+            recipientEmail: managerUser.username,
+            recipientName: claimWithDetails.managerName || managerUser.username || "Manager",
+            recipientRole: "manager",
+            claimTitle: claim.claimTitle,
+            claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
+            decision: decisionType,
+            finalAmount: finalAmount ? `$${(finalAmount / 100).toFixed(2)}` : void 0,
+            decisionReason: decision.decisionReason,
+            claimId: claim.id
+          });
+          await sendEmail(managerEmail);
+        }
+        try {
+          const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+          await notificationService2.notifyChefClaimDecision({
+            chefId: claim.chefId,
+            decision: decisionType,
+            approvedAmountCents: finalAmount || void 0,
+            decisionReason: decision.decisionReason,
+            claimId: claim.id,
+            claimTitle: claim.claimTitle,
+            amountCents: claim.claimedAmountCents,
+            locationName: claimWithDetails.locationName || "Unknown Location",
+            bookingType: claim.bookingType
+          });
+          await notificationService2.notifyManagerClaimDecision({
+            managerId: claim.managerId,
+            locationId: claim.locationId,
+            decision: decisionType,
+            approvedAmountCents: finalAmount || void 0,
+            decisionReason: decision.decisionReason,
+            claimId: claim.id,
+            claimTitle: claim.claimTitle,
+            amountCents: claim.claimedAmountCents,
+            locationName: claimWithDetails.locationName || "Unknown Location",
+            bookingType: claim.bookingType
+          });
+          logger.info(`[DamageClaimService] Sent in-app decision notifications for claim ${claimId}`);
+        } catch (notifError) {
+          logger.error("[DamageClaimService] Failed to send in-app decision notifications:", notifError);
+        }
+        logger.info(`[DamageClaimService] Sent decision emails for claim ${claimId}`);
+      }
+    } catch (emailError) {
+      logger.error("[DamageClaimService] Failed to send decision emails:", emailError);
+    }
+    if (newStatus === "approved" || newStatus === "partially_approved") {
+      try {
+        const chargeResult = await chargeApprovedClaim(claimId);
+        if (chargeResult.success) {
+          logger.info(`[DamageClaimService] Auto-charged claim ${claimId} after admin ${decision.decision}`);
+        } else {
+          logger.warn(`[DamageClaimService] Auto-charge failed for claim ${claimId}: ${chargeResult.error}`);
+        }
+      } catch (chargeError) {
+        logger.error(`[DamageClaimService] Error auto-charging claim ${claimId}:`, chargeError);
+      }
+    }
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to process decision";
+    logger.error("[DamageClaimService] Error processing admin decision:", error);
+    return { success: false, error: errorMessage };
+  }
+}
+async function chargeApprovedClaim(claimId) {
+  if (!stripe3) {
+    return { success: false, error: "Stripe not configured" };
+  }
+  const [claim] = await db.select().from(damageClaims).where(eq5(damageClaims.id, claimId)).limit(1);
+  if (!claim) {
+    return { success: false, error: "Claim not found" };
+  }
+  if (!["approved", "partially_approved", "chef_accepted"].includes(claim.status)) {
+    return { success: false, error: `Cannot charge claim in status: ${claim.status}` };
+  }
+  const chargeAmount = claim.finalAmountCents;
+  if (!chargeAmount || chargeAmount <= 0) {
+    return { success: false, error: "No amount to charge" };
+  }
+  let customerId = null;
+  let paymentMethodId = null;
+  if (claim.bookingType === "kitchen" && claim.kitchenBookingId) {
+    const [booking] = await db.select({
+      stripeCustomerId: kitchenBookings.stripeCustomerId,
+      stripePaymentMethodId: kitchenBookings.stripePaymentMethodId
+    }).from(kitchenBookings).where(eq5(kitchenBookings.id, claim.kitchenBookingId)).limit(1);
+    if (booking) {
+      customerId = booking.stripeCustomerId;
+      paymentMethodId = booking.stripePaymentMethodId;
+    }
+  } else if (claim.bookingType === "storage" && claim.storageBookingId) {
+    const [booking] = await db.select({
+      stripeCustomerId: storageBookings.stripeCustomerId,
+      stripePaymentMethodId: storageBookings.stripePaymentMethodId
+    }).from(storageBookings).where(eq5(storageBookings.id, claim.storageBookingId)).limit(1);
+    if (booking) {
+      customerId = booking.stripeCustomerId;
+      paymentMethodId = booking.stripePaymentMethodId;
+    }
+  }
+  if (!customerId || !paymentMethodId) {
+    await db.update(damageClaims).set({
+      status: "charge_failed",
+      chargeFailedAt: /* @__PURE__ */ new Date(),
+      chargeFailureReason: "No saved payment method available",
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq5(damageClaims.id, claimId));
+    await createHistoryEntry(
+      claimId,
+      claim.status,
+      "charge_failed",
+      "charge_attempt",
+      "system",
+      void 0,
+      "No saved payment method available"
+    );
+    return { success: false, error: "No saved payment method available" };
+  }
+  let managerStripeAccountId = null;
+  const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq5(users.id, claim.managerId)).limit(1);
+  managerStripeAccountId = manager?.stripeConnectAccountId || null;
+  let applicationFeeAmount;
+  if (managerStripeAccountId) {
+    const { calculateCheckoutFees: calculateCheckoutFees2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
+    const feeResult = calculateCheckoutFees2(chargeAmount / 100);
+    applicationFeeAmount = feeResult.stripeProcessingFeeInCents;
+    logger.info(`[DamageClaimService] Calculated application fee for break-even: ${applicationFeeAmount} cents`);
+  }
+  await db.update(damageClaims).set({
+    status: "charge_pending",
+    chargeAttemptedAt: /* @__PURE__ */ new Date(),
+    updatedAt: /* @__PURE__ */ new Date()
+  }).where(eq5(damageClaims.id, claimId));
+  try {
+    const paymentIntentParams = {
+      amount: chargeAmount,
+      currency: "cad",
+      customer: customerId,
+      payment_method: paymentMethodId,
+      off_session: true,
+      confirm: true,
+      metadata: {
+        type: "damage_claim",
+        damage_claim_id: claimId.toString(),
+        booking_type: claim.bookingType,
+        chef_id: claim.chefId.toString(),
+        manager_id: claim.managerId.toString()
+      },
+      statement_descriptor_suffix: "DAMAGE CLAIM"
+    };
+    if (managerStripeAccountId) {
+      paymentIntentParams.transfer_data = {
+        destination: managerStripeAccountId
+      };
+      if (applicationFeeAmount && applicationFeeAmount > 0) {
+        paymentIntentParams.application_fee_amount = applicationFeeAmount;
+        logger.info(`[DamageClaimService] Setting application_fee_amount: ${applicationFeeAmount} cents for break-even`);
+      }
+      logger.info(`[DamageClaimService] Using destination charge to manager: ${managerStripeAccountId}`);
+    }
+    const idempotencyKey = `damage_claim_${claimId}_${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}`;
+    const paymentIntent = await stripe3.paymentIntents.create(paymentIntentParams, {
+      idempotencyKey
+    });
+    if (paymentIntent.status === "succeeded") {
+      const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge?.id;
+      await db.update(damageClaims).set({
+        status: "charge_succeeded",
+        stripePaymentIntentId: paymentIntent.id,
+        stripeChargeId: chargeId || null,
+        chargeSucceededAt: /* @__PURE__ */ new Date(),
+        resolvedAt: /* @__PURE__ */ new Date(),
+        resolutionType: "paid",
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq5(damageClaims.id, claimId));
+      await createHistoryEntry(
+        claimId,
+        "charge_pending",
+        "charge_succeeded",
+        "charge_attempt",
+        "stripe_webhook",
+        void 0,
+        `Payment successful: ${paymentIntent.id}`,
+        { paymentIntentId: paymentIntent.id, chargeId }
+      );
+      try {
+        const { createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+        const serviceFeeForTransaction = applicationFeeAmount || 0;
+        const managerRevenueForTransaction = chargeAmount - serviceFeeForTransaction;
+        await createPaymentTransaction2({
+          bookingId: claim.bookingType === "storage" ? claim.storageBookingId : claim.kitchenBookingId,
+          bookingType: claim.bookingType,
+          chefId: claim.chefId,
+          managerId: claim.managerId,
+          amount: chargeAmount,
+          baseAmount: chargeAmount,
+          // No tax on damage claims, so base = amount
+          serviceFee: serviceFeeForTransaction,
+          // Platform fee (covers Stripe processing)
+          managerRevenue: managerRevenueForTransaction,
+          // What manager actually receives
+          currency: "CAD",
+          paymentIntentId: paymentIntent.id,
+          chargeId: chargeId || void 0,
+          status: "succeeded",
+          stripeStatus: "succeeded",
+          metadata: {
+            type: "damage_claim",
+            damage_claim_id: claimId.toString(),
+            is_reimbursement: "true",
+            // Flag to identify as reimbursement in UI
+            no_tax: "true"
+            // Flag to indicate no tax should be displayed
+          }
+        }, db);
+        logger.info(`[DamageClaimService] Created payment transaction for damage claim ${claimId}`, {
+          amount: chargeAmount,
+          serviceFee: serviceFeeForTransaction,
+          managerRevenue: managerRevenueForTransaction
+        });
+      } catch (ptError) {
+        logger.error(`[DamageClaimService] Failed to create payment transaction:`, ptError);
+      }
+      logger.info(`[DamageClaimService] Claim ${claimId} charged successfully`, {
+        paymentIntentId: paymentIntent.id,
+        amount: chargeAmount
+      });
+      try {
+        const claimWithDetails = await getClaimById(claimId);
+        const [chefUser] = await db.select({ username: users.username }).from(users).where(eq5(users.id, claim.chefId)).limit(1);
+        if (chefUser?.username && claimWithDetails) {
+          const chargeEmail = generateDamageClaimChargedEmail({
+            chefEmail: chefUser.username,
+            chefName: claimWithDetails.chefName || chefUser.username || "Chef",
+            claimTitle: claim.claimTitle,
+            chargedAmount: `$${(chargeAmount / 100).toFixed(2)}`,
+            locationName: claimWithDetails.locationName || "Unknown Location",
+            claimId: claim.id
+          });
+          await sendEmail(chargeEmail);
+          logger.info(`[DamageClaimService] Sent charge notification to chef ${chefUser.username}`);
+          try {
+            const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+            await notificationService2.notifyChefDamageClaimCharged({
+              chefId: claim.chefId,
+              claimId: claim.id,
+              claimTitle: claim.claimTitle,
+              amountCents: chargeAmount,
+              locationName: claimWithDetails.locationName || "Unknown Location",
+              bookingType: claim.bookingType
+            });
+            await notificationService2.notifyManagerDamageClaimReceived({
+              managerId: claim.managerId,
+              locationId: claim.locationId,
+              chefName: claimWithDetails.chefName || chefUser.username || "Chef",
+              claimId: claim.id,
+              claimTitle: claim.claimTitle,
+              amountCents: chargeAmount,
+              locationName: claimWithDetails.locationName || "Unknown Location",
+              bookingType: claim.bookingType
+            });
+            logger.info(`[DamageClaimService] Sent in-app charge notifications for claim ${claimId}`);
+          } catch (notifError) {
+            logger.error("[DamageClaimService] Failed to send in-app charge notifications:", notifError);
+          }
+        }
+      } catch (emailError) {
+        logger.error("[DamageClaimService] Failed to send charge email:", emailError);
+      }
+      return {
+        success: true,
+        paymentIntentId: paymentIntent.id,
+        chargeId: chargeId || void 0
+      };
+    } else {
+      await db.update(damageClaims).set({
+        status: "charge_failed",
+        stripePaymentIntentId: paymentIntent.id,
+        chargeFailedAt: /* @__PURE__ */ new Date(),
+        chargeFailureReason: `Payment status: ${paymentIntent.status}`,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq5(damageClaims.id, claimId));
+      await createHistoryEntry(
+        claimId,
+        "charge_pending",
+        "charge_failed",
+        "charge_attempt",
+        "system",
+        void 0,
+        `Payment requires action: ${paymentIntent.status}`
+      );
+      return { success: false, error: `Payment requires action: ${paymentIntent.status}` };
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    await db.update(damageClaims).set({
+      status: "charge_failed",
+      chargeFailedAt: /* @__PURE__ */ new Date(),
+      chargeFailureReason: errorMessage,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq5(damageClaims.id, claimId));
+    await createHistoryEntry(
+      claimId,
+      "charge_pending",
+      "charge_failed",
+      "charge_attempt",
+      "system",
+      void 0,
+      `Charge failed: ${errorMessage}`
+    );
+    logger.error(`[DamageClaimService] Charge failed for claim ${claimId}:`, errorMessage);
+    return { success: false, error: errorMessage };
+  }
+}
+async function getClaimById(claimId) {
+  const [row] = await db.select({
+    claim: damageClaims,
+    chefEmail: users.username,
+    chefName: users.username,
+    locationName: locations.name
+  }).from(damageClaims).innerJoin(users, eq5(damageClaims.chefId, users.id)).innerJoin(locations, eq5(damageClaims.locationId, locations.id)).where(eq5(damageClaims.id, claimId)).limit(1);
+  if (!row) return null;
+  const [manager] = await db.select({ username: users.username }).from(users).where(eq5(users.id, row.claim.managerId)).limit(1);
+  let kitchenName = null;
+  let bookingStartDate = null;
+  let bookingEndDate = null;
+  if (row.claim.bookingType === "kitchen" && row.claim.kitchenBookingId) {
+    const [booking] = await db.select({
+      kitchenName: kitchens.name,
+      bookingDate: kitchenBookings.bookingDate
+    }).from(kitchenBookings).innerJoin(kitchens, eq5(kitchenBookings.kitchenId, kitchens.id)).where(eq5(kitchenBookings.id, row.claim.kitchenBookingId)).limit(1);
+    if (booking) {
+      kitchenName = booking.kitchenName;
+      bookingStartDate = booking.bookingDate;
+      bookingEndDate = booking.bookingDate;
+    }
+  } else if (row.claim.bookingType === "storage" && row.claim.storageBookingId) {
+    const [booking] = await db.select({
+      kitchenName: kitchens.name,
+      startDate: storageBookings.startDate,
+      endDate: storageBookings.endDate
+    }).from(storageBookings).innerJoin(storageListings, eq5(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq5(storageListings.kitchenId, kitchens.id)).where(eq5(storageBookings.id, row.claim.storageBookingId)).limit(1);
+    if (booking) {
+      kitchenName = booking.kitchenName;
+      bookingStartDate = booking.startDate;
+      bookingEndDate = booking.endDate;
+    }
+  }
+  const evidence = await db.select().from(damageEvidence).where(eq5(damageEvidence.damageClaimId, claimId));
+  return {
+    ...row.claim,
+    chefEmail: row.chefEmail,
+    chefName: row.chefName,
+    managerName: manager?.username || null,
+    locationName: row.locationName,
+    kitchenName,
+    bookingStartDate,
+    bookingEndDate,
+    evidence
+  };
+}
+async function getManagerClaims(managerId, includeAll = false) {
+  const [manager] = await db.select({ username: users.username }).from(users).where(eq5(users.id, managerId)).limit(1);
+  const managerName = manager?.username || null;
+  const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq5(locations.managerId, managerId));
+  const locationIds = managerLocations.map((l) => l.id);
+  if (locationIds.length === 0) {
+    return [];
+  }
+  const query = db.select({
+    claim: damageClaims,
+    chefEmail: users.username,
+    chefName: users.username,
+    locationName: locations.name
+  }).from(damageClaims).innerJoin(users, eq5(damageClaims.chefId, users.id)).innerJoin(locations, eq5(damageClaims.locationId, locations.id)).where(inArray2(damageClaims.locationId, locationIds)).orderBy(desc2(damageClaims.createdAt));
+  const claims = await query;
+  const result = [];
+  for (const row of claims) {
+    if (!includeAll && ["resolved", "rejected", "expired"].includes(row.claim.status)) {
+      continue;
+    }
+    let kitchenName = null;
+    let bookingStartDate = null;
+    let bookingEndDate = null;
+    if (row.claim.bookingType === "kitchen" && row.claim.kitchenBookingId) {
+      const [booking] = await db.select({
+        kitchenName: kitchens.name,
+        bookingDate: kitchenBookings.bookingDate
+      }).from(kitchenBookings).innerJoin(kitchens, eq5(kitchenBookings.kitchenId, kitchens.id)).where(eq5(kitchenBookings.id, row.claim.kitchenBookingId)).limit(1);
+      if (booking) {
+        kitchenName = booking.kitchenName;
+        bookingStartDate = booking.bookingDate;
+        bookingEndDate = booking.bookingDate;
+      }
+    } else if (row.claim.bookingType === "storage" && row.claim.storageBookingId) {
+      const [booking] = await db.select({
+        kitchenName: kitchens.name,
+        startDate: storageBookings.startDate,
+        endDate: storageBookings.endDate
+      }).from(storageBookings).innerJoin(storageListings, eq5(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq5(storageListings.kitchenId, kitchens.id)).where(eq5(storageBookings.id, row.claim.storageBookingId)).limit(1);
+      if (booking) {
+        kitchenName = booking.kitchenName;
+        bookingStartDate = booking.startDate;
+        bookingEndDate = booking.endDate;
+      }
+    }
+    const evidence = await db.select().from(damageEvidence).where(eq5(damageEvidence.damageClaimId, row.claim.id));
+    result.push({
+      ...row.claim,
+      chefEmail: row.chefEmail,
+      chefName: row.chefName,
+      managerName,
+      locationName: row.locationName,
+      kitchenName,
+      bookingStartDate,
+      bookingEndDate,
+      evidence
+    });
+  }
+  return result;
+}
+async function getClaimHistory(claimId) {
+  return db.select().from(damageClaimHistory).where(eq5(damageClaimHistory.damageClaimId, claimId)).orderBy(desc2(damageClaimHistory.createdAt));
+}
+async function processExpiredClaims() {
+  const now = /* @__PURE__ */ new Date();
+  const results = [];
+  try {
+    const expiredClaims = await db.select().from(damageClaims).where(and2(
+      eq5(damageClaims.status, "submitted"),
+      sql4`${damageClaims.chefResponseDeadline} < ${now}`
+    ));
+    logger.info(`[DamageClaimService] Found ${expiredClaims.length} expired claims to process`);
+    for (const claim of expiredClaims) {
+      try {
+        await db.update(damageClaims).set({
+          status: "approved",
+          approvedAmountCents: claim.claimedAmountCents,
+          finalAmountCents: claim.claimedAmountCents,
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq5(damageClaims.id, claim.id));
+        await createHistoryEntry(
+          claim.id,
+          "submitted",
+          "approved",
+          "deadline_expired",
+          "system",
+          void 0,
+          "Chef did not respond by deadline - claim auto-approved"
+        );
+        results.push({
+          claimId: claim.id,
+          chefId: claim.chefId,
+          managerId: claim.managerId,
+          previousStatus: "submitted",
+          action: "auto_approved"
+        });
+        logger.info(`[DamageClaimService] Auto-approved claim ${claim.id} due to expired deadline`);
+        try {
+          const [chefUser] = await db.select({ username: users.username }).from(users).where(eq5(users.id, claim.chefId)).limit(1);
+          const [managerUser] = await db.select({ username: users.username }).from(users).where(eq5(users.id, claim.managerId)).limit(1);
+          if (chefUser?.username) {
+            const chefEmail = generateDamageClaimDecisionEmail({
+              recipientEmail: chefUser.username,
+              recipientName: chefUser.username,
+              recipientRole: "chef",
+              claimTitle: claim.claimTitle,
+              claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
+              decision: "approved",
+              finalAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
+              decisionReason: "You did not respond by the deadline. The claim has been automatically approved.",
+              claimId: claim.id
+            });
+            await sendEmail(chefEmail);
+          }
+          if (managerUser?.username) {
+            const managerEmail = generateDamageClaimDecisionEmail({
+              recipientEmail: managerUser.username,
+              recipientName: managerUser.username,
+              recipientRole: "manager",
+              claimTitle: claim.claimTitle,
+              claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
+              decision: "approved",
+              finalAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
+              decisionReason: "Chef did not respond by the deadline. The claim has been automatically approved. You can now charge the chef.",
+              claimId: claim.id
+            });
+            await sendEmail(managerEmail);
+          }
+        } catch (emailError) {
+          logger.error(`[DamageClaimService] Failed to send deadline expiry emails for claim ${claim.id}:`, emailError);
+        }
+      } catch (claimError) {
+        logger.error(`[DamageClaimService] Error processing expired claim ${claim.id}:`, claimError);
+      }
+    }
+    return results;
+  } catch (error) {
+    logger.error("[DamageClaimService] Error in processExpiredClaims:", error);
+    return results;
+  }
+}
+async function refundDamageClaim(claimId, refundReason, refundedBy, partialAmountCents) {
+  try {
+    const [claim] = await db.select().from(damageClaims).where(eq5(damageClaims.id, claimId)).limit(1);
+    if (!claim) {
+      return { success: false, error: "Damage claim not found" };
+    }
+    if (claim.status !== "charge_succeeded") {
+      return {
+        success: false,
+        error: `Cannot refund claim in status '${claim.status}'. Only 'charge_succeeded' claims can be refunded.`
+      };
+    }
+    if (!claim.stripePaymentIntentId) {
+      return { success: false, error: "No payment intent found for this claim. Manual refund required in Stripe Dashboard." };
+    }
+    const chargedAmount = claim.finalAmountCents || claim.approvedAmountCents || claim.claimedAmountCents;
+    const refundAmount = partialAmountCents || chargedAmount;
+    if (refundAmount <= 0) {
+      return { success: false, error: "Refund amount must be greater than 0" };
+    }
+    if (refundAmount > chargedAmount) {
+      return { success: false, error: `Refund amount ($${(refundAmount / 100).toFixed(2)}) cannot exceed charged amount ($${(chargedAmount / 100).toFixed(2)})` };
+    }
+    if (!stripe3) {
+      return { success: false, error: "Stripe not configured" };
+    }
+    logger.info(`[DamageClaimService] Issuing refund for claim ${claimId}:`, {
+      paymentIntentId: claim.stripePaymentIntentId,
+      chargedAmount: `$${(chargedAmount / 100).toFixed(2)}`,
+      refundAmount: `$${(refundAmount / 100).toFixed(2)}`,
+      reason: refundReason
+    });
+    const refund = await stripe3.refunds.create({
+      payment_intent: claim.stripePaymentIntentId,
+      amount: refundAmount,
+      reason: "requested_by_customer",
+      metadata: {
+        damage_claim_id: claimId.toString(),
+        refund_reason: refundReason,
+        refunded_by: refundedBy.toString()
+      }
+    });
+    const isFullRefund = refundAmount >= chargedAmount;
+    await db.update(damageClaims).set({
+      status: "resolved",
+      resolvedAt: /* @__PURE__ */ new Date(),
+      resolvedBy: refundedBy,
+      resolutionType: isFullRefund ? "refunded" : "partially_refunded",
+      resolutionNotes: `${isFullRefund ? "Full" : "Partial"} refund of $${(refundAmount / 100).toFixed(2)} issued. Reason: ${refundReason}`,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq5(damageClaims.id, claimId));
+    await createHistoryEntry(
+      claimId,
+      "charge_succeeded",
+      "resolved",
+      "refund",
+      "admin",
+      refundedBy,
+      `${isFullRefund ? "Full" : "Partial"} refund of $${(refundAmount / 100).toFixed(2)} issued. Reason: ${refundReason}`,
+      {
+        refundId: refund.id,
+        refundAmount,
+        chargedAmount,
+        isFullRefund,
+        reason: refundReason
+      }
+    );
+    if (claim.paymentTransactionId) {
+      try {
+        const { updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+        await updatePaymentTransaction2(claim.paymentTransactionId, {
+          status: isFullRefund ? "refunded" : "partially_refunded",
+          refundAmount,
+          refundId: refund.id,
+          refundedAt: /* @__PURE__ */ new Date()
+        }, db);
+      } catch (ptError) {
+        logger.warn(`[DamageClaimService] Could not update payment_transactions for refund:`, ptError);
+      }
+    }
+    try {
+      const [chef] = await db.select({ email: users.username }).from(users).where(eq5(users.id, claim.chefId)).limit(1);
+      if (chef?.email) {
+        await sendEmail({
+          to: chef.email,
+          subject: `Damage Claim Refund - $${(refundAmount / 100).toFixed(2)}`,
+          html: `
+            <h2>Damage Claim Refund</h2>
+            <p>A ${isFullRefund ? "full" : "partial"} refund has been issued for your damage claim.</p>
+            <p><strong>Claim:</strong> ${claim.claimTitle}</p>
+            <p><strong>Refund Amount:</strong> $${(refundAmount / 100).toFixed(2)}</p>
+            <p><strong>Reason:</strong> ${refundReason}</p>
+            <p>The refund should appear on your statement within 5-10 business days.</p>
+          `,
+          text: `Damage Claim Refund
+
+A ${isFullRefund ? "full" : "partial"} refund of $${(refundAmount / 100).toFixed(2)} has been issued for your damage claim.
+
+Claim: ${claim.claimTitle}
+Reason: ${refundReason}`
+        });
+        logger.info(`[DamageClaimService] Sent refund notification email to chef ${chef.email}`);
+      }
+    } catch (emailError) {
+      logger.error(`[DamageClaimService] Error sending refund notification email:`, emailError);
+    }
+    logger.info(`[DamageClaimService] \u2705 Refund successful for claim ${claimId}:`, {
+      refundId: refund.id,
+      amount: `$${(refundAmount / 100).toFixed(2)}`,
+      isFullRefund
+    });
+    return { success: true, refundId: refund.id };
+  } catch (error) {
+    logger.error(`[DamageClaimService] Error refunding claim ${claimId}:`, error);
+    if (error.type === "StripeInvalidRequestError") {
+      return { success: false, error: `Stripe error: ${error.message}` };
+    }
+    return { success: false, error: error.message || "Failed to process refund" };
+  }
+}
+async function hasChefUnpaidDamageClaims(chefId) {
+  const blockingStatuses = [
+    "approved",
+    "partially_approved",
+    "chef_accepted",
+    "charge_pending",
+    "charge_failed"
+  ];
+  const [result] = await db.select({ count: sql4`count(*)` }).from(damageClaims).where(
+    and2(
+      eq5(damageClaims.chefId, chefId),
+      inArray2(damageClaims.status, blockingStatuses)
+    )
+  );
+  return (result?.count || 0) > 0;
+}
+async function getChefUnpaidDamageClaims(chefId) {
+  const blockingStatuses = [
+    "approved",
+    "partially_approved",
+    "chef_accepted",
+    "charge_pending",
+    "charge_failed"
+  ];
+  const claims = await db.select({
+    claimId: damageClaims.id,
+    claimTitle: damageClaims.claimTitle,
+    status: damageClaims.status,
+    claimedAmountCents: damageClaims.claimedAmountCents,
+    approvedAmountCents: damageClaims.approvedAmountCents,
+    finalAmountCents: damageClaims.finalAmountCents,
+    bookingType: damageClaims.bookingType,
+    createdAt: damageClaims.createdAt,
+    kitchenBookingId: damageClaims.kitchenBookingId,
+    storageBookingId: damageClaims.storageBookingId
+  }).from(damageClaims).where(
+    and2(
+      eq5(damageClaims.chefId, chefId),
+      inArray2(damageClaims.status, blockingStatuses)
+    )
+  ).orderBy(desc2(damageClaims.createdAt));
+  const enrichedClaims = await Promise.all(claims.map(async (claim) => {
+    let kitchenName = null;
+    if (claim.bookingType === "kitchen" && claim.kitchenBookingId) {
+      const [booking] = await db.select({ kitchenName: kitchens.name }).from(kitchenBookings).innerJoin(kitchens, eq5(kitchenBookings.kitchenId, kitchens.id)).where(eq5(kitchenBookings.id, claim.kitchenBookingId)).limit(1);
+      kitchenName = booking?.kitchenName || null;
+    } else if (claim.bookingType === "storage" && claim.storageBookingId) {
+      const [booking] = await db.select({ kitchenName: kitchens.name }).from(storageBookings).innerJoin(storageListings, eq5(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq5(storageListings.kitchenId, kitchens.id)).where(eq5(storageBookings.id, claim.storageBookingId)).limit(1);
+      kitchenName = booking?.kitchenName || null;
+    }
+    const finalAmount = claim.finalAmountCents || claim.approvedAmountCents || claim.claimedAmountCents;
+    return {
+      claimId: claim.claimId,
+      claimTitle: claim.claimTitle,
+      status: claim.status,
+      claimedAmountCents: claim.claimedAmountCents,
+      finalAmountCents: finalAmount,
+      approvedAmountCents: claim.approvedAmountCents,
+      requiresImmediatePayment: ["approved", "partially_approved", "chef_accepted", "charge_failed"].includes(claim.status),
+      kitchenName,
+      bookingType: claim.bookingType,
+      createdAt: claim.createdAt
+    };
+  }));
+  return enrichedClaims;
+}
+var stripeSecretKey3, stripe3, damageClaimService;
+var init_damage_claim_service = __esm({
+  "server/services/damage-claim-service.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    init_logger();
+    init_email();
+    stripeSecretKey3 = process.env.STRIPE_SECRET_KEY;
+    stripe3 = stripeSecretKey3 ? new Stripe3(stripeSecretKey3, {
+      apiVersion: "2025-12-15.clover"
+    }) : null;
+    damageClaimService = {
+      createDamageClaim,
+      updateDraftClaim,
+      deleteDraftClaim,
+      submitClaim,
+      addEvidence,
+      removeEvidence,
+      getChefPendingClaims,
+      chefRespondToClaim,
+      getDisputedClaims,
+      adminDecision,
+      chargeApprovedClaim,
+      getClaimById,
+      getManagerClaims,
+      getClaimHistory,
+      processExpiredClaims,
+      refundDamageClaim,
+      hasChefUnpaidDamageClaims,
+      getChefUnpaidDamageClaims
+    };
+  }
+});
+
+// server/domains/users/user.service.ts
+import { eq as eq6 } from "drizzle-orm";
+var UserService, userService;
+var init_user_service = __esm({
+  "server/domains/users/user.service.ts"() {
+    "use strict";
+    init_user_repository();
+    init_schema();
+    init_db();
+    init_passwordUtils();
+    init_domain_error();
+    UserService = class {
+      repo;
+      constructor(repo) {
+        this.repo = repo || new UserRepository();
+      }
+      async checkUsernameExists(username) {
+        const user = await this.repo.findByUsername(username);
+        return !!user;
+      }
+      async getUser(id) {
+        return this.repo.findById(id);
+      }
+      async getUserByUsername(username) {
+        return this.repo.findByUsername(username);
+      }
+      async getUserByFirebaseUid(uid) {
+        return this.repo.findByFirebaseUid(uid);
+      }
+      async createUser(data) {
+        if (!data.username) {
+          throw new Error("Username is required");
+        }
+        const exists = await this.repo.usernameExists(data.username);
+        if (exists) {
+          throw new DomainError(
+            UserErrorCodes.USERNAME_TAKEN,
+            `Username ${data.username} is already taken`,
+            409
+          );
+        }
+        let hashedPassword = "";
+        if (data.password) {
+          hashedPassword = await hashPassword(data.password);
+        }
+        const userToCreate = {
+          ...data,
+          password: hashedPassword,
+          isVerified: data.isVerified ?? false,
+          has_seen_welcome: data.has_seen_welcome ?? false,
+          isChef: data.isChef ?? false,
+          isManager: data.isManager ?? false,
+          isPortalUser: data.isPortalUser ?? false
+        };
+        return this.repo.create(userToCreate);
+      }
+      async updateUser(id, data) {
+        if (data.password) {
+          data.password = await hashPassword(data.password);
+        }
+        return this.repo.update(id, data);
+      }
+      async updateUserFirebaseUid(id, firebaseUid) {
+        const user = await this.repo.findById(id);
+        if (user && user.firebaseUid) {
+          throw new DomainError(
+            UserErrorCodes.VALIDATION_ERROR,
+            "User already has a linked Firebase account",
+            400
+          );
+        }
+        return this.repo.update(id, { firebaseUid });
+      }
+      async setHasSeenWelcome(id) {
+        await this.repo.update(id, { has_seen_welcome: true });
+      }
+      async updateUserRoles(id, roles) {
+        const mainRole = roles.isChef ? "chef" : void 0;
+        const updateData = {
+          isChef: roles.isChef
+        };
+        if (mainRole) {
+          updateData.role = mainRole;
+        } else {
+          updateData.role = roles.isChef ? "chef" : null;
+        }
+        await this.repo.update(id, updateData);
+      }
+      async getCompleteProfile(id) {
+        const user = await this.repo.findById(id);
+        if (!user) {
+          throw new DomainError(
+            UserErrorCodes.USER_NOT_FOUND,
+            `User not found: ${id}`,
+            404
+          );
+        }
+        return {
+          ...user,
+          firebaseUser: {
+            uid: user.firebaseUid,
+            email: user.username,
+            // Assuming username is email
+            emailVerified: user.isVerified
+          }
+        };
+      }
+      async resetPassword(firebaseUid, newPassword) {
+        const user = await this.repo.findByFirebaseUid(firebaseUid);
+        if (!user) {
+          throw new Error(`User not found for firebaseUid: ${firebaseUid}`);
+        }
+        const hashedPassword = await hashPassword(newPassword);
+        await this.repo.update(user.id, { password: hashedPassword });
+      }
+      async verifyUser(id, isVerified) {
+        return this.repo.update(id, { isVerified });
+      }
+      async markWelcomeSeen(id) {
+        await this.repo.update(id, { has_seen_welcome: true });
+      }
+      /**
+       * Check if user has any outstanding financial obligations
+       * ENTERPRISE STANDARD: Block account deletion if user owes money
+       */
+      async hasOutstandingObligations(userId) {
+        try {
+          const { hasChefUnpaidPenalties: hasChefUnpaidPenalties2, getChefUnpaidPenalties: getChefUnpaidPenalties2 } = await Promise.resolve().then(() => (init_overstay_penalty_service(), overstay_penalty_service_exports));
+          const { hasChefUnpaidDamageClaims: hasChefUnpaidDamageClaims2, getChefUnpaidDamageClaims: getChefUnpaidDamageClaims2 } = await Promise.resolve().then(() => (init_damage_claim_service(), damage_claim_service_exports));
+          const hasUnpaidPenalties = await hasChefUnpaidPenalties2(userId);
+          const hasUnpaidClaims = await hasChefUnpaidDamageClaims2(userId);
+          let penaltyTotal = 0;
+          let claimTotal = 0;
+          if (hasUnpaidPenalties) {
+            const penalties = await getChefUnpaidPenalties2(userId);
+            penaltyTotal = penalties.reduce((sum, p) => sum + p.penaltyAmountCents, 0);
+          }
+          if (hasUnpaidClaims) {
+            const claims = await getChefUnpaidDamageClaims2(userId);
+            claimTotal = claims.reduce((sum, c) => sum + c.finalAmountCents, 0);
+          }
+          return {
+            hasObligations: hasUnpaidPenalties || hasUnpaidClaims,
+            overstayPenalties: hasUnpaidPenalties ? (await getChefUnpaidPenalties2(userId)).length : 0,
+            damageClaims: hasUnpaidClaims ? (await getChefUnpaidDamageClaims2(userId)).length : 0,
+            totalOwedCents: penaltyTotal + claimTotal
+          };
+        } catch (error) {
+          console.error(`[UserService] Error checking obligations for user ${userId}:`, error);
+          return { hasObligations: false, overstayPenalties: 0, damageClaims: 0, totalOwedCents: 0 };
+        }
+      }
+      async deleteUser(id) {
+        const obligations = await this.hasOutstandingObligations(id);
+        if (obligations.hasObligations) {
+          throw new Error(
+            `Cannot delete account with outstanding obligations. ${obligations.overstayPenalties} unpaid overstay penalty(ies), ${obligations.damageClaims} unpaid damage claim(s), totaling $${(obligations.totalOwedCents / 100).toFixed(2)}. Please resolve all obligations before deleting your account.`
+          );
+        }
+        await db.transaction(async (tx) => {
+          const managedLocations = await tx.select().from(locations).where(eq6(locations.managerId, id));
+          if (managedLocations.length > 0) {
+            await tx.update(locations).set({ managerId: null }).where(eq6(locations.managerId, id));
+            console.log(`Removed manager ${id} from ${managedLocations.length} locations`);
+          }
+          await tx.delete(users).where(eq6(users.id, id));
+          console.log(`Deleted user ${id}`);
+        });
+      }
+    };
+    userService = new UserService();
+  }
+});
+
+// server/firebase-auth-middleware.ts
+async function requireFirebaseAuthWithUser(req, res, next) {
+  try {
+    if (res.headersSent) {
+      return;
+    }
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        error: "Unauthorized",
+        message: "No auth token provided"
+      });
+    }
+    const token = authHeader.substring(7);
+    const decodedToken = await verifyFirebaseToken(token);
+    if (!decodedToken) {
+      return res.status(401).json({
+        error: "Unauthorized",
+        message: "Invalid auth token"
+      });
+    }
+    req.firebaseUser = {
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+      email_verified: decodedToken.email_verified,
+      name: decodedToken.name,
+      picture: decodedToken.picture
+    };
+    const neonUser = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
+    if (!neonUser) {
+      return res.status(404).json({
+        error: "User not found",
+        message: "This account is not registered with Local Cooks. Please create an account first."
+      });
+    }
+    req.neonUser = {
+      ...neonUser,
+      uid: neonUser.firebaseUid || void 0
+      // Support legacy code that uses .uid
+    };
+    console.log(`\u{1F504} Auth translation: Firebase UID ${req.firebaseUser.uid} \u2192 Neon User ID ${neonUser.id}`, {
+      role: neonUser.role,
+      isChef: neonUser.isChef,
+      isManager: neonUser.isManager
+    });
+    next();
+  } catch (error) {
+    if (res.headersSent) {
+      console.error("Firebase auth with user verification error (response already sent):", error);
+      return;
+    }
+    console.error("Firebase auth with user verification error:", error);
+    return res.status(500).json({
+      error: "Internal server error",
+      message: "Authentication verification failed"
+    });
+  }
+}
+async function optionalFirebaseAuth(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return next();
+    }
+    const token = authHeader.substring(7);
+    const decodedToken = await verifyFirebaseToken(token);
+    if (decodedToken) {
+      req.firebaseUser = {
+        uid: decodedToken.uid,
+        email: decodedToken.email,
+        email_verified: decodedToken.email_verified,
+        name: decodedToken.name,
+        picture: decodedToken.picture
+      };
+      const neonUser = await userService.getUserByFirebaseUid(decodedToken.uid);
+      if (neonUser) {
+        req.neonUser = {
+          ...neonUser,
+          uid: neonUser.firebaseUid || void 0
+        };
+      }
+    }
+    next();
+  } catch (error) {
+    console.error("Optional Firebase auth error:", error);
+    next();
+  }
+}
+function requireAdmin(req, res, next) {
+  if (res.headersSent) {
+    return;
+  }
+  if (!req.neonUser) {
+    return res.status(401).json({
+      error: "Unauthorized",
+      message: "Authentication required"
+    });
+  }
+  if (req.neonUser.role !== "admin") {
+    return res.status(403).json({
+      error: "Forbidden",
+      message: "Admin access required"
+    });
+  }
+  next();
+}
+function requireManager(req, res, next) {
+  if (res.headersSent) {
+    return;
+  }
+  if (!req.neonUser) {
+    return res.status(401).json({
+      error: "Unauthorized",
+      message: "Authentication required"
+    });
+  }
+  if (req.neonUser.role !== "manager") {
+    return res.status(403).json({
+      error: "Forbidden",
+      message: "Manager access required"
+    });
+  }
+  next();
+}
+var init_firebase_auth_middleware = __esm({
+  "server/firebase-auth-middleware.ts"() {
+    "use strict";
+    init_firebase_setup();
+    init_user_service();
+  }
+});
+
+// server/r2-storage.ts
+var r2_storage_exports = {};
+__export(r2_storage_exports, {
+  deleteFromR2: () => deleteFromR2,
+  fileExistsInR2: () => fileExistsInR2,
+  getPresignedUrl: () => getPresignedUrl,
+  isR2Configured: () => isR2Configured,
+  uploadToR2: () => uploadToR2
+});
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+function getR2Config() {
+  return {
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    bucketName: process.env.CLOUDFLARE_R2_BUCKET_NAME,
+    publicUrl: process.env.CLOUDFLARE_R2_PUBLIC_URL
+  };
+}
+function getR2PublicUrl() {
+  const config = getR2Config();
+  if (config.publicUrl) {
+    return config.publicUrl;
+  }
+  if (config.accountId && config.bucketName) {
+    return `https://${config.accountId}.r2.cloudflarestorage.com/${config.bucketName}`;
+  }
+  return "";
+}
+function getR2Endpoint() {
+  const config = getR2Config();
+  return config.accountId ? `https://${config.accountId}.r2.cloudflarestorage.com` : "";
+}
+function getS3Client() {
+  if (!s3Client) {
+    const config = getR2Config();
+    const endpoint = getR2Endpoint();
+    if (!config.accountId || !config.accessKeyId || !config.secretAccessKey || !config.bucketName) {
+      throw new Error("Cloudflare R2 credentials not configured. Please set CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_R2_ACCESS_KEY_ID, CLOUDFLARE_R2_SECRET_ACCESS_KEY, and CLOUDFLARE_R2_BUCKET_NAME environment variables.");
+    }
+    if (!endpoint) {
+      throw new Error("R2 endpoint could not be constructed. Please check CLOUDFLARE_ACCOUNT_ID is set.");
+    }
+    s3Client = new S3Client({
+      region: "auto",
+      // R2 uses 'auto' as the region
+      endpoint,
+      credentials: {
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey
+      },
+      // Force path style for R2 compatibility
+      forcePathStyle: false
+    });
+  }
+  return s3Client;
+}
+async function uploadToR2(file, userId, folder = "documents") {
+  try {
+    const client = getS3Client();
+    const timestamp2 = Date.now();
+    const documentType = file.fieldname || "file";
+    const ext = file.originalname.split(".").pop() || "";
+    const baseName = file.originalname.replace(/\.[^/.]+$/, "");
+    const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9-_]/g, "_");
+    const filename = `${userId}_${documentType}_${timestamp2}_${sanitizedBaseName}.${ext}`;
+    const key = `${folder}/${filename}`;
+    let fileBuffer;
+    if (file.buffer) {
+      fileBuffer = file.buffer;
+    } else if (file.path) {
+      const fs7 = await import("fs");
+      fileBuffer = fs7.readFileSync(file.path);
+    } else {
+      throw new Error("File buffer or path not available");
+    }
+    const config = getR2Config();
+    const command = new PutObjectCommand({
+      Bucket: config.bucketName,
+      Key: key,
+      Body: fileBuffer,
+      ContentType: file.mimetype
+      // Make file publicly accessible (if your R2 bucket allows public access)
+      // Note: You need to configure CORS and public access in Cloudflare dashboard
+    });
+    await client.send(command);
+    let publicUrl;
+    const r2PublicUrl = getR2PublicUrl();
+    if (r2PublicUrl) {
+      publicUrl = r2PublicUrl.endsWith("/") ? `${r2PublicUrl}${key}` : `${r2PublicUrl}/${key}`;
+    } else {
+      publicUrl = `https://${config.accountId}.r2.cloudflarestorage.com/${config.bucketName}/${key}`;
+    }
+    console.log(`\u2705 File uploaded to R2: ${key} -> ${publicUrl}`);
+    return publicUrl;
+  } catch (error) {
+    console.error("\u274C Error uploading to R2:", error);
+    throw new Error(`Failed to upload file to R2: ${error instanceof Error ? error.message : "Unknown error"}`);
+  }
+}
+async function deleteFromR2(fileUrl) {
+  try {
+    const client = getS3Client();
+    let actualFileUrl = fileUrl;
+    if (fileUrl.includes("/api/files/r2-proxy")) {
+      try {
+        const urlObj2 = new URL(fileUrl, "http://localhost");
+        const urlParam = urlObj2.searchParams.get("url");
+        if (urlParam) {
+          actualFileUrl = decodeURIComponent(urlParam);
+          console.log(`\u{1F50D} Extracted R2 URL from proxy: ${actualFileUrl}`);
+        } else {
+          console.error("\u274C Proxy URL missing url parameter:", fileUrl);
+          return false;
+        }
+      } catch (urlError) {
+        console.error("\u274C Error parsing proxy URL:", urlError);
+        return false;
+      }
+    }
+    const urlObj = new URL(actualFileUrl);
+    const pathname = urlObj.pathname.startsWith("/") ? urlObj.pathname.slice(1) : urlObj.pathname;
+    const pathParts = pathname.split("/").filter((p) => p);
+    const config = getR2Config();
+    const bucketIndex = pathParts.indexOf(config.bucketName);
+    let key;
+    if (bucketIndex >= 0) {
+      key = pathParts.slice(bucketIndex + 1).join("/");
+    } else {
+      const knownFolders = ["documents", "kitchen-applications", "images", "profiles"];
+      const firstPart = pathParts[0];
+      if (knownFolders.includes(firstPart)) {
+        key = pathname;
+      } else {
+        key = pathname;
+      }
+    }
+    key = key.replace(/^\/+|\/+$/g, "");
+    if (!key || key.length === 0) {
+      console.error(`\u274C Invalid key extracted from URL: ${fileUrl} -> ${actualFileUrl}`);
+      return false;
+    }
+    console.log("\u{1F50D} R2 Delete Debug:", {
+      originalUrl: fileUrl,
+      actualFileUrl,
+      extractedKey: key,
+      bucketName: config.bucketName,
+      pathname: urlObj.pathname,
+      pathParts,
+      bucketIndex
+    });
+    const command = new DeleteObjectCommand({
+      Bucket: config.bucketName,
+      Key: key
+    });
+    await client.send(command);
+    console.log(`\u2705 File deleted from R2: ${key}`);
+    return true;
+  } catch (error) {
+    console.error("\u274C Error deleting from R2:", {
+      error: error instanceof Error ? error.message : "Unknown error",
+      fileUrl,
+      stack: error instanceof Error ? error.stack : void 0
+    });
+    return false;
+  }
+}
+async function fileExistsInR2(fileUrl) {
+  try {
+    const client = getS3Client();
+    const config = getR2Config();
+    const urlObj = new URL(fileUrl);
+    const key = urlObj.pathname.startsWith("/") ? urlObj.pathname.slice(1) : urlObj.pathname;
+    const keyParts = key.split("/");
+    const bucketIndex = keyParts.indexOf(config.bucketName);
+    const actualKey = bucketIndex >= 0 ? keyParts.slice(bucketIndex + 1).join("/") : key;
+    const command = new HeadObjectCommand({
+      Bucket: config.bucketName,
+      Key: actualKey
+    });
+    await client.send(command);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+async function getPresignedUrl(fileUrl, expiresIn = 3600) {
+  try {
+    const client = getS3Client();
+    const config = getR2Config();
+    const urlObj = new URL(fileUrl);
+    const pathname = urlObj.pathname.startsWith("/") ? urlObj.pathname.slice(1) : urlObj.pathname;
+    const pathParts = pathname.split("/").filter((p) => p);
+    const bucketIndex = pathParts.indexOf(config.bucketName);
+    let key;
+    if (bucketIndex >= 0) {
+      key = pathParts.slice(bucketIndex + 1).join("/");
+    } else {
+      const knownFolders = ["documents", "kitchen-applications", "images", "profiles"];
+      const firstPart = pathParts[0];
+      if (knownFolders.includes(firstPart)) {
+        key = pathname;
+      } else {
+        key = pathname;
+      }
+    }
+    key = key.replace(/^\/+|\/+$/g, "");
+    if (!key || key.length === 0) {
+      throw new Error(`Invalid key extracted from URL: ${fileUrl}`);
+    }
+    try {
+      await client.send(new HeadObjectCommand({ Bucket: config.bucketName, Key: key }));
+    } catch (headError) {
+      const err = headError;
+      if (err.name === "NotFound" || err.$metadata?.httpStatusCode === 404) {
+        if (key.startsWith("documents/") && (key.includes("foodSafetyLicenseFile") || key.includes("foodEstablishmentCert"))) {
+          const remappedKey = key.replace("documents/", "kitchen-applications/");
+          console.log(`[R2 Storage] Key ${key} not found. Checking remapped: ${remappedKey}`);
+          try {
+            await client.send(new HeadObjectCommand({ Bucket: config.bucketName, Key: remappedKey }));
+            key = remappedKey;
+            console.log(`[R2 Storage] Using remapped key: ${key}`);
+          } catch (_remapError) {
+            console.log(`[R2 Storage] Remapped key also not found: ${remappedKey}`);
+          }
+        }
+      } else {
+        console.warn(`[R2 Storage] Warning: HeadObject validation failed for ${key}:`, err.message);
+      }
+    }
+    const command = new GetObjectCommand({
+      Bucket: config.bucketName,
+      Key: key
+    });
+    const presignedUrl = await getSignedUrl(client, command, { expiresIn });
+    return presignedUrl;
+  } catch (error) {
+    console.error("\u274C Error generating presigned URL:", {
+      error: error instanceof Error ? error.message : "Unknown error",
+      fileUrl,
+      stack: error instanceof Error ? error.stack : void 0
+    });
+    throw new Error(`Failed to generate presigned URL: ${error instanceof Error ? error.message : "Unknown error"}`);
+  }
+}
+function isR2Configured() {
+  const config = getR2Config();
+  return !!(config.accountId && config.accessKeyId && config.secretAccessKey && config.bucketName);
+}
+var s3Client;
+var init_r2_storage = __esm({
+  "server/r2-storage.ts"() {
+    "use strict";
+    s3Client = null;
+  }
+});
+
+// server/fileUpload.ts
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+function getUploadsDir() {
+  if (isVercel) {
+    return "/tmp/uploads/documents";
+  }
+  return path.join(process.cwd(), "uploads", "documents");
+}
+function ensureUploadsDirExists() {
+  if (useCloudStorage) {
+    return;
+  }
+  const dir = getUploadsDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+var isVercel, isProduction, useCloudStorage, uploadsDir, diskStorage, memoryStorage, fileFilter, upload, uploadToBlob, getFileUrl;
+var init_fileUpload = __esm({
+  "server/fileUpload.ts"() {
+    "use strict";
+    init_r2_storage();
+    isVercel = !!process.env.VERCEL;
+    isProduction = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
+    useCloudStorage = isR2Configured() || isProduction || isVercel;
+    uploadsDir = getUploadsDir();
+    diskStorage = multer.diskStorage({
+      destination: (req, file, cb) => {
+        ensureUploadsDirExists();
+        cb(null, uploadsDir);
+      },
+      filename: (req, file, cb) => {
+        const userId = req.neonUser?.id || req.user?.id || "unknown";
+        const timestamp2 = Date.now();
+        const documentType = file.fieldname;
+        const ext = path.extname(file.originalname);
+        const baseName = path.basename(file.originalname, ext);
+        const filename = `${userId}_${documentType}_${timestamp2}_${baseName}${ext}`;
+        cb(null, filename);
+      }
+    });
+    memoryStorage = multer.memoryStorage();
+    fileFilter = (req, file, cb) => {
+      const allowedMimes = [
+        "application/pdf",
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp",
+        // DOC and DOCX support for terms & policies
+        "application/msword",
+        // .doc
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        // .docx
+      ];
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        console.log(`[FileUpload] Rejected file with mimetype: ${file.mimetype}`);
+        cb(new Error("Invalid file type. Only PDF, JPG, JPEG, PNG, WebP, DOC, and DOCX files are allowed."));
+      }
+    };
+    console.log(` File Upload Config: R2 configured = ${isR2Configured()}, using ${useCloudStorage ? "memory (R2)" : "disk (local)"} storage`);
+    upload = multer({
+      storage: useCloudStorage ? memoryStorage : diskStorage,
+      limits: {
+        fileSize: 10 * 1024 * 1024
+        // 10MB limit
+      },
+      fileFilter
+    });
+    uploadToBlob = async (file, userId, folder = "documents") => {
+      try {
+        const r2Available = isR2Configured();
+        console.log(`\u{1F4E6} uploadToBlob: R2 configured = ${r2Available}, file has buffer = ${!!file.buffer}, file has path = ${!!file.path}`);
+        if (r2Available) {
+          console.log(`\u2601\uFE0F Uploading to Cloudflare R2...`);
+          const url = await uploadToR2(file, userId, folder);
+          console.log(`\u2705 R2 upload complete: ${url}`);
+          return url;
+        } else {
+          console.log(`\u{1F4C1} R2 not configured, using local storage`);
+          const filename = file.filename || `${userId}_${Date.now()}_${file.originalname}`;
+          return getFileUrl(filename);
+        }
+      } catch (error) {
+        console.error("\u274C Error uploading file:", error);
+        throw new Error("Failed to upload file to cloud storage");
+      }
+    };
+    getFileUrl = (filename) => {
+      return `/api/files/documents/${filename}`;
+    };
+  }
+});
+
+// server/domains/applications/application.repository.ts
+import { eq as eq7, desc as desc3, and as and3 } from "drizzle-orm";
+var ApplicationRepository;
+var init_application_repository = __esm({
+  "server/domains/applications/application.repository.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    ApplicationRepository = class {
+      async getAll() {
+        return db.select().from(applications).orderBy(desc3(applications.createdAt));
+      }
+      async findById(id) {
+        const [application] = await db.select().from(applications).where(eq7(applications.id, id));
+        return application || null;
+      }
+      async findByUserId(userId) {
+        return db.select().from(applications).where(eq7(applications.userId, userId)).orderBy(desc3(applications.createdAt));
+      }
+      async hasPendingApplication(userId) {
+        const results = await db.select({ id: applications.id }).from(applications).where(
+          and3(
+            eq7(applications.userId, userId),
+            eq7(applications.status, "inReview")
+          )
+        ).limit(1);
+        return results.length > 0;
+      }
+      async create(data) {
+        const now = /* @__PURE__ */ new Date();
+        const [application] = await db.insert(applications).values({
+          ...data,
+          status: "inReview",
+          createdAt: now,
+          foodSafetyLicenseStatus: data.foodSafetyLicenseUrl ? "pending" : "pending",
+          // Default
+          foodEstablishmentCertStatus: data.foodEstablishmentCertUrl ? "pending" : "pending"
+          // Default
+        }).returning();
+        return application;
+      }
+      async updateStatus(id, status) {
+        const [updated] = await db.update(applications).set({ status }).where(eq7(applications.id, id)).returning();
+        return updated || null;
+      }
+      async updateDocuments(id, updates) {
+        const resetStatus = {};
+        if (updates.foodSafetyLicenseUrl) resetStatus.foodSafetyLicenseStatus = "pending";
+        if (updates.foodEstablishmentCertUrl) resetStatus.foodEstablishmentCertStatus = "pending";
+        const [updated] = await db.update(applications).set({
+          ...updates,
+          ...resetStatus
+        }).where(eq7(applications.id, id)).returning();
+        return updated || null;
+      }
+      async verifyDocuments(data) {
+        const [updated] = await db.update(applications).set({
+          foodSafetyLicenseStatus: data.foodSafetyLicenseStatus,
+          foodEstablishmentCertStatus: data.foodEstablishmentCertStatus,
+          documentsAdminFeedback: data.documentsAdminFeedback,
+          documentsReviewedBy: data.documentsReviewedBy,
+          documentsReviewedAt: /* @__PURE__ */ new Date()
+        }).where(eq7(applications.id, data.id)).returning();
+        return updated || null;
+      }
+    };
+  }
+});
+
+// server/domains/applications/application.service.ts
+var ApplicationService, applicationService;
+var init_application_service = __esm({
+  "server/domains/applications/application.service.ts"() {
+    "use strict";
+    init_application_repository();
+    init_domain_error();
+    ApplicationService = class {
+      repo;
+      constructor(repo) {
+        this.repo = repo || new ApplicationRepository();
+      }
+      async getAllApplications() {
+        return this.repo.getAll();
+      }
+      async getApplicationById(id) {
+        const app2 = await this.repo.findById(id);
+        if (!app2) {
+          throw new DomainError("APPLICATION_NOT_FOUND", `Application ${id} not found`, 404);
+        }
+        return app2;
+      }
+      async getApplicationsByUserId(userId) {
+        return this.repo.findByUserId(userId);
+      }
+      async submitApplication(data) {
+        if (!data.userId) {
+          throw new DomainError(ApplicationErrorCodes.VALIDATION_ERROR, "User ID is required", 400);
+        }
+        const hasPending = await this.repo.hasPendingApplication(data.userId);
+        if (hasPending) {
+          throw new DomainError(
+            ApplicationErrorCodes.VALIDATION_ERROR,
+            "You already have a pending application. Please wait for it to be processed.",
+            409
+          );
+        }
+        return this.repo.create(data);
+      }
+      async approveApplication(id, adminId) {
+        const app2 = await this.repo.findById(id);
+        if (!app2) {
+          throw new DomainError(ApplicationErrorCodes.APPLICATION_NOT_FOUND, `Application ${id} not found`, 404);
+        }
+        if (app2.status !== "inReview") {
+          throw new DomainError(
+            ApplicationErrorCodes.VALIDATION_ERROR,
+            `Application is already processed (Status: ${app2.status})`,
+            400
+          );
+        }
+        const updated = await this.repo.updateStatus(id, "approved");
+        if (!updated) throw new Error("Failed to approve application");
+        return updated;
+      }
+      async updateStatus(id, status) {
+        const app2 = await this.repo.updateStatus(id, status);
+        if (!app2) {
+          throw new DomainError("APPLICATION_NOT_FOUND", `Application ${id} not found`, 404);
+        }
+        return app2;
+      }
+      async updateDocuments(id, updates) {
+        const app2 = await this.repo.updateDocuments(id, updates);
+        if (!app2) {
+          throw new DomainError("APPLICATION_NOT_FOUND", `Application ${id} not found`, 404);
+        }
+        return app2;
+      }
+      async cancelApplication(id, userId) {
+        const app2 = await this.repo.findById(id);
+        if (!app2) {
+          throw new DomainError("APPLICATION_NOT_FOUND", `Application ${id} not found`, 404);
+        }
+        if (app2.userId !== userId) {
+          throw new DomainError("FORBIDDEN", "You can only cancel your own applications", 403);
+        }
+        const updated = await this.repo.updateStatus(id, "cancelled");
+        if (!updated) throw new Error("Failed to cancel application");
+        return updated;
+      }
+      async verifyDocuments(data) {
+        const app2 = await this.repo.verifyDocuments(data);
+        if (!app2) {
+          throw new DomainError("APPLICATION_NOT_FOUND", `Application ${data.id} not found`, 404);
+        }
+        return app2;
+      }
+    };
+    applicationService = new ApplicationService();
+  }
+});
+
+// server/phone-utils.ts
+import { eq as eq8, and as and4, desc as desc4 } from "drizzle-orm";
+async function getManagerPhone(location, managerId, pool3) {
+  let phone = location?.notificationPhone || location?.notification_phone || null;
+  if (phone) {
+    const normalized = validateAndNormalizePhone(phone);
+    if (normalized) {
+      return normalized;
+    }
+    console.warn(`\u26A0\uFE0F Location notification phone is invalid format: ${phone}`);
+  }
+  if (!phone && managerId) {
+    try {
+      const result = await db.select({ phone: applications.phone }).from(applications).where(eq8(applications.userId, managerId)).orderBy(desc4(applications.createdAt)).limit(1);
+      if (result.length > 0 && result[0].phone) {
+        phone = result[0].phone;
+        const normalized = validateAndNormalizePhone(phone);
+        if (normalized) {
+          return normalized;
+        }
+        console.warn(`\u26A0\uFE0F Manager application phone is invalid format: ${phone}`);
+      }
+    } catch (error) {
+      console.warn("Could not retrieve manager phone from application:", error);
+    }
+  }
+  return null;
+}
+async function getChefPhone(chefId, pool3) {
+  if (!chefId) return null;
+  try {
+    const result = await db.select({ phone: applications.phone }).from(applications).where(eq8(applications.userId, chefId)).orderBy(desc4(applications.createdAt)).limit(1);
+    if (result.length > 0 && result[0].phone) {
+      const phone = result[0].phone;
+      const normalized = validateAndNormalizePhone(phone);
+      if (normalized) {
+        return normalized;
+      }
+      console.warn(`\u26A0\uFE0F Chef application phone is invalid format: ${phone}`);
+    }
+  } catch (error) {
+    console.warn("Could not retrieve chef phone from application:", error);
+  }
+  return null;
+}
+function normalizePhoneForStorage(phone) {
+  if (!phone) return null;
+  return validateAndNormalizePhone(phone);
+}
+var init_phone_utils = __esm({
+  "server/phone-utils.ts"() {
+    "use strict";
+    init_phone_validation();
+    init_db();
+    init_schema();
+  }
+});
+
 // server/domains/microlearning/microlearning.repository.ts
-import { eq as eq5, desc as desc3 } from "drizzle-orm";
+import { eq as eq9, desc as desc5 } from "drizzle-orm";
 var MicrolearningRepository;
 var init_microlearning_repository = __esm({
   "server/domains/microlearning/microlearning.repository.ts"() {
@@ -5764,10 +11093,10 @@ var init_microlearning_repository = __esm({
     init_schema();
     MicrolearningRepository = class {
       async getProgress(userId) {
-        return db.select().from(videoProgress).where(eq5(videoProgress.userId, userId)).orderBy(desc3(videoProgress.updatedAt));
+        return db.select().from(videoProgress).where(eq9(videoProgress.userId, userId)).orderBy(desc5(videoProgress.updatedAt));
       }
       async getCompletion(userId) {
-        const [completion] = await db.select().from(microlearningCompletions).where(eq5(microlearningCompletions.userId, userId));
+        const [completion] = await db.select().from(microlearningCompletions).where(eq9(microlearningCompletions.userId, userId));
         return completion || null;
       }
       async upsertVideoProgress(data) {
@@ -5829,197 +11158,8 @@ var init_microlearning_service = __esm({
   }
 });
 
-// server/services/stripe-checkout-fee-service.ts
-var stripe_checkout_fee_service_exports = {};
-__export(stripe_checkout_fee_service_exports, {
-  DEFAULT_FEE_CONFIG: () => DEFAULT_FEE_CONFIG,
-  FEE_CONFIG: () => FEE_CONFIG,
-  calculateCheckoutFees: () => calculateCheckoutFees,
-  calculateCheckoutFeesAsync: () => calculateCheckoutFeesAsync,
-  calculateCheckoutFeesWithRates: () => calculateCheckoutFeesWithRates,
-  clearFeeConfigCache: () => clearFeeConfigCache,
-  getFeeConfig: () => getFeeConfig
-});
-async function getFeeConfig() {
-  if (feeConfigCache && Date.now() - feeConfigCache.timestamp < CACHE_TTL_MS) {
-    return feeConfigCache.config;
-  }
-  try {
-    const allSettings = await db.select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings);
-    const settingsMap = new Map(allSettings.map((s) => [s.key, s.value]));
-    const parseFloatOrDefault = (value, defaultValue) => {
-      if (value === void 0 || value === "") return defaultValue;
-      const parsed = parseFloat(value);
-      return isNaN(parsed) ? defaultValue : parsed;
-    };
-    const parseIntOrDefault = (value, defaultValue) => {
-      if (value === void 0 || value === "") return defaultValue;
-      const parsed = parseInt(value, 10);
-      return isNaN(parsed) ? defaultValue : parsed;
-    };
-    const config = {
-      stripePercentageFee: parseFloatOrDefault(settingsMap.get("stripe_percentage_fee"), DEFAULT_FEE_CONFIG.stripePercentageFee),
-      stripeFlatFeeCents: parseIntOrDefault(settingsMap.get("stripe_flat_fee_cents"), DEFAULT_FEE_CONFIG.stripeFlatFeeCents),
-      platformCommissionRate: parseFloatOrDefault(settingsMap.get("platform_commission_rate"), DEFAULT_FEE_CONFIG.platformCommissionRate),
-      minimumApplicationFeeCents: parseIntOrDefault(settingsMap.get("minimum_application_fee_cents"), DEFAULT_FEE_CONFIG.minimumApplicationFeeCents),
-      useStripePlatformPricing: settingsMap.get("use_stripe_platform_pricing") === "true"
-    };
-    if (config.stripePercentageFee < 0 || config.stripePercentageFee > 1) {
-      console.warn("Invalid stripe_percentage_fee, using default");
-      config.stripePercentageFee = DEFAULT_FEE_CONFIG.stripePercentageFee;
-    }
-    if (config.platformCommissionRate < 0 || config.platformCommissionRate > 1) {
-      console.warn("Invalid platform_commission_rate, using default");
-      config.platformCommissionRate = DEFAULT_FEE_CONFIG.platformCommissionRate;
-    }
-    feeConfigCache = { config, timestamp: Date.now() };
-    return config;
-  } catch (error) {
-    console.error("Error fetching fee config from database, using defaults:", error);
-    return DEFAULT_FEE_CONFIG;
-  }
-}
-function clearFeeConfigCache() {
-  feeConfigCache = null;
-}
-function calculateCheckoutFees(bookingPrice, options) {
-  if (bookingPrice <= 0) {
-    throw new Error("Booking price must be greater than 0");
-  }
-  const platformCommissionRate = options?.platformCommissionRate ?? FEE_CONFIG.PLATFORM_COMMISSION_RATE;
-  const chargeFeesToCustomer = options?.chargeFeesToCustomer ?? false;
-  const bookingPriceInCents = Math.round(bookingPrice * 100);
-  const stripeProcessingFeeInCents = Math.round(
-    bookingPriceInCents * FEE_CONFIG.STRIPE_PERCENTAGE_FEE + FEE_CONFIG.STRIPE_FLAT_FEE_CENTS
-  );
-  const platformCommissionInCents = Math.round(bookingPriceInCents * platformCommissionRate);
-  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
-  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, FEE_CONFIG.MINIMUM_APPLICATION_FEE_CENTS);
-  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
-  if (managerReceivesInCents <= 0) {
-    throw new Error(
-      `Application fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
-    );
-  }
-  const totalChargeInCents = chargeFeesToCustomer ? bookingPriceInCents + totalPlatformFeeInCents : bookingPriceInCents;
-  return {
-    bookingPriceInCents,
-    stripeProcessingFeeInCents,
-    platformCommissionInCents,
-    totalPlatformFeeInCents,
-    totalChargeInCents,
-    managerReceivesInCents,
-    // Legacy fields for backward compatibility
-    percentageFeeInCents: stripeProcessingFeeInCents,
-    flatFeeInCents: FEE_CONFIG.STRIPE_FLAT_FEE_CENTS
-  };
-}
-function calculateCheckoutFeesWithRates(bookingPrice, stripePercentage, stripeFlatCents, platformCommissionRate, minimumFeeCents = 50) {
-  if (bookingPrice <= 0) {
-    throw new Error("Booking price must be greater than 0");
-  }
-  const bookingPriceInCents = Math.round(bookingPrice * 100);
-  const stripeProcessingFeeInCents = Math.round(
-    bookingPriceInCents * stripePercentage + stripeFlatCents
-  );
-  const platformCommissionInCents = Math.round(bookingPriceInCents * platformCommissionRate);
-  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
-  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, minimumFeeCents);
-  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
-  if (managerReceivesInCents <= 0) {
-    throw new Error("Total fees exceed booking price");
-  }
-  return {
-    bookingPriceInCents,
-    stripeProcessingFeeInCents,
-    platformCommissionInCents,
-    totalPlatformFeeInCents,
-    totalChargeInCents: bookingPriceInCents,
-    managerReceivesInCents,
-    percentageFeeInCents: stripeProcessingFeeInCents,
-    flatFeeInCents: stripeFlatCents
-  };
-}
-async function calculateCheckoutFeesAsync(bookingPriceInCents) {
-  if (bookingPriceInCents <= 0) {
-    throw new Error("Booking price must be greater than 0");
-  }
-  const config = await getFeeConfig();
-  if (config.useStripePlatformPricing) {
-    return {
-      bookingPriceInCents,
-      stripeProcessingFeeInCents: 0,
-      platformCommissionInCents: 0,
-      totalPlatformFeeInCents: 0,
-      totalChargeInCents: bookingPriceInCents,
-      managerReceivesInCents: bookingPriceInCents,
-      percentageFeeInCents: 0,
-      flatFeeInCents: 0,
-      useStripePlatformPricing: true
-    };
-  }
-  const stripeProcessingFeeInCents = Math.round(
-    bookingPriceInCents * config.stripePercentageFee + config.stripeFlatFeeCents
-  );
-  const platformCommissionInCents = Math.round(
-    bookingPriceInCents * config.platformCommissionRate
-  );
-  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
-  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, config.minimumApplicationFeeCents);
-  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
-  if (managerReceivesInCents <= 0) {
-    throw new Error(
-      `Application fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
-    );
-  }
-  return {
-    bookingPriceInCents,
-    stripeProcessingFeeInCents,
-    platformCommissionInCents,
-    totalPlatformFeeInCents,
-    totalChargeInCents: bookingPriceInCents,
-    managerReceivesInCents,
-    percentageFeeInCents: stripeProcessingFeeInCents,
-    flatFeeInCents: config.stripeFlatFeeCents,
-    useStripePlatformPricing: false
-  };
-}
-var DEFAULT_FEE_CONFIG, feeConfigCache, CACHE_TTL_MS, FEE_CONFIG;
-var init_stripe_checkout_fee_service = __esm({
-  "server/services/stripe-checkout-fee-service.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    DEFAULT_FEE_CONFIG = {
-      stripePercentageFee: 0.029,
-      // 2.9% - Stripe Canada card processing fee
-      stripeFlatFeeCents: 30,
-      // $0.30 CAD - Stripe Canada flat fee per transaction
-      platformCommissionRate: 0,
-      // 0% platform commission for break-even
-      minimumApplicationFeeCents: 0,
-      // No minimum for break-even mode
-      useStripePlatformPricing: false
-    };
-    feeConfigCache = null;
-    CACHE_TTL_MS = 5 * 60 * 1e3;
-    FEE_CONFIG = {
-      // Stripe processing fees (Canada)
-      STRIPE_PERCENTAGE_FEE: DEFAULT_FEE_CONFIG.stripePercentageFee,
-      // 2.9%
-      STRIPE_FLAT_FEE_CENTS: DEFAULT_FEE_CONFIG.stripeFlatFeeCents,
-      // $0.30 CAD
-      // Platform commission (0% for break-even)
-      PLATFORM_COMMISSION_RATE: DEFAULT_FEE_CONFIG.platformCommissionRate,
-      // 0%
-      MINIMUM_APPLICATION_FEE_CENTS: DEFAULT_FEE_CONFIG.minimumApplicationFeeCents
-      // 0
-    };
-  }
-});
-
 // server/domains/locations/location.repository.ts
-import { eq as eq8, and as and6, desc as desc5 } from "drizzle-orm";
+import { eq as eq12, and as and8, desc as desc7 } from "drizzle-orm";
 var LocationRepository;
 var init_location_repository = __esm({
   "server/domains/locations/location.repository.ts"() {
@@ -6033,7 +11173,7 @@ var init_location_repository = __esm({
        */
       async findById(id) {
         try {
-          const [location] = await db.select().from(locations).where(eq8(locations.id, id)).limit(1);
+          const [location] = await db.select().from(locations).where(eq12(locations.id, id)).limit(1);
           return location || null;
         } catch (error) {
           console.error(`[LocationRepository] Error finding location by ID ${id}:`, error);
@@ -6049,7 +11189,7 @@ var init_location_repository = __esm({
        */
       async findByManagerId(managerId) {
         try {
-          const results = await db.select().from(locations).where(eq8(locations.managerId, managerId)).orderBy(desc5(locations.createdAt));
+          const results = await db.select().from(locations).where(eq12(locations.managerId, managerId)).orderBy(desc7(locations.createdAt));
           return results;
         } catch (error) {
           console.error(`[LocationRepository] Error finding locations by manager ${managerId}:`, error);
@@ -6127,7 +11267,7 @@ var init_location_repository = __esm({
             kitchenLicenseExpiry: dto.kitchenLicenseExpiry,
             kitchenTermsUrl: dto.kitchenTermsUrl,
             kitchenTermsUploadedAt: dto.kitchenTermsUploadedAt
-          }).where(eq8(locations.id, id)).returning();
+          }).where(eq12(locations.id, id)).returning();
           return location || null;
         } catch (error) {
           console.error(`[LocationRepository] Error updating location ${id}:`, error);
@@ -6149,7 +11289,7 @@ var init_location_repository = __esm({
             kitchenLicenseApprovedBy: dto.kitchenLicenseApprovedBy,
             kitchenLicenseApprovedAt: /* @__PURE__ */ new Date(),
             kitchenLicenseExpiry: dto.kitchenLicenseExpiry || null
-          }).where(eq8(locations.id, dto.locationId)).returning();
+          }).where(eq12(locations.id, dto.locationId)).returning();
           return location || null;
         } catch (error) {
           console.error(`[LocationRepository] Error verifying kitchen license for location ${dto.locationId}:`, error);
@@ -6165,7 +11305,7 @@ var init_location_repository = __esm({
        */
       async updateKitchenLicenseUrl(locationId, licenseUrl) {
         try {
-          const [location] = await db.update(locations).set({ kitchenLicenseUrl: licenseUrl }).where(eq8(locations.id, locationId)).returning();
+          const [location] = await db.update(locations).set({ kitchenLicenseUrl: licenseUrl }).where(eq12(locations.id, locationId)).returning();
           return location || null;
         } catch (error) {
           console.error(`[LocationRepository] Error updating kitchen license URL for location ${locationId}:`, error);
@@ -6181,7 +11321,7 @@ var init_location_repository = __esm({
        */
       async findAll() {
         try {
-          const results = await db.select().from(locations).orderBy(desc5(locations.createdAt));
+          const results = await db.select().from(locations).orderBy(desc7(locations.createdAt));
           return results;
         } catch (error) {
           console.error("[LocationRepository] Error finding all locations:", error);
@@ -6198,7 +11338,7 @@ var init_location_repository = __esm({
       async nameExists(name, excludeId) {
         try {
           const result = await db.select({ id: locations.id }).from(locations).where(
-            excludeId ? and6(eq8(locations.name, name), eq8(locations.id, excludeId)) : eq8(locations.name, name)
+            excludeId ? and8(eq12(locations.name, name), eq12(locations.id, excludeId)) : eq12(locations.name, name)
           ).limit(1);
           return result.length > 0;
         } catch (error) {
@@ -6211,7 +11351,7 @@ var init_location_repository = __esm({
        */
       async countByManagerId(managerId) {
         try {
-          const results = await db.select({ id: locations.id }).from(locations).where(eq8(locations.managerId, managerId));
+          const results = await db.select({ id: locations.id }).from(locations).where(eq12(locations.managerId, managerId));
           return results.length;
         } catch (error) {
           console.error(`[LocationRepository] Error counting locations by manager ${managerId}:`, error);
@@ -6223,7 +11363,7 @@ var init_location_repository = __esm({
        */
       async findRequirementsByLocationId(locationId) {
         try {
-          const [requirements] = await db.select().from(locationRequirements).where(eq8(locationRequirements.locationId, locationId));
+          const [requirements] = await db.select().from(locationRequirements).where(eq12(locationRequirements.locationId, locationId));
           return requirements || null;
         } catch (error) {
           console.error(`[LocationRepository] Error finding requirements for location ${locationId}:`, error);
@@ -6240,7 +11380,7 @@ var init_location_repository = __esm({
             const [updated] = await db.update(locationRequirements).set({
               ...dto,
               updatedAt: /* @__PURE__ */ new Date()
-            }).where(eq8(locationRequirements.locationId, locationId)).returning();
+            }).where(eq12(locationRequirements.locationId, locationId)).returning();
             return updated;
           } else {
             const [created] = await db.insert(locationRequirements).values({
@@ -6267,7 +11407,7 @@ var init_location_repository = __esm({
        */
       async delete(id) {
         try {
-          await db.delete(locations).where(eq8(locations.id, id));
+          await db.delete(locations).where(eq12(locations.id, id));
         } catch (error) {
           console.error(`[LocationRepository] Error deleting location ${id}:`, error);
           throw new DomainError(
@@ -6358,7 +11498,7 @@ __export(chat_service_exports, {
   sendSystemNotification: () => sendSystemNotification
 });
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { eq as eq9 } from "drizzle-orm";
+import { eq as eq13 } from "drizzle-orm";
 async function getAdminDb() {
   if (!adminDb) {
     const app2 = initializeFirebaseAdmin();
@@ -6373,7 +11513,7 @@ async function getAdminDb() {
 async function initializeConversation(applicationData) {
   try {
     const adminDb2 = await getAdminDb();
-    const [location] = await db.select({ managerId: locations.managerId }).from(locations).where(eq9(locations.id, applicationData.locationId)).limit(1);
+    const [location] = await db.select({ managerId: locations.managerId }).from(locations).where(eq13(locations.id, applicationData.locationId)).limit(1);
     if (!location || !location.managerId) {
       console.error("Location not found or has no manager");
       return null;
@@ -6393,7 +11533,7 @@ async function initializeConversation(applicationData) {
       unreadChefCount: 0,
       unreadManagerCount: 0
     });
-    await db.update(chefKitchenApplications).set({ chat_conversation_id: conversationRef.id }).where(eq9(chefKitchenApplications.id, applicationData.id));
+    await db.update(chefKitchenApplications).set({ chat_conversation_id: conversationRef.id }).where(eq13(chefKitchenApplications.id, applicationData.id));
     return conversationRef.id;
   } catch (error) {
     console.error("Error initializing conversation:", error);
@@ -6498,7 +11638,7 @@ async function deleteConversation(conversationId) {
 }
 async function notifyTierTransition(applicationId, fromTier, toTier, reason) {
   try {
-    const [application] = await db.select().from(chefKitchenApplications).where(eq9(chefKitchenApplications.id, applicationId)).limit(1);
+    const [application] = await db.select().from(chefKitchenApplications).where(eq13(chefKitchenApplications.id, applicationId)).limit(1);
     if (!application) {
       console.error("Application not found for tier transition notification");
       return;
@@ -6547,7 +11687,7 @@ __export(location_service_exports, {
   LocationService: () => LocationService,
   locationService: () => locationService
 });
-import { eq as eq10 } from "drizzle-orm";
+import { eq as eq14 } from "drizzle-orm";
 var LocationService, locationService;
 var init_location_service = __esm({
   "server/domains/locations/location.service.ts"() {
@@ -6849,7 +11989,7 @@ var init_location_service = __esm({
           const locationApps = await db.select({
             id: chefKitchenApplications.id,
             conversationId: chefKitchenApplications.chat_conversation_id
-          }).from(chefKitchenApplications).where(eq10(chefKitchenApplications.locationId, id));
+          }).from(chefKitchenApplications).where(eq14(chefKitchenApplications.locationId, id));
           if (locationApps.length > 0) {
             const { deleteConversation: deleteConversation2 } = await Promise.resolve().then(() => (init_chat_service(), chat_service_exports));
             const cleanupPromises = locationApps.filter((app2) => app2.conversationId).map(
@@ -6870,7 +12010,7 @@ var init_location_service = __esm({
 });
 
 // server/domains/kitchens/kitchen.repository.ts
-import { eq as eq11, and as and7, desc as desc6, gte, lte, sql as sql2 } from "drizzle-orm";
+import { eq as eq15, and as and9, desc as desc8, gte, lte, sql as sql6 } from "drizzle-orm";
 var KitchenRepository;
 var init_kitchen_repository = __esm({
   "server/domains/kitchens/kitchen.repository.ts"() {
@@ -6901,7 +12041,7 @@ var init_kitchen_repository = __esm({
        */
       async findById(id) {
         try {
-          const [kitchen] = await db.select().from(kitchens).where(eq11(kitchens.id, id)).limit(1);
+          const [kitchen] = await db.select().from(kitchens).where(eq15(kitchens.id, id)).limit(1);
           return kitchen ? this.mapToDTO(kitchen) : null;
         } catch (error) {
           console.error(`[KitchenRepository] Error finding kitchen by ID ${id}:`, error);
@@ -6917,7 +12057,7 @@ var init_kitchen_repository = __esm({
        */
       async findByLocationId(locationId) {
         try {
-          const results = await db.select().from(kitchens).where(eq11(kitchens.locationId, locationId)).orderBy(desc6(kitchens.createdAt));
+          const results = await db.select().from(kitchens).where(eq15(kitchens.locationId, locationId)).orderBy(desc8(kitchens.createdAt));
           return results.map((k) => this.mapToDTO(k));
         } catch (error) {
           console.error(`[KitchenRepository] Error finding kitchens by location ${locationId}:`, error);
@@ -6934,11 +12074,11 @@ var init_kitchen_repository = __esm({
       async findActiveByLocationId(locationId) {
         try {
           const results = await db.select().from(kitchens).where(
-            and7(
-              eq11(kitchens.locationId, locationId),
-              eq11(kitchens.isActive, true)
+            and9(
+              eq15(kitchens.locationId, locationId),
+              eq15(kitchens.isActive, true)
             )
-          ).orderBy(desc6(kitchens.createdAt));
+          ).orderBy(desc8(kitchens.createdAt));
           return results.map((k) => this.mapToDTO(k));
         } catch (error) {
           console.error(`[KitchenRepository] Error finding active kitchens by location ${locationId}:`, error);
@@ -6954,7 +12094,7 @@ var init_kitchen_repository = __esm({
        */
       async findAllActive() {
         try {
-          const results = await db.select().from(kitchens).where(eq11(kitchens.isActive, true)).orderBy(desc6(kitchens.createdAt));
+          const results = await db.select().from(kitchens).where(eq15(kitchens.isActive, true)).orderBy(desc8(kitchens.createdAt));
           return results.map((k) => this.mapToDTO(k));
         } catch (error) {
           console.error("[KitchenRepository] Error finding all active kitchens:", error);
@@ -7014,7 +12154,7 @@ var init_kitchen_repository = __esm({
             minimumBookingHours: dto.minimumBookingHours,
             pricingModel: dto.pricingModel,
             taxRatePercent: dto.taxRatePercent ? dto.taxRatePercent.toString() : dto.taxRatePercent === null ? null : void 0
-          }).where(eq11(kitchens.id, id)).returning();
+          }).where(eq15(kitchens.id, id)).returning();
           return kitchen ? this.mapToDTO(kitchen) : null;
         } catch (error) {
           console.error(`[KitchenRepository] Error updating kitchen ${id}:`, error);
@@ -7030,7 +12170,7 @@ var init_kitchen_repository = __esm({
        */
       async activate(id) {
         try {
-          const [kitchen] = await db.update(kitchens).set({ isActive: true }).where(eq11(kitchens.id, id)).returning();
+          const [kitchen] = await db.update(kitchens).set({ isActive: true }).where(eq15(kitchens.id, id)).returning();
           return kitchen ? this.mapToDTO(kitchen) : null;
         } catch (error) {
           console.error(`[KitchenRepository] Error activating kitchen ${id}:`, error);
@@ -7046,7 +12186,7 @@ var init_kitchen_repository = __esm({
        */
       async deactivate(id) {
         try {
-          const [kitchen] = await db.update(kitchens).set({ isActive: false }).where(eq11(kitchens.id, id)).returning();
+          const [kitchen] = await db.update(kitchens).set({ isActive: false }).where(eq15(kitchens.id, id)).returning();
           return kitchen ? this.mapToDTO(kitchen) : null;
         } catch (error) {
           console.error(`[KitchenRepository] Error deactivating kitchen ${id}:`, error);
@@ -7063,10 +12203,10 @@ var init_kitchen_repository = __esm({
       async nameExistsForLocation(name, locationId, excludeId) {
         try {
           const result = await db.select({ id: kitchens.id }).from(kitchens).where(
-            and7(
-              eq11(kitchens.locationId, locationId),
-              eq11(kitchens.name, name),
-              excludeId ? eq11(kitchens.id, excludeId) : void 0
+            and9(
+              eq15(kitchens.locationId, locationId),
+              eq15(kitchens.name, name),
+              excludeId ? eq15(kitchens.id, excludeId) : void 0
             )
           ).limit(1);
           return result.length > 0;
@@ -7080,7 +12220,7 @@ var init_kitchen_repository = __esm({
        */
       async updateImage(id, imageUrl) {
         try {
-          const [kitchen] = await db.update(kitchens).set({ imageUrl }).where(eq11(kitchens.id, id)).returning();
+          const [kitchen] = await db.update(kitchens).set({ imageUrl }).where(eq15(kitchens.id, id)).returning();
           return kitchen ? this.mapToDTO(kitchen) : null;
         } catch (error) {
           console.error(`[KitchenRepository] Error updating image for kitchen ${id}:`, error);
@@ -7096,7 +12236,7 @@ var init_kitchen_repository = __esm({
        */
       async updateGallery(id, galleryImages) {
         try {
-          const [kitchen] = await db.update(kitchens).set({ galleryImages }).where(eq11(kitchens.id, id)).returning();
+          const [kitchen] = await db.update(kitchens).set({ galleryImages }).where(eq15(kitchens.id, id)).returning();
           return kitchen ? this.mapToDTO(kitchen) : null;
         } catch (error) {
           console.error(`[KitchenRepository] Error updating gallery for kitchen ${id}:`, error);
@@ -7112,7 +12252,7 @@ var init_kitchen_repository = __esm({
        */
       async findAll() {
         try {
-          const results = await db.select().from(kitchens).orderBy(desc6(kitchens.createdAt));
+          const results = await db.select().from(kitchens).orderBy(desc8(kitchens.createdAt));
           return results.map((k) => this.mapToDTO(k));
         } catch (error) {
           console.error("[KitchenRepository] Error finding all kitchens:", error);
@@ -7131,7 +12271,7 @@ var init_kitchen_repository = __esm({
           const results = await db.select({
             kitchen: kitchens,
             location: locations
-          }).from(kitchens).leftJoin(locations, eq11(kitchens.locationId, locations.id)).orderBy(desc6(kitchens.createdAt));
+          }).from(kitchens).leftJoin(locations, eq15(kitchens.locationId, locations.id)).orderBy(desc8(kitchens.createdAt));
           return results.map(({ kitchen, location }) => ({
             ...this.mapToDTO(kitchen),
             location: location ? {
@@ -7160,7 +12300,7 @@ var init_kitchen_repository = __esm({
        */
       async delete(id) {
         try {
-          await db.delete(kitchens).where(eq11(kitchens.id, id));
+          await db.delete(kitchens).where(eq15(kitchens.id, id));
         } catch (error) {
           console.error(`[KitchenRepository] Error deleting kitchen ${id}:`, error);
           throw new DomainError(
@@ -7184,8 +12324,8 @@ var init_kitchen_repository = __esm({
       async findOverrides(kitchenId, startDate, endDate) {
         try {
           const results = await db.select().from(kitchenDateOverrides).where(
-            and7(
-              eq11(kitchenDateOverrides.kitchenId, kitchenId),
+            and9(
+              eq15(kitchenDateOverrides.kitchenId, kitchenId),
               gte(kitchenDateOverrides.specificDate, startDate),
               lte(kitchenDateOverrides.specificDate, endDate)
             )
@@ -7198,7 +12338,7 @@ var init_kitchen_repository = __esm({
       }
       async findOverrideById(id) {
         try {
-          const [override] = await db.select().from(kitchenDateOverrides).where(eq11(kitchenDateOverrides.id, id)).limit(1);
+          const [override] = await db.select().from(kitchenDateOverrides).where(eq15(kitchenDateOverrides.id, id)).limit(1);
           return override ? this.mapOverrideToDTO(override) : null;
         } catch (error) {
           console.error(`[KitchenRepository] Error finding override ${id}:`, error);
@@ -7229,7 +12369,7 @@ var init_kitchen_repository = __esm({
             isAvailable: dto.isAvailable,
             reason: dto.reason,
             updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq11(kitchenDateOverrides.id, id)).returning();
+          }).where(eq15(kitchenDateOverrides.id, id)).returning();
           return override ? this.mapOverrideToDTO(override) : null;
         } catch (error) {
           console.error(`[KitchenRepository] Error updating override ${id}:`, error);
@@ -7238,7 +12378,7 @@ var init_kitchen_repository = __esm({
       }
       async deleteOverride(id) {
         try {
-          await db.delete(kitchenDateOverrides).where(eq11(kitchenDateOverrides.id, id));
+          await db.delete(kitchenDateOverrides).where(eq15(kitchenDateOverrides.id, id));
         } catch (error) {
           console.error(`[KitchenRepository] Error deleting override ${id}:`, error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to delete override", 500);
@@ -7249,7 +12389,7 @@ var init_kitchen_repository = __esm({
       // ==========================================
       async findAvailability(kitchenId) {
         try {
-          return await db.select().from(kitchenAvailability).where(eq11(kitchenAvailability.kitchenId, kitchenId));
+          return await db.select().from(kitchenAvailability).where(eq15(kitchenAvailability.kitchenId, kitchenId));
         } catch (error) {
           console.error(`[KitchenRepository] Error finding availability for kitchen ${kitchenId}:`, error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to find availability", 500);
@@ -7259,9 +12399,9 @@ var init_kitchen_repository = __esm({
         try {
           const dateStr = date2.toISOString().split("T")[0];
           const [override] = await db.select().from(kitchenDateOverrides).where(
-            and7(
-              eq11(kitchenDateOverrides.kitchenId, kitchenId),
-              sql2`DATE(${kitchenDateOverrides.specificDate}) = ${dateStr}::date`
+            and9(
+              eq15(kitchenDateOverrides.kitchenId, kitchenId),
+              sql6`DATE(${kitchenDateOverrides.specificDate}) = ${dateStr}::date`
             )
           ).limit(1);
           return override ? this.mapOverrideToDTO(override) : null;
@@ -7692,607 +12832,6 @@ var init_kitchen_service = __esm({
       }
     };
     kitchenService = new KitchenService(new KitchenRepository());
-  }
-});
-
-// server/logger.ts
-var isProd, logger;
-var init_logger = __esm({
-  "server/logger.ts"() {
-    "use strict";
-    isProd = process.env.NODE_ENV === "production";
-    logger = {
-      info: (msg, data) => {
-        if (!isProd) console.log(`[INFO] ${msg}`, data || "");
-      },
-      warn: (msg, data) => {
-        console.warn(`[WARN] ${msg}`, data || "");
-      },
-      error: (msg, error) => {
-        console.error(`[ERROR] ${msg}`, error);
-      },
-      debug: (msg, data) => {
-        if (!isProd) console.log(`[DEBUG] ${msg}`, data || "");
-      }
-    };
-  }
-});
-
-// server/services/notification.service.ts
-var notification_service_exports = {};
-__export(notification_service_exports, {
-  notificationService: () => notificationService
-});
-import { sql as sql3 } from "drizzle-orm";
-async function createNotification(params) {
-  const {
-    userId,
-    target,
-    locationId,
-    type,
-    priority = "normal",
-    title,
-    message,
-    metadata = {},
-    actionUrl,
-    actionLabel,
-    expiresAt
-  } = params;
-  try {
-    let result;
-    if (target === "manager") {
-      result = await db.execute(sql3`
-        INSERT INTO manager_notifications 
-        (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
-        VALUES (
-          ${userId}, 
-          ${locationId || null}, 
-          ${type}::notification_type, 
-          ${priority}::notification_priority, 
-          ${title}, 
-          ${message}, 
-          ${JSON.stringify(metadata)}::jsonb, 
-          ${actionUrl || null}, 
-          ${actionLabel || null}, 
-          ${expiresAt ? expiresAt.toISOString() : null}
-        )
-        RETURNING *
-      `);
-      logger.info(`[NotificationService] Created ${type} notification for manager ${userId}`);
-    } else {
-      result = await db.execute(sql3`
-        INSERT INTO chef_notifications 
-        (chef_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
-        VALUES (
-          ${userId}, 
-          ${type}::chef_notification_type, 
-          ${priority}::chef_notification_priority, 
-          ${title}, 
-          ${message}, 
-          ${JSON.stringify(metadata)}::jsonb, 
-          ${actionUrl || null}, 
-          ${actionLabel || null}, 
-          ${expiresAt ? expiresAt.toISOString() : null}
-        )
-        RETURNING *
-      `);
-      logger.info(`[NotificationService] Created ${type} notification for chef ${userId}`);
-    }
-    return result.rows[0];
-  } catch (error) {
-    logger.error(`[NotificationService] Failed to create ${target} notification:`, error);
-    throw error;
-  }
-}
-async function createManagerNotification(params) {
-  return createNotification({
-    userId: params.managerId,
-    target: "manager",
-    locationId: params.locationId,
-    type: params.type,
-    priority: params.priority,
-    title: params.title,
-    message: params.message,
-    metadata: params.metadata,
-    actionUrl: params.actionUrl,
-    actionLabel: params.actionLabel,
-    expiresAt: params.expiresAt
-  });
-}
-async function createChefNotification(params) {
-  return createNotification({
-    userId: params.chefId,
-    target: "chef",
-    type: params.type,
-    priority: params.priority,
-    title: params.title,
-    message: params.message,
-    metadata: params.metadata,
-    actionUrl: params.actionUrl,
-    actionLabel: params.actionLabel,
-    expiresAt: params.expiresAt
-  });
-}
-async function notifyNewBooking(data) {
-  const actionUrl = `/manager/booking/${data.bookingId}`;
-  logger.info(`[NotificationService] Creating booking_new notification with actionUrl: ${actionUrl}`);
-  return createManagerNotification({
-    managerId: data.managerId,
-    locationId: data.locationId,
-    type: "booking_new",
-    priority: "high",
-    title: "New Booking Request",
-    message: `${data.chefName} requested to book ${data.kitchenName} on ${data.bookingDate} from ${data.startTime} to ${data.endTime}. Awaiting your approval.`,
-    metadata: {
-      bookingId: data.bookingId,
-      chefName: data.chefName,
-      kitchenName: data.kitchenName,
-      bookingDate: data.bookingDate,
-      startTime: data.startTime,
-      endTime: data.endTime
-    },
-    actionUrl: `/manager/booking/${data.bookingId}`,
-    actionLabel: "Review Booking"
-  });
-}
-async function notifyBookingConfirmed(data) {
-  return createManagerNotification({
-    managerId: data.managerId,
-    locationId: data.locationId,
-    type: "booking_confirmed",
-    priority: "normal",
-    title: "Booking Confirmed",
-    message: `You confirmed ${data.chefName}'s booking at ${data.kitchenName} on ${data.bookingDate}.`,
-    metadata: {
-      bookingId: data.bookingId,
-      chefName: data.chefName,
-      kitchenName: data.kitchenName
-    },
-    actionUrl: `/manager/booking/${data.bookingId}`,
-    actionLabel: "View Booking"
-  });
-}
-async function notifyBookingCancelled(data) {
-  const isByChef = data.cancelledBy === "chef";
-  return createManagerNotification({
-    managerId: data.managerId,
-    locationId: data.locationId,
-    type: "booking_cancelled",
-    priority: "high",
-    title: isByChef ? "Booking Cancelled by Chef" : "Booking Cancelled",
-    message: isByChef ? `${data.chefName} cancelled their booking at ${data.kitchenName} on ${data.bookingDate}.` : `Booking at ${data.kitchenName} on ${data.bookingDate} was cancelled.`,
-    metadata: {
-      bookingId: data.bookingId,
-      chefName: data.chefName,
-      kitchenName: data.kitchenName,
-      cancelledBy: data.cancelledBy
-    },
-    actionUrl: `/manager/booking/${data.bookingId}`,
-    actionLabel: "View Details"
-  });
-}
-async function notifyPaymentReceived(data) {
-  const formattedAmount = (data.amount / 100).toFixed(2);
-  return createManagerNotification({
-    managerId: data.managerId,
-    locationId: data.locationId,
-    type: "payment_received",
-    priority: "normal",
-    title: "Payment Received",
-    message: `Received $${formattedAmount} ${data.currency} from ${data.chefName} for booking at ${data.kitchenName}.`,
-    metadata: {
-      bookingId: data.bookingId,
-      amount: data.amount,
-      currency: data.currency,
-      chefName: data.chefName
-    },
-    actionUrl: `/manager/booking-dashboard?view=revenue`,
-    actionLabel: "View Revenue"
-  });
-}
-async function notifyPaymentFailed(data) {
-  const formattedAmount = (data.amount / 100).toFixed(2);
-  return createManagerNotification({
-    managerId: data.managerId,
-    locationId: data.locationId,
-    type: "payment_failed",
-    priority: "urgent",
-    title: "Payment Failed",
-    message: `Payment of $${formattedAmount} ${data.currency} from ${data.chefName} failed.${data.reason ? ` Reason: ${data.reason}` : ""}`,
-    metadata: {
-      bookingId: data.bookingId,
-      amount: data.amount,
-      currency: data.currency,
-      chefName: data.chefName,
-      reason: data.reason
-    },
-    actionUrl: `/manager/booking/${data.bookingId}`,
-    actionLabel: "View Booking"
-  });
-}
-async function notifyNewApplication(data) {
-  return createManagerNotification({
-    managerId: data.managerId,
-    locationId: data.locationId,
-    type: "application_new",
-    priority: "high",
-    title: "New Chef Application",
-    message: `${data.chefName} (${data.chefEmail}) has applied to use your kitchen. Review their application to approve or reject.`,
-    metadata: {
-      applicationId: data.applicationId,
-      chefName: data.chefName,
-      chefEmail: data.chefEmail
-    },
-    actionUrl: `/manager/booking-dashboard?view=applications`,
-    actionLabel: "Review Application"
-  });
-}
-async function notifyApplicationApproved(data) {
-  return createManagerNotification({
-    managerId: data.managerId,
-    locationId: data.locationId,
-    type: "application_approved",
-    priority: "normal",
-    title: "Application Approved",
-    message: `You approved ${data.chefName}'s application. They can now book your kitchen.`,
-    metadata: {
-      applicationId: data.applicationId,
-      chefName: data.chefName
-    },
-    actionUrl: `/manager/booking-dashboard?view=applications`,
-    actionLabel: "View Applications"
-  });
-}
-async function notifyStorageExpiring(data) {
-  return createManagerNotification({
-    managerId: data.managerId,
-    locationId: data.locationId,
-    type: "storage_expiring",
-    priority: "high",
-    title: "Storage Booking Expiring",
-    message: `${data.chefName}'s storage booking for "${data.storageName}" expires in ${data.daysUntilExpiry} day${data.daysUntilExpiry !== 1 ? "s" : ""} (${data.expiryDate}).`,
-    metadata: {
-      storageBookingId: data.storageBookingId,
-      chefName: data.chefName,
-      storageName: data.storageName,
-      expiryDate: data.expiryDate,
-      daysUntilExpiry: data.daysUntilExpiry
-    },
-    actionUrl: `/manager/booking-dashboard?view=storage`,
-    actionLabel: "View Storage"
-  });
-}
-async function notifyLicenseApproved(data) {
-  return createManagerNotification({
-    managerId: data.managerId,
-    locationId: data.locationId,
-    type: "license_approved",
-    priority: "normal",
-    title: "Kitchen License Approved",
-    message: `Your kitchen license for ${data.locationName} has been approved by the admin.${data.expiryDate ? ` Valid until ${data.expiryDate}.` : ""}`,
-    metadata: {
-      locationName: data.locationName,
-      expiryDate: data.expiryDate
-    },
-    actionUrl: `/manager/booking-dashboard?view=settings`,
-    actionLabel: "View Settings"
-  });
-}
-async function notifyLicenseRejected(data) {
-  return createManagerNotification({
-    managerId: data.managerId,
-    locationId: data.locationId,
-    type: "license_rejected",
-    priority: "urgent",
-    title: "Kitchen License Rejected",
-    message: `Your kitchen license for ${data.locationName} was rejected.${data.feedback ? ` Feedback: ${data.feedback}` : " Please upload a new license."}`,
-    metadata: {
-      locationName: data.locationName,
-      feedback: data.feedback
-    },
-    actionUrl: `/manager/booking-dashboard?view=settings`,
-    actionLabel: "Upload New License"
-  });
-}
-async function notifyLicenseExpiring(data) {
-  return createManagerNotification({
-    managerId: data.managerId,
-    locationId: data.locationId,
-    type: "license_expiring",
-    priority: "high",
-    title: "Kitchen License Expiring Soon",
-    message: `Your kitchen license for ${data.locationName} expires in ${data.daysUntilExpiry} day${data.daysUntilExpiry !== 1 ? "s" : ""} (${data.expiryDate}). Please renew to avoid service interruption.`,
-    metadata: {
-      locationName: data.locationName,
-      expiryDate: data.expiryDate,
-      daysUntilExpiry: data.daysUntilExpiry
-    },
-    actionUrl: `/manager/booking-dashboard?view=settings`,
-    actionLabel: "Renew License"
-  });
-}
-async function notifyNewMessage(data) {
-  return createManagerNotification({
-    managerId: data.managerId,
-    locationId: data.locationId,
-    type: "message_received",
-    priority: "normal",
-    title: `Message from ${data.senderName}`,
-    message: data.messagePreview.length > 100 ? `${data.messagePreview.substring(0, 100)}...` : data.messagePreview,
-    metadata: {
-      senderName: data.senderName,
-      conversationId: data.conversationId
-    },
-    actionUrl: `/manager/booking-dashboard?view=messages`,
-    actionLabel: "View Message"
-  });
-}
-async function notifySystemAnnouncement(managerId, data) {
-  return createManagerNotification({
-    managerId,
-    type: "system_announcement",
-    priority: data.priority || "normal",
-    title: data.title,
-    message: data.message,
-    metadata: { isSystemAnnouncement: true },
-    actionUrl: data.actionUrl,
-    actionLabel: data.actionLabel
-  });
-}
-async function broadcastSystemAnnouncement(data) {
-  try {
-    const result = await db.execute(sql3`
-      SELECT id FROM users WHERE is_manager = true
-    `);
-    const managerIds = result.rows.map((row) => row.id);
-    const notifications = await Promise.all(
-      managerIds.map((managerId) => notifySystemAnnouncement(managerId, data))
-    );
-    logger.info(`[NotificationService] Broadcasted system announcement to ${managerIds.length} managers`);
-    return notifications;
-  } catch (error) {
-    logger.error(`[NotificationService] Failed to broadcast announcement:`, error);
-    throw error;
-  }
-}
-async function notifyChefBookingConfirmed(data) {
-  return createChefNotification({
-    chefId: data.chefId,
-    type: "booking_confirmed",
-    priority: "high",
-    title: "Booking Confirmed!",
-    message: `Your booking at ${data.kitchenName} on ${data.bookingDate} from ${data.startTime} to ${data.endTime} has been confirmed.`,
-    metadata: {
-      bookingId: data.bookingId,
-      kitchenName: data.kitchenName,
-      locationName: data.locationName,
-      bookingDate: data.bookingDate
-    },
-    actionUrl: `/dashboard?view=bookings`,
-    actionLabel: "View Booking"
-  });
-}
-async function notifyChefBookingCancelled(data) {
-  const isByManager = data.cancelledBy === "manager";
-  return createChefNotification({
-    chefId: data.chefId,
-    type: "booking_cancelled",
-    priority: "high",
-    title: isByManager ? "Booking Cancelled by Manager" : "Booking Cancelled",
-    message: isByManager ? `Your booking at ${data.kitchenName} on ${data.bookingDate} was cancelled by the manager.${data.reason ? ` Reason: ${data.reason}` : ""}` : `Your booking at ${data.kitchenName} on ${data.bookingDate} has been cancelled.`,
-    metadata: {
-      bookingId: data.bookingId,
-      kitchenName: data.kitchenName,
-      cancelledBy: data.cancelledBy,
-      reason: data.reason
-    },
-    actionUrl: `/dashboard?view=bookings`,
-    actionLabel: "View Details"
-  });
-}
-async function notifyChefApplicationApproved(data) {
-  return createChefNotification({
-    chefId: data.chefId,
-    type: "application_approved",
-    priority: "high",
-    title: "Application Approved!",
-    message: `Congratulations! Your application to ${data.kitchenName} at ${data.locationName} has been approved. You can now book this kitchen.`,
-    metadata: {
-      kitchenName: data.kitchenName,
-      locationName: data.locationName
-    },
-    actionUrl: `/dashboard?view=discover`,
-    actionLabel: "Book Now"
-  });
-}
-async function notifyChefApplicationRejected(data) {
-  return createChefNotification({
-    chefId: data.chefId,
-    type: "application_rejected",
-    priority: "normal",
-    title: "Application Update",
-    message: `Your application to ${data.kitchenName} at ${data.locationName} was not approved.${data.reason ? ` Reason: ${data.reason}` : ""}`,
-    metadata: {
-      kitchenName: data.kitchenName,
-      locationName: data.locationName,
-      reason: data.reason
-    },
-    actionUrl: `/dashboard?view=applications`,
-    actionLabel: "View Details"
-  });
-}
-async function notifyChefWelcome(chefId, chefName) {
-  return createChefNotification({
-    chefId,
-    type: "welcome",
-    priority: "normal",
-    title: `Welcome to LocalCooks, ${chefName}!`,
-    message: "Your account is set up. Start by exploring available kitchens and submitting your first application.",
-    metadata: { isWelcome: true },
-    actionUrl: `/dashboard?view=discover`,
-    actionLabel: "Explore Kitchens"
-  });
-}
-async function notifyChefPaymentReceived(data) {
-  const formattedAmount = (data.amount / 100).toFixed(2);
-  return createChefNotification({
-    chefId: data.chefId,
-    type: "payment_received",
-    priority: "normal",
-    title: "Payment Confirmed",
-    message: `Your payment of $${formattedAmount} ${data.currency} for ${data.kitchenName} has been processed.`,
-    metadata: {
-      amount: data.amount,
-      currency: data.currency,
-      bookingId: data.bookingId
-    },
-    actionUrl: `/dashboard?view=bookings`,
-    actionLabel: "View Booking"
-  });
-}
-async function notifyChefMessage(data) {
-  return createChefNotification({
-    chefId: data.chefId,
-    type: "message_received",
-    priority: "normal",
-    title: `Message from ${data.senderName}`,
-    message: data.messagePreview.length > 100 ? `${data.messagePreview.substring(0, 100)}...` : data.messagePreview,
-    metadata: {
-      senderName: data.senderName,
-      conversationId: data.conversationId
-    },
-    actionUrl: `/dashboard?view=messages`,
-    actionLabel: "View Message"
-  });
-}
-async function broadcastChefAnnouncement(data) {
-  try {
-    const result = await db.execute(sql3`
-      SELECT id FROM users WHERE is_chef = true OR role = 'chef'
-    `);
-    const chefIds = result.rows.map((row) => row.id);
-    const notifications = await Promise.all(
-      chefIds.map((chefId) => createChefNotification({
-        chefId,
-        type: "system_announcement",
-        priority: data.priority || "normal",
-        title: data.title,
-        message: data.message,
-        metadata: { isSystemAnnouncement: true },
-        actionUrl: data.actionUrl,
-        actionLabel: data.actionLabel
-      }))
-    );
-    logger.info(`[NotificationService] Broadcasted system announcement to ${chefIds.length} chefs`);
-    return notifications;
-  } catch (error) {
-    logger.error(`[NotificationService] Failed to broadcast chef announcement:`, error);
-    throw error;
-  }
-}
-async function notifyManagerStorageExtensionPending(data) {
-  if (!data.managerId) return;
-  return createManagerNotification({
-    managerId: data.managerId,
-    locationId: data.locationId,
-    type: "storage_extension_approved",
-    // Using existing type
-    priority: "high",
-    title: "Storage Extension Request",
-    message: `${data.chefName} has requested a ${data.extensionDays}-day extension for "${data.storageName}". Payment received - awaiting your approval.`,
-    metadata: {
-      storageBookingId: data.storageBookingId,
-      storageName: data.storageName,
-      extensionDays: data.extensionDays,
-      newEndDate: data.newEndDate,
-      chefName: data.chefName
-    },
-    actionUrl: `/manager/booking-dashboard?view=storage`,
-    actionLabel: "Review Extension"
-  });
-}
-async function notifyChefStorageExtensionApproved(data) {
-  if (!data.chefId) return;
-  return createChefNotification({
-    chefId: data.chefId,
-    type: "storage_extension_approved",
-    priority: "high",
-    title: "Storage Extension Approved!",
-    message: `Your ${data.extensionDays}-day extension for "${data.storageName}" has been approved. New end date: ${data.newEndDate}.`,
-    metadata: {
-      storageBookingId: data.storageBookingId,
-      storageName: data.storageName,
-      extensionDays: data.extensionDays,
-      newEndDate: data.newEndDate
-    },
-    actionUrl: `/dashboard?view=bookings`,
-    actionLabel: "View Booking"
-  });
-}
-async function notifyChefStorageExtensionRejected(data) {
-  if (!data.chefId) return;
-  return createChefNotification({
-    chefId: data.chefId,
-    type: "storage_extension_rejected",
-    priority: "high",
-    title: "Storage Extension Declined",
-    message: `Your extension request for "${data.storageName}" was declined.${data.reason ? ` Reason: ${data.reason}` : ""} A refund will be processed.`,
-    metadata: {
-      storageBookingId: data.storageBookingId,
-      storageName: data.storageName,
-      extensionDays: data.extensionDays,
-      reason: data.reason
-    },
-    actionUrl: `/dashboard?view=bookings`,
-    actionLabel: "View Details"
-  });
-}
-var notificationService;
-var init_notification_service = __esm({
-  "server/services/notification.service.ts"() {
-    "use strict";
-    init_db();
-    init_logger();
-    notificationService = {
-      // Core - Unified
-      create: createNotification,
-      createForManager: createManagerNotification,
-      createForChef: createChefNotification,
-      // Manager: Booking
-      notifyNewBooking,
-      notifyBookingConfirmed,
-      notifyBookingCancelled,
-      // Manager: Payment
-      notifyPaymentReceived,
-      notifyPaymentFailed,
-      // Manager: Application
-      notifyNewApplication,
-      notifyApplicationApproved,
-      // Manager: Storage & License
-      notifyStorageExpiring,
-      notifyLicenseApproved,
-      notifyLicenseRejected,
-      notifyLicenseExpiring,
-      // Manager: Message & System
-      notifyNewMessage,
-      notifySystemAnnouncement,
-      broadcastSystemAnnouncement,
-      // Chef: Booking
-      notifyChefBookingConfirmed,
-      notifyChefBookingCancelled,
-      // Chef: Application
-      notifyChefApplicationApproved,
-      notifyChefApplicationRejected,
-      // Chef: Other
-      notifyChefWelcome,
-      notifyChefPaymentReceived,
-      notifyChefMessage,
-      broadcastChefAnnouncement,
-      // Storage Extension
-      notifyManagerStorageExtensionPending,
-      notifyChefStorageExtensionApproved,
-      notifyChefStorageExtensionRejected
-    };
   }
 });
 
@@ -10266,9 +14805,9 @@ var init_files = __esm({
             const searchPattern = `%${filename}`;
             const { kitchens: kitchens3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
             const { db: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-            const { or: or5, like, sql: sql18 } = await import("drizzle-orm");
+            const { or: or6, like, sql: sql18 } = await import("drizzle-orm");
             const [kitchenMatch] = await db2.select({ id: kitchens3.id }).from(kitchens3).where(
-              or5(
+              or6(
                 like(kitchens3.imageUrl, searchPattern),
                 sql18`${kitchens3.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
                 // also try with just filename if that's how it's stored in array
@@ -10669,7 +15208,7 @@ We've also sent you an email. If not found, please check your spam folder.`;
 
 // shared/timezone-utils.ts
 import { TZDate } from "@date-fns/tz";
-import { format, isBefore, isAfter, isWithinInterval } from "date-fns";
+import { format as format3, isBefore, isAfter, isWithinInterval } from "date-fns";
 var DEFAULT_TIMEZONE;
 var init_timezone_utils = __esm({
   "shared/timezone-utils.ts"() {
@@ -10713,7 +15252,7 @@ var init_config = __esm({
 });
 
 // server/domains/bookings/booking.repository.ts
-import { eq as eq13, and as and9, desc as desc7, asc, lt, not, or as or2, sql as sql4, ne as ne2 } from "drizzle-orm";
+import { eq as eq17, and as and11, desc as desc9, asc as asc2, lt as lt2, not as not2, or as or2, sql as sql7, ne as ne2 } from "drizzle-orm";
 function getKitchenBookingSelection() {
   return {
     id: kitchenBookings.id,
@@ -10749,7 +15288,15 @@ function getStorageBookingSelection() {
     serviceFee: storageBookings.serviceFee,
     currency: storageBookings.currency,
     createdAt: storageBookings.createdAt,
-    updatedAt: storageBookings.updatedAt
+    updatedAt: storageBookings.updatedAt,
+    // Checkout workflow fields (hybrid verification system)
+    checkoutStatus: storageBookings.checkoutStatus,
+    checkoutRequestedAt: storageBookings.checkoutRequestedAt,
+    checkoutApprovedAt: storageBookings.checkoutApprovedAt,
+    checkoutDeniedAt: storageBookings.checkoutDeniedAt,
+    checkoutDenialReason: storageBookings.checkoutDenialReason,
+    checkoutNotes: storageBookings.checkoutNotes,
+    checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
   };
 }
 var BookingRepository;
@@ -10797,15 +15344,15 @@ var init_booking_repository = __esm({
         return this.mapKitchenBookingToDTO(booking);
       }
       async getKitchenBookingById(id) {
-        const [booking] = await db.select().from(kitchenBookings).where(eq13(kitchenBookings.id, id));
+        const [booking] = await db.select().from(kitchenBookings).where(eq17(kitchenBookings.id, id));
         return this.mapKitchenBookingToDTO(booking);
       }
       async updateKitchenBooking(id, updates) {
-        const [updated] = await db.update(kitchenBookings).set({ ...updates, updatedAt: /* @__PURE__ */ new Date() }).where(eq13(kitchenBookings.id, id)).returning();
+        const [updated] = await db.update(kitchenBookings).set({ ...updates, updatedAt: /* @__PURE__ */ new Date() }).where(eq17(kitchenBookings.id, id)).returning();
         return this.mapKitchenBookingToDTO(updated);
       }
       async getKitchenBookingsByKitchenId(kitchenId) {
-        const rows = await db.select().from(kitchenBookings).where(eq13(kitchenBookings.kitchenId, kitchenId));
+        const rows = await db.select().from(kitchenBookings).where(eq17(kitchenBookings.kitchenId, kitchenId));
         return rows.map((row) => this.mapKitchenBookingToDTO(row));
       }
       async getKitchenBookingsByChefId(chefId) {
@@ -10813,7 +15360,7 @@ var init_booking_repository = __esm({
           booking: kitchenBookings,
           kitchen: kitchens,
           location: locations
-        }).from(kitchenBookings).innerJoin(kitchens, eq13(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq13(kitchens.locationId, locations.id)).where(eq13(kitchenBookings.chefId, chefId)).orderBy(desc7(kitchenBookings.bookingDate));
+        }).from(kitchenBookings).innerJoin(kitchens, eq17(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq17(kitchens.locationId, locations.id)).where(eq17(kitchenBookings.chefId, chefId)).orderBy(desc9(kitchenBookings.bookingDate));
         return results.map((row) => ({
           ...this.mapKitchenBookingToDTO(row.booking),
           kitchen: row.kitchen,
@@ -10841,22 +15388,22 @@ var init_booking_repository = __esm({
           transactionStatus: paymentTransactions.status,
           transactionRefundAmount: paymentTransactions.refundAmount,
           transactionStripeProcessingFee: paymentTransactions.stripeProcessingFee
-        }).from(kitchenBookings).innerJoin(kitchens, eq13(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq13(kitchens.locationId, locations.id)).leftJoin(users, eq13(kitchenBookings.chefId, users.id)).leftJoin(chefKitchenApplications, and9(
-          eq13(chefKitchenApplications.chefId, kitchenBookings.chefId),
-          eq13(chefKitchenApplications.locationId, locations.id)
-        )).leftJoin(paymentTransactions, and9(
-          eq13(paymentTransactions.bookingId, kitchenBookings.id),
+        }).from(kitchenBookings).innerJoin(kitchens, eq17(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq17(kitchens.locationId, locations.id)).leftJoin(users, eq17(kitchenBookings.chefId, users.id)).leftJoin(chefKitchenApplications, and11(
+          eq17(chefKitchenApplications.chefId, kitchenBookings.chefId),
+          eq17(chefKitchenApplications.locationId, locations.id)
+        )).leftJoin(paymentTransactions, and11(
+          eq17(paymentTransactions.bookingId, kitchenBookings.id),
           // Include both 'kitchen' and 'bundle' booking types for accurate payment data
           or2(
-            eq13(paymentTransactions.bookingType, "kitchen"),
-            eq13(paymentTransactions.bookingType, "bundle")
+            eq17(paymentTransactions.bookingType, "kitchen"),
+            eq17(paymentTransactions.bookingType, "bundle")
           )
-        )).where(and9(
-          eq13(locations.managerId, managerId),
+        )).where(and11(
+          eq17(locations.managerId, managerId),
           // CRITICAL: Only show bookings where payment has been initiated (not abandoned at checkout)
           // 'pending' paymentStatus means chef never completed checkout - don't show to manager
           ne2(kitchenBookings.paymentStatus, "pending")
-        )).orderBy(desc7(kitchenBookings.bookingDate));
+        )).orderBy(desc9(kitchenBookings.bookingDate));
         return results.map((row) => {
           const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
           const transactionId = row.transactionId || null;
@@ -10917,21 +15464,21 @@ var init_booking_repository = __esm({
           chefName: users.username,
           chefEmail: users.username
           // Fallback/Placeholder logic as in original
-        }).from(kitchenBookings).leftJoin(users, eq13(kitchenBookings.chefId, users.id)).where(eq13(kitchenBookings.kitchenId, kitchenId)).orderBy(desc7(kitchenBookings.bookingDate));
+        }).from(kitchenBookings).leftJoin(users, eq17(kitchenBookings.chefId, users.id)).where(eq17(kitchenBookings.kitchenId, kitchenId)).orderBy(desc9(kitchenBookings.bookingDate));
       }
       async findConflictingBookings(kitchenId, date2, startTime, endTime, excludeBookingId) {
         const dateStr = date2.toISOString().split("T")[0];
         const conditions = [
-          eq13(kitchenBookings.kitchenId, kitchenId),
-          not(eq13(kitchenBookings.status, "cancelled")),
-          sql4`DATE(${kitchenBookings.bookingDate}) = ${dateStr}::date`,
-          sql4`${kitchenBookings.startTime} < ${endTime}`,
-          sql4`${kitchenBookings.endTime} > ${startTime}`
+          eq17(kitchenBookings.kitchenId, kitchenId),
+          not2(eq17(kitchenBookings.status, "cancelled")),
+          sql7`DATE(${kitchenBookings.bookingDate}) = ${dateStr}::date`,
+          sql7`${kitchenBookings.startTime} < ${endTime}`,
+          sql7`${kitchenBookings.endTime} > ${startTime}`
         ];
         if (excludeBookingId) {
-          conditions.push(not(eq13(kitchenBookings.id, excludeBookingId)));
+          conditions.push(not2(eq17(kitchenBookings.id, excludeBookingId)));
         }
-        const conflicts = await db.select().from(kitchenBookings).where(and9(...conditions));
+        const conflicts = await db.select().from(kitchenBookings).where(and11(...conditions));
         return conflicts;
       }
       // ===== STORAGE BOOKINGS =====
@@ -10948,7 +15495,7 @@ var init_booking_repository = __esm({
           kitchenName: kitchens.name,
           basePrice: storageListings.basePrice,
           minimumBookingDuration: storageListings.minimumBookingDuration
-        }).from(storageBookings).innerJoin(storageListings, eq13(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq13(storageListings.kitchenId, kitchens.id)).where(eq13(storageBookings.chefId, chefId)).orderBy(desc7(storageBookings.startDate));
+        }).from(storageBookings).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq17(storageListings.kitchenId, kitchens.id)).where(eq17(storageBookings.chefId, chefId)).orderBy(desc9(storageBookings.startDate));
         const bookingIds = result.map((r) => r.id);
         const paidPenalties = bookingIds.length > 0 ? await db.select({
           storageBookingId: storageOverstayRecords.storageBookingId,
@@ -10957,14 +15504,19 @@ var init_booking_repository = __esm({
           calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
           daysOverdue: storageOverstayRecords.daysOverdue,
           resolvedAt: storageOverstayRecords.resolvedAt,
-          resolutionType: storageOverstayRecords.resolutionType
+          resolutionType: storageOverstayRecords.resolutionType,
+          // BACKWARDS COMPATIBILITY: Include additional fields to determine payment status
+          chargeSucceededAt: storageOverstayRecords.chargeSucceededAt,
+          stripeChargeId: storageOverstayRecords.stripeChargeId
         }).from(storageOverstayRecords).where(
-          and9(
-            sql4`${storageOverstayRecords.storageBookingId} IN (${sql4.join(bookingIds.map((id) => sql4`${id}`), sql4`, `)})`,
-            eq13(storageOverstayRecords.status, "charge_succeeded")
-          )
+          sql7`${storageOverstayRecords.storageBookingId} IN (${sql7.join(bookingIds.map((id) => sql7`${id}`), sql7`, `)})`
         ) : [];
-        const penaltyMap = new Map(paidPenalties.map((p) => [p.storageBookingId, p]));
+        const isPenaltyPaid = (p) => {
+          return p.status === "charge_succeeded" || !!p.stripeChargeId || p.resolutionType === "paid" || !!p.chargeSucceededAt;
+        };
+        const penaltyMap = new Map(
+          paidPenalties.filter(isPenaltyPaid).map((p) => [p.storageBookingId, p])
+        );
         return result.map((row) => {
           const penalty = penaltyMap.get(row.id);
           return {
@@ -10973,12 +15525,12 @@ var init_booking_repository = __esm({
             serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0,
             basePrice: row.basePrice ? parseFloat(row.basePrice.toString()) : 0,
             minimumBookingDuration: row.minimumBookingDuration || 1,
-            // Paid penalty info
+            // Paid penalty info (with backwards compatibility for paidAt field)
             paidPenalty: penalty ? {
               amountCents: penalty.finalPenaltyCents || penalty.calculatedPenaltyCents || 0,
               amountDollars: ((penalty.finalPenaltyCents || penalty.calculatedPenaltyCents || 0) / 100).toFixed(2),
               daysOverdue: penalty.daysOverdue,
-              paidAt: penalty.resolvedAt,
+              paidAt: penalty.chargeSucceededAt || penalty.resolvedAt,
               resolutionType: penalty.resolutionType
             } : null
           };
@@ -10993,15 +15545,15 @@ var init_booking_repository = __esm({
           kitchenName: kitchens.name,
           basePrice: storageListings.basePrice,
           minimumBookingDuration: storageListings.minimumBookingDuration
-        }).from(storageBookings).innerJoin(storageListings, eq13(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq13(storageListings.kitchenId, kitchens.id)).where(eq13(storageBookings.id, id));
+        }).from(storageBookings).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq17(storageListings.kitchenId, kitchens.id)).where(eq17(storageBookings.id, id));
         return this.mapStorageBookingToDTO(booking);
       }
       async updateStorageBooking(id, updates) {
-        const [updated] = await db.update(storageBookings).set({ ...updates, updatedAt: /* @__PURE__ */ new Date() }).where(eq13(storageBookings.id, id)).returning();
+        const [updated] = await db.update(storageBookings).set({ ...updates, updatedAt: /* @__PURE__ */ new Date() }).where(eq17(storageBookings.id, id)).returning();
         return this.mapStorageBookingToDTO(updated);
       }
       async deleteStorageBooking(id) {
-        return db.delete(storageBookings).where(eq13(storageBookings.id, id));
+        return db.delete(storageBookings).where(eq17(storageBookings.id, id));
       }
       async getStorageBookingsByKitchenBookingId(kitchenBookingId) {
         const rows = await db.select({
@@ -11011,7 +15563,7 @@ var init_booking_repository = __esm({
           kitchenId: storageListings.kitchenId,
           kitchenName: kitchens.name,
           basePrice: storageListings.basePrice
-        }).from(storageBookings).innerJoin(storageListings, eq13(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq13(storageListings.kitchenId, kitchens.id)).where(eq13(storageBookings.kitchenBookingId, kitchenBookingId));
+        }).from(storageBookings).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq17(storageListings.kitchenId, kitchens.id)).where(eq17(storageBookings.kitchenBookingId, kitchenBookingId));
         return rows.map((row) => ({
           ...this.mapStorageBookingToDTO(row),
           storageName: row.storageName,
@@ -11033,11 +15585,11 @@ var init_booking_repository = __esm({
           paymentIntentId: storageBookings.paymentIntentId,
           basePrice: storageListings.basePrice,
           minimumBookingDuration: storageListings.minimumBookingDuration
-        }).from(storageBookings).innerJoin(storageListings, eq13(storageBookings.storageListingId, storageListings.id)).where(and9(
-          lt(storageBookings.endDate, today),
-          not(eq13(storageBookings.status, "cancelled")),
-          not(eq13(storageBookings.paymentStatus, "failed"))
-        )).orderBy(asc(storageBookings.endDate));
+        }).from(storageBookings).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).where(and11(
+          lt2(storageBookings.endDate, today),
+          not2(eq17(storageBookings.status, "cancelled")),
+          not2(eq17(storageBookings.paymentStatus, "failed"))
+        )).orderBy(asc2(storageBookings.endDate));
       }
       // ===== PENDING STORAGE EXTENSIONS =====
       async createPendingStorageExtension(data) {
@@ -11055,9 +15607,9 @@ var init_booking_repository = __esm({
         return extension;
       }
       async getPendingStorageExtension(storageBookingId, stripeSessionId) {
-        const [extension] = await db.select().from(pendingStorageExtensions).where(and9(
-          eq13(pendingStorageExtensions.storageBookingId, storageBookingId),
-          eq13(pendingStorageExtensions.stripeSessionId, stripeSessionId)
+        const [extension] = await db.select().from(pendingStorageExtensions).where(and11(
+          eq17(pendingStorageExtensions.storageBookingId, storageBookingId),
+          eq17(pendingStorageExtensions.stripeSessionId, stripeSessionId)
         )).limit(1);
         return extension || null;
       }
@@ -11065,11 +15617,11 @@ var init_booking_repository = __esm({
         const [updated] = await db.update(pendingStorageExtensions).set({
           ...updates,
           updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq13(pendingStorageExtensions.id, id)).returning();
+        }).where(eq17(pendingStorageExtensions.id, id)).returning();
         return updated;
       }
       async getPendingStorageExtensionBySessionId(stripeSessionId) {
-        const [extension] = await db.select().from(pendingStorageExtensions).where(eq13(pendingStorageExtensions.stripeSessionId, stripeSessionId)).limit(1);
+        const [extension] = await db.select().from(pendingStorageExtensions).where(eq17(pendingStorageExtensions.stripeSessionId, stripeSessionId)).limit(1);
         return extension || null;
       }
       // ===== EQUIPMENT BOOKINGS =====
@@ -11096,7 +15648,7 @@ var init_booking_repository = __esm({
           availabilityType: equipmentListings.availabilityType,
           kitchenId: equipmentListings.kitchenId,
           kitchenName: kitchens.name
-        }).from(equipmentBookings).innerJoin(equipmentListings, eq13(equipmentBookings.equipmentListingId, equipmentListings.id)).innerJoin(kitchens, eq13(equipmentListings.kitchenId, kitchens.id)).where(eq13(equipmentBookings.chefId, chefId)).orderBy(desc7(equipmentBookings.startDate));
+        }).from(equipmentBookings).innerJoin(equipmentListings, eq17(equipmentBookings.equipmentListingId, equipmentListings.id)).innerJoin(kitchens, eq17(equipmentListings.kitchenId, kitchens.id)).where(eq17(equipmentBookings.chefId, chefId)).orderBy(desc9(equipmentBookings.startDate));
         return result.map((row) => ({
           ...row,
           totalPrice: row.totalPrice ? parseFloat(row.totalPrice.toString()) / 100 : 0,
@@ -11109,7 +15661,7 @@ var init_booking_repository = __esm({
         return this.mapEquipmentBookingToDTO(booking);
       }
       async updateEquipmentBooking(id, updates) {
-        const [updated] = await db.update(equipmentBookings).set({ ...updates, updatedAt: /* @__PURE__ */ new Date() }).where(eq13(equipmentBookings.id, id)).returning();
+        const [updated] = await db.update(equipmentBookings).set({ ...updates, updatedAt: /* @__PURE__ */ new Date() }).where(eq17(equipmentBookings.id, id)).returning();
         return this.mapEquipmentBookingToDTO(updated);
       }
       async getEquipmentBookingsByKitchenBookingId(kitchenBookingId) {
@@ -11134,7 +15686,7 @@ var init_booking_repository = __esm({
           // Joined fields
           equipmentType: equipmentListings.equipmentType,
           brand: equipmentListings.brand
-        }).from(equipmentBookings).innerJoin(equipmentListings, eq13(equipmentBookings.equipmentListingId, equipmentListings.id)).where(eq13(equipmentBookings.kitchenBookingId, kitchenBookingId));
+        }).from(equipmentBookings).innerJoin(equipmentListings, eq17(equipmentBookings.equipmentListingId, equipmentListings.id)).where(eq17(equipmentBookings.kitchenBookingId, kitchenBookingId));
         return rows.map((row) => ({
           ...this.mapEquipmentBookingToDTO(row),
           equipmentType: row.equipmentType,
@@ -11142,7 +15694,7 @@ var init_booking_repository = __esm({
         }));
       }
       async deleteEquipmentBooking(id) {
-        return db.delete(equipmentBookings).where(eq13(equipmentBookings.id, id));
+        return db.delete(equipmentBookings).where(eq17(equipmentBookings.id, id));
       }
     };
   }
@@ -11160,7 +15712,7 @@ __export(pricing_service_exports, {
   getKitchenPricing: () => getKitchenPricing,
   getServiceFeeRate: () => getServiceFeeRate
 });
-import { eq as eq14 } from "drizzle-orm";
+import { eq as eq18 } from "drizzle-orm";
 function calculateDurationHours(startTime, endTime) {
   const [startHours, startMinutes] = startTime.split(":").map(Number);
   const [endHours, endMinutes] = endTime.split(":").map(Number);
@@ -11177,7 +15729,7 @@ async function getKitchenPricing(kitchenId) {
       currency: kitchens.currency,
       minimumBookingHours: kitchens.minimumBookingHours,
       taxRatePercent: kitchens.taxRatePercent
-    }).from(kitchens).where(eq14(kitchens.id, kitchenId));
+    }).from(kitchens).where(eq18(kitchens.id, kitchenId));
     if (!kitchen) {
       return null;
     }
@@ -11228,7 +15780,7 @@ async function calculateKitchenBookingPrice(kitchenId, startTime, endTime) {
 }
 async function getServiceFeeRate() {
   try {
-    const [setting] = await db.select({ value: platformSettings.value }).from(platformSettings).where(eq14(platformSettings.key, "service_fee_rate"));
+    const [setting] = await db.select({ value: platformSettings.value }).from(platformSettings).where(eq18(platformSettings.key, "service_fee_rate"));
     if (!setting) {
       return 0.05;
     }
@@ -11267,7 +15819,7 @@ var init_pricing_service = __esm({
 });
 
 // server/domains/inventory/inventory.repository.ts
-import { eq as eq15 } from "drizzle-orm";
+import { eq as eq19 } from "drizzle-orm";
 var InventoryRepository;
 var init_inventory_repository = __esm({
   "server/domains/inventory/inventory.repository.ts"() {
@@ -11301,11 +15853,11 @@ var init_inventory_repository = __esm({
         return this.mapStorageToDTO(listing);
       }
       async getStorageListingsByKitchenId(kitchenId) {
-        const rows = await db.select().from(storageListings).where(eq15(storageListings.kitchenId, kitchenId));
+        const rows = await db.select().from(storageListings).where(eq19(storageListings.kitchenId, kitchenId));
         return rows.map((row) => this.mapStorageToDTO(row));
       }
       async getStorageListingById(id) {
-        const [listing] = await db.select().from(storageListings).where(eq15(storageListings.id, id));
+        const [listing] = await db.select().from(storageListings).where(eq19(storageListings.id, id));
         return listing ? this.mapStorageToDTO(listing) : null;
       }
       async updateStorageListing(id, updates) {
@@ -11314,11 +15866,11 @@ var init_inventory_repository = __esm({
           ...safeUpdates,
           updatedAt: /* @__PURE__ */ new Date()
           // Always use fresh Date
-        }).where(eq15(storageListings.id, id)).returning();
+        }).where(eq19(storageListings.id, id)).returning();
         return updated ? this.mapStorageToDTO(updated) : null;
       }
       async deleteStorageListing(id) {
-        return db.delete(storageListings).where(eq15(storageListings.id, id));
+        return db.delete(storageListings).where(eq19(storageListings.id, id));
       }
       // ===== EQUIPMENT =====
       /**
@@ -11338,11 +15890,11 @@ var init_inventory_repository = __esm({
         return this.mapEquipmentToDTO(listing);
       }
       async getEquipmentListingsByKitchenId(kitchenId) {
-        const rows = await db.select().from(equipmentListings).where(eq15(equipmentListings.kitchenId, kitchenId));
+        const rows = await db.select().from(equipmentListings).where(eq19(equipmentListings.kitchenId, kitchenId));
         return rows.map((row) => this.mapEquipmentToDTO(row));
       }
       async getEquipmentListingById(id) {
-        const [listing] = await db.select().from(equipmentListings).where(eq15(equipmentListings.id, id));
+        const [listing] = await db.select().from(equipmentListings).where(eq19(equipmentListings.id, id));
         return listing ? this.mapEquipmentToDTO(listing) : null;
       }
       async updateEquipmentListing(id, updates) {
@@ -11351,11 +15903,11 @@ var init_inventory_repository = __esm({
           ...safeUpdates,
           updatedAt: /* @__PURE__ */ new Date()
           // Always use fresh Date
-        }).where(eq15(equipmentListings.id, id)).returning();
+        }).where(eq19(equipmentListings.id, id)).returning();
         return updated ? this.mapEquipmentToDTO(updated) : null;
       }
       async deleteEquipmentListing(id) {
-        return db.delete(equipmentListings).where(eq15(equipmentListings.id, id));
+        return db.delete(equipmentListings).where(eq19(equipmentListings.id, id));
       }
     };
   }
@@ -11414,2277 +15966,13 @@ var init_inventory_service = __esm({
   }
 });
 
-// server/services/overstay-defaults-service.ts
-var overstay_defaults_service_exports = {};
-__export(overstay_defaults_service_exports, {
-  OVERSTAY_DEFAULTS: () => DEFAULTS,
-  getEffectivePenaltyConfig: () => getEffectivePenaltyConfig,
-  getOverstayLocationDefaults: () => getOverstayLocationDefaults,
-  getOverstayPlatformDefaults: () => getOverstayPlatformDefaults
-});
-import { eq as eq16 } from "drizzle-orm";
-async function getOverstayPlatformDefaults() {
-  try {
-    const [gracePeriodSetting] = await db.select().from(platformSettings).where(eq16(platformSettings.key, "overstay_grace_period_days")).limit(1);
-    const [penaltyRateSetting] = await db.select().from(platformSettings).where(eq16(platformSettings.key, "overstay_penalty_rate")).limit(1);
-    const [maxDaysSetting] = await db.select().from(platformSettings).where(eq16(platformSettings.key, "overstay_max_penalty_days")).limit(1);
-    return {
-      gracePeriodDays: gracePeriodSetting ? parseInt(gracePeriodSetting.value) : DEFAULTS.gracePeriodDays,
-      penaltyRate: penaltyRateSetting ? parseFloat(penaltyRateSetting.value) : DEFAULTS.penaltyRate,
-      maxPenaltyDays: maxDaysSetting ? parseInt(maxDaysSetting.value) : DEFAULTS.maxPenaltyDays
-    };
-  } catch (error) {
-    console.error("[OverstayDefaultsService] Error fetching platform defaults:", error);
-    return DEFAULTS;
-  }
-}
-async function getOverstayLocationDefaults(locationId) {
-  try {
-    const [location] = await db.select({
-      overstayGracePeriodDays: locations.overstayGracePeriodDays,
-      overstayPenaltyRate: locations.overstayPenaltyRate,
-      overstayMaxPenaltyDays: locations.overstayMaxPenaltyDays,
-      overstayPolicyText: locations.overstayPolicyText
-    }).from(locations).where(eq16(locations.id, locationId)).limit(1);
-    if (!location) {
-      return { gracePeriodDays: null, penaltyRate: null, maxPenaltyDays: null, policyText: null };
-    }
-    return {
-      gracePeriodDays: location.overstayGracePeriodDays,
-      penaltyRate: location.overstayPenaltyRate ? parseFloat(location.overstayPenaltyRate.toString()) : null,
-      maxPenaltyDays: location.overstayMaxPenaltyDays,
-      policyText: location.overstayPolicyText
-    };
-  } catch (error) {
-    console.error("[OverstayDefaultsService] Error fetching location defaults:", error);
-    return { gracePeriodDays: null, penaltyRate: null, maxPenaltyDays: null, policyText: null };
-  }
-}
-async function getEffectivePenaltyConfig(listingGracePeriodDays, listingPenaltyRate, listingMaxPenaltyDays, locationId) {
-  const platformDefaults = await getOverstayPlatformDefaults();
-  const effectiveConfig = {
-    gracePeriodDays: platformDefaults.gracePeriodDays,
-    penaltyRate: platformDefaults.penaltyRate,
-    maxPenaltyDays: platformDefaults.maxPenaltyDays,
-    policyText: null
-  };
-  if (locationId) {
-    const locationDefaults = await getOverstayLocationDefaults(locationId);
-    if (locationDefaults.gracePeriodDays !== null) {
-      effectiveConfig.gracePeriodDays = locationDefaults.gracePeriodDays;
-    }
-    if (locationDefaults.penaltyRate !== null) {
-      effectiveConfig.penaltyRate = locationDefaults.penaltyRate;
-    }
-    if (locationDefaults.maxPenaltyDays !== null) {
-      effectiveConfig.maxPenaltyDays = locationDefaults.maxPenaltyDays;
-    }
-    if (locationDefaults.policyText !== null) {
-      effectiveConfig.policyText = locationDefaults.policyText;
-    }
-  }
-  if (listingGracePeriodDays !== null && listingGracePeriodDays !== void 0) {
-    effectiveConfig.gracePeriodDays = listingGracePeriodDays;
-  }
-  if (listingPenaltyRate !== null && listingPenaltyRate !== void 0) {
-    effectiveConfig.penaltyRate = typeof listingPenaltyRate === "string" ? parseFloat(listingPenaltyRate) : listingPenaltyRate;
-  }
-  if (listingMaxPenaltyDays !== null && listingMaxPenaltyDays !== void 0) {
-    effectiveConfig.maxPenaltyDays = listingMaxPenaltyDays;
-  }
-  return effectiveConfig;
-}
-var DEFAULTS;
-var init_overstay_defaults_service = __esm({
-  "server/services/overstay-defaults-service.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    DEFAULTS = {
-      gracePeriodDays: 3,
-      penaltyRate: 0.1,
-      maxPenaltyDays: 30
-    };
-  }
-});
-
-// server/services/payment-transactions-service.ts
-var payment_transactions_service_exports = {};
-__export(payment_transactions_service_exports, {
-  addPaymentHistory: () => addPaymentHistory,
-  createPaymentTransaction: () => createPaymentTransaction,
-  findPaymentTransactionByBooking: () => findPaymentTransactionByBooking,
-  findPaymentTransactionById: () => findPaymentTransactionById,
-  findPaymentTransactionByIntentId: () => findPaymentTransactionByIntentId,
-  findPaymentTransactionByMetadata: () => findPaymentTransactionByMetadata,
-  getManagerPaymentTransactions: () => getManagerPaymentTransactions,
-  getPaymentHistory: () => getPaymentHistory,
-  syncExistingPaymentTransactionsFromStripe: () => syncExistingPaymentTransactionsFromStripe,
-  syncStripeAmountsToBookings: () => syncStripeAmountsToBookings,
-  syncStripeFees: () => syncStripeFees,
-  updatePaymentTransaction: () => updatePaymentTransaction
-});
-import { sql as sql5 } from "drizzle-orm";
-async function createPaymentTransaction(params, db2) {
-  const {
-    bookingId,
-    bookingType,
-    chefId,
-    managerId,
-    amount,
-    baseAmount,
-    serviceFee,
-    managerRevenue,
-    currency = "CAD",
-    paymentIntentId,
-    chargeId,
-    paymentMethodId,
-    status = "pending",
-    stripeStatus,
-    metadata = {}
-  } = params;
-  const netAmount = amount;
-  const result = await db2.execute(sql5`
-    INSERT INTO payment_transactions (
-      booking_id,
-      booking_type,
-      chef_id,
-      manager_id,
-      amount,
-      base_amount,
-      service_fee,
-      manager_revenue,
-      refund_amount,
-      net_amount,
-      currency,
-      payment_intent_id,
-      charge_id,
-      payment_method_id,
-      status,
-      stripe_status,
-      metadata
-    ) VALUES (
-      ${bookingId},
-      ${bookingType},
-      ${chefId},
-      ${managerId},
-      ${amount.toString()},
-      ${baseAmount.toString()},
-      ${serviceFee.toString()},
-      ${managerRevenue.toString()},
-      '0',
-      ${netAmount.toString()},
-      ${currency},
-      ${paymentIntentId || null},
-      ${chargeId || null},
-      ${paymentMethodId || null},
-      ${status},
-      ${stripeStatus || null},
-      ${JSON.stringify(metadata)}
-    )
-    RETURNING *
-  `);
-  const record = result.rows[0];
-  await addPaymentHistory(
-    record.id,
-    {
-      previousStatus: null,
-      newStatus: status,
-      eventType: "created",
-      eventSource: "system",
-      description: `Payment transaction created for ${bookingType} booking ${bookingId}`,
-      metadata: { initialAmount: amount, baseAmount, serviceFee, managerRevenue }
-    },
-    db2
-  );
-  return record;
-}
-async function updatePaymentTransaction(transactionId, params, db2) {
-  const currentResult = await db2.execute(sql5`
-    SELECT status, refund_amount, amount
-    FROM payment_transactions
-    WHERE id = ${transactionId}
-  `);
-  if (currentResult.rows.length === 0) {
-    return null;
-  }
-  const current = currentResult.rows[0];
-  const previousStatus = current.status;
-  const currentRefundAmount = parseFloat(current.refund_amount || "0");
-  const currentAmount = parseFloat(current.amount || "0");
-  const updates = [];
-  if (params.status !== void 0) {
-    updates.push(sql5`status = ${params.status}`);
-  }
-  if (params.stripeStatus !== void 0) {
-    updates.push(sql5`stripe_status = ${params.stripeStatus}`);
-  }
-  if (params.paymentIntentId !== void 0) {
-    updates.push(sql5`payment_intent_id = ${params.paymentIntentId}`);
-  }
-  if (params.paymentMethodId !== void 0) {
-    updates.push(sql5`payment_method_id = ${params.paymentMethodId}`);
-  }
-  if (params.chargeId !== void 0) {
-    updates.push(sql5`charge_id = ${params.chargeId}`);
-  }
-  if (params.refundId !== void 0) {
-    updates.push(sql5`refund_id = ${params.refundId}`);
-  }
-  if (params.refundAmount !== void 0) {
-    updates.push(sql5`refund_amount = ${params.refundAmount.toString()}`);
-    const newRefundAmount = params.refundAmount;
-    const netAmount = currentAmount - newRefundAmount;
-    updates.push(sql5`net_amount = ${netAmount.toString()}`);
-  }
-  if (params.refundReason !== void 0) {
-    updates.push(sql5`refund_reason = ${params.refundReason}`);
-  }
-  if (params.failureReason !== void 0) {
-    updates.push(sql5`failure_reason = ${params.failureReason}`);
-  }
-  if (params.paidAt !== void 0) {
-    updates.push(sql5`paid_at = ${params.paidAt}`);
-  }
-  if (params.refundedAt !== void 0) {
-    updates.push(sql5`refunded_at = ${params.refundedAt}`);
-  }
-  if (params.lastSyncedAt !== void 0) {
-    updates.push(sql5`last_synced_at = ${params.lastSyncedAt}`);
-  }
-  if (params.webhookEventId !== void 0) {
-    updates.push(sql5`webhook_event_id = ${params.webhookEventId}`);
-  }
-  if (params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) {
-    if (params.stripeAmount !== void 0) {
-      updates.push(sql5`amount = ${params.stripeAmount.toString()}`);
-    }
-    if (params.stripeNetAmount !== void 0) {
-      updates.push(sql5`net_amount = ${params.stripeNetAmount.toString()}`);
-      updates.push(sql5`manager_revenue = ${params.stripeNetAmount.toString()}`);
-    }
-    if (params.stripeProcessingFee !== void 0) {
-      updates.push(sql5`stripe_processing_fee = ${params.stripeProcessingFee.toString()}`);
-    }
-    if (params.stripePlatformFee !== void 0 && params.stripePlatformFee > 0) {
-      updates.push(sql5`service_fee = ${params.stripePlatformFee.toString()}`);
-    } else if (params.stripeAmount !== void 0 && params.stripeNetAmount !== void 0) {
-      const totalFees = params.stripeAmount - params.stripeNetAmount;
-      const processingFee = params.stripeProcessingFee || 0;
-      const actualPlatformFee = Math.max(0, totalFees - processingFee);
-      updates.push(sql5`service_fee = ${actualPlatformFee.toString()}`);
-    }
-    if (params.stripeAmount !== void 0) {
-      const platformFee = params.stripePlatformFee || (params.stripeAmount !== void 0 && params.stripeNetAmount !== void 0 ? Math.max(0, params.stripeAmount - params.stripeNetAmount - (params.stripeProcessingFee || 0)) : 0);
-      const baseAmount = params.stripeAmount - platformFee;
-      updates.push(sql5`base_amount = ${baseAmount.toString()}`);
-    }
-    const currentMetadataResult = await db2.execute(sql5`
-      SELECT metadata FROM payment_transactions WHERE id = ${transactionId}
-    `);
-    const currentMetadata = currentMetadataResult.rows[0]?.metadata ? typeof currentMetadataResult.rows[0].metadata === "string" ? JSON.parse(currentMetadataResult.rows[0].metadata) : currentMetadataResult.rows[0].metadata : {};
-    const stripeFees = {
-      processingFee: params.stripeProcessingFee || 0,
-      platformFee: params.stripePlatformFee || 0,
-      syncedAt: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    const updatedMetadata = {
-      ...currentMetadata,
-      stripeFees
-    };
-    updates.push(sql5`metadata = ${JSON.stringify(updatedMetadata)}`);
-  } else if (params.metadata !== void 0) {
-    updates.push(sql5`metadata = ${JSON.stringify(params.metadata)}`);
-  }
-  if (updates.length === 0) {
-    const result2 = await db2.execute(sql5`
-      SELECT * FROM payment_transactions WHERE id = ${transactionId}
-    `);
-    return result2.rows[0];
-  }
-  const result = await db2.execute(sql5`
-    UPDATE payment_transactions
-    SET ${sql5.join(updates, sql5`, `)}, updated_at = NOW()
-    WHERE id = ${transactionId}
-    RETURNING *
-  `);
-  const updated = result.rows[0];
-  if (params.status !== void 0 && params.status !== previousStatus) {
-    const historyMetadata = { ...params.metadata || {} };
-    if (params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) {
-      historyMetadata.stripeAmounts = {
-        amount: params.stripeAmount,
-        netAmount: params.stripeNetAmount,
-        processingFee: params.stripeProcessingFee,
-        platformFee: params.stripePlatformFee,
-        syncedAt: (/* @__PURE__ */ new Date()).toISOString()
-      };
-    }
-    await addPaymentHistory(
-      transactionId,
-      {
-        previousStatus,
-        newStatus: params.status,
-        eventType: "status_change",
-        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
-        description: `Status changed from ${previousStatus} to ${params.status}${params.stripeAmount !== void 0 ? " (Stripe amounts synced)" : ""}`,
-        stripeEventId: params.webhookEventId,
-        metadata: historyMetadata
-      },
-      db2
-    );
-  }
-  if ((params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) && params.status === void 0) {
-    await addPaymentHistory(
-      transactionId,
-      {
-        previousStatus: updated.status,
-        newStatus: updated.status,
-        eventType: "stripe_sync",
-        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
-        description: `Stripe amounts synced: Amount $${((params.stripeAmount || parseFloat(updated.amount || "0")) / 100).toFixed(2)}, Net $${((params.stripeNetAmount || parseFloat(updated.net_amount || "0")) / 100).toFixed(2)}`,
-        stripeEventId: params.webhookEventId,
-        metadata: {
-          stripeAmounts: {
-            amount: params.stripeAmount,
-            netAmount: params.stripeNetAmount,
-            processingFee: params.stripeProcessingFee,
-            platformFee: params.stripePlatformFee,
-            syncedAt: (/* @__PURE__ */ new Date()).toISOString()
-          }
-        }
-      },
-      db2
-    );
-  }
-  if (params.refundAmount !== void 0 && params.refundAmount > currentRefundAmount) {
-    await addPaymentHistory(
-      transactionId,
-      {
-        previousStatus,
-        newStatus: updated.status,
-        eventType: params.refundAmount === parseFloat(updated.amount || "0") ? "refund" : "partial_refund",
-        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
-        description: `Refund of ${params.refundAmount / 100} ${updated.currency}${params.refundReason ? `: ${params.refundReason}` : ""}`,
-        stripeEventId: params.webhookEventId,
-        metadata: {
-          refundAmount: params.refundAmount,
-          refundReason: params.refundReason,
-          refundId: params.refundId
-        }
-      },
-      db2
-    );
-  }
-  return updated;
-}
-async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) {
-  try {
-    const transactionResult = await db2.execute(sql5`
-      SELECT 
-        pt.id,
-        pt.booking_id,
-        pt.booking_type,
-        pt.base_amount,
-        pt.service_fee,
-        pt.amount as current_amount,
-        pt.manager_revenue as current_manager_revenue
-      FROM payment_transactions pt
-      WHERE pt.payment_intent_id = ${paymentIntentId}
-    `);
-    if (transactionResult.rows.length === 0) {
-      console.warn(`[Stripe Sync] No payment transaction found for PaymentIntent ${paymentIntentId}`);
-      return;
-    }
-    const transaction = transactionResult.rows[0];
-    const bookingId = transaction.booking_id;
-    const bookingType = transaction.booking_type;
-    if (bookingType === "bundle") {
-      const kitchenBooking = await db2.execute(sql5`
-        SELECT id, total_price, service_fee
-        FROM kitchen_bookings
-        WHERE id = ${bookingId}
-      `);
-      const storageBookings2 = await db2.execute(sql5`
-        SELECT id, total_price, service_fee
-        FROM storage_bookings
-        WHERE kitchen_booking_id = ${bookingId}
-      `);
-      const equipmentBookings2 = await db2.execute(sql5`
-        SELECT id, total_price, service_fee
-        FROM equipment_bookings
-        WHERE kitchen_booking_id = ${bookingId}
-      `);
-      let totalBaseAmount = parseFloat(transaction.base_amount || "0");
-      if (totalBaseAmount === 0) {
-        const kbAmount = parseFloat(kitchenBooking.rows[0]?.total_price || "0");
-        const sbAmount = storageBookings2.rows.reduce((sum, sb) => sum + parseFloat(sb.total_price || "0"), 0);
-        const ebAmount = equipmentBookings2.rows.reduce((sum, eb) => sum + parseFloat(eb.total_price || "0"), 0);
-        totalBaseAmount = kbAmount + sbAmount + ebAmount;
-      }
-      if (kitchenBooking.rows.length > 0 && totalBaseAmount > 0) {
-        const kbBase = parseFloat(kitchenBooking.rows[0].total_price || "0");
-        const kbProportion = kbBase / totalBaseAmount;
-        const kbStripeAmount = Math.round(stripeAmounts.stripeAmount * kbProportion);
-        const kbStripeNet = Math.round(stripeAmounts.stripeNetAmount * kbProportion);
-        const kbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * kbProportion) : Math.round((kbStripeAmount - kbStripeNet) * 0.5);
-        await db2.execute(sql5`
-          UPDATE kitchen_bookings
-          SET 
-            total_price = ${kbStripeAmount.toString()},
-            service_fee = ${kbServiceFee.toString()},
-            updated_at = NOW()
-          WHERE id = ${bookingId}
-        `);
-      }
-      for (const sb of storageBookings2.rows) {
-        const sbBase = parseFloat(sb.total_price || "0");
-        if (totalBaseAmount > 0 && sbBase > 0) {
-          const sbProportion = sbBase / totalBaseAmount;
-          const sbStripeAmount = Math.round(stripeAmounts.stripeAmount * sbProportion);
-          const sbStripeNet = Math.round(stripeAmounts.stripeNetAmount * sbProportion);
-          const sbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * sbProportion) : Math.round((sbStripeAmount - sbStripeNet) * 0.5);
-          await db2.execute(sql5`
-            UPDATE storage_bookings
-            SET 
-              total_price = ${sbStripeAmount.toString()},
-              service_fee = ${sbServiceFee.toString()},
-              updated_at = NOW()
-            WHERE id = ${sb.id}
-          `);
-        }
-      }
-      for (const eb of equipmentBookings2.rows) {
-        const ebBase = parseFloat(eb.total_price || "0");
-        if (totalBaseAmount > 0 && ebBase > 0) {
-          const ebProportion = ebBase / totalBaseAmount;
-          const ebStripeAmount = Math.round(stripeAmounts.stripeAmount * ebProportion);
-          const ebStripeNet = Math.round(stripeAmounts.stripeNetAmount * ebProportion);
-          const ebServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * ebProportion) : Math.round((ebStripeAmount - ebStripeNet) * 0.5);
-          await db2.execute(sql5`
-            UPDATE equipment_bookings
-            SET 
-              total_price = ${ebStripeAmount.toString()},
-              service_fee = ${ebServiceFee.toString()},
-              updated_at = NOW()
-            WHERE id = ${eb.id}
-          `);
-        }
-      }
-    } else {
-      const serviceFee = stripeAmounts.stripePlatformFee > 0 ? stripeAmounts.stripePlatformFee : Math.max(0, stripeAmounts.stripeAmount - stripeAmounts.stripeNetAmount - stripeAmounts.stripeProcessingFee);
-      if (bookingType === "kitchen") {
-        await db2.execute(sql5`
-          UPDATE kitchen_bookings
-          SET 
-            total_price = ${stripeAmounts.stripeAmount.toString()},
-            service_fee = ${serviceFee.toString()},
-            updated_at = NOW()
-          WHERE id = ${bookingId}
-        `);
-      } else if (bookingType === "storage") {
-        await db2.execute(sql5`
-          UPDATE storage_bookings
-          SET 
-            total_price = ${stripeAmounts.stripeAmount.toString()},
-            service_fee = ${serviceFee.toString()},
-            updated_at = NOW()
-          WHERE id = ${bookingId}
-        `);
-      } else if (bookingType === "equipment") {
-        await db2.execute(sql5`
-          UPDATE equipment_bookings
-          SET 
-            total_price = ${stripeAmounts.stripeAmount.toString()},
-            service_fee = ${serviceFee.toString()},
-            updated_at = NOW()
-          WHERE id = ${bookingId}
-        `);
-      }
-    }
-    console.log(`[Stripe Sync] Synced Stripe amounts to ${bookingType} booking(s) for PaymentIntent ${paymentIntentId}`);
-  } catch (error) {
-    console.error(`[Stripe Sync] Error syncing Stripe amounts to bookings for ${paymentIntentId}:`, error);
-  }
-}
-async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options) {
-  let getStripePaymentAmounts2;
-  const importPaths = [
-    "./stripe-service",
-    // Path 1: Relative without extension (works in some builds)
-    "./stripe-service.js",
-    // Path 2: Relative with .js extension (standard)
-    "../server/services/stripe-service.js"
-    // Path 3: From api/ perspective
-  ];
-  let lastError = null;
-  for (const importPath of importPaths) {
-    try {
-      const mod = await import(importPath);
-      if (mod.getStripePaymentAmounts) {
-        getStripePaymentAmounts2 = mod.getStripePaymentAmounts;
-        break;
-      }
-    } catch (e) {
-      lastError = e;
-      continue;
-    }
-  }
-  if (!getStripePaymentAmounts2) {
-    console.error("[Stripe Sync] Failed to import stripe-service from all paths:", importPaths);
-    throw new Error(`Cannot import stripe-service from any path. Last error: ${lastError?.message || "Unknown"}`);
-  }
-  const limit = options?.limit || 1e3;
-  const onlyUnsynced = options?.onlyUnsynced !== false;
-  try {
-    const params = [managerId];
-    const unsyncedFilter = onlyUnsynced ? sql5` AND (pt.last_synced_at IS NULL OR pt.metadata->>'stripeFees' IS NULL)` : sql5``;
-    const result = await db2.execute(sql5`
-      SELECT 
-        pt.id,
-        pt.payment_intent_id,
-        pt.manager_id,
-        pt.booking_id,
-        pt.booking_type,
-        pt.amount as current_amount,
-        pt.manager_revenue as current_manager_revenue,
-        pt.last_synced_at
-      FROM payment_transactions pt
-      WHERE pt.payment_intent_id IS NOT NULL
-        AND pt.status IN ('succeeded', 'processing')
-        AND (
-          pt.manager_id = ${managerId} 
-          OR EXISTS (
-            SELECT 1 FROM kitchen_bookings kb
-            JOIN kitchens k ON kb.kitchen_id = k.id
-            JOIN locations l ON k.location_id = l.id
-            WHERE kb.id = pt.booking_id 
-              AND l.manager_id = ${managerId}
-          )
-        )
-      ${unsyncedFilter}
-      ORDER BY pt.created_at DESC
-      LIMIT ${limit}
-    `);
-    const transactions = result.rows;
-    console.log(`[Stripe Sync] Found ${transactions.length} payment transactions to sync for manager ${managerId}`);
-    let synced = 0;
-    let failed = 0;
-    const errors = [];
-    for (const transaction of transactions) {
-      const paymentIntentId = transaction.payment_intent_id;
-      if (!paymentIntentId) continue;
-      try {
-        let managerConnectAccountId;
-        try {
-          const managerResult = await db2.execute(sql5`
-            SELECT stripe_connect_account_id 
-            FROM users 
-            WHERE id = ${transaction.manager_id || managerId} AND stripe_connect_account_id IS NOT NULL
-          `);
-          if (managerResult.rows.length > 0) {
-            managerConnectAccountId = managerResult.rows[0].stripe_connect_account_id;
-          }
-        } catch (error) {
-          console.warn(`[Stripe Sync] Could not fetch manager Connect account:`, error);
-        }
-        const stripeAmounts = await getStripePaymentAmounts2(paymentIntentId, managerConnectAccountId);
-        if (!stripeAmounts) {
-          console.warn(`[Stripe Sync] Could not fetch Stripe amounts for ${paymentIntentId}`);
-          failed++;
-          errors.push({ paymentIntentId, error: "Could not fetch Stripe amounts" });
-          continue;
-        }
-        await updatePaymentTransaction(transaction.id, {
-          stripeAmount: stripeAmounts.stripeAmount,
-          stripeNetAmount: stripeAmounts.stripeNetAmount,
-          stripeProcessingFee: stripeAmounts.stripeProcessingFee,
-          stripePlatformFee: stripeAmounts.stripePlatformFee,
-          lastSyncedAt: /* @__PURE__ */ new Date()
-        }, db2);
-        await syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2);
-        synced++;
-        console.log(`[Stripe Sync] Synced transaction ${transaction.id} (PaymentIntent: ${paymentIntentId})`);
-      } catch (error) {
-        console.error(`[Stripe Sync] Error syncing transaction ${transaction.id} (${paymentIntentId}):`, error);
-        failed++;
-        errors.push({ paymentIntentId, error: error.message || "Unknown error" });
-      }
-    }
-    console.log(`[Stripe Sync] Completed: ${synced} synced, ${failed} failed`);
-    return { synced, failed, errors };
-  } catch (error) {
-    console.error(`[Stripe Sync] Error syncing existing transactions:`, error);
-    throw error;
-  }
-}
-async function findPaymentTransactionByIntentId(paymentIntentId, db2) {
-  const result = await db2.execute(sql5`
-    SELECT * FROM payment_transactions
-    WHERE payment_intent_id = ${paymentIntentId}
-    LIMIT 1
-  `);
-  return result.rows[0];
-}
-async function findPaymentTransactionById(transactionId, db2) {
-  const result = await db2.execute(sql5`
-    SELECT * FROM payment_transactions
-    WHERE id = ${transactionId}
-    LIMIT 1
-  `);
-  return result.rows[0];
-}
-async function findPaymentTransactionByBooking(bookingId, bookingType, db2) {
-  const result = await db2.execute(sql5`
-    SELECT * FROM payment_transactions
-    WHERE booking_id = ${bookingId} AND booking_type = ${bookingType}
-    ORDER BY created_at DESC
-    LIMIT 1
-  `);
-  return result.rows[0];
-}
-async function findPaymentTransactionByMetadata(metadataKey, metadataValue, db2) {
-  const result = await db2.execute(sql5`
-    SELECT * FROM payment_transactions
-    WHERE metadata->>${metadataKey} = ${metadataValue}
-    ORDER BY created_at DESC
-    LIMIT 1
-  `);
-  return result.rows[0];
-}
-async function addPaymentHistory(transactionId, history, db2) {
-  await db2.execute(sql5`
-    INSERT INTO payment_history (
-      transaction_id,
-      previous_status,
-      new_status,
-      event_type,
-      event_source,
-      stripe_event_id,
-      description,
-      metadata,
-      created_by
-    ) VALUES (
-      ${transactionId},
-      ${history.previousStatus},
-      ${history.newStatus},
-      ${history.eventType},
-      ${history.eventSource || "system"},
-      ${history.stripeEventId || null},
-      ${history.description || null},
-      ${JSON.stringify(history.metadata || {})},
-      ${history.createdBy || null}
-    )
-  `);
-}
-async function getPaymentHistory(transactionId, db2) {
-  const result = await db2.execute(sql5`
-    SELECT * FROM payment_history
-    WHERE transaction_id = ${transactionId}
-    ORDER BY created_at ASC
-  `);
-  return result.rows;
-}
-async function getManagerPaymentTransactions(managerId, db2, filters) {
-  const whereConditions = [sql5`manager_id = ${managerId}`];
-  if (filters?.status) {
-    whereConditions.push(sql5`status = ${filters.status}`);
-  }
-  if (filters?.startDate) {
-    whereConditions.push(sql5`
-      (
-        (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at >= ${filters.startDate})
-        OR (status != 'succeeded' AND created_at >= ${filters.startDate})
-      )
-    `);
-  }
-  if (filters?.endDate) {
-    whereConditions.push(sql5`
-      (
-        (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at <= ${filters.endDate})
-        OR (status != 'succeeded' AND created_at <= ${filters.endDate})
-      )
-    `);
-  }
-  const whereClause = sql5`WHERE ${sql5.join(whereConditions, sql5` AND `)}`;
-  const countResult = await db2.execute(sql5`
-    SELECT COUNT(*) as total FROM payment_transactions ${whereClause}
-  `);
-  const total = parseInt(countResult.rows[0].total);
-  const limit = filters?.limit || 50;
-  const offset = filters?.offset || 0;
-  const result = await db2.execute(sql5`
-    SELECT * FROM payment_transactions
-    ${whereClause}
-    ORDER BY 
-      CASE 
-        WHEN status = 'succeeded' AND paid_at IS NOT NULL 
-        THEN paid_at 
-        ELSE created_at 
-      END DESC
-    LIMIT ${limit} OFFSET ${offset}
-  `);
-  return {
-    transactions: result.rows,
-    total
-  };
-}
-async function syncStripeFees(db2, managerId, limit = 100) {
-  const Stripe7 = (await import("stripe")).default;
-  const stripeSecretKey6 = process.env.STRIPE_SECRET_KEY;
-  if (!stripeSecretKey6) {
-    throw new Error("STRIPE_SECRET_KEY not configured");
-  }
-  const stripe6 = new Stripe7(stripeSecretKey6, {
-    apiVersion: "2025-12-15.clover"
-  });
-  const whereConditions = [
-    sql5`payment_intent_id IS NOT NULL`,
-    sql5`(stripe_processing_fee IS NULL OR stripe_processing_fee = '0')`,
-    sql5`status IN ('succeeded', 'partially_refunded')`
-  ];
-  if (managerId) {
-    whereConditions.push(sql5`manager_id = ${managerId}`);
-  }
-  const whereClause = sql5`WHERE ${sql5.join(whereConditions, sql5` AND `)}`;
-  const result = await db2.execute(sql5`
-    SELECT id, payment_intent_id, amount, manager_id
-    FROM payment_transactions
-    ${whereClause}
-    ORDER BY created_at DESC
-    LIMIT ${limit}
-  `);
-  let synced = 0;
-  let failed = 0;
-  const errors = [];
-  for (const row of result.rows) {
-    const transactionId = row.id;
-    const paymentIntentId = row.payment_intent_id;
-    try {
-      const paymentIntent = await stripe6.paymentIntents.retrieve(paymentIntentId, {
-        expand: ["latest_charge"]
-      });
-      if (!paymentIntent.latest_charge) {
-        errors.push(`Transaction ${transactionId}: No charge found for PaymentIntent ${paymentIntentId}`);
-        failed++;
-        continue;
-      }
-      const charge = typeof paymentIntent.latest_charge === "string" ? await stripe6.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
-      if (!charge.balance_transaction) {
-        errors.push(`Transaction ${transactionId}: No balance_transaction for charge ${charge.id}`);
-        failed++;
-        continue;
-      }
-      const balanceTransactionId = typeof charge.balance_transaction === "string" ? charge.balance_transaction : charge.balance_transaction.id;
-      const balanceTransaction = await stripe6.balanceTransactions.retrieve(balanceTransactionId);
-      const stripeProcessingFee = balanceTransaction.fee;
-      const stripeAmount = paymentIntent.amount;
-      const stripePlatformFee = paymentIntent.application_fee_amount || 0;
-      const stripeNetAmount = stripePlatformFee > 0 ? stripeAmount - stripePlatformFee : stripeAmount - stripeProcessingFee;
-      await updatePaymentTransaction(
-        transactionId,
-        {
-          stripeAmount,
-          stripeNetAmount,
-          stripeProcessingFee,
-          stripePlatformFee,
-          lastSyncedAt: /* @__PURE__ */ new Date()
-        },
-        db2
-      );
-      console.log(`[Stripe Sync] \u2705 Synced transaction ${transactionId}: fee=${stripeProcessingFee} cents`);
-      synced++;
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    } catch (error) {
-      errors.push(`Transaction ${transactionId}: ${error.message}`);
-      failed++;
-    }
-  }
-  return { synced, failed, errors };
-}
-var init_payment_transactions_service = __esm({
-  "server/services/payment-transactions-service.ts"() {
-    "use strict";
-  }
-});
-
-// server/services/stripe-service.ts
-var stripe_service_exports = {};
-__export(stripe_service_exports, {
-  calculateRefundBreakdown: () => calculateRefundBreakdown,
-  cancelPaymentIntent: () => cancelPaymentIntent,
-  capturePaymentIntent: () => capturePaymentIntent,
-  confirmPaymentIntent: () => confirmPaymentIntent,
-  createPaymentIntent: () => createPaymentIntent,
-  createRefund: () => createRefund,
-  getPaymentIntent: () => getPaymentIntent,
-  getStripePaymentAmounts: () => getStripePaymentAmounts,
-  reverseTransferAndRefund: () => reverseTransferAndRefund,
-  verifyPaymentIntentForBooking: () => verifyPaymentIntentForBooking
-});
-import Stripe from "stripe";
-async function createPaymentIntent(params) {
-  if (!stripe) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  const {
-    amount,
-    currency = "cad",
-    chefId,
-    kitchenId,
-    metadata = {},
-    statementDescriptor = "LOCALCOOKS",
-    managerConnectAccountId,
-    applicationFeeAmount,
-    enableACSS = true,
-    // Default to true for ACSS debit support
-    enableCards = true,
-    // Default to true for standard card payments
-    useAuthorizationHold = true,
-    // DEPRECATED: No longer used - always uses automatic capture
-    saveCardForFuture = true,
-    // Default to true to save cards for future use
-    customerId
-  } = params;
-  if (amount <= 0) {
-    throw new Error("Payment amount must be greater than 0");
-  }
-  const hasApplicationFee = applicationFeeAmount !== void 0 && applicationFeeAmount !== null;
-  if (hasApplicationFee && !managerConnectAccountId) {
-    throw new Error("managerConnectAccountId is required when applicationFeeAmount is provided");
-  }
-  if (managerConnectAccountId && !hasApplicationFee) {
-  }
-  if (hasApplicationFee && applicationFeeAmount < 0) {
-    throw new Error("Application fee must be 0 or a positive amount");
-  }
-  if (hasApplicationFee && applicationFeeAmount >= amount) {
-    throw new Error("Application fee must be less than total amount");
-  }
-  if (!enableACSS && !enableCards) {
-    throw new Error("At least one payment method must be enabled");
-  }
-  const cleanDescriptor = statementDescriptor.replace(/[<>'"]/g, "").substring(0, 15).toUpperCase();
-  try {
-    const paymentMethodTypes = [];
-    if (enableCards) {
-      paymentMethodTypes.push("card");
-    }
-    if (enableACSS) {
-      paymentMethodTypes.push("acss_debit");
-    }
-    const paymentIntentParams = {
-      amount,
-      currency,
-      payment_method_types: paymentMethodTypes,
-      // Don't auto-confirm - we'll confirm after collecting payment method
-      confirm: false,
-      // Use automatic capture: payments are immediately processed when confirmed
-      capture_method: "automatic",
-      metadata: {
-        booking_type: "kitchen",
-        kitchen_id: kitchenId.toString(),
-        chef_id: chefId.toString(),
-        expected_amount: amount.toString(),
-        // Store expected amount for verification
-        ...metadata
-      }
-    };
-    if (enableCards) {
-      paymentIntentParams.statement_descriptor_suffix = cleanDescriptor.substring(0, 22);
-    } else if (enableACSS) {
-      paymentIntentParams.statement_descriptor = cleanDescriptor;
-    }
-    paymentIntentParams.payment_method_options = {};
-    if (enableACSS) {
-      paymentIntentParams.payment_method_options.acss_debit = {
-        mandate_options: {
-          payment_schedule: "combined",
-          // Creates a mandate for future debits
-          transaction_type: "personal",
-          // Default to personal, can be made configurable
-          interval_description: "Payment for kitchen booking and future bookings as authorized"
-          // Required for 'combined' or 'interval' payment schedules
-        }
-      };
-    }
-    if (saveCardForFuture && enableCards) {
-      paymentIntentParams.setup_future_usage = "off_session";
-    }
-    if (customerId) {
-      paymentIntentParams.customer = customerId;
-    }
-    if (managerConnectAccountId) {
-      paymentIntentParams.transfer_data = {
-        destination: managerConnectAccountId
-      };
-      paymentIntentParams.metadata.manager_connect_account_id = managerConnectAccountId;
-      if (hasApplicationFee) {
-        paymentIntentParams.application_fee_amount = applicationFeeAmount;
-        paymentIntentParams.metadata.platform_fee = applicationFeeAmount.toString();
-      }
-    }
-    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret,
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    console.error("Error creating PaymentIntent:", error);
-    throw new Error(`Failed to create payment intent: ${error.message}`);
-  }
-}
-async function confirmPaymentIntent(paymentIntentId, paymentMethodId) {
-  if (!stripe) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
-      payment_method: paymentMethodId
-    });
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || "",
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    console.error("Error confirming PaymentIntent:", error);
-    throw new Error(`Failed to confirm payment intent: ${error.message}`);
-  }
-}
-async function getPaymentIntent(paymentIntentId) {
-  if (!stripe) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || "",
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    if (error.code === "resource_missing") {
-      return null;
-    }
-    console.error("Error retrieving PaymentIntent:", error);
-    throw new Error(`Failed to retrieve payment intent: ${error.message}`);
-  }
-}
-async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId) {
-  if (!stripe) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
-      expand: ["latest_charge"]
-    });
-    if (!paymentIntent.latest_charge) {
-      console.warn(`[Stripe] No charge found for PaymentIntent ${paymentIntentId}`);
-      return null;
-    }
-    const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
-    const charge = typeof paymentIntent.latest_charge === "string" ? await stripe.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
-    let balanceTransaction = null;
-    if (charge.balance_transaction) {
-      const balanceTransactionId = typeof charge.balance_transaction === "string" ? charge.balance_transaction : charge.balance_transaction.id;
-      balanceTransaction = await stripe.balanceTransactions.retrieve(balanceTransactionId);
-    }
-    const stripeAmount = paymentIntent.amount;
-    let stripeNetAmount = stripeAmount;
-    let stripeProcessingFee = 0;
-    let stripePlatformFee = 0;
-    if (balanceTransaction) {
-      stripeProcessingFee = balanceTransaction.fee;
-      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
-        stripePlatformFee = paymentIntent.application_fee_amount;
-        stripeNetAmount = stripeAmount - stripePlatformFee;
-      } else {
-        stripeNetAmount = stripeAmount - stripeProcessingFee;
-      }
-    } else {
-      console.log(`[Stripe] balance_transaction not immediately available for ${paymentIntentId}, retrying in 2s...`);
-      await new Promise((resolve) => setTimeout(resolve, 2e3));
-      const retryCharge = await stripe.charges.retrieve(chargeId);
-      if (retryCharge.balance_transaction) {
-        const retryBalanceTransactionId = typeof retryCharge.balance_transaction === "string" ? retryCharge.balance_transaction : retryCharge.balance_transaction.id;
-        const retryBalanceTransaction = await stripe.balanceTransactions.retrieve(retryBalanceTransactionId);
-        stripeProcessingFee = retryBalanceTransaction.fee;
-        if (managerConnectAccountId && paymentIntent.application_fee_amount) {
-          stripePlatformFee = paymentIntent.application_fee_amount;
-          stripeNetAmount = stripeAmount - stripePlatformFee;
-        } else {
-          stripeNetAmount = stripeAmount - stripeProcessingFee;
-        }
-        console.log(`[Stripe] \u2705 Retry successful - got actual fee: ${stripeProcessingFee} cents`);
-      } else {
-        console.log(`[Stripe] balance_transaction still not available for ${paymentIntentId} - charge.updated webhook will sync fees`);
-        stripeProcessingFee = 0;
-        if (managerConnectAccountId && paymentIntent.application_fee_amount) {
-          stripePlatformFee = paymentIntent.application_fee_amount;
-          stripeNetAmount = stripeAmount - stripePlatformFee;
-        }
-      }
-    }
-    return {
-      stripeAmount,
-      stripeNetAmount,
-      stripeProcessingFee,
-      stripePlatformFee,
-      chargeId
-    };
-  } catch (error) {
-    console.error(`[Stripe] Error fetching payment amounts for ${paymentIntentId}:`, error);
-    return null;
-  }
-}
-async function capturePaymentIntent(paymentIntentId, amountToCapture) {
-  if (!stripe) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const captureParams = {};
-    if (amountToCapture !== void 0) {
-      captureParams.amount_to_capture = amountToCapture;
-    }
-    const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId, captureParams);
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || "",
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    console.error("Error capturing PaymentIntent:", error);
-    throw new Error(`Failed to capture payment intent: ${error.message}`);
-  }
-}
-async function cancelPaymentIntent(paymentIntentId) {
-  if (!stripe) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe.paymentIntents.cancel(paymentIntentId);
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || "",
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    console.error("Error canceling PaymentIntent:", error);
-    throw new Error(`Failed to cancel payment intent: ${error.message}`);
-  }
-}
-async function createRefund(paymentIntentId, amount, reason = "requested_by_customer", options) {
-  if (!stripe) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-    if (!paymentIntent.latest_charge) {
-      throw new Error("Payment intent has no charge to refund");
-    }
-    const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
-    const refundParams = {
-      charge: chargeId,
-      reason
-    };
-    if (amount !== void 0 && amount > 0) {
-      refundParams.amount = amount;
-    }
-    if (options?.reverseTransfer !== void 0) {
-      refundParams.reverse_transfer = options.reverseTransfer;
-    }
-    if (options?.refundApplicationFee !== void 0) {
-      refundParams.refund_application_fee = options.refundApplicationFee;
-    }
-    if (options?.metadata) {
-      refundParams.metadata = options.metadata;
-    }
-    const refund = await stripe.refunds.create(refundParams);
-    if (!refund.charge || typeof refund.charge !== "string") {
-      throw new Error("Refund created but charge ID is missing");
-    }
-    if (!refund.status || typeof refund.status !== "string") {
-      throw new Error("Refund created but status is missing");
-    }
-    const refundChargeId = refund.charge;
-    const refundStatus = refund.status;
-    return {
-      id: refund.id,
-      amount: refund.amount,
-      status: refundStatus,
-      charge: refundChargeId
-    };
-  } catch (error) {
-    console.error("Error creating refund:", error);
-    throw new Error(`Failed to create refund: ${error.message}`);
-  }
-}
-function calculateRefundBreakdown(totalChargedCents, managerReceivedCents, alreadyRefundedCents, stripeProcessingFeeCents) {
-  const managerRemainingBalance = Math.max(0, managerReceivedCents - alreadyRefundedCents);
-  const maxRefundable = managerRemainingBalance;
-  return {
-    maxRefundableToCustomer: maxRefundable,
-    maxDeductibleFromManager: maxRefundable,
-    // Same value - no discrepancy!
-    remainingManagerBalance: managerRemainingBalance,
-    originalStripeFee: stripeProcessingFeeCents,
-    explanation: managerRemainingBalance > 0 ? `Available to refund from this transaction: $${(maxRefundable / 100).toFixed(2)}` : "No remaining balance to refund"
-  };
-}
-async function reverseTransferAndRefund(paymentIntentId, amount, reason = "requested_by_customer", options) {
-  if (!stripe) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  if (!amount || amount <= 0) {
-    throw new Error("Refund amount must be greater than 0");
-  }
-  try {
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
-      expand: ["latest_charge"]
-    });
-    if (!paymentIntent.latest_charge) {
-      throw new Error("Payment intent has no charge to refund");
-    }
-    const charge = typeof paymentIntent.latest_charge === "string" ? await stripe.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
-    const chargeId = charge.id;
-    const transferId = typeof charge.transfer === "string" ? charge.transfer : charge.transfer?.id;
-    if (!transferId) {
-      throw new Error("No transfer found for this charge to reverse");
-    }
-    const reversalAmount = options?.reverseTransferAmount ?? amount;
-    if (reversalAmount <= 0) {
-      throw new Error("Transfer reversal amount must be greater than 0");
-    }
-    const reversal = await stripe.transfers.createReversal(transferId, {
-      amount: reversalAmount,
-      metadata: options?.transferMetadata || options?.metadata
-    });
-    const refundParams = {
-      charge: chargeId,
-      reason,
-      amount
-    };
-    if (options?.refundApplicationFee !== void 0) {
-      refundParams.refund_application_fee = options.refundApplicationFee;
-    }
-    if (options?.metadata) {
-      refundParams.metadata = options.metadata;
-    }
-    const refund = await stripe.refunds.create(refundParams);
-    if (!refund.charge || typeof refund.charge !== "string") {
-      throw new Error("Refund created but charge ID is missing");
-    }
-    if (!refund.status || typeof refund.status !== "string") {
-      throw new Error("Refund created but status is missing");
-    }
-    return {
-      refundId: refund.id,
-      refundAmount: refund.amount,
-      refundStatus: refund.status,
-      chargeId,
-      transferReversalId: reversal.id
-    };
-  } catch (error) {
-    console.error("Error reversing transfer and refunding:", error);
-    throw new Error(`Failed to reverse transfer and refund: ${error.message}`);
-  }
-}
-async function verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedAmount) {
-  try {
-    if (!stripe) {
-      return { valid: false, status: "error", error: "Stripe is not configured" };
-    }
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-    if (!paymentIntent) {
-      return { valid: false, status: "not_found", error: "Payment intent not found" };
-    }
-    if (paymentIntent.metadata?.chef_id !== chefId.toString()) {
-      return { valid: false, status: paymentIntent.status, error: "Payment intent does not belong to this chef" };
-    }
-    const storedExpectedAmount = paymentIntent.metadata?.expected_amount ? parseInt(paymentIntent.metadata.expected_amount) : null;
-    const amountToCompare = storedExpectedAmount !== null ? storedExpectedAmount : expectedAmount;
-    const amountDifference = Math.abs(paymentIntent.amount - amountToCompare);
-    if (amountDifference > 5) {
-      console.error("Payment amount mismatch:", {
-        paymentIntentAmount: paymentIntent.amount,
-        expectedAmount: amountToCompare,
-        storedExpectedAmount,
-        calculatedExpectedAmount: expectedAmount,
-        difference: amountDifference,
-        differenceDollars: (amountDifference / 100).toFixed(2)
-      });
-      return { valid: false, status: paymentIntent.status, error: "Payment amount does not match booking amount" };
-    }
-    const validStatuses = ["succeeded", "processing"];
-    if (!validStatuses.includes(paymentIntent.status)) {
-      return {
-        valid: false,
-        status: paymentIntent.status,
-        error: `Payment is not in a valid state: ${paymentIntent.status}`
-      };
-    }
-    return { valid: true, status: paymentIntent.status };
-  } catch (error) {
-    console.error("Error verifying PaymentIntent:", error);
-    if (error.code === "resource_missing") {
-      return { valid: false, status: "not_found", error: "Payment intent not found" };
-    }
-    return { valid: false, status: "error", error: error.message };
-  }
-}
-var stripeSecretKey, stripe;
-var init_stripe_service = __esm({
-  "server/services/stripe-service.ts"() {
-    "use strict";
-    stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeSecretKey) {
-      console.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
-    }
-    stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
-      apiVersion: "2025-12-15.clover"
-    }) : null;
-  }
-});
-
-// server/services/overstay-penalty-service.ts
-var overstay_penalty_service_exports = {};
-__export(overstay_penalty_service_exports, {
-  chargeApprovedPenalty: () => chargeApprovedPenalty,
-  createPenaltyPaymentCheckout: () => createPenaltyPaymentCheckout,
-  detectOverstays: () => detectOverstays,
-  getAllOverstayRecords: () => getAllOverstayRecords,
-  getChefPendingPenalties: () => getChefPendingPenalties,
-  getChefUnpaidPenalties: () => getChefUnpaidPenalties,
-  getOverstayHistory: () => getOverstayHistory,
-  getOverstayRecord: () => getOverstayRecord,
-  getOverstayStats: () => getOverstayStats,
-  getPendingOverstayReviews: () => getPendingOverstayReviews,
-  hasChefUnpaidPenalties: () => hasChefUnpaidPenalties,
-  markChefWarningSent: () => markChefWarningSent,
-  markManagerNotified: () => markManagerNotified,
-  overstayPenaltyService: () => overstayPenaltyService,
-  processManagerDecision: () => processManagerDecision,
-  resolveOverstay: () => resolveOverstay
-});
-import { eq as eq17, and as and10, lt as lt2, not as not2, inArray as inArray3, desc as desc8, asc as asc2, sql as sql6 } from "drizzle-orm";
-import Stripe2 from "stripe";
-async function detectOverstays() {
-  const today = /* @__PURE__ */ new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiredBookings = await db.select({
-    id: storageBookings.id,
-    storageListingId: storageBookings.storageListingId,
-    chefId: storageBookings.chefId,
-    endDate: storageBookings.endDate,
-    totalPrice: storageBookings.totalPrice,
-    status: storageBookings.status,
-    paymentStatus: storageBookings.paymentStatus,
-    stripeCustomerId: storageBookings.stripeCustomerId,
-    stripePaymentMethodId: storageBookings.stripePaymentMethodId,
-    checkoutStatus: storageBookings.checkoutStatus,
-    // Storage listing config
-    basePrice: storageListings.basePrice,
-    gracePeriodDays: storageListings.overstayGracePeriodDays,
-    penaltyRate: storageListings.overstayPenaltyRate,
-    maxPenaltyDays: storageListings.overstayMaxPenaltyDays
-  }).from(storageBookings).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).where(and10(
-    lt2(storageBookings.endDate, today),
-    not2(eq17(storageBookings.status, "cancelled")),
-    eq17(storageBookings.status, "confirmed")
-    // Only confirmed bookings can have overstay
-  )).orderBy(asc2(storageBookings.endDate));
-  const results = [];
-  for (const booking of expiredBookings) {
-    try {
-      const checkoutStatus = booking.checkoutStatus;
-      if (checkoutStatus === "checkout_requested" || checkoutStatus === "checkout_approved" || checkoutStatus === "completed") {
-        logger.info(`[OverstayService] Skipping booking ${booking.id} - checkout in progress (status: ${checkoutStatus})`);
-        continue;
-      }
-      const endDate = new Date(booking.endDate);
-      endDate.setHours(0, 0, 0, 0);
-      const daysOverdue = Math.floor((today.getTime() - endDate.getTime()) / (1e3 * 60 * 60 * 24));
-      if (daysOverdue <= 0) continue;
-      const effectiveConfig = await getEffectivePenaltyConfig(
-        booking.gracePeriodDays,
-        booking.penaltyRate?.toString() || null,
-        booking.maxPenaltyDays
-      );
-      const gracePeriodDays = effectiveConfig.gracePeriodDays;
-      const gracePeriodEndsAt = new Date(endDate);
-      gracePeriodEndsAt.setDate(gracePeriodEndsAt.getDate() + gracePeriodDays);
-      const isInGracePeriod = today < gracePeriodEndsAt;
-      const penaltyRate = effectiveConfig.penaltyRate;
-      const maxPenaltyDays = effectiveConfig.maxPenaltyDays;
-      const dailyRateCents = booking.basePrice ? Math.round(parseFloat(booking.basePrice.toString())) : 0;
-      let penaltyDays = 0;
-      if (!isInGracePeriod) {
-        penaltyDays = Math.min(daysOverdue - gracePeriodDays, maxPenaltyDays);
-      }
-      const dailyPenaltyChargeCents = Math.round(dailyRateCents * (1 + penaltyRate));
-      const calculatedPenaltyCents = dailyPenaltyChargeCents * penaltyDays;
-      let status = "detected";
-      if (isInGracePeriod) {
-        status = "grace_period";
-      } else {
-        status = "pending_review";
-      }
-      const idempotencyKey = `booking_${booking.id}_overstay_${endDate.toISOString().split("T")[0]}`;
-      const [existingRecord] = await db.select().from(storageOverstayRecords).where(
-        and10(
-          eq17(storageOverstayRecords.storageBookingId, booking.id),
-          inArray3(storageOverstayRecords.status, ["detected", "grace_period", "pending_review", "charge_failed"])
-        )
-      ).orderBy(desc8(storageOverstayRecords.detectedAt)).limit(1);
-      if (existingRecord) {
-        const shouldUpdate = existingRecord.status === "detected" || existingRecord.status === "grace_period" && status === "pending_review" || existingRecord.daysOverdue !== daysOverdue;
-        if (shouldUpdate && !["penalty_approved", "penalty_waived", "charge_pending", "charge_succeeded", "resolved", "escalated"].includes(existingRecord.status)) {
-          await db.update(storageOverstayRecords).set({
-            daysOverdue,
-            calculatedPenaltyCents,
-            status: existingRecord.status === "grace_period" && !isInGracePeriod ? "pending_review" : existingRecord.status,
-            updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq17(storageOverstayRecords.id, existingRecord.id));
-          if (existingRecord.status !== status) {
-            await createOverstayHistoryEntry(existingRecord.id, existingRecord.status, status, "status_change", "cron", `Days overdue: ${daysOverdue}`);
-          }
-        }
-        results.push({
-          bookingId: booking.id,
-          chefId: booking.chefId,
-          daysOverdue,
-          gracePeriodEndsAt,
-          isInGracePeriod,
-          calculatedPenaltyCents,
-          dailyRateCents,
-          penaltyRate,
-          status: existingRecord.status
-        });
-      } else {
-        const [newRecord] = await db.insert(storageOverstayRecords).values({
-          storageBookingId: booking.id,
-          endDate: booking.endDate,
-          daysOverdue,
-          gracePeriodEndsAt,
-          status,
-          calculatedPenaltyCents,
-          dailyRateCents,
-          penaltyRate: penaltyRate.toString(),
-          idempotencyKey
-        }).returning();
-        await createOverstayHistoryEntry(newRecord.id, null, status, "status_change", "cron", `Overstay detected. Days overdue: ${daysOverdue}`);
-        results.push({
-          bookingId: booking.id,
-          chefId: booking.chefId,
-          daysOverdue,
-          gracePeriodEndsAt,
-          isInGracePeriod,
-          calculatedPenaltyCents,
-          dailyRateCents,
-          penaltyRate,
-          status
-        });
-        logger.info(`[OverstayService] Created overstay record for booking ${booking.id}`, {
-          daysOverdue,
-          isInGracePeriod,
-          calculatedPenaltyCents
-        });
-        try {
-          await sendOverstayNotificationEmails({
-            storageBookingId: booking.id,
-            chefId: booking.chefId,
-            daysOverdue,
-            gracePeriodEndsAt,
-            isInGracePeriod,
-            calculatedPenaltyCents,
-            endDate: new Date(booking.endDate)
-          });
-        } catch (emailError) {
-          logger.error(`[OverstayService] Error sending overstay notification emails for booking ${booking.id}:`, emailError);
-        }
-      }
-    } catch (error) {
-      logger.error(`[OverstayService] Error processing booking ${booking.id}:`, error);
-    }
-  }
-  return results;
-}
-async function getPendingOverstayReviews(locationId) {
-  const platformDefaults = await getOverstayPlatformDefaults();
-  const query = db.select({
-    overstayId: storageOverstayRecords.id,
-    storageBookingId: storageOverstayRecords.storageBookingId,
-    status: storageOverstayRecords.status,
-    daysOverdue: storageOverstayRecords.daysOverdue,
-    gracePeriodEndsAt: storageOverstayRecords.gracePeriodEndsAt,
-    calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
-    finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
-    detectedAt: storageOverstayRecords.detectedAt,
-    bookingStartDate: storageBookings.startDate,
-    bookingEndDate: storageBookings.endDate,
-    bookingTotalPrice: storageBookings.totalPrice,
-    storageListingId: storageListings.id,
-    storageName: storageListings.name,
-    storageType: storageListings.storageType,
-    dailyRateCents: storageOverstayRecords.dailyRateCents,
-    gracePeriodDays: storageListings.overstayGracePeriodDays,
-    penaltyRate: storageListings.overstayPenaltyRate,
-    maxPenaltyDays: storageListings.overstayMaxPenaltyDays,
-    kitchenId: kitchens.id,
-    kitchenName: kitchens.name,
-    locationId: kitchens.locationId,
-    chefId: storageBookings.chefId,
-    chefEmail: users.username,
-    stripeCustomerId: storageBookings.stripeCustomerId,
-    stripePaymentMethodId: storageBookings.stripePaymentMethodId
-  }).from(storageOverstayRecords).innerJoin(storageBookings, eq17(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq17(storageListings.kitchenId, kitchens.id)).leftJoin(users, eq17(storageBookings.chefId, users.id)).where(
-    inArray3(storageOverstayRecords.status, ["detected", "grace_period", "pending_review", "charge_failed"])
-  ).orderBy(desc8(storageOverstayRecords.daysOverdue));
-  const results = await query;
-  const filtered = locationId ? results.filter((r) => r.locationId === locationId) : results;
-  return filtered.map((r) => ({
-    ...r,
-    storageName: r.storageName || "Storage",
-    storageType: r.storageType || "dry",
-    kitchenName: r.kitchenName || "Kitchen",
-    gracePeriodDays: r.gracePeriodDays ?? platformDefaults.gracePeriodDays,
-    penaltyRate: r.penaltyRate?.toString() ?? platformDefaults.penaltyRate.toString(),
-    maxPenaltyDays: r.maxPenaltyDays ?? platformDefaults.maxPenaltyDays,
-    chefInfo: null
-  }));
-}
-async function getAllOverstayRecords(locationId) {
-  const platformDefaults = await getOverstayPlatformDefaults();
-  const query = db.select({
-    overstayId: storageOverstayRecords.id,
-    storageBookingId: storageOverstayRecords.storageBookingId,
-    status: storageOverstayRecords.status,
-    daysOverdue: storageOverstayRecords.daysOverdue,
-    gracePeriodEndsAt: storageOverstayRecords.gracePeriodEndsAt,
-    calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
-    finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
-    detectedAt: storageOverstayRecords.detectedAt,
-    bookingStartDate: storageBookings.startDate,
-    bookingEndDate: storageBookings.endDate,
-    bookingTotalPrice: storageBookings.totalPrice,
-    storageListingId: storageListings.id,
-    storageName: storageListings.name,
-    storageType: storageListings.storageType,
-    dailyRateCents: storageOverstayRecords.dailyRateCents,
-    gracePeriodDays: storageListings.overstayGracePeriodDays,
-    penaltyRate: storageListings.overstayPenaltyRate,
-    maxPenaltyDays: storageListings.overstayMaxPenaltyDays,
-    kitchenId: kitchens.id,
-    kitchenName: kitchens.name,
-    locationId: kitchens.locationId,
-    chefId: storageBookings.chefId,
-    chefEmail: users.username,
-    stripeCustomerId: storageBookings.stripeCustomerId,
-    stripePaymentMethodId: storageBookings.stripePaymentMethodId
-  }).from(storageOverstayRecords).innerJoin(storageBookings, eq17(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq17(storageListings.kitchenId, kitchens.id)).leftJoin(users, eq17(storageBookings.chefId, users.id)).orderBy(desc8(storageOverstayRecords.detectedAt));
-  const results = await query;
-  const filtered = locationId ? results.filter((r) => r.locationId === locationId) : results;
-  return filtered.map((r) => ({
-    ...r,
-    storageName: r.storageName || "Storage",
-    storageType: r.storageType || "dry",
-    kitchenName: r.kitchenName || "Kitchen",
-    gracePeriodDays: r.gracePeriodDays ?? platformDefaults.gracePeriodDays,
-    penaltyRate: r.penaltyRate?.toString() ?? platformDefaults.penaltyRate.toString(),
-    maxPenaltyDays: r.maxPenaltyDays ?? platformDefaults.maxPenaltyDays,
-    chefInfo: null
-  }));
-}
-async function getOverstayRecord(overstayId) {
-  const [record] = await db.select().from(storageOverstayRecords).where(eq17(storageOverstayRecords.id, overstayId)).limit(1);
-  return record || null;
-}
-async function processManagerDecision(decision) {
-  const { overstayRecordId, managerId, action, finalPenaltyCents, waiveReason, managerNotes } = decision;
-  if (!overstayRecordId || overstayRecordId <= 0) {
-    return { success: false, error: "Invalid overstay record ID" };
-  }
-  if (!managerId || managerId <= 0) {
-    return { success: false, error: "Invalid manager ID" };
-  }
-  const record = await getOverstayRecord(overstayRecordId);
-  if (!record) {
-    return { success: false, error: "Overstay record not found" };
-  }
-  const allowedStatuses = ["pending_review", "charge_failed"];
-  if (!allowedStatuses.includes(record.status)) {
-    return { success: false, error: `Cannot process decision for record in status: ${record.status}` };
-  }
-  const previousStatus = record.status;
-  let newStatus;
-  const updateData = {
-    penaltyApprovedBy: managerId,
-    penaltyApprovedAt: /* @__PURE__ */ new Date(),
-    managerNotes: managerNotes || record.managerNotes,
-    updatedAt: /* @__PURE__ */ new Date()
-  };
-  const validatePenaltyAmount = (amount) => {
-    if (amount < 0) {
-      return { valid: false, error: "Penalty amount cannot be negative" };
-    }
-    if (amount > record.calculatedPenaltyCents) {
-      return {
-        valid: false,
-        error: `Penalty amount cannot exceed the calculated maximum of $${(record.calculatedPenaltyCents / 100).toFixed(2)}`
-      };
-    }
-    return { valid: true };
-  };
-  switch (action) {
-    case "approve": {
-      if (finalPenaltyCents !== void 0) {
-        const validation = validatePenaltyAmount(finalPenaltyCents);
-        if (!validation.valid) {
-          return { success: false, error: validation.error };
-        }
-      }
-      newStatus = "penalty_approved";
-      updateData.finalPenaltyCents = finalPenaltyCents ?? record.calculatedPenaltyCents;
-      updateData.status = newStatus;
-      break;
-    }
-    case "waive":
-      newStatus = "penalty_waived";
-      updateData.penaltyWaived = true;
-      updateData.waiveReason = waiveReason || "Manager waived penalty";
-      updateData.finalPenaltyCents = 0;
-      updateData.status = newStatus;
-      updateData.resolvedAt = /* @__PURE__ */ new Date();
-      updateData.resolutionType = "waived";
-      break;
-    case "adjust": {
-      if (finalPenaltyCents === void 0) {
-        return { success: false, error: "finalPenaltyCents required for adjust action" };
-      }
-      const adjustValidation = validatePenaltyAmount(finalPenaltyCents);
-      if (!adjustValidation.valid) {
-        return { success: false, error: adjustValidation.error };
-      }
-      newStatus = "penalty_approved";
-      updateData.finalPenaltyCents = finalPenaltyCents;
-      updateData.status = newStatus;
-      break;
-    }
-    default:
-      return { success: false, error: `Invalid action: ${action}` };
-  }
-  await db.update(storageOverstayRecords).set(updateData).where(eq17(storageOverstayRecords.id, overstayRecordId));
-  await createOverstayHistoryEntry(
-    overstayRecordId,
-    previousStatus,
-    newStatus,
-    action === "waive" ? "penalty_waived" : "penalty_approved",
-    "manager",
-    `Manager ${action}: ${action === "waive" ? waiveReason : `$${((finalPenaltyCents ?? record.calculatedPenaltyCents) / 100).toFixed(2)}`}`,
-    { managerId, action, finalPenaltyCents, waiveReason },
-    managerId
-  );
-  logger.info(`[OverstayService] Manager decision processed`, {
-    overstayRecordId,
-    managerId,
-    action,
-    finalPenaltyCents: updateData.finalPenaltyCents
-  });
-  return { success: true };
-}
-async function chargeApprovedPenalty(overstayRecordId) {
-  if (!stripe2) {
-    return { success: false, error: "Stripe not configured" };
-  }
-  const record = await getOverstayRecord(overstayRecordId);
-  if (!record) {
-    return { success: false, error: "Overstay record not found" };
-  }
-  if (record.status !== "penalty_approved") {
-    return { success: false, error: `Cannot charge record in status: ${record.status}` };
-  }
-  if (!record.finalPenaltyCents || record.finalPenaltyCents <= 0) {
-    return { success: false, error: "No penalty amount to charge" };
-  }
-  const [booking] = await db.select({
-    stripeCustomerId: storageBookings.stripeCustomerId,
-    stripePaymentMethodId: storageBookings.stripePaymentMethodId,
-    chefId: storageBookings.chefId
-  }).from(storageBookings).where(eq17(storageBookings.id, record.storageBookingId)).limit(1);
-  if (!booking) {
-    return { success: false, error: "Booking not found" };
-  }
-  let customerId = booking.stripeCustomerId;
-  const paymentMethodId = booking.stripePaymentMethodId;
-  if (!customerId && booking.chefId) {
-    const [user] = await db.select({ stripeCustomerId: users.stripeCustomerId }).from(users).where(eq17(users.id, booking.chefId)).limit(1);
-    customerId = user?.stripeCustomerId || null;
-  }
-  if (!customerId || !paymentMethodId) {
-    await db.update(storageOverstayRecords).set({
-      status: "charge_failed",
-      chargeFailedAt: /* @__PURE__ */ new Date(),
-      chargeFailureReason: "No saved payment method available",
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq17(storageOverstayRecords.id, overstayRecordId));
-    await createOverstayHistoryEntry(
-      overstayRecordId,
-      "penalty_approved",
-      "charge_failed",
-      "charge_attempt",
-      "system",
-      "No saved payment method available"
-    );
-    return { success: false, error: "No saved payment method available for off-session charging" };
-  }
-  let managerStripeAccountId = null;
-  let managerId = null;
-  const [storageBooking] = await db.select({ storageListingId: storageBookings.storageListingId }).from(storageBookings).where(eq17(storageBookings.id, record.storageBookingId)).limit(1);
-  if (storageBooking) {
-    const [listing] = await db.select({ kitchenId: storageListings.kitchenId }).from(storageListings).where(eq17(storageListings.id, storageBooking.storageListingId)).limit(1);
-    if (listing?.kitchenId) {
-      const [kitchen] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq17(kitchens.id, listing.kitchenId)).limit(1);
-      if (kitchen?.locationId) {
-        const [location] = await db.select({ managerId: locations.managerId }).from(locations).where(eq17(locations.id, kitchen.locationId)).limit(1);
-        if (location?.managerId) {
-          managerId = location.managerId;
-          const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq17(users.id, location.managerId)).limit(1);
-          managerStripeAccountId = manager?.stripeConnectAccountId || null;
-        }
-      }
-    }
-  }
-  await db.update(storageOverstayRecords).set({
-    status: "charge_pending",
-    chargeAttemptedAt: /* @__PURE__ */ new Date(),
-    updatedAt: /* @__PURE__ */ new Date()
-  }).where(eq17(storageOverstayRecords.id, overstayRecordId));
-  try {
-    let taxRatePercent = 0;
-    try {
-      const [storageBooking2] = await db.select({ storageListingId: storageBookings.storageListingId }).from(storageBookings).where(eq17(storageBookings.id, record.storageBookingId)).limit(1);
-      if (storageBooking2) {
-        const [listing] = await db.select({ kitchenId: storageListings.kitchenId }).from(storageListings).where(eq17(storageListings.id, storageBooking2.storageListingId)).limit(1);
-        if (listing?.kitchenId) {
-          const [kitchen] = await db.select({ taxRatePercent: kitchens.taxRatePercent }).from(kitchens).where(eq17(kitchens.id, listing.kitchenId)).limit(1);
-          if (kitchen?.taxRatePercent) {
-            taxRatePercent = parseFloat(String(kitchen.taxRatePercent));
-          }
-        }
-      }
-    } catch (taxError) {
-      logger.warn(`[OverstayService] Could not fetch tax rate for penalty:`, taxError);
-    }
-    const penaltyBaseCents = record.finalPenaltyCents;
-    const penaltyTaxCents = Math.round(penaltyBaseCents * taxRatePercent / 100);
-    const penaltyTotalCents = penaltyBaseCents + penaltyTaxCents;
-    logger.info(`[OverstayService] Calculated tax for overstay penalty:`, {
-      overstayRecordId,
-      penaltyBaseCents,
-      penaltyTaxCents,
-      penaltyTotalCents,
-      taxRatePercent
-    });
-    const paymentIntentParams = {
-      amount: penaltyTotalCents,
-      currency: "cad",
-      customer: customerId,
-      payment_method: paymentMethodId,
-      off_session: true,
-      confirm: true,
-      metadata: {
-        type: "overstay_penalty",
-        overstay_record_id: overstayRecordId.toString(),
-        storage_booking_id: record.storageBookingId.toString(),
-        days_overdue: record.daysOverdue.toString(),
-        manager_id: managerId?.toString() || "",
-        tax_rate_percent: taxRatePercent.toString(),
-        penalty_base_cents: penaltyBaseCents.toString(),
-        penalty_tax_cents: penaltyTaxCents.toString()
-      },
-      statement_descriptor_suffix: "OVERSTAY FEE"
-    };
-    if (managerStripeAccountId) {
-      paymentIntentParams.transfer_data = {
-        destination: managerStripeAccountId
-      };
-      logger.info(`[OverstayService] Using destination charge to manager account: ${managerStripeAccountId}`);
-    }
-    const paymentIntent = await stripe2.paymentIntents.create(paymentIntentParams);
-    if (paymentIntent.status === "succeeded") {
-      const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge?.id;
-      await db.update(storageOverstayRecords).set({
-        status: "charge_succeeded",
-        stripePaymentIntentId: paymentIntent.id,
-        stripeChargeId: chargeId || null,
-        chargeSucceededAt: /* @__PURE__ */ new Date(),
-        resolvedAt: /* @__PURE__ */ new Date(),
-        resolutionType: "paid",
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq17(storageOverstayRecords.id, overstayRecordId));
-      await createOverstayHistoryEntry(
-        overstayRecordId,
-        "charge_pending",
-        "charge_succeeded",
-        "charge_attempt",
-        "stripe_webhook",
-        `Payment successful: ${paymentIntent.id}`,
-        { paymentIntentId: paymentIntent.id, chargeId }
-      );
-      try {
-        const { createPaymentTransaction: createPaymentTransaction2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-        const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-        const ptRecord = await createPaymentTransaction2({
-          bookingId: record.storageBookingId,
-          bookingType: "storage",
-          chefId: booking.chefId || null,
-          managerId,
-          // Already fetched above for destination charge
-          amount: penaltyTotalCents,
-          // Total including tax
-          baseAmount: penaltyBaseCents,
-          // Base before tax
-          serviceFee: 0,
-          // No service fee on penalties
-          managerRevenue: penaltyTotalCents,
-          // Manager gets full amount (minus Stripe fees)
-          currency: "CAD",
-          paymentIntentId: paymentIntent.id,
-          // CRITICAL: Save payment intent for fee syncing
-          chargeId: chargeId || void 0,
-          status: "succeeded",
-          stripeStatus: "succeeded",
-          metadata: {
-            type: "overstay_penalty",
-            overstay_record_id: overstayRecordId.toString(),
-            storage_booking_id: record.storageBookingId.toString(),
-            charged_via: "off_session",
-            // Indicates this was charged directly, not via checkout
-            tax_rate_percent: taxRatePercent.toString(),
-            penalty_base_cents: penaltyBaseCents.toString(),
-            penalty_tax_cents: penaltyTaxCents.toString()
-          }
-        }, db);
-        if (ptRecord) {
-          const stripeAmounts = await getStripePaymentAmounts2(paymentIntent.id, managerStripeAccountId || void 0);
-          if (stripeAmounts) {
-            await updatePaymentTransaction2(ptRecord.id, {
-              paidAt: /* @__PURE__ */ new Date(),
-              lastSyncedAt: /* @__PURE__ */ new Date(),
-              stripeAmount: stripeAmounts.stripeAmount,
-              stripeNetAmount: stripeAmounts.stripeNetAmount,
-              stripeProcessingFee: stripeAmounts.stripeProcessingFee,
-              stripePlatformFee: stripeAmounts.stripePlatformFee
-            }, db);
-            logger.info(`[OverstayService] Synced Stripe fees for overstay penalty ${overstayRecordId}:`, {
-              processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`
-            });
-          }
-        }
-        logger.info(`[OverstayService] Created payment_transactions for overstay penalty ${overstayRecordId}`);
-      } catch (ptError) {
-        logger.error(`[OverstayService] Failed to create payment_transactions for overstay penalty:`, ptError);
-      }
-      logger.info(`[OverstayService] Penalty charged successfully`, {
-        overstayRecordId,
-        paymentIntentId: paymentIntent.id,
-        amount: record.finalPenaltyCents
-      });
-      try {
-        await sendPenaltyChargedEmail(overstayRecordId, record.finalPenaltyCents, record.daysOverdue);
-      } catch (emailError) {
-        logger.error(`[OverstayService] Error sending penalty charged email:`, emailError);
-      }
-      return {
-        success: true,
-        paymentIntentId: paymentIntent.id,
-        chargeId: chargeId || void 0
-      };
-    } else {
-      await db.update(storageOverstayRecords).set({
-        status: "charge_failed",
-        stripePaymentIntentId: paymentIntent.id,
-        chargeFailedAt: /* @__PURE__ */ new Date(),
-        chargeFailureReason: `Payment status: ${paymentIntent.status}`,
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq17(storageOverstayRecords.id, overstayRecordId));
-      await createOverstayHistoryEntry(
-        overstayRecordId,
-        "charge_pending",
-        "charge_failed",
-        "charge_attempt",
-        "system",
-        `Payment requires action: ${paymentIntent.status}`,
-        { paymentIntentId: paymentIntent.id, status: paymentIntent.status }
-      );
-      return { success: false, error: `Payment requires action: ${paymentIntent.status}` };
-    }
-  } catch (error) {
-    const errorMessage = error.message || "Unknown error";
-    await db.update(storageOverstayRecords).set({
-      status: "charge_failed",
-      chargeFailedAt: /* @__PURE__ */ new Date(),
-      chargeFailureReason: errorMessage,
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq17(storageOverstayRecords.id, overstayRecordId));
-    await createOverstayHistoryEntry(
-      overstayRecordId,
-      "charge_pending",
-      "charge_failed",
-      "charge_attempt",
-      "system",
-      `Charge failed: ${errorMessage}`,
-      { error: errorMessage }
-    );
-    logger.error(`[OverstayService] Penalty charge failed`, {
-      overstayRecordId,
-      error: errorMessage
-    });
-    return { success: false, error: errorMessage };
-  }
-}
-async function resolveOverstay(overstayRecordId, resolutionType, resolutionNotes, resolvedBy) {
-  const record = await getOverstayRecord(overstayRecordId);
-  if (!record) {
-    return { success: false, error: "Overstay record not found" };
-  }
-  const previousStatus = record.status;
-  const newStatus = resolutionType === "escalated" ? "escalated" : "resolved";
-  await db.update(storageOverstayRecords).set({
-    status: newStatus,
-    resolvedAt: /* @__PURE__ */ new Date(),
-    resolutionType,
-    resolutionNotes,
-    updatedAt: /* @__PURE__ */ new Date()
-  }).where(eq17(storageOverstayRecords.id, overstayRecordId));
-  await createOverstayHistoryEntry(
-    overstayRecordId,
-    previousStatus,
-    newStatus,
-    "resolution",
-    resolvedBy ? "manager" : "system",
-    `Resolved: ${resolutionType}${resolutionNotes ? ` - ${resolutionNotes}` : ""}`,
-    { resolutionType, resolutionNotes },
-    resolvedBy
-  );
-  return { success: true };
-}
-async function createOverstayHistoryEntry(overstayRecordId, previousStatus, newStatus, eventType, eventSource, description, metadata, createdBy) {
-  await db.insert(storageOverstayHistory).values({
-    overstayRecordId,
-    previousStatus,
-    newStatus,
-    eventType,
-    eventSource,
-    description,
-    metadata: metadata || {},
-    createdBy
-  });
-}
-async function getOverstayHistory(overstayRecordId) {
-  return db.select().from(storageOverstayHistory).where(eq17(storageOverstayHistory.overstayRecordId, overstayRecordId)).orderBy(desc8(storageOverstayHistory.createdAt));
-}
-async function getOverstayStats(locationId) {
-  const allRecords = await db.select({
-    status: storageOverstayRecords.status,
-    calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
-    finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
-    locationId: kitchens.locationId
-  }).from(storageOverstayRecords).innerJoin(storageBookings, eq17(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq17(storageListings.kitchenId, kitchens.id));
-  const filtered = locationId ? allRecords.filter((r) => r.locationId === locationId) : allRecords;
-  const stats = {
-    total: filtered.length,
-    pendingReview: filtered.filter((r) => r.status === "pending_review").length,
-    inGracePeriod: filtered.filter((r) => r.status === "grace_period").length,
-    approved: filtered.filter((r) => r.status === "penalty_approved").length,
-    waived: filtered.filter((r) => r.status === "penalty_waived").length,
-    charged: filtered.filter((r) => r.status === "charge_succeeded").length,
-    failed: filtered.filter((r) => r.status === "charge_failed").length,
-    resolved: filtered.filter((r) => r.status === "resolved").length,
-    escalated: filtered.filter((r) => r.status === "escalated").length,
-    totalPenaltiesCollected: filtered.filter((r) => r.status === "charge_succeeded").reduce((sum, r) => sum + (r.finalPenaltyCents || 0), 0),
-    totalPenaltiesWaived: filtered.filter((r) => r.status === "penalty_waived").reduce((sum, r) => sum + (r.calculatedPenaltyCents || 0), 0)
-  };
-  return stats;
-}
-async function markChefWarningSent(overstayRecordId) {
-  const record = await getOverstayRecord(overstayRecordId);
-  if (!record) return;
-  const currentStatus = record.status;
-  await db.update(storageOverstayRecords).set({
-    chefWarningSentAt: /* @__PURE__ */ new Date(),
-    updatedAt: /* @__PURE__ */ new Date()
-  }).where(eq17(storageOverstayRecords.id, overstayRecordId));
-  await createOverstayHistoryEntry(
-    overstayRecordId,
-    currentStatus,
-    currentStatus,
-    "notification_sent",
-    "system",
-    "Chef warning email sent"
-  );
-}
-async function markManagerNotified(overstayRecordId) {
-  const record = await getOverstayRecord(overstayRecordId);
-  if (!record) return;
-  const currentStatus = record.status;
-  await db.update(storageOverstayRecords).set({
-    managerNotifiedAt: /* @__PURE__ */ new Date(),
-    updatedAt: /* @__PURE__ */ new Date()
-  }).where(eq17(storageOverstayRecords.id, overstayRecordId));
-  await createOverstayHistoryEntry(
-    overstayRecordId,
-    currentStatus,
-    currentStatus,
-    "notification_sent",
-    "system",
-    "Manager notification sent"
-  );
-}
-async function getChefPendingPenalties(chefId) {
-  const records = await db.select({
-    overstayId: storageOverstayRecords.id,
-    storageBookingId: storageOverstayRecords.storageBookingId,
-    status: storageOverstayRecords.status,
-    daysOverdue: storageOverstayRecords.daysOverdue,
-    calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
-    finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
-    detectedAt: storageOverstayRecords.detectedAt,
-    penaltyApprovedAt: storageOverstayRecords.penaltyApprovedAt,
-    storageName: storageListings.name,
-    storageType: storageListings.storageType,
-    kitchenName: kitchens.name,
-    bookingEndDate: storageBookings.endDate
-  }).from(storageOverstayRecords).innerJoin(storageBookings, eq17(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq17(storageListings.kitchenId, kitchens.id)).where(
-    and10(
-      eq17(storageBookings.chefId, chefId),
-      eq17(storageOverstayRecords.status, "penalty_approved")
-    )
-  ).orderBy(desc8(storageOverstayRecords.penaltyApprovedAt));
-  return records.map((r) => ({
-    ...r,
-    storageName: r.storageName || "Storage",
-    storageType: r.storageType || "dry",
-    kitchenName: r.kitchenName || "Kitchen",
-    penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0
-  }));
-}
-async function createPenaltyPaymentCheckout(overstayRecordId, chefId, successUrl, cancelUrl) {
-  if (!stripe2) {
-    return { error: "Stripe not configured" };
-  }
-  try {
-    const [overstayRecord] = await db.select().from(storageOverstayRecords).where(eq17(storageOverstayRecords.id, overstayRecordId)).limit(1);
-    if (!overstayRecord) {
-      return { error: "Overstay record not found" };
-    }
-    const [booking] = await db.select().from(storageBookings).where(eq17(storageBookings.id, overstayRecord.storageBookingId)).limit(1);
-    if (!booking) {
-      return { error: "Storage booking not found" };
-    }
-    if (booking.chefId !== chefId) {
-      return { error: "Unauthorized: This penalty does not belong to you" };
-    }
-    if (overstayRecord.status !== "penalty_approved") {
-      return { error: `Cannot pay penalty in status: ${overstayRecord.status}` };
-    }
-    const [listing] = await db.select().from(storageListings).where(eq17(storageListings.id, booking.storageListingId)).limit(1);
-    const [kitchen] = listing?.kitchenId ? await db.select().from(kitchens).where(eq17(kitchens.id, listing.kitchenId)).limit(1) : [null];
-    const [location] = kitchen?.locationId ? await db.select().from(locations).where(eq17(locations.id, kitchen.locationId)).limit(1) : [null];
-    let managerStripeAccountId = null;
-    if (location?.managerId) {
-      const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq17(users.id, location.managerId)).limit(1);
-      managerStripeAccountId = manager?.stripeConnectAccountId || null;
-    }
-    const penaltyAmountCents = overstayRecord.finalPenaltyCents || overstayRecord.calculatedPenaltyCents || 0;
-    const storageName = listing?.name || "Storage";
-    const kitchenName = kitchen?.name || "Kitchen";
-    const managerId = location?.managerId;
-    if (penaltyAmountCents <= 0) {
-      return { error: "Invalid penalty amount" };
-    }
-    const [chef] = await db.select({ email: users.username }).from(users).where(eq17(users.id, chefId)).limit(1);
-    if (!chef) {
-      return { error: "Chef not found" };
-    }
-    const sessionParams = {
-      mode: "payment",
-      payment_method_types: ["card"],
-      customer_email: chef.email,
-      line_items: [
-        {
-          price_data: {
-            currency: "cad",
-            product_data: {
-              name: `Overstay Penalty - ${storageName}`,
-              description: `Storage overstay penalty for ${kitchenName}`
-            },
-            unit_amount: penaltyAmountCents
-          },
-          quantity: 1
-        }
-      ],
-      metadata: {
-        type: "overstay_penalty",
-        overstayRecordId: overstayRecordId.toString(),
-        chefId: chefId.toString(),
-        storageBookingId: overstayRecord.storageBookingId.toString(),
-        managerId: managerId?.toString() || ""
-      },
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      // ENTERPRISE STANDARD: Enable automatic invoice generation
-      // Stripe sends paid invoice email to customer when payment succeeds
-      // Requires "Successful payments" enabled in Stripe Dashboard > Customer emails settings
-      invoice_creation: {
-        enabled: true,
-        invoice_data: {
-          description: `Overstay Penalty - ${storageName} at ${kitchenName}`,
-          metadata: {
-            booking_type: "overstay_penalty",
-            overstay_record_id: overstayRecordId.toString(),
-            chef_id: chefId.toString()
-          }
-        }
-      }
-    };
-    if (managerStripeAccountId) {
-      sessionParams.payment_intent_data = {
-        transfer_data: {
-          destination: managerStripeAccountId
-        },
-        // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
-        receipt_email: chef.email
-      };
-    } else {
-      sessionParams.payment_intent_data = {
-        receipt_email: chef.email
-      };
-    }
-    const session = await stripe2.checkout.sessions.create(sessionParams);
-    await db.update(storageOverstayRecords).set({
-      status: "charge_pending",
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq17(storageOverstayRecords.id, overstayRecordId));
-    logger.info(`[OverstayService] Created penalty payment checkout`, {
-      overstayRecordId,
-      chefId,
-      penaltyAmountCents,
-      sessionId: session.id
-    });
-    return { checkoutUrl: session.url };
-  } catch (error) {
-    logger.error(`[OverstayService] Failed to create penalty checkout`, { error, overstayRecordId });
-    return { error: "Failed to create payment session" };
-  }
-}
-async function sendOverstayNotificationEmails(data) {
-  try {
-    const {
-      sendEmail: sendEmail2,
-      generateOverstayDetectedEmail: generateOverstayDetectedEmail2,
-      generateOverstayManagerNotificationEmail: generateOverstayManagerNotificationEmail2
-    } = await Promise.resolve().then(() => (init_email(), email_exports));
-    const [booking] = await db.select({
-      storageListingId: storageBookings.storageListingId,
-      chefId: storageBookings.chefId,
-      chefEmail: users.username
-    }).from(storageBookings).leftJoin(users, eq17(storageBookings.chefId, users.id)).where(eq17(storageBookings.id, data.storageBookingId)).limit(1);
-    if (!booking) {
-      logger.warn(`[OverstayService] No booking found for overstay email: ${data.storageBookingId}`);
-      return;
-    }
-    const [listing] = await db.select({
-      name: storageListings.name,
-      kitchenId: storageListings.kitchenId
-    }).from(storageListings).where(eq17(storageListings.id, booking.storageListingId)).limit(1);
-    if (!listing) {
-      logger.warn(`[OverstayService] No listing found for overstay email: ${booking.storageListingId}`);
-      return;
-    }
-    const [kitchen] = await db.select({
-      name: kitchens.name,
-      locationId: kitchens.locationId
-    }).from(kitchens).where(eq17(kitchens.id, listing.kitchenId)).limit(1);
-    if (!kitchen) {
-      logger.warn(`[OverstayService] No kitchen found for overstay email`);
-      return;
-    }
-    const [location] = await db.select({
-      name: locations.name,
-      managerId: locations.managerId,
-      notificationEmail: locations.notificationEmail
-    }).from(locations).where(eq17(locations.id, kitchen.locationId)).limit(1);
-    if (booking.chefEmail) {
-      const chefEmail = generateOverstayDetectedEmail2({
-        chefEmail: booking.chefEmail,
-        chefName: booking.chefEmail,
-        storageName: listing.name || "Storage",
-        endDate: data.endDate,
-        daysOverdue: data.daysOverdue,
-        gracePeriodEndsAt: data.gracePeriodEndsAt,
-        isInGracePeriod: data.isInGracePeriod,
-        calculatedPenaltyCents: data.calculatedPenaltyCents
-      });
-      await sendEmail2(chefEmail, {
-        trackingId: `overstay_chef_${data.storageBookingId}_${Date.now()}`
-      });
-      logger.info(`[OverstayService] Sent overstay notification email to chef: ${booking.chefEmail}`);
-    }
-    if (location && location.notificationEmail) {
-      const managerEmail = generateOverstayManagerNotificationEmail2({
-        managerEmail: location.notificationEmail,
-        chefName: booking.chefEmail || "Chef",
-        chefEmail: booking.chefEmail || "",
-        storageName: listing.name || "Storage",
-        kitchenName: kitchen.name || "Kitchen",
-        endDate: data.endDate,
-        daysOverdue: data.daysOverdue,
-        gracePeriodEndsAt: data.gracePeriodEndsAt,
-        isInGracePeriod: data.isInGracePeriod,
-        calculatedPenaltyCents: data.calculatedPenaltyCents
-      });
-      await sendEmail2(managerEmail, {
-        trackingId: `overstay_manager_${data.storageBookingId}_${Date.now()}`
-      });
-      logger.info(`[OverstayService] Sent overstay notification email to manager: ${location.notificationEmail}`);
-    }
-  } catch (error) {
-    logger.error(`[OverstayService] Error sending overstay notification emails:`, error);
-  }
-}
-async function sendPenaltyChargedEmail(overstayRecordId, penaltyAmountCents, daysOverdue) {
-  try {
-    const { sendEmail: sendEmail2, generatePenaltyChargedEmail: generatePenaltyChargedEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-    const [record] = await db.select({
-      storageBookingId: storageOverstayRecords.storageBookingId
-    }).from(storageOverstayRecords).where(eq17(storageOverstayRecords.id, overstayRecordId)).limit(1);
-    if (!record) return;
-    const [booking] = await db.select({
-      chefEmail: users.username,
-      storageListingId: storageBookings.storageListingId
-    }).from(storageBookings).leftJoin(users, eq17(storageBookings.chefId, users.id)).where(eq17(storageBookings.id, record.storageBookingId)).limit(1);
-    if (!booking || !booking.chefEmail) return;
-    const [listing] = await db.select({ name: storageListings.name }).from(storageListings).where(eq17(storageListings.id, booking.storageListingId)).limit(1);
-    const email = generatePenaltyChargedEmail2({
-      chefEmail: booking.chefEmail,
-      chefName: booking.chefEmail,
-      storageName: listing?.name || "Storage",
-      penaltyAmountCents,
-      daysOverdue,
-      chargeDate: /* @__PURE__ */ new Date()
-    });
-    await sendEmail2(email, {
-      trackingId: `penalty_charged_${overstayRecordId}_${Date.now()}`
-    });
-    logger.info(`[OverstayService] Sent penalty charged email to chef: ${booking.chefEmail}`);
-  } catch (error) {
-    logger.error(`[OverstayService] Error sending penalty charged email:`, error);
-  }
-}
-async function hasChefUnpaidPenalties(chefId) {
-  const blockingStatuses = [
-    "detected",
-    "grace_period",
-    "pending_review",
-    "penalty_approved",
-    "charge_pending",
-    "charge_failed"
-  ];
-  const [result] = await db.select({ count: sql6`count(*)` }).from(storageOverstayRecords).innerJoin(storageBookings, eq17(storageOverstayRecords.storageBookingId, storageBookings.id)).where(
-    and10(
-      eq17(storageBookings.chefId, chefId),
-      inArray3(storageOverstayRecords.status, blockingStatuses)
-    )
-  );
-  return (result?.count || 0) > 0;
-}
-async function getChefUnpaidPenalties(chefId) {
-  const blockingStatuses = [
-    "detected",
-    "grace_period",
-    "pending_review",
-    "penalty_approved",
-    "charge_pending",
-    "charge_failed"
-  ];
-  const records = await db.select({
-    overstayId: storageOverstayRecords.id,
-    storageBookingId: storageOverstayRecords.storageBookingId,
-    status: storageOverstayRecords.status,
-    daysOverdue: storageOverstayRecords.daysOverdue,
-    calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
-    finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
-    detectedAt: storageOverstayRecords.detectedAt,
-    gracePeriodEndsAt: storageOverstayRecords.gracePeriodEndsAt,
-    penaltyApprovedAt: storageOverstayRecords.penaltyApprovedAt,
-    storageName: storageListings.name,
-    storageType: storageListings.storageType,
-    kitchenName: kitchens.name,
-    bookingEndDate: storageBookings.endDate
-  }).from(storageOverstayRecords).innerJoin(storageBookings, eq17(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq17(storageListings.kitchenId, kitchens.id)).where(
-    and10(
-      eq17(storageBookings.chefId, chefId),
-      inArray3(storageOverstayRecords.status, blockingStatuses)
-    )
-  ).orderBy(desc8(storageOverstayRecords.detectedAt));
-  return records.map((r) => ({
-    ...r,
-    storageName: r.storageName || "Storage",
-    storageType: r.storageType || "dry",
-    kitchenName: r.kitchenName || "Kitchen",
-    penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0,
-    requiresImmediatePayment: ["penalty_approved", "charge_failed"].includes(r.status)
-  }));
-}
-var stripeSecretKey2, stripe2, overstayPenaltyService;
-var init_overstay_penalty_service = __esm({
-  "server/services/overstay-penalty-service.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    init_logger();
-    init_overstay_defaults_service();
-    stripeSecretKey2 = process.env.STRIPE_SECRET_KEY;
-    stripe2 = stripeSecretKey2 ? new Stripe2(stripeSecretKey2, {
-      apiVersion: "2025-12-15.clover"
-    }) : null;
-    overstayPenaltyService = {
-      detectOverstays,
-      getPendingOverstayReviews,
-      getAllOverstayRecords,
-      getOverstayRecord,
-      processManagerDecision,
-      chargeApprovedPenalty,
-      resolveOverstay,
-      getOverstayHistory,
-      getOverstayStats,
-      markChefWarningSent,
-      markManagerNotified,
-      getChefPendingPenalties,
-      createPenaltyPaymentCheckout,
-      sendOverstayNotificationEmails,
-      sendPenaltyChargedEmail,
-      hasChefUnpaidPenalties,
-      getChefUnpaidPenalties
-    };
-  }
-});
-
 // server/domains/bookings/booking.service.ts
 var booking_service_exports = {};
 __export(booking_service_exports, {
   BookingService: () => BookingService,
   bookingService: () => bookingService
 });
-import { eq as eq18, and as and11 } from "drizzle-orm";
+import { eq as eq20, and as and12 } from "drizzle-orm";
 var BookingService, bookingService;
 var init_booking_service = __esm({
   "server/domains/bookings/booking.service.ts"() {
@@ -13715,16 +16003,16 @@ var init_booking_service = __esm({
           throw new Error("Chef ID is required for booking");
         }
         const hasAccess = await db.query.chefLocationAccess.findFirst({
-          where: and11(
-            eq18(chefLocationAccess.chefId, data.chefId),
-            eq18(chefLocationAccess.locationId, kitchen.locationId)
+          where: and12(
+            eq20(chefLocationAccess.chefId, data.chefId),
+            eq20(chefLocationAccess.locationId, kitchen.locationId)
           )
         });
         if (!hasAccess) {
           const [kitchenApplication] = await db.select().from(chefKitchenApplications).where(
-            and11(
-              eq18(chefKitchenApplications.chefId, data.chefId),
-              eq18(chefKitchenApplications.locationId, kitchen.locationId)
+            and12(
+              eq20(chefKitchenApplications.chefId, data.chefId),
+              eq20(chefKitchenApplications.locationId, kitchen.locationId)
             )
           );
           const currentTier = kitchenApplication?.currentTier ?? kitchenApplication?.current_tier ?? 0;
@@ -14263,7 +16551,7 @@ var init_booking_service = __esm({
 });
 
 // server/domains/users/chef.repository.ts
-import { eq as eq19, and as and12, inArray as inArray4 } from "drizzle-orm";
+import { eq as eq21, and as and13, inArray as inArray5 } from "drizzle-orm";
 var ChefRepository;
 var init_chef_repository = __esm({
   "server/domains/users/chef.repository.ts"() {
@@ -14282,20 +16570,20 @@ var init_chef_repository = __esm({
       }
       async revokeLocationAccess(chefId, locationId) {
         await db.delete(chefLocationAccess).where(
-          and12(
-            eq19(chefLocationAccess.chefId, chefId),
-            eq19(chefLocationAccess.locationId, locationId)
+          and13(
+            eq21(chefLocationAccess.chefId, chefId),
+            eq21(chefLocationAccess.locationId, locationId)
           )
         );
       }
       async getLocationAccess(chefId) {
-        return db.select().from(chefLocationAccess).where(eq19(chefLocationAccess.chefId, chefId));
+        return db.select().from(chefLocationAccess).where(eq21(chefLocationAccess.chefId, chefId));
       }
       async hasLocationAccess(chefId, locationId) {
         const access = await db.select().from(chefLocationAccess).where(
-          and12(
-            eq19(chefLocationAccess.chefId, chefId),
-            eq19(chefLocationAccess.locationId, locationId)
+          and13(
+            eq21(chefLocationAccess.chefId, chefId),
+            eq21(chefLocationAccess.locationId, locationId)
           )
         ).limit(1);
         return access.length > 0;
@@ -14303,15 +16591,15 @@ var init_chef_repository = __esm({
       // ===== Profile Management =====
       async findProfile(chefId, locationId) {
         const [profile] = await db.select().from(chefLocationProfiles).where(
-          and12(
-            eq19(chefLocationProfiles.chefId, chefId),
-            eq19(chefLocationProfiles.locationId, locationId)
+          and13(
+            eq21(chefLocationProfiles.chefId, chefId),
+            eq21(chefLocationProfiles.locationId, locationId)
           )
         );
         return profile || null;
       }
       async getProfilesByChefId(chefId) {
-        return db.select().from(chefLocationProfiles).where(eq19(chefLocationProfiles.chefId, chefId));
+        return db.select().from(chefLocationProfiles).where(eq21(chefLocationProfiles.chefId, chefId));
       }
       async createProfile(chefId, locationId) {
         const [profile] = await db.insert(chefLocationProfiles).values({
@@ -14322,13 +16610,13 @@ var init_chef_repository = __esm({
         return profile;
       }
       async updateProfile(id, updates) {
-        const [updated] = await db.update(chefLocationProfiles).set(updates).where(eq19(chefLocationProfiles.id, id)).returning();
+        const [updated] = await db.update(chefLocationProfiles).set(updates).where(eq21(chefLocationProfiles.id, id)).returning();
         return updated || null;
       }
       // Complex query for Manager Dashboard
       async getProfilesForManager(locationIds) {
         if (locationIds.length === 0) return [];
-        const profiles = await db.select().from(chefLocationProfiles).where(inArray4(chefLocationProfiles.locationId, locationIds));
+        const profiles = await db.select().from(chefLocationProfiles).where(inArray5(chefLocationProfiles.locationId, locationIds));
         return profiles;
       }
     };
@@ -14336,7 +16624,7 @@ var init_chef_repository = __esm({
 });
 
 // server/domains/users/chef.service.ts
-import { eq as eq20, and as and13 } from "drizzle-orm";
+import { eq as eq22, and as and14 } from "drizzle-orm";
 var ChefService, chefService;
 var init_chef_service = __esm({
   "server/domains/users/chef.service.ts"() {
@@ -14397,9 +16685,9 @@ var init_chef_service = __esm({
       }
       async getApplicationStatusForBooking(chefId, locationId) {
         const [accessRecord] = await db.select().from(chefLocationAccess).where(
-          and13(
-            eq20(chefLocationAccess.chefId, chefId),
-            eq20(chefLocationAccess.locationId, locationId)
+          and14(
+            eq22(chefLocationAccess.chefId, chefId),
+            eq22(chefLocationAccess.locationId, locationId)
           )
         );
         if (accessRecord) {
@@ -14411,9 +16699,9 @@ var init_chef_service = __esm({
           };
         }
         const [kitchenApplication] = await db.select().from(chefKitchenApplications).where(
-          and13(
-            eq20(chefKitchenApplications.chefId, chefId),
-            eq20(chefKitchenApplications.locationId, locationId)
+          and14(
+            eq22(chefKitchenApplications.chefId, chefId),
+            eq22(chefKitchenApplications.locationId, locationId)
           )
         );
         if (kitchenApplication) {
@@ -14528,7 +16816,7 @@ var init_chef_service = __esm({
 });
 
 // server/domains/managers/manager.repository.ts
-import { eq as eq21, and as and14, desc as desc11, sql as sql7, ne as ne4 } from "drizzle-orm";
+import { eq as eq23, and as and15, desc as desc12, sql as sql8, ne as ne4 } from "drizzle-orm";
 var ManagerRepository, managerRepository;
 var init_manager_repository = __esm({
   "server/domains/managers/manager.repository.ts"() {
@@ -14538,10 +16826,10 @@ var init_manager_repository = __esm({
     init_logger();
     ManagerRepository = class {
       async findAllManagers() {
-        return await db.select().from(users).where(eq21(users.role, "manager"));
+        return await db.select().from(users).where(eq23(users.role, "manager"));
       }
       async findManagerByUserId(userId) {
-        const [user] = await db.select().from(users).where(eq21(users.id, userId));
+        const [user] = await db.select().from(users).where(eq23(users.id, userId));
         return user;
       }
       async updateOnboardingStatus(userId, updates) {
@@ -14549,27 +16837,27 @@ var init_manager_repository = __esm({
         if (updates.completed !== void 0) dbUpdates.managerOnboardingCompleted = updates.completed;
         if (updates.skipped !== void 0) dbUpdates.managerOnboardingSkipped = updates.skipped;
         if (updates.steps !== void 0) dbUpdates.managerOnboardingStepsCompleted = updates.steps;
-        const [updated] = await db.update(users).set(dbUpdates).where(eq21(users.id, userId)).returning();
+        const [updated] = await db.update(users).set(dbUpdates).where(eq23(users.id, userId)).returning();
         return updated;
       }
       // Moved from server/routes/manager.ts
       async findInvoices(managerId, filters) {
         const { startDate, endDate, locationId, limit = 50, offset = 0 } = filters;
         const conditions = [
-          eq21(locations.managerId, managerId),
+          eq23(locations.managerId, managerId),
           ne4(kitchenBookings.status, "cancelled"),
-          eq21(kitchenBookings.paymentStatus, "paid")
+          eq23(kitchenBookings.paymentStatus, "paid")
         ];
         if (startDate) {
           const startStr = Array.isArray(startDate) ? startDate[0] : String(startDate);
-          conditions.push(sql7`(DATE(${kitchenBookings.bookingDate}) >= ${startStr}::date OR DATE(${kitchenBookings.createdAt}) >= ${startStr}::date)`);
+          conditions.push(sql8`(DATE(${kitchenBookings.bookingDate}) >= ${startStr}::date OR DATE(${kitchenBookings.createdAt}) >= ${startStr}::date)`);
         }
         if (endDate) {
           const endStr = Array.isArray(endDate) ? endDate[0] : String(endDate);
-          conditions.push(sql7`(DATE(${kitchenBookings.bookingDate}) <= ${endStr}::date OR DATE(${kitchenBookings.createdAt}) <= ${endStr}::date)`);
+          conditions.push(sql8`(DATE(${kitchenBookings.bookingDate}) <= ${endStr}::date OR DATE(${kitchenBookings.createdAt}) <= ${endStr}::date)`);
         }
         if (locationId) {
-          conditions.push(eq21(locations.id, locationId));
+          conditions.push(eq23(locations.id, locationId));
         }
         const rows = await db.select({
           id: kitchenBookings.id,
@@ -14588,10 +16876,10 @@ var init_manager_repository = __esm({
           chefName: users.username,
           chefEmail: users.username,
           createdAt: kitchenBookings.createdAt,
-          bookingType: sql7`'kitchen'`.as("booking_type")
-        }).from(kitchenBookings).innerJoin(kitchens, eq21(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq21(kitchens.locationId, locations.id)).leftJoin(users, eq21(kitchenBookings.chefId, users.id)).where(and14(...conditions)).orderBy(desc11(kitchenBookings.createdAt), desc11(kitchenBookings.bookingDate)).limit(limit).offset(offset);
+          bookingType: sql8`'kitchen'`.as("booking_type")
+        }).from(kitchenBookings).innerJoin(kitchens, eq23(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq23(kitchens.locationId, locations.id)).leftJoin(users, eq23(kitchenBookings.chefId, users.id)).where(and15(...conditions)).orderBy(desc12(kitchenBookings.createdAt), desc12(kitchenBookings.bookingDate)).limit(limit).offset(offset);
         logger.info(`[ManagerRepository] Kitchen invoices query for manager ${managerId}: Found ${rows.length} invoices`);
-        const storageRows = await db.execute(sql7`
+        const storageRows = await db.execute(sql8`
             SELECT 
                 pt.booking_id as id,
                 sb.start_date as booking_date,
@@ -14674,7 +16962,7 @@ __export(revenue_service_v2_exports, {
   getRevenueByLocationFromTransactions: () => getRevenueByLocationFromTransactions,
   getRevenueMetricsFromTransactions: () => getRevenueMetricsFromTransactions
 });
-import { sql as sql8 } from "drizzle-orm";
+import { sql as sql9 } from "drizzle-orm";
 async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endDate, locationId) {
   try {
     if (managerId === void 0 || managerId === null || isNaN(managerId)) {
@@ -14686,7 +16974,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       params.push(locationId);
     }
     console.log("[Revenue Service V2] getRevenueMetricsFromTransactions params:", { managerId, locationId, startDate, endDate });
-    const tableCheck = await db2.execute(sql8`
+    const tableCheck = await db2.execute(sql9`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -14698,8 +16986,8 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       console.log("[Revenue Service V2] payment_transactions table does not exist, will fallback to legacy method");
       throw new Error("payment_transactions table does not exist");
     }
-    const managerIdParam = sql8`${managerId}`;
-    const countCheck = await db2.execute(sql8`
+    const managerIdParam = sql9`${managerId}`;
+    const countCheck = await db2.execute(sql9`
       SELECT COUNT(*) as count
       FROM payment_transactions pt
       WHERE pt.manager_id = ${managerIdParam}
@@ -14708,7 +16996,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     `);
     const transactionCount = parseInt(countCheck.rows[0]?.count || "0");
     console.log(`[Revenue Service V2] Found ${transactionCount} payment_transactions for manager ${managerId}`);
-    const bookingCountCheck = await db2.execute(sql8`
+    const bookingCountCheck = await db2.execute(sql9`
       SELECT 
         COUNT(DISTINCT kb.id) as total_bookings,
         COUNT(DISTINCT CASE WHEN pt_kitchen.id IS NOT NULL OR pt_bundle.id IS NOT NULL THEN kb.id END) as bookings_with_transactions
@@ -14737,15 +17025,15 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       throw new Error("Incomplete payment_transactions coverage");
     }
     const simpleWhereConditions = [
-      sql8`pt.manager_id = ${managerIdParam}`,
-      sql8`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`,
-      sql8`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`
+      sql9`pt.manager_id = ${managerIdParam}`,
+      sql9`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`,
+      sql9`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`
     ];
     if (startDate || endDate) {
       const start = startDate ? typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0] : null;
       const end = endDate ? typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0] : null;
       if (start && end) {
-        simpleWhereConditions.push(sql8`
+        simpleWhereConditions.push(sql9`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date AND DATE(pt.paid_at) <= ${end}::date)
@@ -14755,7 +17043,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
           )
         `);
       } else if (start) {
-        simpleWhereConditions.push(sql8`
+        simpleWhereConditions.push(sql9`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date)
@@ -14765,7 +17053,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
           )
         `);
       } else if (end) {
-        simpleWhereConditions.push(sql8`
+        simpleWhereConditions.push(sql9`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) <= ${end}::date)
@@ -14776,7 +17064,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
         `);
       }
     }
-    simpleWhereConditions.push(sql8`
+    simpleWhereConditions.push(sql9`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -14787,8 +17075,8 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
         )
       )
     `);
-    const simpleWhereClause = sql8`WHERE ${sql8.join(simpleWhereConditions, sql8` AND `)}`;
-    const result = await db2.execute(sql8`
+    const simpleWhereClause = sql9`WHERE ${sql9.join(simpleWhereConditions, sql9` AND `)}`;
+    const result = await db2.execute(sql9`
       SELECT 
         COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
         -- Platform fee: use service_fee if available, otherwise calculate as amount - manager_revenue
@@ -14818,7 +17106,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       FROM payment_transactions pt
       ${simpleWhereClause}
     `);
-    const kitchenTaxResult = await db2.execute(sql8`
+    const kitchenTaxResult = await db2.execute(sql9`
       SELECT 
         COALESCE(SUM(
           -- Tax = kb.total_price * tax_rate / 100 (same formula as transaction history)
@@ -14849,7 +17137,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       LEFT JOIN kitchens k ON kb.kitchen_id = k.id
       ${simpleWhereClause}
     `);
-    const storageTaxResult = await db2.execute(sql8`
+    const storageTaxResult = await db2.execute(sql9`
       SELECT 
         COALESCE(SUM(
           CASE 
@@ -14980,7 +17268,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
 }
 async function getRevenueByLocationFromTransactions(managerId, db2, startDate, endDate) {
   try {
-    const tableCheck = await db2.execute(sql8`
+    const tableCheck = await db2.execute(sql9`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -14990,10 +17278,10 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
     if (!tableCheck.rows[0]?.table_exists) {
       throw new Error("payment_transactions table does not exist");
     }
-    const whereConditions = [sql8`pt.manager_id = ${managerId}`];
-    whereConditions.push(sql8`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
-    whereConditions.push(sql8`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`);
-    whereConditions.push(sql8`
+    const whereConditions = [sql9`pt.manager_id = ${managerId}`];
+    whereConditions.push(sql9`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
+    whereConditions.push(sql9`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`);
+    whereConditions.push(sql9`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -15004,8 +17292,8 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
         )
       )
     `);
-    const whereClause = sql8`WHERE ${sql8.join(whereConditions, sql8` AND `)}`;
-    const result = await db2.execute(sql8`
+    const whereClause = sql9`WHERE ${sql9.join(whereConditions, sql9` AND `)}`;
+    const result = await db2.execute(sql9`
       SELECT 
         l.id as location_id,
         l.name as location_name,
@@ -15071,7 +17359,7 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
 }
 async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDate) {
   try {
-    const tableCheck = await db2.execute(sql8`
+    const tableCheck = await db2.execute(sql9`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -15083,9 +17371,9 @@ async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDa
     }
     const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
     const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-    const whereConditions = [sql8`pt.manager_id = ${managerId}`];
-    whereConditions.push(sql8`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
-    whereConditions.push(sql8`
+    const whereConditions = [sql9`pt.manager_id = ${managerId}`];
+    whereConditions.push(sql9`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
+    whereConditions.push(sql9`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -15096,14 +17384,14 @@ async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDa
         )
       )
     `);
-    whereConditions.push(sql8`
+    whereConditions.push(sql9`
       (
         (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date AND DATE(pt.paid_at) <= ${end}::date)
         OR (pt.status != 'succeeded' AND DATE(pt.created_at) >= ${start}::date AND DATE(pt.created_at) <= ${end}::date)
       )
     `);
-    const whereClause = sql8`WHERE ${sql8.join(whereConditions, sql8` AND `)}`;
-    const result = await db2.execute(sql8`
+    const whereClause = sql9`WHERE ${sql9.join(whereConditions, sql9` AND `)}`;
+    const result = await db2.execute(sql9`
       SELECT 
         DATE(
           CASE 
@@ -15173,7 +17461,7 @@ __export(revenue_service_exports, {
   getRevenueMetrics: () => getRevenueMetrics,
   getTransactionHistory: () => getTransactionHistory
 });
-import { sql as sql9 } from "drizzle-orm";
+import { sql as sql10 } from "drizzle-orm";
 function calculateManagerRevenue(totalRevenue, serviceFeeRate) {
   if (serviceFeeRate < 0 || serviceFeeRate > 1) {
     console.warn(`Invalid service fee rate: ${serviceFeeRate}, using 0`);
@@ -15184,14 +17472,14 @@ function calculateManagerRevenue(totalRevenue, serviceFeeRate) {
 }
 async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId) {
   try {
-    const whereConditions = [sql9`l.manager_id = ${managerId}`, sql9`kb.status != 'cancelled'`];
+    const whereConditions = [sql10`l.manager_id = ${managerId}`, sql10`kb.status != 'cancelled'`];
     if (locationId) {
-      whereConditions.push(sql9`l.id = ${locationId}`);
+      whereConditions.push(sql10`l.id = ${locationId}`);
     }
-    const whereClause = sql9`WHERE ${sql9.join(whereConditions, sql9` AND `)}`;
+    const whereClause = sql10`WHERE ${sql10.join(whereConditions, sql10` AND `)}`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const debugQuery = await db2.execute(sql9`
+    const debugQuery = await db2.execute(sql10`
       SELECT 
         COUNT(*) as total_bookings,
         COUNT(CASE WHEN kb.total_price IS NOT NULL THEN 1 END) as bookings_with_price,
@@ -15214,7 +17502,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       startDate,
       endDate
     });
-    const result = await db2.execute(sql9`
+    const result = await db2.execute(sql10`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -15288,15 +17576,15 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       ${whereClause}
     `);
     const pendingWhereConditions = [
-      sql9`l.manager_id = ${managerId}`,
-      sql9`kb.status != 'cancelled'`,
-      sql9`kb.payment_status = 'processing'`
+      sql10`l.manager_id = ${managerId}`,
+      sql10`kb.status != 'cancelled'`,
+      sql10`kb.payment_status = 'processing'`
     ];
     if (locationId) {
-      pendingWhereConditions.push(sql9`l.id = ${locationId}`);
+      pendingWhereConditions.push(sql10`l.id = ${locationId}`);
     }
-    const pendingWhereClause = sql9`WHERE ${sql9.join(pendingWhereConditions, sql9` AND `)}`;
-    const pendingResult = await db2.execute(sql9`
+    const pendingWhereClause = sql10`WHERE ${sql10.join(pendingWhereConditions, sql10` AND `)}`;
+    const pendingResult = await db2.execute(sql10`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -15321,15 +17609,15 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       pendingAmount: pendingResult.rows[0]?.pending_payments_all || 0
     });
     const completedWhereConditions = [
-      sql9`l.manager_id = ${managerId}`,
-      sql9`kb.status != 'cancelled'`,
-      sql9`kb.payment_status = 'paid'`
+      sql10`l.manager_id = ${managerId}`,
+      sql10`kb.status != 'cancelled'`,
+      sql10`kb.payment_status = 'paid'`
     ];
     if (locationId) {
-      completedWhereConditions.push(sql9`l.id = ${locationId}`);
+      completedWhereConditions.push(sql10`l.id = ${locationId}`);
     }
-    const completedWhereClause = sql9`WHERE ${sql9.join(completedWhereConditions, sql9` AND `)}`;
-    const completedResult = await db2.execute(sql9`
+    const completedWhereClause = sql10`WHERE ${sql10.join(completedWhereConditions, sql10` AND `)}`;
+    const completedResult = await db2.execute(sql10`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -15367,7 +17655,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     }
     if (result.rows.length === 0) {
       console.log("[Revenue Service] No bookings in date range, checking for payments outside date range...");
-      const pendingFeeResult = await db2.execute(sql9`
+      const pendingFeeResult = await db2.execute(sql10`
         SELECT 
           COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
           COALESCE(SUM(
@@ -15387,7 +17675,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
         JOIN locations l ON k.location_id = l.id
         ${pendingWhereClause}
       `);
-      const completedFeeResult = await db2.execute(sql9`
+      const completedFeeResult = await db2.execute(sql10`
         SELECT 
           COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
           COALESCE(SUM(
@@ -15420,7 +17708,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       const paidCount = parseInt(completedRow.completed_count_all) || 0;
       let actualStripeFeeFromDb = 0;
       try {
-        const feeResult = await db2.execute(sql9`
+        const feeResult = await db2.execute(sql10`
           SELECT COALESCE(SUM(stripe_processing_fee::numeric), 0)::bigint as total_stripe_fee
           FROM payment_transactions
           WHERE manager_id = ${managerId} AND status = 'succeeded' AND stripe_processing_fee > 0
@@ -15462,7 +17750,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     const totalRevenue = typeof row.total_revenue === "string" ? parseInt(row.total_revenue) : row.total_revenue ? parseInt(String(row.total_revenue)) : 0;
     const platformFee = typeof row.platform_fee === "string" ? parseInt(row.platform_fee) : row.platform_fee ? parseInt(String(row.platform_fee)) : 0;
     const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
-    const pendingFeeResult2 = await db2.execute(sql9`
+    const pendingFeeResult2 = await db2.execute(sql10`
       SELECT 
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
         COALESCE(SUM(
@@ -15482,7 +17770,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       JOIN locations l ON k.location_id = l.id
       ${pendingWhereClause}
     `);
-    const completedFeeResult2 = await db2.execute(sql9`
+    const completedFeeResult2 = await db2.execute(sql10`
       SELECT 
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
         COALESCE(SUM(
@@ -15516,14 +17804,14 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     let stripeFeeSource = "estimated";
     try {
       const stripeFeeConditions = [
-        sql9`pt.manager_id = ${managerId}`,
-        sql9`pt.status IN ('succeeded', 'partially_refunded')`,
+        sql10`pt.manager_id = ${managerId}`,
+        sql10`pt.status IN ('succeeded', 'partially_refunded')`,
         // Include partially refunded but not fully refunded
-        sql9`pt.stripe_processing_fee IS NOT NULL`,
-        sql9`pt.stripe_processing_fee > 0`
+        sql10`pt.stripe_processing_fee IS NOT NULL`,
+        sql10`pt.stripe_processing_fee > 0`
       ];
       if (locationId) {
-        stripeFeeConditions.push(sql9`EXISTS (
+        stripeFeeConditions.push(sql10`EXISTS (
           SELECT 1 FROM kitchen_bookings kb 
           JOIN kitchens k ON kb.kitchen_id = k.id 
           WHERE kb.id = pt.booking_id 
@@ -15531,7 +17819,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
           AND k.location_id = ${locationId}
         )`);
       }
-      const stripeFeeResult = await db2.execute(sql9`
+      const stripeFeeResult = await db2.execute(sql10`
         SELECT COALESCE(SUM(
           CASE 
             WHEN pt.amount::numeric > 0 THEN
@@ -15540,7 +17828,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
           END
         ), 0)::bigint as total_stripe_fee
         FROM payment_transactions pt
-        WHERE ${sql9.join(stripeFeeConditions, sql9` AND `)}
+        WHERE ${sql10.join(stripeFeeConditions, sql10` AND `)}
       `);
       const stripeFeeRow = stripeFeeResult.rows[0] || {};
       const storedStripeFee = typeof stripeFeeRow.total_stripe_fee === "string" ? parseInt(stripeFeeRow.total_stripe_fee) || 0 : stripeFeeRow.total_stripe_fee ? parseInt(String(stripeFeeRow.total_stripe_fee)) : 0;
@@ -15560,7 +17848,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     const refundedAmount = typeof row.refunded_amount === "string" ? isNaN(parseInt(row.refunded_amount)) ? 0 : parseInt(row.refunded_amount) || 0 : row.refunded_amount ? isNaN(parseInt(String(row.refunded_amount))) ? 0 : parseInt(String(row.refunded_amount)) : 0;
     let effectiveTaxAmount = 0;
     try {
-      const effectiveTaxResult = await db2.execute(sql9`
+      const effectiveTaxResult = await db2.execute(sql10`
         SELECT COALESCE(SUM(
           -- Tax = kb.total_price * tax_rate / 100 (same formula as transaction history)
           -- For partial refunds: multiply by (1 - refund_ratio) to get effective tax
@@ -15616,20 +17904,20 @@ async function getRevenueByLocation(managerId, db2, startDate, endDate) {
       console.error("[Revenue Service] Invalid managerId:", managerId);
       throw new Error("Invalid manager ID");
     }
-    const managerIdParam = sql9`${managerId}`;
-    const whereConditions = [sql9`l.manager_id = ${managerIdParam}`, sql9`kb.status != 'cancelled'`];
+    const managerIdParam = sql10`${managerId}`;
+    const whereConditions = [sql10`l.manager_id = ${managerIdParam}`, sql10`kb.status != 'cancelled'`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      whereConditions.push(sql9`DATE(kb.booking_date) >= ${start}::date`);
+      whereConditions.push(sql10`DATE(kb.booking_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      whereConditions.push(sql9`DATE(kb.booking_date) <= ${end}::date`);
+      whereConditions.push(sql10`DATE(kb.booking_date) <= ${end}::date`);
     }
-    const whereClause = sql9`WHERE ${sql9.join(whereConditions, sql9` AND `)}`;
+    const whereClause = sql10`WHERE ${sql10.join(whereConditions, sql10` AND `)}`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const result = await db2.execute(sql9`
+    const result = await db2.execute(sql10`
       SELECT 
         l.id as location_id,
         l.name as location_name,
@@ -15680,15 +17968,15 @@ async function getRevenueByDate(managerId, db2, startDate, endDate) {
     }
     const start = typeof startDate === "string" ? startDate : startDate ? startDate.toISOString().split("T")[0] : null;
     const end = typeof endDate === "string" ? endDate : endDate ? endDate.toISOString().split("T")[0] : null;
-    const managerIdParam = sql9`${managerId}`;
+    const managerIdParam = sql10`${managerId}`;
     if (!start || !end) {
       console.warn("[Revenue Service] Missing date parameters for getRevenueByDate");
     }
-    const startParam = start ? sql9`${start}::date` : sql9`CURRENT_DATE - INTERVAL '30 days'`;
-    const endParam = end ? sql9`${end}::date` : sql9`CURRENT_DATE`;
+    const startParam = start ? sql10`${start}::date` : sql10`CURRENT_DATE - INTERVAL '30 days'`;
+    const endParam = end ? sql10`${end}::date` : sql10`CURRENT_DATE`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const result = await db2.execute(sql9`
+    const result = await db2.execute(sql10`
       SELECT 
         DATE(kb.booking_date)::text as date,
         COALESCE(SUM(
@@ -15747,18 +18035,18 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       if (status === "canceled") return "canceled";
       return status;
     };
-    const kitchenWhereConditions = [sql9`l.manager_id = ${managerId}`, sql9`kb.status != 'cancelled'`];
+    const kitchenWhereConditions = [sql10`l.manager_id = ${managerId}`, sql10`kb.status != 'cancelled'`];
     if (start) {
-      kitchenWhereConditions.push(sql9`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
+      kitchenWhereConditions.push(sql10`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
     }
     if (end) {
-      kitchenWhereConditions.push(sql9`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
+      kitchenWhereConditions.push(sql10`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
     }
     if (locationId) {
-      kitchenWhereConditions.push(sql9`l.id = ${locationId}`);
+      kitchenWhereConditions.push(sql10`l.id = ${locationId}`);
     }
-    const kitchenWhereClause = sql9`WHERE ${sql9.join(kitchenWhereConditions, sql9` AND `)}`;
-    const kitchenResult = await db2.execute(sql9`
+    const kitchenWhereClause = sql10`WHERE ${sql10.join(kitchenWhereConditions, sql10` AND `)}`;
+    const kitchenResult = await db2.execute(sql10`
       SELECT 
         kb.id,
         kb.booking_date,
@@ -15815,6 +18103,8 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       const ptManagerRevenue = row.pt_manager_revenue != null ? parseInt(String(row.pt_manager_revenue)) : 0;
       const actualStripeFee = row.actual_stripe_fee != null ? parseInt(String(row.actual_stripe_fee)) : 0;
       const ptRefundAmount = row.pt_refund_amount != null ? parseInt(String(row.pt_refund_amount)) : 0;
+      const ptMetadata = row.pt_metadata || {};
+      const isDamageClaim = ptMetadata.type === "damage_claim";
       const kbTotalPrice = row.kb_total_price != null ? parseInt(String(row.kb_total_price)) : 0;
       const kbServiceFee = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
       const taxRatePercent = row.tax_rate_percent != null ? parseFloat(String(row.tax_rate_percent)) : 0;
@@ -15824,18 +18114,19 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       let serviceFeeCents;
       if (hasPaymentTransaction) {
         totalPriceCents = ptAmount;
-        taxCents = Math.round(kbTotalPrice * taxRatePercent / 100);
+        taxCents = isDamageClaim ? 0 : Math.round(kbTotalPrice * taxRatePercent / 100);
         serviceFeeCents = ptServiceFee > 0 ? ptServiceFee : kbServiceFee;
       } else {
         totalPriceCents = kbTotalPrice;
-        taxCents = Math.round(kbTotalPrice * taxRatePercent / 100);
+        taxCents = isDamageClaim ? 0 : Math.round(kbTotalPrice * taxRatePercent / 100);
         serviceFeeCents = kbServiceFee;
       }
       const calculatedManagerRevenue = totalPriceCents - serviceFeeCents;
       const managerRevenue = ptManagerRevenue > 0 ? ptManagerRevenue : calculatedManagerRevenue;
       const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
       const netRevenue = totalPriceCents - taxCents - stripeFee;
-      const resolvedBookingType = row.pt_booking_type || "kitchen";
+      const resolvedBookingType = isDamageClaim ? "damage_claim" : row.pt_booking_type || "kitchen";
+      const description = isDamageClaim ? `Damage Claim - ${row.kitchen_name || "Kitchen"}` : void 0;
       const transactionId = row.transaction_id != null ? parseInt(String(row.transaction_id)) : null;
       const bookingId = parseInt(String(row.id));
       return {
@@ -15854,8 +18145,8 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         // Alias for frontend compatibility - DEPRECATED
         taxAmount: taxCents,
         // Tax collected (from payment_transactions or calculated)
-        taxRatePercent,
-        // Tax rate percentage applied
+        taxRatePercent: isDamageClaim ? 0 : taxRatePercent,
+        // Tax rate percentage applied (0 for damage claims)
         stripeFee,
         // Actual Stripe processing fee (from Stripe API or estimated)
         managerRevenue: managerRevenue || 0,
@@ -15876,10 +18167,12 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         refundAmount: ptRefundAmount,
         // SIMPLE REFUND MODEL: Manager's balance is the cap
         // refundableAmount = managerRevenue - already refunded (not totalPrice - refunded)
-        refundableAmount: Math.max(0, (managerRevenue || 0) - ptRefundAmount)
+        refundableAmount: Math.max(0, (managerRevenue || 0) - ptRefundAmount),
+        // Add description field for damage claims
+        description
       };
     });
-    const storageResult = await db2.execute(sql9`
+    const storageResult = await db2.execute(sql10`
       SELECT 
         pt.id as transaction_id,
         pt.booking_id,
@@ -15929,6 +18222,7 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       const metadata = row.pt_metadata || {};
       const isOverstayPenalty = metadata.type === "overstay_penalty";
       const isStorageExtension = metadata.storage_extension_id != null;
+      const isDamageClaim = metadata.type === "damage_claim";
       let ptBaseAmount;
       if (isStorageExtension && metadata.extension_base_price_cents) {
         const metadataBaseAmount = parseInt(String(metadata.extension_base_price_cents));
@@ -15945,7 +18239,9 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         ptBaseAmount = ptBaseAmountFromDb;
       }
       let description = row.storage_name || "Storage";
-      if (isOverstayPenalty) {
+      if (isDamageClaim) {
+        description = `Damage Claim - ${row.storage_name || "Storage"}`;
+      } else if (isOverstayPenalty) {
         description = `Overstay Penalty - ${row.storage_name || "Storage"}`;
       } else if (isStorageExtension) {
         description = `Storage Extension - ${row.storage_name || "Storage"}`;
@@ -15953,13 +18249,23 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       const transactionId = row.transaction_id != null ? parseInt(String(row.transaction_id)) : null;
       const bookingId = parseInt(String(row.booking_id));
       const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
-      const taxCents = Math.round(ptBaseAmount * taxRatePercent / 100);
+      const taxCents = isDamageClaim ? 0 : Math.round(ptBaseAmount * taxRatePercent / 100);
       const netRevenue = ptAmount - taxCents - stripeFee;
+      let resolvedBookingType;
+      if (isDamageClaim) {
+        resolvedBookingType = "damage_claim";
+      } else if (isOverstayPenalty) {
+        resolvedBookingType = "overstay_penalty";
+      } else if (isStorageExtension) {
+        resolvedBookingType = "storage_extension";
+      } else {
+        resolvedBookingType = "storage";
+      }
       return {
         id: bookingId,
         transactionId,
         bookingId,
-        bookingType: isOverstayPenalty ? "overstay_penalty" : isStorageExtension ? "storage_extension" : "storage",
+        bookingType: resolvedBookingType,
         bookingDate: row.booking_date,
         startTime: null,
         endTime: null,
@@ -16028,20 +18334,20 @@ async function getCompleteRevenueMetrics(managerId, db2, startDate, endDate, loc
     }
     const kitchenMetrics = await getRevenueMetrics(managerId, db2, startDate, endDate, locationId);
     console.log("[Revenue Service] Kitchen metrics:", kitchenMetrics);
-    const whereConditions = [sql9`l.manager_id = ${managerId}`];
+    const whereConditions = [sql10`l.manager_id = ${managerId}`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      whereConditions.push(sql9`DATE(sb.start_date) >= ${start}::date`);
+      whereConditions.push(sql10`DATE(sb.start_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      whereConditions.push(sql9`DATE(sb.start_date) <= ${end}::date`);
+      whereConditions.push(sql10`DATE(sb.start_date) <= ${end}::date`);
     }
     if (locationId) {
-      whereConditions.push(sql9`l.id = ${locationId}`);
+      whereConditions.push(sql10`l.id = ${locationId}`);
     }
-    const whereClause = sql9`WHERE ${sql9.join(whereConditions, sql9` AND `)}`;
-    const storageResult = await db2.execute(sql9`
+    const whereClause = sql10`WHERE ${sql10.join(whereConditions, sql10` AND `)}`;
+    const storageResult = await db2.execute(sql10`
       SELECT 
         COALESCE(SUM(COALESCE(sb.total_price, 0)::numeric), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(sb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
@@ -16056,20 +18362,20 @@ async function getCompleteRevenueMetrics(managerId, db2, startDate, endDate, loc
       ${whereClause}
         AND sb.status != 'cancelled'
     `);
-    const equipmentWhereConditions = [sql9`l.manager_id = ${managerId}`];
+    const equipmentWhereConditions = [sql10`l.manager_id = ${managerId}`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      equipmentWhereConditions.push(sql9`DATE(eb.start_date) >= ${start}::date`);
+      equipmentWhereConditions.push(sql10`DATE(eb.start_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      equipmentWhereConditions.push(sql9`DATE(eb.start_date) <= ${end}::date`);
+      equipmentWhereConditions.push(sql10`DATE(eb.start_date) <= ${end}::date`);
     }
     if (locationId) {
-      equipmentWhereConditions.push(sql9`l.id = ${locationId}`);
+      equipmentWhereConditions.push(sql10`l.id = ${locationId}`);
     }
-    const equipmentWhereClause = sql9`WHERE ${sql9.join(equipmentWhereConditions, sql9` AND `)}`;
-    const equipmentResult = await db2.execute(sql9`
+    const equipmentWhereClause = sql10`WHERE ${sql10.join(equipmentWhereConditions, sql10` AND `)}`;
+    const equipmentResult = await db2.execute(sql10`
       SELECT 
         COALESCE(SUM(COALESCE(eb.total_price, 0)::numeric), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(eb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
@@ -16149,9 +18455,9 @@ __export(stripe_connect_service_exports, {
   getPayouts: () => getPayouts,
   isAccountReady: () => isAccountReady
 });
-import Stripe3 from "stripe";
+import Stripe4 from "stripe";
 async function createConnectAccount(params) {
-  if (!stripe3) {
+  if (!stripe4) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   const {
@@ -16161,7 +18467,7 @@ async function createConnectAccount(params) {
     // Default to Canada
   } = params;
   try {
-    const account = await stripe3.accounts.create({
+    const account = await stripe4.accounts.create({
       type: "express",
       country,
       email,
@@ -16182,11 +18488,11 @@ async function createConnectAccount(params) {
   }
 }
 async function createAccountLink(accountId, refreshUrl, returnUrl) {
-  if (!stripe3) {
+  if (!stripe4) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const accountLink = await stripe3.accountLinks.create({
+    const accountLink = await stripe4.accountLinks.create({
       account: accountId,
       refresh_url: refreshUrl,
       return_url: returnUrl,
@@ -16199,11 +18505,11 @@ async function createAccountLink(accountId, refreshUrl, returnUrl) {
   }
 }
 async function createAccountUpdateLink(accountId, refreshUrl, returnUrl) {
-  if (!stripe3) {
+  if (!stripe4) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const accountLink = await stripe3.accountLinks.create({
+    const accountLink = await stripe4.accountLinks.create({
       account: accountId,
       refresh_url: refreshUrl,
       return_url: returnUrl,
@@ -16216,11 +18522,11 @@ async function createAccountUpdateLink(accountId, refreshUrl, returnUrl) {
   }
 }
 async function isAccountReady(accountId) {
-  if (!stripe3) {
+  if (!stripe4) {
     return false;
   }
   try {
-    const account = await stripe3.accounts.retrieve(accountId);
+    const account = await stripe4.accounts.retrieve(accountId);
     return account.charges_enabled === true && account.payouts_enabled === true;
   } catch (error) {
     console.error("Error checking account readiness:", error);
@@ -16228,11 +18534,11 @@ async function isAccountReady(accountId) {
   }
 }
 async function getAccountStatus(accountId) {
-  if (!stripe3) {
+  if (!stripe4) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const account = await stripe3.accounts.retrieve(accountId);
+    const account = await stripe4.accounts.retrieve(accountId);
     return {
       accountId: account.id,
       chargesEnabled: account.charges_enabled || false,
@@ -16246,11 +18552,11 @@ async function getAccountStatus(accountId) {
   }
 }
 async function getAccount(accountId) {
-  if (!stripe3) {
+  if (!stripe4) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const account = await stripe3.accounts.retrieve(accountId);
+    const account = await stripe4.accounts.retrieve(accountId);
     return account;
   } catch (error) {
     if (error.code === "resource_missing") {
@@ -16261,11 +18567,11 @@ async function getAccount(accountId) {
   }
 }
 async function getPayouts(accountId, limit = 100) {
-  if (!stripe3) {
+  if (!stripe4) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const payouts = await stripe3.payouts.list(
+    const payouts = await stripe4.payouts.list(
       {
         limit
       },
@@ -16280,11 +18586,11 @@ async function getPayouts(accountId, limit = 100) {
   }
 }
 async function getPayout(accountId, payoutId) {
-  if (!stripe3) {
+  if (!stripe4) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const payout = await stripe3.payouts.retrieve(
+    const payout = await stripe4.payouts.retrieve(
       payoutId,
       {
         stripeAccount: accountId
@@ -16300,7 +18606,7 @@ async function getPayout(accountId, payoutId) {
   }
 }
 async function getBalanceTransactions(accountId, startDate, endDate, limit = 100) {
-  if (!stripe3) {
+  if (!stripe4) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
@@ -16324,7 +18630,7 @@ async function getBalanceTransactions(accountId, startDate, endDate, limit = 100
         };
       }
     }
-    const transactions = await stripe3.balanceTransactions.list(
+    const transactions = await stripe4.balanceTransactions.list(
       params,
       {
         stripeAccount: accountId
@@ -16337,11 +18643,11 @@ async function getBalanceTransactions(accountId, startDate, endDate, limit = 100
   }
 }
 async function getAccountBalance(accountId) {
-  if (!stripe3) {
+  if (!stripe4) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const balance = await stripe3.balance.retrieve({
+    const balance = await stripe4.balance.retrieve({
       stripeAccount: accountId
     });
     return balance;
@@ -16351,33 +18657,33 @@ async function getAccountBalance(accountId) {
   }
 }
 async function createDashboardLoginLink(accountId) {
-  if (!stripe3) {
+  if (!stripe4) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const loginLink = await stripe3.accounts.createLoginLink(accountId);
+    const loginLink = await stripe4.accounts.createLoginLink(accountId);
     return { url: loginLink.url };
   } catch (error) {
     console.error("Error creating dashboard login link:", error);
     throw new Error(`Failed to create dashboard login link: ${error.message}`);
   }
 }
-var stripeSecretKey3, stripe3;
+var stripeSecretKey4, stripe4;
 var init_stripe_connect_service = __esm({
   "server/services/stripe-connect-service.ts"() {
     "use strict";
-    stripeSecretKey3 = process.env.STRIPE_SECRET_KEY;
-    if (!stripeSecretKey3) {
+    stripeSecretKey4 = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey4) {
       console.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
     }
-    stripe3 = stripeSecretKey3 ? new Stripe3(stripeSecretKey3, {
+    stripe4 = stripeSecretKey4 ? new Stripe4(stripeSecretKey4, {
       apiVersion: "2025-12-15.clover"
     }) : null;
   }
 });
 
 // server/domains/managers/manager.service.ts
-import { eq as eq22 } from "drizzle-orm";
+import { eq as eq24 } from "drizzle-orm";
 var ManagerService, managerService;
 var init_manager_service = __esm({
   "server/domains/managers/manager.service.ts"() {
@@ -16446,7 +18752,7 @@ var init_manager_service = __esm({
         };
       }
       async getPayouts(managerId, limit = 50) {
-        const [userResult] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq22(users.id, managerId)).limit(1);
+        const [userResult] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq24(users.id, managerId)).limit(1);
         if (!userResult?.stripeConnectAccountId) {
           return {
             payouts: [],
@@ -16477,1132 +18783,10 @@ var init_manager_service = __esm({
   }
 });
 
-// server/services/damage-claim-limits-service.ts
-var damage_claim_limits_service_exports = {};
-__export(damage_claim_limits_service_exports, {
-  canFileClaimForBooking: () => canFileClaimForBooking,
-  damageClaimLimitsService: () => damageClaimLimitsService,
-  getDamageClaimLimits: () => getDamageClaimLimits,
-  getDefaultLimits: () => getDefaultLimits,
-  validateClaimAmount: () => validateClaimAmount
-});
-import { eq as eq23 } from "drizzle-orm";
-async function getDamageClaimLimits() {
-  try {
-    const [maxClaimSetting] = await db.select().from(platformSettings).where(eq23(platformSettings.key, "damage_claim_max_amount_cents")).limit(1);
-    const [minClaimSetting] = await db.select().from(platformSettings).where(eq23(platformSettings.key, "damage_claim_min_amount_cents")).limit(1);
-    const [maxClaimsPerBookingSetting] = await db.select().from(platformSettings).where(eq23(platformSettings.key, "damage_claim_max_per_booking")).limit(1);
-    const [responseDeadlineSetting] = await db.select().from(platformSettings).where(eq23(platformSettings.key, "damage_claim_response_deadline_hours")).limit(1);
-    const [submissionDeadlineSetting] = await db.select().from(platformSettings).where(eq23(platformSettings.key, "damage_claim_submission_deadline_days")).limit(1);
-    return {
-      maxClaimAmountCents: maxClaimSetting ? parseInt(maxClaimSetting.value) : DEFAULTS2.maxClaimAmountCents,
-      minClaimAmountCents: minClaimSetting ? parseInt(minClaimSetting.value) : DEFAULTS2.minClaimAmountCents,
-      maxClaimsPerBooking: maxClaimsPerBookingSetting ? parseInt(maxClaimsPerBookingSetting.value) : DEFAULTS2.maxClaimsPerBooking,
-      chefResponseDeadlineHours: responseDeadlineSetting ? parseInt(responseDeadlineSetting.value) : DEFAULTS2.chefResponseDeadlineHours,
-      claimSubmissionDeadlineDays: submissionDeadlineSetting ? parseInt(submissionDeadlineSetting.value) : DEFAULTS2.claimSubmissionDeadlineDays
-    };
-  } catch (error) {
-    console.error("[DamageClaimLimitsService] Error fetching limits:", error);
-    return DEFAULTS2;
-  }
-}
-async function validateClaimAmount(amountCents) {
-  const limits = await getDamageClaimLimits();
-  if (amountCents < limits.minClaimAmountCents) {
-    return {
-      valid: false,
-      error: `Claim amount must be at least $${(limits.minClaimAmountCents / 100).toFixed(2)}`,
-      limits
-    };
-  }
-  if (amountCents > limits.maxClaimAmountCents) {
-    return {
-      valid: false,
-      error: `Claim amount cannot exceed $${(limits.maxClaimAmountCents / 100).toFixed(2)}. For larger claims, contact platform support.`,
-      limits
-    };
-  }
-  return { valid: true, limits };
-}
-async function canFileClaimForBooking(bookingType, bookingId) {
-  const limits = await getDamageClaimLimits();
-  const { damageClaims: damageClaims2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-  const { and: and23, eq: eq37, count: count3 } = await import("drizzle-orm");
-  const bookingColumn = bookingType === "kitchen" ? damageClaims2.kitchenBookingId : damageClaims2.storageBookingId;
-  const [result] = await db.select({ count: count3() }).from(damageClaims2).where(and23(
-    eq37(bookingColumn, bookingId),
-    eq37(damageClaims2.bookingType, bookingType)
-  ));
-  const currentCount = result?.count || 0;
-  if (currentCount >= limits.maxClaimsPerBooking) {
-    return {
-      allowed: false,
-      error: `Maximum of ${limits.maxClaimsPerBooking} claims per booking reached`,
-      currentCount,
-      maxAllowed: limits.maxClaimsPerBooking
-    };
-  }
-  return {
-    allowed: true,
-    currentCount,
-    maxAllowed: limits.maxClaimsPerBooking
-  };
-}
-function getDefaultLimits() {
-  return { ...DEFAULTS2 };
-}
-var DEFAULTS2, damageClaimLimitsService;
-var init_damage_claim_limits_service = __esm({
-  "server/services/damage-claim-limits-service.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    DEFAULTS2 = {
-      maxClaimAmountCents: 5e5,
-      // $5,000 CAD max per claim
-      minClaimAmountCents: 1e3,
-      // $10 CAD minimum
-      maxClaimsPerBooking: 3,
-      // Max 3 claims per booking
-      chefResponseDeadlineHours: 72,
-      // 72 hours to respond
-      claimSubmissionDeadlineDays: 14
-      // 14 days after booking ends
-    };
-    damageClaimLimitsService = {
-      getDamageClaimLimits,
-      validateClaimAmount,
-      canFileClaimForBooking,
-      getDefaultLimits
-    };
-  }
-});
-
-// server/services/damage-claim-service.ts
-import { eq as eq24, and as and15, inArray as inArray5, desc as desc12, sql as sql10 } from "drizzle-orm";
-import Stripe4 from "stripe";
-import { format as format2 } from "date-fns";
-async function createHistoryEntry(damageClaimId, previousStatus, newStatus, action, actionBy, actionByUserId, notes, metadata) {
-  await db.insert(damageClaimHistory).values({
-    damageClaimId,
-    previousStatus,
-    newStatus,
-    action,
-    actionBy,
-    actionByUserId,
-    notes,
-    metadata: metadata || {}
-  });
-}
-async function getBookingPaymentDetails(bookingType, bookingId) {
-  if (bookingType === "storage") {
-    const [booking] = await db.select({
-      stripeCustomerId: storageBookings.stripeCustomerId,
-      stripePaymentMethodId: storageBookings.stripePaymentMethodId,
-      chefId: storageBookings.chefId
-    }).from(storageBookings).where(eq24(storageBookings.id, bookingId)).limit(1);
-    return booking || { stripeCustomerId: null, stripePaymentMethodId: null, chefId: null };
-  } else {
-    const [booking] = await db.select({
-      chefId: kitchenBookings.chefId
-    }).from(kitchenBookings).where(eq24(kitchenBookings.id, bookingId)).limit(1);
-    if (!booking || !booking.chefId) {
-      return { stripeCustomerId: null, stripePaymentMethodId: null, chefId: null };
-    }
-    const [user] = await db.select({
-      stripeCustomerId: users.stripeCustomerId
-    }).from(users).where(eq24(users.id, booking.chefId)).limit(1);
-    return {
-      stripeCustomerId: user?.stripeCustomerId || null,
-      stripePaymentMethodId: null,
-      // Kitchen bookings don't store payment methods
-      chefId: booking.chefId
-    };
-  }
-}
-async function createDamageClaim(input) {
-  try {
-    const { validateClaimAmount: validateClaimAmount2, canFileClaimForBooking: canFileClaimForBooking2, getDamageClaimLimits: getDamageClaimLimits2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
-    const amountValidation = await validateClaimAmount2(input.claimedAmountCents);
-    if (!amountValidation.valid) {
-      return {
-        success: false,
-        error: amountValidation.error,
-        limits: {
-          maxClaimAmountCents: amountValidation.limits.maxClaimAmountCents,
-          minClaimAmountCents: amountValidation.limits.minClaimAmountCents
-        }
-      };
-    }
-    const bookingId = input.bookingType === "storage" ? input.storageBookingId : input.kitchenBookingId;
-    if (bookingId) {
-      const claimCheck = await canFileClaimForBooking2(input.bookingType, bookingId);
-      if (!claimCheck.allowed) {
-        return { success: false, error: claimCheck.error };
-      }
-    }
-    const limits = await getDamageClaimLimits2();
-    let chefId = null;
-    let locationId = null;
-    const chefResponseDeadlineHours = limits.chefResponseDeadlineHours;
-    if (input.bookingType === "storage" && input.storageBookingId) {
-      const [booking] = await db.select({
-        chefId: storageBookings.chefId,
-        endDate: storageBookings.endDate,
-        kitchenId: storageListings.kitchenId
-      }).from(storageBookings).innerJoin(storageListings, eq24(storageBookings.storageListingId, storageListings.id)).where(eq24(storageBookings.id, input.storageBookingId)).limit(1);
-      if (!booking) {
-        return { success: false, error: "Storage booking not found" };
-      }
-      chefId = booking.chefId;
-      if (booking.kitchenId) {
-        const [kitchen] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq24(kitchens.id, booking.kitchenId)).limit(1);
-        locationId = kitchen?.locationId || null;
-      }
-    } else if (input.bookingType === "kitchen" && input.kitchenBookingId) {
-      const [booking] = await db.select({
-        chefId: kitchenBookings.chefId,
-        kitchenId: kitchenBookings.kitchenId
-      }).from(kitchenBookings).where(eq24(kitchenBookings.id, input.kitchenBookingId)).limit(1);
-      if (!booking) {
-        return { success: false, error: "Kitchen booking not found" };
-      }
-      chefId = booking.chefId;
-      if (booking.kitchenId) {
-        const [kitchen] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq24(kitchens.id, booking.kitchenId)).limit(1);
-        locationId = kitchen?.locationId || null;
-      }
-    } else {
-      return { success: false, error: "Invalid booking type or missing booking ID" };
-    }
-    if (!chefId) {
-      return { success: false, error: "Chef not found for this booking" };
-    }
-    if (!locationId) {
-      return { success: false, error: "Location not found for this booking" };
-    }
-    const chefResponseDeadline = /* @__PURE__ */ new Date();
-    chefResponseDeadline.setHours(chefResponseDeadline.getHours() + chefResponseDeadlineHours);
-    const [claim] = await db.insert(damageClaims).values({
-      bookingType: input.bookingType,
-      kitchenBookingId: input.kitchenBookingId || null,
-      storageBookingId: input.storageBookingId || null,
-      chefId,
-      managerId: input.managerId,
-      locationId,
-      claimTitle: input.claimTitle,
-      claimDescription: input.claimDescription,
-      damageDate: input.damageDate,
-      claimedAmountCents: input.claimedAmountCents,
-      chefResponseDeadline,
-      status: "draft"
-    }).returning();
-    await createHistoryEntry(
-      claim.id,
-      null,
-      "draft",
-      "created",
-      "manager",
-      input.managerId,
-      "Damage claim created"
-    );
-    logger.info(`[DamageClaimService] Created damage claim ${claim.id}`, {
-      bookingType: input.bookingType,
-      chefId,
-      managerId: input.managerId,
-      claimedAmountCents: input.claimedAmountCents
-    });
-    return { success: true, claim };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to create damage claim";
-    logger.error("[DamageClaimService] Error creating damage claim:", error);
-    return { success: false, error: errorMessage };
-  }
-}
-async function updateDraftClaim(claimId, managerId, updates) {
-  try {
-    const [claim] = await db.select().from(damageClaims).where(and15(eq24(damageClaims.id, claimId), eq24(damageClaims.managerId, managerId))).limit(1);
-    if (!claim) {
-      return { success: false, error: "Claim not found or unauthorized" };
-    }
-    if (claim.status !== "draft") {
-      return { success: false, error: "Can only update draft claims" };
-    }
-    await db.update(damageClaims).set({
-      ...updates,
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq24(damageClaims.id, claimId));
-    return { success: true };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to update claim";
-    logger.error("[DamageClaimService] Error updating draft claim:", error);
-    return { success: false, error: errorMessage };
-  }
-}
-async function deleteDraftClaim(claimId, managerId) {
-  try {
-    const [claim] = await db.select().from(damageClaims).where(and15(eq24(damageClaims.id, claimId), eq24(damageClaims.managerId, managerId))).limit(1);
-    if (!claim) {
-      return { success: false, error: "Claim not found or unauthorized" };
-    }
-    if (claim.status !== "draft") {
-      return { success: false, error: "Can only delete draft claims" };
-    }
-    await db.delete(damageEvidence).where(eq24(damageEvidence.damageClaimId, claimId));
-    await db.delete(damageClaims).where(eq24(damageClaims.id, claimId));
-    logger.info(`[DamageClaimService] Deleted draft claim ${claimId}`, { managerId });
-    return { success: true };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to delete claim";
-    logger.error("[DamageClaimService] Error deleting draft claim:", error);
-    return { success: false, error: errorMessage };
-  }
-}
-async function submitClaim(claimId, managerId) {
-  try {
-    const [claim] = await db.select().from(damageClaims).where(and15(eq24(damageClaims.id, claimId), eq24(damageClaims.managerId, managerId))).limit(1);
-    if (!claim) {
-      return { success: false, error: "Claim not found or unauthorized" };
-    }
-    if (claim.status !== "draft") {
-      return { success: false, error: "Can only submit draft claims" };
-    }
-    const evidenceCount = await db.select({ count: sql10`count(*)` }).from(damageEvidence).where(eq24(damageEvidence.damageClaimId, claimId));
-    if (!evidenceCount[0] || evidenceCount[0].count < 2) {
-      return { success: false, error: "Minimum 2 pieces of evidence required" };
-    }
-    const bookingId = claim.bookingType === "storage" ? claim.storageBookingId : claim.kitchenBookingId;
-    if (bookingId) {
-      const paymentDetails = await getBookingPaymentDetails(claim.bookingType, bookingId);
-      await db.update(damageClaims).set({
-        status: "submitted",
-        submittedAt: /* @__PURE__ */ new Date(),
-        updatedAt: /* @__PURE__ */ new Date(),
-        stripeCustomerId: paymentDetails.stripeCustomerId,
-        stripePaymentMethodId: paymentDetails.stripePaymentMethodId
-      }).where(eq24(damageClaims.id, claimId));
-    } else {
-      await db.update(damageClaims).set({
-        status: "submitted",
-        submittedAt: /* @__PURE__ */ new Date(),
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq24(damageClaims.id, claimId));
-    }
-    await createHistoryEntry(
-      claimId,
-      "draft",
-      "submitted",
-      "submitted",
-      "manager",
-      managerId,
-      "Claim submitted to chef for response"
-    );
-    logger.info(`[DamageClaimService] Claim ${claimId} submitted`, { managerId });
-    try {
-      const claimWithDetails = await getClaimById(claimId);
-      if (claimWithDetails) {
-        const [chefUser] = await db.select({ username: users.username }).from(users).where(eq24(users.id, claim.chefId)).limit(1);
-        const [managerUser] = await db.select({ username: users.username }).from(users).where(eq24(users.id, claim.managerId)).limit(1);
-        if (chefUser?.username) {
-          const emailContent = generateDamageClaimFiledEmail({
-            chefEmail: chefUser.username,
-            chefName: claimWithDetails.chefName || chefUser.username || "Chef",
-            managerName: claimWithDetails.managerName || managerUser?.username || "Manager",
-            locationName: claimWithDetails.locationName || "Unknown Location",
-            claimTitle: claim.claimTitle,
-            claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-            damageDate: format2(new Date(claim.damageDate), "MMM d, yyyy"),
-            responseDeadline: format2(new Date(claim.chefResponseDeadline), "MMM d, yyyy h:mm a"),
-            claimId: claim.id
-          });
-          await sendEmail(emailContent);
-          logger.info(`[DamageClaimService] Sent claim filed email to chef ${chefUser.username}`);
-        }
-      }
-    } catch (emailError) {
-      logger.error("[DamageClaimService] Failed to send claim filed email:", emailError);
-    }
-    return { success: true };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to submit claim";
-    logger.error("[DamageClaimService] Error submitting claim:", error);
-    return { success: false, error: errorMessage };
-  }
-}
-async function addEvidence(claimId, userId, evidence) {
-  try {
-    const [claim] = await db.select().from(damageClaims).where(eq24(damageClaims.id, claimId)).limit(1);
-    if (!claim) {
-      return { success: false, error: "Claim not found" };
-    }
-    if (!["draft", "submitted", "chef_disputed", "under_review"].includes(claim.status)) {
-      return { success: false, error: "Cannot add evidence to claim in current status" };
-    }
-    const [newEvidence] = await db.insert(damageEvidence).values({
-      damageClaimId: claimId,
-      evidenceType: evidence.evidenceType,
-      fileUrl: evidence.fileUrl,
-      fileName: evidence.fileName,
-      fileSize: evidence.fileSize,
-      mimeType: evidence.mimeType,
-      description: evidence.description,
-      uploadedBy: userId,
-      amountCents: evidence.amountCents,
-      vendorName: evidence.vendorName
-    }).returning();
-    logger.info(`[DamageClaimService] Evidence added to claim ${claimId}`, {
-      evidenceId: newEvidence.id,
-      evidenceType: evidence.evidenceType
-    });
-    return { success: true, evidence: newEvidence };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to add evidence";
-    logger.error("[DamageClaimService] Error adding evidence:", error);
-    return { success: false, error: errorMessage };
-  }
-}
-async function removeEvidence(evidenceId, _userId) {
-  try {
-    const [evidence] = await db.select().from(damageEvidence).where(eq24(damageEvidence.id, evidenceId)).limit(1);
-    if (!evidence) {
-      return { success: false, error: "Evidence not found" };
-    }
-    const [claim] = await db.select().from(damageClaims).where(eq24(damageClaims.id, evidence.damageClaimId)).limit(1);
-    if (!claim || claim.status !== "draft") {
-      return { success: false, error: "Can only remove evidence from draft claims" };
-    }
-    await db.delete(damageEvidence).where(eq24(damageEvidence.id, evidenceId));
-    logger.info(`[DamageClaimService] Evidence ${evidenceId} removed from claim ${evidence.damageClaimId}`);
-    return { success: true };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to remove evidence";
-    logger.error("[DamageClaimService] Error removing evidence:", error);
-    return { success: false, error: errorMessage };
-  }
-}
-async function getChefPendingClaims(chefId) {
-  const claims = await db.select({
-    claim: damageClaims,
-    chefEmail: users.username,
-    chefName: users.username,
-    // users table doesn't have fullName
-    locationName: locations.name
-  }).from(damageClaims).innerJoin(users, eq24(damageClaims.chefId, users.id)).innerJoin(locations, eq24(damageClaims.locationId, locations.id)).where(and15(
-    eq24(damageClaims.chefId, chefId),
-    inArray5(damageClaims.status, ["submitted", "approved", "charge_pending", "charge_failed"])
-  )).orderBy(desc12(damageClaims.createdAt));
-  const result = [];
-  for (const row of claims) {
-    const evidence = await db.select().from(damageEvidence).where(eq24(damageEvidence.damageClaimId, row.claim.id));
-    result.push({
-      ...row.claim,
-      chefEmail: row.chefEmail,
-      chefName: row.chefName,
-      managerName: null,
-      locationName: row.locationName,
-      kitchenName: null,
-      bookingStartDate: null,
-      bookingEndDate: null,
-      evidence
-    });
-  }
-  return result;
-}
-async function chefRespondToClaim(claimId, chefId, response) {
-  try {
-    const [claim] = await db.select().from(damageClaims).where(and15(eq24(damageClaims.id, claimId), eq24(damageClaims.chefId, chefId))).limit(1);
-    if (!claim) {
-      return { success: false, error: "Claim not found or unauthorized" };
-    }
-    if (claim.status !== "submitted") {
-      return { success: false, error: "Can only respond to submitted claims" };
-    }
-    const previousStatus = claim.status;
-    let newStatus;
-    if (response.action === "accept") {
-      newStatus = "chef_accepted";
-      await db.update(damageClaims).set({
-        status: newStatus,
-        chefResponse: response.response,
-        chefRespondedAt: /* @__PURE__ */ new Date(),
-        approvedAmountCents: claim.claimedAmountCents,
-        finalAmountCents: claim.claimedAmountCents,
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq24(damageClaims.id, claimId));
-      await db.update(damageClaims).set({
-        status: "approved",
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq24(damageClaims.id, claimId));
-      await createHistoryEntry(
-        claimId,
-        previousStatus,
-        "chef_accepted",
-        "chef_response",
-        "chef",
-        chefId,
-        `Chef accepted claim: ${response.response}`
-      );
-      await createHistoryEntry(
-        claimId,
-        "chef_accepted",
-        "approved",
-        "auto_approved",
-        "system",
-        void 0,
-        "Claim auto-approved after chef acceptance"
-      );
-      logger.info(`[DamageClaimService] Chef ${chefId} accepted claim ${claimId}`);
-      try {
-        const chargeResult = await chargeApprovedClaim(claimId);
-        if (chargeResult.success) {
-          logger.info(`[DamageClaimService] Auto-charged claim ${claimId} after chef acceptance`);
-        } else {
-          logger.warn(`[DamageClaimService] Auto-charge failed for claim ${claimId}: ${chargeResult.error}`);
-        }
-      } catch (chargeError) {
-        logger.error(`[DamageClaimService] Error auto-charging claim ${claimId}:`, chargeError);
-      }
-    } else {
-      newStatus = "chef_disputed";
-      await db.update(damageClaims).set({
-        status: newStatus,
-        chefResponse: response.response,
-        chefRespondedAt: /* @__PURE__ */ new Date(),
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq24(damageClaims.id, claimId));
-      await db.update(damageClaims).set({
-        status: "under_review",
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq24(damageClaims.id, claimId));
-      await createHistoryEntry(
-        claimId,
-        previousStatus,
-        "chef_disputed",
-        "chef_response",
-        "chef",
-        chefId,
-        `Chef disputed claim: ${response.response}`
-      );
-      await createHistoryEntry(
-        claimId,
-        "chef_disputed",
-        "under_review",
-        "escalated_to_admin",
-        "system",
-        void 0,
-        "Disputed claim escalated to admin for review"
-      );
-      logger.info(`[DamageClaimService] Chef ${chefId} disputed claim ${claimId}`);
-    }
-    try {
-      const claimWithDetails = await getClaimById(claimId);
-      if (claimWithDetails) {
-        const [managerUser] = await db.select({ username: users.username }).from(users).where(eq24(users.id, claim.managerId)).limit(1);
-        const [chefUser] = await db.select({ username: users.username }).from(users).where(eq24(users.id, chefId)).limit(1);
-        if (managerUser?.username) {
-          const emailContent = generateDamageClaimResponseEmail({
-            managerEmail: managerUser.username,
-            managerName: claimWithDetails.managerName || managerUser.username || "Manager",
-            chefName: claimWithDetails.chefName || chefUser?.username || "Chef",
-            claimTitle: claim.claimTitle,
-            claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-            response: response.action === "accept" ? "accepted" : "disputed",
-            chefResponse: response.response,
-            claimId: claim.id
-          });
-          await sendEmail(emailContent);
-          logger.info(`[DamageClaimService] Sent response notification to manager ${managerUser.username}`);
-        }
-        if (response.action === "dispute") {
-          const adminEmail = process.env.ADMIN_EMAIL;
-          if (adminEmail) {
-            const adminEmailContent = generateDamageClaimDisputedAdminEmail({
-              adminEmail,
-              chefName: claimWithDetails.chefName || chefUser?.username || "Chef",
-              chefEmail: claimWithDetails.chefEmail || chefUser?.username || "",
-              managerName: claimWithDetails.managerName || managerUser?.username || "Manager",
-              locationName: claimWithDetails.locationName || "Unknown Location",
-              claimTitle: claim.claimTitle,
-              claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-              chefResponse: response.response,
-              claimId: claim.id
-            });
-            await sendEmail(adminEmailContent);
-            logger.info(`[DamageClaimService] Sent dispute notification to admin`);
-          }
-        }
-      }
-    } catch (emailError) {
-      logger.error("[DamageClaimService] Failed to send response emails:", emailError);
-    }
-    return { success: true };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to process response";
-    logger.error("[DamageClaimService] Error processing chef response:", error);
-    return { success: false, error: errorMessage };
-  }
-}
-async function getDisputedClaims() {
-  const claims = await db.select({
-    claim: damageClaims,
-    chefEmail: users.username,
-    chefName: users.username,
-    // users table doesn't have fullName
-    locationName: locations.name
-  }).from(damageClaims).innerJoin(users, eq24(damageClaims.chefId, users.id)).innerJoin(locations, eq24(damageClaims.locationId, locations.id)).where(eq24(damageClaims.status, "under_review")).orderBy(desc12(damageClaims.createdAt));
-  const result = [];
-  for (const row of claims) {
-    const evidence = await db.select().from(damageEvidence).where(eq24(damageEvidence.damageClaimId, row.claim.id));
-    result.push({
-      ...row.claim,
-      chefEmail: row.chefEmail,
-      chefName: row.chefName,
-      managerName: null,
-      locationName: row.locationName,
-      kitchenName: null,
-      bookingStartDate: null,
-      bookingEndDate: null,
-      evidence
-    });
-  }
-  return result;
-}
-async function adminDecision(claimId, adminId, decision) {
-  try {
-    const [claim] = await db.select().from(damageClaims).where(eq24(damageClaims.id, claimId)).limit(1);
-    if (!claim) {
-      return { success: false, error: "Claim not found" };
-    }
-    if (claim.status !== "under_review") {
-      return { success: false, error: "Can only review claims under review" };
-    }
-    const previousStatus = claim.status;
-    let newStatus;
-    let approvedAmount = null;
-    let finalAmount = null;
-    switch (decision.decision) {
-      case "approve":
-        newStatus = "approved";
-        approvedAmount = claim.claimedAmountCents;
-        finalAmount = claim.claimedAmountCents;
-        break;
-      case "partially_approve":
-        if (!decision.approvedAmountCents || decision.approvedAmountCents <= 0) {
-          return { success: false, error: "Approved amount required for partial approval" };
-        }
-        newStatus = "partially_approved";
-        approvedAmount = decision.approvedAmountCents;
-        finalAmount = decision.approvedAmountCents;
-        break;
-      case "reject":
-        newStatus = "rejected";
-        approvedAmount = 0;
-        finalAmount = 0;
-        break;
-      default:
-        return { success: false, error: "Invalid decision" };
-    }
-    await db.update(damageClaims).set({
-      status: newStatus,
-      adminReviewerId: adminId,
-      adminReviewedAt: /* @__PURE__ */ new Date(),
-      adminDecisionReason: decision.decisionReason,
-      adminNotes: decision.notes,
-      approvedAmountCents: approvedAmount,
-      finalAmountCents: finalAmount,
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq24(damageClaims.id, claimId));
-    await createHistoryEntry(
-      claimId,
-      previousStatus,
-      newStatus,
-      "admin_decision",
-      "admin",
-      adminId,
-      `Admin ${decision.decision}: ${decision.decisionReason}`,
-      { approvedAmountCents: approvedAmount }
-    );
-    logger.info(`[DamageClaimService] Admin ${adminId} decided on claim ${claimId}: ${decision.decision}`);
-    try {
-      const claimWithDetails = await getClaimById(claimId);
-      if (claimWithDetails) {
-        const [chefUser] = await db.select({ username: users.username }).from(users).where(eq24(users.id, claim.chefId)).limit(1);
-        const [managerUser] = await db.select({ username: users.username }).from(users).where(eq24(users.id, claim.managerId)).limit(1);
-        const decisionType = decision.decision === "approve" ? "approved" : decision.decision === "partially_approve" ? "partially_approved" : "rejected";
-        if (chefUser?.username) {
-          const chefEmail = generateDamageClaimDecisionEmail({
-            recipientEmail: chefUser.username,
-            recipientName: claimWithDetails.chefName || chefUser.username || "Chef",
-            recipientRole: "chef",
-            claimTitle: claim.claimTitle,
-            claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-            decision: decisionType,
-            finalAmount: finalAmount ? `$${(finalAmount / 100).toFixed(2)}` : void 0,
-            decisionReason: decision.decisionReason,
-            claimId: claim.id
-          });
-          await sendEmail(chefEmail);
-        }
-        if (managerUser?.username) {
-          const managerEmail = generateDamageClaimDecisionEmail({
-            recipientEmail: managerUser.username,
-            recipientName: claimWithDetails.managerName || managerUser.username || "Manager",
-            recipientRole: "manager",
-            claimTitle: claim.claimTitle,
-            claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-            decision: decisionType,
-            finalAmount: finalAmount ? `$${(finalAmount / 100).toFixed(2)}` : void 0,
-            decisionReason: decision.decisionReason,
-            claimId: claim.id
-          });
-          await sendEmail(managerEmail);
-        }
-        logger.info(`[DamageClaimService] Sent decision emails for claim ${claimId}`);
-      }
-    } catch (emailError) {
-      logger.error("[DamageClaimService] Failed to send decision emails:", emailError);
-    }
-    if (newStatus === "approved" || newStatus === "partially_approved") {
-      try {
-        const chargeResult = await chargeApprovedClaim(claimId);
-        if (chargeResult.success) {
-          logger.info(`[DamageClaimService] Auto-charged claim ${claimId} after admin ${decision.decision}`);
-        } else {
-          logger.warn(`[DamageClaimService] Auto-charge failed for claim ${claimId}: ${chargeResult.error}`);
-        }
-      } catch (chargeError) {
-        logger.error(`[DamageClaimService] Error auto-charging claim ${claimId}:`, chargeError);
-      }
-    }
-    return { success: true };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to process decision";
-    logger.error("[DamageClaimService] Error processing admin decision:", error);
-    return { success: false, error: errorMessage };
-  }
-}
-async function chargeApprovedClaim(claimId) {
-  if (!stripe4) {
-    return { success: false, error: "Stripe not configured" };
-  }
-  const [claim] = await db.select().from(damageClaims).where(eq24(damageClaims.id, claimId)).limit(1);
-  if (!claim) {
-    return { success: false, error: "Claim not found" };
-  }
-  if (!["approved", "partially_approved", "chef_accepted"].includes(claim.status)) {
-    return { success: false, error: `Cannot charge claim in status: ${claim.status}` };
-  }
-  const chargeAmount = claim.finalAmountCents;
-  if (!chargeAmount || chargeAmount <= 0) {
-    return { success: false, error: "No amount to charge" };
-  }
-  let customerId = null;
-  let paymentMethodId = null;
-  if (claim.bookingType === "kitchen" && claim.kitchenBookingId) {
-    const [booking] = await db.select({
-      stripeCustomerId: kitchenBookings.stripeCustomerId,
-      stripePaymentMethodId: kitchenBookings.stripePaymentMethodId
-    }).from(kitchenBookings).where(eq24(kitchenBookings.id, claim.kitchenBookingId)).limit(1);
-    if (booking) {
-      customerId = booking.stripeCustomerId;
-      paymentMethodId = booking.stripePaymentMethodId;
-    }
-  } else if (claim.bookingType === "storage" && claim.storageBookingId) {
-    const [booking] = await db.select({
-      stripeCustomerId: storageBookings.stripeCustomerId,
-      stripePaymentMethodId: storageBookings.stripePaymentMethodId
-    }).from(storageBookings).where(eq24(storageBookings.id, claim.storageBookingId)).limit(1);
-    if (booking) {
-      customerId = booking.stripeCustomerId;
-      paymentMethodId = booking.stripePaymentMethodId;
-    }
-  }
-  if (!customerId || !paymentMethodId) {
-    await db.update(damageClaims).set({
-      status: "charge_failed",
-      chargeFailedAt: /* @__PURE__ */ new Date(),
-      chargeFailureReason: "No saved payment method available",
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq24(damageClaims.id, claimId));
-    await createHistoryEntry(
-      claimId,
-      claim.status,
-      "charge_failed",
-      "charge_attempt",
-      "system",
-      void 0,
-      "No saved payment method available"
-    );
-    return { success: false, error: "No saved payment method available" };
-  }
-  let managerStripeAccountId = null;
-  const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq24(users.id, claim.managerId)).limit(1);
-  managerStripeAccountId = manager?.stripeConnectAccountId || null;
-  await db.update(damageClaims).set({
-    status: "charge_pending",
-    chargeAttemptedAt: /* @__PURE__ */ new Date(),
-    updatedAt: /* @__PURE__ */ new Date()
-  }).where(eq24(damageClaims.id, claimId));
-  try {
-    const paymentIntentParams = {
-      amount: chargeAmount,
-      currency: "cad",
-      customer: customerId,
-      payment_method: paymentMethodId,
-      off_session: true,
-      confirm: true,
-      metadata: {
-        type: "damage_claim",
-        damage_claim_id: claimId.toString(),
-        booking_type: claim.bookingType,
-        chef_id: claim.chefId.toString(),
-        manager_id: claim.managerId.toString()
-      },
-      statement_descriptor_suffix: "DAMAGE CLAIM"
-    };
-    if (managerStripeAccountId) {
-      paymentIntentParams.transfer_data = {
-        destination: managerStripeAccountId
-      };
-      logger.info(`[DamageClaimService] Using destination charge to manager: ${managerStripeAccountId}`);
-    }
-    const paymentIntent = await stripe4.paymentIntents.create(paymentIntentParams);
-    if (paymentIntent.status === "succeeded") {
-      const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge?.id;
-      await db.update(damageClaims).set({
-        status: "charge_succeeded",
-        stripePaymentIntentId: paymentIntent.id,
-        stripeChargeId: chargeId || null,
-        chargeSucceededAt: /* @__PURE__ */ new Date(),
-        resolvedAt: /* @__PURE__ */ new Date(),
-        resolutionType: "paid",
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq24(damageClaims.id, claimId));
-      await createHistoryEntry(
-        claimId,
-        "charge_pending",
-        "charge_succeeded",
-        "charge_attempt",
-        "stripe_webhook",
-        void 0,
-        `Payment successful: ${paymentIntent.id}`,
-        { paymentIntentId: paymentIntent.id, chargeId }
-      );
-      try {
-        const { createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-        await createPaymentTransaction2({
-          bookingId: claim.bookingType === "storage" ? claim.storageBookingId : claim.kitchenBookingId,
-          bookingType: claim.bookingType,
-          chefId: claim.chefId,
-          managerId: claim.managerId,
-          amount: chargeAmount,
-          baseAmount: chargeAmount,
-          serviceFee: 0,
-          managerRevenue: chargeAmount,
-          currency: "CAD",
-          paymentIntentId: paymentIntent.id,
-          chargeId: chargeId || void 0,
-          status: "succeeded",
-          stripeStatus: "succeeded",
-          metadata: {
-            type: "damage_claim",
-            damage_claim_id: claimId.toString()
-          }
-        }, db);
-        logger.info(`[DamageClaimService] Created payment transaction for damage claim ${claimId}`);
-      } catch (ptError) {
-        logger.error(`[DamageClaimService] Failed to create payment transaction:`, ptError);
-      }
-      logger.info(`[DamageClaimService] Claim ${claimId} charged successfully`, {
-        paymentIntentId: paymentIntent.id,
-        amount: chargeAmount
-      });
-      try {
-        const claimWithDetails = await getClaimById(claimId);
-        const [chefUser] = await db.select({ username: users.username }).from(users).where(eq24(users.id, claim.chefId)).limit(1);
-        if (chefUser?.username && claimWithDetails) {
-          const chargeEmail = generateDamageClaimChargedEmail({
-            chefEmail: chefUser.username,
-            chefName: claimWithDetails.chefName || chefUser.username || "Chef",
-            claimTitle: claim.claimTitle,
-            chargedAmount: `$${(chargeAmount / 100).toFixed(2)}`,
-            locationName: claimWithDetails.locationName || "Unknown Location",
-            claimId: claim.id
-          });
-          await sendEmail(chargeEmail);
-          logger.info(`[DamageClaimService] Sent charge notification to chef ${chefUser.username}`);
-        }
-      } catch (emailError) {
-        logger.error("[DamageClaimService] Failed to send charge email:", emailError);
-      }
-      return {
-        success: true,
-        paymentIntentId: paymentIntent.id,
-        chargeId: chargeId || void 0
-      };
-    } else {
-      await db.update(damageClaims).set({
-        status: "charge_failed",
-        stripePaymentIntentId: paymentIntent.id,
-        chargeFailedAt: /* @__PURE__ */ new Date(),
-        chargeFailureReason: `Payment status: ${paymentIntent.status}`,
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq24(damageClaims.id, claimId));
-      await createHistoryEntry(
-        claimId,
-        "charge_pending",
-        "charge_failed",
-        "charge_attempt",
-        "system",
-        void 0,
-        `Payment requires action: ${paymentIntent.status}`
-      );
-      return { success: false, error: `Payment requires action: ${paymentIntent.status}` };
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    await db.update(damageClaims).set({
-      status: "charge_failed",
-      chargeFailedAt: /* @__PURE__ */ new Date(),
-      chargeFailureReason: errorMessage,
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq24(damageClaims.id, claimId));
-    await createHistoryEntry(
-      claimId,
-      "charge_pending",
-      "charge_failed",
-      "charge_attempt",
-      "system",
-      void 0,
-      `Charge failed: ${errorMessage}`
-    );
-    logger.error(`[DamageClaimService] Charge failed for claim ${claimId}:`, errorMessage);
-    return { success: false, error: errorMessage };
-  }
-}
-async function getClaimById(claimId) {
-  const [row] = await db.select({
-    claim: damageClaims,
-    chefEmail: users.username,
-    chefName: users.username,
-    locationName: locations.name
-  }).from(damageClaims).innerJoin(users, eq24(damageClaims.chefId, users.id)).innerJoin(locations, eq24(damageClaims.locationId, locations.id)).where(eq24(damageClaims.id, claimId)).limit(1);
-  if (!row) return null;
-  const [manager] = await db.select({ username: users.username }).from(users).where(eq24(users.id, row.claim.managerId)).limit(1);
-  let kitchenName = null;
-  let bookingStartDate = null;
-  let bookingEndDate = null;
-  if (row.claim.bookingType === "kitchen" && row.claim.kitchenBookingId) {
-    const [booking] = await db.select({
-      kitchenName: kitchens.name,
-      bookingDate: kitchenBookings.bookingDate
-    }).from(kitchenBookings).innerJoin(kitchens, eq24(kitchenBookings.kitchenId, kitchens.id)).where(eq24(kitchenBookings.id, row.claim.kitchenBookingId)).limit(1);
-    if (booking) {
-      kitchenName = booking.kitchenName;
-      bookingStartDate = booking.bookingDate;
-      bookingEndDate = booking.bookingDate;
-    }
-  } else if (row.claim.bookingType === "storage" && row.claim.storageBookingId) {
-    const [booking] = await db.select({
-      kitchenName: kitchens.name,
-      startDate: storageBookings.startDate,
-      endDate: storageBookings.endDate
-    }).from(storageBookings).innerJoin(storageListings, eq24(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq24(storageListings.kitchenId, kitchens.id)).where(eq24(storageBookings.id, row.claim.storageBookingId)).limit(1);
-    if (booking) {
-      kitchenName = booking.kitchenName;
-      bookingStartDate = booking.startDate;
-      bookingEndDate = booking.endDate;
-    }
-  }
-  const evidence = await db.select().from(damageEvidence).where(eq24(damageEvidence.damageClaimId, claimId));
-  return {
-    ...row.claim,
-    chefEmail: row.chefEmail,
-    chefName: row.chefName,
-    managerName: manager?.username || null,
-    locationName: row.locationName,
-    kitchenName,
-    bookingStartDate,
-    bookingEndDate,
-    evidence
-  };
-}
-async function getManagerClaims(managerId, includeAll = false) {
-  const [manager] = await db.select({ username: users.username }).from(users).where(eq24(users.id, managerId)).limit(1);
-  const managerName = manager?.username || null;
-  const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq24(locations.managerId, managerId));
-  const locationIds = managerLocations.map((l) => l.id);
-  if (locationIds.length === 0) {
-    return [];
-  }
-  const query = db.select({
-    claim: damageClaims,
-    chefEmail: users.username,
-    chefName: users.username,
-    locationName: locations.name
-  }).from(damageClaims).innerJoin(users, eq24(damageClaims.chefId, users.id)).innerJoin(locations, eq24(damageClaims.locationId, locations.id)).where(inArray5(damageClaims.locationId, locationIds)).orderBy(desc12(damageClaims.createdAt));
-  const claims = await query;
-  const result = [];
-  for (const row of claims) {
-    if (!includeAll && ["resolved", "rejected", "expired"].includes(row.claim.status)) {
-      continue;
-    }
-    let kitchenName = null;
-    let bookingStartDate = null;
-    let bookingEndDate = null;
-    if (row.claim.bookingType === "kitchen" && row.claim.kitchenBookingId) {
-      const [booking] = await db.select({
-        kitchenName: kitchens.name,
-        bookingDate: kitchenBookings.bookingDate
-      }).from(kitchenBookings).innerJoin(kitchens, eq24(kitchenBookings.kitchenId, kitchens.id)).where(eq24(kitchenBookings.id, row.claim.kitchenBookingId)).limit(1);
-      if (booking) {
-        kitchenName = booking.kitchenName;
-        bookingStartDate = booking.bookingDate;
-        bookingEndDate = booking.bookingDate;
-      }
-    } else if (row.claim.bookingType === "storage" && row.claim.storageBookingId) {
-      const [booking] = await db.select({
-        kitchenName: kitchens.name,
-        startDate: storageBookings.startDate,
-        endDate: storageBookings.endDate
-      }).from(storageBookings).innerJoin(storageListings, eq24(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq24(storageListings.kitchenId, kitchens.id)).where(eq24(storageBookings.id, row.claim.storageBookingId)).limit(1);
-      if (booking) {
-        kitchenName = booking.kitchenName;
-        bookingStartDate = booking.startDate;
-        bookingEndDate = booking.endDate;
-      }
-    }
-    const evidence = await db.select().from(damageEvidence).where(eq24(damageEvidence.damageClaimId, row.claim.id));
-    result.push({
-      ...row.claim,
-      chefEmail: row.chefEmail,
-      chefName: row.chefName,
-      managerName,
-      locationName: row.locationName,
-      kitchenName,
-      bookingStartDate,
-      bookingEndDate,
-      evidence
-    });
-  }
-  return result;
-}
-async function getClaimHistory(claimId) {
-  return db.select().from(damageClaimHistory).where(eq24(damageClaimHistory.damageClaimId, claimId)).orderBy(desc12(damageClaimHistory.createdAt));
-}
-async function processExpiredClaims() {
-  const now = /* @__PURE__ */ new Date();
-  const results = [];
-  try {
-    const expiredClaims = await db.select().from(damageClaims).where(and15(
-      eq24(damageClaims.status, "submitted"),
-      sql10`${damageClaims.chefResponseDeadline} < ${now}`
-    ));
-    logger.info(`[DamageClaimService] Found ${expiredClaims.length} expired claims to process`);
-    for (const claim of expiredClaims) {
-      try {
-        await db.update(damageClaims).set({
-          status: "approved",
-          approvedAmountCents: claim.claimedAmountCents,
-          finalAmountCents: claim.claimedAmountCents,
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq24(damageClaims.id, claim.id));
-        await createHistoryEntry(
-          claim.id,
-          "submitted",
-          "approved",
-          "deadline_expired",
-          "system",
-          void 0,
-          "Chef did not respond by deadline - claim auto-approved"
-        );
-        results.push({
-          claimId: claim.id,
-          chefId: claim.chefId,
-          managerId: claim.managerId,
-          previousStatus: "submitted",
-          action: "auto_approved"
-        });
-        logger.info(`[DamageClaimService] Auto-approved claim ${claim.id} due to expired deadline`);
-        try {
-          const [chefUser] = await db.select({ username: users.username }).from(users).where(eq24(users.id, claim.chefId)).limit(1);
-          const [managerUser] = await db.select({ username: users.username }).from(users).where(eq24(users.id, claim.managerId)).limit(1);
-          if (chefUser?.username) {
-            const chefEmail = generateDamageClaimDecisionEmail({
-              recipientEmail: chefUser.username,
-              recipientName: chefUser.username,
-              recipientRole: "chef",
-              claimTitle: claim.claimTitle,
-              claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-              decision: "approved",
-              finalAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-              decisionReason: "You did not respond by the deadline. The claim has been automatically approved.",
-              claimId: claim.id
-            });
-            await sendEmail(chefEmail);
-          }
-          if (managerUser?.username) {
-            const managerEmail = generateDamageClaimDecisionEmail({
-              recipientEmail: managerUser.username,
-              recipientName: managerUser.username,
-              recipientRole: "manager",
-              claimTitle: claim.claimTitle,
-              claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-              decision: "approved",
-              finalAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-              decisionReason: "Chef did not respond by the deadline. The claim has been automatically approved. You can now charge the chef.",
-              claimId: claim.id
-            });
-            await sendEmail(managerEmail);
-          }
-        } catch (emailError) {
-          logger.error(`[DamageClaimService] Failed to send deadline expiry emails for claim ${claim.id}:`, emailError);
-        }
-      } catch (claimError) {
-        logger.error(`[DamageClaimService] Error processing expired claim ${claim.id}:`, claimError);
-      }
-    }
-    return results;
-  } catch (error) {
-    logger.error("[DamageClaimService] Error in processExpiredClaims:", error);
-    return results;
-  }
-}
-var stripeSecretKey4, stripe4, damageClaimService;
-var init_damage_claim_service = __esm({
-  "server/services/damage-claim-service.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    init_logger();
-    init_email();
-    stripeSecretKey4 = process.env.STRIPE_SECRET_KEY;
-    stripe4 = stripeSecretKey4 ? new Stripe4(stripeSecretKey4, {
-      apiVersion: "2025-12-15.clover"
-    }) : null;
-    damageClaimService = {
-      createDamageClaim,
-      updateDraftClaim,
-      deleteDraftClaim,
-      submitClaim,
-      addEvidence,
-      removeEvidence,
-      getChefPendingClaims,
-      chefRespondToClaim,
-      getDisputedClaims,
-      adminDecision,
-      chargeApprovedClaim,
-      getClaimById,
-      getManagerClaims,
-      getClaimHistory,
-      processExpiredClaims
-    };
-  }
-});
-
 // server/services/invoice-service.ts
 var invoice_service_exports = {};
 __export(invoice_service_exports, {
+  generateDamageClaimInvoicePDF: () => generateDamageClaimInvoicePDF,
   generateInvoicePDF: () => generateInvoicePDF,
   generateStorageInvoicePDF: () => generateStorageInvoicePDF
 });
@@ -18166,6 +19350,90 @@ async function generateStorageInvoicePDF(transaction, storageBooking, chef, exte
     }
   });
 }
+async function generateDamageClaimInvoicePDF(claim) {
+  const { users: users5, locations: locations5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+  return new Promise(async (resolve, reject) => {
+    try {
+      const chunks = [];
+      const doc = new PDFDocument({ margin: 50 });
+      doc.on("data", (chunk) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      const [chef] = await db.select().from(users5).where(eq25(users5.id, claim.chefId)).limit(1);
+      const [location] = await db.select().from(locations5).where(eq25(locations5.id, claim.locationId)).limit(1);
+      const chargeDate = claim.chargeSucceededAt ? new Date(claim.chargeSucceededAt) : /* @__PURE__ */ new Date();
+      const amountCents = claim.finalAmountCents || claim.claimedAmountCents;
+      doc.fontSize(24).font("Helvetica-Bold").text("DAMAGE CLAIM INVOICE", { align: "center" });
+      doc.moveDown(0.5);
+      doc.fontSize(10).font("Helvetica").fillColor("#6b7280").text("LocalCooks Platform", { align: "center" });
+      doc.fillColor("#000000");
+      doc.moveDown(2);
+      doc.fontSize(12).font("Helvetica-Bold").text("Invoice Details");
+      doc.moveDown(0.5);
+      doc.fontSize(10).font("Helvetica");
+      doc.text(`Invoice Number: DC-${claim.id.toString().padStart(6, "0")}`);
+      doc.text(`Date: ${chargeDate.toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" })}`);
+      doc.text(`Payment Status: Paid`);
+      doc.moveDown(1.5);
+      doc.fontSize(12).font("Helvetica-Bold").text("Billed To");
+      doc.moveDown(0.5);
+      doc.fontSize(10).font("Helvetica");
+      doc.text(chef?.fullName || chef?.username || "Chef");
+      doc.text(chef?.email || "");
+      doc.moveDown(1.5);
+      doc.fontSize(12).font("Helvetica-Bold").text("Location");
+      doc.moveDown(0.5);
+      doc.fontSize(10).font("Helvetica");
+      doc.text(location?.name || "Kitchen Location");
+      doc.text(location?.address || "");
+      doc.moveDown(1.5);
+      doc.fontSize(12).font("Helvetica-Bold").text("Damage Claim Details");
+      doc.moveDown(0.5);
+      doc.fontSize(10).font("Helvetica");
+      doc.text(`Claim Title: ${claim.claimTitle}`);
+      doc.text(`Booking Type: ${claim.bookingType === "storage" ? "Storage" : "Kitchen"}`);
+      doc.text(`Damage Date: ${new Date(claim.damageDate).toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" })}`);
+      doc.moveDown(0.5);
+      doc.text("Description:", { continued: false });
+      doc.text(claim.claimDescription, { width: 450 });
+      doc.moveDown(1.5);
+      doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke("#e5e7eb");
+      doc.moveDown(0.5);
+      const tableY = doc.y;
+      doc.fontSize(10).font("Helvetica-Bold");
+      doc.text("Description", 50, tableY);
+      doc.text("Amount", 450, tableY, { align: "right", width: 100 });
+      doc.moveDown(0.5);
+      doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke("#e5e7eb");
+      doc.moveDown(0.5);
+      doc.font("Helvetica");
+      const itemY = doc.y;
+      doc.text("Damage Claim Payment", 50, itemY);
+      doc.text(`$${(amountCents / 100).toFixed(2)} CAD`, 450, itemY, { align: "right", width: 100 });
+      doc.moveDown(1);
+      doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke("#e5e7eb");
+      doc.moveDown(0.5);
+      doc.font("Helvetica-Bold");
+      const totalY = doc.y;
+      doc.text("Total Charged", 50, totalY);
+      doc.text(`$${(amountCents / 100).toFixed(2)} CAD`, 450, totalY, { align: "right", width: 100 });
+      doc.moveDown(2);
+      doc.fontSize(10).font("Helvetica");
+      doc.text("Payment Method: Credit/Debit Card");
+      doc.text(`Transaction Date: ${chargeDate.toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}`);
+      if (claim.stripePaymentIntentId) {
+        doc.text(`Reference: ${claim.stripePaymentIntentId.slice(-8).toUpperCase()}`);
+      }
+      const dcPageHeight = doc.page.height;
+      const dcFooterY = dcPageHeight - 80;
+      doc.moveTo(50, dcFooterY).lineTo(550, dcFooterY).stroke("#e5e7eb");
+      doc.fontSize(9).fillColor("#6b7280").text("For questions, contact support@localcook.shop", 50, dcFooterY + 15, { align: "center", width: 500 });
+      doc.fillColor("#000000");
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
 var init_invoice_service = __esm({
   "server/services/invoice-service.ts"() {
     "use strict";
@@ -18561,13 +19829,14 @@ var init_payout_statement_service = __esm({
 var storage_checkout_service_exports = {};
 __export(storage_checkout_service_exports, {
   addCheckoutPhotos: () => addCheckoutPhotos,
+  getCheckoutHistory: () => getCheckoutHistory,
   getCheckoutStatus: () => getCheckoutStatus,
   getPendingCheckoutReviews: () => getPendingCheckoutReviews,
   isCheckoutInProgress: () => isCheckoutInProgress,
   processCheckoutApproval: () => processCheckoutApproval,
   requestStorageCheckout: () => requestStorageCheckout
 });
-import { eq as eq26, desc as desc13 } from "drizzle-orm";
+import { eq as eq26, desc as desc13, and as and16, or as or3, inArray as inArray6, isNotNull as isNotNull2 } from "drizzle-orm";
 async function requestStorageCheckout(storageBookingId, chefId, checkoutNotes, checkoutPhotoUrls) {
   try {
     if (!storageBookingId || storageBookingId <= 0) {
@@ -18585,6 +19854,14 @@ async function requestStorageCheckout(storageBookingId, chefId, checkoutNotes, c
     }
     if (booking.status === "cancelled") {
       return { success: false, error: "Cannot checkout a cancelled booking" };
+    }
+    if (booking.status === "pending") {
+      return { success: false, error: "Cannot checkout a pending booking. The booking must be confirmed first." };
+    }
+    const now = /* @__PURE__ */ new Date();
+    const startDate = new Date(booking.startDate);
+    if (startDate > now) {
+      return { success: false, error: "Cannot checkout before the booking start date. Please wait until your booking period begins." };
     }
     const currentCheckoutStatus = booking.checkoutStatus;
     if (currentCheckoutStatus === "checkout_requested") {
@@ -18795,6 +20072,78 @@ async function getPendingCheckoutReviews(locationId) {
     return [];
   }
 }
+async function getCheckoutHistory(locationIds, limit = 20) {
+  try {
+    const today = /* @__PURE__ */ new Date();
+    today.setHours(0, 0, 0, 0);
+    const results = await db.select({
+      storageBookingId: storageBookings.id,
+      storageListingId: storageBookings.storageListingId,
+      storageName: storageListings.name,
+      storageType: storageListings.storageType,
+      kitchenId: kitchens.id,
+      kitchenName: kitchens.name,
+      locationId: locations.id,
+      locationName: locations.name,
+      chefId: storageBookings.chefId,
+      chefEmail: users.username,
+      startDate: storageBookings.startDate,
+      endDate: storageBookings.endDate,
+      totalPrice: storageBookings.totalPrice,
+      checkoutStatus: storageBookings.checkoutStatus,
+      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
+      checkoutApprovedAt: storageBookings.checkoutApprovedAt,
+      checkoutDeniedAt: storageBookings.checkoutDeniedAt,
+      checkoutDenialReason: storageBookings.checkoutDenialReason,
+      checkoutNotes: storageBookings.checkoutNotes,
+      checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
+    }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq26(kitchens.locationId, locations.id)).leftJoin(users, eq26(storageBookings.chefId, users.id)).where(
+      and16(
+        inArray6(locations.id, locationIds),
+        or3(
+          eq26(storageBookings.checkoutStatus, "completed"),
+          // Include bookings that were denied (status reset to 'active' but have denial reason)
+          and16(
+            eq26(storageBookings.checkoutStatus, "active"),
+            isNotNull2(storageBookings.checkoutDeniedAt)
+          )
+        )
+      )
+    ).orderBy(desc13(storageBookings.checkoutApprovedAt), desc13(storageBookings.checkoutDeniedAt)).limit(limit);
+    return results.map((r) => {
+      const endDate = new Date(r.endDate);
+      const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1e3 * 60 * 60 * 24));
+      return {
+        storageBookingId: r.storageBookingId,
+        storageListingId: r.storageListingId,
+        storageName: r.storageName || "Storage",
+        storageType: r.storageType || "dry",
+        kitchenId: r.kitchenId,
+        kitchenName: r.kitchenName || "Kitchen",
+        locationId: r.locationId,
+        locationName: r.locationName || "Location",
+        chefId: r.chefId,
+        chefEmail: r.chefEmail,
+        chefName: r.chefEmail,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        totalPrice: r.totalPrice,
+        checkoutStatus: r.checkoutStatus,
+        checkoutRequestedAt: r.checkoutRequestedAt,
+        checkoutApprovedAt: r.checkoutApprovedAt,
+        checkoutDeniedAt: r.checkoutDeniedAt,
+        checkoutDenialReason: r.checkoutDenialReason,
+        checkoutNotes: r.checkoutNotes,
+        checkoutPhotoUrls: r.checkoutPhotoUrls || [],
+        daysUntilEnd,
+        isOverdue: daysUntilEnd < 0
+      };
+    });
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error getting checkout history:`, error);
+    return [];
+  }
+}
 async function getCheckoutStatus(storageBookingId) {
   try {
     const [booking] = await db.select({
@@ -18989,8 +20338,8 @@ __export(manager_exports, {
   default: () => manager_default
 });
 import { Router as Router14 } from "express";
-import { eq as eq27, inArray as inArray6, and as and16, desc as desc14, sql as sql12, or as or3, gte as gte3 } from "drizzle-orm";
-import { format as format3 } from "date-fns";
+import { eq as eq27, inArray as inArray7, and as and17, desc as desc14, sql as sql12, or as or4, gte as gte3, lte as lte3 } from "drizzle-orm";
+import { format as format4 } from "date-fns";
 async function getManagerIdForBooking(bookingId, bookingType, db2) {
   if (bookingType === "kitchen" || bookingType === "bundle") {
     const [row] = await db2.select({ managerId: locations.managerId }).from(kitchenBookings).innerJoin(kitchens, eq27(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).where(eq27(kitchenBookings.id, bookingId)).limit(1);
@@ -19177,7 +20526,7 @@ var init_manager = __esm({
         if (!storageBooking) {
           return res.status(404).json({ error: "Storage booking not found" });
         }
-        const managerOwnsLocation = await db.select({ id: locations.id }).from(locations).where(and16(
+        const managerOwnsLocation = await db.select({ id: locations.id }).from(locations).where(and17(
           eq27(locations.id, storageBooking.locationId),
           eq27(locations.managerId, managerId)
         )).limit(1);
@@ -19194,7 +20543,7 @@ var init_manager = __esm({
           metadata: paymentTransactions.metadata,
           stripeProcessingFee: paymentTransactions.stripeProcessingFee,
           managerRevenue: paymentTransactions.managerRevenue
-        }).from(paymentTransactions).where(and16(
+        }).from(paymentTransactions).where(and17(
           eq27(paymentTransactions.bookingId, storageBookingId),
           eq27(paymentTransactions.bookingType, "storage"),
           eq27(paymentTransactions.status, "succeeded")
@@ -19308,7 +20657,7 @@ var init_manager = __esm({
           id: locations5.id,
           managerId: locations5.managerId,
           name: locations5.name
-        }).from(locations5).where(and16(
+        }).from(locations5).where(and17(
           eq27(locations5.id, kitchen.locationId),
           eq27(locations5.managerId, managerId)
         )).limit(1);
@@ -19325,7 +20674,7 @@ var init_manager = __esm({
           metadata: paymentTransactions.metadata,
           stripeProcessingFee: paymentTransactions.stripeProcessingFee,
           managerRevenue: paymentTransactions.managerRevenue
-        }).from(paymentTransactions).where(and16(
+        }).from(paymentTransactions).where(and17(
           eq27(paymentTransactions.bookingId, overstayRecord.storageBookingId),
           eq27(paymentTransactions.bookingType, "storage"),
           eq27(paymentTransactions.status, "succeeded")
@@ -19938,7 +21287,7 @@ var init_manager = __esm({
           chefName: users.username,
           chefEmail: users.username
         }).from(kitchenBookings).innerJoin(kitchens, eq27(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).leftJoin(users, eq27(kitchenBookings.chefId, users.id)).where(
-          and16(
+          and17(
             eq27(locations.managerId, managerId),
             eq27(kitchenBookings.paymentStatus, "paid"),
             sql12`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
@@ -20022,7 +21371,7 @@ var init_manager = __esm({
           chefName: users.username,
           chefEmail: users.username
         }).from(kitchenBookings).innerJoin(kitchens, eq27(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).leftJoin(users, eq27(kitchenBookings.chefId, users.id)).where(
-          and16(
+          and17(
             eq27(locations.managerId, managerId),
             eq27(kitchenBookings.paymentStatus, "paid"),
             sql12`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
@@ -20451,7 +21800,7 @@ var init_manager = __esm({
           application: portalUserApplications,
           location: locations,
           user: users5
-        }).from(portalUserApplications).innerJoin(locations, eq27(portalUserApplications.locationId, locations.id)).innerJoin(users5, eq27(portalUserApplications.userId, users5.id)).where(inArray6(portalUserApplications.locationId, locationIds));
+        }).from(portalUserApplications).innerJoin(locations, eq27(portalUserApplications.locationId, locations.id)).innerJoin(users5, eq27(portalUserApplications.userId, users5.id)).where(inArray7(portalUserApplications.locationId, locationIds));
         const formatted = applications4.map((app2) => ({
           ...app2.application,
           location: { id: app2.location.id, name: app2.location.name, address: app2.location.address },
@@ -20460,7 +21809,7 @@ var init_manager = __esm({
           id: app2.application.id
           // Ensure ID is correct
         }));
-        const accessRecords = await db.select().from(portalUserLocationAccess).where(inArray6(portalUserLocationAccess.locationId, locationIds));
+        const accessRecords = await db.select().from(portalUserLocationAccess).where(inArray7(portalUserLocationAccess.locationId, locationIds));
         res.json({ applications: formatted, accessCount: accessRecords.length });
       } catch (error) {
         console.error("Error getting apps:", error);
@@ -20547,7 +21896,7 @@ var init_manager = __esm({
           const chefUser = await userService.getUser(booking.chefId);
           if (chefUser) {
             const [chefApp] = await db.select({ fullName: chefKitchenApplications.fullName, phone: chefKitchenApplications.phone }).from(chefKitchenApplications).where(
-              and16(
+              and17(
                 eq27(chefKitchenApplications.chefId, booking.chefId),
                 eq27(chefKitchenApplications.locationId, location.id)
               )
@@ -20599,10 +21948,10 @@ var init_manager = __esm({
             stripeProcessingFee: paymentTransactions.stripeProcessingFee,
             paidAt: paymentTransactions.paidAt
           }).from(paymentTransactions).where(
-            and16(
+            and17(
               eq27(paymentTransactions.bookingId, id),
               // Include both 'kitchen' and 'bundle' booking types for accurate payment data
-              or3(
+              or4(
                 eq27(paymentTransactions.bookingType, "kitchen"),
                 eq27(paymentTransactions.bookingType, "bundle")
               )
@@ -20985,7 +22334,7 @@ var init_manager = __esm({
         if (minimumBookingWindowHours !== void 0 && (typeof minimumBookingWindowHours !== "number" || minimumBookingWindowHours < 0 || minimumBookingWindowHours > 168)) {
           return res.status(400).json({ error: "Minimum booking window hours must be between 0 and 168 hours" });
         }
-        const locationResults = await db.select().from(locations).where(and16(eq27(locations.id, locationIdNum), eq27(locations.managerId, user.id)));
+        const locationResults = await db.select().from(locations).where(and17(eq27(locations.id, locationIdNum), eq27(locations.managerId, user.id)));
         const location = locationResults[0];
         if (!location) {
           console.error("[PUT] Location not found or access denied:", {
@@ -21550,7 +22899,7 @@ var init_manager = __esm({
         }
         const { kitchenAvailability: kitchenAvailability2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
         const [existing] = await db.select().from(kitchenAvailability2).where(
-          and16(
+          and17(
             eq27(kitchenAvailability2.kitchenId, kitchenId),
             eq27(kitchenAvailability2.dayOfWeek, dayOfWeek)
           )
@@ -21600,7 +22949,7 @@ var init_manager = __esm({
           kitchenName: kitchens.name,
           locationId: locations.id
         }).from(pendingStorageExtensions).innerJoin(storageBookings, eq27(pendingStorageExtensions.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).innerJoin(users, eq27(storageBookings.chefId, users.id)).where(
-          and16(
+          and17(
             eq27(locations.managerId, managerId),
             eq27(pendingStorageExtensions.status, "paid")
             // Only show paid extensions awaiting approval
@@ -22055,10 +23404,30 @@ var init_manager = __esm({
         }
         const { getPendingCheckoutReviews: getPendingCheckoutReviews2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
         const allPending = await getPendingCheckoutReviews2();
+        logger.info(`[StorageCheckouts] Manager ${managerId} locations: ${locationIds.join(", ")}`);
+        logger.info(`[StorageCheckouts] All pending checkouts: ${allPending.length}`);
         const pendingCheckouts = allPending.filter((c) => locationIds.includes(c.locationId));
+        logger.info(`[StorageCheckouts] Filtered pending checkouts for manager: ${pendingCheckouts.length}`);
         res.json({ pendingCheckouts });
       } catch (error) {
         logger.error("Error fetching pending checkouts:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router14.get("/storage-checkouts/history", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const limit = parseInt(req.query.limit) || 20;
+        const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq27(locations.managerId, managerId));
+        const locationIds = managerLocations.map((l) => l.id);
+        if (locationIds.length === 0) {
+          return res.json({ checkoutHistory: [] });
+        }
+        const { getCheckoutHistory: getCheckoutHistory2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
+        const checkoutHistory = await getCheckoutHistory2(locationIds, limit);
+        res.json({ checkoutHistory });
+      } catch (error) {
+        logger.error("Error fetching checkout history:", error);
         return errorResponse(res, error);
       }
     });
@@ -22307,6 +23676,7 @@ var init_manager = __esm({
         if (locationIds.length === 0) {
           return res.json({ bookings: [], deadlineDays });
         }
+        const now = /* @__PURE__ */ new Date();
         const recentKitchenBookings = await db.select({
           id: kitchenBookings.id,
           chefId: kitchenBookings.chefId,
@@ -22319,9 +23689,12 @@ var init_manager = __esm({
           kitchenName: kitchens.name,
           locationName: locations.name
         }).from(kitchenBookings).innerJoin(kitchens, eq27(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).innerJoin(users, eq27(kitchenBookings.chefId, users.id)).where(
-          and16(
-            inArray6(locations.id, locationIds),
+          and17(
+            inArray7(locations.id, locationIds),
             gte3(kitchenBookings.bookingDate, cutoffDate),
+            // Not older than deadline
+            lte3(kitchenBookings.bookingDate, now),
+            // Must be in the past (booking date <= now)
             eq27(kitchenBookings.status, "confirmed")
           )
         ).orderBy(desc14(kitchenBookings.bookingDate)).limit(50);
@@ -22335,9 +23708,12 @@ var init_manager = __esm({
           chefName: users.username,
           locationName: locations.name
         }).from(storageBookings).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).innerJoin(users, eq27(storageBookings.chefId, users.id)).where(
-          and16(
-            inArray6(locations.id, locationIds),
+          and17(
+            inArray7(locations.id, locationIds),
             gte3(storageBookings.endDate, cutoffDate),
+            // Not older than deadline
+            lte3(storageBookings.endDate, now),
+            // Must be in the past (end date <= now)
             eq27(storageBookings.status, "confirmed")
           )
         ).orderBy(desc14(storageBookings.endDate)).limit(50);
@@ -22352,7 +23728,7 @@ var init_manager = __esm({
             startDate: b.bookingDate,
             endDate: b.bookingDate,
             status: b.status,
-            label: `Kitchen #${b.id} - ${b.chefName} @ ${b.kitchenName} (${format3(new Date(b.bookingDate), "MMM d")})`
+            label: `Kitchen #${b.id} - ${b.chefName} @ ${b.kitchenName} (${format4(new Date(b.bookingDate), "MMM d")})`
           })),
           ...recentStorageBookings.map((b) => ({
             id: b.id,
@@ -22364,7 +23740,7 @@ var init_manager = __esm({
             startDate: b.startDate,
             endDate: b.endDate,
             status: b.status,
-            label: `Storage #${b.id} - ${b.chefName} @ ${b.locationName} (${format3(new Date(b.endDate), "MMM d")})`
+            label: `Storage #${b.id} - ${b.chefName} @ ${b.locationName} (${format4(new Date(b.endDate), "MMM d")})`
           }))
         ].sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
         res.json({ bookings, deadlineDays });
@@ -23185,44 +24561,77 @@ async function requireNoUnpaidPenalties(req, res, next) {
     const chefId = req.neonUser.id;
     const { hasChefUnpaidPenalties: hasChefUnpaidPenalties2, getChefUnpaidPenalties: getChefUnpaidPenalties2 } = await Promise.resolve().then(() => (init_overstay_penalty_service(), overstay_penalty_service_exports));
     const hasUnpaidPenalties = await hasChefUnpaidPenalties2(chefId);
+    const { hasChefUnpaidDamageClaims: hasChefUnpaidDamageClaims2, getChefUnpaidDamageClaims: getChefUnpaidDamageClaims2 } = await Promise.resolve().then(() => (init_damage_claim_service(), damage_claim_service_exports));
+    const hasUnpaidClaims = await hasChefUnpaidDamageClaims2(chefId);
+    if (!hasUnpaidPenalties && !hasUnpaidClaims) {
+      return next();
+    }
+    const response = {
+      error: "Access denied. You have unpaid obligations.",
+      code: "UNPAID_OBLIGATIONS",
+      totalOwedCents: 0,
+      totalOwed: "$0.00",
+      message: ""
+    };
+    let totalPenaltiesOwed = 0;
+    let totalClaimsOwed = 0;
     if (hasUnpaidPenalties) {
       const unpaidPenalties = await getChefUnpaidPenalties2(chefId);
-      const totalOwedCents = unpaidPenalties.reduce((sum, p) => sum + p.penaltyAmountCents, 0);
-      const totalOwedDollars = (totalOwedCents / 100).toFixed(2);
-      const immediatePaymentPenalties = unpaidPenalties.filter(
-        (p) => p.requiresImmediatePayment
-      );
-      console.log(`[requireNoUnpaidPenalties] Chef ${chefId} blocked: ${unpaidPenalties.length} unpaid penalties, $${totalOwedDollars} owed`);
-      return res.status(403).json({
-        error: "Access denied. You have unpaid overstay penalties.",
-        code: "UNPAID_OVERSTAY_PENALTIES",
-        penalties: {
-          totalCount: unpaidPenalties.length,
-          totalOwedCents,
-          totalOwed: `$${totalOwedDollars}`,
-          items: unpaidPenalties.map((p) => ({
-            overstayId: p.overstayId,
-            storageName: p.storageName,
-            kitchenName: p.kitchenName,
-            daysOverdue: p.daysOverdue,
-            status: p.status,
-            penaltyAmountCents: p.penaltyAmountCents,
-            penaltyAmount: `$${(p.penaltyAmountCents / 100).toFixed(2)}`,
-            requiresImmediatePayment: p.requiresImmediatePayment
-          })),
-          canPayNow: immediatePaymentPenalties.length > 0,
-          payNowItems: immediatePaymentPenalties.map((p) => ({
-            overstayId: p.overstayId,
-            storageName: p.storageName,
-            penaltyAmount: `$${(p.penaltyAmountCents / 100).toFixed(2)}`
-          }))
-        },
-        message: `You have ${unpaidPenalties.length} unpaid overstay penalty(ies) totaling $${totalOwedDollars}. Please resolve these penalties to continue using the portal.`
-      });
+      totalPenaltiesOwed = unpaidPenalties.reduce((sum, p) => sum + p.penaltyAmountCents, 0);
+      const immediatePaymentPenalties = unpaidPenalties.filter((p) => p.requiresImmediatePayment);
+      response.overstayPenalties = {
+        totalCount: unpaidPenalties.length,
+        totalOwedCents: totalPenaltiesOwed,
+        totalOwed: `$${(totalPenaltiesOwed / 100).toFixed(2)}`,
+        items: unpaidPenalties.map((p) => ({
+          overstayId: p.overstayId,
+          storageName: p.storageName,
+          kitchenName: p.kitchenName,
+          daysOverdue: p.daysOverdue,
+          status: p.status,
+          penaltyAmountCents: p.penaltyAmountCents,
+          penaltyAmount: `$${(p.penaltyAmountCents / 100).toFixed(2)}`,
+          requiresImmediatePayment: p.requiresImmediatePayment
+        })),
+        canPayNow: immediatePaymentPenalties.length > 0
+      };
     }
-    next();
+    if (hasUnpaidClaims) {
+      const unpaidClaims = await getChefUnpaidDamageClaims2(chefId);
+      totalClaimsOwed = unpaidClaims.reduce((sum, c) => sum + c.finalAmountCents, 0);
+      const immediatePaymentClaims = unpaidClaims.filter((c) => c.requiresImmediatePayment);
+      response.damageClaims = {
+        totalCount: unpaidClaims.length,
+        totalOwedCents: totalClaimsOwed,
+        totalOwed: `$${(totalClaimsOwed / 100).toFixed(2)}`,
+        items: unpaidClaims.map((c) => ({
+          claimId: c.claimId,
+          claimTitle: c.claimTitle,
+          kitchenName: c.kitchenName,
+          bookingType: c.bookingType,
+          status: c.status,
+          amountCents: c.finalAmountCents,
+          amount: `$${(c.finalAmountCents / 100).toFixed(2)}`,
+          requiresImmediatePayment: c.requiresImmediatePayment
+        })),
+        canPayNow: immediatePaymentClaims.length > 0
+      };
+    }
+    const grandTotal = totalPenaltiesOwed + totalClaimsOwed;
+    response.totalOwedCents = grandTotal;
+    response.totalOwed = `$${(grandTotal / 100).toFixed(2)}`;
+    const parts = [];
+    if (hasUnpaidPenalties) {
+      parts.push(`${response.overstayPenalties.totalCount} overstay penalty(ies)`);
+    }
+    if (hasUnpaidClaims) {
+      parts.push(`${response.damageClaims.totalCount} damage claim(s)`);
+    }
+    response.message = `You have ${parts.join(" and ")} totaling ${response.totalOwed}. Please resolve these to continue using the portal.`;
+    console.log(`[requireNoUnpaidPenalties] Chef ${chefId} blocked: ${parts.join(" and ")}, $${(grandTotal / 100).toFixed(2)} owed`);
+    return res.status(403).json(response);
   } catch (error) {
-    console.error("[requireNoUnpaidPenalties] Error checking penalties:", error);
+    console.error("[requireNoUnpaidPenalties] Error checking obligations:", error);
     next();
   }
 }
@@ -23272,7 +24681,7 @@ __export(kitchens_exports, {
   default: () => kitchens_default
 });
 import { Router as Router17 } from "express";
-import { eq as eq30, inArray as inArray7, desc as desc17, and as and18 } from "drizzle-orm";
+import { eq as eq30, inArray as inArray8, desc as desc17, and as and19 } from "drizzle-orm";
 var router17, kitchens_default;
 var init_kitchens = __esm({
   "server/routes/kitchens.ts"() {
@@ -23387,7 +24796,7 @@ var init_kitchens = __esm({
         if (!location) {
           return res.status(404).json({ error: "Location not found" });
         }
-        const chefApp = await db.select().from(applications).where(and18(
+        const chefApp = await db.select().from(applications).where(and19(
           eq30(applications.userId, chefId),
           eq30(applications.status, "approved")
         )).orderBy(desc17(applications.createdAt)).limit(1);
@@ -23426,7 +24835,7 @@ var init_kitchens = __esm({
         if (locationIds.length === 0) {
           return res.json([]);
         }
-        const allLocations = await db.select().from(locations).where(inArray7(locations.id, locationIds));
+        const allLocations = await db.select().from(locations).where(inArray8(locations.id, locationIds));
         const profiles = await Promise.all(
           locationIds.map(async (locationId) => {
             const profile = await chefService.getProfile(chefId, locationId);
@@ -23787,7 +25196,7 @@ __export(bookings_exports, {
   default: () => bookings_default
 });
 import { Router as Router18 } from "express";
-import { eq as eq31, and as and19 } from "drizzle-orm";
+import { eq as eq31, and as and20 } from "drizzle-orm";
 function getBaseUrl(req) {
   const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5001";
   const isLocalhost = host.includes("localhost") || host.includes("127.0.0.1");
@@ -23812,6 +25221,7 @@ var init_bookings = __esm({
     init_chef_service();
     init_phone_utils();
     init_sms();
+    init_invoice_service();
     init_overstay_penalty_service();
     init_damage_claim_service();
     router18 = Router18();
@@ -24518,7 +25928,7 @@ var init_bookings = __esm({
             stripeProcessingFee: paymentTransactions.stripeProcessingFee,
             paidAt: paymentTransactions.paidAt
           }).from(paymentTransactions).where(
-            and19(
+            and20(
               eq31(paymentTransactions.bookingId, id),
               eq31(paymentTransactions.bookingType, "kitchen")
             )
@@ -24620,7 +26030,7 @@ var init_bookings = __esm({
           cancellationPolicyHours: locations.cancellationPolicyHours,
           cancellationPolicyMessage: locations.cancellationPolicyMessage
         }).from(kitchenBookings).innerJoin(kitchens, eq31(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq31(kitchens.locationId, locations.id)).where(
-          and19(
+          and20(
             eq31(kitchenBookings.id, id),
             eq31(kitchenBookings.chefId, req.neonUser.id)
           )
@@ -25570,8 +26980,8 @@ var init_bookings = __esm({
     router18.get("/chef/overstay-penalties", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const { getChefPendingPenalties: getChefPendingPenalties2 } = await Promise.resolve().then(() => (init_overstay_penalty_service(), overstay_penalty_service_exports));
-        const penalties = await getChefPendingPenalties2(chefId);
+        const { getChefAllPenalties: getChefAllPenalties2 } = await Promise.resolve().then(() => (init_overstay_penalty_service(), overstay_penalty_service_exports));
+        const penalties = await getChefAllPenalties2(chefId);
         res.json(penalties);
       } catch (error) {
         logger.error("Error fetching chef overstay penalties:", error);
@@ -25610,6 +27020,32 @@ var init_bookings = __esm({
       } catch (error) {
         logger.error("Error fetching chef damage claims:", error);
         res.status(500).json({ error: "Failed to fetch damage claims" });
+      }
+    });
+    router18.get("/chef/damage-claims/:id/invoice", requireChef, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const claimId = parseInt(req.params.id);
+        if (isNaN(claimId)) {
+          return res.status(400).json({ error: "Invalid claim ID" });
+        }
+        const claim = await damageClaimService.getClaimById(claimId);
+        if (!claim) {
+          return res.status(404).json({ error: "Claim not found" });
+        }
+        if (claim.chefId !== chefId) {
+          return res.status(403).json({ error: "Not authorized to view this claim" });
+        }
+        if (claim.status !== "charge_succeeded") {
+          return res.status(400).json({ error: "Invoice only available for charged claims" });
+        }
+        const pdfBuffer = await generateDamageClaimInvoicePDF(claim);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="damage-claim-invoice-${claimId}.pdf"`);
+        res.send(pdfBuffer);
+      } catch (error) {
+        logger.error("Error downloading damage claim invoice:", error);
+        res.status(500).json({ error: "Failed to download invoice" });
       }
     });
     router18.get("/chef/damage-claims/:id", requireChef, async (req, res) => {
@@ -27975,7 +29411,7 @@ __export(webhooks_exports, {
 });
 import { Router as Router22 } from "express";
 import Stripe6 from "stripe";
-import { eq as eq33, and as and20, ne as ne6, notInArray } from "drizzle-orm";
+import { eq as eq33, and as and21, ne as ne6, notInArray } from "drizzle-orm";
 async function handleCheckoutSessionCompleted(session, webhookEventId) {
   if (!pool) {
     logger.error("Database pool not available for webhook");
@@ -28546,7 +29982,7 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
             paymentStatus: newPaymentStatus,
             updatedAt: /* @__PURE__ */ new Date()
           }).where(
-            and20(
+            and21(
               eq33(kitchenBookings.id, bookingId),
               eq33(kitchenBookings.paymentStatus, "pending")
             )
@@ -28913,7 +30349,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
       let managerConnectAccountId;
       try {
         const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(
-          and20(
+          and21(
             eq33(users.id, transaction.manager_id),
             ne6(users.stripeConnectAccountId, "")
           )
@@ -28969,7 +30405,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         paymentStatus: "paid",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and20(
+        and21(
           eq33(kitchenBookings.paymentIntentId, paymentIntent.id),
           ne6(kitchenBookings.paymentStatus, "paid")
         )
@@ -28978,7 +30414,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         paymentStatus: "paid",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and20(
+        and21(
           eq33(storageBookings.paymentIntentId, paymentIntent.id),
           ne6(storageBookings.paymentStatus, "paid")
         )
@@ -28987,7 +30423,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         paymentStatus: "paid",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and20(
+        and21(
           eq33(equipmentBookings.paymentIntentId, paymentIntent.id),
           ne6(equipmentBookings.paymentStatus, "paid")
         )
@@ -29103,7 +30539,7 @@ async function handlePaymentIntentFailed(paymentIntent, webhookEventId) {
         paymentStatus: "failed",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and20(
+        and21(
           eq33(kitchenBookings.paymentIntentId, paymentIntent.id),
           notInArray(kitchenBookings.paymentStatus, excludedStatuses)
         )
@@ -29112,7 +30548,7 @@ async function handlePaymentIntentFailed(paymentIntent, webhookEventId) {
         paymentStatus: "failed",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and20(
+        and21(
           eq33(storageBookings.paymentIntentId, paymentIntent.id),
           notInArray(storageBookings.paymentStatus, excludedStatuses)
         )
@@ -29121,7 +30557,7 @@ async function handlePaymentIntentFailed(paymentIntent, webhookEventId) {
         paymentStatus: "failed",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and20(
+        and21(
           eq33(equipmentBookings.paymentIntentId, paymentIntent.id),
           notInArray(equipmentBookings.paymentStatus, excludedStatuses)
         )
@@ -29206,7 +30642,7 @@ async function handlePaymentIntentCanceled(paymentIntent, webhookEventId) {
         // Map cancel to failed for backward compatibility
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and20(
+        and21(
           eq33(kitchenBookings.paymentIntentId, paymentIntent.id),
           notInArray(kitchenBookings.paymentStatus, excludedStatuses)
         )
@@ -29215,7 +30651,7 @@ async function handlePaymentIntentCanceled(paymentIntent, webhookEventId) {
         paymentStatus: "failed",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and20(
+        and21(
           eq33(storageBookings.paymentIntentId, paymentIntent.id),
           notInArray(storageBookings.paymentStatus, excludedStatuses)
         )
@@ -29224,7 +30660,7 @@ async function handlePaymentIntentCanceled(paymentIntent, webhookEventId) {
         paymentStatus: "failed",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and20(
+        and21(
           eq33(equipmentBookings.paymentIntentId, paymentIntent.id),
           notInArray(equipmentBookings.paymentStatus, excludedStatuses)
         )
@@ -29285,7 +30721,7 @@ async function handleChargeRefunded(charge, webhookEventId) {
         paymentStatus: refundStatus,
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and20(
+        and21(
           eq33(kitchenBookings.paymentIntentId, paymentIntentId),
           eq33(kitchenBookings.paymentStatus, "paid")
         )
@@ -29294,7 +30730,7 @@ async function handleChargeRefunded(charge, webhookEventId) {
         paymentStatus: refundStatus,
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and20(
+        and21(
           eq33(storageBookings.paymentIntentId, paymentIntentId),
           eq33(storageBookings.paymentStatus, "paid")
         )
@@ -29303,7 +30739,7 @@ async function handleChargeRefunded(charge, webhookEventId) {
         paymentStatus: refundStatus,
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and20(
+        and21(
           eq33(equipmentBookings.paymentIntentId, paymentIntentId),
           eq33(equipmentBookings.paymentStatus, "paid")
         )
@@ -29876,7 +31312,7 @@ __export(portal_auth_exports, {
   default: () => portal_auth_default
 });
 import { Router as Router23 } from "express";
-import { eq as eq34, and as and21 } from "drizzle-orm";
+import { eq as eq34, and as and22 } from "drizzle-orm";
 import * as admin from "firebase-admin";
 var router23, portal_auth_default;
 var init_portal_auth = __esm({
@@ -29996,7 +31432,7 @@ var init_portal_auth = __esm({
         let existingApplications = [];
         try {
           existingApplications = await db.select().from(portalUserApplications).where(
-            and21(
+            and22(
               eq34(portalUserApplications.userId, user.id),
               eq34(portalUserApplications.locationId, parseInt(locationId))
             )
@@ -30459,7 +31895,7 @@ __export(chef_exports, {
 });
 import { Router as Router25 } from "express";
 import { sql as sql17, eq as eq36 } from "drizzle-orm";
-import { and as and22, desc as desc19 } from "drizzle-orm";
+import { and as and23, desc as desc19 } from "drizzle-orm";
 var router25, chef_default;
 var init_chef = __esm({
   "server/routes/chef.ts"() {
@@ -30689,7 +32125,7 @@ var init_chef = __esm({
           metadata: paymentTransactions.metadata,
           stripeProcessingFee: paymentTransactions.stripeProcessingFee,
           managerRevenue: paymentTransactions.managerRevenue
-        }).from(paymentTransactions).where(and22(
+        }).from(paymentTransactions).where(and23(
           eq36(paymentTransactions.bookingId, storageBookingId),
           eq36(paymentTransactions.bookingType, "storage"),
           eq36(paymentTransactions.status, "succeeded")
@@ -30818,7 +32254,7 @@ var init_chef = __esm({
           metadata: paymentTransactions.metadata,
           stripeProcessingFee: paymentTransactions.stripeProcessingFee,
           managerRevenue: paymentTransactions.managerRevenue
-        }).from(paymentTransactions).where(and22(
+        }).from(paymentTransactions).where(and23(
           eq36(paymentTransactions.bookingId, overstayRecord.storageBookingId),
           eq36(paymentTransactions.bookingType, "storage"),
           eq36(paymentTransactions.status, "succeeded")
@@ -31170,7 +32606,7 @@ init_firebase_auth_middleware();
 init_db();
 init_schema();
 import { Router as Router2 } from "express";
-import { and as and3, isNotNull, ne } from "drizzle-orm";
+import { and as and5, isNotNull, ne } from "drizzle-orm";
 var router2 = Router2();
 router2.post("/admin/send-company-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
@@ -31216,7 +32652,7 @@ router2.post("/admin/send-company-email", requireFirebaseAuthWithUser, requireAd
     if (emailMode === "all") {
       try {
         const result = await db.select({ email: users.username }).from(users).where(
-          and3(
+          and5(
             isNotNull(users.username),
             ne(users.username, "")
           )
@@ -31989,7 +33425,7 @@ init_firebase_auth_middleware();
 init_db();
 init_schema();
 import { Router as Router6 } from "express";
-import { eq as eq6 } from "drizzle-orm";
+import { eq as eq10 } from "drizzle-orm";
 var router6 = Router6();
 router6.get("/platform-settings/stripe-fees", async (req, res) => {
   try {
@@ -32020,7 +33456,7 @@ router6.get("/platform-settings/stripe-fees", async (req, res) => {
 });
 router6.get("/platform-settings/service-fee-rate", async (req, res) => {
   try {
-    const [setting] = await db.select().from(platformSettings).where(eq6(platformSettings.key, "service_fee_rate")).limit(1);
+    const [setting] = await db.select().from(platformSettings).where(eq10(platformSettings.key, "service_fee_rate")).limit(1);
     if (setting) {
       const rate = parseFloat(setting.value);
       if (!isNaN(rate) && rate >= 0 && rate <= 1) {
@@ -32050,7 +33486,7 @@ router6.get("/platform-settings/service-fee-rate", async (req, res) => {
 });
 router6.get("/admin/platform-settings/service-fee-rate", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const [setting] = await db.select().from(platformSettings).where(eq6(platformSettings.key, "service_fee_rate")).limit(1);
+    const [setting] = await db.select().from(platformSettings).where(eq10(platformSettings.key, "service_fee_rate")).limit(1);
     if (setting) {
       const rate = parseFloat(setting.value);
       if (!isNaN(rate) && rate >= 0 && rate <= 1) {
@@ -32093,13 +33529,13 @@ router6.put("/admin/platform-settings/service-fee-rate", requireFirebaseAuthWith
     if (!userId) {
       return res.status(401).json({ error: "User not authenticated" });
     }
-    const [existing] = await db.select().from(platformSettings).where(eq6(platformSettings.key, "service_fee_rate")).limit(1);
+    const [existing] = await db.select().from(platformSettings).where(eq10(platformSettings.key, "service_fee_rate")).limit(1);
     if (existing) {
       const [updated] = await db.update(platformSettings).set({
         value: rateValue.toString(),
         updatedBy: userId,
         updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq6(platformSettings.key, "service_fee_rate")).returning();
+      }).where(eq10(platformSettings.key, "service_fee_rate")).returning();
       return res.json({
         key: "service_fee_rate",
         value: updated.value,
@@ -32136,9 +33572,9 @@ router6.put("/admin/platform-settings/service-fee-rate", requireFirebaseAuthWith
 });
 router6.get("/platform-settings/overstay-penalties", async (req, res) => {
   try {
-    const [gracePeriodSetting] = await db.select().from(platformSettings).where(eq6(platformSettings.key, "overstay_grace_period_days")).limit(1);
-    const [penaltyRateSetting] = await db.select().from(platformSettings).where(eq6(platformSettings.key, "overstay_penalty_rate")).limit(1);
-    const [maxDaysSetting] = await db.select().from(platformSettings).where(eq6(platformSettings.key, "overstay_max_penalty_days")).limit(1);
+    const [gracePeriodSetting] = await db.select().from(platformSettings).where(eq10(platformSettings.key, "overstay_grace_period_days")).limit(1);
+    const [penaltyRateSetting] = await db.select().from(platformSettings).where(eq10(platformSettings.key, "overstay_penalty_rate")).limit(1);
+    const [maxDaysSetting] = await db.select().from(platformSettings).where(eq10(platformSettings.key, "overstay_max_penalty_days")).limit(1);
     const gracePeriodDays = gracePeriodSetting ? parseInt(gracePeriodSetting.value) : 3;
     const penaltyRate = penaltyRateSetting ? parseFloat(penaltyRateSetting.value) : 0.1;
     const maxPenaltyDays = maxDaysSetting ? parseInt(maxDaysSetting.value) : 30;
@@ -32162,9 +33598,9 @@ router6.get("/platform-settings/overstay-penalties", async (req, res) => {
 });
 router6.get("/admin/platform-settings/overstay-penalties", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const [gracePeriodSetting] = await db.select().from(platformSettings).where(eq6(platformSettings.key, "overstay_grace_period_days")).limit(1);
-    const [penaltyRateSetting] = await db.select().from(platformSettings).where(eq6(platformSettings.key, "overstay_penalty_rate")).limit(1);
-    const [maxDaysSetting] = await db.select().from(platformSettings).where(eq6(platformSettings.key, "overstay_max_penalty_days")).limit(1);
+    const [gracePeriodSetting] = await db.select().from(platformSettings).where(eq10(platformSettings.key, "overstay_grace_period_days")).limit(1);
+    const [penaltyRateSetting] = await db.select().from(platformSettings).where(eq10(platformSettings.key, "overstay_penalty_rate")).limit(1);
+    const [maxDaysSetting] = await db.select().from(platformSettings).where(eq10(platformSettings.key, "overstay_max_penalty_days")).limit(1);
     return res.json({
       gracePeriodDays: {
         key: "overstay_grace_period_days",
@@ -32207,9 +33643,9 @@ router6.put("/admin/platform-settings/overstay-penalties", requireFirebaseAuthWi
       if (isNaN(days) || days < 0 || days > 14) {
         return res.status(400).json({ error: "Grace period must be between 0 and 14 days" });
       }
-      const [existing] = await db.select().from(platformSettings).where(eq6(platformSettings.key, "overstay_grace_period_days")).limit(1);
+      const [existing] = await db.select().from(platformSettings).where(eq10(platformSettings.key, "overstay_grace_period_days")).limit(1);
       if (existing) {
-        const [updated] = await db.update(platformSettings).set({ value: days.toString(), updatedBy: userId, updatedAt: /* @__PURE__ */ new Date() }).where(eq6(platformSettings.key, "overstay_grace_period_days")).returning();
+        const [updated] = await db.update(platformSettings).set({ value: days.toString(), updatedBy: userId, updatedAt: /* @__PURE__ */ new Date() }).where(eq10(platformSettings.key, "overstay_grace_period_days")).returning();
         results.gracePeriodDays = { value: days, updated: true };
       } else {
         await db.insert(platformSettings).values({ key: "overstay_grace_period_days", value: days.toString(), description: "Default grace period before penalties apply (days)", updatedBy: userId });
@@ -32221,9 +33657,9 @@ router6.put("/admin/platform-settings/overstay-penalties", requireFirebaseAuthWi
       if (isNaN(rate) || rate < 0 || rate > 0.5) {
         return res.status(400).json({ error: "Penalty rate must be between 0 and 0.50 (0% to 50%)" });
       }
-      const [existing] = await db.select().from(platformSettings).where(eq6(platformSettings.key, "overstay_penalty_rate")).limit(1);
+      const [existing] = await db.select().from(platformSettings).where(eq10(platformSettings.key, "overstay_penalty_rate")).limit(1);
       if (existing) {
-        const [updated] = await db.update(platformSettings).set({ value: rate.toString(), updatedBy: userId, updatedAt: /* @__PURE__ */ new Date() }).where(eq6(platformSettings.key, "overstay_penalty_rate")).returning();
+        const [updated] = await db.update(platformSettings).set({ value: rate.toString(), updatedBy: userId, updatedAt: /* @__PURE__ */ new Date() }).where(eq10(platformSettings.key, "overstay_penalty_rate")).returning();
         results.penaltyRate = { value: rate, percent: (rate * 100).toFixed(0), updated: true };
       } else {
         await db.insert(platformSettings).values({ key: "overstay_penalty_rate", value: rate.toString(), description: "Default penalty rate as decimal (e.g., 0.10 for 10%)", updatedBy: userId });
@@ -32235,9 +33671,9 @@ router6.put("/admin/platform-settings/overstay-penalties", requireFirebaseAuthWi
       if (isNaN(days) || days < 1 || days > 90) {
         return res.status(400).json({ error: "Max penalty days must be between 1 and 90" });
       }
-      const [existing] = await db.select().from(platformSettings).where(eq6(platformSettings.key, "overstay_max_penalty_days")).limit(1);
+      const [existing] = await db.select().from(platformSettings).where(eq10(platformSettings.key, "overstay_max_penalty_days")).limit(1);
       if (existing) {
-        const [updated] = await db.update(platformSettings).set({ value: days.toString(), updatedBy: userId, updatedAt: /* @__PURE__ */ new Date() }).where(eq6(platformSettings.key, "overstay_max_penalty_days")).returning();
+        const [updated] = await db.update(platformSettings).set({ value: days.toString(), updatedBy: userId, updatedAt: /* @__PURE__ */ new Date() }).where(eq10(platformSettings.key, "overstay_max_penalty_days")).returning();
         results.maxPenaltyDays = { value: days, updated: true };
       } else {
         await db.insert(platformSettings).values({ key: "overstay_max_penalty_days", value: days.toString(), description: "Default maximum days penalties can accrue", updatedBy: userId });
@@ -32266,7 +33702,7 @@ import { fromZodError as fromZodError2 } from "zod-validation-error";
 // server/domains/applications/chef-application.service.ts
 init_db();
 init_schema();
-import { eq as eq7, and as and5, desc as desc4, inArray, getTableColumns } from "drizzle-orm";
+import { eq as eq11, and as and7, desc as desc6, inArray as inArray3, getTableColumns } from "drizzle-orm";
 var ChefApplicationService = class {
   /**
    * Get all applications for a specific location (Manager view)
@@ -32281,7 +33717,7 @@ var ChefApplicationService = class {
           role: users.role
           // Not selecting fullName/email if not guaranteed on users table
         }
-      }).from(chefKitchenApplications).leftJoin(users, eq7(chefKitchenApplications.chefId, users.id)).where(eq7(chefKitchenApplications.locationId, locationId)).orderBy(desc4(chefKitchenApplications.createdAt));
+      }).from(chefKitchenApplications).leftJoin(users, eq11(chefKitchenApplications.chefId, users.id)).where(eq11(chefKitchenApplications.locationId, locationId)).orderBy(desc6(chefKitchenApplications.createdAt));
     } catch (error) {
       console.error("[ChefApplicationService] Error fetching applications by location:", error);
       throw error;
@@ -32301,7 +33737,7 @@ var ChefApplicationService = class {
           managerId: locations.managerId
           // city not explicitly in schema snippet I saw, omit to be safe or check if needed
         }
-      }).from(chefKitchenApplications).leftJoin(locations, eq7(chefKitchenApplications.locationId, locations.id)).where(eq7(chefKitchenApplications.chefId, chefId)).orderBy(desc4(chefKitchenApplications.createdAt));
+      }).from(chefKitchenApplications).leftJoin(locations, eq11(chefKitchenApplications.locationId, locations.id)).where(eq11(chefKitchenApplications.chefId, chefId)).orderBy(desc6(chefKitchenApplications.createdAt));
       return apps.map((app2) => ({
         ...app2,
         locationName: app2.location?.name,
@@ -32325,7 +33761,7 @@ var ChefApplicationService = class {
         reviewedBy,
         reviewedAt: /* @__PURE__ */ new Date(),
         updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq7(chefKitchenApplications.id, applicationId)).returning();
+      }).where(eq11(chefKitchenApplications.id, applicationId)).returning();
       return updatedApp;
     } catch (error) {
       console.error("[ChefApplicationService] Error updating application status:", error);
@@ -32337,9 +33773,9 @@ var ChefApplicationService = class {
    */
   async grantLocationAccess(chefId, locationId, grantedBy) {
     try {
-      const existingAccess = await db.select().from(chefLocationAccess).where(and5(
-        eq7(chefLocationAccess.chefId, chefId),
-        eq7(chefLocationAccess.locationId, locationId)
+      const existingAccess = await db.select().from(chefLocationAccess).where(and7(
+        eq11(chefLocationAccess.chefId, chefId),
+        eq11(chefLocationAccess.locationId, locationId)
       )).limit(1);
       if (existingAccess.length > 0) {
         return existingAccess[0];
@@ -32361,9 +33797,9 @@ var ChefApplicationService = class {
    */
   async getChefApplication(chefId, locationId) {
     try {
-      const [application] = await db.select().from(chefKitchenApplications).where(and5(
-        eq7(chefKitchenApplications.chefId, chefId),
-        eq7(chefKitchenApplications.locationId, locationId)
+      const [application] = await db.select().from(chefKitchenApplications).where(and7(
+        eq11(chefKitchenApplications.chefId, chefId),
+        eq11(chefKitchenApplications.locationId, locationId)
       )).limit(1);
       return application;
     } catch (error) {
@@ -32376,7 +33812,7 @@ var ChefApplicationService = class {
    */
   async getApplicationsForManager(managerId) {
     try {
-      const managedLocations = await db.select({ id: locations.id }).from(locations).where(eq7(locations.managerId, managerId));
+      const managedLocations = await db.select({ id: locations.id }).from(locations).where(eq11(locations.managerId, managerId));
       if (managedLocations.length === 0) return [];
       const locationIds = managedLocations.map((l) => l.id);
       return await db.select({
@@ -32392,7 +33828,7 @@ var ChefApplicationService = class {
           name: locations.name,
           address: locations.address
         }
-      }).from(chefKitchenApplications).leftJoin(users, eq7(chefKitchenApplications.chefId, users.id)).leftJoin(locations, eq7(chefKitchenApplications.locationId, locations.id)).where(inArray(chefKitchenApplications.locationId, locationIds)).orderBy(desc4(chefKitchenApplications.createdAt));
+      }).from(chefKitchenApplications).leftJoin(users, eq11(chefKitchenApplications.chefId, users.id)).leftJoin(locations, eq11(chefKitchenApplications.locationId, locations.id)).where(inArray3(chefKitchenApplications.locationId, locationIds)).orderBy(desc6(chefKitchenApplications.createdAt));
     } catch (error) {
       console.error("[ChefApplicationService] Error fetching manager applications:", error);
       throw error;
@@ -32415,9 +33851,9 @@ var ChefApplicationService = class {
           brandImageUrl: locations.brandImageUrl,
           managerId: locations.managerId
         }
-      }).from(chefKitchenApplications).leftJoin(locations, eq7(chefKitchenApplications.locationId, locations.id)).where(and5(
-        eq7(chefKitchenApplications.chefId, chefId),
-        eq7(chefKitchenApplications.status, "approved")
+      }).from(chefKitchenApplications).leftJoin(locations, eq11(chefKitchenApplications.locationId, locations.id)).where(and7(
+        eq11(chefKitchenApplications.chefId, chefId),
+        eq11(chefKitchenApplications.status, "approved")
       ));
       return approvedApps.filter((app2) => app2.location).map((app2) => ({
         id: app2.location.id,
@@ -32504,9 +33940,9 @@ var ChefApplicationService = class {
   async createApplication(data) {
     try {
       const [existing] = await db.select().from(chefKitchenApplications).where(
-        and5(
-          eq7(chefKitchenApplications.chefId, data.chefId),
-          eq7(chefKitchenApplications.locationId, data.locationId)
+        and7(
+          eq11(chefKitchenApplications.chefId, data.chefId),
+          eq11(chefKitchenApplications.locationId, data.locationId)
         )
       ).limit(1);
       if (existing) {
@@ -32517,7 +33953,7 @@ var ChefApplicationService = class {
           status: newStatus,
           ...shouldClearFeedback && { feedback: null },
           updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq7(chefKitchenApplications.id, existing.id)).returning();
+        }).where(eq11(chefKitchenApplications.id, existing.id)).returning();
         return updated;
       }
       const [created] = await db.insert(chefKitchenApplications).values({
@@ -32537,9 +33973,9 @@ var ChefApplicationService = class {
    */
   async cancelApplication(applicationId, chefId) {
     try {
-      const [application] = await db.select().from(chefKitchenApplications).where(and5(
-        eq7(chefKitchenApplications.id, applicationId),
-        eq7(chefKitchenApplications.chefId, chefId)
+      const [application] = await db.select().from(chefKitchenApplications).where(and7(
+        eq11(chefKitchenApplications.id, applicationId),
+        eq11(chefKitchenApplications.chefId, chefId)
       )).limit(1);
       if (!application) {
         throw new Error("Application not found or unauthorized");
@@ -32547,7 +33983,7 @@ var ChefApplicationService = class {
       const [cancelled] = await db.update(chefKitchenApplications).set({
         status: "cancelled",
         updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq7(chefKitchenApplications.id, applicationId)).returning();
+      }).where(eq11(chefKitchenApplications.id, applicationId)).returning();
       return cancelled;
     } catch (error) {
       console.error("[ChefApplicationService] Error cancelling application:", error);
@@ -32563,7 +33999,7 @@ var ChefApplicationService = class {
         ...data.foodSafetyLicenseUrl && { foodSafetyLicenseUrl: data.foodSafetyLicenseUrl },
         ...data.foodEstablishmentCertUrl && { foodEstablishmentCertUrl: data.foodEstablishmentCertUrl },
         updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq7(chefKitchenApplications.id, data.id)).returning();
+      }).where(eq11(chefKitchenApplications.id, data.id)).returning();
       if (!updated) {
         throw new Error("Application not found");
       }
@@ -32578,7 +34014,7 @@ var ChefApplicationService = class {
    */
   async getApplicationById(applicationId) {
     try {
-      const [application] = await db.select().from(chefKitchenApplications).where(eq7(chefKitchenApplications.id, applicationId)).limit(1);
+      const [application] = await db.select().from(chefKitchenApplications).where(eq11(chefKitchenApplications.id, applicationId)).limit(1);
       return application;
     } catch (error) {
       console.error("[ChefApplicationService] Error getting application by ID:", error);
@@ -32614,7 +34050,7 @@ var ChefApplicationService = class {
       if (tierData !== void 0) {
         setData.tier_data = tierData;
       }
-      const [updated] = await db.update(chefKitchenApplications).set(setData).where(eq7(chefKitchenApplications.id, applicationId)).returning();
+      const [updated] = await db.update(chefKitchenApplications).set(setData).where(eq11(chefKitchenApplications.id, applicationId)).returning();
       return updated;
     } catch (error) {
       console.error("[ChefApplicationService] Error updating application tier:", error);
@@ -32634,7 +34070,7 @@ init_application_service();
 init_chat_service();
 init_notification_service();
 init_email();
-import { and as and8, eq as eq12 } from "drizzle-orm";
+import { and as and10, eq as eq16 } from "drizzle-orm";
 var router7 = Router7();
 var locationRepository = new LocationRepository();
 var locationService2 = new LocationService(locationRepository);
@@ -33413,9 +34849,9 @@ router7.patch("/manager/kitchen-applications/:id/status", requireFirebaseAuthWit
         if (validation.valid) {
           try {
             const existingAccess = await db.select().from(chefLocationAccess).where(
-              and8(
-                eq12(chefLocationAccess.chefId, application.chefId),
-                eq12(chefLocationAccess.locationId, application.locationId)
+              and10(
+                eq16(chefLocationAccess.chefId, application.chefId),
+                eq16(chefLocationAccess.locationId, application.locationId)
               )
             );
             if (existingAccess.length === 0) {

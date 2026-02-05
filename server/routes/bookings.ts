@@ -38,6 +38,7 @@ import {
     generateManagerBookingCancellationSMS
 } from "../sms";
 import { notificationService } from "../services/notification.service";
+import { generateDamageClaimInvoicePDF } from "../services/invoice-service";
 
 const router = Router();
 
@@ -2491,13 +2492,14 @@ router.get("/chef/bookings", requireChef, async (req: Request, res: Response) =>
 
 /**
  * GET /chef/overstay-penalties
- * Get all pending overstay penalties for the authenticated chef
+ * Get all overstay penalties for the authenticated chef (including paid/resolved)
+ * Returns both pending and resolved penalties so chef can see payment status
  */
 router.get("/chef/overstay-penalties", requireChef, async (req: Request, res: Response) => {
     try {
         const chefId = req.neonUser!.id;
-        const { getChefPendingPenalties } = await import('../services/overstay-penalty-service');
-        const penalties = await getChefPendingPenalties(chefId);
+        const { getChefAllPenalties } = await import('../services/overstay-penalty-service');
+        const penalties = await getChefAllPenalties(chefId);
         res.json(penalties);
     } catch (error) {
         logger.error("Error fetching chef overstay penalties:", error);
@@ -2558,6 +2560,46 @@ router.get("/chef/damage-claims", requireChef, async (req: Request, res: Respons
     } catch (error) {
         logger.error("Error fetching chef damage claims:", error);
         res.status(500).json({ error: "Failed to fetch damage claims" });
+    }
+});
+
+/**
+ * GET /chef/damage-claims/:id/invoice
+ * Download invoice PDF for a charged damage claim
+ */
+router.get("/chef/damage-claims/:id/invoice", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const claimId = parseInt(req.params.id);
+
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        const claim = await damageClaimService.getClaimById(claimId);
+        if (!claim) {
+            return res.status(404).json({ error: "Claim not found" });
+        }
+
+        // Verify chef owns this claim
+        if (claim.chefId !== chefId) {
+            return res.status(403).json({ error: "Not authorized to view this claim" });
+        }
+
+        // Only allow invoice download for charged claims
+        if (claim.status !== 'charge_succeeded') {
+            return res.status(400).json({ error: "Invoice only available for charged claims" });
+        }
+
+        // Generate damage claim invoice PDF
+        const pdfBuffer = await generateDamageClaimInvoicePDF(claim);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="damage-claim-invoice-${claimId}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        logger.error("Error downloading damage claim invoice:", error);
+        res.status(500).json({ error: "Failed to download invoice" });
     }
 });
 

@@ -124,10 +124,19 @@ export function DamageClaimSettings() {
       const response = await apiRequest('PUT', '/api/admin/damage-claim-limits', payload);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast({ title: "Settings Updated", description: "Damage claim limits have been saved." });
+      // Update form with the response data directly (don't rely on cache invalidation timing)
+      if (data?.limits) {
+        setFormData({
+          maxClaimAmount: (data.limits.maxClaimAmountCents / 100).toFixed(2),
+          minClaimAmount: (data.limits.minClaimAmountCents / 100).toFixed(2),
+          maxClaimsPerBooking: String(data.limits.maxClaimsPerBooking),
+          chefResponseDeadlineHours: String(data.limits.chefResponseDeadlineHours),
+          claimSubmissionDeadlineDays: String(data.limits.claimSubmissionDeadlineDays),
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/admin/damage-claim-limits'] });
-      setInitialized(false); // Reset to allow re-initialization with fresh data
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });

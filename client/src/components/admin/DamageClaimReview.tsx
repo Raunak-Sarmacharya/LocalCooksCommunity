@@ -55,6 +55,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 
 // Types
 interface DamageEvidence {
@@ -308,7 +309,7 @@ function DecisionDialog({
                           <div className="flex items-center justify-between">
                             <p className="font-medium">{getEvidenceTypeLabel(ev.evidenceType)}</p>
                             <a
-                              href={ev.fileUrl}
+                              href={getR2ProxyUrl(ev.fileUrl)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-blue-600 hover:underline flex items-center gap-1 text-sm"
