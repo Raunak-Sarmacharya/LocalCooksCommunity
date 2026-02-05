@@ -2,6 +2,7 @@
  * Pending Storage Checkouts Component
  * 
  * Manager view for reviewing and approving/denying storage checkout requests.
+ * Uses TanStack Table for enterprise-grade table display.
  * Part of the hybrid verification system:
  * 1. Chef initiates checkout with photos
  * 2. Manager reviews photos and verifies (this component)
@@ -9,8 +10,16 @@
  * 4. Prevents unwarranted overstay penalties
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  SortingState,
+  useReactTable,
+} from "@tanstack/react-table";
 import { 
   CheckCircle, 
   XCircle, 
@@ -21,9 +30,11 @@ import {
   Image,
   Loader2,
   AlertTriangle,
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
+  MoreHorizontal,
+  ArrowUpDown,
+  MapPin,
+  Eye,
+  RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
@@ -33,18 +44,35 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
@@ -87,19 +115,307 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   return { 'Content-Type': 'application/json' };
 }
 
+// Column definitions for pending checkouts table
+type ViewType = "pending" | "history";
+
+interface CheckoutColumnsProps {
+  onApprove: (checkout: PendingCheckout) => void;
+  onDeny: (checkout: PendingCheckout) => void;
+  onViewPhotos: (checkout: PendingCheckout, index: number) => void;
+  approvingId: number | null;
+}
+
+const getCheckoutColumns = ({
+  onApprove,
+  onDeny,
+  onViewPhotos,
+  approvingId,
+}: CheckoutColumnsProps): ColumnDef<PendingCheckout>[] => [
+  {
+    accessorKey: "storageName",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="h-8 -ml-3"
+      >
+        Storage
+        <ArrowUpDown className="ml-2 h-3 w-3" />
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const checkout = row.original;
+      return (
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2">
+            <Package className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+            <span className="font-medium text-sm">{checkout.storageName}</span>
+            <Badge variant="outline" className="text-xs capitalize">
+              {checkout.storageType}
+            </Badge>
+            {checkout.isOverdue && (
+              <Badge variant="destructive" className="text-xs">
+                Overdue
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center text-xs text-muted-foreground mt-0.5 ml-5">
+            <MapPin className="h-3 w-3 mr-1" />
+            <span>{checkout.locationName}</span>
+          </div>
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "chefEmail",
+    header: "Chef",
+    cell: ({ row }) => {
+      const checkout = row.original;
+      return (
+        <div className="flex items-center gap-2 text-sm">
+          <User className="h-3.5 w-3.5 text-muted-foreground" />
+          <span>{checkout.chefEmail || 'Unknown'}</span>
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "endDate",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="h-8 -ml-3"
+      >
+        End Date
+        <ArrowUpDown className="ml-2 h-3 w-3" />
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const checkout = row.original;
+      return (
+        <div className="flex items-center text-sm">
+          <Calendar className="h-3 w-3 mr-2 text-muted-foreground" />
+          {format(new Date(checkout.endDate), 'MMM d, yyyy')}
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "checkoutRequestedAt",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="h-8 -ml-3"
+      >
+        Requested
+        <ArrowUpDown className="ml-2 h-3 w-3" />
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const requestedAt = row.getValue("checkoutRequestedAt") as string | null;
+      if (!requestedAt) return <span className="text-muted-foreground text-xs">—</span>;
+      return (
+        <div className="flex items-center text-sm text-muted-foreground">
+          <Clock className="h-3 w-3 mr-2" />
+          {formatDistanceToNow(new Date(requestedAt), { addSuffix: true })}
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "checkoutPhotoUrls",
+    header: "Photos",
+    cell: ({ row }) => {
+      const checkout = row.original;
+      const photos = checkout.checkoutPhotoUrls;
+      if (!photos || photos.length === 0) {
+        return <span className="text-muted-foreground text-xs">—</span>;
+      }
+      
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => onViewPhotos(checkout, 0)}
+                className="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
+              >
+                <Image className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm">{photos.length}</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-sm">View {photos.length} photo{photos.length !== 1 ? 's' : ''}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    },
+  },
+  {
+    id: "actions",
+    header: "",
+    cell: ({ row }) => {
+      const checkout = row.original;
+      const isApproving = approvingId === checkout.storageBookingId;
+
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onViewPhotos(checkout, 0)}>
+              <Eye className="h-4 w-4 mr-2" />
+              View Photos
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => onApprove(checkout)}
+              disabled={isApproving}
+              className="text-green-600 focus:text-green-600"
+            >
+              {isApproving ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <CheckCircle className="h-4 w-4 mr-2" />
+              )}
+              Approve Checkout
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => onDeny(checkout)}
+              className="text-destructive focus:text-destructive"
+            >
+              <XCircle className="h-4 w-4 mr-2" />
+              Deny Checkout
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      );
+    },
+  },
+];
+
+// History columns
+const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
+  {
+    accessorKey: "storageName",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="h-8 -ml-3"
+      >
+        Storage
+        <ArrowUpDown className="ml-2 h-3 w-3" />
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const checkout = row.original;
+      return (
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2">
+            <Package className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+            <span className="font-medium text-sm">{checkout.storageName}</span>
+          </div>
+          <div className="flex items-center text-xs text-muted-foreground mt-0.5 ml-5">
+            <MapPin className="h-3 w-3 mr-1" />
+            <span>{checkout.locationName}</span>
+          </div>
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "chefEmail",
+    header: "Chef",
+    cell: ({ row }) => (
+      <span className="text-sm">{row.getValue("chefEmail") || 'Unknown'}</span>
+    ),
+  },
+  {
+    accessorKey: "checkoutStatus",
+    header: "Status",
+    cell: ({ row }) => {
+      const status = row.getValue("checkoutStatus") as string;
+      if (status === 'completed') {
+        return (
+          <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Approved
+          </Badge>
+        );
+      }
+      return (
+        <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300">
+          <XCircle className="h-3 w-3 mr-1" />
+          Denied
+        </Badge>
+      );
+    },
+  },
+  {
+    accessorKey: "checkoutApprovedAt",
+    header: "Date",
+    cell: ({ row }) => {
+      const checkout = row.original;
+      const date = checkout.checkoutStatus === 'completed' 
+        ? checkout.checkoutApprovedAt 
+        : checkout.checkoutDeniedAt;
+      if (!date) return <span className="text-muted-foreground text-xs">—</span>;
+      return (
+        <span className="text-sm text-muted-foreground">
+          {format(new Date(date), 'MMM d, yyyy')}
+        </span>
+      );
+    },
+  },
+  {
+    accessorKey: "checkoutDenialReason",
+    header: "Reason",
+    cell: ({ row }) => {
+      const reason = row.getValue("checkoutDenialReason") as string | null;
+      if (!reason) return <span className="text-muted-foreground text-xs">—</span>;
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-xs text-amber-700 cursor-help truncate max-w-[150px] block">
+                {reason}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="text-sm">{reason}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    },
+  },
+];
+
 export function PendingStorageCheckouts() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [selectedCheckout, setSelectedCheckout] = useState<PendingCheckout | null>(null);
   const [denyDialogOpen, setDenyDialogOpen] = useState(false);
   const [denialReason, setDenialReason] = useState("");
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
-  const [showHistory, setShowHistory] = useState(false);
+  const [viewType, setViewType] = useState<ViewType>("pending");
+  const [sorting, setSorting] = useState<SortingState>([{ id: "checkoutRequestedAt", desc: true }]);
 
   // Fetch pending checkouts
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['/api/manager/storage-checkouts/pending'],
     queryFn: async () => {
       const headers = await getAuthHeaders();
@@ -126,7 +442,7 @@ export function PendingStorageCheckouts() {
       if (!response.ok) throw new Error('Failed to fetch checkout history');
       return response.json();
     },
-    enabled: showHistory,
+    enabled: viewType === 'history',
   });
 
   const checkoutHistory: PendingCheckout[] = historyData?.checkoutHistory || [];
@@ -231,6 +547,36 @@ export function PendingStorageCheckouts() {
     setPhotoViewerOpen(true);
   };
 
+  // Column definitions
+  const pendingColumns = useMemo(
+    () => getCheckoutColumns({
+      onApprove: handleApprove,
+      onDeny: handleDenyClick,
+      onViewPhotos: openPhotoViewer,
+      approvingId: approveMutation.isPending ? (approveMutation.variables as number) : null,
+    }),
+    [approveMutation.isPending, approveMutation.variables]
+  );
+
+  const historyColumns = useMemo(() => getHistoryColumns(), []);
+
+  // TanStack Table instances
+  const pendingTable = useReactTable({
+    data: pendingCheckouts,
+    columns: pendingColumns,
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    state: { sorting },
+  });
+
+  const historyTable = useReactTable({
+    data: checkoutHistory,
+    columns: historyColumns,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+
   if (isLoading) {
     return (
       <Card>
@@ -252,406 +598,163 @@ export function PendingStorageCheckouts() {
     );
   }
 
-  if (pendingCheckouts.length === 0) {
-    return (
-      <>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-600" />
-              Pending Storage Checkouts
-            </CardTitle>
-            <CardDescription>
-              Review and approve chef checkout requests
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8 text-muted-foreground">
-              <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>No pending checkout requests</p>
-              <p className="text-sm mt-1">Checkout requests from chefs will appear here</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Checkout History Section */}
-        <Card className="mt-6">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                Checkout History
-              </CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowHistory(!showHistory)}
-              >
-                {showHistory ? (
-                  <>
-                    <ChevronUp className="h-4 w-4 mr-1" />
-                    Hide
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="h-4 w-4 mr-1" />
-                    Show
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardHeader>
-          {showHistory && (
-            <CardContent className="pt-0">
-              {checkoutHistory.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  No checkout history yet
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {checkoutHistory.map((checkout) => (
-                    <div
-                      key={checkout.storageBookingId}
-                      className={cn(
-                        "border rounded-lg p-3 text-sm",
-                        checkout.checkoutStatus === 'completed' 
-                          ? "border-green-200 bg-green-50/50" 
-                          : "border-amber-200 bg-amber-50/50"
-                      )}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{checkout.storageName}</span>
-                            {checkout.checkoutStatus === 'completed' ? (
-                              <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 text-xs">
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                                Approved
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 text-xs">
-                                <XCircle className="h-3 w-3 mr-1" />
-                                Denied
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-muted-foreground text-xs mt-1">
-                            {checkout.chefEmail} • {checkout.locationName}
-                          </p>
-                        </div>
-                        <div className="text-right text-xs text-muted-foreground">
-                          {checkout.checkoutStatus === 'completed' && checkout.checkoutApprovedAt && (
-                            <p>{format(new Date(checkout.checkoutApprovedAt), 'MMM d, yyyy')}</p>
-                          )}
-                          {checkout.checkoutStatus !== 'completed' && checkout.checkoutDeniedAt && (
-                            <p>{format(new Date(checkout.checkoutDeniedAt), 'MMM d, yyyy')}</p>
-                          )}
-                        </div>
-                      </div>
-                      {checkout.checkoutDenialReason && (
-                        <p className="text-xs text-amber-700 mt-2 bg-amber-100/50 rounded p-2">
-                          <strong>Denial reason:</strong> {checkout.checkoutDenialReason}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          )}
-        </Card>
-      </>
-    );
-  }
-
   return (
     <>
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CheckCircle className="h-5 w-5 text-green-600" />
-            Pending Storage Checkouts
-            <Badge variant="secondary" className="ml-2">
-              {pendingCheckouts.length}
-            </Badge>
-          </CardTitle>
-          <CardDescription>
-            Review and approve chef checkout requests. Verify the storage unit is empty before approving.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {pendingCheckouts.map((checkout) => (
-            <Collapsible
-              key={checkout.storageBookingId}
-              open={expandedId === checkout.storageBookingId}
-              onOpenChange={(open) => setExpandedId(open ? checkout.storageBookingId : null)}
-            >
-              <div className={cn(
-                "border rounded-lg p-4",
-                checkout.isOverdue && "border-amber-300 bg-amber-50"
-              )}>
-                {/* Header Row */}
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Package className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium">{checkout.storageName}</span>
-                      <Badge variant="outline" className="text-xs">
-                        {checkout.storageType}
-                      </Badge>
-                      {checkout.isOverdue && (
-                        <Badge variant="destructive" className="text-xs">
-                          Overdue
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <User className="h-3 w-3" />
-                        {checkout.chefEmail || 'Unknown Chef'}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        End: {format(new Date(checkout.endDate), 'MMM d, yyyy')}
-                      </span>
-                      {checkout.checkoutRequestedAt && (
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          Requested {formatDistanceToNow(new Date(checkout.checkoutRequestedAt), { addSuffix: true })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        {expandedId === checkout.storageBookingId ? (
-                          <ChevronUp className="h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </CollapsibleTrigger>
-                  </div>
-                </div>
-
-                {/* Photo Thumbnails */}
-                {checkout.checkoutPhotoUrls.length > 0 && (
-                  <div className="flex items-center gap-2 mt-3">
-                    <Image className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex gap-1">
-                      {checkout.checkoutPhotoUrls.slice(0, 4).map((url, index) => (
-                        <button
-                          key={index}
-                          onClick={() => openPhotoViewer(checkout, index)}
-                          className="relative w-10 h-10 rounded overflow-hidden border hover:border-primary transition-colors"
-                        >
-                          <img
-                            src={getR2ProxyUrl(url)}
-                            alt={`Photo ${index + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                        </button>
-                      ))}
-                      {checkout.checkoutPhotoUrls.length > 4 && (
-                        <button
-                          onClick={() => openPhotoViewer(checkout, 4)}
-                          className="w-10 h-10 rounded border bg-muted flex items-center justify-center text-xs text-muted-foreground hover:border-primary transition-colors"
-                        >
-                          +{checkout.checkoutPhotoUrls.length - 4}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Expanded Content */}
-                <CollapsibleContent className="mt-4 pt-4 border-t">
-                  <div className="space-y-4">
-                    {/* Chef Notes */}
-                    {checkout.checkoutNotes && (
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Chef Notes</Label>
-                        <p className="text-sm mt-1 bg-muted/50 rounded p-2">
-                          {checkout.checkoutNotes}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* All Photos */}
-                    {checkout.checkoutPhotoUrls.length > 0 && (
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Checkout Photos</Label>
-                        <div className="grid grid-cols-4 gap-2 mt-2">
-                          {checkout.checkoutPhotoUrls.map((url, index) => (
-                            <button
-                              key={index}
-                              onClick={() => openPhotoViewer(checkout, index)}
-                              className="relative aspect-square rounded-lg overflow-hidden border hover:border-primary transition-colors"
-                            >
-                              <img
-                                src={getR2ProxyUrl(url)}
-                                alt={`Photo ${index + 1}`}
-                                className="w-full h-full object-cover"
-                              />
-                              <div className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors flex items-center justify-center">
-                                <ExternalLink className="h-4 w-4 text-white opacity-0 hover:opacity-100" />
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Booking Details */}
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Kitchen</Label>
-                        <p>{checkout.kitchenName}</p>
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Location</Label>
-                        <p>{checkout.locationName}</p>
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Booking Period</Label>
-                        <p>
-                          {format(new Date(checkout.startDate), 'MMM d')} - {format(new Date(checkout.endDate), 'MMM d, yyyy')}
-                        </p>
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Total Price</Label>
-                        <p>${(parseInt(checkout.totalPrice) / 100).toFixed(2)}</p>
-                      </div>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex justify-end gap-2 pt-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => handleDenyClick(checkout)}
-                        disabled={denyMutation.isPending}
-                      >
-                        <XCircle className="h-4 w-4 mr-2" />
-                        Deny
-                      </Button>
-                      <Button
-                        onClick={() => handleApprove(checkout)}
-                        disabled={approveMutation.isPending}
-                      >
-                        {approveMutation.isPending ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                        )}
-                        Approve Checkout
-                      </Button>
-                    </div>
-                  </div>
-                </CollapsibleContent>
-              </div>
-            </Collapsible>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* Checkout History Section */}
-      <Card className="mt-6">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              Checkout History
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowHistory(!showHistory)}
-            >
-              {showHistory ? (
-                <>
-                  <ChevronUp className="h-4 w-4 mr-1" />
-                  Hide
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="h-4 w-4 mr-1" />
-                  Show
-                </>
-              )}
+        <CardHeader className="pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <CardTitle className="text-xl font-semibold flex items-center gap-2">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                Storage Checkouts
+              </CardTitle>
+              <CardDescription>
+                {viewType === 'pending' 
+                  ? `${pendingCheckouts.length} pending checkout request${pendingCheckouts.length !== 1 ? 's' : ''}`
+                  : `${checkoutHistory.length} checkout${checkoutHistory.length !== 1 ? 's' : ''} in history`}
+              </CardDescription>
+            </div>
+            <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
             </Button>
           </div>
         </CardHeader>
-        {showHistory && (
-          <CardContent className="pt-0">
-            {checkoutHistory.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No checkout history yet
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {checkoutHistory.map((checkout) => (
-                  <div
-                    key={checkout.storageBookingId}
-                    className={cn(
-                      "border rounded-lg p-3 text-sm",
-                      checkout.checkoutStatus === 'completed' 
-                        ? "border-green-200 bg-green-50/50" 
-                        : "border-amber-200 bg-amber-50/50"
-                    )}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{checkout.storageName}</span>
-                          {checkout.checkoutStatus === 'completed' ? (
-                            <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 text-xs">
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              Approved
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 text-xs">
-                              <XCircle className="h-3 w-3 mr-1" />
-                              Denied
-                            </Badge>
-                          )}
+
+        <CardContent className="space-y-4">
+          {/* View Type Tabs */}
+          <Tabs value={viewType} onValueChange={(v) => setViewType(v as ViewType)} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="pending" className="gap-2">
+                <Clock className="h-4 w-4" />
+                Pending
+                <Badge variant="secondary" className="ml-1">{pendingCheckouts.length}</Badge>
+              </TabsTrigger>
+              <TabsTrigger value="history" className="gap-2">
+                <CheckCircle className="h-4 w-4" />
+                History
+                <Badge variant="secondary" className="ml-1">{checkoutHistory.length}</Badge>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {/* Pending Table */}
+          {viewType === 'pending' && (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  {pendingTable.getHeaderGroups().map((headerGroup) => (
+                    <TableRow key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <TableHead key={header.id} className="whitespace-nowrap">
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {pendingTable.getRowModel().rows?.length ? (
+                    pendingTable.getRowModel().rows.map((row) => (
+                      <TableRow
+                        key={row.id}
+                        data-state={row.getIsSelected() && "selected"}
+                        className={cn(
+                          "hover:bg-muted/50",
+                          row.original.isOverdue && "bg-amber-50/50"
+                        )}
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id} className="py-3">
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={pendingColumns.length} className="h-48 text-center">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Package className="h-8 w-8 text-muted-foreground" />
+                          <p className="text-sm font-medium">No Pending Checkouts</p>
+                          <p className="text-sm text-muted-foreground">
+                            Checkout requests from chefs will appear here
+                          </p>
                         </div>
-                        <p className="text-muted-foreground text-xs mt-1">
-                          {checkout.chefEmail} • {checkout.locationName}
-                        </p>
-                      </div>
-                      <div className="text-right text-xs text-muted-foreground">
-                        {checkout.checkoutStatus === 'completed' && checkout.checkoutApprovedAt && (
-                          <p>{format(new Date(checkout.checkoutApprovedAt), 'MMM d, yyyy')}</p>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {/* History Table */}
+          {viewType === 'history' && (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  {historyTable.getHeaderGroups().map((headerGroup) => (
+                    <TableRow key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <TableHead key={header.id} className="whitespace-nowrap">
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {historyTable.getRowModel().rows?.length ? (
+                    historyTable.getRowModel().rows.map((row) => (
+                      <TableRow
+                        key={row.id}
+                        data-state={row.getIsSelected() && "selected"}
+                        className={cn(
+                          "hover:bg-muted/50",
+                          row.original.checkoutStatus === 'completed' && "bg-green-50/30"
                         )}
-                        {checkout.checkoutStatus !== 'completed' && checkout.checkoutDeniedAt && (
-                          <p>{format(new Date(checkout.checkoutDeniedAt), 'MMM d, yyyy')}</p>
-                        )}
-                      </div>
-                    </div>
-                    {checkout.checkoutDenialReason && (
-                      <p className="text-xs text-amber-700 mt-2 bg-amber-100/50 rounded p-2">
-                        <strong>Denial reason:</strong> {checkout.checkoutDenialReason}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        )}
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id} className="py-3">
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={historyColumns.length} className="h-48 text-center">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Clock className="h-8 w-8 text-muted-foreground" />
+                          <p className="text-sm font-medium">No Checkout History</p>
+                          <p className="text-sm text-muted-foreground">
+                            Completed checkouts will appear here
+                          </p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
       </Card>
 
-      {/* Deny Dialog */}
-      <Dialog open={denyDialogOpen} onOpenChange={setDenyDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Deny Checkout Request</DialogTitle>
-            <DialogDescription>
+      {/* Deny Sheet */}
+      <Sheet open={denyDialogOpen} onOpenChange={setDenyDialogOpen}>
+        <SheetContent className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Deny Checkout Request</SheetTitle>
+            <SheetDescription>
               Please provide a reason for denying this checkout. The chef will be notified and can submit a new request after addressing the issues.
-            </DialogDescription>
-          </DialogHeader>
+            </SheetDescription>
+          </SheetHeader>
           <div className="py-4">
             <Label htmlFor="denial-reason">Reason for Denial *</Label>
             <Textarea
@@ -663,7 +766,7 @@ export function PendingStorageCheckouts() {
               className="mt-2"
             />
           </div>
-          <DialogFooter>
+          <SheetFooter>
             <Button variant="outline" onClick={() => setDenyDialogOpen(false)}>
               Cancel
             </Button>
@@ -679,18 +782,18 @@ export function PendingStorageCheckouts() {
               )}
               Deny Checkout
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
-      {/* Photo Viewer Dialog */}
-      <Dialog open={photoViewerOpen} onOpenChange={setPhotoViewerOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Checkout Photos</DialogTitle>
-          </DialogHeader>
+      {/* Photo Viewer Sheet */}
+      <Sheet open={photoViewerOpen} onOpenChange={setPhotoViewerOpen}>
+        <SheetContent className="w-full sm:max-w-2xl">
+          <SheetHeader>
+            <SheetTitle>Checkout Photos</SheetTitle>
+          </SheetHeader>
           {selectedCheckout && selectedCheckout.checkoutPhotoUrls.length > 0 && (
-            <div className="space-y-4">
+            <div className="space-y-4 mt-4">
               <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
                 <img
                   src={getR2ProxyUrl(selectedCheckout.checkoutPhotoUrls[selectedPhotoIndex])}
@@ -720,8 +823,8 @@ export function PendingStorageCheckouts() {
               )}
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

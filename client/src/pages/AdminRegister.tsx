@@ -1,6 +1,6 @@
-import AnimatedTabs, { AnimatedTabContent } from "@/components/auth/AnimatedTabs";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -27,11 +27,6 @@ export default function AdminRegister() {
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
 
-  // Tab configuration
-  const tabs = [
-    { value: "login", label: "Login", icon: <LogIn className="w-4 h-4" /> },
-    { value: "register", label: "Register", icon: <UserPlus className="w-4 h-4" /> }
-  ];
 
   // Check for success messages from URL parameters
   useEffect(() => {
@@ -150,14 +145,19 @@ export default function AdminRegister() {
               </motion.div>
             )}
 
-            <AnimatedTabs
-              tabs={tabs}
-              activeTab={activeTab}
-              onTabChange={(tab) => setActiveTab(tab as "login" | "register")}
-            />
-            
-            <AnimatedTabContent activeTab={activeTab}>
-              {activeTab === "login" ? (
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "login" | "register")} className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsTrigger value="login" className="flex items-center gap-2">
+                  <LogIn className="w-4 h-4" />
+                  Login
+                </TabsTrigger>
+                <TabsTrigger value="register" className="flex items-center gap-2">
+                  <UserPlus className="w-4 h-4" />
+                  Register
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="login">
                 <EnhancedLoginForm
                   onSuccess={() => {
                     console.log('AdminRegister - Login successful, refreshing user data');
@@ -165,7 +165,9 @@ export default function AdminRegister() {
                   }}
                   setHasAttemptedLogin={setHasAttemptedLogin}
                 />
-              ) : (
+              </TabsContent>
+
+              <TabsContent value="register">
                 <EnhancedRegisterForm
                   onSuccess={() => {
                     console.log('AdminRegister - Registration successful');
@@ -173,8 +175,8 @@ export default function AdminRegister() {
                   }}
                   setHasAttemptedLogin={setHasAttemptedLogin}
                 />
-              )}
-            </AnimatedTabContent>
+              </TabsContent>
+            </Tabs>
           </motion.div>
         </FadeInSection>
       </div>

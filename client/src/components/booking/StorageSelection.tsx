@@ -9,13 +9,13 @@ import { DateRange, SelectRangeEventHandler } from "react-day-picker";
 import { format, differenceInDays, isBefore, startOfToday } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 interface StorageListing {
   id: number;
@@ -380,15 +380,15 @@ export function StorageSelection({
                   </div>
                 )}
 
-                {/* Date Range Picker Dialog */}
-                <Dialog open={openDialogId === storage.id} onOpenChange={(open) => !open && setOpenDialogId(null)}>
-                  <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle>Select Storage Dates: {storage.name}</DialogTitle>
-                      <DialogDescription>
+                {/* Date Range Picker Sheet */}
+                <Sheet open={openDialogId === storage.id} onOpenChange={(open) => !open && setOpenDialogId(null)}>
+                  <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
+                    <SheetHeader>
+                      <SheetTitle>Select Storage Dates: {storage.name}</SheetTitle>
+                      <SheetDescription>
                         Choose your start and end dates. Minimum booking: {minDays} day{minDays > 1 ? 's' : ''}.
-                      </DialogDescription>
-                    </DialogHeader>
+                      </SheetDescription>
+                    </SheetHeader>
                     <div className="space-y-4">
                       <div>
                         <Label>Date Range</Label>
@@ -441,7 +441,7 @@ export function StorageSelection({
                         </div>
                       )}
                     </div>
-                    <DialogFooter>
+                    <SheetFooter className="mt-6">
                       <Button
                         variant="outline"
                         onClick={() => {
@@ -467,9 +467,9 @@ export function StorageSelection({
                       >
                         {isSelected ? "Update Dates" : "Select Storage"}
                       </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                    </SheetFooter>
+                  </SheetContent>
+                </Sheet>
               </CardContent>
             </Card>
           );

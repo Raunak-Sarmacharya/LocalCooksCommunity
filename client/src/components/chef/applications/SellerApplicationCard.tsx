@@ -185,7 +185,7 @@ export default function SellerApplicationCard({
                       {foodSafetyStatus || 'Pending'}
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="text-[10px] bg-gray-100">Not Uploaded</Badge>
+                    <Badge variant="outline" className="bg-gray-100">Not Uploaded</Badge>
                   )}
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-card">
@@ -198,7 +198,7 @@ export default function SellerApplicationCard({
                       {establishmentStatus || 'Pending'}
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="text-[10px] bg-gray-100">Not Uploaded</Badge>
+                    <Badge variant="outline" className="bg-gray-100">Not Uploaded</Badge>
                   )}
                 </div>
               </div>

@@ -1,9 +1,31 @@
+import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Clock, Check, X, Package, ChevronRight, AlertCircle, RefreshCw } from "lucide-react";
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+import { Clock, Check, X, Package, ChevronRight, AlertCircle, RefreshCw, ArrowUpDown } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { getAuthHeaders } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
@@ -25,52 +47,192 @@ interface PendingExtension {
   kitchenName: string;
 }
 
-function getStatusBadge(status: string) {
-  switch (status) {
-    case 'pending':
+// Column definitions for extension requests table
+const getExtensionColumns = (
+  syncMutation: ReturnType<typeof useMutation<any, Error, number>>
+): ColumnDef<PendingExtension>[] => [
+  {
+    accessorKey: "storageName",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="h-8 -ml-3"
+      >
+        Storage
+        <ArrowUpDown className="ml-2 h-3 w-3" />
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const extension = row.original;
       return (
-        <Badge variant="outline" className="bg-gray-100 text-gray-700 border-gray-300">
-          <Clock className="h-3 w-3 mr-1" />
-          Awaiting Payment
-        </Badge>
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2">
+            <Package className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+            <span className="font-medium text-sm">{extension.storageName}</span>
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5 ml-5">
+            at {extension.kitchenName}
+          </div>
+        </div>
       );
-    case 'paid':
+    },
+  },
+  {
+    accessorKey: "extensionDays",
+    header: "Extension",
+    cell: ({ row }) => {
+      const extension = row.original;
       return (
-        <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
-          <Clock className="h-3 w-3 mr-1" />
-          Awaiting Manager Approval
-        </Badge>
+        <div className="flex items-center gap-2 text-sm">
+          <div className="bg-gray-100 rounded px-2 py-1">
+            <span className="text-gray-600 text-xs">Current: </span>
+            <span className="font-medium text-xs">{format(new Date(extension.currentEndDate), "MMM d")}</span>
+          </div>
+          <ChevronRight className="h-3 w-3 text-gray-400" />
+          <div className="bg-green-100 rounded px-2 py-1">
+            <span className="text-green-700 text-xs">New: </span>
+            <span className="font-medium text-green-800 text-xs">{format(new Date(extension.newEndDate), "MMM d")}</span>
+          </div>
+        </div>
       );
-    case 'approved':
-    case 'completed':
+    },
+  },
+  {
+    accessorKey: "extensionTotalPriceCents",
+    header: "Amount",
+    cell: ({ row }) => {
+      const extension = row.original;
       return (
-        <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
-          <Check className="h-3 w-3 mr-1" />
-          Approved
-        </Badge>
+        <div className="text-sm">
+          <div className="font-medium">${(extension.extensionTotalPriceCents / 100).toFixed(2)}</div>
+          <div className="text-xs text-muted-foreground">{extension.extensionDays} day{extension.extensionDays > 1 ? 's' : ''}</div>
+        </div>
       );
-    case 'rejected':
+    },
+  },
+  {
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) => {
+      const status = row.getValue("status") as string;
+      const extension = row.original;
+
+      const getStatusBadge = () => {
+        switch (status) {
+          case 'pending':
+            return (
+              <Badge variant="outline" className="bg-gray-100 text-gray-700 border-gray-300">
+                <Clock className="h-3 w-3 mr-1" />
+                Awaiting Payment
+              </Badge>
+            );
+          case 'paid':
+            return (
+              <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
+                <Clock className="h-3 w-3 mr-1" />
+                Awaiting Approval
+              </Badge>
+            );
+          case 'approved':
+          case 'completed':
+            return (
+              <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
+                <Check className="h-3 w-3 mr-1" />
+                Approved
+              </Badge>
+            );
+          case 'rejected':
+            return (
+              <Badge variant="outline" className="bg-red-100 text-red-800 border-red-300">
+                <X className="h-3 w-3 mr-1" />
+                Rejected
+              </Badge>
+            );
+          case 'refunded':
+            return (
+              <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
+                <Check className="h-3 w-3 mr-1" />
+                Refunded
+              </Badge>
+            );
+          default:
+            return (
+              <Badge variant="outline" className="capitalize">
+                {status}
+              </Badge>
+            );
+        }
+      };
+
       return (
-        <Badge variant="outline" className="bg-red-100 text-red-800 border-red-300">
-          <X className="h-3 w-3 mr-1" />
-          Rejected - Refund Pending
-        </Badge>
+        <div className="flex flex-col gap-1">
+          {getStatusBadge()}
+          {extension.rejectionReason && (status === 'rejected' || status === 'refunded') && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center text-xs text-red-600 cursor-help">
+                    <AlertCircle className="h-3 w-3 mr-1" />
+                    View reason
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="text-sm">{extension.rejectionReason}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       );
-    case 'refunded':
+    },
+  },
+  {
+    accessorKey: "createdAt",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="h-8 -ml-3"
+      >
+        Requested
+        <ArrowUpDown className="ml-2 h-3 w-3" />
+      </Button>
+    ),
+    cell: ({ row }) => {
       return (
-        <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
-          <Check className="h-3 w-3 mr-1" />
-          Refunded
-        </Badge>
+        <div className="text-sm text-muted-foreground">
+          {format(new Date(row.getValue("createdAt")), "MMM d, yyyy")}
+        </div>
       );
-    default:
+    },
+  },
+  {
+    id: "actions",
+    header: "",
+    cell: ({ row }) => {
+      const extension = row.original;
+      const isPending = extension.status === 'pending';
+
+      if (!isPending) return null;
+
       return (
-        <Badge variant="outline">
-          {status}
-        </Badge>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => syncMutation.mutate(extension.id)}
+          disabled={syncMutation.isPending}
+          className="text-xs"
+        >
+          <RefreshCw className={`h-3 w-3 mr-1 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+          {syncMutation.isPending ? 'Checking...' : 'Sync'}
+        </Button>
       );
-  }
-}
+    },
+  },
+];
 
 export function PendingStorageExtensions() {
   const queryClient = useQueryClient();
@@ -103,7 +265,6 @@ export function PendingStorageExtensions() {
       return response.json();
     },
     onSuccess: (data) => {
-      // Invalidate all related queries to ensure UI updates properly
       queryClient.invalidateQueries({ queryKey: ['/api/chef/storage-extensions/pending'] });
       queryClient.invalidateQueries({ queryKey: ['/api/chef/storage-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['/api/chef/bookings'] });
@@ -135,17 +296,34 @@ export function PendingStorageExtensions() {
     },
   });
 
-  // Filter to show only active extensions (pending, paid, rejected, or refunded)
-  const activeExtensions = extensions?.filter(ext => 
-    ext.status === 'pending' || ext.status === 'paid' || ext.status === 'rejected' || ext.status === 'refunded'
-  ) || [];
+  // Filter to show only active extensions
+  const activeExtensions = useMemo(() => 
+    extensions?.filter(ext => 
+      ext.status === 'pending' || ext.status === 'paid' || ext.status === 'rejected' || ext.status === 'refunded'
+    ) || [],
+    [extensions]
+  );
+
+  // Column definitions
+  const columns = useMemo(
+    () => getExtensionColumns(syncMutation),
+    [syncMutation]
+  );
+
+  // TanStack Table instance
+  const table = useReactTable({
+    data: activeExtensions,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
 
   if (isLoading) {
-    return null; // Don't show loading state, just hide
+    return null;
   }
 
   if (activeExtensions.length === 0) {
-    return null; // Don't show if no pending extensions
+    return null;
   }
 
   return (
@@ -156,102 +334,55 @@ export function PendingStorageExtensions() {
           Storage Extension Requests
         </CardTitle>
         <CardDescription>
-          Your pending storage booking extension requests
+          {activeExtensions.length} pending extension request{activeExtensions.length !== 1 ? 's' : ''}
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {activeExtensions.map((extension) => (
-          <div
-            key={extension.id}
-            className={`rounded-lg p-4 border ${
-              extension.status === 'rejected' 
-                ? 'bg-red-50 border-red-200' 
-                : 'bg-white border-gray-200'
-            }`}
-          >
-            <div className="flex items-start justify-between">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  {getStatusBadge(extension.status)}
-                  <span className="text-sm text-gray-500">
-                    Requested {format(new Date(extension.createdAt), "MMM d, yyyy")}
-                  </span>
-                </div>
-
-                <h4 className="font-semibold">
-                  {extension.storageName}
-                  <span className="text-gray-500 font-normal text-sm ml-2">
-                    at {extension.kitchenName}
-                  </span>
-                </h4>
-
-                <div className="flex items-center gap-3 text-sm">
-                  <div className="bg-gray-100 rounded px-2 py-1">
-                    <span className="text-gray-600">Current: </span>
-                    <span className="font-medium">{format(new Date(extension.currentEndDate), "MMM d")}</span>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-gray-400" />
-                  <div className="bg-green-100 rounded px-2 py-1">
-                    <span className="text-green-700">New: </span>
-                    <span className="font-medium text-green-800">{format(new Date(extension.newEndDate), "MMM d, yyyy")}</span>
-                  </div>
-                </div>
-
-                <div className="text-sm text-gray-600">
-                  <strong>{extension.extensionDays}</strong> day{extension.extensionDays > 1 ? 's' : ''} •{' '}
-                  <strong>${(extension.extensionTotalPriceCents / 100).toFixed(2)}</strong> paid
-                </div>
-
-                {/* Show sync button for pending extensions that may have completed payment */}
-                {extension.status === 'pending' && (
-                  <div className="mt-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => syncMutation.mutate(extension.id)}
-                      disabled={syncMutation.isPending}
-                      className="text-xs"
-                    >
-                      <RefreshCw className={`h-3 w-3 mr-1 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-                      {syncMutation.isPending ? 'Checking...' : 'Check Payment Status'}
-                    </Button>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Already paid? Click to sync your payment status.
-                    </p>
-                  </div>
-                )}
-
-                {extension.status === 'rejected' && (
-                  <div className="flex items-start gap-2 mt-2 p-2 bg-red-100 rounded text-sm text-red-800">
-                    <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="font-medium">Rejected by manager</p>
-                      {extension.rejectionReason && <p>{extension.rejectionReason}</p>}
-                      <p className="text-red-600 mt-1">A refund will be processed to your payment method.</p>
+      <CardContent>
+        <div className="rounded-md border bg-white">
+          <Table>
+            <TableHeader>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id} className="whitespace-nowrap">
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {table.getRowModel().rows?.length ? (
+                table.getRowModel().rows.map((row) => (
+                  <TableRow
+                    key={row.id}
+                    data-state={row.getIsSelected() && "selected"}
+                    className={`hover:bg-muted/50 ${
+                      row.original.status === 'rejected' ? 'bg-red-50/50' : ''
+                    }`}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id} className="py-3">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={columns.length} className="h-24 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Package className="h-8 w-8 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">No extension requests</p>
                     </div>
-                  </div>
-                )}
-
-                {extension.status === 'refunded' && (
-                  <div className="flex items-start gap-2 mt-2 p-2 bg-blue-100 rounded text-sm text-blue-800">
-                    <Check className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="font-medium">Refund Completed</p>
-                      {extension.rejectionReason && <p className="text-gray-600">Reason: {extension.rejectionReason}</p>}
-                      <p className="text-blue-600 mt-1">The refund has been processed to your payment method.</p>
-                    </div>
-                  </div>
-                )}
-
-                {extension.status === 'paid' && (
-                  <p className="text-sm text-amber-700 mt-1">
-                    The kitchen manager will review your request shortly.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
     </Card>
   );

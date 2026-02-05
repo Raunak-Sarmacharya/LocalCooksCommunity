@@ -1,7 +1,7 @@
-import AnimatedTabs, { AnimatedTabContent } from "@/components/auth/AnimatedTabs";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
-
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -28,12 +28,6 @@ export default function EnhancedAuthPage() {
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
   const hasUserMetaRef = useRef(false); // Track if userMeta was successfully fetched (avoids stale closure)
-
-  // Tab configuration
-  const tabs = [
-    { value: "login", label: "Login", icon: <LogIn className="w-4 h-4" /> },
-    { value: "register", label: "Register", icon: <UserPlus className="w-4 h-4" /> }
-  ];
 
   // Check for success messages from URL parameters
   useEffect(() => {
@@ -397,79 +391,72 @@ export default function EnhancedAuthPage() {
               </motion.p>
             </motion.div>
 
-            {/* Animated Tabs */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.3 }}
-              className="mb-8"
-            >
-              <AnimatedTabs
-                tabs={tabs}
-                activeTab={activeTab}
-                onTabChange={(tab) => setActiveTab(tab as "login" | "register")}
-              />
-            </motion.div>
-
-            {/* Form Content */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.4 }}
-            >
-              {/* Success Message for Password Reset */}
-              {showSuccessMessage && (
-                <motion.div
-                  initial={{ opacity: 0, y: -20, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                  className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex-shrink-0 w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
-                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      {successMessageType === 'password-reset' ? (
-                        <>
-                          <p className="text-sm font-medium text-green-800">Password reset successful!</p>
-                          <p className="text-xs text-green-600 mt-1">You can now sign in with your new password.</p>
-                        </>
-                      ) : (
-                        <>
-                          <p className="text-sm font-medium text-green-800">Email verified successfully!</p>
-                          <p className="text-xs text-green-600 mt-1">Your account is now verified. Please sign in with your credentials to continue.</p>
-                        </>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => setShowSuccessMessage(false)}
-                      className="flex-shrink-0 text-green-400 hover:text-green-600 transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
+            {/* Success Message for Password Reset */}
+            {showSuccessMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex-shrink-0 w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+                    <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
                   </div>
-                </motion.div>
-              )}
+                  <div className="flex-1">
+                    {successMessageType === 'password-reset' ? (
+                      <>
+                        <p className="text-sm font-medium text-green-800">Password reset successful!</p>
+                        <p className="text-xs text-green-600 mt-1">You can now sign in with your new password.</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-medium text-green-800">Email verified successfully!</p>
+                        <p className="text-xs text-green-600 mt-1">Your account is now verified. Please sign in with your credentials to continue.</p>
+                      </>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setShowSuccessMessage(false)}
+                    className="flex-shrink-0 text-green-400 hover:text-green-600 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </motion.div>
+            )}
 
-              <AnimatedTabContent activeTab={activeTab}>
-                {activeTab === "login" ? (
-                  <EnhancedLoginForm
-                    onSuccess={handleSuccess}
-                    setHasAttemptedLogin={setHasAttemptedLogin}
-                  />
-                ) : (
-                  <EnhancedRegisterForm
-                    onSuccess={handleSuccess}
-                    setHasAttemptedLogin={setHasAttemptedLogin}
-                  />
-                )}
-              </AnimatedTabContent>
-            </motion.div>
+            {/* Tabs */}
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "login" | "register")} className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsTrigger value="login" className="flex items-center gap-2">
+                  <LogIn className="w-4 h-4" />
+                  Login
+                </TabsTrigger>
+                <TabsTrigger value="register" className="flex items-center gap-2">
+                  <UserPlus className="w-4 h-4" />
+                  Register
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="login">
+                <EnhancedLoginForm
+                  onSuccess={handleSuccess}
+                  setHasAttemptedLogin={setHasAttemptedLogin}
+                />
+              </TabsContent>
+
+              <TabsContent value="register">
+                <EnhancedRegisterForm
+                  onSuccess={handleSuccess}
+                  setHasAttemptedLogin={setHasAttemptedLogin}
+                />
+              </TabsContent>
+            </Tabs>
 
             {/* Footer Links */}
             <motion.div
@@ -480,14 +467,13 @@ export default function EnhancedAuthPage() {
             >
               <p className="text-sm text-gray-500">
                 {activeTab === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
-                <motion.button
-                  className="text-blue-600 hover:text-blue-700 font-semibold hover:underline transition-colors"
+                <Button
+                  variant="link"
+                  className="text-blue-600 hover:text-blue-700 font-semibold p-0 h-auto"
                   onClick={() => setActiveTab(activeTab === "login" ? "register" : "login")}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
                 >
                   {activeTab === "login" ? "Register" : "Login"}
-                </motion.button>
+                </Button>
               </p>
             </motion.div>
           </div>

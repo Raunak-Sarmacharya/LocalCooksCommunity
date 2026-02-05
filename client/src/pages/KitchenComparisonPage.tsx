@@ -1415,7 +1415,7 @@ export default function KitchenComparisonPage() {
                                           <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
                                           <div className="flex items-center justify-between mb-2">
                                             <div className="flex items-center gap-2">
-                                              <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 gap-1 px-2 py-0.5 h-5">
+                                              <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 gap-1">
                                                 <Check className="h-3 w-3" />
                                                 Step 1 Approved
                                               </Badge>

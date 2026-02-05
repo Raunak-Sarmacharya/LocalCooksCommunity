@@ -1,7 +1,7 @@
-import AnimatedTabs, { AnimatedTabContent } from "@/components/auth/AnimatedTabs";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
 import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LoadingOverlay from "@/components/auth/LoadingOverlay";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -98,11 +98,6 @@ export default function ManagerLogin() {
     setShowLoadingOverlay(false);
   };
 
-  // Tab configuration
-  const tabs = [
-    { value: "login", label: "Login", icon: <LogIn className="w-4 h-4" /> },
-    { value: "register", label: "Register", icon: <UserPlus className="w-4 h-4" /> }
-  ];
 
   // Check for success messages from URL parameters
   useEffect(() => {
@@ -340,42 +335,47 @@ export default function ManagerLogin() {
               }}
             />
           ) : (
-            <div className="space-y-6">
-              <AnimatedTabs
-                tabs={tabs}
-                activeTab={activeTab}
-                onTabChange={(tab) => setActiveTab(tab as "login" | "register")}
-              />
-              
-              <AnimatedTabContent activeTab={activeTab}>
-                {activeTab === "login" ? (
-                  <EnhancedLoginForm
-                    onSuccess={() => {
-                      setHasAttemptedLogin(true);
-                      refreshUserData();
-                    }}
-                    setHasAttemptedLogin={setHasAttemptedLogin}
-                  />
-                ) : (
-                  <EnhancedRegisterForm
-                    onSuccess={async () => {
-                      console.log('🎯 GOOGLE REGISTRATION SUCCESS - Invalidating cache and refreshing data');
-                      // ENTERPRISE FIX: Invalidate React Query cache to force refetch of user profile
-                      // This ensures the redirect logic has fresh data after Google Sign-In registration
-                      await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
-                      setHasAttemptedLogin(true);
-                      await refreshUserData();
-                      // Force refetch after state update to ensure redirect logic has latest data
-                      queryClient.refetchQueries({ queryKey: ["/api/user/profile", user?.uid] });
-                    }}
-                    setHasAttemptedLogin={setHasAttemptedLogin}
-                    onRegistrationStart={handleRegistrationStart}
-                    onRegistrationComplete={handleRegistrationSuccess}
-                    onRegistrationError={handleRegistrationError}
-                  />
-                )}
-              </AnimatedTabContent>
-            </div>
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "login" | "register")} className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsTrigger value="login" className="flex items-center gap-2">
+                  <LogIn className="w-4 h-4" />
+                  Login
+                </TabsTrigger>
+                <TabsTrigger value="register" className="flex items-center gap-2">
+                  <UserPlus className="w-4 h-4" />
+                  Register
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="login">
+                <EnhancedLoginForm
+                  onSuccess={() => {
+                    setHasAttemptedLogin(true);
+                    refreshUserData();
+                  }}
+                  setHasAttemptedLogin={setHasAttemptedLogin}
+                />
+              </TabsContent>
+
+              <TabsContent value="register">
+                <EnhancedRegisterForm
+                  onSuccess={async () => {
+                    console.log('🎯 GOOGLE REGISTRATION SUCCESS - Invalidating cache and refreshing data');
+                    // ENTERPRISE FIX: Invalidate React Query cache to force refetch of user profile
+                    // This ensures the redirect logic has fresh data after Google Sign-In registration
+                    await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+                    setHasAttemptedLogin(true);
+                    await refreshUserData();
+                    // Force refetch after state update to ensure redirect logic has latest data
+                    queryClient.refetchQueries({ queryKey: ["/api/user/profile", user?.uid] });
+                  }}
+                  setHasAttemptedLogin={setHasAttemptedLogin}
+                  onRegistrationStart={handleRegistrationStart}
+                  onRegistrationComplete={handleRegistrationSuccess}
+                  onRegistrationError={handleRegistrationError}
+                />
+              </TabsContent>
+            </Tabs>
           )}
 
           {/* Footer */}

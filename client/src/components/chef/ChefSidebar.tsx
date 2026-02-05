@@ -12,6 +12,7 @@ import {
     LifeBuoy,
     AlertTriangle,
     ChefHat,
+    CreditCard,
 } from "lucide-react"
 
 import {
@@ -108,8 +109,13 @@ const navGroups: NavGroup[] = [
         title: "Account",
         items: [
             {
-                id: "damage-claims",
-                label: "Damage Claims",
+                id: "transactions",
+                label: "My Transactions",
+                icon: CreditCard,
+            },
+            {
+                id: "issues-refunds",
+                label: "Issues & Refunds",
                 icon: AlertTriangle,
             },
         ],

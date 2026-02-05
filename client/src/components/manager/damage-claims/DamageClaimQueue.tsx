@@ -2,11 +2,20 @@
  * Damage Claim Queue Component
  * 
  * Manager interface for creating, viewing, and managing damage claims.
- * Follows the same pattern as OverstayPenaltyQueue.tsx
+ * Uses TanStack Table for enterprise-grade table display.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  SortingState,
+  useReactTable,
+} from "@tanstack/react-table";
 import { format } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -14,10 +23,20 @@ import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import {
   Card,
   CardContent,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Sheet,
   SheetContent,
@@ -27,6 +46,20 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Alert,
   AlertDescription,
@@ -48,6 +81,8 @@ import {
   Info,
   Save,
   Download,
+  MoreHorizontal,
+  ArrowUpDown,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +95,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DamageClaimDetailSheet } from "./DamageClaimDetailSheet";
+import { cn } from "@/lib/utils";
 
 // Types
 interface DamageEvidence {
@@ -823,6 +859,9 @@ export function DamageClaimQueue() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showAll, setShowAll] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("action");
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [globalFilter, setGlobalFilter] = useState("");
 
   // Fetch claims
   const { data, isLoading, error, refetch } = useQuery({
@@ -880,6 +919,200 @@ export function DamageClaimQueue() {
     setDetailSheetOpen(true);
   };
 
+  // Group claims by status
+  const draftClaims = useMemo(() => claims.filter(c => c.status === 'draft'), [claims]);
+  const pendingClaims = useMemo(() => claims.filter(c => ['submitted', 'under_review'].includes(c.status)), [claims]);
+  const actionRequiredClaims = useMemo(() => claims.filter(c => 
+    ['approved', 'partially_approved', 'chef_accepted', 'charge_failed'].includes(c.status)
+  ), [claims]);
+  const resolvedClaims = useMemo(() => claims.filter(c => 
+    ['charge_succeeded', 'resolved', 'rejected', 'expired'].includes(c.status)
+  ), [claims]);
+
+  // Get filtered claims based on active tab
+  const filteredClaims = useMemo(() => {
+    switch (activeTab) {
+      case "action": return actionRequiredClaims;
+      case "drafts": return draftClaims;
+      case "pending": return pendingClaims;
+      case "resolved": return resolvedClaims;
+      default: return claims;
+    }
+  }, [activeTab, actionRequiredClaims, draftClaims, pendingClaims, resolvedClaims, claims]);
+
+  // TanStack Table columns
+  const columns: ColumnDef<DamageClaim>[] = useMemo(() => [
+    {
+      accessorKey: "claimTitle",
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="h-8 px-2"
+        >
+          Claim
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }) => {
+        const claim = row.original;
+        return (
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-orange-600 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="font-medium truncate">{claim.claimTitle}</p>
+              <p className="text-xs text-muted-foreground truncate">{claim.claimDescription}</p>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "chefName",
+      header: "Chef",
+      cell: ({ row }) => {
+        const claim = row.original;
+        return (
+          <span className="text-sm">{claim.chefName || claim.chefEmail || 'Unknown'}</span>
+        );
+      },
+    },
+    {
+      accessorKey: "bookingType",
+      header: "Type",
+      cell: ({ row }) => (
+        <Badge variant="outline" className="capitalize">
+          {row.original.bookingType}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: "damageDate",
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="h-8 px-2"
+        >
+          Date
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }) => format(new Date(row.original.damageDate), 'MMM d, yyyy'),
+    },
+    {
+      accessorKey: "claimedAmountCents",
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="h-8 px-2"
+        >
+          Amount
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }) => {
+        const claim = row.original;
+        return (
+          <div className="text-right">
+            <p className="font-semibold">{formatCurrency(claim.claimedAmountCents)}</p>
+            {claim.finalAmountCents && claim.finalAmountCents !== claim.claimedAmountCents && (
+              <p className="text-xs text-green-600">Final: {formatCurrency(claim.finalAmountCents)}</p>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => getStatusBadge(row.original.status),
+    },
+    {
+      id: "actions",
+      header: "",
+      cell: ({ row }) => {
+        const claim = row.original;
+        const canSubmit = claim.status === 'draft' && claim.evidence.length >= 2;
+        const canCharge = ['approved', 'partially_approved', 'chef_accepted'].includes(claim.status);
+        const canDownloadInvoice = claim.status === 'charge_succeeded';
+        const isDownloading = downloadingInvoiceId === claim.id;
+
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleView(claim.id)}>
+                <Eye className="h-4 w-4 mr-2" />
+                View Details
+              </DropdownMenuItem>
+
+              {canSubmit && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => submitMutation.mutate(claim.id)}
+                    disabled={isProcessing}
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    Submit to Chef
+                  </DropdownMenuItem>
+                </>
+              )}
+
+              {canCharge && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => chargeMutation.mutate(claim.id)}
+                    disabled={isProcessing}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Charge Chef
+                  </DropdownMenuItem>
+                </>
+              )}
+
+              {canDownloadInvoice && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => handleDownloadInvoice(claim.id)}
+                    disabled={isDownloading}
+                  >
+                    {isDownloading ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" />
+                    )}
+                    Download Invoice
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
+    },
+  ], [downloadingInvoiceId, isProcessing, submitMutation, chargeMutation]);
+
+  // TanStack Table instance
+  const table = useReactTable({
+    data: filteredClaims,
+    columns,
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    state: { sorting, globalFilter },
+    onGlobalFilterChange: setGlobalFilter,
+  });
+
   // Handle invoice download for charged damage claims
   const handleDownloadInvoice = async (claimId: number) => {
     setDownloadingInvoiceId(claimId);
@@ -932,20 +1165,10 @@ export function DamageClaimQueue() {
     );
   }
 
-  // Group claims by status
-  const draftClaims = claims.filter(c => c.status === 'draft');
-  const pendingClaims = claims.filter(c => ['submitted', 'under_review'].includes(c.status));
-  const actionRequiredClaims = claims.filter(c => 
-    ['approved', 'partially_approved', 'chef_accepted', 'charge_failed'].includes(c.status)
-  );
-  const resolvedClaims = claims.filter(c => 
-    ['charge_succeeded', 'resolved', 'rejected', 'expired'].includes(c.status)
-  );
-
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold">Damage Claims</h2>
           <p className="text-muted-foreground">File and manage damage claims against chef bookings</p>
@@ -959,7 +1182,7 @@ export function DamageClaimQueue() {
             {showAll ? "Hide" : "Show"} Resolved
           </Button>
           <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
             Refresh
           </Button>
         </div>
@@ -967,7 +1190,7 @@ export function DamageClaimQueue() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
+        <Card className={cn("cursor-pointer transition-colors", activeTab === "drafts" && "ring-2 ring-primary")} onClick={() => setActiveTab("drafts")}>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-gray-500" />
@@ -978,7 +1201,7 @@ export function DamageClaimQueue() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className={cn("cursor-pointer transition-colors", activeTab === "pending" && "ring-2 ring-primary")} onClick={() => setActiveTab("pending")}>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
               <Clock className="w-5 h-5 text-yellow-500" />
@@ -989,7 +1212,7 @@ export function DamageClaimQueue() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className={cn("cursor-pointer transition-colors", activeTab === "action" && "ring-2 ring-primary")} onClick={() => setActiveTab("action")}>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-orange-500" />
@@ -1000,7 +1223,7 @@ export function DamageClaimQueue() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className={cn("cursor-pointer transition-colors", activeTab === "resolved" && "ring-2 ring-primary")} onClick={() => setActiveTab("resolved")}>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-green-500" />
@@ -1013,107 +1236,87 @@ export function DamageClaimQueue() {
         </Card>
       </div>
 
-      {/* Claims List */}
-      {claims.length === 0 ? (
+      {/* Search */}
+      <div className="flex items-center gap-4">
+        <Input
+          placeholder="Search claims..."
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          className="max-w-sm"
+        />
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="hidden md:block">
+          <TabsList className="flex gap-1 h-auto p-1">
+            <TabsTrigger value="action" className="text-xs lg:text-sm px-2 lg:px-3 py-1.5">Action</TabsTrigger>
+            <TabsTrigger value="drafts" className="text-xs lg:text-sm px-2 lg:px-3 py-1.5">Drafts</TabsTrigger>
+            <TabsTrigger value="pending" className="text-xs lg:text-sm px-2 lg:px-3 py-1.5">Pending</TabsTrigger>
+            <TabsTrigger value="resolved" className="text-xs lg:text-sm px-2 lg:px-3 py-1.5">Resolved</TabsTrigger>
+            <TabsTrigger value="all" className="text-xs lg:text-sm px-2 lg:px-3 py-1.5">All</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
+      {/* TanStack Table */}
+      {filteredClaims.length === 0 ? (
         <Card>
           <CardContent className="pt-6 text-center">
             <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-medium">No Damage Claims</h3>
-            <p className="text-muted-foreground">You haven&apos;t filed any damage claims yet.</p>
+            <h3 className="text-lg font-medium">No Claims in This Category</h3>
+            <p className="text-muted-foreground">
+              {activeTab === "all" ? "You haven't filed any damage claims yet." : `No ${activeTab} claims found.`}
+            </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-6">
-          {/* Action Required */}
-          {actionRequiredClaims.length > 0 && (
-            <div>
-              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-orange-500" />
-                Action Required ({actionRequiredClaims.length})
-              </h3>
-              {actionRequiredClaims.map(claim => (
-                <ClaimCard
-                  key={claim.id}
-                  claim={claim}
-                  onSubmit={(id) => submitMutation.mutate(id)}
-                  onCharge={(id) => chargeMutation.mutate(id)}
-                  onView={handleView}
-                  onDownloadInvoice={handleDownloadInvoice}
-                  isProcessing={isProcessing}
-                  isDownloading={downloadingInvoiceId === claim.id}
-                />
-              ))}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              {activeTab === "action" && <><AlertTriangle className="w-5 h-5 text-orange-500" /> Action Required</>}
+              {activeTab === "drafts" && <><FileText className="w-5 h-5 text-gray-500" /> Drafts</>}
+              {activeTab === "pending" && <><Clock className="w-5 h-5 text-yellow-500" /> Pending Response</>}
+              {activeTab === "resolved" && <><CheckCircle className="w-5 h-5 text-green-500" /> Resolved</>}
+              {activeTab === "all" && <>All Claims</>}
+              <Badge variant="secondary" className="ml-2">{filteredClaims.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <TableRow key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <TableHead key={header.id}>
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {table.getRowModel().rows.length ? (
+                    table.getRowModel().rows.map((row) => (
+                      <TableRow key={row.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleView(row.original.id)}>
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id} onClick={(e) => cell.column.id === "actions" && e.stopPropagation()}>
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={columns.length} className="h-24 text-center">
+                        No results.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </div>
-          )}
-
-          {/* Drafts */}
-          {draftClaims.length > 0 && (
-            <div>
-              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-gray-500" />
-                Drafts ({draftClaims.length})
-              </h3>
-              {draftClaims.map(claim => (
-                <ClaimCard
-                  key={claim.id}
-                  claim={claim}
-                  onSubmit={(id) => submitMutation.mutate(id)}
-                  onCharge={(id) => chargeMutation.mutate(id)}
-                  onView={handleView}
-                  onDownloadInvoice={handleDownloadInvoice}
-                  isProcessing={isProcessing}
-                  isDownloading={downloadingInvoiceId === claim.id}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Pending */}
-          {pendingClaims.length > 0 && (
-            <div>
-              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Clock className="w-5 h-5 text-yellow-500" />
-                Pending Response ({pendingClaims.length})
-              </h3>
-              {pendingClaims.map(claim => (
-                <ClaimCard
-                  key={claim.id}
-                  claim={claim}
-                  onSubmit={(id) => submitMutation.mutate(id)}
-                  onCharge={(id) => chargeMutation.mutate(id)}
-                  onView={handleView}
-                  onDownloadInvoice={handleDownloadInvoice}
-                  isProcessing={isProcessing}
-                  isDownloading={downloadingInvoiceId === claim.id}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Resolved (if showing all) */}
-          {showAll && resolvedClaims.length > 0 && (
-            <div>
-              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-gray-500" />
-                Resolved ({resolvedClaims.length})
-              </h3>
-              <div className="opacity-75">
-                {resolvedClaims.map(claim => (
-                  <ClaimCard
-                    key={claim.id}
-                    claim={claim}
-                    onSubmit={(id) => submitMutation.mutate(id)}
-                    onCharge={(id) => chargeMutation.mutate(id)}
-                    onView={handleView}
-                    onDownloadInvoice={handleDownloadInvoice}
-                    isProcessing={isProcessing}
-                    isDownloading={downloadingInvoiceId === claim.id}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Detail Sheet for viewing claim and uploading evidence */}

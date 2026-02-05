@@ -2,11 +2,21 @@
  * Pending Damage Claims Component
  * 
  * Chef interface for viewing and responding to damage claims filed against them.
+ * Uses TanStack Table for enterprise-grade table display.
  */
 
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  SortingState,
+  useReactTable,
+} from "@tanstack/react-table";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -20,13 +30,35 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertTriangle,
   CheckCircle,
@@ -39,6 +71,12 @@ import {
   Eye,
   MessageSquare,
   ExternalLink,
+  MoreHorizontal,
+  ArrowUpDown,
+  Download,
+  MapPin,
+  DollarSign,
+  Loader2,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -48,6 +86,7 @@ import {
   AlertTitle,
 } from "@/components/ui/alert";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { cn } from "@/lib/utils";
 
 // Types
 interface DamageEvidence {
@@ -189,16 +228,16 @@ function ResponseDialog({
   const canRespond = claim.status === 'submitted' && !isExpired && !isResolved;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{isResolved ? 'Damage Claim Details' : 'Respond to Damage Claim'}</DialogTitle>
-          <DialogDescription>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>{isResolved ? 'Damage Claim Details' : 'Respond to Damage Claim'}</SheetTitle>
+          <SheetDescription>
             {isResolved 
               ? 'View the details of this resolved damage claim.'
               : 'Review the claim details and evidence, then choose to accept or dispute.'}
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
 
         {/* Resolved Status Banner */}
         {isResolved && (
@@ -361,7 +400,7 @@ function ResponseDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <SheetFooter className="mt-6">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {isResolved ? 'Close' : 'Cancel'}
           </Button>
@@ -381,149 +420,225 @@ function ResponseDialog({
                 : "Submit Dispute"}
             </Button>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
 
-// Claim Card Component
-function ClaimCard({
-  claim,
-  onRespond,
-  onDownloadInvoice,
-}: {
-  claim: DamageClaim;
+// Column definitions for damage claims table
+type ClaimViewType = "pending" | "in_progress" | "resolved" | "all";
+
+interface DamageClaimColumnsProps {
   onRespond: (claim: DamageClaim) => void;
   onDownloadInvoice: (claimId: number) => void;
-}) {
-  const { deadline, isExpired, hoursRemaining } = useMemo(() => {
-    const d = new Date(claim.chefResponseDeadline);
-    const now = new Date();
-    return {
-      deadline: d,
-      isExpired: d < now,
-      hoursRemaining: Math.max(0, Math.floor((d.getTime() - now.getTime()) / (1000 * 60 * 60))),
-    };
-  }, [claim.chefResponseDeadline]);
-  const canRespond = claim.status === 'submitted' && !isExpired;
-
-  return (
-    <Card className={canRespond ? "border-orange-300 bg-orange-50/50" : ""}>
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
-          <div>
-            <CardTitle className="text-lg">{claim.claimTitle}</CardTitle>
-            <CardDescription>
-              Filed by {claim.managerName || 'Manager'} • {claim.locationName || 'Unknown Location'}
-            </CardDescription>
-          </div>
-          {getStatusBadge(claim.status)}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-          {claim.claimDescription}
-        </p>
-
-        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-4">
-          <span>
-            <strong>Amount:</strong> {formatCurrency(claim.claimedAmountCents)}
-          </span>
-          <span>
-            <strong>Type:</strong> {claim.bookingType === 'storage' ? 'Storage' : 'Kitchen'}
-          </span>
-          <span>
-            <strong>Damage Date:</strong> {format(new Date(claim.damageDate), 'MMM d, yyyy')}
-          </span>
-          <span>
-            <strong>Evidence:</strong> {claim.evidence.length} items
-          </span>
-        </div>
-
-        {/* Response deadline for pending claims */}
-        {claim.status === 'submitted' && (
-          <div className={`text-sm mb-4 ${hoursRemaining <= 24 ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
-            <Clock className="w-4 h-4 inline mr-1" />
-            {isExpired
-              ? "Response deadline passed"
-              : `Respond within ${hoursRemaining} hours (by ${format(deadline, 'MMM d, h:mm a')})`}
-          </div>
-        )}
-
-        {/* Chef's previous response */}
-        {claim.chefResponse && (
-          <div className="bg-muted p-3 rounded-lg mb-4">
-            <p className="text-sm font-medium mb-1">Your Response:</p>
-            <p className="text-sm text-muted-foreground">{claim.chefResponse}</p>
-            {claim.chefRespondedAt && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Responded {format(new Date(claim.chefRespondedAt), 'MMM d, yyyy h:mm a')}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Admin decision */}
-        {claim.adminDecisionReason && (
-          <div className="bg-blue-50 p-3 rounded-lg mb-4 border border-blue-200">
-            <p className="text-sm font-medium mb-1 text-blue-800">Admin Decision:</p>
-            <p className="text-sm text-blue-700">{claim.adminDecisionReason}</p>
-          </div>
-        )}
-
-        {/* Final amount if different */}
-        {claim.finalAmountCents && claim.finalAmountCents !== claim.claimedAmountCents && (
-          <div className="text-sm mb-4">
-            <strong>Final Amount:</strong>{" "}
-            <span className="text-green-600">{formatCurrency(claim.finalAmountCents)}</span>
-            <span className="text-muted-foreground ml-2">
-              (originally {formatCurrency(claim.claimedAmountCents)})
-            </span>
-          </div>
-        )}
-
-        {/* Charged claim info */}
-        {claim.status === 'charge_succeeded' && claim.chargeSucceededAt && (
-          <div className="bg-green-50 p-3 rounded-lg mb-4 border border-green-200">
-            <p className="text-sm font-medium text-green-800">
-              ✓ Payment Completed on {format(new Date(claim.chargeSucceededAt), 'MMM d, yyyy h:mm a')}
-            </p>
-            <p className="text-xs text-green-700 mt-1">
-              Amount charged: {formatCurrency(claim.finalAmountCents || claim.claimedAmountCents)}
-            </p>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-2">
-          {canRespond && (
-            <Button onClick={() => onRespond(claim)}>
-              <MessageSquare className="w-4 h-4 mr-2" />
-              Respond to Claim
-            </Button>
-          )}
-          {!canRespond && (
-            <Button variant="outline" onClick={() => onRespond(claim)}>
-              <Eye className="w-4 h-4 mr-2" />
-              View Details
-            </Button>
-          )}
-          {/* Download Invoice for charged claims */}
-          {claim.status === 'charge_succeeded' && (
-            <Button 
-              variant="outline" 
-              onClick={() => onDownloadInvoice(claim.id)}
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              Download Invoice
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
+  downloadingInvoiceId: number | null;
 }
+
+const getDamageClaimColumns = ({
+  onRespond,
+  onDownloadInvoice,
+  downloadingInvoiceId,
+}: DamageClaimColumnsProps): ColumnDef<DamageClaim>[] => [
+  {
+    accessorKey: "claimTitle",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="h-8 -ml-3"
+      >
+        Claim
+        <ArrowUpDown className="ml-2 h-3 w-3" />
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const claim = row.original;
+      return (
+        <div className="flex flex-col max-w-[250px]">
+          <span className="font-medium text-sm truncate">{claim.claimTitle}</span>
+          <div className="flex items-center text-xs text-muted-foreground mt-0.5">
+            <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
+            <span className="truncate">{claim.locationName || 'Unknown Location'}</span>
+          </div>
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) => {
+      const status = row.getValue("status") as string;
+      const claim = row.original;
+      
+      // Calculate deadline info for pending claims
+      const deadline = new Date(claim.chefResponseDeadline);
+      const now = new Date();
+      const isExpired = deadline < now;
+      const hoursRemaining = Math.max(0, Math.floor((deadline.getTime() - now.getTime()) / (1000 * 60 * 60)));
+      
+      return (
+        <div className="flex flex-col gap-1">
+          {getStatusBadge(status)}
+          {status === 'submitted' && !isExpired && hoursRemaining <= 24 && (
+            <span className="text-xs text-red-600 font-medium">
+              {hoursRemaining}h left
+            </span>
+          )}
+          {status === 'submitted' && isExpired && (
+            <span className="text-xs text-red-600">Expired</span>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "claimedAmountCents",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="h-8 justify-end w-full"
+      >
+        Amount
+        <ArrowUpDown className="ml-2 h-3 w-3" />
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const claim = row.original;
+      const finalAmount = claim.finalAmountCents || claim.claimedAmountCents;
+      const isDifferent = claim.finalAmountCents && claim.finalAmountCents !== claim.claimedAmountCents;
+      
+      return (
+        <div className="text-right">
+          <div className="font-medium text-sm flex items-center justify-end gap-1">
+            <DollarSign className="h-3 w-3 text-muted-foreground" />
+            {formatCurrency(finalAmount)}
+          </div>
+          {isDifferent && (
+            <div className="text-xs text-muted-foreground line-through">
+              {formatCurrency(claim.claimedAmountCents)}
+            </div>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "bookingType",
+    header: "Type",
+    cell: ({ row }) => {
+      const type = row.getValue("bookingType") as string;
+      return (
+        <Badge variant="outline" className="capitalize">
+          {type === 'storage' ? 'Storage' : 'Kitchen'}
+        </Badge>
+      );
+    },
+  },
+  {
+    accessorKey: "damageDate",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="h-8 -ml-3"
+      >
+        Damage Date
+        <ArrowUpDown className="ml-2 h-3 w-3" />
+      </Button>
+    ),
+    cell: ({ row }) => {
+      return (
+        <div className="text-sm text-muted-foreground">
+          {format(new Date(row.getValue("damageDate")), 'MMM d, yyyy')}
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "evidence",
+    header: "Evidence",
+    cell: ({ row }) => {
+      const evidence = row.original.evidence;
+      if (!evidence || evidence.length === 0) {
+        return <span className="text-muted-foreground text-xs">—</span>;
+      }
+      
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-1 cursor-help">
+                <Image className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm">{evidence.length}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-sm">{evidence.length} evidence item{evidence.length !== 1 ? 's' : ''}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    },
+  },
+  {
+    id: "actions",
+    header: "",
+    cell: ({ row }) => {
+      const claim = row.original;
+      const deadline = new Date(claim.chefResponseDeadline);
+      const isExpired = deadline < new Date();
+      const canRespond = claim.status === 'submitted' && !isExpired;
+      const isDownloading = downloadingInvoiceId === claim.id;
+      const canDownloadInvoice = claim.status === 'charge_succeeded';
+
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {canRespond ? (
+              <DropdownMenuItem onClick={() => onRespond(claim)}>
+                <MessageSquare className="h-4 w-4 mr-2" />
+                Respond to Claim
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => onRespond(claim)}>
+                <Eye className="h-4 w-4 mr-2" />
+                View Details
+              </DropdownMenuItem>
+            )}
+
+            {canDownloadInvoice && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => onDownloadInvoice(claim.id)}
+                  disabled={isDownloading}
+                >
+                  {isDownloading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  Download Invoice
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      );
+    },
+  },
+];
 
 // Main Component
 export function PendingDamageClaims() {
@@ -531,6 +646,8 @@ export function PendingDamageClaims() {
   const queryClient = useQueryClient();
   const [selectedClaim, setSelectedClaim] = useState<DamageClaim | null>(null);
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<number | null>(null);
+  const [viewType, setViewType] = useState<ClaimViewType>("all");
+  const [sorting, setSorting] = useState<SortingState>([{ id: "damageDate", desc: true }]);
 
   // Fetch claims
   const { data, isLoading, error, refetch } = useQuery({
@@ -577,14 +694,48 @@ export function PendingDamageClaims() {
     }
   };
 
-  // Separate pending from resolved
-  const pendingClaims = claims.filter(c => c.status === 'submitted');
-  const inProgressClaims = claims.filter(c => 
-    ['chef_accepted', 'chef_disputed', 'under_review', 'approved', 'partially_approved', 'charge_pending'].includes(c.status)
+  // Categorize claims
+  const { pendingClaims, inProgressClaims, resolvedClaims } = useMemo(() => {
+    const pending = claims.filter(c => c.status === 'submitted');
+    const inProgress = claims.filter(c => 
+      ['chef_accepted', 'chef_disputed', 'under_review', 'approved', 'partially_approved', 'charge_pending'].includes(c.status)
+    );
+    const resolved = claims.filter(c => 
+      ['charge_succeeded', 'resolved', 'rejected', 'expired', 'charge_failed'].includes(c.status)
+    );
+    return { pendingClaims: pending, inProgressClaims: inProgress, resolvedClaims: resolved };
+  }, [claims]);
+
+  // Get current view data
+  const currentViewData = useMemo(() => {
+    if (viewType === "pending") return pendingClaims;
+    if (viewType === "in_progress") return inProgressClaims;
+    if (viewType === "resolved") return resolvedClaims;
+    return claims;
+  }, [viewType, pendingClaims, inProgressClaims, resolvedClaims, claims]);
+
+  // Column definitions
+  const columns = useMemo(
+    () => getDamageClaimColumns({
+      onRespond: setSelectedClaim,
+      onDownloadInvoice: handleDownloadInvoice,
+      downloadingInvoiceId,
+    }),
+    [downloadingInvoiceId]
   );
-  const resolvedClaims = claims.filter(c => 
-    ['charge_succeeded', 'resolved', 'rejected', 'expired', 'charge_failed'].includes(c.status)
-  );
+
+  // TanStack Table instance
+  const table = useReactTable({
+    data: currentViewData,
+    columns,
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    state: {
+      sorting,
+    },
+  });
 
   if (isLoading) {
     return (
@@ -611,20 +762,6 @@ export function PendingDamageClaims() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold">Damage Claims</h2>
-          <p className="text-muted-foreground">
-            Review and respond to damage claims filed against your bookings
-          </p>
-        </div>
-        <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-      </div>
-
       {/* Urgent Claims Alert */}
       {pendingClaims.length > 0 && (
         <Alert variant="destructive">
@@ -637,78 +774,107 @@ export function PendingDamageClaims() {
         </Alert>
       )}
 
-      {/* No Claims */}
-      {claims.length === 0 && (
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-medium">No Damage Claims</h3>
-            <p className="text-muted-foreground">
-              You don&apos;t have any damage claims filed against you.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Pending Claims */}
-      {pendingClaims.length > 0 && (
-        <div>
-          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-orange-500" />
-            Awaiting Your Response ({pendingClaims.length})
-          </h3>
-          <div className="space-y-4">
-            {pendingClaims.map(claim => (
-              <ClaimCard
-                key={claim.id}
-                claim={claim}
-                onRespond={setSelectedClaim}
-                onDownloadInvoice={handleDownloadInvoice}
-              />
-            ))}
+      {/* Main Card with Table */}
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <CardTitle className="text-xl font-semibold flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Damage Claims
+              </CardTitle>
+              <CardDescription>
+                {table.getFilteredRowModel().rows.length} of {claims.length} claim{claims.length !== 1 ? 's' : ''}
+              </CardDescription>
+            </div>
+            <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
           </div>
-        </div>
-      )}
+        </CardHeader>
 
-      {/* In Progress Claims */}
-      {inProgressClaims.length > 0 && (
-        <div>
-          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <Clock className="w-5 h-5 text-yellow-500" />
-            In Progress ({inProgressClaims.length})
-          </h3>
-          <div className="space-y-4">
-            {inProgressClaims.map(claim => (
-              <ClaimCard
-                onDownloadInvoice={handleDownloadInvoice}
-                key={claim.id}
-                claim={claim}
-                onRespond={setSelectedClaim}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+        <CardContent className="space-y-4">
+          {/* View Type Tabs */}
+          <Tabs value={viewType} onValueChange={(v) => setViewType(v as ClaimViewType)} className="w-full">
+            <TabsList className="w-full flex flex-wrap gap-1 h-auto p-1">
+              <TabsTrigger value="all" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
+                All
+                <Badge variant="secondary" className="ml-1">{claims.length}</Badge>
+              </TabsTrigger>
+              <TabsTrigger value="pending" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
+                <span className="hidden sm:inline">Pending</span>
+                <span className="sm:hidden">Pend</span>
+                <Badge variant="secondary" className="ml-1">{pendingClaims.length}</Badge>
+              </TabsTrigger>
+              <TabsTrigger value="in_progress" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
+                <span className="hidden sm:inline">In Progress</span>
+                <span className="sm:hidden">Active</span>
+                <Badge variant="secondary" className="ml-1">{inProgressClaims.length}</Badge>
+              </TabsTrigger>
+              <TabsTrigger value="resolved" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
+                <span className="hidden sm:inline">Resolved</span>
+                <span className="sm:hidden">Done</span>
+                <Badge variant="secondary" className="ml-1">{resolvedClaims.length}</Badge>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-      {/* Resolved Claims */}
-      {resolvedClaims.length > 0 && (
-        <div>
-          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-gray-500" />
-            Resolved ({resolvedClaims.length})
-          </h3>
-          <div className="space-y-4">
-            {resolvedClaims.map(claim => (
-              <ClaimCard
-                key={claim.id}
-                claim={claim}
-                onRespond={setSelectedClaim}
-                onDownloadInvoice={handleDownloadInvoice}
-              />
-            ))}
+          {/* Table */}
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead key={header.id} className="whitespace-nowrap">
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableHeader>
+              <TableBody>
+                {table.getRowModel().rows?.length ? (
+                  table.getRowModel().rows.map((row) => (
+                    <TableRow
+                      key={row.id}
+                      data-state={row.getIsSelected() && "selected"}
+                      className={cn(
+                        "hover:bg-muted/50",
+                        row.original.status === "submitted" && "bg-orange-50/50",
+                        row.original.status === "charge_succeeded" && "bg-green-50/30"
+                      )}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id} className="py-3">
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={columns.length} className="h-48 text-center">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <CheckCircle className="h-8 w-8 text-green-500" />
+                        <p className="text-sm font-medium">No Damage Claims</p>
+                        <p className="text-sm text-muted-foreground">
+                          {viewType === "all" 
+                            ? "You don't have any damage claims filed against you."
+                            : `No ${viewType.replace('_', ' ')} claims to display.`}
+                        </p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </div>
-        </div>
-      )}
+        </CardContent>
+      </Card>
 
       {/* Response Dialog */}
       {selectedClaim && (

@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -487,18 +488,17 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
           </motion.div>
 
           <motion.div variants={itemVariants} className="text-center">
-            <motion.button
+            <Button
               type="button"
+              variant="link"
               onClick={() => {
                 // Redirect to dedicated forgot password page
                 window.location.href = '/forgot-password';
               }}
-              className="text-sm text-blue-600 hover:text-blue-700 hover:underline transition-colors"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              className="text-sm text-blue-600 hover:text-blue-700"
             >
               Forgot your password?
-            </motion.button>
+            </Button>
           </motion.div>
         </form>
       </motion.div>

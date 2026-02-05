@@ -785,11 +785,14 @@ export default function ChefNotificationCenter() {
         {/* Filter tabs */}
         <div className="px-4 py-2 border-b bg-gray-50" role="navigation" aria-label="Notification filters">
           <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
-            <TabsList className="grid grid-cols-4 h-8" aria-label="Filter notifications by status">
-              <TabsTrigger value="all" className="text-xs">All</TabsTrigger>
-              <TabsTrigger value="unread" className="text-xs">Unread</TabsTrigger>
-              <TabsTrigger value="read" className="text-xs">Read</TabsTrigger>
-              <TabsTrigger value="archived" className="text-xs">Archived</TabsTrigger>
+            <TabsList className="w-full flex gap-1 h-auto p-1" aria-label="Filter notifications by status">
+              <TabsTrigger value="all" className="flex-1 text-xs px-2 py-1.5">All</TabsTrigger>
+              <TabsTrigger value="unread" className="flex-1 text-xs px-2 py-1.5">Unread</TabsTrigger>
+              <TabsTrigger value="read" className="flex-1 text-xs px-2 py-1.5">Read</TabsTrigger>
+              <TabsTrigger value="archived" className="flex-1 text-xs px-2 py-1.5">
+                <span className="hidden sm:inline">Archived</span>
+                <span className="sm:hidden">Arch</span>
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>

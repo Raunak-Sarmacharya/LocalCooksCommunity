@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { auth } from "../../lib/firebase";
+import { Button } from "@/components/ui/button";
 import AnimatedButton from "./AnimatedButton";
 import AnimatedInput from "./AnimatedInput";
 
@@ -286,14 +287,14 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
     >
       {/* Back Button */}
       {onGoBack && (
-        <motion.button
-          variants={itemVariants}
+        <Button
+          variant="ghost"
           onClick={onGoBack}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-8 transition-colors group"
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-8"
         >
-          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+          <ArrowLeft className="w-4 h-4" />
           <span>Back to login</span>
-        </motion.button>
+        </Button>
       )}
 
       {/* Title */}

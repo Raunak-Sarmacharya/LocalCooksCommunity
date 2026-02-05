@@ -275,13 +275,22 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
 
                 <div className="p-6">
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 mb-6">
-                            <TabsTrigger value="setup">Documents</TabsTrigger>
-                            <TabsTrigger value="branding">Kitchen</TabsTrigger>
-                            <TabsTrigger value="notifications">Notifications</TabsTrigger>
-                            <TabsTrigger value="booking-rules">Rules</TabsTrigger>
-                            <TabsTrigger value="application-requirements">App Req</TabsTrigger>
-                            <TabsTrigger value="location">Location</TabsTrigger>
+                        <TabsList className="w-full flex flex-wrap gap-1 h-auto p-1 mb-6">
+                            <TabsTrigger value="setup" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">Docs</TabsTrigger>
+                            <TabsTrigger value="branding" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">Kitchen</TabsTrigger>
+                            <TabsTrigger value="notifications" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
+                                <span className="hidden sm:inline">Notifications</span>
+                                <span className="sm:hidden">Notif</span>
+                            </TabsTrigger>
+                            <TabsTrigger value="booking-rules" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">Rules</TabsTrigger>
+                            <TabsTrigger value="application-requirements" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
+                                <span className="hidden sm:inline">App Req</span>
+                                <span className="sm:hidden">Req</span>
+                            </TabsTrigger>
+                            <TabsTrigger value="location" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
+                                <span className="hidden sm:inline">Location</span>
+                                <span className="sm:hidden">Loc</span>
+                            </TabsTrigger>
                         </TabsList>
 
                         {/* SETUP TAB */}

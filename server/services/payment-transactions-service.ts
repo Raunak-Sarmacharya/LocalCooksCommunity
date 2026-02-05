@@ -966,6 +966,111 @@ export async function getManagerPaymentTransactions(
 }
 
 /**
+ * Get all payment transactions for a chef
+ * Industry standard: Shows all payments made by the chef across all booking types
+ */
+export async function getChefPaymentTransactions(
+  chefId: number,
+  db: any,
+  filters?: {
+    status?: TransactionStatus;
+    bookingType?: BookingType;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<{ transactions: PaymentTransactionRecord[]; total: number }> {
+  // Build WHERE clause dynamically - use pt. prefix to avoid ambiguity with joined tables
+  const whereConditions = [sql`pt.chef_id = ${chefId}`];
+
+  if (filters?.status) {
+    whereConditions.push(sql`pt.status = ${filters.status}`);
+  }
+
+  if (filters?.bookingType) {
+    whereConditions.push(sql`pt.booking_type = ${filters.bookingType}`);
+  }
+
+  // For date filtering, use paidAt for succeeded transactions (when payment was captured)
+  // and created_at for pending/processing transactions (when booking was made)
+  if (filters?.startDate) {
+    whereConditions.push(sql`
+      (
+        (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL AND pt.paid_at >= ${filters.startDate})
+        OR (pt.status != 'succeeded' AND pt.created_at >= ${filters.startDate})
+      )
+    `);
+  }
+
+  if (filters?.endDate) {
+    whereConditions.push(sql`
+      (
+        (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL AND pt.paid_at <= ${filters.endDate})
+        OR (pt.status != 'succeeded' AND pt.created_at <= ${filters.endDate})
+      )
+    `);
+  }
+
+  const whereClause = sql`WHERE ${sql.join(whereConditions, sql` AND `)}`;
+
+  // Get total count - use pt alias for consistency with WHERE clause
+  const countResult = await db.execute(sql`
+    SELECT COUNT(*) as total FROM payment_transactions pt ${whereClause}
+  `);
+  const total = parseInt((countResult.rows[0] as any).total);
+
+  // Get transactions with location and booking details
+  const limit = filters?.limit || 50;
+  const offset = filters?.offset || 0;
+
+  // Order by paid_at for succeeded transactions, created_at for others
+  const result = await db.execute(sql`
+    SELECT 
+      pt.*,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN kb.start_time::text
+        WHEN pt.booking_type = 'storage' THEN sb.start_date::text
+        ELSE NULL
+      END as booking_start,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN kb.end_time::text
+        WHEN pt.booking_type = 'storage' THEN sb.end_date::text
+        ELSE NULL
+      END as booking_end,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN k.name
+        WHEN pt.booking_type = 'storage' THEN sl.name
+        ELSE NULL
+      END as item_name,
+      l.name as location_name
+    FROM payment_transactions pt
+    LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
+    LEFT JOIN kitchens k ON kb.kitchen_id = k.id
+    LEFT JOIN storage_bookings sb ON pt.booking_type = 'storage' AND pt.booking_id = sb.id
+    LEFT JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+    LEFT JOIN kitchens sk ON sl.kitchen_id = sk.id
+    LEFT JOIN locations l ON (
+      (pt.booking_type = 'kitchen' AND k.location_id = l.id) OR
+      (pt.booking_type = 'storage' AND sk.location_id = l.id)
+    )
+    ${whereClause}
+    ORDER BY 
+      CASE 
+        WHEN pt.status = 'succeeded' AND pt.paid_at IS NOT NULL 
+        THEN pt.paid_at 
+        ELSE pt.created_at 
+      END DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+
+  return {
+    transactions: result.rows as PaymentTransactionRecord[],
+    total,
+  };
+}
+
+/**
  * ENTERPRISE STANDARD: Sync actual Stripe fees for existing transactions
  * 
  * This function re-fetches actual Stripe processing fees from the Balance Transaction API

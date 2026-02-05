@@ -75,7 +75,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
 import ApplicationFormPanel from "@/components/application/ApplicationFormPanel";
 import ChefSupportPage from "@/components/chef/ChefSupportPage";
-import { PendingDamageClaims } from "@/components/chef/PendingDamageClaims";
+import { IssuesAndRefunds } from "@/components/chef/IssuesAndRefunds";
+import { TransactionHistory } from "@/components/chef/TransactionHistory";
 import TidioController from "@/components/chat/TidioController";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
 import DocumentUpload, { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
@@ -1147,10 +1148,16 @@ export default function ApplicantDashboard() {
             />
           </div>
         );
-      case "damage-claims":
+      case "issues-refunds":
         return (
           <div className="space-y-8 animate-in fade-in-50 duration-500">
-            <PendingDamageClaims />
+            <IssuesAndRefunds />
+          </div>
+        );
+      case "transactions":
+        return (
+          <div className="space-y-8 animate-in fade-in-50 duration-500">
+            <TransactionHistory />
           </div>
         );
       default:

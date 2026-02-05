@@ -5,7 +5,7 @@ import { Check, X, Package, Clock, AlertCircle, ChevronRight } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -265,18 +265,18 @@ export function StorageExtensionApprovals() {
         </CardContent>
       </Card>
 
-      {/* Reject Dialog */}
-      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
+      {/* Reject Sheet */}
+      <Sheet open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <SheetContent className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2 text-red-600">
               <AlertCircle className="h-5 w-5" />
               Reject Extension Request
-            </DialogTitle>
-            <DialogDescription>
+            </SheetTitle>
+            <SheetDescription>
               Are you sure you want to reject this extension request? The chef will be refunded.
-            </DialogDescription>
-          </DialogHeader>
+            </SheetDescription>
+          </SheetHeader>
 
           {selectedExtension && (
             <div className="space-y-4">
@@ -299,7 +299,7 @@ export function StorageExtensionApprovals() {
             </div>
           )}
 
-          <DialogFooter>
+          <SheetFooter className="mt-6">
             <Button
               variant="outline"
               onClick={() => {
@@ -317,9 +317,9 @@ export function StorageExtensionApprovals() {
             >
               {rejectMutation.isPending ? "Rejecting..." : "Reject & Refund"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

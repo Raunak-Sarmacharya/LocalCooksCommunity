@@ -601,4 +601,93 @@ router.get("/invoices/overstay/:overstayRecordId", requireChef, async (req: Requ
     }
 });
 
+// ===================================
+// CHEF TRANSACTION HISTORY
+// ===================================
+// Industry standard: Chefs can view all their payment transactions
+// Similar to Uber/Airbnb payment history
+
+router.get("/transactions", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const {
+            startDate,
+            endDate,
+            bookingType,
+            status,
+            limit = "50",
+            offset = "0",
+        } = req.query;
+
+        const { getChefPaymentTransactions } = await import(
+            "../services/payment-transactions-service"
+        );
+
+        const filters: {
+            status?: 'pending' | 'processing' | 'succeeded' | 'failed' | 'canceled' | 'refunded' | 'partially_refunded';
+            bookingType?: 'kitchen' | 'storage' | 'equipment' | 'bundle';
+            startDate?: Date;
+            endDate?: Date;
+            limit?: number;
+            offset?: number;
+        } = {
+            limit: parseInt(limit as string),
+            offset: parseInt(offset as string),
+        };
+
+        if (startDate) {
+            filters.startDate = new Date(startDate as string);
+        }
+        if (endDate) {
+            filters.endDate = new Date(endDate as string);
+        }
+        if (bookingType && ['kitchen', 'storage', 'equipment', 'bundle'].includes(bookingType as string)) {
+            filters.bookingType = bookingType as 'kitchen' | 'storage' | 'equipment' | 'bundle';
+        }
+        if (status && ['pending', 'processing', 'succeeded', 'failed', 'canceled', 'refunded', 'partially_refunded'].includes(status as string)) {
+            filters.status = status as 'pending' | 'processing' | 'succeeded' | 'failed' | 'canceled' | 'refunded' | 'partially_refunded';
+        }
+
+        const { transactions, total } = await getChefPaymentTransactions(
+            chefId,
+            db,
+            filters
+        );
+
+        // Transform transactions for frontend consumption
+        const formattedTransactions = transactions.map((tx: any) => ({
+            id: tx.id,
+            bookingId: tx.booking_id,
+            bookingType: tx.booking_type,
+            amount: parseFloat(tx.amount || '0'),
+            baseAmount: parseFloat(tx.base_amount || '0'),
+            serviceFee: parseFloat(tx.service_fee || '0'),
+            netAmount: parseFloat(tx.net_amount || '0'),
+            refundAmount: parseFloat(tx.refund_amount || '0'),
+            currency: tx.currency,
+            status: tx.status,
+            stripeStatus: tx.stripe_status,
+            paymentIntentId: tx.payment_intent_id,
+            chargeId: tx.charge_id,
+            refundId: tx.refund_id,
+            refundReason: tx.refund_reason,
+            createdAt: tx.created_at,
+            paidAt: tx.paid_at,
+            refundedAt: tx.refunded_at,
+            // Joined fields
+            itemName: tx.item_name,
+            locationName: tx.location_name,
+            bookingStart: tx.booking_start,
+            bookingEnd: tx.booking_end,
+            // Metadata for additional context
+            metadata: tx.metadata,
+        }));
+
+        res.json({ transactions: formattedTransactions, total });
+    } catch (error) {
+        console.error('[Chef Transactions] Error:', error);
+        return errorResponse(res, error);
+    }
+});
+
 export default router;

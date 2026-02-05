@@ -132,7 +132,7 @@ export default function KitchenApplicationCard({
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-foreground">{app.location?.name || 'Kitchen Application'}</p>
-                    <Badge className={cn("text-[10px] uppercase tracking-wider font-bold text-white", statusConfig.color, `hover:${statusConfig.color}`)}>
+                    <Badge className={cn("uppercase tracking-wider font-bold text-white", statusConfig.color, `hover:${statusConfig.color}`)}>
                       {statusConfig.label}
                     </Badge>
                   </div>
@@ -218,7 +218,7 @@ export default function KitchenApplicationCard({
                 </div>
                 <p className="text-sm font-bold text-foreground">Step 1 - Initial Application</p>
                 {(app as any).tier1_completed_at && (
-                  <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200">
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                     <CheckCircle className="h-3 w-3 mr-1" />
                     Submitted {new Date((app as any).tier1_completed_at || app.createdAt).toLocaleDateString()}
                   </Badge>
@@ -350,7 +350,7 @@ export default function KitchenApplicationCard({
                     <div className="flex items-center gap-2">
                       {app.foodSafetyLicenseUrl ? (
                         <>
-                          <Badge variant={getDocStatusBadge(app.foodSafetyLicenseStatus).variant} className={cn("text-[10px]", getDocStatusBadge(app.foodSafetyLicenseStatus).className)}>
+                          <Badge variant={getDocStatusBadge(app.foodSafetyLicenseStatus).variant} className={cn(getDocStatusBadge(app.foodSafetyLicenseStatus).className)}>
                             {getDocStatusBadge(app.foodSafetyLicenseStatus).label}
                           </Badge>
                           <SecureDocumentLink
@@ -361,7 +361,7 @@ export default function KitchenApplicationCard({
                           />
                         </>
                       ) : (
-                        <Badge variant="outline" className="text-[10px] bg-gray-100">Not Uploaded</Badge>
+                        <Badge variant="outline" className="bg-gray-100">Not Uploaded</Badge>
                       )}
                     </div>
                   </div>
@@ -378,7 +378,7 @@ export default function KitchenApplicationCard({
                     <div className="flex items-center gap-2">
                       {app.foodEstablishmentCertUrl ? (
                         <>
-                          <Badge variant={getDocStatusBadge(app.foodEstablishmentCertStatus).variant} className={cn("text-[10px]", getDocStatusBadge(app.foodEstablishmentCertStatus).className)}>
+                          <Badge variant={getDocStatusBadge(app.foodEstablishmentCertStatus).variant} className={cn(getDocStatusBadge(app.foodEstablishmentCertStatus).className)}>
                             {getDocStatusBadge(app.foodEstablishmentCertStatus).label}
                           </Badge>
                           <SecureDocumentLink
@@ -389,7 +389,7 @@ export default function KitchenApplicationCard({
                           />
                         </>
                       ) : (
-                        <Badge variant="outline" className="text-[10px] bg-gray-100">Not Uploaded</Badge>
+                        <Badge variant="outline" className="bg-gray-100">Not Uploaded</Badge>
                       )}
                     </div>
                   </div>
@@ -413,12 +413,12 @@ export default function KitchenApplicationCard({
                     </div>
                     <p className="text-sm font-bold text-foreground">Step 2 - Additional Requirements</p>
                     {(app as any).tier2_completed_at ? (
-                      <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200">
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                         <CheckCircle className="h-3 w-3 mr-1" />
                         Submitted {new Date((app as any).tier2_completed_at).toLocaleDateString()}
                       </Badge>
                     ) : currentStep === 2 ? (
-                      <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
                         <Clock className="h-3 w-3 mr-1" />
                         In Progress
                       </Badge>
@@ -502,7 +502,7 @@ export default function KitchenApplicationCard({
                                         showIcon={false}
                                       />
                                     ) : (
-                                      <Badge variant="outline" className="text-[10px] bg-gray-100">Not Uploaded</Badge>
+                                      <Badge variant="outline" className="bg-gray-100">Not Uploaded</Badge>
                                     )}
                                   </div>
                                 ))}

@@ -1,5 +1,6 @@
-import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, Clock, Mail, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { motion } from "framer-motion";
+import { ArrowLeft, Clock, Mail, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import AnimatedButton from "./AnimatedButton";
 
@@ -84,14 +85,14 @@ export default function EmailVerificationScreen({
       animate="visible"
     >
       {/* Back Button */}
-      <motion.button
-        variants={itemVariants}
+      <Button
+        variant="ghost"
         onClick={onGoBack}
-        className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-8 transition-colors group"
+        className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-8"
       >
-        <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+        <ArrowLeft className="w-4 h-4" />
         <span>Back to login</span>
-      </motion.button>
+      </Button>
 
       {/* Email Icon */}
       <motion.div

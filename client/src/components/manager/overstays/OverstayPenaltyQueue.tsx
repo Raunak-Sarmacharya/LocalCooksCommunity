@@ -2,11 +2,20 @@
  * OverstayPenaltyQueue Component
  * 
  * Manager dashboard component for reviewing and managing storage overstay penalties.
- * Implements enterprise-grade manager-controlled penalty workflow.
+ * Implements enterprise-grade manager-controlled penalty workflow with TanStack Table.
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  SortingState,
+  useReactTable,
+} from "@tanstack/react-table";
 import { 
   Card, 
   CardContent, 
@@ -18,14 +27,36 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +67,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -48,12 +80,15 @@ import {
   CreditCard,
   Package,
   User,
-  Shield,
   RefreshCw,
+  MoreHorizontal,
+  ArrowUpDown,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Shield,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 // Types
 interface OverstayRecord {
@@ -331,15 +366,15 @@ function OverstayCard({
         </CardContent>
       </Card>
 
-      {/* Approve Dialog */}
-      <Dialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Approve Penalty</DialogTitle>
-            <DialogDescription>
+      {/* Approve Sheet */}
+      <Sheet open={showApproveDialog} onOpenChange={setShowApproveDialog}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Approve Penalty</SheetTitle>
+            <SheetDescription>
               Review and approve the penalty amount for {overstay.storageName}.
-            </DialogDescription>
-          </DialogHeader>
+            </SheetDescription>
+          </SheetHeader>
           <div className="space-y-4 py-4">
             <div>
               <label className="text-sm font-medium">Penalty Amount (CAD)</label>
@@ -422,7 +457,7 @@ function OverstayCard({
               </label>
             </div>
           </div>
-          <DialogFooter>
+          <SheetFooter className="mt-6">
             <Button variant="outline" onClick={() => setShowApproveDialog(false)}>Cancel</Button>
             <Button 
               onClick={() => {
@@ -436,19 +471,19 @@ function OverstayCard({
             >
               Approve
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
-      {/* Waive Dialog */}
-      <Dialog open={showWaiveDialog} onOpenChange={setShowWaiveDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Waive Penalty</DialogTitle>
-            <DialogDescription>
+      {/* Waive Sheet */}
+      <Sheet open={showWaiveDialog} onOpenChange={setShowWaiveDialog}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Waive Penalty</SheetTitle>
+            <SheetDescription>
               Waive the penalty for {overstay.storageName}. A reason is required.
-            </DialogDescription>
-          </DialogHeader>
+            </SheetDescription>
+          </SheetHeader>
           <div className="space-y-4 py-4">
             <div>
               <label className="text-sm font-medium">Reason for Waiving *</label>
@@ -470,7 +505,7 @@ function OverstayCard({
               />
             </div>
           </div>
-          <DialogFooter>
+          <SheetFooter className="mt-6">
             <Button variant="outline" onClick={() => setShowWaiveDialog(false)}>Cancel</Button>
             <Button 
               onClick={() => {
@@ -481,9 +516,9 @@ function OverstayCard({
             >
               Waive Penalty
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       {/* Resolve Dialog */}
       <AlertDialog open={showResolveDialog} onOpenChange={setShowResolveDialog}>

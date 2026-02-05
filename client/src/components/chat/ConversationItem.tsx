@@ -106,7 +106,7 @@ export function ConversationItem({
               {formatDistanceToNow(lastMessageDate, { addSuffix: false }).replace('about ', '')}
             </span>
             {unreadCount > 0 && (
-              <Badge variant="destructive" className="h-5 min-w-5 px-1 flex items-center justify-center text-[10px]">
+              <Badge variant="destructive" className="flex items-center justify-center">
                 {unreadCount}
               </Badge>
             )}
