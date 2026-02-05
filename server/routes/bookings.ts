@@ -974,19 +974,71 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
 
         // Get storage bookings with listing details
         const storageBookingsRaw = await bookingService.getStorageBookingsByKitchenBooking(id);
+        
+        // Get original storage IDs and dates from kitchen booking payment transaction
+        // This ensures we only show storage from the original booking, not extensions
+        let originalStorageIds: Set<number> = new Set();
+        let originalStorageDates: Record<number, { startDate: Date; endDate: Date; days: number }> = {};
+        try {
+            const { findPaymentTransactionByIntentId } = await import('../services/payment-transactions-service');
+            const kitchenTransaction = await findPaymentTransactionByIntentId(booking.paymentIntentId || '', db);
+            if (kitchenTransaction?.metadata) {
+                const metadata = typeof kitchenTransaction.metadata === 'string' 
+                    ? JSON.parse(kitchenTransaction.metadata) 
+                    : kitchenTransaction.metadata;
+                if (metadata?.storage_items && Array.isArray(metadata.storage_items)) {
+                    for (const item of metadata.storage_items) {
+                        if (item.storageBookingId || item.id) {
+                            const storageId = item.storageBookingId || item.id;
+                            originalStorageIds.add(storageId);
+                            // Store original dates for price calculation
+                            const startDate = new Date(item.startDate);
+                            const endDate = new Date(item.endDate);
+                            const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+                            originalStorageDates[storageId] = { startDate, endDate, days };
+                        }
+                    }
+                }
+            }
+        } catch {
+            // If we can't get original storage IDs, show all (fallback)
+            originalStorageIds = new Set(storageBookingsRaw.map((sb: any) => sb.id));
+        }
+        
+        // Filter to only include original storage bookings
+        const originalStorageBookings = storageBookingsRaw.filter((sb: any) => originalStorageIds.has(sb.id));
+        
         const storageBookingsWithDetails = await Promise.all(
-            storageBookingsRaw.map(async (sb: any) => {
+            originalStorageBookings.map(async (sb: any) => {
                 const [listing] = await db
                     .select({
                         name: storageListings.name,
                         storageType: storageListings.storageType,
                         photos: storageListings.photos,
+                        basePrice: storageListings.basePrice,
                     })
                     .from(storageListings)
                     .where(eq(storageListings.id, sb.storageListingId))
                     .limit(1);
+                
+                // Calculate price from original dates, not current dates
+                const originalDates = originalStorageDates[sb.id];
+                let originalPrice = sb.totalPrice;
+                let displayStartDate = sb.startDate;
+                let displayEndDate = sb.endDate;
+                
+                if (originalDates && listing?.basePrice) {
+                    const dailyRate = parseFloat(listing.basePrice.toString());
+                    originalPrice = dailyRate * originalDates.days;
+                    displayStartDate = originalDates.startDate.toISOString();
+                    displayEndDate = originalDates.endDate.toISOString();
+                }
+                
                 return {
                     ...sb,
+                    totalPrice: originalPrice,
+                    startDate: displayStartDate,
+                    endDate: displayEndDate,
                     storageListing: listing || null,
                 };
             })
@@ -1044,15 +1096,25 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             console.error("Error fetching payment transaction:", err);
         }
 
+        // Calculate correct kitchen price from hourly rate and duration
+        // The totalPrice in DB may include storage/equipment, so we calculate kitchen-only price
+        const hourlyRate = booking.hourlyRate ? parseFloat(booking.hourlyRate.toString()) : 0;
+        const durationHours = booking.durationHours ? parseFloat(booking.durationHours.toString()) : 0;
+        const calculatedKitchenPrice = Math.round(hourlyRate * durationHours);
+        
+        // Use calculated price if available, otherwise fall back to stored totalPrice
+        const kitchenOnlyPrice = calculatedKitchenPrice > 0 ? calculatedKitchenPrice : (booking.totalPrice || 0);
+
         res.json({
             ...booking,
+            totalPrice: kitchenOnlyPrice, // Override with calculated kitchen-only price
             kitchen: kitchen ? {
                 id: kitchen.id,
                 name: kitchen.name,
                 description: kitchen.description,
                 photos: kitchen.galleryImages || (kitchen.imageUrl ? [kitchen.imageUrl] : []),
                 locationId: kitchen.locationId,
-                taxRatePercent: kitchen.taxRatePercent || 0, // Tax rate for payment breakdown display
+                taxRatePercent: kitchen.taxRatePercent || 0,
             } : null,
             location,
             storageBookings: storageBookingsWithDetails,
@@ -1106,6 +1168,55 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
         // Get payment intent ID from booking
         const paymentIntentId = (booking as any).paymentIntentId || (booking as any).payment_intent_id || null;
 
+        // Fetch kitchen booking payment transaction to get original storage dates
+        // This ensures invoice shows original booking, not extensions
+        const originalStorageDates: Record<number, { startDate: Date; endDate: Date; days: number }> = {};
+        if (paymentIntentId) {
+            try {
+                const { findPaymentTransactionByIntentId } = await import('../services/payment-transactions-service');
+                const kitchenTransaction = await findPaymentTransactionByIntentId(paymentIntentId, db);
+                if (kitchenTransaction?.metadata) {
+                    const metadata = typeof kitchenTransaction.metadata === 'string' 
+                        ? JSON.parse(kitchenTransaction.metadata) 
+                        : kitchenTransaction.metadata;
+                    // Extract original storage dates from metadata if available
+                    if (metadata?.storage_items) {
+                        const storageItems = Array.isArray(metadata.storage_items) 
+                            ? metadata.storage_items 
+                            : JSON.parse(metadata.storage_items);
+                        for (const item of storageItems) {
+                            if (item.storageListingId || item.id) {
+                                const storageId = item.storageBookingId || item.id;
+                                const startDate = new Date(item.startDate);
+                                const endDate = new Date(item.endDate);
+                                const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+                                originalStorageDates[storageId] = { startDate, endDate, days };
+                            }
+                        }
+                    }
+                }
+            } catch {
+                console.log('[Invoice] Could not fetch original storage dates from transaction, using current dates');
+            }
+        }
+
+        // For storage bookings, use original dates from kitchen booking transaction
+        // This ensures kitchen invoice shows original period, not extensions
+        const storageBookingsForInvoice = storageBookings.map((sb: any) => {
+            const originalDates = originalStorageDates[sb.id];
+            if (originalDates) {
+                return {
+                    ...sb,
+                    startDate: originalDates.startDate,
+                    endDate: originalDates.endDate,
+                    // Calculate base price from original days × daily rate
+                    totalPrice: (sb.listingBasePrice || sb.basePrice || 0) * originalDates.days,
+                    _originalDays: originalDates.days
+                };
+            }
+            return sb;
+        });
+
         // Generate invoice PDF
         const { generateInvoicePDF } = await import('../services/invoice-service');
         const pdfBuffer = await generateInvoicePDF(
@@ -1113,7 +1224,7 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
             chef,
             kitchen,
             location,
-            storageBookings,
+            storageBookingsForInvoice,
             equipmentBookings,
             paymentIntentId
         );

@@ -343,7 +343,7 @@ export function getTransactionColumns({
                     && transaction.refundableAmount > 0
                     && (transaction.paymentStatus === 'paid' || transaction.paymentStatus === 'partially_refunded')
                 // Damage claims, overstay penalties, and storage extensions don't have invoices
-                const canDownloadInvoice = transaction.bookingType === 'kitchen' || transaction.bookingType === 'bundle' || transaction.bookingType === 'storage' 
+                const canDownloadInvoice = transaction.bookingType === 'kitchen' || transaction.bookingType === 'bundle' || transaction.bookingType === 'storage' || transaction.bookingType === 'storage_extension'
 
                 return (
                     <DropdownMenu>

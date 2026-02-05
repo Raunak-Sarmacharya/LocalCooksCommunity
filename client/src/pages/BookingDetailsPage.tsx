@@ -382,15 +382,15 @@ export default function BookingDetailsPage() {
     const storageTotal = booking.storageBookings?.reduce((sum, s) => sum + (s.totalPrice || 0), 0) || 0;
     const equipmentTotal = booking.equipmentBookings?.reduce((sum, e) => sum + (e.totalPrice || 0), 0) || 0;
 
-    const subtotal = kitchenTotal;
-    const serviceFee = booking.serviceFee || 0;
+    // Subtotal is kitchen + storage + equipment (what was actually paid, excluding tax)
+    const subtotal = kitchenTotal + storageTotal + equipmentTotal;
 
     return {
-      kitchen: kitchenTotal - storageTotal - equipmentTotal,
+      kitchen: kitchenTotal,
       storage: storageTotal,
       equipment: equipmentTotal,
       subtotal: subtotal,
-      serviceFee: serviceFee,
+      serviceFee: booking.serviceFee || 0,
       total: subtotal,
     };
   }, [booking]);
@@ -739,7 +739,7 @@ export default function BookingDetailsPage() {
                 <div className="flex justify-between items-center pt-2">
                   <span className="font-semibold text-gray-900">Total</span>
                   <span className="text-xl font-bold text-green-600">
-                    {formatCurrency(booking.totalPrice)} {booking.currency || "CAD"}
+                    {formatCurrency(totals.subtotal)} {booking.currency || "CAD"}
                   </span>
                 </div>
 
@@ -751,12 +751,12 @@ export default function BookingDetailsPage() {
                       <p className="text-xs font-medium text-gray-500 uppercase">Payment Breakdown</p>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Subtotal</span>
-                        <span className="font-medium">{formatCurrency(booking.totalPrice)}</span>
+                        <span className="font-medium">{formatCurrency(totals.subtotal)}</span>
                       </div>
                       {(() => {
                         // Use kitchen's tax rate from database
                         const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
-                        const subtotal = booking.totalPrice || 0;
+                        const subtotal = totals.subtotal || 0;
                         const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
                         
                         return taxRatePercent > 0 ? (
@@ -785,16 +785,14 @@ export default function BookingDetailsPage() {
                         <span className="text-gray-600">Gross Amount</span>
                         <span className="font-medium">{formatCurrency(booking.paymentTransaction.amount)}</span>
                       </div>
-                      {/* Tax = kb.total_price * tax_rate / 100 (same as transaction history) */}
+                      {/* Tax = totals.subtotal * tax_rate / 100 (includes kitchen + storage + equipment) */}
                       {(() => {
                         const amount = booking.paymentTransaction.amount || 0;
                         const stripeFee = booking.paymentTransaction.stripeProcessingFee || 0;
                         // Use kitchen's tax rate from database
                         const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
-                        // Tax = booking.totalPrice * tax_rate / 100 (same formula as transaction history)
-                        // booking.totalPrice is the subtotal BEFORE tax (e.g., $100)
-                        // booking.paymentTransaction.amount is the total AFTER tax (e.g., $110)
-                        const subtotal = booking.totalPrice || 0;
+                        // Tax should be calculated on full subtotal (kitchen + storage + equipment)
+                        const subtotal = totals.subtotal || 0;
                         const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
                         const netRevenue = amount - taxAmount - stripeFee;
                         

@@ -1212,14 +1212,9 @@ export default function ChefBookingsView({
                               <div className="flex items-start gap-3">
                                 <CheckCircle className="h-4 w-4 text-muted-foreground mt-0.5" />
                                 <div>
-                                  <p className="text-xs text-muted-foreground mb-0.5">Total Cost</p>
+                                  <p className="text-xs text-muted-foreground mb-0.5">Total Storage Cost(Incl. Storage Extension)</p>
                                   <p className="font-medium">
                                     ${(storageBooking.totalPrice || 0).toFixed(2)} CAD
-                                    {storageBooking.serviceFee > 0 && (
-                                      <span className="text-xs text-muted-foreground ml-1">
-                                        (includes ${(storageBooking.serviceFee || 0).toFixed(2)} service fee)
-                                      </span>
-                                    )}
                                   </p>
                                 </div>
                               </div>

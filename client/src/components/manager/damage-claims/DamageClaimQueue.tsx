@@ -47,6 +47,7 @@ import {
   Loader2,
   Info,
   Save,
+  Download,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -134,16 +135,21 @@ function ClaimCard({
   onSubmit,
   onCharge,
   onView,
+  onDownloadInvoice,
   isProcessing,
+  isDownloading,
 }: {
   claim: DamageClaim;
   onSubmit: (id: number) => void;
   onCharge: (id: number) => void;
   onView: (id: number) => void;
+  onDownloadInvoice: (id: number) => void;
   isProcessing: boolean;
+  isDownloading: boolean;
 }) {
   const canSubmit = claim.status === 'draft' && claim.evidence.length >= 2;
   const canCharge = ['approved', 'partially_approved', 'chef_accepted'].includes(claim.status);
+  const canDownloadInvoice = claim.status === 'charge_succeeded';
   const showChefResponse = claim.chefResponse && claim.chefRespondedAt;
 
   return (
@@ -230,6 +236,22 @@ function ClaimCard({
             >
               <CreditCard className="w-4 h-4 mr-1" />
               Charge Chef
+            </Button>
+          )}
+
+          {canDownloadInvoice && (
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => onDownloadInvoice(claim.id)}
+              disabled={isDownloading}
+            >
+              {isDownloading ? (
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4 mr-1" />
+              )}
+              Invoice
             </Button>
           )}
         </div>
@@ -851,10 +873,40 @@ export function DamageClaimQueue() {
 
   const [selectedClaimId, setSelectedClaimId] = useState<number | null>(null);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<number | null>(null);
 
   const handleView = (id: number) => {
     setSelectedClaimId(id);
     setDetailSheetOpen(true);
+  };
+
+  // Handle invoice download for charged damage claims
+  const handleDownloadInvoice = async (claimId: number) => {
+    setDownloadingInvoiceId(claimId);
+    try {
+      const response = await apiRequest('GET', `/api/manager/damage-claims/${claimId}/invoice`);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || 'Failed to download invoice');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `damage-claim-invoice-${claimId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({ title: "Invoice downloaded", description: "Damage claim invoice has been downloaded." });
+    } catch (error) {
+      toast({ title: "Download failed", description: (error as Error).message, variant: "destructive" });
+    } finally {
+      setDownloadingInvoiceId(null);
+    }
   };
 
   if (isLoading) {
@@ -986,7 +1038,9 @@ export function DamageClaimQueue() {
                   onSubmit={(id) => submitMutation.mutate(id)}
                   onCharge={(id) => chargeMutation.mutate(id)}
                   onView={handleView}
+                  onDownloadInvoice={handleDownloadInvoice}
                   isProcessing={isProcessing}
+                  isDownloading={downloadingInvoiceId === claim.id}
                 />
               ))}
             </div>
@@ -1006,7 +1060,9 @@ export function DamageClaimQueue() {
                   onSubmit={(id) => submitMutation.mutate(id)}
                   onCharge={(id) => chargeMutation.mutate(id)}
                   onView={handleView}
+                  onDownloadInvoice={handleDownloadInvoice}
                   isProcessing={isProcessing}
+                  isDownloading={downloadingInvoiceId === claim.id}
                 />
               ))}
             </div>
@@ -1026,7 +1082,9 @@ export function DamageClaimQueue() {
                   onSubmit={(id) => submitMutation.mutate(id)}
                   onCharge={(id) => chargeMutation.mutate(id)}
                   onView={handleView}
+                  onDownloadInvoice={handleDownloadInvoice}
                   isProcessing={isProcessing}
+                  isDownloading={downloadingInvoiceId === claim.id}
                 />
               ))}
             </div>
@@ -1047,7 +1105,9 @@ export function DamageClaimQueue() {
                     onSubmit={(id) => submitMutation.mutate(id)}
                     onCharge={(id) => chargeMutation.mutate(id)}
                     onView={handleView}
+                    onDownloadInvoice={handleDownloadInvoice}
                     isProcessing={isProcessing}
+                    isDownloading={downloadingInvoiceId === claim.id}
                   />
                 ))}
               </div>

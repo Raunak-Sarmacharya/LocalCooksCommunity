@@ -1205,10 +1205,13 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
   }
 
   // Fetch Stripe payment method from the associated booking (kitchen or storage)
+  // ENTERPRISE FIX: Fall back to related storage/equipment bookings if primary booking has null Stripe fields
   let customerId: string | null = null;
   let paymentMethodId: string | null = null;
+  let paymentMethodSource: string = 'unknown';
 
   if (claim.bookingType === 'kitchen' && claim.kitchenBookingId) {
+    // First try the kitchen booking itself
     const [booking] = await db
       .select({
         stripeCustomerId: kitchenBookings.stripeCustomerId,
@@ -1218,9 +1221,30 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
       .where(eq(kitchenBookings.id, claim.kitchenBookingId))
       .limit(1);
     
-    if (booking) {
+    if (booking?.stripeCustomerId && booking?.stripePaymentMethodId) {
       customerId = booking.stripeCustomerId;
       paymentMethodId = booking.stripePaymentMethodId;
+      paymentMethodSource = 'kitchen_booking';
+    } else {
+      // FALLBACK: Check associated storage bookings for payment method
+      logger.info(`[DamageClaimService] Kitchen booking ${claim.kitchenBookingId} has null Stripe fields, checking storage bookings...`);
+      
+      const [storageBooking] = await db
+        .select({
+          stripeCustomerId: storageBookings.stripeCustomerId,
+          stripePaymentMethodId: storageBookings.stripePaymentMethodId,
+        })
+        .from(storageBookings)
+        .where(eq(storageBookings.kitchenBookingId, claim.kitchenBookingId))
+        .limit(1);
+      
+      if (storageBooking?.stripeCustomerId && storageBooking?.stripePaymentMethodId) {
+        customerId = storageBooking.stripeCustomerId;
+        paymentMethodId = storageBooking.stripePaymentMethodId;
+        paymentMethodSource = 'storage_booking_fallback';
+        logger.info(`[DamageClaimService] Using storage booking payment method as fallback for kitchen claim ${claimId}`);
+      }
+      // Note: Equipment bookings don't have separate Stripe fields (payments bundled with kitchen booking)
     }
   } else if (claim.bookingType === 'storage' && claim.storageBookingId) {
     const [booking] = await db
@@ -1235,8 +1259,15 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
     if (booking) {
       customerId = booking.stripeCustomerId;
       paymentMethodId = booking.stripePaymentMethodId;
+      paymentMethodSource = 'storage_booking';
     }
   }
+
+  logger.info(`[DamageClaimService] Payment method lookup for claim ${claimId}:`, {
+    customerId: customerId ? `${customerId.substring(0, 10)}...` : null,
+    paymentMethodId: paymentMethodId ? `${paymentMethodId.substring(0, 10)}...` : null,
+    source: paymentMethodSource,
+  });
 
   if (!customerId || !paymentMethodId) {
     // Mark as failed - no payment method

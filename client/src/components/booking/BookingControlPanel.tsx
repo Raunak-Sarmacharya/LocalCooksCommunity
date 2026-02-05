@@ -1152,14 +1152,9 @@ export default function BookingControlPanel({
                           <div className="flex items-start gap-2">
                             <CheckCircle className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                             <div>
-                              <p className="text-xs text-gray-500 mb-0.5">Total Cost</p>
+                              <p className="text-xs text-gray-500 mb-0.5">Total Storage Cost(Incl. Storage Extension)</p>
                               <p className="text-gray-900">
                                 ${(storageBooking.totalPrice || 0).toFixed(2)} CAD
-                                {storageBooking.serviceFee > 0 && (
-                                  <span className="text-xs text-gray-500 ml-1">
-                                    (includes ${(storageBooking.serviceFee || 0).toFixed(2)} service fee)
-                                  </span>
-                                )}
                               </p>
                             </div>
                           </div>

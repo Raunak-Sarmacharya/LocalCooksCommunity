@@ -141,14 +141,8 @@ export async function generateInvoicePDF(
   if (storageBookings && storageBookings.length > 0) {
       for (const storage of storageBookings) {
           try {
-             let amount = 0;
              let quantity = 0;
              let rate = 0;
-             
-             // Get total price from storage booking (stored in cents)
-             if (storage.total_price || storage.totalPrice) {
-                 amount = parseFloat(String(storage.total_price || storage.totalPrice)) / 100;
-             }
              
              // Calculate days from date range
              if (storage.startDate && storage.endDate) {
@@ -157,11 +151,22 @@ export async function generateInvoicePDF(
                  quantity = Math.max(1, Math.ceil((e.getTime() - s.getTime()) / (1000 * 3600 * 24)));
              }
              
-             // Get daily rate from listing basePrice (stored in cents) or calculate from total
+             // Get daily rate from listing basePrice (stored in cents)
              if (storage.listingBasePrice) {
                  rate = parseFloat(String(storage.listingBasePrice)) / 100; // Convert cents to dollars
-             } else if (quantity > 0 && amount > 0) {
-                 rate = amount / quantity;
+             }
+             
+             // CHEF TRANSPARENCY: Calculate amount from daily rate × days
+             // This ensures chef sees base price only (no service fee)
+             // and correctly reflects any extensions included in the booking period
+             let amount = 0;
+             if (rate > 0 && quantity > 0) {
+                 amount = rate * quantity; // Base price only, no service fee
+             } else if (storage.total_price || storage.totalPrice) {
+                 // Fallback: use total_price minus service_fee if rate not available
+                 const totalPriceCents = parseFloat(String(storage.total_price || storage.totalPrice)) || 0;
+                 const serviceFeeCents = parseFloat(String(storage.service_fee || storage.serviceFee || '0')) || 0;
+                 amount = (totalPriceCents - serviceFeeCents) / 100;
              }
             
             if (amount > 0) {
@@ -176,10 +181,13 @@ export async function generateInvoicePDF(
                     name = `Storage - ${storage.storageType}`;
                 }
 
+                // Add note about extensions if booking period is longer than 1 day
+                const daysNote = quantity > 1 ? ` (incl. extensions)` : '';
+                
                 items.push({
-                   description: `${name} - ${quantity} day${quantity !== 1 ? 's' : ''}`,
+                   description: `${name} - ${quantity} day${quantity !== 1 ? 's' : ''}${daysNote}`,
                    quantity: quantity || 1,
-                   rate: rate || amount,
+                   rate: rate || (amount / (quantity || 1)),
                    amount: amount
                 });
             }
@@ -566,25 +574,31 @@ export async function generateInvoicePDF(
         doc.font('Helvetica').fontSize(10).fillColor('#000000');
         
         // Add data source note for transparency
+        currentY += 20;
+        doc.fontSize(8).fillColor('#6b7280');
         if (dataSource === 'stripe') {
-          currentY += 20;
-          doc.fontSize(8).fillColor('#6b7280');
           doc.text('* Fees retrieved from Stripe payment records', 60, currentY);
-          doc.fillColor('#000000').fontSize(10);
+          currentY += 12;
         }
-      } else {
-        // Chef Invoice: Simple view (what they paid)
-        addTotalRow('Subtotal:', totalAmount);
         if (taxAmount > 0) {
+          doc.text('* Tax collected is your responsibility to remit to tax authorities', 60, currentY);
+        }
+        doc.fillColor('#000000').fontSize(10);
+      } else {
+        // Chef Invoice: Transparent view showing base amount + tax breakdown
+        addTotalRow('Subtotal (Services):', totalAmount);
+        if (taxAmount > 0 && taxRatePercent > 0) {
+          addTotalRow(`Tax (${taxRatePercent}%):`, taxAmount);
+        } else if (taxAmount > 0) {
           addTotalRow('Tax:', taxAmount);
         }
         
         // Total (bold and larger)
-        doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
+        doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
         currentY += 10;
         doc.fontSize(12).font('Helvetica-Bold');
-        doc.text('Total:', 380, currentY, { align: 'right', width: 110 });
-        doc.text(`$${grandTotal.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
+        doc.text('Total Paid:', 380, currentY, { align: 'right', width: 110 });
+        doc.text(`$${grandTotal.toFixed(2)} CAD`, 500, currentY, { align: 'right', width: 50 });
         doc.font('Helvetica').fontSize(10);
       }
 
@@ -661,12 +675,19 @@ export async function generateStorageInvoicePDF(
       const displayDailyRate = dailyRateCents || (displayDays > 0 ? Math.round(displayBaseAmount / displayDays) : displayBaseAmount);
 
       // Generate standardized invoice ID: LC-STR-YYYY-XXXXXX (LC = LocalCook, STR = Storage)
+      // LC-EXT = Storage Extension, LC-OP = Overstay Penalty, LC-STR = Storage Booking
       const invoiceDate = new Date(transaction.paidAt || transaction.paid_at || transaction.createdAt || transaction.created_at);
       const year = invoiceDate.getFullYear();
       const bookingIdPadded = String(storageBooking.id).padStart(6, '0');
-      const invoiceId = isExtension 
-        ? `LC-EXT-${year}-${bookingIdPadded}`
-        : `LC-STR-${year}-${bookingIdPadded}`;
+      const isOverstayPenalty = extensionDetails?.is_overstay_penalty === true;
+      let invoiceId: string;
+      if (isOverstayPenalty) {
+        invoiceId = `LC-OP-${year}-${bookingIdPadded}`;
+      } else if (isExtension) {
+        invoiceId = `LC-EXT-${year}-${bookingIdPadded}`;
+      } else {
+        invoiceId = `LC-STR-${year}-${bookingIdPadded}`;
+      }
 
       // Header
       doc.fontSize(24).font('Helvetica-Bold').text('INVOICE', 50, 50);
@@ -748,50 +769,97 @@ export async function generateStorageInvoicePDF(
       currentY += 20;
       doc.fontSize(10).font('Helvetica');
       
-      // Subtotal
-      doc.text('Subtotal:', 380, currentY);
+      // Subtotal (base amount before tax)
+      doc.text('Subtotal (Base Amount):', 380, currentY);
       doc.text(`$${(displayBaseAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
       currentY += 18;
 
-      // Tax (if applicable)
+      // Tax (if applicable) - always show tax rate for transparency
       if (displayTaxAmount > 0 && taxRatePercent > 0) {
         doc.text(`Tax (${taxRatePercent}%):`, 380, currentY);
         doc.text(`$${(displayTaxAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
         currentY += 18;
+      } else if (displayTaxAmount > 0) {
+        doc.text('Tax:', 380, currentY);
+        doc.text(`$${(displayTaxAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+        currentY += 18;
       }
+
+      // Separator line before total
+      doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
+      currentY += 5;
 
       // Total
       doc.fontSize(12).font('Helvetica-Bold');
-      doc.text('Total:', 380, currentY);
-      doc.text(`$${(displayTotalAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+      doc.text('Total Paid:', 380, currentY);
+      doc.text(`$${(displayTotalAmount / 100).toFixed(2)} CAD`, 480, currentY, { align: 'right' });
       currentY += 30;
 
-      // MANAGER VIEW: Show Stripe fee deduction and net amount
+      // MANAGER VIEW: Show earnings breakdown with tax collected and Stripe fee deduction
       if (invoiceViewer === 'manager') {
         // Get Stripe fee from transaction
         const stripeProcessingFee = parseInt(String(transaction.stripeProcessingFee || transaction.stripe_processing_fee || '0')) || 0;
         const managerRevenue = parseInt(String(transaction.managerRevenue || transaction.manager_revenue || '0')) || 0;
         
-        if (stripeProcessingFee > 0) {
-          currentY += 10;
-          doc.moveTo(380, currentY).lineTo(550, currentY).stroke('#e5e7eb');
-          currentY += 15;
-          
-          doc.fontSize(10).font('Helvetica').fillColor('#6b7280');
-          doc.text('Stripe Processing Fee:', 380, currentY);
-          doc.fillColor('#dc2626'); // Red color for deduction
-          doc.text(`-$${(stripeProcessingFee / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
-          doc.fillColor('#000000');
+        currentY += 10;
+        
+        // Section header for earnings breakdown
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#1f2937');
+        doc.text('EARNINGS BREAKDOWN', 60, currentY);
+        currentY += 20;
+        doc.fontSize(10).font('Helvetica').fillColor('#000000');
+        
+        // Show base amount and tax collected
+        doc.text('Base Amount:', 380, currentY);
+        doc.text(`$${(displayBaseAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+        currentY += 18;
+        
+        if (displayTaxAmount > 0) {
+          doc.text(`Tax Collected (${taxRatePercent}%):`, 380, currentY);
+          doc.text(`$${(displayTaxAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
           currentY += 18;
-          
-          // Net amount manager receives
-          doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669'); // Green for net
-          doc.text('You Receive:', 380, currentY);
-          const netAmount = managerRevenue > 0 ? managerRevenue : (displayTotalAmount - stripeProcessingFee);
-          doc.text(`$${(netAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
-          doc.fillColor('#000000');
-          currentY += 20;
         }
+        
+        // Gross revenue line
+        doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
+        currentY += 5;
+        doc.font('Helvetica-Bold');
+        doc.text('Gross Revenue:', 380, currentY);
+        doc.text(`$${(displayTotalAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+        doc.font('Helvetica');
+        currentY += 20;
+        
+        // Deductions section
+        doc.fontSize(10).fillColor('#6b7280');
+        doc.text('Deductions:', 60, currentY);
+        currentY += 18;
+        doc.fillColor('#000000');
+        
+        // Stripe fee deduction
+        doc.text('Stripe Processing Fee:', 380, currentY);
+        doc.fillColor('#dc2626'); // Red color for deduction
+        if (stripeProcessingFee > 0) {
+          doc.text(`-$${(stripeProcessingFee / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+        } else {
+          doc.text('(pending sync)', 480, currentY, { align: 'right' });
+        }
+        doc.fillColor('#000000');
+        currentY += 20;
+        
+        // Net payout (bold, highlighted)
+        doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
+        currentY += 5;
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669'); // Green for net
+        doc.text('You Receive:', 380, currentY);
+        const netAmount = managerRevenue > 0 ? managerRevenue : (displayTotalAmount - stripeProcessingFee);
+        doc.text(`$${(netAmount / 100).toFixed(2)} CAD`, 480, currentY, { align: 'right' });
+        doc.fillColor('#000000');
+        currentY += 25;
+        
+        // Add note about tax responsibility
+        doc.fontSize(8).fillColor('#6b7280');
+        doc.text('* Tax collected is your responsibility to remit to tax authorities', 60, currentY);
+        doc.fillColor('#000000').fontSize(10);
       }
 
       // Payment Info
@@ -820,25 +888,55 @@ export async function generateStorageInvoicePDF(
 
 /**
  * Generate invoice PDF for a damage claim
+ * Supports both chef view (what they paid) and manager view (what they receive after fees)
  */
-export async function generateDamageClaimInvoicePDF(claim: {
-  id: number;
-  claimTitle: string;
-  claimDescription: string;
-  damageDate: string | Date;
-  claimedAmountCents: number;
-  finalAmountCents: number | null;
-  chargeSucceededAt: Date | null;
-  stripePaymentIntentId: string | null;
-  chefId: number;
-  managerId: number;
-  locationId: number;
-  bookingType: string;
-  kitchenBookingId: number | null;
-  storageBookingId: number | null;
-}): Promise<Buffer> {
+export async function generateDamageClaimInvoicePDF(
+  claim: {
+    id: number;
+    claimTitle: string;
+    claimDescription: string;
+    damageDate: string | Date;
+    claimedAmountCents: number;
+    finalAmountCents: number | null;
+    chargeSucceededAt: Date | null;
+    stripePaymentIntentId: string | null;
+    chefId: number;
+    managerId: number;
+    locationId: number;
+    bookingType: string;
+    kitchenBookingId: number | null;
+    storageBookingId: number | null;
+  },
+  options?: { viewer?: 'chef' | 'manager' }
+): Promise<Buffer> {
+  const invoiceViewer = options?.viewer ?? 'chef';
+  
   // Import schema here to avoid circular dependencies
   const { users, locations } = await import("@shared/schema");
+  
+  // For manager view, try to get actual Stripe fees from payment_transactions
+  let stripeProcessingFeeCents = 0;
+  let managerRevenueCents = 0;
+  
+  if (invoiceViewer === 'manager' && claim.stripePaymentIntentId) {
+    try {
+      const [transaction] = await db
+        .select({
+          stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+          managerRevenue: paymentTransactions.managerRevenue,
+        })
+        .from(paymentTransactions)
+        .where(eq(paymentTransactions.paymentIntentId, claim.stripePaymentIntentId))
+        .limit(1);
+      
+      if (transaction) {
+        stripeProcessingFeeCents = parseInt(String(transaction.stripeProcessingFee || '0')) || 0;
+        managerRevenueCents = parseInt(String(transaction.managerRevenue || '0')) || 0;
+      }
+    } catch (error) {
+      console.warn('[DamageClaimInvoice] Could not fetch Stripe fees:', error);
+    }
+  }
   
   return new Promise(async (resolve, reject) => {
     try {
@@ -877,7 +975,7 @@ export async function generateDamageClaimInvoicePDF(claim: {
       doc.fontSize(12).font('Helvetica-Bold').text('Invoice Details');
       doc.moveDown(0.5);
       doc.fontSize(10).font('Helvetica');
-      doc.text(`Invoice Number: DC-${claim.id.toString().padStart(6, '0')}`);
+      doc.text(`Invoice Number: LC-DC-${claim.id.toString().padStart(6, '0')}`);
       doc.text(`Date: ${chargeDate.toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })}`);
       doc.text(`Payment Status: Paid`);
       doc.moveDown(1.5);
@@ -940,7 +1038,32 @@ export async function generateDamageClaimInvoicePDF(claim: {
       doc.text('Total Charged', 50, totalY);
       doc.text(`$${(amountCents / 100).toFixed(2)} CAD`, 450, totalY, { align: 'right', width: 100 });
 
-      doc.moveDown(2);
+      doc.moveDown(1.5);
+
+      // MANAGER VIEW: Show Stripe fee deduction and net amount
+      if (invoiceViewer === 'manager' && stripeProcessingFeeCents > 0) {
+        doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke('#e5e7eb');
+        doc.moveDown(0.5);
+        
+        doc.fontSize(10).font('Helvetica').fillColor('#6b7280');
+        const feeY = doc.y;
+        doc.text('Stripe Processing Fee:', 50, feeY);
+        doc.fillColor('#dc2626'); // Red color for deduction
+        doc.text(`-$${(stripeProcessingFeeCents / 100).toFixed(2)} CAD`, 450, feeY, { align: 'right', width: 100 });
+        doc.fillColor('#000000');
+        doc.moveDown(0.8);
+        
+        // Net amount manager receives
+        const netAmount = managerRevenueCents > 0 ? managerRevenueCents : (amountCents - stripeProcessingFeeCents);
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669'); // Green for net
+        const netY = doc.y;
+        doc.text('You Receive:', 50, netY);
+        doc.text(`$${(netAmount / 100).toFixed(2)} CAD`, 450, netY, { align: 'right', width: 100 });
+        doc.fillColor('#000000');
+        doc.moveDown(1);
+      }
+
+      doc.moveDown(0.5);
 
       // Payment info
       doc.fontSize(10).font('Helvetica');

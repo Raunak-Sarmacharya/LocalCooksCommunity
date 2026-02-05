@@ -334,11 +334,22 @@ export class BookingRepository {
 
         return result.map(row => {
             const penalty = penaltyMap.get(row.id);
+            // Calculate original booking price from daily rate and booking duration
+            // This avoids showing cumulative total (which includes extension prices)
+            const dailyRateCents = row.basePrice ? parseFloat(row.basePrice.toString()) : 0;
+            const startDate = new Date(row.startDate);
+            const endDate = new Date(row.endDate);
+            const bookingDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+            const minDays = row.minimumBookingDuration || 1;
+            const effectiveDays = Math.max(bookingDays, minDays);
+            // Original booking price = daily rate * days (in dollars)
+            const originalBookingPrice = (dailyRateCents * effectiveDays) / 100;
+            
             return {
                 ...row,
-                totalPrice: row.totalPrice ? parseFloat(row.totalPrice.toString()) / 100 : 0,
-                serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0,
-                basePrice: row.basePrice ? parseFloat(row.basePrice.toString()) : 0,
+                totalPrice: originalBookingPrice, // Show calculated price based on current dates
+                serviceFee: 0, // Don't show service fee to chef
+                basePrice: dailyRateCents, // Keep as cents for compatibility
                 minimumBookingDuration: row.minimumBookingDuration || 1,
                 // Paid penalty info (with backwards compatibility for paidAt field)
                 paidPenalty: penalty ? {
@@ -391,20 +402,36 @@ export class BookingRepository {
                 storageType: storageListings.storageType,
                 kitchenId: storageListings.kitchenId,
                 kitchenName: kitchens.name,
-                basePrice: storageListings.basePrice
+                listingBasePrice: storageListings.basePrice,
+                minimumBookingDuration: storageListings.minimumBookingDuration
             })
             .from(storageBookings)
             .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
             .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
             .where(eq(storageBookings.kitchenBookingId, kitchenBookingId));
         
-        return rows.map(row => ({
-            ...this.mapStorageBookingToDTO(row),
-            storageName: row.storageName,
-            storageType: row.storageType,
-            kitchenName: row.kitchenName,
-            listingBasePrice: row.basePrice ? parseFloat(row.basePrice) : null // Daily rate in cents from listing
-        }));
+        return rows.map(row => {
+            // Calculate base price from daily rate × days (same as getStorageBookingsByChefId)
+            // This ensures consistent pricing without service fee across all views
+            const dailyRateCents = row.listingBasePrice ? parseFloat(row.listingBasePrice.toString()) : 0;
+            const startDate = new Date(row.startDate);
+            const endDate = new Date(row.endDate);
+            const bookingDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+            const minDays = row.minimumBookingDuration || 1;
+            const effectiveDays = Math.max(bookingDays, minDays);
+            // Base price = daily rate × days (in cents, no service fee)
+            const basePriceCents = dailyRateCents * effectiveDays;
+            
+            return {
+                ...this.mapStorageBookingToDTO(row),
+                totalPrice: basePriceCents, // Override with calculated base price (no service fee)
+                serviceFee: 0, // Don't expose service fee
+                storageName: row.storageName,
+                storageType: row.storageType,
+                kitchenName: row.kitchenName,
+                listingBasePrice: dailyRateCents // Daily rate in cents from listing
+            };
+        });
     }
 
     async getExpiredStorageBookings(today: Date) {
