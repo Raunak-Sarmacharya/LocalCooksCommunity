@@ -290,10 +290,14 @@ export class BookingRepository {
                 kitchenName: kitchens.name,
                 basePrice: storageListings.basePrice,
                 minimumBookingDuration: storageListings.minimumBookingDuration,
+                // ENTERPRISE STANDARD: Include location data to prevent "Unknown Location" on chef UI
+                locationName: locations.name,
+                locationAddress: locations.address,
             })
             .from(storageBookings)
             .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
             .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
             .where(eq(storageBookings.chefId, chefId))
             .orderBy(desc(storageBookings.startDate));
 

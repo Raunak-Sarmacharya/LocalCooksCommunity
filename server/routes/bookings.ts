@@ -7,7 +7,7 @@ import {
     users,
     storageListings,
     equipmentListings,
-    paymentTransactions
+    paymentTransactions,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../logger";
@@ -140,6 +140,48 @@ router.get("/chef/storage-bookings", requireChef, async (req: Request, res: Resp
     } catch (error) {
         console.error("Error fetching storage bookings:", error);
         res.status(500).json({ error: "Failed to fetch storage bookings" });
+    }
+});
+
+// IMPORTANT: Static routes MUST be defined before parameterized routes
+// Otherwise Express matches "expiring" as :id and returns 400
+// Get expiring storage bookings for chef (for notifications)
+router.get("/chef/storage-bookings/expiring", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const daysAhead = parseInt(req.query.days as string) || 3;
+        
+        const storageBookings = await bookingService.getStorageBookingsByChef(chefId);
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const expiringBookings = storageBookings.filter((booking: any) => {
+            if (booking.status === 'cancelled') return false;
+            
+            const endDate = new Date(booking.endDate);
+            endDate.setHours(0, 0, 0, 0);
+            
+            const daysUntilExpiry = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            
+            return daysUntilExpiry <= daysAhead && daysUntilExpiry >= -7;
+        }).map((booking: any) => {
+            const endDate = new Date(booking.endDate);
+            endDate.setHours(0, 0, 0, 0);
+            const daysUntilExpiry = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            
+            return {
+                ...booking,
+                daysUntilExpiry,
+                isExpired: daysUntilExpiry < 0,
+                isExpiringSoon: daysUntilExpiry >= 0 && daysUntilExpiry <= 2,
+            };
+        });
+        
+        res.json(expiringBookings);
+    } catch (error: any) {
+        console.error("Error fetching expiring storage bookings:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch expiring storage bookings" });
     }
 });
 
@@ -278,47 +320,6 @@ router.post("/admin/storage-bookings/process-overstayer-penalties", async (req: 
     } catch (error: any) {
         console.error("Error processing overstayer penalties:", error);
         res.status(500).json({ error: error.message || "Failed to process overstayer penalties" });
-    }
-});
-
-// Get expiring storage bookings for chef (for notifications)
-router.get("/chef/storage-bookings/expiring", requireChef, async (req: Request, res: Response) => {
-    try {
-        const chefId = req.neonUser!.id;
-        const daysAhead = parseInt(req.query.days as string) || 3; // Default: bookings expiring in next 3 days
-        
-        const storageBookings = await bookingService.getStorageBookingsByChef(chefId);
-        
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        const expiringBookings = storageBookings.filter((booking: any) => {
-            if (booking.status === 'cancelled') return false;
-            
-            const endDate = new Date(booking.endDate);
-            endDate.setHours(0, 0, 0, 0);
-            
-            const daysUntilExpiry = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-            
-            // Include bookings expiring within daysAhead days (including already expired up to 7 days ago)
-            return daysUntilExpiry <= daysAhead && daysUntilExpiry >= -7;
-        }).map((booking: any) => {
-            const endDate = new Date(booking.endDate);
-            endDate.setHours(0, 0, 0, 0);
-            const daysUntilExpiry = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-            
-            return {
-                ...booking,
-                daysUntilExpiry,
-                isExpired: daysUntilExpiry < 0,
-                isExpiringSoon: daysUntilExpiry >= 0 && daysUntilExpiry <= 2,
-            };
-        });
-        
-        res.json(expiringBookings);
-    } catch (error: any) {
-        console.error("Error fetching expiring storage bookings:", error);
-        res.status(500).json({ error: error.message || "Failed to fetch expiring storage bookings" });
     }
 });
 
@@ -975,11 +976,14 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
         // Get storage bookings with listing details
         const storageBookingsRaw = await bookingService.getStorageBookingsByKitchenBooking(id);
         
-        // Get original storage IDs and dates from kitchen booking payment transaction
-        // This ensures we only show storage from the original booking, not extensions
+        // ENTERPRISE STANDARD: Identify original storage bookings from multiple sources
+        // Priority: 1) payment_transactions.metadata.storage_items
+        //           2) kitchen_bookings.storage_items JSONB column
+        //           3) Fallback: show ALL storage bookings linked to this kitchen booking
         let originalStorageIds: Set<number> = new Set();
-        let originalStorageDates: Record<number, { startDate: Date; endDate: Date; days: number }> = {};
+        const originalStorageDates: Record<number, { startDate: Date; endDate: Date; days: number }> = {};
         try {
+            // Source 1: payment_transactions metadata
             const { findPaymentTransactionByIntentId } = await import('../services/payment-transactions-service');
             const kitchenTransaction = await findPaymentTransactionByIntentId(booking.paymentIntentId || '', db);
             if (kitchenTransaction?.metadata) {
@@ -991,7 +995,6 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                         if (item.storageBookingId || item.id) {
                             const storageId = item.storageBookingId || item.id;
                             originalStorageIds.add(storageId);
-                            // Store original dates for price calculation
                             const startDate = new Date(item.startDate);
                             const endDate = new Date(item.endDate);
                             const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
@@ -1000,8 +1003,30 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                     }
                 }
             }
+            
+            // Source 2: kitchen_bookings.storage_items JSONB (if PT metadata had nothing)
+            if (originalStorageIds.size === 0 && (booking as any).storageItems) {
+                const storageItems = (booking as any).storageItems;
+                if (Array.isArray(storageItems) && storageItems.length > 0) {
+                    for (const item of storageItems) {
+                        if (item.id) {
+                            originalStorageIds.add(item.id);
+                            if (item.startDate && item.endDate) {
+                                const startDate = new Date(item.startDate);
+                                const endDate = new Date(item.endDate);
+                                const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+                                originalStorageDates[item.id] = { startDate, endDate, days };
+                            }
+                        }
+                    }
+                }
+            }
         } catch {
-            // If we can't get original storage IDs, show all (fallback)
+            // On error, fall through to fallback below
+        }
+        
+        // Fallback: if no source identified original storage, show ALL from this kitchen booking
+        if (originalStorageIds.size === 0 && storageBookingsRaw.length > 0) {
             originalStorageIds = new Set(storageBookingsRaw.map((sb: any) => sb.id));
         }
         
@@ -1239,6 +1264,127 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
     } catch (error: any) {
         console.error("Error generating invoice:", error);
         res.status(500).json({ error: error.message || "Failed to generate invoice" });
+    }
+});
+
+// Generate invoice PDF for a standalone storage booking
+router.get("/chef/invoices/storage/:id", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        const storageBooking = await bookingService.getStorageBookingById(id);
+        if (!storageBooking) {
+            return res.status(404).json({ error: "Storage booking not found" });
+        }
+
+        // Verify the booking belongs to this chef
+        if (storageBooking.chefId !== req.neonUser!.id) {
+            return res.status(403).json({ error: "You don't have permission to view this invoice" });
+        }
+
+        // Get chef details (with full name from applications via raw query)
+        const chef = await userService.getUser(storageBooking.chefId);
+        let chefFullName: string | null = null;
+        try {
+            const appResult = await pool!.query(
+                'SELECT full_name FROM applications WHERE user_id = $1 LIMIT 1',
+                [storageBooking.chefId]
+            );
+            if (appResult.rows[0]?.full_name) chefFullName = appResult.rows[0].full_name;
+        } catch {
+            // applications table may not have fullName - non-critical
+        }
+
+        // Get kitchen and location details
+        const kitchen = await kitchenService.getKitchenById(storageBooking.kitchenId);
+        let locationName = '';
+        let locationAddress = '';
+        if (kitchen?.locationId) {
+            const [loc] = await db
+                .select({ name: locations.name, address: locations.address })
+                .from(locations)
+                .where(eq(locations.id, kitchen.locationId))
+                .limit(1);
+            if (loc) {
+                locationName = loc.name || '';
+                locationAddress = loc.address || '';
+            }
+        }
+
+        // Get the kitchen booking's payment transaction (storage was paid as part of kitchen checkout)
+        const kitchenBookingId = (storageBooking as any).kitchenBookingId;
+        let transaction = null;
+        if (kitchenBookingId) {
+            try {
+                const { findPaymentTransactionByBooking } = await import('../services/payment-transactions-service');
+                transaction = await findPaymentTransactionByBooking(kitchenBookingId, 'kitchen', db);
+            } catch {
+                // Non-critical
+            }
+        }
+
+        // Calculate storage price from listing
+        const dailyRateCents = (storageBooking as any).basePrice || (storageBooking as any).listingBasePrice || 0;
+        const startDate = new Date(storageBooking.startDate);
+        const endDate = new Date(storageBooking.endDate);
+        const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+        const basePriceCents = dailyRateCents * days;
+
+        // Get tax rate from kitchen
+        const taxRatePercent = kitchen?.taxRatePercent ? Number(kitchen.taxRatePercent) : 0;
+        const taxCents = Math.round((basePriceCents * taxRatePercent) / 100);
+        const totalCents = basePriceCents + taxCents;
+
+        // Build a transaction-like object for the invoice generator
+        const invoiceTransaction = transaction || {
+            amount: totalCents.toString(),
+            baseAmount: basePriceCents.toString(),
+            paidAt: storageBooking.createdAt,
+            createdAt: storageBooking.createdAt,
+        };
+
+        // Build storage booking object with location info
+        const storageBookingForInvoice = {
+            ...storageBooking,
+            kitchenName: kitchen?.name || (storageBooking as any).kitchenName || 'Kitchen',
+            locationName: locationName || 'Location',
+            locationAddress,
+            taxRatePercent,
+        };
+
+        // Build chef object with full name
+        const chefForInvoice = {
+            ...(chef || {}),
+            full_name: chefFullName || (chef as any)?.username || 'Chef',
+        };
+
+        // Generate the storage invoice PDF
+        const { generateStorageInvoicePDF } = await import('../services/invoice-service');
+        const pdfBuffer = await generateStorageInvoicePDF(
+            invoiceTransaction,
+            storageBookingForInvoice,
+            chefForInvoice,
+            {
+                // Pass original booking details (not extension)
+                extension_days: days,
+                extension_base_price_cents: basePriceCents,
+                extension_total_price_cents: totalCents,
+                daily_rate_cents: dailyRateCents,
+                is_overstay_penalty: false,
+            },
+            { viewer: 'chef' }
+        );
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="LocalCooks-Storage-Invoice-${id}.pdf"`);
+        res.setHeader('Content-Length', pdfBuffer.length);
+        res.send(pdfBuffer);
+    } catch (error: any) {
+        console.error("Error generating storage invoice:", error);
+        res.status(500).json({ error: error.message || "Failed to generate storage invoice" });
     }
 });
 

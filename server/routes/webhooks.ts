@@ -671,6 +671,12 @@ async function handleCheckoutSessionCompleted(
 
                 // Storage bookings now require manager approval (like kitchen bookings)
                 // Status is 'pending' until manager confirms
+                // ENTERPRISE STANDARD: Storage is paid as part of kitchen booking checkout.
+                // Set paymentStatus='paid' and paymentIntentId so the record accurately reflects
+                // that payment has been collected. This is critical for:
+                // 1. Accurate payment tracking across all booking types
+                // 2. Off-session charging for overstay penalties (needs stripeCustomerId + stripePaymentMethodId)
+                // 3. Dispute resolution (needs paymentIntentId to reference the original charge)
                 const [storageBooking] = await db
                   .insert(storageBookings)
                   .values({
@@ -679,13 +685,13 @@ async function handleCheckoutSessionCompleted(
                     chefId,
                     startDate: storageStartDate,
                     endDate: storageEndDate,
-                    status: 'pending', // Changed from 'confirmed' - requires manager approval
+                    status: 'pending', // Requires manager approval
                     totalPrice: priceCents.toString(),
                     pricingModel: storageListing.pricingModel || 'daily',
+                    paymentStatus: 'paid', // Payment confirmed via kitchen booking checkout
+                    paymentIntentId: paymentIntentId || null, // Link to the kitchen booking payment
                     serviceFee: '0',
                     currency: 'CAD',
-                    // ENTERPRISE STANDARD: Store Stripe customer/payment info for off-session penalty charging
-                    // These are extracted from the expanded session with setup_future_usage: 'off_session'
                     stripeCustomerId: stripeCustomerId || null,
                     stripePaymentMethodId: stripePaymentMethodId || null,
                   })
@@ -817,6 +823,11 @@ async function handleCheckoutSessionCompleted(
                 metadata: {
                   checkout_session_id: session.id,
                   booking_id: booking.id.toString(),
+                  // ENTERPRISE STANDARD: Include storage_items in PT metadata
+                  // This enables the View Details endpoint to identify which storage bookings
+                  // belong to this kitchen booking payment (vs. extensions paid separately)
+                  ...(storageItemsForJson.length > 0 ? { storage_items: storageItemsForJson } : {}),
+                  ...(equipmentItemsForJson.length > 0 ? { equipment_items: equipmentItemsForJson } : {}),
                 },
               }, db);
               
