@@ -25,6 +25,7 @@ import {
   Briefcase,
   Award,
   ExternalLink,
+  FileCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
@@ -82,10 +83,23 @@ export default function KitchenApplicationCard({
   // Step 2 data is stored in tier_data
   const step2Data = tierData.step2 || tierData.tier2 || {};
 
+  // Determine if Step 2 has been submitted and is awaiting manager review
+  // Enterprise check: tier2_completed_at is set by the submission endpoint when current_tier=2
+  const hasStep2BeenSubmitted = (): boolean => {
+    if (currentStep < 2) return false;
+    if ((app as any).tier2_completed_at) return true;
+    return !!tierData.tier2_submitted_at;
+  };
+
+  const step2Submitted = hasStep2BeenSubmitted();
+
   // Status configuration - using "Step" terminology for frontend
   const getStatusConfig = () => {
     if (app.status === 'approved' && currentStep >= 3) {
       return { label: 'Ready to Book', color: 'bg-green-500', textColor: 'text-green-600', bgLight: 'bg-green-100', stepLabel: 'Complete' };
+    }
+    if (app.status === 'approved' && step2Submitted) {
+      return { label: 'Step 2 Under Review', color: 'bg-blue-500', textColor: 'text-blue-600', bgLight: 'bg-blue-100', stepLabel: 'Awaiting Review' };
     }
     if (app.status === 'approved' && currentStep === 2) {
       return { label: 'Step 2 In Progress', color: 'bg-blue-500', textColor: 'text-blue-600', bgLight: 'bg-blue-100', stepLabel: 'Step 2' };
@@ -548,12 +562,19 @@ export default function KitchenApplicationCard({
                 </Button>
               )}
               {app.status === 'approved' && currentStep < 3 && (
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={`/kitchen-requirements/${app.locationId}`}>
-                    <ArrowRight className="h-4 w-4 mr-1" />
-                    Complete Step {currentStep === 1 ? 2 : currentStep}
-                  </Link>
-                </Button>
+                step2Submitted ? (
+                  <Badge variant="secondary" className="text-xs">
+                    <FileCheck className="h-3 w-3 mr-1" />
+                    Step 2 submitted — awaiting manager review
+                  </Badge>
+                ) : (
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={`/kitchen-requirements/${app.locationId}`}>
+                      <ArrowRight className="h-4 w-4 mr-1" />
+                      Complete Step {currentStep === 1 ? 2 : currentStep}
+                    </Link>
+                  </Button>
+                )
               )}
               {(app.status === 'rejected' || app.status === 'cancelled') && (
                 <Button variant="outline" size="sm" onClick={onDiscoverKitchens}>

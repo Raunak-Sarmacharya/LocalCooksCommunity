@@ -23,6 +23,7 @@ import {
   Snowflake,
   Thermometer,
   Package,
+  FileCheck,
 } from "lucide-react";
 import type { 
   KitchenApplicationWithLocation, 
@@ -51,10 +52,25 @@ export default function MyKitchensTabContent({
   // Format price (cents to dollars)
   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(0)}`;
 
+  // Determine if Step 2 has been submitted and is awaiting manager review
+  // Enterprise check: tier2_completed_at is set by the submission endpoint when current_tier=2
+  const hasStep2BeenSubmitted = (app: KitchenApplicationWithLocation): boolean => {
+    const currentTier = app.current_tier ?? 1;
+    if (currentTier < 2) return false;
+    // Check the tier2_completed_at column (set during Step 2 form submission)
+    if (app.tier2_completed_at) return true;
+    // Fallback: check tier_data.tier2_submitted_at (also set during Step 2 submission)
+    const tierData = (app.tier_data as Record<string, any>) || {};
+    return !!tierData.tier2_submitted_at;
+  };
+
   // Status badge configuration
   const getStatusConfig = (app: KitchenApplicationWithLocation) => {
     if (app.status === 'approved' && (app.current_tier ?? 1) >= 3) {
       return { label: 'Ready to Book', bgColor: 'bg-blue-600 hover:bg-blue-600', icon: CheckCircle };
+    }
+    if (app.status === 'approved' && hasStep2BeenSubmitted(app)) {
+      return { label: 'Step 2 Under Review', bgColor: 'bg-blue-500 hover:bg-blue-500', icon: FileCheck };
     }
     if (app.status === 'approved') {
       return { label: 'In Progress', bgColor: 'bg-amber-500 hover:bg-amber-500', icon: Clock };
@@ -256,6 +272,11 @@ export default function MyKitchensTabContent({
                             <Calendar className="h-4 w-4" />
                             Book Now
                           </Button>
+                        ) : hasStep2BeenSubmitted(app) ? (
+                          <Badge variant="secondary" className="text-xs">
+                            <FileCheck className="h-3 w-3 mr-1" />
+                            Step 2 submitted — awaiting manager review
+                          </Badge>
                         ) : (
                           <Button
                             variant="outline"

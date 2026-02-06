@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { CheckCircle, ClipboardList } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ApplicationRequirementsWizard } from "@/components/manager/requirements";
+import type { ApplicationRequirementsWizardHandle } from "@/components/manager/requirements";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import type { WizardStep } from "@/components/manager/requirements/types";
@@ -21,6 +22,8 @@ export default function ApplicationRequirementsStep() {
 
   // Track the current wizard tab
   const [currentWizardStep, setCurrentWizardStep] = useState<WizardStep>('step1');
+  const [isSaving, setIsSaving] = useState(false);
+  const wizardRef = useRef<ApplicationRequirementsWizardHandle>(null);
 
   if (!selectedLocationId) return null;
 
@@ -29,6 +32,23 @@ export default function ApplicationRequirementsStep() {
   const isFirstWizardStep = currentStepIndex === 0;
 
   const handleContinue = async () => {
+    // [ENTERPRISE] Double-click guard
+    if (isSaving) return;
+
+    // Explicitly save unsaved changes before navigating
+    if (wizardRef.current?.hasUnsavedChanges) {
+      setIsSaving(true);
+      try {
+        await wizardRef.current.save();
+      } catch {
+        // Save failed — toast already shown by wizard, don't navigate
+        setIsSaving(false);
+        return;
+      }
+      setIsSaving(false);
+    }
+
+    // Refresh requirements status after save
     if (refreshRequirements) {
       await refreshRequirements();
     }
@@ -88,6 +108,7 @@ export default function ApplicationRequirementsStep() {
 
       {/* Requirements Wizard - Compact mode for onboarding */}
       <ApplicationRequirementsWizard
+        ref={wizardRef}
         locationId={selectedLocationId}
         onSaveSuccess={refreshRequirements}
         compact
@@ -105,6 +126,7 @@ export default function ApplicationRequirementsStep() {
         showSkip={true}
         nextLabel={getNextLabel()}
         isNextDisabled={!hasRequirements}
+        isLoading={isSaving}
       />
     </div>
   );

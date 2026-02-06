@@ -251,7 +251,7 @@ export default function KitchenBookingCalendar() {
 
 
 
-  // Calculate equipment pricing (base prices only, no service fees)
+  // Calculate equipment pricing (base prices only, platform fees handled via Stripe Connect)
   const equipmentPricing = useMemo(() => {
     if (!selectedEquipmentIds.length || !equipmentListings.rental.length) {
       return {

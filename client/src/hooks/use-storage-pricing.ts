@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { differenceInDays, differenceInHours } from "date-fns";
-import { useQuery } from "@tanstack/react-query";
 
 interface StorageListing {
   id: number;
@@ -39,6 +38,10 @@ interface StoragePricing {
 /**
  * Hook to calculate storage pricing based on selected storage with date ranges
  * 
+ * Note: Platform fees are handled via Stripe Connect (application_fee_amount) and are
+ * invisible to the chef. Only base price + tax is charged at checkout.
+ * The serviceFee field is kept at 0 for backward compatibility with consuming components.
+ * 
  * @param selectedStorage - Array of selected storage items with date ranges
  * @param storageListings - All available storage listings
  * @returns Calculated pricing breakdown
@@ -47,26 +50,6 @@ export function useStoragePricing(
   selectedStorage: SelectedStorage[],
   storageListings: StorageListing[]
 ): StoragePricing {
-  // Fetch service fee rate (public endpoint - no auth required)
-  const { data: serviceFeeRateData } = useQuery({
-    queryKey: ['/api/platform-settings/service-fee-rate'],
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/platform-settings/service-fee-rate');
-        if (response.ok) {
-          return response.json();
-        }
-      } catch (error) {
-        console.error('Error fetching service fee rate:', error);
-      }
-      // Default to 5% if unable to fetch
-      return { rate: 0.05, percentage: '5.00' };
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
-
-  const serviceFeeRate = serviceFeeRateData?.rate ?? 0.05; // Default to 5% if not available
-
   return useMemo(() => {
     if (!selectedStorage || selectedStorage.length === 0) {
       return {
@@ -114,8 +97,8 @@ export function useStoragePricing(
           basePrice = listing.basePrice * effectiveDays;
         }
         
-        const serviceFee = basePrice * serviceFeeRate; // Dynamic service fee
-        const total = basePrice + serviceFee;
+        const serviceFee = 0; // Platform fees handled via Stripe Connect (invisible to chef)
+        const total = basePrice;
 
         return {
           listing,
@@ -132,15 +115,13 @@ export function useStoragePricing(
 
     // Calculate totals
     const subtotal = items.reduce((sum, item) => sum + item.basePrice, 0);
-    const totalServiceFee = items.reduce((sum, item) => sum + item.serviceFee, 0);
-    const total = subtotal + totalServiceFee;
 
     return {
       items,
       subtotal,
-      serviceFee: totalServiceFee,
-      total,
+      serviceFee: 0, // Platform fees handled via Stripe Connect (invisible to chef)
+      total: subtotal,
     };
-  }, [selectedStorage, storageListings, serviceFeeRate]);
+  }, [selectedStorage, storageListings]);
 }
 

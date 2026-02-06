@@ -68,9 +68,9 @@ export function TransactionTable({
     onViewDetails,
     onRefundTransaction,
 }: TransactionTableProps) {
-    const [sorting, setSorting] = useState<SortingState>([{ id: 'bookingDate', desc: true }])
+    const [sorting, setSorting] = useState<SortingState>([{ id: 'createdAt', desc: true }])
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-    const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+    const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({ createdAt: false })
     const [globalFilter, setGlobalFilter] = useState('')
     const [paymentStatusFilter, setPaymentStatusFilter] = useState<PaymentStatus | 'all'>('all')
     const [refundDialogOpen, setRefundDialogOpen] = useState(false)

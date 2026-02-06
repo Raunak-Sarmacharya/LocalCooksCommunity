@@ -52,26 +52,6 @@ export function StorageSelection({
   const [dateRanges, setDateRanges] = useState<Record<number, DateRange | undefined>>({});
   const [validationErrors, setValidationErrors] = useState<Record<number, string>>({});
 
-  // Fetch service fee rate (public endpoint - no auth required)
-  const { data: serviceFeeRateData } = useQuery({
-    queryKey: ['/api/platform-settings/service-fee-rate'],
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/platform-settings/service-fee-rate');
-        if (response.ok) {
-          return response.json();
-        }
-      } catch (error) {
-        console.error('Error fetching service fee rate:', error);
-      }
-      // Default to 5% if unable to fetch
-      return { rate: 0.05, percentage: '5.00' };
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
-
-  const serviceFeeRate = serviceFeeRateData?.rate ?? 0.05; // Default to 5% if not available
-  const serviceFeePercentage = serviceFeeRateData?.percentage ?? '5.00';
 
   // Filter to only active storage listings
   const activeStorageListings = useMemo(() => {
@@ -79,11 +59,11 @@ export function StorageSelection({
   }, [storageListings]);
 
   // Calculate price preview for a date range
+  // Note: Platform fees are handled via Stripe Connect (application_fee_amount) and are
+  // invisible to the chef. Only base price + tax is charged at checkout.
   const calculatePrice = (listing: StorageListing, range: DateRange | undefined): {
     days: number;
     basePrice: number;
-    serviceFee: number;
-    total: number;
   } | null => {
     if (!range?.from || !range?.to) return null;
 
@@ -91,10 +71,8 @@ export function StorageSelection({
     const minDays = listing.minimumBookingDuration || 1;
     const effectiveDays = Math.max(days, minDays);
     const basePrice = listing.basePrice * effectiveDays;
-    const serviceFee = basePrice * serviceFeeRate; // Dynamic service fee
-    const total = basePrice + serviceFee;
 
-    return { days: effectiveDays, basePrice, serviceFee, total };
+    return { days: effectiveDays, basePrice };
   };
 
   // Validate date range
@@ -349,7 +327,7 @@ export function StorageSelection({
                             <span className="font-medium text-green-900">${((pricePreview.basePrice || 0) / 100).toFixed(2)}</span>
                           </div>
                           <div className="text-xs text-green-600 mt-1">
-                            Service fee will be calculated on the combined booking total
+                            Tax will be calculated on the combined booking total
                           </div>
                         </div>
                       )}
@@ -435,7 +413,7 @@ export function StorageSelection({
                               <span className="font-medium">${((pricePreview.basePrice || 0) / 100).toFixed(2)}</span>
                             </div>
                             <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200">
-                              Service fee will be calculated on the combined booking total at checkout
+                              Tax will be calculated on the combined booking total at checkout
                             </div>
                           </div>
                         </div>

@@ -97,6 +97,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
   const [refundAmount, setRefundAmount] = useState<string>('');
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
   const [bookingForAction, setBookingForAction] = useState<BookingForAction | null>(null);
+  const [isLoadingActionDetails, setIsLoadingActionDetails] = useState(false);
 
   // Check if any location has approved license
   const hasApprovedLicense = locations.some((loc: any) => loc.kitchenLicenseStatus === 'approved');
@@ -254,42 +255,81 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     },
   });
 
-  // Convert a Booking row to the shape needed by the action sheet
-  const toActionBooking = (booking: Booking): BookingForAction => ({
-    id: booking.id,
-    kitchenName: booking.kitchenName,
-    chefName: booking.chefName,
-    locationName: booking.locationName,
-    bookingDate: booking.bookingDate,
-    startTime: booking.startTime,
-    endTime: booking.endTime,
-    totalPrice: booking.totalPrice,
-    transactionAmount: booking.transactionAmount,
-    stripeProcessingFee: booking.stripeProcessingFee,
-    managerRevenue: booking.managerRevenue,
-    taxRatePercent: (booking as any).taxRatePercent,
-    storageItems: (booking as any).storageItems?.map((s: any) => ({
-      id: s.id,
-      storageBookingId: s.id,
-      name: s.name,
-      storageType: s.storageType,
-      totalPrice: s.totalPrice,
-      startDate: s.startDate,
-      endDate: s.endDate,
-    })),
-    equipmentItems: (booking as any).equipmentItems?.map((e: any) => ({
-      id: e.id,
-      equipmentBookingId: e.id,
-      name: e.name,
-      totalPrice: e.totalPrice,
-    })),
-    paymentStatus: booking.paymentStatus,
-  });
+  // ENTERPRISE STANDARD: Fetch full booking details before opening action sheet.
+  // The list endpoint returns JSONB snapshots (storageItems/equipmentItems) and raw
+  // kitchen_bookings.total_price which may be stale or include bundle pricing.
+  // The details endpoint recalculates kitchen-only price, fetches relational storage/equipment
+  // with original dates, and returns actual Stripe payment transaction data.
+  // This ensures the table "Take Action" shows identical data to the BookingDetailsPage.
+  const fetchBookingDetailsForAction = async (bookingId: number): Promise<BookingForAction | null> => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`/api/manager/bookings/${bookingId}/details`, {
+      headers,
+      credentials: "include",
+    });
 
-  // Single "Take Action" handler — opens the unified action sheet
-  const handleTakeAction = (booking: Booking) => {
-    setBookingForAction(toActionBooking(booking));
+    if (!response.ok) {
+      throw new Error(`Failed to fetch booking details: ${response.status}`);
+    }
+
+    const details = await response.json();
+
+    return {
+      id: details.id,
+      kitchenName: details.kitchen?.name,
+      chefName: details.chef?.fullName || details.chef?.username,
+      locationName: details.location?.name,
+      bookingDate: details.bookingDate,
+      startTime: details.startTime,
+      endTime: details.endTime,
+      totalPrice: details.totalPrice,
+      transactionAmount: details.paymentTransaction?.amount,
+      stripeProcessingFee: details.paymentTransaction?.stripeProcessingFee,
+      managerRevenue: details.paymentTransaction?.managerRevenue,
+      taxRatePercent: details.kitchen?.taxRatePercent ? Number(details.kitchen.taxRatePercent) : undefined,
+      // Include ALL items with rejected flag so action sheet shows full audit trail
+      // Rejected items appear as read-only, actionable items are toggleable
+      storageItems: details.storageBookings
+        ?.map((s: any) => ({
+          id: s.id,
+          storageBookingId: s.id,
+          name: s.storageListing?.name || `Storage #${s.storageListingId}`,
+          storageType: s.storageListing?.storageType || 'Storage',
+          totalPrice: s.totalPrice,
+          startDate: s.startDate,
+          endDate: s.endDate,
+          rejected: s.paymentStatus === 'failed' || s.status === 'cancelled',
+        })),
+      equipmentItems: details.equipmentBookings
+        ?.map((e: any) => ({
+          id: e.id,
+          equipmentBookingId: e.id,
+          name: e.equipmentListing?.equipmentType || `Equipment #${e.equipmentListingId}`,
+          totalPrice: e.totalPrice,
+          rejected: e.paymentStatus === 'failed' || e.status === 'cancelled',
+        })),
+      paymentStatus: details.paymentStatus,
+    };
+  };
+
+  // Single "Take Action" handler — fetches full details then opens the unified action sheet
+  const handleTakeAction = async (booking: Booking) => {
+    setIsLoadingActionDetails(true);
     setActionSheetOpen(true);
+    try {
+      const actionData = await fetchBookingDetailsForAction(booking.id);
+      setBookingForAction(actionData);
+    } catch (error: any) {
+      console.error('Error fetching booking details for action sheet:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load booking details. Please try again.",
+        variant: "destructive",
+      });
+      setActionSheetOpen(false);
+    } finally {
+      setIsLoadingActionDetails(false);
+    }
   };
 
   // Legacy handlers kept for fallback (non-pending bookings)
@@ -643,7 +683,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               data={filteredBookings}
               filterColumn="chefName" // filter by Chef name by default
               filterPlaceholder="Filter by chef..."
-              defaultSorting={[{ id: 'bookingDate', desc: true }]}
+              defaultSorting={[{ id: 'createdAt', desc: true }]}
+              initialColumnVisibility={{ createdAt: false }}
             />
           </div>
         )}

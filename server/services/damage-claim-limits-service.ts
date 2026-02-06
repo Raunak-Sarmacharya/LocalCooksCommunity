@@ -17,6 +17,11 @@ export interface DamageClaimLimits {
   claimSubmissionDeadlineDays: number; // Days after booking ends to file a claim
 }
 
+export interface StorageCheckoutSettings {
+  reviewWindowHours: number;          // Hours manager has to inspect after chef checkout
+  extendedClaimWindowHours: number;   // Extended hours to file claims for serious issues
+}
+
 // Default limits - conservative values to protect chefs
 const DEFAULTS: DamageClaimLimits = {
   maxClaimAmountCents: 500000, // $5,000 CAD max per claim
@@ -24,6 +29,11 @@ const DEFAULTS: DamageClaimLimits = {
   maxClaimsPerBooking: 3,      // Max 3 claims per booking
   chefResponseDeadlineHours: 72, // 72 hours to respond
   claimSubmissionDeadlineDays: 14, // 14 days after booking ends
+};
+
+const STORAGE_CHECKOUT_DEFAULTS: StorageCheckoutSettings = {
+  reviewWindowHours: 2,             // 2 hours for manager to inspect
+  extendedClaimWindowHours: 48,     // 48 hours extended window for serious issues
 };
 
 /**
@@ -164,9 +174,54 @@ export function getDefaultLimits(): DamageClaimLimits {
   return { ...DEFAULTS };
 }
 
+// ============================================================================
+// STORAGE CHECKOUT REVIEW WINDOW SETTINGS
+// ============================================================================
+
+/**
+ * Get admin-controlled storage checkout review window settings
+ * Controls how long managers have to inspect storage after chef checkout
+ */
+export async function getStorageCheckoutSettings(): Promise<StorageCheckoutSettings> {
+  try {
+    const [reviewWindowSetting] = await db
+      .select()
+      .from(platformSettings)
+      .where(eq(platformSettings.key, 'storage_checkout_review_window_hours'))
+      .limit(1);
+
+    const [extendedWindowSetting] = await db
+      .select()
+      .from(platformSettings)
+      .where(eq(platformSettings.key, 'storage_checkout_extended_claim_window_hours'))
+      .limit(1);
+
+    return {
+      reviewWindowHours: reviewWindowSetting
+        ? parseInt(reviewWindowSetting.value)
+        : STORAGE_CHECKOUT_DEFAULTS.reviewWindowHours,
+      extendedClaimWindowHours: extendedWindowSetting
+        ? parseInt(extendedWindowSetting.value)
+        : STORAGE_CHECKOUT_DEFAULTS.extendedClaimWindowHours,
+    };
+  } catch (error) {
+    console.error('[DamageClaimLimitsService] Error fetching storage checkout settings:', error);
+    return STORAGE_CHECKOUT_DEFAULTS;
+  }
+}
+
+/**
+ * Get the default storage checkout settings (for display purposes)
+ */
+export function getDefaultStorageCheckoutSettings(): StorageCheckoutSettings {
+  return { ...STORAGE_CHECKOUT_DEFAULTS };
+}
+
 export const damageClaimLimitsService = {
   getDamageClaimLimits,
   validateClaimAmount,
   canFileClaimForBooking,
   getDefaultLimits,
+  getStorageCheckoutSettings,
+  getDefaultStorageCheckoutSettings,
 };

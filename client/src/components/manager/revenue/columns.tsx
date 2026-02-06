@@ -140,6 +140,12 @@ export function getTransactionColumns({
 }: TransactionColumnsProps): ColumnDef<Transaction>[] {
     return [
         {
+            accessorKey: "createdAt",
+            header: () => null,
+            cell: () => null,
+            enableHiding: true,
+        },
+        {
             accessorKey: "bookingDate",
             header: ({ column }) => (
                 <Button

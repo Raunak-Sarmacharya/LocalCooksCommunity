@@ -213,23 +213,38 @@ export async function getRevenueMetricsFromTransactions(
     `);
     
     // Calculate tax from kitchen's tax_rate_percent (for kitchen/bundle bookings)
-    // ENTERPRISE STANDARD: Tax = kb.total_price * tax_rate / 100 (SAME as transaction history)
-    // kb.total_price is the SUBTOTAL before tax (e.g., $100)
-    // pt.amount is the TOTAL after tax (e.g., $110)
-    // For refunds: proportionally reduce tax based on refund ratio
+    // ENTERPRISE STANDARD: For partial captures, use pt.metadata->>'approvedTax' (exact value
+    // from capture engine). For normal bookings, use kb.total_price * tax_rate / 100.
+    // CRITICAL: kb.total_price may be stale for partial captures due to race condition between
+    // capture engine and payment_intent.succeeded webhook — the webhook's syncStripeAmountsToBookings
+    // can overwrite kb.total_price before the capture engine sets partialCapture metadata.
+    // pt.metadata.approvedTax is ALWAYS correct because it's set by the capture engine itself.
     const kitchenTaxResult = await db.execute(sql`
       SELECT 
         COALESCE(SUM(
-          -- Tax = kb.total_price * tax_rate / 100 (same formula as transaction history)
-          -- For partial refunds: multiply by (1 - refund_ratio) to get effective tax
-          ROUND(
-            (kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100) *
-            CASE 
-              WHEN pt.amount::numeric > 0 THEN 
-                (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric
-              ELSE 1
-            END
-          )
+          CASE
+            -- PARTIAL CAPTURE: Use exact tax from capture engine metadata (source of truth)
+            WHEN (pt.metadata->>'partialCapture')::boolean = true 
+              AND (pt.metadata->>'approvedTax') IS NOT NULL THEN
+              ROUND(
+                (pt.metadata->>'approvedTax')::numeric *
+                CASE 
+                  WHEN pt.amount::numeric > 0 THEN 
+                    (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric
+                  ELSE 1
+                END
+              )
+            -- NORMAL BOOKINGS: Tax = kb.total_price * tax_rate / 100
+            ELSE
+              ROUND(
+                (kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100) *
+                CASE 
+                  WHEN pt.amount::numeric > 0 THEN 
+                    (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric
+                  ELSE 1
+                END
+              )
+          END
         ), 0)::bigint as calculated_tax_amount,
         -- ENTERPRISE STANDARD: Calculate PAYOUT amount for COMPLETED (succeeded) transactions
         -- Manager collects tax and keeps it (remits to tax authorities themselves)

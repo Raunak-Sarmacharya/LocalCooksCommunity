@@ -40,6 +40,7 @@ export interface StorageItemForAction {
   totalPrice: number; // in cents
   startDate?: string;
   endDate?: string;
+  rejected?: boolean; // true if already rejected (read-only in action sheet)
 }
 
 export interface EquipmentItemForAction {
@@ -47,6 +48,7 @@ export interface EquipmentItemForAction {
   equipmentBookingId: number;
   name: string;
   totalPrice: number; // in cents
+  rejected?: boolean; // true if already rejected (read-only in action sheet)
 }
 
 export interface BookingForAction {
@@ -145,6 +147,11 @@ export function BookingActionSheet({
           onSubmit={onSubmit}
           onCancel={() => onOpenChange(false)}
         />
+      ) : open ? (
+        <SheetContent className="sm:max-w-[480px] flex flex-col items-center justify-center p-6">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground mt-3">Loading booking details…</p>
+        </SheetContent>
       ) : null}
     </Sheet>
   );
@@ -164,23 +171,27 @@ function BookingActionSheetContent({
   // Kitchen decision — toggleable
   const [kitchenAction, setKitchenAction] = useState<ItemAction>("confirmed");
 
-  // Per-storage-booking decisions — all default to approved
+  // Per-storage-booking decisions — default to approved, skip already-rejected items
   const [storageDecisions, setStorageDecisions] = useState<Map<number, ItemAction>>(() => {
     const defaults = new Map<number, ItemAction>();
     if (booking.storageItems) {
       for (const item of booking.storageItems) {
-        defaults.set(item.storageBookingId, "confirmed");
+        if (!item.rejected) {
+          defaults.set(item.storageBookingId, "confirmed");
+        }
       }
     }
     return defaults;
   });
 
-  // Per-equipment-booking decisions — all default to approved
+  // Per-equipment-booking decisions — default to approved, skip already-rejected items
   const [equipmentDecisions, setEquipmentDecisions] = useState<Map<number, ItemAction>>(() => {
     const defaults = new Map<number, ItemAction>();
     if (booking.equipmentItems) {
       for (const item of booking.equipmentItems) {
-        defaults.set(item.equipmentBookingId, "confirmed");
+        if (!item.rejected) {
+          defaults.set(item.equipmentBookingId, "confirmed");
+        }
       }
     }
     return defaults;
@@ -212,6 +223,11 @@ function BookingActionSheetContent({
     });
   };
 
+  // Separate actionable items from already-rejected ones
+  const actionableStorageItems = booking.storageItems?.filter(i => !i.rejected) || [];
+  const rejectedStorageItems = booking.storageItems?.filter(i => i.rejected) || [];
+  const actionableEquipmentItems = booking.equipmentItems?.filter(i => !i.rejected) || [];
+  const rejectedEquipmentItems = booking.equipmentItems?.filter(i => i.rejected) || [];
   const hasStorage = booking.storageItems && booking.storageItems.length > 0;
   const hasEquipment = booking.equipmentItems && booking.equipmentItems.length > 0;
   const isAuthorized = booking.paymentStatus === "authorized";
@@ -240,6 +256,7 @@ function BookingActionSheetContent({
     const rejectedStorageCount = { total: 0 };
     if (booking.storageItems) {
       for (const item of booking.storageItems) {
+        if (item.rejected) continue; // Skip already-rejected items
         const decision = storageDecisions.get(item.storageBookingId) || "confirmed";
         if (decision === "cancelled") {
           rejectedStorageCents += item.totalPrice;
@@ -252,6 +269,7 @@ function BookingActionSheetContent({
     const rejectedEquipmentCount = { total: 0 };
     if (booking.equipmentItems) {
       for (const item of booking.equipmentItems) {
+        if (item.rejected) continue; // Skip already-rejected items
         const decision = equipmentDecisions.get(item.equipmentBookingId) || "confirmed";
         if (decision === "cancelled") {
           rejectedEquipmentCents += item.totalPrice;
@@ -281,9 +299,10 @@ function BookingActionSheetContent({
     const autoRefundAmount = Math.min(netRefund, maxRefundable);
 
     const hasAnyRejection = totalRejectedSubtotal > 0;
-    const totalItemCount = 1 + (booking.storageItems?.length || 0) + (booking.equipmentItems?.length || 0);
+    // Only count actionable items (exclude already-rejected) for full-rejection detection
+    const actionableItemCount = 1 + actionableStorageItems.length + actionableEquipmentItems.length;
     const totalRejectedCount = (kitchenAction === "cancelled" ? 1 : 0) + rejectedStorageCount.total + rejectedEquipmentCount.total;
-    const isFullRejection = totalRejectedCount === totalItemCount;
+    const isFullRejection = totalRejectedCount === actionableItemCount;
 
     return {
       transactionAmount,
@@ -305,7 +324,7 @@ function BookingActionSheetContent({
       rejectedStorageCount: rejectedStorageCount.total,
       rejectedEquipmentCount: rejectedEquipmentCount.total,
     };
-  }, [kitchenAction, storageDecisions, equipmentDecisions, booking]);
+  }, [kitchenAction, storageDecisions, equipmentDecisions, booking, actionableStorageItems.length, actionableEquipmentItems.length]);
 
   // ── Capture Calculation (for authorized bookings only) ───────────────────
   // Calculates what will be captured vs released when manager partially approves
@@ -319,19 +338,21 @@ function BookingActionSheetContent({
     // Kitchen is approved when kitchenAction === 'confirmed'
     const approvedKitchenCents = kitchenAction === "confirmed" ? kitchenPriceCents : 0;
 
-    // Approved storage
+    // Approved storage (skip already-rejected)
     let approvedStorageCents = 0;
     if (booking.storageItems) {
       for (const item of booking.storageItems) {
+        if (item.rejected) continue;
         const decision = storageDecisions.get(item.storageBookingId) || "confirmed";
         if (decision === "confirmed") approvedStorageCents += item.totalPrice;
       }
     }
 
-    // Approved equipment
+    // Approved equipment (skip already-rejected)
     let approvedEquipmentCents = 0;
     if (booking.equipmentItems) {
       for (const item of booking.equipmentItems) {
+        if (item.rejected) continue;
         const decision = equipmentDecisions.get(item.equipmentBookingId) || "confirmed";
         if (decision === "confirmed") approvedEquipmentCents += item.totalPrice;
       }
@@ -391,15 +412,16 @@ function BookingActionSheetContent({
   const handleSubmit = () => {
     if (!booking) return;
 
-    const storageActions: StorageDecision[] | undefined = hasStorage
-      ? booking.storageItems!.map((item) => ({
+    // Only send actions for actionable items (not already-rejected)
+    const storageActions: StorageDecision[] | undefined = actionableStorageItems.length > 0
+      ? actionableStorageItems.map((item) => ({
           storageBookingId: item.storageBookingId,
           action: storageDecisions.get(item.storageBookingId) || "confirmed",
         }))
       : undefined;
 
-    const eqActions: EquipmentDecision[] | undefined = hasEquipment
-      ? booking.equipmentItems!.map((item) => ({
+    const eqActions: EquipmentDecision[] | undefined = actionableEquipmentItems.length > 0
+      ? actionableEquipmentItems.map((item) => ({
           equipmentBookingId: item.equipmentBookingId,
           action: equipmentDecisions.get(item.equipmentBookingId) || "confirmed",
         }))
@@ -413,13 +435,13 @@ function BookingActionSheetContent({
     });
   };
 
-  // Count approved vs rejected (across all item types)
+  // Count approved vs rejected (across actionable item types only, exclude already-rejected)
   const approvedCount = (kitchenAction === "confirmed" ? 1 : 0) +
-    (booking.storageItems?.filter((i) => storageDecisions.get(i.storageBookingId) === "confirmed").length || 0) +
-    (booking.equipmentItems?.filter((i) => equipmentDecisions.get(i.equipmentBookingId) === "confirmed").length || 0);
+    actionableStorageItems.filter((i) => storageDecisions.get(i.storageBookingId) === "confirmed").length +
+    actionableEquipmentItems.filter((i) => equipmentDecisions.get(i.equipmentBookingId) === "confirmed").length;
   const rejectedCount = (kitchenAction === "cancelled" ? 1 : 0) +
-    (booking.storageItems?.filter((i) => storageDecisions.get(i.storageBookingId) === "cancelled").length || 0) +
-    (booking.equipmentItems?.filter((i) => equipmentDecisions.get(i.equipmentBookingId) === "cancelled").length || 0);
+    actionableStorageItems.filter((i) => storageDecisions.get(i.storageBookingId) === "cancelled").length +
+    actionableEquipmentItems.filter((i) => equipmentDecisions.get(i.equipmentBookingId) === "cancelled").length;
 
   const allApproved = rejectedCount === 0;
   const allRejected = approvedCount === 0;
@@ -560,7 +582,8 @@ function BookingActionSheetContent({
                 Storage Rentals
               </p>
 
-              {booking.storageItems!.map((item) => {
+              {/* Actionable storage items — toggleable */}
+              {actionableStorageItems.map((item) => {
                 const decision = storageDecisions.get(item.storageBookingId) || "confirmed";
                 const isApproved = decision === "confirmed";
                 const dateRange =
@@ -641,9 +664,36 @@ function BookingActionSheetContent({
                 );
               })}
 
-              <p className="text-[11px] text-muted-foreground italic pl-1">
-                Click each item to toggle between approve and reject
-              </p>
+              {/* Already-rejected storage items — read-only */}
+              {rejectedStorageItems.map((item) => (
+                <div
+                  key={item.storageBookingId}
+                  className="w-full flex items-center justify-between p-3 rounded-lg border bg-gray-50/50 border-gray-200 opacity-60"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gray-100">
+                      <Boxes className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate line-through text-gray-500">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">{item.storageType}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-mono text-gray-400 line-through">{formatPrice(item.totalPrice)}</span>
+                    <Badge className="text-[10px] bg-gray-100 text-gray-500 border-gray-200">
+                      <XCircle className="h-2.5 w-2.5 mr-0.5" />
+                      Rejected
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+
+              {actionableStorageItems.length > 0 && (
+                <p className="text-[11px] text-muted-foreground italic pl-1">
+                  Click each item to toggle between approve and reject
+                </p>
+              )}
             </div>
           </>
         )}
@@ -658,7 +708,8 @@ function BookingActionSheetContent({
                 Equipment Rentals
               </p>
 
-              {booking.equipmentItems!.map((item) => {
+              {/* Actionable equipment items — toggleable */}
+              {actionableEquipmentItems.map((item) => {
                 const decision = equipmentDecisions.get(item.equipmentBookingId) || "confirmed";
                 const isApproved = decision === "confirmed";
 
@@ -722,9 +773,33 @@ function BookingActionSheetContent({
                 );
               })}
 
-              <p className="text-[11px] text-muted-foreground italic pl-1">
-                Click each item to toggle between approve and reject
-              </p>
+              {/* Already-rejected equipment items — read-only */}
+              {rejectedEquipmentItems.map((item) => (
+                <div
+                  key={item.equipmentBookingId}
+                  className="w-full flex items-center justify-between p-3 rounded-lg border bg-gray-50/50 border-gray-200 opacity-60"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gray-100">
+                      <Package className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <p className="text-sm font-medium truncate line-through text-gray-500">{item.name}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-mono text-gray-400 line-through">{formatPrice(item.totalPrice)}</span>
+                    <Badge className="text-[10px] bg-gray-100 text-gray-500 border-gray-200">
+                      <XCircle className="h-2.5 w-2.5 mr-0.5" />
+                      Rejected
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+
+              {actionableEquipmentItems.length > 0 && (
+                <p className="text-[11px] text-muted-foreground italic pl-1">
+                  Click each item to toggle between approve and reject
+                </p>
+              )}
             </div>
           </>
         )}

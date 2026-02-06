@@ -2209,6 +2209,93 @@ router.put("/damage-claim-limits", requireFirebaseAuthWithUser, requireAdmin, as
     }
 });
 
+// ============================================================================
+// STORAGE CHECKOUT SETTINGS (Admin-Controlled Review Windows)
+// ============================================================================
+
+/**
+ * GET /admin/storage-checkout-settings
+ * Get current storage checkout review window settings
+ */
+router.get("/storage-checkout-settings", requireFirebaseAuthWithUser, requireAdmin, async (_req: Request, res: Response) => {
+    try {
+        const settings = await damageClaimLimitsService.getStorageCheckoutSettings();
+        const defaults = damageClaimLimitsService.getDefaultStorageCheckoutSettings();
+        res.json({ settings, defaults });
+    } catch (error) {
+        console.error("Error fetching storage checkout settings:", error);
+        res.status(500).json({ error: "Failed to fetch storage checkout settings" });
+    }
+});
+
+/**
+ * PUT /admin/storage-checkout-settings
+ * Update storage checkout review window settings (admin only)
+ */
+router.put("/storage-checkout-settings", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { reviewWindowHours, extendedClaimWindowHours } = req.body;
+
+        const updates: { key: string; value: string; description: string }[] = [];
+
+        if (reviewWindowHours !== undefined) {
+            if (reviewWindowHours < 1 || reviewWindowHours > 24) {
+                return res.status(400).json({ error: "Review window must be between 1 and 24 hours" });
+            }
+            updates.push({
+                key: 'storage_checkout_review_window_hours',
+                value: String(reviewWindowHours),
+                description: 'Hours manager has to review storage after chef checkout before auto-clear',
+            });
+        }
+
+        if (extendedClaimWindowHours !== undefined) {
+            if (extendedClaimWindowHours < 2 || extendedClaimWindowHours > 168) {
+                return res.status(400).json({ error: "Extended claim window must be between 2 and 168 hours (7 days)" });
+            }
+            updates.push({
+                key: 'storage_checkout_extended_claim_window_hours',
+                value: String(extendedClaimWindowHours),
+                description: 'Extended hours after checkout during which manager/admin can still file damage claims for serious issues',
+            });
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ error: "No valid updates provided" });
+        }
+
+        // Upsert each setting
+        for (const update of updates) {
+            await db
+                .insert(platformSettings)
+                .values({
+                    key: update.key,
+                    value: update.value,
+                    description: update.description,
+                })
+                .onConflictDoUpdate({
+                    target: platformSettings.key,
+                    set: {
+                        value: update.value,
+                        updatedAt: new Date(),
+                    },
+                });
+        }
+
+        const newSettings = await damageClaimLimitsService.getStorageCheckoutSettings();
+        console.log('[Admin] Updated storage checkout settings:', newSettings);
+
+        res.json({
+            success: true,
+            message: `Updated ${updates.length} storage checkout setting(s)`,
+            settings: newSettings,
+        });
+    } catch (error) {
+        console.error("Error updating storage checkout settings:", error);
+        res.status(500).json({ error: "Failed to update storage checkout settings" });
+    }
+});
+
 /**
  * GET /admin/damage-claims
  * Get all disputed damage claims for admin review

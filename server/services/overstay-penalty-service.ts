@@ -147,7 +147,7 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
       // This prevents unwarranted overstay penalties when chef has initiated checkout
       // Manager has 48-hour window to verify before penalties apply
       const checkoutStatus = booking.checkoutStatus as string | null;
-      if (checkoutStatus === 'checkout_requested' || checkoutStatus === 'checkout_approved' || checkoutStatus === 'completed') {
+      if (checkoutStatus === 'checkout_requested' || checkoutStatus === 'checkout_approved' || checkoutStatus === 'completed' || checkoutStatus === 'checkout_claim_filed') {
         logger.info(`[OverstayService] Skipping booking ${booking.id} - checkout in progress (status: ${checkoutStatus})`);
         continue;
       }

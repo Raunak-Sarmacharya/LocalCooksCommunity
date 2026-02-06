@@ -438,16 +438,20 @@ export default function BookingDetailsPage() {
     };
   }, [booking]);
 
-  // PARTIAL CAPTURE AWARENESS: Filtered lists for display (exclude rejected/failed items)
-  // These are used for rendering storage/equipment sections — rejected items should not appear
-  const approvedStorageBookings = useMemo(() => 
-    booking?.storageBookings?.filter(s => s.paymentStatus !== 'failed' && s.status !== 'cancelled') || [],
-    [booking]
-  );
-  const approvedEquipmentBookings = useMemo(() => 
-    booking?.equipmentBookings?.filter(e => e.paymentStatus !== 'failed' && e.status !== 'cancelled') || [],
-    [booking]
-  );
+  // Show ALL storage/equipment bookings including rejected ones for full audit trail
+  const allStorageBookings = booking?.storageBookings || [];
+  const allEquipmentBookings = booking?.equipmentBookings || [];
+
+  // Helper to check if an item was rejected (failed payment or cancelled status)
+  const isItemRejected = (item: { paymentStatus?: string; status: string }) =>
+    item.paymentStatus === 'failed' || item.status === 'cancelled';
+
+  // Original totals including ALL items (for showing what was originally booked)
+  const allStorageTotal = allStorageBookings.reduce((sum, s) => sum + (s.totalPrice || 0), 0);
+  const allEquipmentTotal = allEquipmentBookings.reduce((sum, e) => sum + (e.totalPrice || 0), 0);
+  // Rejected totals for strikethrough display
+  const rejectedStorageTotal = allStorageBookings.filter(isItemRejected).reduce((sum, s) => sum + (s.totalPrice || 0), 0);
+  const rejectedEquipmentTotal = allEquipmentBookings.filter(isItemRejected).reduce((sum, e) => sum + (e.totalPrice || 0), 0);
 
   const openActionSheet = () => {
     setActionSheetOpen(true);
@@ -466,11 +470,10 @@ export default function BookingDetailsPage() {
     stripeProcessingFee: booking.paymentTransaction?.stripeProcessingFee,
     managerRevenue: booking.paymentTransaction?.managerRevenue,
     taxRatePercent: booking.kitchen?.taxRatePercent ? Number(booking.kitchen.taxRatePercent) : undefined,
-    // PARTIAL CAPTURE AWARENESS: Only include approved items in action sheet
-    // Rejected items (paymentStatus='failed') should not appear as actionable
+    // Include ALL items with rejected flag so action sheet shows full audit trail
+    // Rejected items appear as read-only, actionable items are toggleable
     storageItems: booking.storageBookings
-      ?.filter((s) => s.paymentStatus !== 'failed' && s.status !== 'cancelled')
-      .map((s) => ({
+      ?.map((s) => ({
         id: s.id,
         storageBookingId: s.id,
         name: s.storageListing?.name || `Storage #${s.storageListingId}`,
@@ -478,14 +481,15 @@ export default function BookingDetailsPage() {
         totalPrice: s.totalPrice,
         startDate: s.startDate,
         endDate: s.endDate,
+        rejected: s.paymentStatus === 'failed' || s.status === 'cancelled',
       })),
     equipmentItems: booking.equipmentBookings
-      ?.filter((e) => e.paymentStatus !== 'failed' && e.status !== 'cancelled')
-      .map((e) => ({
+      ?.map((e) => ({
         id: e.id,
         equipmentBookingId: e.id,
         name: e.equipmentListing?.equipmentType || `Equipment #${e.equipmentListingId}`,
         totalPrice: e.totalPrice,
+        rejected: e.paymentStatus === 'failed' || e.status === 'cancelled',
       })),
     paymentStatus: booking.paymentStatus,
   } : null;
@@ -517,12 +521,22 @@ export default function BookingDetailsPage() {
         throw new Error(errorData.error || `Failed to update booking`);
       }
 
-      // Update local state — also update storage booking statuses
+      // Update local state — update both storage AND equipment booking statuses
       const updatedStorageBookings = booking.storageBookings?.map((sb) => {
         const action = params.storageActions?.find((a) => a.storageBookingId === sb.id);
-        return action ? { ...sb, status: action.action } : { ...sb, status: params.status };
+        if (action) {
+          return { ...sb, status: action.action, paymentStatus: action.action === 'cancelled' ? 'failed' : 'paid' };
+        }
+        return { ...sb, status: params.status };
       });
-      setBooking({ ...booking, status: params.status, storageBookings: updatedStorageBookings });
+      const updatedEquipmentBookings = booking.equipmentBookings?.map((eb) => {
+        const action = params.equipmentActions?.find((a) => a.equipmentBookingId === eb.id);
+        if (action) {
+          return { ...eb, status: action.action, paymentStatus: action.action === 'cancelled' ? 'failed' : 'paid' };
+        }
+        return { ...eb, status: params.status };
+      });
+      setBooking({ ...booking, status: params.status, storageBookings: updatedStorageBookings, equipmentBookings: updatedEquipmentBookings });
 
       queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
 
@@ -662,7 +676,7 @@ export default function BookingDetailsPage() {
             </CardContent>
           </Card>
 
-          {approvedStorageBookings.length > 0 && (
+          {allStorageBookings.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -672,47 +686,54 @@ export default function BookingDetailsPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {approvedStorageBookings.map((storage) => (
-                    <div
-                      key={storage.id}
-                      className="flex items-center justify-between p-4 bg-purple-50 rounded-lg border border-purple-200"
-                    >
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {storage.storageListing?.name || `Storage #${storage.storageListingId}`}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {storage.storageListing?.storageType}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {formatShortDate(storage.startDate)} - {formatShortDate(storage.endDate)}
-                        </p>
+                  {allStorageBookings.map((storage) => {
+                    const rejected = isItemRejected(storage);
+                    return (
+                      <div
+                        key={storage.id}
+                        className={`flex items-center justify-between p-4 rounded-lg border ${
+                          rejected
+                            ? "bg-red-50/50 border-red-200 opacity-75"
+                            : "bg-purple-50 border-purple-200"
+                        }`}
+                      >
+                        <div>
+                          <p className={`font-medium ${rejected ? "text-gray-500 line-through" : "text-gray-900"}`}>
+                            {storage.storageListing?.name || `Storage #${storage.storageListingId}`}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {storage.storageListing?.storageType}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {formatShortDate(storage.startDate)} - {formatShortDate(storage.endDate)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className={`font-semibold ${rejected ? "text-red-400 line-through" : "text-purple-700"}`}>
+                            {formatCurrency(storage.totalPrice)}
+                          </p>
+                          <Badge variant="outline" className={
+                            storage.status === "confirmed" ? "border-green-300 text-green-700 bg-green-50" :
+                            storage.status === "cancelled" ? "border-red-300 text-red-700 bg-red-50" :
+                            storage.status === "pending" ? "border-yellow-300 text-yellow-700 bg-yellow-50" :
+                            storage.status === "active" ? "border-green-300 text-green-700 bg-green-50" :
+                            "border-gray-300 text-gray-600"
+                          }>
+                            {storage.status === "confirmed" && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                            {storage.status === "cancelled" && <XCircle className="h-3 w-3 mr-1" />}
+                            {storage.status === "pending" && <AlertCircle className="h-3 w-3 mr-1" />}
+                            {storage.status === "cancelled" ? "rejected" : storage.status}
+                          </Badge>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-purple-700">
-                          {formatCurrency(storage.totalPrice)}
-                        </p>
-                        <Badge variant="outline" className={
-                          storage.status === "confirmed" ? "border-green-300 text-green-700 bg-green-50" :
-                          storage.status === "cancelled" ? "border-red-300 text-red-700 bg-red-50" :
-                          storage.status === "pending" ? "border-yellow-300 text-yellow-700 bg-yellow-50" :
-                          storage.status === "active" ? "border-green-300 text-green-700 bg-green-50" :
-                          "border-gray-300 text-gray-600"
-                        }>
-                          {storage.status === "confirmed" && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                          {storage.status === "cancelled" && <XCircle className="h-3 w-3 mr-1" />}
-                          {storage.status === "pending" && <AlertCircle className="h-3 w-3 mr-1" />}
-                          {storage.status}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {approvedEquipmentBookings.length > 0 && (
+          {allEquipmentBookings.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -722,29 +743,45 @@ export default function BookingDetailsPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {approvedEquipmentBookings.map((equipment) => (
-                    <div
-                      key={equipment.id}
-                      className="flex items-center justify-between p-4 bg-amber-50 rounded-lg border border-amber-200"
-                    >
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {equipment.equipmentListing?.equipmentType || `Equipment #${equipment.equipmentListingId}`}
-                        </p>
-                        {equipment.equipmentListing?.brand && (
-                          <p className="text-sm text-gray-500">{equipment.equipmentListing.brand}</p>
-                        )}
+                  {allEquipmentBookings.map((equipment) => {
+                    const rejected = isItemRejected(equipment);
+                    return (
+                      <div
+                        key={equipment.id}
+                        className={`flex items-center justify-between p-4 rounded-lg border ${
+                          rejected
+                            ? "bg-red-50/50 border-red-200 opacity-75"
+                            : "bg-amber-50 border-amber-200"
+                        }`}
+                      >
+                        <div>
+                          <p className={`font-medium ${rejected ? "text-gray-500 line-through" : "text-gray-900"}`}>
+                            {equipment.equipmentListing?.equipmentType || `Equipment #${equipment.equipmentListingId}`}
+                          </p>
+                          {equipment.equipmentListing?.brand && (
+                            <p className="text-sm text-gray-500">{equipment.equipmentListing.brand}</p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className={`font-semibold ${rejected ? "text-red-400 line-through" : "text-amber-700"}`}>
+                            {formatCurrency(equipment.totalPrice)}
+                          </p>
+                          <Badge variant="outline" className={
+                            equipment.status === "confirmed" ? "border-green-300 text-green-700 bg-green-50" :
+                            equipment.status === "cancelled" ? "border-red-300 text-red-700 bg-red-50" :
+                            equipment.status === "pending" ? "border-yellow-300 text-yellow-700 bg-yellow-50" :
+                            equipment.status === "active" ? "border-green-300 text-green-700 bg-green-50" :
+                            "border-gray-300 text-gray-600"
+                          }>
+                            {equipment.status === "confirmed" && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                            {equipment.status === "cancelled" && <XCircle className="h-3 w-3 mr-1" />}
+                            {equipment.status === "pending" && <AlertCircle className="h-3 w-3 mr-1" />}
+                            {equipment.status === "cancelled" ? "rejected" : equipment.status}
+                          </Badge>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-amber-700">
-                          {formatCurrency(equipment.totalPrice)}
-                        </p>
-                        <Badge variant="outline" className={equipment.status === "active" ? "border-green-300 text-green-700" : "border-gray-300 text-gray-600"}>
-                          {equipment.status}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -817,17 +854,31 @@ export default function BookingDetailsPage() {
                   </span>
                 </div>
 
-                {totals.storage > 0 && (
+                {allStorageTotal > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Storage</span>
-                    <span className="font-medium text-purple-700">{formatCurrency(totals.storage)}</span>
+                    <div className="text-right">
+                      {rejectedStorageTotal > 0 && rejectedStorageTotal < allStorageTotal && (
+                        <span className="font-medium text-red-400 line-through mr-2 text-xs">{formatCurrency(allStorageTotal)}</span>
+                      )}
+                      <span className={`font-medium ${rejectedStorageTotal > 0 && rejectedStorageTotal === allStorageTotal ? "text-red-400 line-through" : "text-purple-700"}`}>
+                        {rejectedStorageTotal === allStorageTotal ? formatCurrency(allStorageTotal) : formatCurrency(totals.storage)}
+                      </span>
+                    </div>
                   </div>
                 )}
 
-                {totals.equipment > 0 && (
+                {allEquipmentTotal > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Equipment</span>
-                    <span className="font-medium text-amber-700">{formatCurrency(totals.equipment)}</span>
+                    <div className="text-right">
+                      {rejectedEquipmentTotal > 0 && rejectedEquipmentTotal < allEquipmentTotal && (
+                        <span className="font-medium text-red-400 line-through mr-2 text-xs">{formatCurrency(allEquipmentTotal)}</span>
+                      )}
+                      <span className={`font-medium ${rejectedEquipmentTotal > 0 && rejectedEquipmentTotal === allEquipmentTotal ? "text-red-400 line-through" : "text-amber-700"}`}>
+                        {rejectedEquipmentTotal === allEquipmentTotal ? formatCurrency(allEquipmentTotal) : formatCurrency(totals.equipment)}
+                      </span>
+                    </div>
                   </div>
                 )}
 

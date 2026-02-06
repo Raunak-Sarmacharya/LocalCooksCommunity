@@ -29,6 +29,7 @@ export type StorageItem = {
     totalPrice: number; // in cents
     startDate?: string;
     endDate?: string;
+    rejected?: boolean; // true if manager rejected this item
 }
 
 export type EquipmentItem = {
@@ -36,6 +37,7 @@ export type EquipmentItem = {
     equipmentListingId: number;
     name: string;
     totalPrice: number; // in cents
+    rejected?: boolean; // true if manager rejected this item
 }
 
 // Define the Booking type
@@ -105,6 +107,13 @@ const formatTime = (time: string) => {
 };
 
 export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onTakeAction, hasApprovedLicense }: BookingColumnsProps): ColumnDef<Booking>[] => [
+    {
+        accessorKey: "createdAt",
+        header: () => null,
+        cell: () => null,
+        enableHiding: true,
+        meta: { hidden: true },
+    },
     {
         accessorKey: "kitchenName",
         header: ({ column }) => {
@@ -264,8 +273,8 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
                                                     ? formatStorageDate(startDate)
                                                     : `${formatStorageDate(startDate)} - ${formatStorageDate(endDate)}`;
                                                 return (
-                                                    <div key={idx} className="flex flex-col">
-                                                        <span className="truncate">{s.name} ({s.storageType})</span>
+                                                    <div key={idx} className={`flex flex-col ${s.rejected ? 'opacity-60' : ''}`}>
+                                                        <span className={`truncate ${s.rejected ? 'line-through text-red-500' : ''}`}>{s.name} ({s.storageType})</span>
                                                         <span className="text-muted-foreground text-[10px]">{dateRange}</span>
                                                     </div>
                                                 );
@@ -277,7 +286,11 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
                                     <div className="flex items-start gap-1.5">
                                         <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
                                         <span className="text-xs truncate">
-                                            {equipmentItems.map(e => e.name).join(', ')}
+                                            {equipmentItems.map((e, idx) => (
+                                                <span key={idx} className={e.rejected ? 'line-through text-red-500 opacity-60' : ''}>
+                                                    {e.name}{idx < equipmentItems.length - 1 ? ', ' : ''}
+                                                </span>
+                                            ))}
                                         </span>
                                     </div>
                                 )}
@@ -302,10 +315,13 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
                                                         : `${formatStorageDate(item.startDate)} - ${formatStorageDate(item.endDate)}`)
                                                     : '';
                                                 return (
-                                                    <li key={idx} className="flex flex-col">
+                                                    <li key={idx} className={`flex flex-col ${item.rejected ? 'opacity-60' : ''}`}>
                                                         <div className="flex justify-between gap-3">
-                                                            <span>{item.name} ({item.storageType})</span>
-                                                            <span className="text-muted-foreground">{formatPrice(item.totalPrice)}</span>
+                                                            <span className={item.rejected ? 'line-through' : ''}>{item.name} ({item.storageType})</span>
+                                                            <span className={item.rejected ? 'text-red-400 line-through' : 'text-muted-foreground'}>
+                                                                {formatPrice(item.totalPrice)}
+                                                                {item.rejected && ' ✕'}
+                                                            </span>
                                                         </div>
                                                         {dateRange && (
                                                             <span className="text-muted-foreground text-[10px]">
@@ -325,9 +341,12 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
                                         </p>
                                         <ul className="text-xs space-y-0.5">
                                             {equipmentItems.map((item, idx) => (
-                                                <li key={idx} className="flex justify-between gap-3">
-                                                    <span>{item.name}</span>
-                                                    <span className="text-muted-foreground">{formatPrice(item.totalPrice)}</span>
+                                                <li key={idx} className={`flex justify-between gap-3 ${item.rejected ? 'opacity-60' : ''}`}>
+                                                    <span className={item.rejected ? 'line-through' : ''}>{item.name}</span>
+                                                    <span className={item.rejected ? 'text-red-400 line-through' : 'text-muted-foreground'}>
+                                                        {formatPrice(item.totalPrice)}
+                                                        {item.rejected && ' ✕'}
+                                                    </span>
                                                 </li>
                                             ))}
                                         </ul>

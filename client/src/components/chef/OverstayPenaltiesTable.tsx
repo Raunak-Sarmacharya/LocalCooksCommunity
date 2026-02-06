@@ -117,6 +117,12 @@ function getOverstayPenaltyColumns(
 ): ColumnDef<OverstayPenalty>[] {
   return [
     {
+      accessorKey: "detectedAt",
+      header: () => null,
+      cell: () => null,
+      enableHiding: true,
+    },
+    {
       accessorKey: "storageName",
       header: "Storage",
       cell: ({ row }) => {
@@ -251,7 +257,7 @@ function getOverstayPenaltyColumns(
 // Main Component
 export function OverstayPenaltiesTable() {
   const [viewType, setViewType] = useState<PenaltyViewType>("all");
-  const [sorting, setSorting] = useState<SortingState>([{ id: "bookingEndDate", desc: true }]);
+  const [sorting, setSorting] = useState<SortingState>([{ id: "detectedAt", desc: true }]);
 
   // Fetch penalties
   const { data: penalties = [], isLoading, error, refetch } = useQuery<OverstayPenalty[]>({
@@ -328,6 +334,7 @@ export function OverstayPenaltiesTable() {
     getFilteredRowModel: getFilteredRowModel(),
     state: {
       sorting,
+      columnVisibility: { detectedAt: false },
     },
   });
 

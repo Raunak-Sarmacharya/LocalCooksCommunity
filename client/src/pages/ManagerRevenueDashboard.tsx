@@ -383,32 +383,59 @@ export default function ManagerRevenueDashboard({
         </CardHeader>
         <CardContent>
           {/* Stripe Connect Warning */}
-          {stripeStatus && (!stripeStatus.hasAccount || stripeStatus.status !== "complete") && (
-            <Alert className="mb-4 border-amber-200 bg-amber-50">
-              <AlertCircle className="h-4 w-4 text-amber-600" />
-              <AlertTitle className="text-amber-900 font-semibold">
-                {!stripeStatus.hasAccount
-                  ? "Connect Your Stripe Account"
-                  : "Complete Your Stripe Setup"}
-              </AlertTitle>
-              <AlertDescription className="text-amber-800 mt-2">
-                <p className="mb-3">
-                  {!stripeStatus.hasAccount
-                    ? "Connect Stripe to receive automatic payouts to your bank."
-                    : "Complete onboarding to start receiving automatic payouts."}
-                </p>
-                <Button
-                  onClick={handleNavigateToPayments}
-                  className="bg-amber-600 hover:bg-amber-700 text-white"
-                  size="sm"
-                >
-                  <CreditCard className="h-4 w-4 mr-2" />
-                  {!stripeStatus.hasAccount ? "Set Up Stripe Connect" : "Complete Setup"}
-                  <ExternalLink className="h-3 w-3 ml-2" />
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
+          {stripeStatus && (!stripeStatus.hasAccount || stripeStatus.status !== "complete") && (() => {
+            const stage = stripeStatus?.verificationStage;
+            let alertTitle = "Complete Your Stripe Setup";
+            let alertDesc = "Complete onboarding to start receiving automatic payouts.";
+            let buttonLabel = "Complete Setup";
+            
+            if (!stripeStatus.hasAccount) {
+              alertTitle = "Connect Your Stripe Account";
+              alertDesc = "Connect Stripe to receive automatic payouts to your bank.";
+              buttonLabel = "Set Up Stripe Connect";
+            } else if (stage === 'pending_verification') {
+              alertTitle = "Verification In Progress";
+              alertDesc = "Stripe is reviewing your details. This usually takes a few minutes.";
+              buttonLabel = "Check Status";
+            } else if (stage === 'requires_additional_info') {
+              alertTitle = "Additional Info Needed";
+              alertDesc = "Stripe needs more details to verify your account.";
+              buttonLabel = "Provide Information";
+            } else if (stage === 'past_due') {
+              alertTitle = "Action Required";
+              alertDesc = "Some required information is overdue. Update now to avoid restrictions.";
+              buttonLabel = "Update Info";
+            } else if (stage === 'details_needed') {
+              alertTitle = "Start Stripe Setup";
+              alertDesc = "Enter your business and bank details to receive payouts.";
+              buttonLabel = "Start Setup";
+            } else if (stage === 'payouts_disabled') {
+              alertTitle = "Add Bank Account";
+              alertDesc = "Add your bank details to start receiving payouts.";
+              buttonLabel = "Add Bank Account";
+            }
+
+            return (
+              <Alert className={`mb-4 ${stage === 'past_due' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
+                <AlertCircle className={`h-4 w-4 ${stage === 'past_due' ? 'text-red-600' : 'text-amber-600'}`} />
+                <AlertTitle className={`${stage === 'past_due' ? 'text-red-900' : 'text-amber-900'} font-semibold`}>
+                  {alertTitle}
+                </AlertTitle>
+                <AlertDescription className={`${stage === 'past_due' ? 'text-red-800' : 'text-amber-800'} mt-2`}>
+                  <p className="mb-3">{alertDesc}</p>
+                  <Button
+                    onClick={handleNavigateToPayments}
+                    className={`${stage === 'past_due' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'} text-white`}
+                    size="sm"
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    {buttonLabel}
+                    <ExternalLink className="h-3 w-3 ml-2" />
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            );
+          })()}
 
           {isLoadingPayouts ? (
             <div className="space-y-3">

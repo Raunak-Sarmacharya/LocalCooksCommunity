@@ -1490,6 +1490,29 @@ router.get(
           status = "pending"; // Details submitted but not yet verified
         }
 
+        // Determine granular verification stage for dynamic UI labels
+        const reqs = stripeStatus.requirements;
+        let verificationStage: string = "incomplete";
+        if (stripeStatus.chargesEnabled && stripeStatus.payoutsEnabled) {
+          verificationStage = "complete";
+        } else if (reqs.disabledReason?.includes("rejected")) {
+          verificationStage = "rejected";
+        } else if (reqs.pastDue.length > 0) {
+          verificationStage = "past_due";
+        } else if (reqs.pendingVerification.length > 0 && stripeStatus.detailsSubmitted) {
+          verificationStage = "pending_verification";
+        } else if (stripeStatus.detailsSubmitted && reqs.currentlyDue.length > 0) {
+          verificationStage = "requires_additional_info";
+        } else if (stripeStatus.chargesEnabled && !stripeStatus.payoutsEnabled) {
+          verificationStage = "payouts_disabled";
+        } else if (!stripeStatus.chargesEnabled && stripeStatus.payoutsEnabled) {
+          verificationStage = "charges_disabled";
+        } else if (!stripeStatus.detailsSubmitted && reqs.currentlyDue.length > 0) {
+          verificationStage = "details_needed";
+        } else if (stripeStatus.detailsSubmitted) {
+          verificationStage = "pending_verification";
+        }
+
         // Update DB if status changed (sync from Stripe)
         const dbStatus = manager.stripeConnectOnboardingStatus;
         if (
@@ -1513,6 +1536,13 @@ router.get(
           chargesEnabled: stripeStatus.chargesEnabled,
           detailsSubmitted: stripeStatus.detailsSubmitted,
           status,
+          verificationStage,
+          requirements: {
+            currentlyDue: reqs.currentlyDue,
+            pastDue: reqs.pastDue,
+            pendingVerification: reqs.pendingVerification,
+            currentDeadline: reqs.currentDeadline,
+          },
         });
       } catch (stripeError: any) {
         console.error("Error fetching Stripe account status:", stripeError);
@@ -3363,7 +3393,38 @@ router.put(
             rejectedEquipmentIds: Array.from(rejectedEquipmentIds),
           });
 
-          // ── Step 7: Capture via Stripe ──────────────────────────────────────────
+          // ── Step 7a: Pre-set PT metadata BEFORE Stripe capture ─────────────────
+          // CRITICAL RACE CONDITION FIX: stripe.capture() triggers payment_intent.succeeded
+          // webhook asynchronously. The webhook calls syncStripeAmountsToBookings which checks
+          // ptMetadata.partialCapture to decide whether to skip overwriting kb.total_price.
+          // If we set metadata AFTER capture, the webhook may fire before metadata is written,
+          // causing syncStripeAmountsToBookings to overwrite kb.total_price with the Stripe
+          // amount (includes tax), breaking all tax calculations downstream.
+          // Solution: Set partialCapture flag in PT metadata BEFORE calling stripe.capture().
+          if (isPartialCapture) {
+            try {
+              const ptRecordPreCapture = await findPaymentTransactionByIntentId(bookingPaymentIntentId, db);
+              if (ptRecordPreCapture) {
+                const existingMeta = ptRecordPreCapture.metadata
+                  ? (typeof ptRecordPreCapture.metadata === 'string' ? JSON.parse(ptRecordPreCapture.metadata) : ptRecordPreCapture.metadata)
+                  : {};
+                await updatePaymentTransaction(ptRecordPreCapture.id, {
+                  metadata: {
+                    ...existingMeta,
+                    partialCapture: true,
+                    approvedSubtotal: approvedSubtotalCents,
+                    approvedTax: approvedTaxCents,
+                    taxRatePercent,
+                  },
+                }, db);
+                logger.info(`[Manager] Pre-set partialCapture metadata on PT ${ptRecordPreCapture.id} BEFORE stripe.capture()`);
+              }
+            } catch (preCapErr: any) {
+              logger.warn(`[Manager] Could not pre-set PT metadata (non-fatal, will retry in Step 9):`, preCapErr);
+            }
+          }
+
+          // ── Step 7b: Capture via Stripe ─────────────────────────────────────────
           const captureResult = isPartialCapture
             ? await capturePaymentIntent(bookingPaymentIntentId, captureAmountCents, newApplicationFeeCents)
             : await capturePaymentIntent(bookingPaymentIntentId);
@@ -3382,16 +3443,16 @@ router.put(
           // (not from totalPrice), so no double-counting occurs.
           // The details page also calculates kitchen-only from hourlyRate × durationHours.
           //
-          // JSONB FIX: Remove rejected items from storageItems/equipmentItems JSONB fields
+          // JSONB FIX: Mark rejected items in storageItems/equipmentItems JSONB fields
           // These JSONB snapshots are used by the bookings table view (getBookingsByManagerId)
-          // Without this update, the table view shows stale items including rejected ones
+          // Rejected items are kept with a 'rejected' flag for full audit trail visibility
           const currentStorageItems: any[] = (booking as any).storageItems || [];
           const currentEquipmentItems: any[] = (booking as any).equipmentItems || [];
-          const updatedStorageItems = currentStorageItems.filter(
-            (item: any) => !rejectedStorageIds.has(item.id)
+          const updatedStorageItems = currentStorageItems.map(
+            (item: any) => rejectedStorageIds.has(item.id) ? { ...item, rejected: true } : item
           );
-          const updatedEquipmentItems = currentEquipmentItems.filter(
-            (item: any) => !rejectedEquipmentIds.has(item.id)
+          const updatedEquipmentItems = currentEquipmentItems.map(
+            (item: any) => rejectedEquipmentIds.has(item.id) ? { ...item, rejected: true } : item
           );
 
           await db
@@ -3404,7 +3465,7 @@ router.put(
               updatedAt: new Date(),
             })
             .where(eq(kitchenBookings.id, id));
-          logger.info(`[Manager] Updated kb: total_price=${approvedSubtotalCents} (approved subtotal), removed ${rejectedStorageIds.size} rejected storage + ${rejectedEquipmentIds.size} rejected equipment from JSONB`);
+          logger.info(`[Manager] Updated kb: total_price=${approvedSubtotalCents} (approved subtotal), marked ${rejectedStorageIds.size} rejected storage + ${rejectedEquipmentIds.size} rejected equipment in JSONB`);
 
           // Storage: 'paid' for approved, 'failed' for rejected (hold auto-released)
           for (const sb of (assocStorage || [])) {
@@ -3854,6 +3915,20 @@ router.put(
                   .update(equipmentBookingsTable)
                   .set({ paymentStatus: "refunded", updatedAt: new Date() })
                   .where(eq(equipmentBookingsTable.id, rejectedId));
+              }
+
+              // Mark rejected items in JSONB fields for table view visibility
+              if (rejectedStorageIds.length > 0 || rejectedEquipmentIds.length > 0) {
+                const rejStorageSet = new Set(rejectedStorageIds);
+                const rejEquipSet = new Set(rejectedEquipmentIds);
+                const curStorage: any[] = (booking as any).storageItems || [];
+                const curEquip: any[] = (booking as any).equipmentItems || [];
+                const markedStorage = curStorage.map((item: any) => rejStorageSet.has(item.id) ? { ...item, rejected: true } : item);
+                const markedEquip = curEquip.map((item: any) => rejEquipSet.has(item.id) ? { ...item, rejected: true } : item);
+                await db
+                  .update(kitchenBookings)
+                  .set({ storageItems: markedStorage, equipmentItems: markedEquip, updatedAt: new Date() })
+                  .where(eq(kitchenBookings.id, id));
               }
             }
           }
@@ -6359,7 +6434,7 @@ router.get(
 
 /**
  * POST /manager/storage-bookings/:id/approve-checkout
- * Manager approves a checkout request
+ * Backward-compatible alias for clear-checkout (approve → clear)
  */
 router.post(
   "/storage-bookings/:id/approve-checkout",
@@ -6382,7 +6457,7 @@ router.post(
       const result = await processCheckoutApproval(
         storageBookingId,
         managerId,
-        "approve",
+        "clear",
         managerNotes,
       );
 
@@ -6392,42 +6467,34 @@ router.post(
 
       res.json({
         success: true,
-        message:
-          "Checkout approved successfully. The storage booking has been completed.",
+        message: "Storage cleared — no issues found. Booking completed.",
         storageBookingId: result.storageBookingId,
         checkoutStatus: result.checkoutStatus,
       });
     } catch (error) {
-      logger.error("Error approving checkout:", error);
+      logger.error("Error clearing checkout:", error);
       return errorResponse(res, error);
     }
   },
 );
 
 /**
- * POST /manager/storage-bookings/:id/deny-checkout
- * Manager denies a checkout request (chef needs to fix issues)
+ * POST /manager/storage-bookings/:id/clear-checkout
+ * Manager clears storage — no issues found. Booking completed.
+ * Industry-standard: replaces deny with clear/claim model.
  */
 router.post(
-  "/storage-bookings/:id/deny-checkout",
+  "/storage-bookings/:id/clear-checkout",
   requireFirebaseAuthWithUser,
   requireManager,
   async (req: Request, res: Response) => {
     try {
       const storageBookingId = parseInt(req.params.id);
       const managerId = req.neonUser!.id;
-      const { denialReason, managerNotes } = req.body;
+      const { managerNotes } = req.body;
 
       if (isNaN(storageBookingId)) {
         return res.status(400).json({ error: "Invalid storage booking ID" });
-      }
-
-      if (
-        !denialReason ||
-        typeof denialReason !== "string" ||
-        denialReason.trim().length === 0
-      ) {
-        return res.status(400).json({ error: "Denial reason is required" });
       }
 
       const { processCheckoutApproval } = await import(
@@ -6437,9 +6504,8 @@ router.post(
       const result = await processCheckoutApproval(
         storageBookingId,
         managerId,
-        "deny",
+        "clear",
         managerNotes,
-        denialReason.trim(),
       );
 
       if (!result.success) {
@@ -6448,13 +6514,130 @@ router.post(
 
       res.json({
         success: true,
-        message:
-          "Checkout denied. The chef has been notified to address the issues.",
+        message: "Storage cleared — no issues found. Booking completed.",
         storageBookingId: result.storageBookingId,
         checkoutStatus: result.checkoutStatus,
       });
     } catch (error) {
-      logger.error("Error denying checkout:", error);
+      logger.error("Error clearing checkout:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
+/**
+ * POST /manager/storage-bookings/:id/start-claim
+ * Manager starts a damage/cleaning claim during storage checkout review.
+ * Uses the existing damage claim engine — same admin controls (max amount, response window, etc.)
+ * 
+ * Body: { claimTitle, claimDescription, claimedAmountCents, damageDate?, managerNotes? }
+ */
+router.post(
+  "/storage-bookings/:id/start-claim",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const storageBookingId = parseInt(req.params.id);
+      const managerId = req.neonUser!.id;
+      const { claimTitle, claimDescription, claimedAmountCents, damageDate, managerNotes } = req.body;
+
+      if (isNaN(storageBookingId)) {
+        return res.status(400).json({ error: "Invalid storage booking ID" });
+      }
+
+      // Validate required claim fields
+      if (!claimTitle || typeof claimTitle !== 'string' || claimTitle.trim().length < 5) {
+        return res.status(400).json({ error: "Claim title must be at least 5 characters" });
+      }
+      if (!claimDescription || typeof claimDescription !== 'string' || claimDescription.trim().length < 50) {
+        return res.status(400).json({ error: "Claim description must be at least 50 characters" });
+      }
+      if (!claimedAmountCents || typeof claimedAmountCents !== 'number' || claimedAmountCents <= 0) {
+        return res.status(400).json({ error: "Claimed amount must be a positive number (in cents)" });
+      }
+
+      const { processCheckoutApproval } = await import(
+        "../services/storage-checkout-service"
+      );
+
+      const result = await processCheckoutApproval(
+        storageBookingId,
+        managerId,
+        "start_claim",
+        managerNotes,
+        {
+          claimTitle: claimTitle.trim(),
+          claimDescription: claimDescription.trim(),
+          claimedAmountCents,
+          damageDate,
+        },
+      );
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        message: "Damage/cleaning claim started. The chef will be notified.",
+        storageBookingId: result.storageBookingId,
+        checkoutStatus: result.checkoutStatus,
+        damageClaimId: result.damageClaimId,
+      });
+    } catch (error) {
+      logger.error("Error starting checkout claim:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
+/**
+ * POST /manager/storage-bookings/:id/deny-checkout
+ * DEPRECATED: Deny is no longer supported. Kept for backward compatibility.
+ * Redirects to 'clear' action with a deprecation warning.
+ */
+router.post(
+  "/storage-bookings/:id/deny-checkout",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const storageBookingId = parseInt(req.params.id);
+      const managerId = req.neonUser!.id;
+      const { managerNotes } = req.body;
+
+      if (isNaN(storageBookingId)) {
+        return res.status(400).json({ error: "Invalid storage booking ID" });
+      }
+
+      logger.warn(`[StorageCheckout] Deprecated deny-checkout called for booking ${storageBookingId}. Use clear-checkout or start-claim instead.`);
+
+      const { processCheckoutApproval } = await import(
+        "../services/storage-checkout-service"
+      );
+
+      // Legacy deny → treated as clear (deny is no longer supported)
+      const result = await processCheckoutApproval(
+        storageBookingId,
+        managerId,
+        "deny",
+        managerNotes,
+      );
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        message: "DEPRECATED: Deny is no longer supported. Storage has been cleared instead. Use /clear-checkout or /start-claim.",
+        storageBookingId: result.storageBookingId,
+        checkoutStatus: result.checkoutStatus,
+        deprecated: true,
+      });
+    } catch (error) {
+      logger.error("Error processing legacy deny-checkout:", error);
       return errorResponse(res, error);
     }
   },
@@ -6845,6 +7028,90 @@ router.get(
         .orderBy(desc(storageBookingsTable.endDate))
         .limit(50);
 
+      // Get equipment bookings for each kitchen booking (for equipment damage selection)
+      const kitchenBookingIds = recentKitchenBookings.map((b) => b.id);
+      const equipmentMap = new Map<number, Array<{
+        equipmentBookingId: number | null;
+        equipmentListingId: number;
+        equipmentType: string;
+        brand: string | null;
+        availabilityType: string;
+        status: string;
+      }>>();
+
+      if (kitchenBookingIds.length > 0) {
+        // Get rented equipment (has equipment_bookings records)
+        const rentedEquipment = await db
+          .select({
+            kitchenBookingId: equipmentBookingsTable.kitchenBookingId,
+            equipmentBookingId: equipmentBookingsTable.id,
+            equipmentListingId: equipmentBookingsTable.equipmentListingId,
+            equipmentType: equipmentListings.equipmentType,
+            brand: equipmentListings.brand,
+            availabilityType: equipmentListings.availabilityType,
+            status: equipmentBookingsTable.status,
+          })
+          .from(equipmentBookingsTable)
+          .innerJoin(equipmentListings, eq(equipmentBookingsTable.equipmentListingId, equipmentListings.id))
+          .where(
+            sql`${equipmentBookingsTable.kitchenBookingId} IN (${sql.join(kitchenBookingIds.map(id => sql`${id}`), sql`, `)})`
+          );
+
+        for (const eq_item of rentedEquipment) {
+          const list = equipmentMap.get(eq_item.kitchenBookingId) || [];
+          list.push({
+            equipmentBookingId: eq_item.equipmentBookingId,
+            equipmentListingId: eq_item.equipmentListingId,
+            equipmentType: eq_item.equipmentType,
+            brand: eq_item.brand,
+            availabilityType: eq_item.availabilityType,
+            status: eq_item.status,
+          });
+          equipmentMap.set(eq_item.kitchenBookingId, list);
+        }
+
+        // Get included equipment (no booking record, just listings for the kitchen)
+        const kitchenIds = Array.from(new Set(recentKitchenBookings.map((b) => b.kitchenId)));
+        if (kitchenIds.length > 0) {
+          const includedEquipment = await db
+            .select({
+              kitchenId: equipmentListings.kitchenId,
+              equipmentListingId: equipmentListings.id,
+              equipmentType: equipmentListings.equipmentType,
+              brand: equipmentListings.brand,
+              availabilityType: equipmentListings.availabilityType,
+            })
+            .from(equipmentListings)
+            .where(
+              and(
+                sql`${equipmentListings.kitchenId} IN (${sql.join(kitchenIds.map(id => sql`${id}`), sql`, `)})`,
+                eq(equipmentListings.availabilityType, 'included'),
+                eq(equipmentListings.isActive, true),
+              )
+            );
+
+          // Map included equipment to their kitchen bookings
+          for (const kb of recentKitchenBookings) {
+            const list = equipmentMap.get(kb.id) || [];
+            const kitchenIncluded = includedEquipment.filter((ie) => ie.kitchenId === kb.kitchenId);
+            for (const ie of kitchenIncluded) {
+              // Avoid duplicates (if also rented)
+              if (!list.some((e) => e.equipmentListingId === ie.equipmentListingId)) {
+                list.push({
+                  equipmentBookingId: null,
+                  equipmentListingId: ie.equipmentListingId,
+                  equipmentType: ie.equipmentType,
+                  brand: ie.brand,
+                  availabilityType: ie.availabilityType,
+                  status: 'confirmed',
+                });
+              }
+            }
+            equipmentMap.set(kb.id, list);
+          }
+        }
+      }
+
       // Format bookings for dropdown
       const bookings = [
         ...recentKitchenBookings.map((b) => ({
@@ -6858,6 +7125,7 @@ router.get(
           endDate: b.bookingDate,
           status: b.status,
           label: `Kitchen #${b.id} - ${b.chefName} @ ${b.kitchenName} (${format(new Date(b.bookingDate), "MMM d")})`,
+          equipment: equipmentMap.get(b.id) || [],
         })),
         ...recentStorageBookings.map((b) => ({
           id: b.id,
@@ -6870,6 +7138,7 @@ router.get(
           endDate: b.endDate,
           status: b.status,
           label: `Storage #${b.id} - ${b.chefName} @ ${b.locationName} (${format(new Date(b.endDate), "MMM d")})`,
+          equipment: [],
         })),
       ].sort(
         (a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime(),
@@ -6959,6 +7228,8 @@ router.post(
         claimDescription,
         damageDate,
         claimedAmountCents,
+        damagedItems,
+        submitImmediately,
       } = req.body;
 
       // Validate required fields
@@ -6997,6 +7268,8 @@ router.post(
         claimDescription,
         damageDate,
         claimedAmountCents,
+        damagedItems: Array.isArray(damagedItems) ? damagedItems : undefined,
+        submitImmediately: submitImmediately === true,
       });
 
       if (!result.success) {

@@ -232,6 +232,7 @@ __export(schema_exports, {
   damageClaimStatusEnum: () => damageClaimStatusEnum,
   damageClaims: () => damageClaims,
   damageEvidence: () => damageEvidence,
+  damagedItemSchema: () => damagedItemSchema,
   documentVerificationStatusEnum: () => documentVerificationStatusEnum,
   emailVerificationTokens: () => emailVerificationTokens,
   equipmentAvailabilityTypeEnum: () => equipmentAvailabilityTypeEnum,
@@ -327,7 +328,7 @@ __export(schema_exports, {
 import { boolean, date, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z as z2 } from "zod";
-var kitchenPreferenceEnum, certificationStatusEnum, applicationStatusEnum, userRoleEnum, documentVerificationStatusEnum, applicationTypeEnum, bookingStatusEnum, storageTypeEnum, checkoutStatusEnum, storagePricingModelEnum, bookingDurationUnitEnum, listingStatusEnum, equipmentCategoryEnum, equipmentConditionEnum, equipmentPricingModelEnum, equipmentAvailabilityTypeEnum, paymentStatusEnum, transactionStatusEnum, bookingTypeEnum, users, applications, insertApplicationSchema, updateApplicationStatusSchema, updateApplicationDocumentsSchema, updateDocumentVerificationSchema, insertUserSchema, emailVerificationTokens, microlearningCompletions, videoProgress, insertMicrolearningCompletionSchema, insertVideoProgressSchema, locations, locationRequirements, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefLocationAccess, chefKitchenAccess, chefKitchenProfiles, chefLocationProfiles, portalUserApplications, portalUserLocationAccess, insertLocationSchema, updateLocationSchema, insertLocationRequirementsSchema, customFieldSchema, updateLocationRequirementsSchema, insertKitchenSchema, updateKitchenSchema, insertKitchenAvailabilitySchema, insertKitchenDateOverrideSchema, updateKitchenDateOverrideSchema, insertKitchenBookingSchema, updateKitchenBookingSchema, insertChefLocationAccessSchema, insertChefKitchenAccessSchema, insertChefKitchenProfileSchema, updateChefKitchenProfileSchema, insertChefLocationProfileSchema, updateChefLocationProfileSchema, insertPortalUserApplicationSchema, updatePortalUserApplicationStatusSchema, insertPortalUserLocationAccessSchema, storageListings, insertStorageListingSchema, updateStorageListingSchema, updateStorageListingStatusSchema, equipmentListings, insertEquipmentListingSchema, updateEquipmentListingSchema, updateEquipmentListingStatusSchema, storageBookings, insertStorageBookingSchema, updateStorageBookingSchema, updateStorageBookingStatusSchema, storageCheckoutRequestSchema, storageCheckoutApprovalSchema, equipmentBookings, insertEquipmentBookingSchema, updateEquipmentBookingSchema, updateEquipmentBookingStatusSchema, platformSettings, insertPlatformSettingSchema, updatePlatformSettingSchema, chefKitchenApplications, insertChefKitchenApplicationSchema, updateChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateApplicationTierSchema, updateChefKitchenApplicationDocumentsSchema, paymentTransactions, paymentHistory, insertPaymentTransactionSchema, updatePaymentTransactionSchema, pendingStorageExtensions, overstayStatusEnum, storageOverstayRecords, storageOverstayHistory, insertStorageOverstayRecordSchema, updateStorageOverstayRecordSchema, damageClaimStatusEnum, evidenceTypeEnum, damageClaims, damageEvidence, damageClaimHistory, damageClaimStatusValues, evidenceTypeValues, insertDamageClaimSchema, updateDamageClaimSchema, insertDamageEvidenceSchema, chefDamageClaimResponseSchema, adminDamageClaimDecisionSchema;
+var kitchenPreferenceEnum, certificationStatusEnum, applicationStatusEnum, userRoleEnum, documentVerificationStatusEnum, applicationTypeEnum, bookingStatusEnum, storageTypeEnum, checkoutStatusEnum, storagePricingModelEnum, bookingDurationUnitEnum, listingStatusEnum, equipmentCategoryEnum, equipmentConditionEnum, equipmentPricingModelEnum, equipmentAvailabilityTypeEnum, paymentStatusEnum, transactionStatusEnum, bookingTypeEnum, users, applications, insertApplicationSchema, updateApplicationStatusSchema, updateApplicationDocumentsSchema, updateDocumentVerificationSchema, insertUserSchema, emailVerificationTokens, microlearningCompletions, videoProgress, insertMicrolearningCompletionSchema, insertVideoProgressSchema, locations, locationRequirements, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefLocationAccess, chefKitchenAccess, chefKitchenProfiles, chefLocationProfiles, portalUserApplications, portalUserLocationAccess, insertLocationSchema, updateLocationSchema, insertLocationRequirementsSchema, customFieldSchema, updateLocationRequirementsSchema, insertKitchenSchema, updateKitchenSchema, insertKitchenAvailabilitySchema, insertKitchenDateOverrideSchema, updateKitchenDateOverrideSchema, insertKitchenBookingSchema, updateKitchenBookingSchema, insertChefLocationAccessSchema, insertChefKitchenAccessSchema, insertChefKitchenProfileSchema, updateChefKitchenProfileSchema, insertChefLocationProfileSchema, updateChefLocationProfileSchema, insertPortalUserApplicationSchema, updatePortalUserApplicationStatusSchema, insertPortalUserLocationAccessSchema, storageListings, insertStorageListingSchema, updateStorageListingSchema, updateStorageListingStatusSchema, equipmentListings, insertEquipmentListingSchema, updateEquipmentListingSchema, updateEquipmentListingStatusSchema, storageBookings, insertStorageBookingSchema, updateStorageBookingSchema, updateStorageBookingStatusSchema, storageCheckoutRequestSchema, storageCheckoutApprovalSchema, equipmentBookings, insertEquipmentBookingSchema, updateEquipmentBookingSchema, updateEquipmentBookingStatusSchema, platformSettings, insertPlatformSettingSchema, updatePlatformSettingSchema, chefKitchenApplications, insertChefKitchenApplicationSchema, updateChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateApplicationTierSchema, updateChefKitchenApplicationDocumentsSchema, paymentTransactions, paymentHistory, insertPaymentTransactionSchema, updatePaymentTransactionSchema, pendingStorageExtensions, overstayStatusEnum, storageOverstayRecords, storageOverstayHistory, insertStorageOverstayRecordSchema, updateStorageOverstayRecordSchema, damageClaimStatusEnum, evidenceTypeEnum, damageClaims, damageEvidence, damageClaimHistory, damageClaimStatusValues, evidenceTypeValues, damagedItemSchema, insertDamageClaimSchema, updateDamageClaimSchema, insertDamageEvidenceSchema, chefDamageClaimResponseSchema, adminDamageClaimDecisionSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -340,7 +341,7 @@ var init_schema = __esm({
     applicationTypeEnum = pgEnum("application_type", ["chef"]);
     bookingStatusEnum = pgEnum("booking_status", ["pending", "confirmed", "cancelled"]);
     storageTypeEnum = pgEnum("storage_type", ["dry", "cold", "freezer"]);
-    checkoutStatusEnum = pgEnum("checkout_status", ["active", "checkout_requested", "checkout_approved", "completed"]);
+    checkoutStatusEnum = pgEnum("checkout_status", ["active", "checkout_requested", "checkout_approved", "completed", "checkout_claim_filed"]);
     storagePricingModelEnum = pgEnum("storage_pricing_model", ["monthly-flat", "per-cubic-foot", "hourly", "daily"]);
     bookingDurationUnitEnum = pgEnum("booking_duration_unit", ["hourly", "daily", "monthly"]);
     listingStatusEnum = pgEnum("listing_status", ["draft", "pending", "approved", "rejected", "active", "inactive"]);
@@ -1256,7 +1257,7 @@ var init_schema = __esm({
       // Always 'daily' now
       paymentStatus: paymentStatusEnum("payment_status").default("pending"),
       paymentIntentId: text("payment_intent_id"),
-      // Stripe PaymentIntent ID
+      // Stripe PaymentIntent ID (shared across bundled items in same kitchen booking)
       serviceFee: numeric("service_fee").default("0"),
       // Platform commission in cents
       currency: text("currency").default("CAD").notNull(),
@@ -1307,7 +1308,7 @@ var init_schema = __esm({
       paymentIntentId: z2.string().optional(),
       serviceFee: z2.number().int().min(0).optional(),
       // Checkout workflow fields
-      checkoutStatus: z2.enum(["active", "checkout_requested", "checkout_approved", "completed"]).optional(),
+      checkoutStatus: z2.enum(["active", "checkout_requested", "checkout_approved", "completed", "checkout_claim_filed"]).optional(),
       checkoutNotes: z2.string().optional(),
       checkoutPhotoUrls: z2.array(z2.string()).optional()
     });
@@ -1348,7 +1349,7 @@ var init_schema = __esm({
       paymentStatus: paymentStatusEnum("payment_status").default("pending"),
       // Reuse enum
       paymentIntentId: text("payment_intent_id"),
-      // Stripe PaymentIntent ID (nullable, unique)
+      // Stripe PaymentIntent ID (shared across bundled items in same kitchen booking)
       serviceFee: numeric("service_fee").default("0"),
       // Platform commission in cents
       currency: text("currency").default("CAD").notNull(),
@@ -1829,6 +1830,9 @@ var init_schema = __esm({
       resolutionType: text("resolution_type"),
       // 'paid', 'waived', 'settled', 'expired', 'rejected'
       resolutionNotes: text("resolution_notes"),
+      // Damaged equipment items (for kitchen bookings with equipment)
+      damagedItems: jsonb("damaged_items").default([]),
+      // Array of {equipmentBookingId?, equipmentListingId, equipmentType, brand?, description?}
       // Timestamps
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -1866,6 +1870,15 @@ var init_schema = __esm({
     });
     damageClaimStatusValues = ["draft", "submitted", "chef_accepted", "chef_disputed", "under_review", "approved", "partially_approved", "rejected", "charge_pending", "charge_succeeded", "charge_failed", "resolved", "expired"];
     evidenceTypeValues = ["photo_before", "photo_after", "receipt", "invoice", "video", "document", "third_party_report"];
+    damagedItemSchema = z2.object({
+      equipmentBookingId: z2.number().nullable().optional(),
+      // null for included equipment
+      equipmentListingId: z2.number(),
+      equipmentType: z2.string(),
+      brand: z2.string().nullable().optional(),
+      description: z2.string().nullable().optional()
+      // damage description per item
+    });
     insertDamageClaimSchema = z2.object({
       bookingType: z2.enum(["kitchen", "storage"]),
       kitchenBookingId: z2.number().optional(),
@@ -1879,7 +1892,9 @@ var init_schema = __esm({
       // ISO date string
       claimedAmountCents: z2.number().int().min(1e3),
       // Minimum $10
-      chefResponseDeadline: z2.date()
+      chefResponseDeadline: z2.date(),
+      damagedItems: z2.array(damagedItemSchema).optional()
+      // Equipment items damaged (kitchen bookings)
     }).refine(
       (data) => {
         if (data.bookingType === "kitchen") return data.kitchenBookingId !== void 0;
@@ -4236,7 +4251,7 @@ async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId)
       const balanceTransactionId = typeof charge.balance_transaction === "string" ? charge.balance_transaction : charge.balance_transaction.id;
       balanceTransaction = await stripe.balanceTransactions.retrieve(balanceTransactionId);
     }
-    const stripeAmount = charge.amount;
+    const stripeAmount = charge.amount_captured && charge.amount_captured > 0 ? charge.amount_captured : charge.amount;
     let stripeNetAmount = stripeAmount;
     let stripeProcessingFee = 0;
     let stripePlatformFee = 0;
@@ -7357,7 +7372,7 @@ async function detectOverstays() {
   for (const booking of expiredBookings) {
     try {
       const checkoutStatus = booking.checkoutStatus;
-      if (checkoutStatus === "checkout_requested" || checkoutStatus === "checkout_approved" || checkoutStatus === "completed") {
+      if (checkoutStatus === "checkout_requested" || checkoutStatus === "checkout_approved" || checkoutStatus === "completed" || checkoutStatus === "checkout_claim_filed") {
         logger.info(`[OverstayService] Skipping booking ${booking.id} - checkout in progress (status: ${checkoutStatus})`);
         continue;
       }
@@ -8783,6 +8798,8 @@ __export(damage_claim_limits_service_exports, {
   damageClaimLimitsService: () => damageClaimLimitsService,
   getDamageClaimLimits: () => getDamageClaimLimits,
   getDefaultLimits: () => getDefaultLimits,
+  getDefaultStorageCheckoutSettings: () => getDefaultStorageCheckoutSettings,
+  getStorageCheckoutSettings: () => getStorageCheckoutSettings,
   validateClaimAmount: () => validateClaimAmount
 });
 import { eq as eq4 } from "drizzle-orm";
@@ -8850,7 +8867,23 @@ async function canFileClaimForBooking(bookingType, bookingId) {
 function getDefaultLimits() {
   return { ...DEFAULTS2 };
 }
-var DEFAULTS2, damageClaimLimitsService;
+async function getStorageCheckoutSettings() {
+  try {
+    const [reviewWindowSetting] = await db.select().from(platformSettings).where(eq4(platformSettings.key, "storage_checkout_review_window_hours")).limit(1);
+    const [extendedWindowSetting] = await db.select().from(platformSettings).where(eq4(platformSettings.key, "storage_checkout_extended_claim_window_hours")).limit(1);
+    return {
+      reviewWindowHours: reviewWindowSetting ? parseInt(reviewWindowSetting.value) : STORAGE_CHECKOUT_DEFAULTS.reviewWindowHours,
+      extendedClaimWindowHours: extendedWindowSetting ? parseInt(extendedWindowSetting.value) : STORAGE_CHECKOUT_DEFAULTS.extendedClaimWindowHours
+    };
+  } catch (error) {
+    console.error("[DamageClaimLimitsService] Error fetching storage checkout settings:", error);
+    return STORAGE_CHECKOUT_DEFAULTS;
+  }
+}
+function getDefaultStorageCheckoutSettings() {
+  return { ...STORAGE_CHECKOUT_DEFAULTS };
+}
+var DEFAULTS2, STORAGE_CHECKOUT_DEFAULTS, damageClaimLimitsService;
 var init_damage_claim_limits_service = __esm({
   "server/services/damage-claim-limits-service.ts"() {
     "use strict";
@@ -8868,11 +8901,19 @@ var init_damage_claim_limits_service = __esm({
       claimSubmissionDeadlineDays: 14
       // 14 days after booking ends
     };
+    STORAGE_CHECKOUT_DEFAULTS = {
+      reviewWindowHours: 2,
+      // 2 hours for manager to inspect
+      extendedClaimWindowHours: 48
+      // 48 hours extended window for serious issues
+    };
     damageClaimLimitsService = {
       getDamageClaimLimits,
       validateClaimAmount,
       canFileClaimForBooking,
-      getDefaultLimits
+      getDefaultLimits,
+      getStorageCheckoutSettings,
+      getDefaultStorageCheckoutSettings
     };
   }
 });
@@ -9019,6 +9060,22 @@ async function createDamageClaim(input) {
     }
     const chefResponseDeadline = /* @__PURE__ */ new Date();
     chefResponseDeadline.setHours(chefResponseDeadline.getHours() + chefResponseDeadlineHours);
+    const shouldSubmit = input.submitImmediately === true;
+    const initialStatus = shouldSubmit ? "submitted" : "draft";
+    let stripeCustomerId = null;
+    let stripePaymentMethodId = null;
+    if (shouldSubmit) {
+      const bookingId2 = input.bookingType === "storage" ? input.storageBookingId : input.kitchenBookingId;
+      if (bookingId2) {
+        try {
+          const paymentDetails = await getBookingPaymentDetails(input.bookingType, bookingId2);
+          stripeCustomerId = paymentDetails.stripeCustomerId;
+          stripePaymentMethodId = paymentDetails.stripePaymentMethodId;
+        } catch (payErr) {
+          logger.warn(`[DamageClaimService] Could not get payment details for immediate submit:`, payErr);
+        }
+      }
+    }
     const [claim] = await db.insert(damageClaims).values({
       bookingType: input.bookingType,
       kitchenBookingId: input.kitchenBookingId || null,
@@ -9031,23 +9088,70 @@ async function createDamageClaim(input) {
       damageDate: input.damageDate,
       claimedAmountCents: input.claimedAmountCents,
       chefResponseDeadline,
-      status: "draft"
+      status: initialStatus,
+      damagedItems: input.damagedItems || [],
+      ...shouldSubmit ? {
+        submittedAt: /* @__PURE__ */ new Date(),
+        stripeCustomerId,
+        stripePaymentMethodId
+      } : {}
     }).returning();
     await createHistoryEntry(
       claim.id,
       null,
-      "draft",
-      "created",
+      initialStatus,
+      shouldSubmit ? "submitted" : "created",
       "manager",
       input.managerId,
-      "Damage claim created"
+      shouldSubmit ? "Damage claim created and submitted to chef" : "Damage claim created as draft"
     );
-    logger.info(`[DamageClaimService] Created damage claim ${claim.id}`, {
+    logger.info(`[DamageClaimService] Created damage claim ${claim.id} (status: ${initialStatus})`, {
       bookingType: input.bookingType,
       chefId,
       managerId: input.managerId,
       claimedAmountCents: input.claimedAmountCents
     });
+    if (shouldSubmit) {
+      try {
+        const claimWithDetails = await getClaimById(claim.id);
+        if (claimWithDetails) {
+          const [chefUser] = await db.select({ username: users.username }).from(users).where(eq5(users.id, chefId)).limit(1);
+          const [managerUser] = await db.select({ username: users.username }).from(users).where(eq5(users.id, input.managerId)).limit(1);
+          if (chefUser?.username) {
+            const emailContent = generateDamageClaimFiledEmail({
+              chefEmail: chefUser.username,
+              chefName: claimWithDetails.chefName || chefUser.username || "Chef",
+              managerName: claimWithDetails.managerName || managerUser?.username || "Manager",
+              locationName: claimWithDetails.locationName || "Unknown Location",
+              claimTitle: claim.claimTitle,
+              claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
+              damageDate: format2(new Date(claim.damageDate), "MMM d, yyyy"),
+              responseDeadline: format2(new Date(claim.chefResponseDeadline), "MMM d, yyyy h:mm a"),
+              claimId: claim.id
+            });
+            await sendEmail(emailContent);
+            logger.info(`[DamageClaimService] Sent claim filed email to chef ${chefUser.username}`);
+            try {
+              const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+              await notificationService2.notifyChefDamageClaimFiled({
+                chefId,
+                managerName: claimWithDetails.managerName || managerUser?.username || "Manager",
+                responseDeadline: new Date(claim.chefResponseDeadline),
+                claimId: claim.id,
+                claimTitle: claim.claimTitle,
+                amountCents: claim.claimedAmountCents,
+                locationName: claimWithDetails.locationName || "Unknown Location",
+                bookingType: claim.bookingType
+              });
+            } catch (notifError) {
+              logger.error("[DamageClaimService] Failed to send in-app notification:", notifError);
+            }
+          }
+        }
+      } catch (emailError) {
+        logger.error("[DamageClaimService] Failed to send claim filed email:", emailError);
+      }
+    }
     return { success: true, claim };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Failed to create damage claim";
@@ -9748,10 +9852,11 @@ async function chargeApprovedClaim(claimId) {
         { paymentIntentId: paymentIntent.id, chargeId }
       );
       try {
-        const { createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+        const { createPaymentTransaction: createPaymentTransaction2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+        const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
         const serviceFeeForTransaction = applicationFeeAmount || 0;
         const managerRevenueForTransaction = chargeAmount - serviceFeeForTransaction;
-        await createPaymentTransaction2({
+        const ptRecord = await createPaymentTransaction2({
           bookingId: claim.bookingType === "storage" ? claim.storageBookingId : claim.kitchenBookingId,
           bookingType: claim.bookingType,
           chefId: claim.chefId,
@@ -9773,10 +9878,27 @@ async function chargeApprovedClaim(claimId) {
             damage_claim_id: claimId.toString(),
             is_reimbursement: "true",
             // Flag to identify as reimbursement in UI
-            no_tax: "true"
+            no_tax: "true",
             // Flag to indicate no tax should be displayed
+            application_fee_cents: serviceFeeForTransaction.toString()
           }
         }, db);
+        if (ptRecord) {
+          const stripeAmounts = await getStripePaymentAmounts2(paymentIntent.id, managerStripeAccountId || void 0);
+          if (stripeAmounts) {
+            await updatePaymentTransaction2(ptRecord.id, {
+              paidAt: /* @__PURE__ */ new Date(),
+              lastSyncedAt: /* @__PURE__ */ new Date(),
+              stripeAmount: stripeAmounts.stripeAmount,
+              stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+              stripePlatformFee: stripeAmounts.stripePlatformFee
+            }, db);
+            logger.info(`[DamageClaimService] Synced Stripe fees for damage claim ${claimId}:`, {
+              processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
+              platformFee: `$${(stripeAmounts.stripePlatformFee / 100).toFixed(2)}`
+            });
+          }
+        }
         logger.info(`[DamageClaimService] Created payment transaction for damage claim ${claimId}`, {
           amount: chargeAmount,
           serviceFee: serviceFeeForTransaction,
@@ -15444,7 +15566,7 @@ var init_booking_repository = __esm({
           booking: kitchenBookings,
           kitchen: kitchens,
           location: locations
-        }).from(kitchenBookings).innerJoin(kitchens, eq17(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq17(kitchens.locationId, locations.id)).where(eq17(kitchenBookings.chefId, chefId)).orderBy(desc9(kitchenBookings.bookingDate));
+        }).from(kitchenBookings).innerJoin(kitchens, eq17(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq17(kitchens.locationId, locations.id)).where(eq17(kitchenBookings.chefId, chefId)).orderBy(desc9(kitchenBookings.createdAt));
         return results.map((row) => ({
           ...this.mapKitchenBookingToDTO(row.booking),
           kitchen: row.kitchen,
@@ -15487,7 +15609,7 @@ var init_booking_repository = __esm({
           // CRITICAL: Only show bookings where payment has been initiated (not abandoned at checkout)
           // 'pending' paymentStatus means chef never completed checkout - don't show to manager
           ne2(kitchenBookings.paymentStatus, "pending")
-        )).orderBy(desc9(kitchenBookings.bookingDate));
+        )).orderBy(desc9(kitchenBookings.createdAt));
         return results.map((row) => {
           const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
           const transactionId = row.transactionId || null;
@@ -15557,7 +15679,7 @@ var init_booking_repository = __esm({
           chefName: users.username,
           chefEmail: users.username
           // Fallback/Placeholder logic as in original
-        }).from(kitchenBookings).leftJoin(users, eq17(kitchenBookings.chefId, users.id)).where(eq17(kitchenBookings.kitchenId, kitchenId)).orderBy(desc9(kitchenBookings.bookingDate));
+        }).from(kitchenBookings).leftJoin(users, eq17(kitchenBookings.chefId, users.id)).where(eq17(kitchenBookings.kitchenId, kitchenId)).orderBy(desc9(kitchenBookings.createdAt));
       }
       async findConflictingBookings(kitchenId, date2, startTime, endTime, excludeBookingId) {
         const dateStr = date2.toISOString().split("T")[0];
@@ -15591,7 +15713,7 @@ var init_booking_repository = __esm({
           // ENTERPRISE STANDARD: Include location data to prevent "Unknown Location" on chef UI
           locationName: locations.name,
           locationAddress: locations.address
-        }).from(storageBookings).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq17(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq17(kitchens.locationId, locations.id)).where(eq17(storageBookings.chefId, chefId)).orderBy(desc9(storageBookings.startDate));
+        }).from(storageBookings).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq17(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq17(kitchens.locationId, locations.id)).where(eq17(storageBookings.chefId, chefId)).orderBy(desc9(storageBookings.createdAt));
         const bookingIds = result.map((r) => r.id);
         const paidPenalties = bookingIds.length > 0 ? await db.select({
           storageBookingId: storageOverstayRecords.storageBookingId,
@@ -15768,7 +15890,7 @@ var init_booking_repository = __esm({
           availabilityType: equipmentListings.availabilityType,
           kitchenId: equipmentListings.kitchenId,
           kitchenName: kitchens.name
-        }).from(equipmentBookings).innerJoin(equipmentListings, eq17(equipmentBookings.equipmentListingId, equipmentListings.id)).innerJoin(kitchens, eq17(equipmentListings.kitchenId, kitchens.id)).where(eq17(equipmentBookings.chefId, chefId)).orderBy(desc9(equipmentBookings.startDate));
+        }).from(equipmentBookings).innerJoin(equipmentListings, eq17(equipmentBookings.equipmentListingId, equipmentListings.id)).innerJoin(kitchens, eq17(equipmentListings.kitchenId, kitchens.id)).where(eq17(equipmentBookings.chefId, chefId)).orderBy(desc9(equipmentBookings.createdAt));
         return result.map((row) => ({
           ...row,
           totalPrice: row.totalPrice ? parseFloat(row.totalPrice.toString()) / 100 : 0,
@@ -17259,16 +17381,29 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     const kitchenTaxResult = await db2.execute(sql9`
       SELECT 
         COALESCE(SUM(
-          -- Tax = kb.total_price * tax_rate / 100 (same formula as transaction history)
-          -- For partial refunds: multiply by (1 - refund_ratio) to get effective tax
-          ROUND(
-            (kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100) *
-            CASE 
-              WHEN pt.amount::numeric > 0 THEN 
-                (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric
-              ELSE 1
-            END
-          )
+          CASE
+            -- PARTIAL CAPTURE: Use exact tax from capture engine metadata (source of truth)
+            WHEN (pt.metadata->>'partialCapture')::boolean = true 
+              AND (pt.metadata->>'approvedTax') IS NOT NULL THEN
+              ROUND(
+                (pt.metadata->>'approvedTax')::numeric *
+                CASE 
+                  WHEN pt.amount::numeric > 0 THEN 
+                    (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric
+                  ELSE 1
+                END
+              )
+            -- NORMAL BOOKINGS: Tax = kb.total_price * tax_rate / 100
+            ELSE
+              ROUND(
+                (kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100) *
+                CASE 
+                  WHEN pt.amount::numeric > 0 THEN 
+                    (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric
+                  ELSE 1
+                END
+              )
+          END
         ), 0)::bigint as calculated_tax_amount,
         -- ENTERPRISE STANDARD: Calculate PAYOUT amount for COMPLETED (succeeded) transactions
         -- Manager collects tax and keeps it (remits to tax authorities themselves)
@@ -18263,7 +18398,7 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       LEFT JOIN users u ON kb.chef_id = u.id
       LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
       ${kitchenWhereClause}
-      ORDER BY kb.booking_date DESC, kb.created_at DESC
+      ORDER BY kb.created_at DESC
     `);
     const kitchenTransactions = kitchenResult.rows.map((row) => {
       const ptAmount = row.pt_amount != null ? parseInt(String(row.pt_amount)) : 0;
@@ -18282,7 +18417,13 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       let serviceFeeCents;
       if (hasPaymentTransaction) {
         totalPriceCents = ptAmount;
-        taxCents = isDamageClaim ? 0 : Math.round(kbTotalPrice * taxRatePercent / 100);
+        if (isDamageClaim) {
+          taxCents = 0;
+        } else if (ptMetadata.partialCapture && ptMetadata.approvedTax != null) {
+          taxCents = parseInt(String(ptMetadata.approvedTax)) || 0;
+        } else {
+          taxCents = Math.round(kbTotalPrice * taxRatePercent / 100);
+        }
         serviceFeeCents = ptServiceFee > 0 ? ptServiceFee : kbServiceFee;
       } else {
         totalPriceCents = kbTotalPrice;
@@ -18471,9 +18612,6 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       allTransactions = allTransactions.filter((t) => t.paymentStatus === paymentStatus);
     }
     allTransactions.sort((a, b) => {
-      const aDate = new Date(a.bookingDate || a.createdAt).getTime();
-      const bDate = new Date(b.bookingDate || b.createdAt).getTime();
-      if (bDate !== aDate) return bDate - aDate;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
     const total = allTransactions.length;
@@ -18707,12 +18845,21 @@ async function getAccountStatus(accountId) {
   }
   try {
     const account = await stripe4.accounts.retrieve(accountId);
+    const reqs = account.requirements;
     return {
       accountId: account.id,
       chargesEnabled: account.charges_enabled || false,
       payoutsEnabled: account.payouts_enabled || false,
       detailsSubmitted: account.details_submitted || false,
-      isReady: account.charges_enabled && account.payouts_enabled || false
+      isReady: account.charges_enabled && account.payouts_enabled || false,
+      requirements: {
+        currentlyDue: reqs?.currently_due || [],
+        eventuallyDue: reqs?.eventually_due || [],
+        pastDue: reqs?.past_due || [],
+        pendingVerification: reqs?.pending_verification || [],
+        disabledReason: reqs?.disabled_reason || null,
+        currentDeadline: reqs?.current_deadline || null
+      }
     };
   } catch (error) {
     console.error("Error retrieving account status:", error);
@@ -20108,9 +20255,10 @@ __export(storage_checkout_service_exports, {
   getPendingCheckoutReviews: () => getPendingCheckoutReviews,
   isCheckoutInProgress: () => isCheckoutInProgress,
   processCheckoutApproval: () => processCheckoutApproval,
+  processExpiredCheckoutReviews: () => processExpiredCheckoutReviews,
   requestStorageCheckout: () => requestStorageCheckout
 });
-import { eq as eq26, desc as desc12, and as and15, or as or3, inArray as inArray6, isNotNull as isNotNull2 } from "drizzle-orm";
+import { eq as eq26, desc as desc12, and as and15, or as or3, inArray as inArray6, lt as lt3 } from "drizzle-orm";
 async function requestStorageCheckout(storageBookingId, chefId, checkoutNotes, checkoutPhotoUrls) {
   try {
     if (!storageBookingId || storageBookingId <= 0) {
@@ -20210,240 +20358,6 @@ async function addCheckoutPhotos(storageBookingId, chefId, newPhotoUrls) {
     return { success: false, error: "Failed to add checkout photos" };
   }
 }
-async function processCheckoutApproval(storageBookingId, managerId, action, managerNotes, denialReason) {
-  try {
-    if (!storageBookingId || storageBookingId <= 0) {
-      return { success: false, error: "Invalid storage booking ID" };
-    }
-    if (!managerId || managerId <= 0) {
-      return { success: false, error: "Invalid manager ID" };
-    }
-    if (action === "deny" && !denialReason) {
-      return { success: false, error: "Denial reason is required when denying checkout" };
-    }
-    const [booking] = await db.select({
-      id: storageBookings.id,
-      chefId: storageBookings.chefId,
-      storageListingId: storageBookings.storageListingId,
-      checkoutStatus: storageBookings.checkoutStatus,
-      status: storageBookings.status
-    }).from(storageBookings).where(eq26(storageBookings.id, storageBookingId)).limit(1);
-    if (!booking) {
-      return { success: false, error: "Storage booking not found" };
-    }
-    const hasPermission = await verifyManagerPermission(storageBookingId, managerId);
-    if (!hasPermission) {
-      return { success: false, error: "You do not have permission to approve this checkout" };
-    }
-    const currentCheckoutStatus = booking.checkoutStatus;
-    if (currentCheckoutStatus !== "checkout_requested") {
-      return { success: false, error: `Cannot process checkout in status: ${currentCheckoutStatus || "active"}` };
-    }
-    if (action === "approve") {
-      await db.update(storageBookings).set({
-        checkoutStatus: "completed",
-        checkoutApprovedAt: /* @__PURE__ */ new Date(),
-        checkoutApprovedBy: managerId,
-        checkoutNotes: managerNotes ? `${booking.checkoutStatus ? "" : ""}Manager: ${managerNotes}` : void 0,
-        // Mark booking as completed
-        status: "cancelled",
-        // Using 'cancelled' as completed since we don't have a 'completed' status
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq26(storageBookings.id, storageBookingId));
-      logger.info(`[StorageCheckout] Manager ${managerId} approved checkout for storage booking ${storageBookingId}`);
-      try {
-        await sendCheckoutApprovalNotification(storageBookingId, booking.chefId, true);
-      } catch (notifyError) {
-        logger.error(`[StorageCheckout] Error sending approval notification:`, notifyError);
-      }
-      return {
-        success: true,
-        storageBookingId,
-        checkoutStatus: "completed",
-        bookingCompleted: true
-      };
-    } else {
-      await db.update(storageBookings).set({
-        checkoutStatus: "active",
-        // Reset to active so chef can fix issues and re-request
-        checkoutDeniedAt: /* @__PURE__ */ new Date(),
-        checkoutDeniedBy: managerId,
-        checkoutDenialReason: denialReason,
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq26(storageBookings.id, storageBookingId));
-      logger.info(`[StorageCheckout] Manager ${managerId} denied checkout for storage booking ${storageBookingId}: ${denialReason}`);
-      try {
-        await sendCheckoutApprovalNotification(storageBookingId, booking.chefId, false, denialReason);
-      } catch (notifyError) {
-        logger.error(`[StorageCheckout] Error sending denial notification:`, notifyError);
-      }
-      return {
-        success: true,
-        storageBookingId,
-        checkoutStatus: "active",
-        bookingCompleted: false
-      };
-    }
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error processing checkout approval:`, error);
-    return { success: false, error: "Failed to process checkout approval" };
-  }
-}
-async function getPendingCheckoutReviews(locationId) {
-  try {
-    const today = /* @__PURE__ */ new Date();
-    today.setHours(0, 0, 0, 0);
-    const query = db.select({
-      storageBookingId: storageBookings.id,
-      storageListingId: storageBookings.storageListingId,
-      storageName: storageListings.name,
-      storageType: storageListings.storageType,
-      kitchenId: kitchens.id,
-      kitchenName: kitchens.name,
-      locationId: locations.id,
-      locationName: locations.name,
-      chefId: storageBookings.chefId,
-      chefEmail: users.username,
-      startDate: storageBookings.startDate,
-      endDate: storageBookings.endDate,
-      totalPrice: storageBookings.totalPrice,
-      checkoutStatus: storageBookings.checkoutStatus,
-      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
-      checkoutNotes: storageBookings.checkoutNotes,
-      checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
-    }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq26(kitchens.locationId, locations.id)).leftJoin(users, eq26(storageBookings.chefId, users.id)).where(eq26(storageBookings.checkoutStatus, "checkout_requested")).orderBy(desc12(storageBookings.checkoutRequestedAt));
-    const results = await query;
-    const filtered = locationId ? results.filter((r) => r.locationId === locationId) : results;
-    return filtered.map((r) => {
-      const endDate = new Date(r.endDate);
-      const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1e3 * 60 * 60 * 24));
-      return {
-        storageBookingId: r.storageBookingId,
-        storageListingId: r.storageListingId,
-        storageName: r.storageName || "Storage",
-        storageType: r.storageType || "dry",
-        kitchenId: r.kitchenId,
-        kitchenName: r.kitchenName || "Kitchen",
-        locationId: r.locationId,
-        locationName: r.locationName || "Location",
-        chefId: r.chefId,
-        chefEmail: r.chefEmail,
-        chefName: r.chefEmail,
-        // Using email as name for now
-        startDate: r.startDate,
-        endDate: r.endDate,
-        totalPrice: r.totalPrice,
-        checkoutStatus: r.checkoutStatus,
-        checkoutRequestedAt: r.checkoutRequestedAt,
-        checkoutNotes: r.checkoutNotes,
-        checkoutPhotoUrls: r.checkoutPhotoUrls || [],
-        daysUntilEnd,
-        isOverdue: daysUntilEnd < 0
-      };
-    });
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error getting pending checkout reviews:`, error);
-    return [];
-  }
-}
-async function getCheckoutHistory(locationIds, limit = 20) {
-  try {
-    const today = /* @__PURE__ */ new Date();
-    today.setHours(0, 0, 0, 0);
-    const results = await db.select({
-      storageBookingId: storageBookings.id,
-      storageListingId: storageBookings.storageListingId,
-      storageName: storageListings.name,
-      storageType: storageListings.storageType,
-      kitchenId: kitchens.id,
-      kitchenName: kitchens.name,
-      locationId: locations.id,
-      locationName: locations.name,
-      chefId: storageBookings.chefId,
-      chefEmail: users.username,
-      startDate: storageBookings.startDate,
-      endDate: storageBookings.endDate,
-      totalPrice: storageBookings.totalPrice,
-      checkoutStatus: storageBookings.checkoutStatus,
-      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
-      checkoutApprovedAt: storageBookings.checkoutApprovedAt,
-      checkoutDeniedAt: storageBookings.checkoutDeniedAt,
-      checkoutDenialReason: storageBookings.checkoutDenialReason,
-      checkoutNotes: storageBookings.checkoutNotes,
-      checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
-    }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq26(kitchens.locationId, locations.id)).leftJoin(users, eq26(storageBookings.chefId, users.id)).where(
-      and15(
-        inArray6(locations.id, locationIds),
-        or3(
-          eq26(storageBookings.checkoutStatus, "completed"),
-          // Include bookings that were denied (status reset to 'active' but have denial reason)
-          and15(
-            eq26(storageBookings.checkoutStatus, "active"),
-            isNotNull2(storageBookings.checkoutDeniedAt)
-          )
-        )
-      )
-    ).orderBy(desc12(storageBookings.checkoutApprovedAt), desc12(storageBookings.checkoutDeniedAt)).limit(limit);
-    return results.map((r) => {
-      const endDate = new Date(r.endDate);
-      const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1e3 * 60 * 60 * 24));
-      return {
-        storageBookingId: r.storageBookingId,
-        storageListingId: r.storageListingId,
-        storageName: r.storageName || "Storage",
-        storageType: r.storageType || "dry",
-        kitchenId: r.kitchenId,
-        kitchenName: r.kitchenName || "Kitchen",
-        locationId: r.locationId,
-        locationName: r.locationName || "Location",
-        chefId: r.chefId,
-        chefEmail: r.chefEmail,
-        chefName: r.chefEmail,
-        startDate: r.startDate,
-        endDate: r.endDate,
-        totalPrice: r.totalPrice,
-        checkoutStatus: r.checkoutStatus,
-        checkoutRequestedAt: r.checkoutRequestedAt,
-        checkoutApprovedAt: r.checkoutApprovedAt,
-        checkoutDeniedAt: r.checkoutDeniedAt,
-        checkoutDenialReason: r.checkoutDenialReason,
-        checkoutNotes: r.checkoutNotes,
-        checkoutPhotoUrls: r.checkoutPhotoUrls || [],
-        daysUntilEnd,
-        isOverdue: daysUntilEnd < 0
-      };
-    });
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error getting checkout history:`, error);
-    return [];
-  }
-}
-async function getCheckoutStatus(storageBookingId) {
-  try {
-    const [booking] = await db.select({
-      checkoutStatus: storageBookings.checkoutStatus,
-      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
-      checkoutApprovedAt: storageBookings.checkoutApprovedAt,
-      checkoutDeniedAt: storageBookings.checkoutDeniedAt,
-      checkoutDenialReason: storageBookings.checkoutDenialReason,
-      checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
-    }).from(storageBookings).where(eq26(storageBookings.id, storageBookingId)).limit(1);
-    if (!booking) {
-      return null;
-    }
-    return {
-      checkoutStatus: booking.checkoutStatus,
-      checkoutRequestedAt: booking.checkoutRequestedAt,
-      checkoutApprovedAt: booking.checkoutApprovedAt,
-      checkoutDeniedAt: booking.checkoutDeniedAt,
-      checkoutDenialReason: booking.checkoutDenialReason,
-      checkoutPhotoUrls: booking.checkoutPhotoUrls || []
-    };
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error getting checkout status:`, error);
-    return null;
-  }
-}
 async function verifyManagerPermission(storageBookingId, managerId) {
   try {
     const [result] = await db.select({ managerId: locations.managerId }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq26(kitchens.locationId, locations.id)).where(eq26(storageBookings.id, storageBookingId)).limit(1);
@@ -20512,76 +20426,469 @@ Please review the checkout request in your dashboard.`
     logger.error(`[StorageCheckout] Error sending checkout request notification:`, error);
   }
 }
-async function sendCheckoutApprovalNotification(storageBookingId, chefId, approved, denialReason) {
+async function sendCheckoutClearedNotification(storageBookingId, chefId, isAutoClear = false) {
   try {
-    if (!chefId) {
-      return;
-    }
+    if (!chefId) return;
     const [chef] = await db.select({ username: users.username }).from(users).where(eq26(users.id, chefId)).limit(1);
-    if (!chef?.username) {
-      return;
-    }
+    if (!chef?.username) return;
     const [booking] = await db.select({
       storageName: storageListings.name,
       kitchenName: kitchens.name
     }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).where(eq26(storageBookings.id, storageBookingId)).limit(1);
-    if (!booking) {
-      return;
-    }
+    if (!booking) return;
     const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-    if (approved) {
-      const emailContent = {
-        to: chef.username,
-        subject: `Storage Checkout Approved - ${booking.storageName}`,
-        html: `
-          <h2>Storage Checkout Approved \u2713</h2>
-          <p>Your storage checkout request has been approved.</p>
-          <table style="border-collapse: collapse; margin: 20px 0;">
-            <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.storageName}</td></tr>
-            <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Kitchen:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.kitchenName}</td></tr>
-          </table>
-          <p>Your storage booking has been successfully completed. Thank you for using Local Cooks!</p>
-        `,
-        text: `Storage Checkout Approved
+    const clearedBy = isAutoClear ? "automatically (review window expired with no issues reported)" : "by the kitchen manager";
+    const emailContent = {
+      to: chef.username,
+      subject: `Storage Cleared \u2014 No Issues - ${booking.storageName}`,
+      html: `
+        <h2>Storage Checkout Complete</h2>
+        <p>Your storage checkout has been cleared ${clearedBy}.</p>
+        <table style="border-collapse: collapse; margin: 20px 0;">
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.storageName}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Kitchen:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.kitchenName}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Status:</strong></td><td style="padding: 8px; border: 1px solid #ddd; color: #16a34a; font-weight: 600;">Storage Cleared \u2014 No Issues</td></tr>
+        </table>
+        <p>Your storage booking has been successfully completed. Thank you for using Local Cooks!</p>
+      `,
+      text: `Storage Checkout Complete
 
-Your storage checkout request has been approved.
-
-Storage: ${booking.storageName}
-Kitchen: ${booking.kitchenName}
-
-Your storage booking has been successfully completed. Thank you for using Local Cooks!`
-      };
-      await sendEmail2(emailContent);
-    } else {
-      const emailContent = {
-        to: chef.username,
-        subject: `Storage Checkout Denied - ${booking.storageName}`,
-        html: `
-          <h2>Storage Checkout Denied</h2>
-          <p>Your storage checkout request has been denied.</p>
-          <table style="border-collapse: collapse; margin: 20px 0;">
-            <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.storageName}</td></tr>
-            <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Kitchen:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.kitchenName}</td></tr>
-            <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Reason:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${denialReason || "Not specified"}</td></tr>
-          </table>
-          <p>Please address the issues and submit a new checkout request.</p>
-          <p><a href="${process.env.VITE_APP_URL || "https://localcooks.ca"}/dashboard?tab=storage" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View My Storage</a></p>
-        `,
-        text: `Storage Checkout Denied
-
-Your storage checkout request has been denied.
+Your storage checkout has been cleared ${clearedBy}.
 
 Storage: ${booking.storageName}
 Kitchen: ${booking.kitchenName}
-Reason: ${denialReason || "Not specified"}
+Status: Storage Cleared \u2014 No Issues
 
-Please address the issues and submit a new checkout request.`
-      };
-      await sendEmail2(emailContent);
-    }
-    logger.info(`[StorageCheckout] Sent checkout ${approved ? "approval" : "denial"} notification to chef ${chef.username}`);
+Thank you for using Local Cooks!`
+    };
+    await sendEmail2(emailContent);
+    logger.info(`[StorageCheckout] Sent cleared notification to chef ${chef.username} (autoClear: ${isAutoClear})`);
   } catch (error) {
-    logger.error(`[StorageCheckout] Error sending checkout approval notification:`, error);
+    logger.error(`[StorageCheckout] Error sending cleared notification:`, error);
+  }
+}
+async function sendCheckoutClaimNotification(storageBookingId, chefId, claimId, claimTitle) {
+  try {
+    if (!chefId) return;
+    const [chef] = await db.select({ username: users.username }).from(users).where(eq26(users.id, chefId)).limit(1);
+    if (!chef?.username) return;
+    const [booking] = await db.select({
+      storageName: storageListings.name,
+      kitchenName: kitchens.name
+    }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+    if (!booking) return;
+    const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+    const emailContent = {
+      to: chef.username,
+      subject: `Storage Checkout \u2014 Claim Filed - ${booking.storageName}`,
+      html: `
+        <h2>Storage Checkout Complete \u2014 Claim Filed</h2>
+        <p>Your storage checkout has been processed. The kitchen has filed a damage/cleaning claim that requires your attention.</p>
+        <table style="border-collapse: collapse; margin: 20px 0;">
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.storageName}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Kitchen:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.kitchenName}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Claim:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${claimTitle}</td></tr>
+        </table>
+        <p>You will receive a separate notification with the full claim details. You can accept or dispute the claim from your dashboard.</p>
+        <p><a href="${process.env.VITE_APP_URL || "https://localcooks.ca"}/dashboard?view=damage-claims" style="background-color: #f59e0b; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Claim Details</a></p>
+      `,
+      text: `Storage Checkout Complete \u2014 Claim Filed
+
+Your storage checkout has been processed. The kitchen has filed a damage/cleaning claim "${claimTitle}".
+
+Storage: ${booking.storageName}
+Kitchen: ${booking.kitchenName}
+
+Please review the claim in your dashboard.`
+    };
+    await sendEmail2(emailContent);
+    logger.info(`[StorageCheckout] Sent claim notification to chef ${chef.username} for claim #${claimId}`);
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error sending claim notification:`, error);
+  }
+}
+async function processCheckoutApproval(storageBookingId, managerId, action, managerNotes, denialReasonOrClaimData) {
+  try {
+    if (!storageBookingId || storageBookingId <= 0) {
+      return { success: false, error: "Invalid storage booking ID" };
+    }
+    if (!managerId || managerId <= 0) {
+      return { success: false, error: "Invalid manager ID" };
+    }
+    const normalizedAction = action === "approve" ? "clear" : action;
+    if (normalizedAction === "deny") {
+      logger.warn(`[StorageCheckout] Legacy 'deny' action called for booking ${storageBookingId}. Deny is deprecated \u2014 treating as clear.`);
+      return processCheckoutClear(storageBookingId, managerId, managerNotes);
+    }
+    if (normalizedAction === "start_claim") {
+      if (!denialReasonOrClaimData || typeof denialReasonOrClaimData === "string") {
+        return { success: false, error: "Claim data is required when starting a damage/cleaning claim" };
+      }
+      return processCheckoutStartClaim(storageBookingId, managerId, denialReasonOrClaimData, managerNotes);
+    }
+    return processCheckoutClear(storageBookingId, managerId, managerNotes);
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error processing checkout review:`, error);
+    return { success: false, error: "Failed to process checkout review" };
+  }
+}
+async function processCheckoutClear(storageBookingId, managerId, managerNotes) {
+  const [booking] = await db.select({
+    id: storageBookings.id,
+    chefId: storageBookings.chefId,
+    checkoutStatus: storageBookings.checkoutStatus
+  }).from(storageBookings).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+  if (!booking) {
+    return { success: false, error: "Storage booking not found" };
+  }
+  const hasPermission = await verifyManagerPermission(storageBookingId, managerId);
+  if (!hasPermission) {
+    return { success: false, error: "You do not have permission to review this checkout" };
+  }
+  const currentCheckoutStatus = booking.checkoutStatus;
+  if (currentCheckoutStatus !== "checkout_requested") {
+    return { success: false, error: `Cannot process checkout in status: ${currentCheckoutStatus || "active"}` };
+  }
+  await db.update(storageBookings).set({
+    checkoutStatus: "completed",
+    checkoutApprovedAt: /* @__PURE__ */ new Date(),
+    checkoutApprovedBy: managerId,
+    checkoutNotes: managerNotes ? `Manager: ${managerNotes}` : "Storage cleared \u2014 no issues found",
+    status: "cancelled",
+    // Using 'cancelled' as completed since we don't have a 'completed' status
+    updatedAt: /* @__PURE__ */ new Date()
+  }).where(eq26(storageBookings.id, storageBookingId));
+  logger.info(`[StorageCheckout] Manager ${managerId} cleared storage for booking ${storageBookingId} \u2014 no issues`);
+  try {
+    await sendCheckoutClearedNotification(storageBookingId, booking.chefId);
+  } catch (notifyError) {
+    logger.error(`[StorageCheckout] Error sending cleared notification:`, notifyError);
+  }
+  return {
+    success: true,
+    storageBookingId,
+    checkoutStatus: "completed",
+    bookingCompleted: true
+  };
+}
+async function processCheckoutStartClaim(storageBookingId, managerId, claimData, managerNotes) {
+  const [booking] = await db.select({
+    id: storageBookings.id,
+    chefId: storageBookings.chefId,
+    checkoutStatus: storageBookings.checkoutStatus,
+    checkoutRequestedAt: storageBookings.checkoutRequestedAt
+  }).from(storageBookings).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+  if (!booking) {
+    return { success: false, error: "Storage booking not found" };
+  }
+  const hasPermission = await verifyManagerPermission(storageBookingId, managerId);
+  if (!hasPermission) {
+    return { success: false, error: "You do not have permission to review this checkout" };
+  }
+  const currentCheckoutStatus = booking.checkoutStatus;
+  if (currentCheckoutStatus !== "checkout_requested" && currentCheckoutStatus !== "completed") {
+    return { success: false, error: `Cannot start claim from checkout status: ${currentCheckoutStatus || "active"}` };
+  }
+  if (currentCheckoutStatus === "completed") {
+    const { getStorageCheckoutSettings: getStorageCheckoutSettings2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
+    const settings = await getStorageCheckoutSettings2();
+    const checkoutTime = booking.checkoutRequestedAt;
+    if (checkoutTime) {
+      const extendedDeadline = new Date(checkoutTime.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1e3);
+      if (/* @__PURE__ */ new Date() > extendedDeadline) {
+        return {
+          success: false,
+          error: `Extended claim window has expired. Claims must be filed within ${settings.extendedClaimWindowHours} hours of checkout.`
+        };
+      }
+    }
+  }
+  if (!claimData.claimTitle || claimData.claimTitle.trim().length < 5) {
+    return { success: false, error: "Claim title must be at least 5 characters" };
+  }
+  if (!claimData.claimDescription || claimData.claimDescription.trim().length < 50) {
+    return { success: false, error: "Claim description must be at least 50 characters" };
+  }
+  if (!claimData.claimedAmountCents || claimData.claimedAmountCents <= 0) {
+    return { success: false, error: "Claimed amount must be greater than zero" };
+  }
+  const { createDamageClaim: createDamageClaim2 } = await Promise.resolve().then(() => (init_damage_claim_service(), damage_claim_service_exports));
+  const claimResult = await createDamageClaim2({
+    bookingType: "storage",
+    storageBookingId,
+    managerId,
+    claimTitle: claimData.claimTitle.trim(),
+    claimDescription: claimData.claimDescription.trim(),
+    claimedAmountCents: claimData.claimedAmountCents,
+    damageDate: claimData.damageDate || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+    submitImmediately: true
+  });
+  if (!claimResult.success || !claimResult.claim) {
+    return {
+      success: false,
+      error: claimResult.error || "Failed to create damage claim"
+    };
+  }
+  const claimId = claimResult.claim.id;
+  try {
+    const [bookingWithPhotos] = await db.select({ checkoutPhotoUrls: storageBookings.checkoutPhotoUrls }).from(storageBookings).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+    const photoUrls = bookingWithPhotos?.checkoutPhotoUrls;
+    if (photoUrls && photoUrls.length > 0) {
+      const { damageEvidence: damageEvidence2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      for (let i = 0; i < photoUrls.length; i++) {
+        await db.insert(damageEvidence2).values({
+          damageClaimId: claimId,
+          evidenceType: "photo_after",
+          fileUrl: photoUrls[i],
+          fileName: `checkout-photo-${i + 1}.jpg`,
+          description: `Chef checkout photo ${i + 1} of ${photoUrls.length} (auto-attached from checkout)`,
+          uploadedBy: managerId
+        });
+      }
+      logger.info(`[StorageCheckout] Auto-attached ${photoUrls.length} checkout photos as evidence for claim #${claimId}`);
+    }
+  } catch (evidenceError) {
+    logger.error(`[StorageCheckout] Error auto-attaching checkout photos to claim #${claimId}:`, evidenceError);
+  }
+  await db.update(storageBookings).set({
+    checkoutStatus: "checkout_claim_filed",
+    checkoutApprovedAt: /* @__PURE__ */ new Date(),
+    checkoutApprovedBy: managerId,
+    checkoutNotes: managerNotes ? `Manager: ${managerNotes} | Claim #${claimId} filed` : `Damage/cleaning claim #${claimId} filed during checkout review`,
+    // Mark booking as completed — storage is released, but claim is tracked separately
+    status: "cancelled",
+    updatedAt: /* @__PURE__ */ new Date()
+  }).where(eq26(storageBookings.id, storageBookingId));
+  logger.info(`[StorageCheckout] Manager ${managerId} started claim #${claimId} for storage booking ${storageBookingId}`);
+  try {
+    await sendCheckoutClaimNotification(storageBookingId, booking.chefId, claimId, claimData.claimTitle);
+  } catch (notifyError) {
+    logger.error(`[StorageCheckout] Error sending claim notification:`, notifyError);
+  }
+  return {
+    success: true,
+    storageBookingId,
+    checkoutStatus: "checkout_claim_filed",
+    bookingCompleted: true,
+    damageClaimId: claimId
+  };
+}
+async function processExpiredCheckoutReviews() {
+  const result = { processed: 0, cleared: 0, errors: 0 };
+  try {
+    const { getStorageCheckoutSettings: getStorageCheckoutSettings2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
+    const settings = await getStorageCheckoutSettings2();
+    const reviewWindowMs = settings.reviewWindowHours * 60 * 60 * 1e3;
+    const cutoffTime = new Date(Date.now() - reviewWindowMs);
+    const expiredCheckouts = await db.select({
+      id: storageBookings.id,
+      chefId: storageBookings.chefId,
+      checkoutRequestedAt: storageBookings.checkoutRequestedAt
+    }).from(storageBookings).where(
+      and15(
+        eq26(storageBookings.checkoutStatus, "checkout_requested"),
+        lt3(storageBookings.checkoutRequestedAt, cutoffTime)
+      )
+    );
+    result.processed = expiredCheckouts.length;
+    if (expiredCheckouts.length === 0) {
+      logger.info(`[StorageCheckout] No expired checkout reviews to process`);
+      return result;
+    }
+    logger.info(`[StorageCheckout] Processing ${expiredCheckouts.length} expired checkout reviews (window: ${settings.reviewWindowHours}h)`);
+    for (const checkout of expiredCheckouts) {
+      try {
+        await db.update(storageBookings).set({
+          checkoutStatus: "completed",
+          checkoutApprovedAt: /* @__PURE__ */ new Date(),
+          checkoutNotes: `Auto-cleared by system \u2014 review window (${settings.reviewWindowHours}h) expired with no issues reported`,
+          status: "cancelled",
+          // Using 'cancelled' as completed
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq26(storageBookings.id, checkout.id));
+        result.cleared++;
+        logger.info(`[StorageCheckout] Auto-cleared booking ${checkout.id} \u2014 review window expired`);
+        try {
+          await sendCheckoutClearedNotification(checkout.id, checkout.chefId, true);
+        } catch (notifyError) {
+          logger.error(`[StorageCheckout] Error sending auto-clear notification for booking ${checkout.id}:`, notifyError);
+        }
+      } catch (bookingError) {
+        result.errors++;
+        logger.error(`[StorageCheckout] Error auto-clearing booking ${checkout.id}:`, bookingError);
+      }
+    }
+    logger.info(`[StorageCheckout] Auto-clear results: ${result.cleared} cleared, ${result.errors} errors out of ${result.processed} processed`);
+    return result;
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error processing expired checkout reviews:`, error);
+    return result;
+  }
+}
+async function getPendingCheckoutReviews(locationId) {
+  try {
+    const today = /* @__PURE__ */ new Date();
+    today.setHours(0, 0, 0, 0);
+    const { getStorageCheckoutSettings: getStorageCheckoutSettings2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
+    const settings = await getStorageCheckoutSettings2();
+    const reviewWindowMs = settings.reviewWindowHours * 60 * 60 * 1e3;
+    const query = db.select({
+      storageBookingId: storageBookings.id,
+      storageListingId: storageBookings.storageListingId,
+      storageName: storageListings.name,
+      storageType: storageListings.storageType,
+      kitchenId: kitchens.id,
+      kitchenName: kitchens.name,
+      locationId: locations.id,
+      locationName: locations.name,
+      chefId: storageBookings.chefId,
+      chefEmail: users.username,
+      startDate: storageBookings.startDate,
+      endDate: storageBookings.endDate,
+      totalPrice: storageBookings.totalPrice,
+      checkoutStatus: storageBookings.checkoutStatus,
+      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
+      checkoutNotes: storageBookings.checkoutNotes,
+      checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
+    }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq26(kitchens.locationId, locations.id)).leftJoin(users, eq26(storageBookings.chefId, users.id)).where(eq26(storageBookings.checkoutStatus, "checkout_requested")).orderBy(desc12(storageBookings.checkoutRequestedAt));
+    const results = await query;
+    const filtered = locationId ? results.filter((r) => r.locationId === locationId) : results;
+    const now = /* @__PURE__ */ new Date();
+    return filtered.map((r) => {
+      const endDate = new Date(r.endDate);
+      const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1e3 * 60 * 60 * 24));
+      const reviewDeadline = r.checkoutRequestedAt ? new Date(r.checkoutRequestedAt.getTime() + reviewWindowMs) : null;
+      const isReviewExpired = reviewDeadline ? now > reviewDeadline : false;
+      return {
+        storageBookingId: r.storageBookingId,
+        storageListingId: r.storageListingId,
+        storageName: r.storageName || "Storage",
+        storageType: r.storageType || "dry",
+        kitchenId: r.kitchenId,
+        kitchenName: r.kitchenName || "Kitchen",
+        locationId: r.locationId,
+        locationName: r.locationName || "Location",
+        chefId: r.chefId,
+        chefEmail: r.chefEmail,
+        chefName: r.chefEmail,
+        // Using email as name for now
+        startDate: r.startDate,
+        endDate: r.endDate,
+        totalPrice: r.totalPrice,
+        checkoutStatus: r.checkoutStatus,
+        checkoutRequestedAt: r.checkoutRequestedAt,
+        checkoutNotes: r.checkoutNotes,
+        checkoutPhotoUrls: r.checkoutPhotoUrls || [],
+        daysUntilEnd,
+        isOverdue: daysUntilEnd < 0,
+        reviewDeadline,
+        isReviewExpired
+      };
+    });
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error getting pending checkout reviews:`, error);
+    return [];
+  }
+}
+async function getCheckoutHistory(locationIds, limit = 20) {
+  try {
+    const today = /* @__PURE__ */ new Date();
+    today.setHours(0, 0, 0, 0);
+    const results = await db.select({
+      storageBookingId: storageBookings.id,
+      storageListingId: storageBookings.storageListingId,
+      storageName: storageListings.name,
+      storageType: storageListings.storageType,
+      kitchenId: kitchens.id,
+      kitchenName: kitchens.name,
+      locationId: locations.id,
+      locationName: locations.name,
+      chefId: storageBookings.chefId,
+      chefEmail: users.username,
+      startDate: storageBookings.startDate,
+      endDate: storageBookings.endDate,
+      totalPrice: storageBookings.totalPrice,
+      checkoutStatus: storageBookings.checkoutStatus,
+      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
+      checkoutApprovedAt: storageBookings.checkoutApprovedAt,
+      checkoutNotes: storageBookings.checkoutNotes,
+      checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
+    }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq26(kitchens.locationId, locations.id)).leftJoin(users, eq26(storageBookings.chefId, users.id)).where(
+      and15(
+        inArray6(locations.id, locationIds),
+        or3(
+          eq26(storageBookings.checkoutStatus, "completed"),
+          eq26(storageBookings.checkoutStatus, "checkout_claim_filed")
+        )
+      )
+    ).orderBy(desc12(storageBookings.checkoutApprovedAt)).limit(limit);
+    return results.map((r) => {
+      const endDate = new Date(r.endDate);
+      const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1e3 * 60 * 60 * 24));
+      return {
+        storageBookingId: r.storageBookingId,
+        storageListingId: r.storageListingId,
+        storageName: r.storageName || "Storage",
+        storageType: r.storageType || "dry",
+        kitchenId: r.kitchenId,
+        kitchenName: r.kitchenName || "Kitchen",
+        locationId: r.locationId,
+        locationName: r.locationName || "Location",
+        chefId: r.chefId,
+        chefEmail: r.chefEmail,
+        chefName: r.chefEmail,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        totalPrice: r.totalPrice,
+        checkoutStatus: r.checkoutStatus,
+        checkoutRequestedAt: r.checkoutRequestedAt,
+        checkoutApprovedAt: r.checkoutApprovedAt,
+        checkoutNotes: r.checkoutNotes,
+        checkoutPhotoUrls: r.checkoutPhotoUrls || [],
+        daysUntilEnd,
+        isOverdue: daysUntilEnd < 0,
+        reviewDeadline: null,
+        isReviewExpired: false
+      };
+    });
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error getting checkout history:`, error);
+    return [];
+  }
+}
+async function getCheckoutStatus(storageBookingId) {
+  try {
+    const [booking] = await db.select({
+      checkoutStatus: storageBookings.checkoutStatus,
+      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
+      checkoutApprovedAt: storageBookings.checkoutApprovedAt,
+      checkoutPhotoUrls: storageBookings.checkoutPhotoUrls,
+      checkoutNotes: storageBookings.checkoutNotes
+    }).from(storageBookings).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+    if (!booking) {
+      return null;
+    }
+    const { getStorageCheckoutSettings: getStorageCheckoutSettings2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
+    const settings = await getStorageCheckoutSettings2();
+    const now = /* @__PURE__ */ new Date();
+    const reviewDeadline = booking.checkoutRequestedAt ? new Date(booking.checkoutRequestedAt.getTime() + settings.reviewWindowHours * 60 * 60 * 1e3) : null;
+    const isReviewExpired = reviewDeadline ? now > reviewDeadline : false;
+    const extendedClaimDeadline = booking.checkoutRequestedAt ? new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1e3) : null;
+    const canFileExtendedClaim = extendedClaimDeadline ? now <= extendedClaimDeadline : false;
+    return {
+      checkoutStatus: booking.checkoutStatus,
+      checkoutRequestedAt: booking.checkoutRequestedAt,
+      checkoutApprovedAt: booking.checkoutApprovedAt,
+      checkoutPhotoUrls: booking.checkoutPhotoUrls || [],
+      checkoutNotes: booking.checkoutNotes,
+      reviewDeadline,
+      isReviewExpired,
+      extendedClaimDeadline,
+      canFileExtendedClaim
+    };
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error getting checkout status:`, error);
+    return null;
   }
 }
 async function isCheckoutInProgress(storageBookingId) {
@@ -20591,7 +20898,7 @@ async function isCheckoutInProgress(storageBookingId) {
       return false;
     }
     const status = booking.checkoutStatus;
-    return status === "checkout_requested" || status === "checkout_approved" || status === "completed";
+    return status === "checkout_requested" || status === "checkout_approved" || status === "completed" || status === "checkout_claim_filed";
   } catch (error) {
     logger.error(`[StorageCheckout] Error checking checkout status:`, error);
     return false;
@@ -21649,6 +21956,27 @@ var init_manager = __esm({
             } else if (stripeStatus.detailsSubmitted) {
               status = "pending";
             }
+            const reqs = stripeStatus.requirements;
+            let verificationStage = "incomplete";
+            if (stripeStatus.chargesEnabled && stripeStatus.payoutsEnabled) {
+              verificationStage = "complete";
+            } else if (reqs.disabledReason?.includes("rejected")) {
+              verificationStage = "rejected";
+            } else if (reqs.pastDue.length > 0) {
+              verificationStage = "past_due";
+            } else if (reqs.pendingVerification.length > 0 && stripeStatus.detailsSubmitted) {
+              verificationStage = "pending_verification";
+            } else if (stripeStatus.detailsSubmitted && reqs.currentlyDue.length > 0) {
+              verificationStage = "requires_additional_info";
+            } else if (stripeStatus.chargesEnabled && !stripeStatus.payoutsEnabled) {
+              verificationStage = "payouts_disabled";
+            } else if (!stripeStatus.chargesEnabled && stripeStatus.payoutsEnabled) {
+              verificationStage = "charges_disabled";
+            } else if (!stripeStatus.detailsSubmitted && reqs.currentlyDue.length > 0) {
+              verificationStage = "details_needed";
+            } else if (stripeStatus.detailsSubmitted) {
+              verificationStage = "pending_verification";
+            }
             const dbStatus = manager.stripeConnectOnboardingStatus;
             if (status === "complete" && dbStatus !== "complete" || status !== "complete" && dbStatus === "complete") {
               await db.update(users).set({
@@ -21662,7 +21990,14 @@ var init_manager = __esm({
               payoutsEnabled: stripeStatus.payoutsEnabled,
               chargesEnabled: stripeStatus.chargesEnabled,
               detailsSubmitted: stripeStatus.detailsSubmitted,
-              status
+              status,
+              verificationStage,
+              requirements: {
+                currentlyDue: reqs.currentlyDue,
+                pastDue: reqs.pastDue,
+                pendingVerification: reqs.pendingVerification,
+                currentDeadline: reqs.currentDeadline
+              }
             });
           } catch (stripeError) {
             console.error("Error fetching Stripe account status:", stripeError);
@@ -22950,6 +23285,26 @@ var init_manager = __esm({
                 rejectedStorageIds: Array.from(rejectedStorageIds),
                 rejectedEquipmentIds: Array.from(rejectedEquipmentIds)
               });
+              if (isPartialCapture) {
+                try {
+                  const ptRecordPreCapture = await findPaymentTransactionByIntentId2(bookingPaymentIntentId, db);
+                  if (ptRecordPreCapture) {
+                    const existingMeta = ptRecordPreCapture.metadata ? typeof ptRecordPreCapture.metadata === "string" ? JSON.parse(ptRecordPreCapture.metadata) : ptRecordPreCapture.metadata : {};
+                    await updatePaymentTransaction2(ptRecordPreCapture.id, {
+                      metadata: {
+                        ...existingMeta,
+                        partialCapture: true,
+                        approvedSubtotal: approvedSubtotalCents,
+                        approvedTax: approvedTaxCents,
+                        taxRatePercent
+                      }
+                    }, db);
+                    logger.info(`[Manager] Pre-set partialCapture metadata on PT ${ptRecordPreCapture.id} BEFORE stripe.capture()`);
+                  }
+                } catch (preCapErr) {
+                  logger.warn(`[Manager] Could not pre-set PT metadata (non-fatal, will retry in Step 9):`, preCapErr);
+                }
+              }
               const captureResult = isPartialCapture ? await capturePaymentIntent2(bookingPaymentIntentId, captureAmountCents, newApplicationFeeCents) : await capturePaymentIntent2(bookingPaymentIntentId);
               logger.info(`[Manager] AUTH-THEN-CAPTURE: ${isPartialCapture ? "Partial" : "Full"} capture for booking ${id}`, {
                 paymentIntentId: bookingPaymentIntentId,
@@ -22958,11 +23313,11 @@ var init_manager = __esm({
               });
               const currentStorageItems = booking.storageItems || [];
               const currentEquipmentItems = booking.equipmentItems || [];
-              const updatedStorageItems = currentStorageItems.filter(
-                (item) => !rejectedStorageIds.has(item.id)
+              const updatedStorageItems = currentStorageItems.map(
+                (item) => rejectedStorageIds.has(item.id) ? { ...item, rejected: true } : item
               );
-              const updatedEquipmentItems = currentEquipmentItems.filter(
-                (item) => !rejectedEquipmentIds.has(item.id)
+              const updatedEquipmentItems = currentEquipmentItems.map(
+                (item) => rejectedEquipmentIds.has(item.id) ? { ...item, rejected: true } : item
               );
               await db.update(kitchenBookings).set({
                 paymentStatus: "paid",
@@ -22971,7 +23326,7 @@ var init_manager = __esm({
                 equipmentItems: updatedEquipmentItems,
                 updatedAt: /* @__PURE__ */ new Date()
               }).where(eq27(kitchenBookings.id, id));
-              logger.info(`[Manager] Updated kb: total_price=${approvedSubtotalCents} (approved subtotal), removed ${rejectedStorageIds.size} rejected storage + ${rejectedEquipmentIds.size} rejected equipment from JSONB`);
+              logger.info(`[Manager] Updated kb: total_price=${approvedSubtotalCents} (approved subtotal), marked ${rejectedStorageIds.size} rejected storage + ${rejectedEquipmentIds.size} rejected equipment in JSONB`);
               for (const sb of assocStorage || []) {
                 if (rejectedStorageIds.has(sb.id)) {
                   await db.update(storageBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(storageBookings.id, sb.id));
@@ -23243,6 +23598,15 @@ var init_manager = __esm({
                   }
                   for (const rejectedId of rejectedEquipmentIds) {
                     await db.update(equipmentBookings).set({ paymentStatus: "refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(equipmentBookings.id, rejectedId));
+                  }
+                  if (rejectedStorageIds.length > 0 || rejectedEquipmentIds.length > 0) {
+                    const rejStorageSet = new Set(rejectedStorageIds);
+                    const rejEquipSet = new Set(rejectedEquipmentIds);
+                    const curStorage = booking.storageItems || [];
+                    const curEquip = booking.equipmentItems || [];
+                    const markedStorage = curStorage.map((item) => rejStorageSet.has(item.id) ? { ...item, rejected: true } : item);
+                    const markedEquip = curEquip.map((item) => rejEquipSet.has(item.id) ? { ...item, rejected: true } : item);
+                    await db.update(kitchenBookings).set({ storageItems: markedStorage, equipmentItems: markedEquip, updatedAt: /* @__PURE__ */ new Date() }).where(eq27(kitchenBookings.id, id));
                   }
                 }
               }
@@ -24990,7 +25354,7 @@ var init_manager = __esm({
           const result = await processCheckoutApproval2(
             storageBookingId,
             managerId,
-            "approve",
+            "clear",
             managerNotes
           );
           if (!result.success) {
@@ -24998,12 +25362,96 @@ var init_manager = __esm({
           }
           res.json({
             success: true,
-            message: "Checkout approved successfully. The storage booking has been completed.",
+            message: "Storage cleared \u2014 no issues found. Booking completed.",
             storageBookingId: result.storageBookingId,
             checkoutStatus: result.checkoutStatus
           });
         } catch (error) {
-          logger.error("Error approving checkout:", error);
+          logger.error("Error clearing checkout:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router14.post(
+      "/storage-bookings/:id/clear-checkout",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const storageBookingId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          const { managerNotes } = req.body;
+          if (isNaN(storageBookingId)) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+          }
+          const { processCheckoutApproval: processCheckoutApproval2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
+          const result = await processCheckoutApproval2(
+            storageBookingId,
+            managerId,
+            "clear",
+            managerNotes
+          );
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.json({
+            success: true,
+            message: "Storage cleared \u2014 no issues found. Booking completed.",
+            storageBookingId: result.storageBookingId,
+            checkoutStatus: result.checkoutStatus
+          });
+        } catch (error) {
+          logger.error("Error clearing checkout:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router14.post(
+      "/storage-bookings/:id/start-claim",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const storageBookingId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          const { claimTitle, claimDescription, claimedAmountCents, damageDate, managerNotes } = req.body;
+          if (isNaN(storageBookingId)) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+          }
+          if (!claimTitle || typeof claimTitle !== "string" || claimTitle.trim().length < 5) {
+            return res.status(400).json({ error: "Claim title must be at least 5 characters" });
+          }
+          if (!claimDescription || typeof claimDescription !== "string" || claimDescription.trim().length < 50) {
+            return res.status(400).json({ error: "Claim description must be at least 50 characters" });
+          }
+          if (!claimedAmountCents || typeof claimedAmountCents !== "number" || claimedAmountCents <= 0) {
+            return res.status(400).json({ error: "Claimed amount must be a positive number (in cents)" });
+          }
+          const { processCheckoutApproval: processCheckoutApproval2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
+          const result = await processCheckoutApproval2(
+            storageBookingId,
+            managerId,
+            "start_claim",
+            managerNotes,
+            {
+              claimTitle: claimTitle.trim(),
+              claimDescription: claimDescription.trim(),
+              claimedAmountCents,
+              damageDate
+            }
+          );
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.json({
+            success: true,
+            message: "Damage/cleaning claim started. The chef will be notified.",
+            storageBookingId: result.storageBookingId,
+            checkoutStatus: result.checkoutStatus,
+            damageClaimId: result.damageClaimId
+          });
+        } catch (error) {
+          logger.error("Error starting checkout claim:", error);
           return errorResponse(res, error);
         }
       }
@@ -25016,32 +25464,30 @@ var init_manager = __esm({
         try {
           const storageBookingId = parseInt(req.params.id);
           const managerId = req.neonUser.id;
-          const { denialReason, managerNotes } = req.body;
+          const { managerNotes } = req.body;
           if (isNaN(storageBookingId)) {
             return res.status(400).json({ error: "Invalid storage booking ID" });
           }
-          if (!denialReason || typeof denialReason !== "string" || denialReason.trim().length === 0) {
-            return res.status(400).json({ error: "Denial reason is required" });
-          }
+          logger.warn(`[StorageCheckout] Deprecated deny-checkout called for booking ${storageBookingId}. Use clear-checkout or start-claim instead.`);
           const { processCheckoutApproval: processCheckoutApproval2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
           const result = await processCheckoutApproval2(
             storageBookingId,
             managerId,
             "deny",
-            managerNotes,
-            denialReason.trim()
+            managerNotes
           );
           if (!result.success) {
             return res.status(400).json({ error: result.error });
           }
           res.json({
             success: true,
-            message: "Checkout denied. The chef has been notified to address the issues.",
+            message: "DEPRECATED: Deny is no longer supported. Storage has been cleared instead. Use /clear-checkout or /start-claim.",
             storageBookingId: result.storageBookingId,
-            checkoutStatus: result.checkoutStatus
+            checkoutStatus: result.checkoutStatus,
+            deprecated: true
           });
         } catch (error) {
-          logger.error("Error denying checkout:", error);
+          logger.error("Error processing legacy deny-checkout:", error);
           return errorResponse(res, error);
         }
       }
@@ -25293,6 +25739,66 @@ var init_manager = __esm({
               eq27(storageBookings.status, "confirmed")
             )
           ).orderBy(desc13(storageBookings.endDate)).limit(50);
+          const kitchenBookingIds = recentKitchenBookings.map((b) => b.id);
+          const equipmentMap = /* @__PURE__ */ new Map();
+          if (kitchenBookingIds.length > 0) {
+            const rentedEquipment = await db.select({
+              kitchenBookingId: equipmentBookings.kitchenBookingId,
+              equipmentBookingId: equipmentBookings.id,
+              equipmentListingId: equipmentBookings.equipmentListingId,
+              equipmentType: equipmentListings.equipmentType,
+              brand: equipmentListings.brand,
+              availabilityType: equipmentListings.availabilityType,
+              status: equipmentBookings.status
+            }).from(equipmentBookings).innerJoin(equipmentListings, eq27(equipmentBookings.equipmentListingId, equipmentListings.id)).where(
+              sql12`${equipmentBookings.kitchenBookingId} IN (${sql12.join(kitchenBookingIds.map((id) => sql12`${id}`), sql12`, `)})`
+            );
+            for (const eq_item of rentedEquipment) {
+              const list = equipmentMap.get(eq_item.kitchenBookingId) || [];
+              list.push({
+                equipmentBookingId: eq_item.equipmentBookingId,
+                equipmentListingId: eq_item.equipmentListingId,
+                equipmentType: eq_item.equipmentType,
+                brand: eq_item.brand,
+                availabilityType: eq_item.availabilityType,
+                status: eq_item.status
+              });
+              equipmentMap.set(eq_item.kitchenBookingId, list);
+            }
+            const kitchenIds = Array.from(new Set(recentKitchenBookings.map((b) => b.kitchenId)));
+            if (kitchenIds.length > 0) {
+              const includedEquipment = await db.select({
+                kitchenId: equipmentListings.kitchenId,
+                equipmentListingId: equipmentListings.id,
+                equipmentType: equipmentListings.equipmentType,
+                brand: equipmentListings.brand,
+                availabilityType: equipmentListings.availabilityType
+              }).from(equipmentListings).where(
+                and16(
+                  sql12`${equipmentListings.kitchenId} IN (${sql12.join(kitchenIds.map((id) => sql12`${id}`), sql12`, `)})`,
+                  eq27(equipmentListings.availabilityType, "included"),
+                  eq27(equipmentListings.isActive, true)
+                )
+              );
+              for (const kb of recentKitchenBookings) {
+                const list = equipmentMap.get(kb.id) || [];
+                const kitchenIncluded = includedEquipment.filter((ie) => ie.kitchenId === kb.kitchenId);
+                for (const ie of kitchenIncluded) {
+                  if (!list.some((e) => e.equipmentListingId === ie.equipmentListingId)) {
+                    list.push({
+                      equipmentBookingId: null,
+                      equipmentListingId: ie.equipmentListingId,
+                      equipmentType: ie.equipmentType,
+                      brand: ie.brand,
+                      availabilityType: ie.availabilityType,
+                      status: "confirmed"
+                    });
+                  }
+                }
+                equipmentMap.set(kb.id, list);
+              }
+            }
+          }
           const bookings = [
             ...recentKitchenBookings.map((b) => ({
               id: b.id,
@@ -25304,7 +25810,8 @@ var init_manager = __esm({
               startDate: b.bookingDate,
               endDate: b.bookingDate,
               status: b.status,
-              label: `Kitchen #${b.id} - ${b.chefName} @ ${b.kitchenName} (${format4(new Date(b.bookingDate), "MMM d")})`
+              label: `Kitchen #${b.id} - ${b.chefName} @ ${b.kitchenName} (${format4(new Date(b.bookingDate), "MMM d")})`,
+              equipment: equipmentMap.get(b.id) || []
             })),
             ...recentStorageBookings.map((b) => ({
               id: b.id,
@@ -25316,7 +25823,8 @@ var init_manager = __esm({
               startDate: b.startDate,
               endDate: b.endDate,
               status: b.status,
-              label: `Storage #${b.id} - ${b.chefName} @ ${b.locationName} (${format4(new Date(b.endDate), "MMM d")})`
+              label: `Storage #${b.id} - ${b.chefName} @ ${b.locationName} (${format4(new Date(b.endDate), "MMM d")})`,
+              equipment: []
             }))
           ].sort(
             (a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
@@ -25383,7 +25891,9 @@ var init_manager = __esm({
             claimTitle,
             claimDescription,
             damageDate,
-            claimedAmountCents
+            claimedAmountCents,
+            damagedItems,
+            submitImmediately
           } = req.body;
           if (!bookingType || !["kitchen", "storage"].includes(bookingType)) {
             return res.status(400).json({ error: "Invalid booking type" });
@@ -25408,7 +25918,9 @@ var init_manager = __esm({
             claimTitle,
             claimDescription,
             damageDate,
-            claimedAmountCents
+            claimedAmountCents,
+            damagedItems: Array.isArray(damagedItems) ? damagedItems : void 0,
+            submitImmediately: submitImmediately === true
           });
           if (!result.success) {
             return res.status(400).json({ error: result.error });
@@ -26588,7 +27100,7 @@ var init_kitchens = __esm({
 });
 
 // server/services/auth-expiry-service.ts
-import { eq as eq31, and as and19, lt as lt3, sql as sql15 } from "drizzle-orm";
+import { eq as eq31, and as and19, lt as lt4, sql as sql15 } from "drizzle-orm";
 async function processExpiredAuthorizations() {
   const results = [];
   const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1e3);
@@ -26604,7 +27116,7 @@ async function processExpiredAuthorizations() {
       and19(
         eq31(kitchenBookings.paymentStatus, "authorized"),
         eq31(kitchenBookings.status, "pending"),
-        lt3(kitchenBookings.createdAt, cutoffTime)
+        lt4(kitchenBookings.createdAt, cutoffTime)
       )
     );
     logger.info(`[AuthExpiry] Found ${expiredBookings.length} expired kitchen booking authorizations`);
@@ -26689,7 +27201,7 @@ async function processExpiredAuthorizations() {
     }).from(pendingStorageExtensions).where(
       and19(
         eq31(pendingStorageExtensions.status, "authorized"),
-        lt3(pendingStorageExtensions.createdAt, cutoffTime)
+        lt4(pendingStorageExtensions.createdAt, cutoffTime)
       )
     );
     logger.info(`[AuthExpiry] Found ${expiredExtensions.length} expired storage extension authorizations`);
@@ -27130,7 +27642,7 @@ __export(bookings_exports, {
   default: () => bookings_default
 });
 import { Router as Router18 } from "express";
-import { eq as eq32, and as and20 } from "drizzle-orm";
+import { eq as eq32, and as and20, desc as desc17 } from "drizzle-orm";
 function getBaseUrl(req) {
   const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5001";
   const isLocalhost = host.includes("localhost") || host.includes("127.0.0.1");
@@ -27315,10 +27827,19 @@ var init_bookings = __esm({
           storageExtensions: authExpiryResults.filter((r) => r.type === "storage_extension").length
         };
         console.log("[Cron] Expired authorizations processing complete:", authExpirySummary);
+        console.log("[Cron] Task 4: Auto-clearing expired storage checkout reviews...");
+        const { processExpiredCheckoutReviews: processExpiredCheckoutReviews2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
+        const checkoutAutoClearResults = await processExpiredCheckoutReviews2();
+        const checkoutAutoClearSummary = {
+          processed: checkoutAutoClearResults.processed,
+          cleared: checkoutAutoClearResults.cleared,
+          errors: checkoutAutoClearResults.errors
+        };
+        console.log("[Cron] Storage checkout auto-clear complete:", checkoutAutoClearSummary);
         console.log("[Cron] All daily scheduled tasks complete");
         res.json({
           success: true,
-          message: `Daily tasks complete: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed, ${authExpiryResults.length} expired authorizations cancelled`,
+          message: `Daily tasks complete: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed, ${authExpiryResults.length} expired authorizations cancelled, ${checkoutAutoClearResults.cleared} checkout reviews auto-cleared`,
           overstays: {
             summary: overstaySummary,
             results: overstayResults.map((r) => ({
@@ -27343,6 +27864,9 @@ var init_bookings = __esm({
               action: r.action,
               error: r.error
             }))
+          },
+          checkoutAutoClear: {
+            summary: checkoutAutoClearSummary
           }
         });
       } catch (error) {
@@ -27579,7 +28103,7 @@ var init_bookings = __esm({
           storageName: storageListings3.name,
           storageType: storageListings3.storageType,
           kitchenName: kitchens.name
-        }).from(pendingStorageExtensions2).innerJoin(storageBookings2, eq32(pendingStorageExtensions2.storageBookingId, storageBookings2.id)).innerJoin(storageListings3, eq32(storageBookings2.storageListingId, storageListings3.id)).innerJoin(kitchens, eq32(storageListings3.kitchenId, kitchens.id)).where(eq32(storageBookings2.chefId, chefId)).orderBy(pendingStorageExtensions2.createdAt);
+        }).from(pendingStorageExtensions2).innerJoin(storageBookings2, eq32(pendingStorageExtensions2.storageBookingId, storageBookings2.id)).innerJoin(storageListings3, eq32(storageBookings2.storageListingId, storageListings3.id)).innerJoin(kitchens, eq32(storageListings3.kitchenId, kitchens.id)).where(eq32(storageBookings2.chefId, chefId)).orderBy(desc17(pendingStorageExtensions2.createdAt));
         res.json(extensions);
       } catch (error) {
         console.error("Error fetching chef's pending storage extensions:", error);
@@ -31373,6 +31897,68 @@ var init_admin = __esm({
         res.status(500).json({ error: "Failed to update damage claim limits" });
       }
     });
+    router21.get("/storage-checkout-settings", requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
+      try {
+        const settings = await damageClaimLimitsService.getStorageCheckoutSettings();
+        const defaults = damageClaimLimitsService.getDefaultStorageCheckoutSettings();
+        res.json({ settings, defaults });
+      } catch (error) {
+        console.error("Error fetching storage checkout settings:", error);
+        res.status(500).json({ error: "Failed to fetch storage checkout settings" });
+      }
+    });
+    router21.put("/storage-checkout-settings", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const { reviewWindowHours, extendedClaimWindowHours } = req.body;
+        const updates = [];
+        if (reviewWindowHours !== void 0) {
+          if (reviewWindowHours < 1 || reviewWindowHours > 24) {
+            return res.status(400).json({ error: "Review window must be between 1 and 24 hours" });
+          }
+          updates.push({
+            key: "storage_checkout_review_window_hours",
+            value: String(reviewWindowHours),
+            description: "Hours manager has to review storage after chef checkout before auto-clear"
+          });
+        }
+        if (extendedClaimWindowHours !== void 0) {
+          if (extendedClaimWindowHours < 2 || extendedClaimWindowHours > 168) {
+            return res.status(400).json({ error: "Extended claim window must be between 2 and 168 hours (7 days)" });
+          }
+          updates.push({
+            key: "storage_checkout_extended_claim_window_hours",
+            value: String(extendedClaimWindowHours),
+            description: "Extended hours after checkout during which manager/admin can still file damage claims for serious issues"
+          });
+        }
+        if (updates.length === 0) {
+          return res.status(400).json({ error: "No valid updates provided" });
+        }
+        for (const update of updates) {
+          await db.insert(platformSettings).values({
+            key: update.key,
+            value: update.value,
+            description: update.description
+          }).onConflictDoUpdate({
+            target: platformSettings.key,
+            set: {
+              value: update.value,
+              updatedAt: /* @__PURE__ */ new Date()
+            }
+          });
+        }
+        const newSettings = await damageClaimLimitsService.getStorageCheckoutSettings();
+        console.log("[Admin] Updated storage checkout settings:", newSettings);
+        res.json({
+          success: true,
+          message: `Updated ${updates.length} storage checkout setting(s)`,
+          settings: newSettings
+        });
+      } catch (error) {
+        console.error("Error updating storage checkout settings:", error);
+        res.status(500).json({ error: "Failed to update storage checkout settings" });
+      }
+    });
     router21.get("/damage-claims", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const claims = await damageClaimService.getDisputedClaims();
@@ -31911,8 +32497,8 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
         }
         const storageItemsForJson = [];
         if (selectedStorage && selectedStorage.length > 0) {
-          try {
-            for (const storage of selectedStorage) {
+          for (const storage of selectedStorage) {
+            try {
               const [storageListing] = await db.select().from(storageListings).where(eq34(storageListings.id, storage.storageListingId)).limit(1);
               if (storageListing) {
                 const basePriceCents = storageListing.basePrice ? Math.round(parseFloat(String(storageListing.basePrice))) : 0;
@@ -31959,16 +32545,16 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
                   });
                 }
               }
+            } catch (storageItemError) {
+              logger.error(`[Webhook] Error creating storage booking for listing ${storage.storageListingId}:`, storageItemError);
             }
-            logger.info(`[Webhook] Created ${storageItemsForJson.length} storage bookings for booking ${booking.id}`);
-          } catch (storageError) {
-            logger.error(`[Webhook] Error creating storage bookings:`, storageError);
           }
+          logger.info(`[Webhook] Created ${storageItemsForJson.length}/${selectedStorage.length} storage bookings for booking ${booking.id}`);
         }
         const equipmentItemsForJson = [];
         if (selectedEquipmentIds && selectedEquipmentIds.length > 0) {
-          try {
-            for (const equipmentListingId of selectedEquipmentIds) {
+          for (const equipmentListingId of selectedEquipmentIds) {
+            try {
               const [equipmentListing] = await db.select().from(equipmentListings).where(eq34(equipmentListings.id, equipmentListingId)).limit(1);
               if (equipmentListing && equipmentListing.availabilityType !== "included") {
                 const sessionRateCents = equipmentListing.sessionRate ? Math.round(parseFloat(String(equipmentListing.sessionRate))) : 0;
@@ -31999,11 +32585,11 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
                   });
                 }
               }
+            } catch (equipmentItemError) {
+              logger.error(`[Webhook] Error creating equipment booking for listing ${equipmentListingId}:`, equipmentItemError);
             }
-            logger.info(`[Webhook] Created ${equipmentItemsForJson.length} equipment bookings for booking ${booking.id}`);
-          } catch (equipmentError) {
-            logger.error(`[Webhook] Error creating equipment bookings:`, equipmentError);
           }
+          logger.info(`[Webhook] Created ${equipmentItemsForJson.length}/${selectedEquipmentIds.length} equipment bookings for booking ${booking.id}`);
         }
         if (storageItemsForJson.length > 0 || equipmentItemsForJson.length > 0) {
           try {
@@ -33805,7 +34391,7 @@ __export(portal_exports, {
   default: () => portal_default
 });
 import { Router as Router24 } from "express";
-import { eq as eq36, desc as desc17 } from "drizzle-orm";
+import { eq as eq36, desc as desc18 } from "drizzle-orm";
 var router24, portal_default;
 var init_portal = __esm({
   "server/routes/portal.ts"() {
@@ -33830,7 +34416,7 @@ var init_portal = __esm({
             status: "approved"
           });
         }
-        const applications4 = await db.select().from(portalUserApplications).where(eq36(portalUserApplications.userId, user.id)).orderBy(desc17(portalUserApplications.createdAt)).limit(1);
+        const applications4 = await db.select().from(portalUserApplications).where(eq36(portalUserApplications.userId, user.id)).orderBy(desc18(portalUserApplications.createdAt)).limit(1);
         if (applications4.length > 0) {
           const app2 = applications4[0];
           return res.json({
@@ -34141,7 +34727,7 @@ __export(chef_exports, {
 });
 import { Router as Router25 } from "express";
 import { sql as sql18, eq as eq37 } from "drizzle-orm";
-import { and as and23, desc as desc18 } from "drizzle-orm";
+import { and as and23, desc as desc19 } from "drizzle-orm";
 var router25, chef_default;
 var init_chef = __esm({
   "server/routes/chef.ts"() {
@@ -34375,7 +34961,7 @@ var init_chef = __esm({
           eq37(paymentTransactions.bookingId, storageBookingId),
           eq37(paymentTransactions.bookingType, "storage"),
           eq37(paymentTransactions.status, "succeeded")
-        )).orderBy(desc18(paymentTransactions.createdAt)).limit(1);
+        )).orderBy(desc19(paymentTransactions.createdAt)).limit(1);
         if (!transaction) {
           return res.status(404).json({ error: "No payment found for this storage booking" });
         }
@@ -34504,7 +35090,7 @@ var init_chef = __esm({
           eq37(paymentTransactions.bookingId, overstayRecord.storageBookingId),
           eq37(paymentTransactions.bookingType, "storage"),
           eq37(paymentTransactions.status, "succeeded")
-        )).orderBy(desc18(paymentTransactions.createdAt)).limit(1);
+        )).orderBy(desc19(paymentTransactions.createdAt)).limit(1);
         if (!transaction) {
           return res.status(404).json({ error: "No payment found for this overstay penalty" });
         }

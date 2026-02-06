@@ -731,7 +731,7 @@ export default function BookingConfirmationPage() {
                       </div>
                     )}
 
-                    {/* Combined Subtotal & Single Service Fee */}
+                    {/* Combined Subtotal & Tax */}
                     {combinedSubtotal > 0 && (
                       <div className="bg-white p-3 rounded-lg border-2 border-gray-300">
                         <div className="space-y-2 text-sm">

@@ -666,8 +666,8 @@ async function handleCheckoutSessionCompleted(
         // Create storage bookings if any were selected
         const storageItemsForJson: Array<{id: number, storageListingId: number, name: string, storageType: string, totalPrice: number, startDate: string, endDate: string}> = [];
         if (selectedStorage && selectedStorage.length > 0) {
-          try {
-            for (const storage of selectedStorage) {
+          for (const storage of selectedStorage) {
+            try {
               const [storageListing] = await db
                 .select()
                 .from(storageListings)
@@ -730,18 +730,18 @@ async function handleCheckoutSessionCompleted(
                   });
                 }
               }
+            } catch (storageItemError) {
+              logger.error(`[Webhook] Error creating storage booking for listing ${storage.storageListingId}:`, storageItemError as Error);
             }
-            logger.info(`[Webhook] Created ${storageItemsForJson.length} storage bookings for booking ${booking.id}`);
-          } catch (storageError) {
-            logger.error(`[Webhook] Error creating storage bookings:`, storageError as Error);
           }
+          logger.info(`[Webhook] Created ${storageItemsForJson.length}/${selectedStorage.length} storage bookings for booking ${booking.id}`);
         }
 
         // Create equipment bookings if any were selected
         const equipmentItemsForJson: Array<{id: number, equipmentListingId: number, name: string, totalPrice: number}> = [];
         if (selectedEquipmentIds && selectedEquipmentIds.length > 0) {
-          try {
-            for (const equipmentListingId of selectedEquipmentIds) {
+          for (const equipmentListingId of selectedEquipmentIds) {
+            try {
               const [equipmentListing] = await db
                 .select()
                 .from(equipmentListings)
@@ -779,11 +779,11 @@ async function handleCheckoutSessionCompleted(
                   });
                 }
               }
+            } catch (equipmentItemError) {
+              logger.error(`[Webhook] Error creating equipment booking for listing ${equipmentListingId}:`, equipmentItemError as Error);
             }
-            logger.info(`[Webhook] Created ${equipmentItemsForJson.length} equipment bookings for booking ${booking.id}`);
-          } catch (equipmentError) {
-            logger.error(`[Webhook] Error creating equipment bookings:`, equipmentError as Error);
           }
+          logger.info(`[Webhook] Created ${equipmentItemsForJson.length}/${selectedEquipmentIds.length} equipment bookings for booking ${booking.id}`);
         }
 
         // Update booking with storage and equipment items JSONB

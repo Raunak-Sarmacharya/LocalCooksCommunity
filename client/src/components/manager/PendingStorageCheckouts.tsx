@@ -1,13 +1,12 @@
 /**
  * Pending Storage Checkouts Component
  * 
- * Manager view for reviewing and approving/denying storage checkout requests.
- * Uses TanStack Table for enterprise-grade table display.
- * Part of the hybrid verification system:
+ * Manager view for reviewing storage checkout requests.
+ * Industry-standard clear/claim flow (Airbnb/Turo model):
  * 1. Chef initiates checkout with photos
- * 2. Manager reviews photos and verifies (this component)
- * 3. Manager approves or denies with reason
- * 4. Prevents unwarranted overstay penalties
+ * 2. Manager reviews photos and inspects storage (this component)
+ * 3. Manager either clears (no issues) or files a damage/cleaning claim
+ * 4. Auto-clears if manager takes no action within review window
  */
 
 import { useState, useMemo } from "react";
@@ -22,11 +21,9 @@ import {
 } from "@tanstack/react-table";
 import { 
   CheckCircle, 
-  XCircle, 
   Clock, 
   Package, 
   User, 
-  Calendar,
   Image,
   Loader2,
   AlertTriangle,
@@ -35,14 +32,20 @@ import {
   MapPin,
   Eye,
   RefreshCw,
+  ShieldCheck,
+  FileWarning,
+  Timer,
+  DollarSign,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -74,8 +77,10 @@ import {
 } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, isPast } from "date-fns";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface PendingCheckout {
   storageBookingId: number;
@@ -95,13 +100,29 @@ interface PendingCheckout {
   checkoutStatus: string;
   checkoutRequestedAt: string | null;
   checkoutApprovedAt?: string | null;
-  checkoutDeniedAt?: string | null;
-  checkoutDenialReason?: string | null;
   checkoutNotes: string | null;
   checkoutPhotoUrls: string[];
   daysUntilEnd: number;
   isOverdue: boolean;
+  reviewDeadline: string | null;
+  isReviewExpired: boolean;
 }
+
+interface ClaimFormData {
+  claimTitle: string;
+  claimDescription: string;
+  claimedAmountCents: number | '';
+  damageDate: string;
+  managerNotes: string;
+}
+
+const INITIAL_CLAIM_FORM: ClaimFormData = {
+  claimTitle: '',
+  claimDescription: '',
+  claimedAmountCents: '',
+  damageDate: new Date().toISOString().split('T')[0],
+  managerNotes: '',
+};
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   const currentUser = auth.currentUser;
@@ -115,21 +136,56 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   return { 'Content-Type': 'application/json' };
 }
 
-// Column definitions for pending checkouts table
+// ─── Review Deadline Badge ────────────────────────────────────────────────────
+
+function ReviewDeadlineBadge({ deadline, isExpired }: { deadline: string | null; isExpired: boolean }) {
+  if (!deadline) return <span className="text-muted-foreground text-xs">—</span>;
+
+  const deadlineDate = new Date(deadline);
+  const now = Date.now();
+  const isUrgent = !isExpired && !isPast(deadlineDate) && (deadlineDate.getTime() - now) < 30 * 60 * 1000; // < 30min
+
+  if (isExpired || isPast(deadlineDate)) {
+    return (
+      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs font-normal">
+        <Timer className="h-3 w-3 mr-1" />
+        Auto-clearing soon
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "text-xs font-normal",
+        isUrgent
+          ? "bg-red-50 text-red-700 border-red-200"
+          : "bg-blue-50 text-blue-700 border-blue-200"
+      )}
+    >
+      <Timer className="h-3 w-3 mr-1" />
+      {formatDistanceToNow(deadlineDate, { addSuffix: false })} left
+    </Badge>
+  );
+}
+
+// ─── Column Definitions ───────────────────────────────────────────────────────
+
 type ViewType = "pending" | "history";
 
 interface CheckoutColumnsProps {
-  onApprove: (checkout: PendingCheckout) => void;
-  onDeny: (checkout: PendingCheckout) => void;
+  onClear: (checkout: PendingCheckout) => void;
+  onFileClaim: (checkout: PendingCheckout) => void;
   onViewPhotos: (checkout: PendingCheckout, index: number) => void;
-  approvingId: number | null;
+  clearingId: number | null;
 }
 
 const getCheckoutColumns = ({
-  onApprove,
-  onDeny,
+  onClear,
+  onFileClaim,
   onViewPhotos,
-  approvingId,
+  clearingId,
 }: CheckoutColumnsProps): ColumnDef<PendingCheckout>[] => [
   {
     accessorKey: "storageName",
@@ -182,29 +238,6 @@ const getCheckoutColumns = ({
     },
   },
   {
-    accessorKey: "endDate",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="h-8 -ml-3"
-      >
-        End Date
-        <ArrowUpDown className="ml-2 h-3 w-3" />
-      </Button>
-    ),
-    cell: ({ row }) => {
-      const checkout = row.original;
-      return (
-        <div className="flex items-center text-sm">
-          <Calendar className="h-3 w-3 mr-2 text-muted-foreground" />
-          {format(new Date(checkout.endDate), 'MMM d, yyyy')}
-        </div>
-      );
-    },
-  },
-  {
     accessorKey: "checkoutRequestedAt",
     header: ({ column }) => (
       <Button
@@ -225,6 +258,19 @@ const getCheckoutColumns = ({
           <Clock className="h-3 w-3 mr-2" />
           {formatDistanceToNow(new Date(requestedAt), { addSuffix: true })}
         </div>
+      );
+    },
+  },
+  {
+    accessorKey: "reviewDeadline",
+    header: "Review Window",
+    cell: ({ row }) => {
+      const checkout = row.original;
+      return (
+        <ReviewDeadlineBadge
+          deadline={checkout.reviewDeadline}
+          isExpired={checkout.isReviewExpired}
+        />
       );
     },
   },
@@ -263,48 +309,69 @@ const getCheckoutColumns = ({
     header: "",
     cell: ({ row }) => {
       const checkout = row.original;
-      const isApproving = approvingId === checkout.storageBookingId;
+      const isClearing = clearingId === checkout.storageBookingId;
 
       return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onViewPhotos(checkout, 0)}>
-              <Eye className="h-4 w-4 mr-2" />
-              View Photos
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => onApprove(checkout)}
-              disabled={isApproving}
-              className="text-green-600 focus:text-green-600"
-            >
-              {isApproving ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <CheckCircle className="h-4 w-4 mr-2" />
-              )}
-              Approve Checkout
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => onDeny(checkout)}
-              className="text-destructive focus:text-destructive"
-            >
-              <XCircle className="h-4 w-4 mr-2" />
-              Deny Checkout
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-1.5">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-green-700 border-green-200 hover:bg-green-50 hover:text-green-800"
+                  onClick={() => onClear(checkout)}
+                  disabled={isClearing}
+                >
+                  {isClearing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                  )}
+                  <span className="ml-1.5 hidden lg:inline">Clear</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>No issues found — complete checkout</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onViewPhotos(checkout, 0)}>
+                <Eye className="h-4 w-4 mr-2" />
+                View Photos
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => onClear(checkout)}
+                disabled={isClearing}
+                className="text-green-600 focus:text-green-600"
+              >
+                <ShieldCheck className="h-4 w-4 mr-2" />
+                Clear Storage — No Issues
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onFileClaim(checkout)}
+                className="text-amber-600 focus:text-amber-600"
+              >
+                <FileWarning className="h-4 w-4 mr-2" />
+                File Damage / Cleaning Claim
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       );
     },
   },
 ];
 
-// History columns
+// ─── History Column Definitions ───────────────────────────────────────────────
+
 const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
   {
     accessorKey: "storageName",
@@ -344,21 +411,28 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
   },
   {
     accessorKey: "checkoutStatus",
-    header: "Status",
+    header: "Result",
     cell: ({ row }) => {
       const status = row.getValue("checkoutStatus") as string;
       if (status === 'completed') {
         return (
-          <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Approved
+          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+            <ShieldCheck className="h-3 w-3 mr-1" />
+            Cleared
+          </Badge>
+        );
+      }
+      if (status === 'checkout_claim_filed') {
+        return (
+          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+            <FileWarning className="h-3 w-3 mr-1" />
+            Claim Filed
           </Badge>
         );
       }
       return (
-        <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300">
-          <XCircle className="h-3 w-3 mr-1" />
-          Denied
+        <Badge variant="outline" className="capitalize">
+          {status}
         </Badge>
       );
     },
@@ -367,10 +441,7 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
     accessorKey: "checkoutApprovedAt",
     header: "Date",
     cell: ({ row }) => {
-      const checkout = row.original;
-      const date = checkout.checkoutStatus === 'completed' 
-        ? checkout.checkoutApprovedAt 
-        : checkout.checkoutDeniedAt;
+      const date = row.original.checkoutApprovedAt;
       if (!date) return <span className="text-muted-foreground text-xs">—</span>;
       return (
         <span className="text-sm text-muted-foreground">
@@ -380,21 +451,21 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
     },
   },
   {
-    accessorKey: "checkoutDenialReason",
-    header: "Reason",
+    accessorKey: "checkoutNotes",
+    header: "Notes",
     cell: ({ row }) => {
-      const reason = row.getValue("checkoutDenialReason") as string | null;
-      if (!reason) return <span className="text-muted-foreground text-xs">—</span>;
+      const notes = row.getValue("checkoutNotes") as string | null;
+      if (!notes) return <span className="text-muted-foreground text-xs">—</span>;
       return (
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-xs text-amber-700 cursor-help truncate max-w-[150px] block">
-                {reason}
+              <span className="text-xs text-muted-foreground cursor-help truncate max-w-[200px] block">
+                {notes}
               </span>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
-              <p className="text-sm">{reason}</p>
+              <p className="text-sm">{notes}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -403,16 +474,23 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
   },
 ];
 
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 export function PendingStorageCheckouts() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedCheckout, setSelectedCheckout] = useState<PendingCheckout | null>(null);
-  const [denyDialogOpen, setDenyDialogOpen] = useState(false);
-  const [denialReason, setDenialReason] = useState("");
+  const [claimSheetOpen, setClaimSheetOpen] = useState(false);
+  const [claimForm, setClaimForm] = useState<ClaimFormData>(INITIAL_CLAIM_FORM);
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
   const [viewType, setViewType] = useState<ViewType>("pending");
   const [sorting, setSorting] = useState<SortingState>([{ id: "checkoutRequestedAt", desc: true }]);
+
+  const invalidateCheckoutQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['/api/manager/storage-checkouts/pending'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/manager/storage-checkouts/history'] });
+  };
 
   // Fetch pending checkouts
   const { data, isLoading, error, refetch } = useQuery({
@@ -447,11 +525,11 @@ export function PendingStorageCheckouts() {
 
   const checkoutHistory: PendingCheckout[] = historyData?.checkoutHistory || [];
 
-  // Approve mutation
-  const approveMutation = useMutation({
+  // Clear mutation (no issues found)
+  const clearMutation = useMutation({
     mutationFn: async (storageBookingId: number) => {
       const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/storage-bookings/${storageBookingId}/approve-checkout`, {
+      const response = await fetch(`/api/manager/storage-bookings/${storageBookingId}/clear-checkout`, {
         method: 'POST',
         headers,
         credentials: 'include',
@@ -459,85 +537,111 @@ export function PendingStorageCheckouts() {
       });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to approve checkout');
+        throw new Error(errorData.error || 'Failed to clear checkout');
       }
       return response.json();
     },
     onSuccess: () => {
       toast({
-        title: "Checkout approved",
-        description: "The storage booking has been completed. The chef has been notified.",
+        title: "Storage cleared",
+        description: "No issues found. Checkout completed and chef has been notified.",
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/storage-checkouts/pending'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/storage-checkouts/history'] });
+      invalidateCheckoutQueries();
       setSelectedCheckout(null);
     },
     onError: (error: Error) => {
       toast({
-        title: "Approval failed",
+        title: "Clear failed",
         description: error.message,
         variant: "destructive",
       });
     },
   });
 
-  // Deny mutation
-  const denyMutation = useMutation({
-    mutationFn: async ({ storageBookingId, denialReason }: { storageBookingId: number; denialReason: string }) => {
+  // Start claim mutation (damage/cleaning issue found)
+  const startClaimMutation = useMutation({
+    mutationFn: async ({
+      storageBookingId,
+      claimTitle,
+      claimDescription,
+      claimedAmountCents,
+      damageDate,
+      managerNotes,
+    }: {
+      storageBookingId: number;
+      claimTitle: string;
+      claimDescription: string;
+      claimedAmountCents: number;
+      damageDate: string;
+      managerNotes?: string;
+    }) => {
       const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/storage-bookings/${storageBookingId}/deny-checkout`, {
+      const response = await fetch(`/api/manager/storage-bookings/${storageBookingId}/start-claim`, {
         method: 'POST',
         headers,
         credentials: 'include',
-        body: JSON.stringify({ denialReason }),
+        body: JSON.stringify({ claimTitle, claimDescription, claimedAmountCents, damageDate, managerNotes }),
       });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to deny checkout');
+        throw new Error(errorData.error || 'Failed to start claim');
       }
       return response.json();
     },
     onSuccess: () => {
       toast({
-        title: "Checkout denied",
-        description: "The chef has been notified to address the issues.",
+        title: "Claim filed",
+        description: "Damage/cleaning claim created. The chef will be notified and can respond.",
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/storage-checkouts/pending'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/storage-checkouts/history'] });
-      setDenyDialogOpen(false);
-      setDenialReason("");
+      invalidateCheckoutQueries();
+      setClaimSheetOpen(false);
+      setClaimForm(INITIAL_CLAIM_FORM);
       setSelectedCheckout(null);
     },
     onError: (error: Error) => {
       toast({
-        title: "Denial failed",
+        title: "Claim failed",
         description: error.message,
         variant: "destructive",
       });
     },
   });
 
-  const handleApprove = (checkout: PendingCheckout) => {
-    approveMutation.mutate(checkout.storageBookingId);
+  // ─── Handlers ─────────────────────────────────────────────────────────────────
+
+  const handleClear = (checkout: PendingCheckout) => {
+    clearMutation.mutate(checkout.storageBookingId);
   };
 
-  const handleDenyClick = (checkout: PendingCheckout) => {
+  const handleFileClaimClick = (checkout: PendingCheckout) => {
     setSelectedCheckout(checkout);
-    setDenyDialogOpen(true);
+    setClaimForm(INITIAL_CLAIM_FORM);
+    setClaimSheetOpen(true);
   };
 
-  const handleDenySubmit = () => {
-    if (!selectedCheckout || !denialReason.trim()) {
-      toast({
-        title: "Reason required",
-        description: "Please provide a reason for denying the checkout",
-        variant: "destructive",
-      });
+  const handleClaimSubmit = () => {
+    if (!selectedCheckout) return;
+
+    if (!claimForm.claimTitle.trim() || claimForm.claimTitle.trim().length < 5) {
+      toast({ title: "Title too short", description: "Claim title must be at least 5 characters.", variant: "destructive" });
       return;
     }
-    denyMutation.mutate({
+    if (!claimForm.claimDescription.trim() || claimForm.claimDescription.trim().length < 50) {
+      toast({ title: "Description too short", description: "Claim description must be at least 50 characters.", variant: "destructive" });
+      return;
+    }
+    if (!claimForm.claimedAmountCents || Number(claimForm.claimedAmountCents) <= 0) {
+      toast({ title: "Invalid amount", description: "Please enter a valid claim amount.", variant: "destructive" });
+      return;
+    }
+
+    startClaimMutation.mutate({
       storageBookingId: selectedCheckout.storageBookingId,
-      denialReason: denialReason.trim(),
+      claimTitle: claimForm.claimTitle.trim(),
+      claimDescription: claimForm.claimDescription.trim(),
+      claimedAmountCents: Number(claimForm.claimedAmountCents),
+      damageDate: claimForm.damageDate,
+      managerNotes: claimForm.managerNotes.trim() || undefined,
     });
   };
 
@@ -547,15 +651,16 @@ export function PendingStorageCheckouts() {
     setPhotoViewerOpen(true);
   };
 
-  // Column definitions
+  // ─── Column Memos ─────────────────────────────────────────────────────────────
+
   const pendingColumns = useMemo(
     () => getCheckoutColumns({
-      onApprove: handleApprove,
-      onDeny: handleDenyClick,
+      onClear: handleClear,
+      onFileClaim: handleFileClaimClick,
       onViewPhotos: openPhotoViewer,
-      approvingId: approveMutation.isPending ? (approveMutation.variables as number) : null,
+      clearingId: clearMutation.isPending ? (clearMutation.variables as number) : null,
     }),
-    [approveMutation.isPending, approveMutation.variables]
+    [clearMutation.isPending, clearMutation.variables]
   );
 
   const historyColumns = useMemo(() => getHistoryColumns(), []);
@@ -576,6 +681,8 @@ export function PendingStorageCheckouts() {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   });
+
+  // ─── Render ───────────────────────────────────────────────────────────────────
 
   if (isLoading) {
     return (
@@ -605,12 +712,12 @@ export function PendingStorageCheckouts() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <CardTitle className="text-xl font-semibold flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-green-600" />
+                <ShieldCheck className="h-5 w-5 text-green-600" />
                 Storage Checkouts
               </CardTitle>
               <CardDescription>
                 {viewType === 'pending' 
-                  ? `${pendingCheckouts.length} pending checkout request${pendingCheckouts.length !== 1 ? 's' : ''}`
+                  ? `${pendingCheckouts.length} pending checkout review${pendingCheckouts.length !== 1 ? 's' : ''}`
                   : `${checkoutHistory.length} checkout${checkoutHistory.length !== 1 ? 's' : ''} in history`}
               </CardDescription>
             </div>
@@ -627,13 +734,17 @@ export function PendingStorageCheckouts() {
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="pending" className="gap-2">
                 <Clock className="h-4 w-4" />
-                Pending
-                <Badge variant="secondary" className="ml-1">{pendingCheckouts.length}</Badge>
+                Pending Review
+                {pendingCheckouts.length > 0 && (
+                  <Badge variant="secondary" className="ml-1">{pendingCheckouts.length}</Badge>
+                )}
               </TabsTrigger>
               <TabsTrigger value="history" className="gap-2">
                 <CheckCircle className="h-4 w-4" />
                 History
-                <Badge variant="secondary" className="ml-1">{checkoutHistory.length}</Badge>
+                {checkoutHistory.length > 0 && (
+                  <Badge variant="secondary" className="ml-1">{checkoutHistory.length}</Badge>
+                )}
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -663,7 +774,8 @@ export function PendingStorageCheckouts() {
                         data-state={row.getIsSelected() && "selected"}
                         className={cn(
                           "hover:bg-muted/50",
-                          row.original.isOverdue && "bg-amber-50/50"
+                          row.original.isOverdue && "bg-amber-50/50",
+                          row.original.isReviewExpired && "bg-orange-50/30"
                         )}
                       >
                         {row.getVisibleCells().map((cell) => (
@@ -677,10 +789,10 @@ export function PendingStorageCheckouts() {
                     <TableRow>
                       <TableCell colSpan={pendingColumns.length} className="h-48 text-center">
                         <div className="flex flex-col items-center justify-center gap-2">
-                          <Package className="h-8 w-8 text-muted-foreground" />
-                          <p className="text-sm font-medium">No Pending Checkouts</p>
+                          <ShieldCheck className="h-8 w-8 text-muted-foreground" />
+                          <p className="text-sm font-medium">No Pending Reviews</p>
                           <p className="text-sm text-muted-foreground">
-                            Checkout requests from chefs will appear here
+                            Storage checkout requests from chefs will appear here for review
                           </p>
                         </div>
                       </TableCell>
@@ -716,7 +828,8 @@ export function PendingStorageCheckouts() {
                         data-state={row.getIsSelected() && "selected"}
                         className={cn(
                           "hover:bg-muted/50",
-                          row.original.checkoutStatus === 'completed' && "bg-green-50/30"
+                          row.original.checkoutStatus === 'completed' && "bg-green-50/20",
+                          row.original.checkoutStatus === 'checkout_claim_filed' && "bg-amber-50/20"
                         )}
                       >
                         {row.getVisibleCells().map((cell) => (
@@ -733,7 +846,7 @@ export function PendingStorageCheckouts() {
                           <Clock className="h-8 w-8 text-muted-foreground" />
                           <p className="text-sm font-medium">No Checkout History</p>
                           <p className="text-sm text-muted-foreground">
-                            Completed checkouts will appear here
+                            Completed checkout reviews will appear here
                           </p>
                         </div>
                       </TableCell>
@@ -746,47 +859,150 @@ export function PendingStorageCheckouts() {
         </CardContent>
       </Card>
 
-      {/* Deny Sheet */}
-      <Sheet open={denyDialogOpen} onOpenChange={setDenyDialogOpen}>
-        <SheetContent className="w-full sm:max-w-md">
+      {/* ─── File Claim Sheet ──────────────────────────────────────────────────── */}
+      <Sheet open={claimSheetOpen} onOpenChange={setClaimSheetOpen}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Deny Checkout Request</SheetTitle>
+            <SheetTitle className="flex items-center gap-2">
+              <FileWarning className="h-5 w-5 text-amber-600" />
+              File Damage / Cleaning Claim
+            </SheetTitle>
             <SheetDescription>
-              Please provide a reason for denying this checkout. The chef will be notified and can submit a new request after addressing the issues.
+              Document the issue and file a claim. The chef will be notified and can respond or dispute.
             </SheetDescription>
           </SheetHeader>
-          <div className="py-4">
-            <Label htmlFor="denial-reason">Reason for Denial *</Label>
-            <Textarea
-              id="denial-reason"
-              placeholder="e.g., Storage unit still contains items, needs cleaning..."
-              value={denialReason}
-              onChange={(e) => setDenialReason(e.target.value)}
-              rows={3}
-              className="mt-2"
-            />
-          </div>
-          <SheetFooter>
-            <Button variant="outline" onClick={() => setDenyDialogOpen(false)}>
+
+          {selectedCheckout && (
+            <div className="space-y-4 py-4">
+              {/* Booking context */}
+              <div className="bg-muted/50 rounded-lg p-3 space-y-1">
+                <div className="text-sm font-medium">{selectedCheckout.storageName}</div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <User className="h-3 w-3" />
+                  {selectedCheckout.chefEmail || 'Unknown chef'}
+                </div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {selectedCheckout.locationName}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Claim Title */}
+              <div className="space-y-1.5">
+                <Label htmlFor="claim-title">Claim Title *</Label>
+                <Input
+                  id="claim-title"
+                  placeholder="e.g., Food residue left in storage unit"
+                  value={claimForm.claimTitle}
+                  onChange={(e) => setClaimForm(prev => ({ ...prev, claimTitle: e.target.value }))}
+                  maxLength={200}
+                />
+                <p className="text-xs text-muted-foreground">Minimum 5 characters</p>
+              </div>
+
+              {/* Claim Description */}
+              <div className="space-y-1.5">
+                <Label htmlFor="claim-desc">Description *</Label>
+                <Textarea
+                  id="claim-desc"
+                  placeholder="Describe the damage or cleaning issue in detail. Include what you observed, the condition of the storage unit, and any relevant context..."
+                  value={claimForm.claimDescription}
+                  onChange={(e) => setClaimForm(prev => ({ ...prev, claimDescription: e.target.value }))}
+                  rows={4}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {claimForm.claimDescription.length}/50 minimum characters
+                </p>
+              </div>
+
+              {/* Claimed Amount */}
+              <div className="space-y-1.5">
+                <Label htmlFor="claim-amount">Claim Amount (CAD) *</Label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="claim-amount"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="0.00"
+                    className="pl-9"
+                    value={claimForm.claimedAmountCents ? (Number(claimForm.claimedAmountCents) / 100).toFixed(2) : ''}
+                    onChange={(e) => {
+                      const dollars = parseFloat(e.target.value);
+                      setClaimForm(prev => ({
+                        ...prev,
+                        claimedAmountCents: isNaN(dollars) ? '' : Math.round(dollars * 100),
+                      }));
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Damage Date */}
+              <div className="space-y-1.5">
+                <Label htmlFor="damage-date">Date of Damage/Issue</Label>
+                <Input
+                  id="damage-date"
+                  type="date"
+                  value={claimForm.damageDate}
+                  onChange={(e) => setClaimForm(prev => ({ ...prev, damageDate: e.target.value }))}
+                />
+              </div>
+
+              {/* Manager Notes */}
+              <div className="space-y-1.5">
+                <Label htmlFor="manager-notes">Internal Notes (optional)</Label>
+                <Textarea
+                  id="manager-notes"
+                  placeholder="Internal notes for your reference..."
+                  value={claimForm.managerNotes}
+                  onChange={(e) => setClaimForm(prev => ({ ...prev, managerNotes: e.target.value }))}
+                  rows={2}
+                />
+              </div>
+
+              {/* Info box */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs text-blue-700">
+                    <strong>What happens next</strong>
+                    <ul className="mt-1 space-y-0.5 list-disc list-inside">
+                      <li>The chef will be notified and has 72 hours to respond</li>
+                      <li>They can accept the claim or dispute it</li>
+                      <li>You can add photo evidence after filing</li>
+                      <li>Storage is released — the claim is tracked separately</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <SheetFooter className="mt-2">
+            <Button variant="outline" onClick={() => setClaimSheetOpen(false)}>
               Cancel
             </Button>
             <Button
-              variant="destructive"
-              onClick={handleDenySubmit}
-              disabled={denyMutation.isPending || !denialReason.trim()}
+              onClick={handleClaimSubmit}
+              disabled={startClaimMutation.isPending}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
             >
-              {denyMutation.isPending ? (
+              {startClaimMutation.isPending ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
-                <XCircle className="h-4 w-4 mr-2" />
+                <FileWarning className="h-4 w-4 mr-2" />
               )}
-              Deny Checkout
+              File Claim
             </Button>
           </SheetFooter>
         </SheetContent>
       </Sheet>
 
-      {/* Photo Viewer Sheet */}
+      {/* ─── Photo Viewer Sheet ────────────────────────────────────────────────── */}
       <Sheet open={photoViewerOpen} onOpenChange={setPhotoViewerOpen}>
         <SheetContent className="w-full sm:max-w-2xl">
           <SheetHeader>
@@ -821,6 +1037,36 @@ export function PendingStorageCheckouts() {
                   ))}
                 </div>
               )}
+
+              {/* Quick action buttons below photos */}
+              <Separator />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 text-green-700 border-green-200 hover:bg-green-50"
+                  onClick={() => {
+                    setPhotoViewerOpen(false);
+                    handleClear(selectedCheckout);
+                  }}
+                  disabled={clearMutation.isPending}
+                >
+                  <ShieldCheck className="h-4 w-4 mr-2" />
+                  Clear — No Issues
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 text-amber-700 border-amber-200 hover:bg-amber-50"
+                  onClick={() => {
+                    setPhotoViewerOpen(false);
+                    handleFileClaimClick(selectedCheckout);
+                  }}
+                >
+                  <FileWarning className="h-4 w-4 mr-2" />
+                  File Claim
+                </Button>
+              </div>
             </div>
           )}
         </SheetContent>

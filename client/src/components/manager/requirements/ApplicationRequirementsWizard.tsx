@@ -4,7 +4,7 @@
  * Reusable component for both manager settings and onboarding flow
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +20,6 @@ import {
   Settings2,
   Building2,
   AlertCircle,
-  Circle,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { auth } from '@/lib/firebase';
@@ -29,6 +28,13 @@ import { RequirementsStepOne } from './RequirementsStepOne';
 import { RequirementsStepTwo } from './RequirementsStepTwo';
 import { FacilityInfoStep } from './FacilityInfoStep';
 import { LocationRequirements, WizardStep, WIZARD_STEPS } from './types';
+
+export interface ApplicationRequirementsWizardHandle {
+  /** Trigger a save of the current requirements state. Returns a promise that resolves when save completes. */
+  save: () => Promise<void>;
+  /** Whether there are unsaved changes */
+  hasUnsavedChanges: boolean;
+}
 
 interface ApplicationRequirementsWizardProps {
   locationId: number;
@@ -66,7 +72,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-export function ApplicationRequirementsWizard({
+export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsWizardHandle, ApplicationRequirementsWizardProps>(function ApplicationRequirementsWizard({
   locationId,
   locationName,
   onSaveSuccess,
@@ -76,7 +82,7 @@ export function ApplicationRequirementsWizard({
   onStepChange,
   activeStepOverride,
   autoSaveOnStepChange = false,
-}: ApplicationRequirementsWizardProps) {
+}, ref) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
@@ -193,6 +199,19 @@ export function ApplicationRequirementsWizard({
   const handleSave = useCallback(() => {
     saveMutation.mutate(requirements);
   }, [saveMutation, requirements]);
+
+  // Expose save trigger to parent via ref
+  useImperativeHandle(ref, () => ({
+    save: () => {
+      return new Promise<void>((resolve, reject) => {
+        saveMutation.mutate(requirements, {
+          onSuccess: () => resolve(),
+          onError: (err) => reject(err),
+        });
+      });
+    },
+    hasUnsavedChanges,
+  }), [saveMutation, requirements, hasUnsavedChanges]);
 
   // Track previous step for auto-save on step change
   const prevStepRef = useRef<WizardStep | null>(null);
@@ -471,6 +490,6 @@ export function ApplicationRequirementsWizard({
       )}
     </div>
   );
-}
+});
 
 export default ApplicationRequirementsWizard;

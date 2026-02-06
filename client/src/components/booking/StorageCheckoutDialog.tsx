@@ -11,7 +11,7 @@
 
 import { useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Upload, Loader2, X, Camera, CheckCircle, AlertCircle, Clock } from "lucide-react";
+import { Upload, Loader2, X, Camera, CheckCircle, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { auth } from "@/lib/firebase";
@@ -39,7 +39,6 @@ interface StorageCheckoutDialogProps {
     storageType?: string;
     endDate: string;
     checkoutStatus?: string;
-    checkoutDenialReason?: string;
   };
   onSuccess?: () => void;
 }
@@ -155,8 +154,6 @@ export function StorageCheckoutDialog({
     }
   };
 
-  const wasDenied = storageBooking.checkoutStatus === 'active' && storageBooking.checkoutDenialReason;
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
@@ -166,7 +163,7 @@ export function StorageCheckoutDialog({
             Request Storage Checkout
           </SheetTitle>
           <SheetDescription>
-            Submit a checkout request for your storage booking. The manager will verify the storage unit is empty before approving.
+            Submit a checkout request for your storage booking. The kitchen will review the storage unit and clear your checkout.
           </SheetDescription>
         </SheetHeader>
 
@@ -183,24 +180,6 @@ export function StorageCheckoutDialog({
               </Badge>
             )}
           </div>
-
-          {/* Previous Denial Warning */}
-          {wasDenied && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5" />
-                <div>
-                  <div className="text-sm font-medium text-amber-800">Previous checkout was denied</div>
-                  <div className="text-xs text-amber-700 mt-1">
-                    Reason: {storageBooking.checkoutDenialReason}
-                  </div>
-                  <div className="text-xs text-amber-600 mt-1">
-                    Please address the issues and submit a new request.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Photo Upload Section */}
           <div className="space-y-2">
@@ -291,10 +270,10 @@ export function StorageCheckoutDialog({
               <div className="text-xs text-blue-700">
                 <strong>What happens next?</strong>
                 <ul className="mt-1 space-y-1 list-disc list-inside">
-                  <li>The manager will review your photos</li>
-                  <li>They may inspect the storage unit</li>
-                  <li>Once approved, your booking will be completed</li>
-                  <li>No overstay penalties while checkout is pending</li>
+                  <li>The kitchen will review your photos and inspect the unit</li>
+                  <li>If everything is clear, your booking is completed</li>
+                  <li>Auto-clears if no issues are found within the review window</li>
+                  <li>No overstay penalties while checkout is under review</li>
                 </ul>
               </div>
             </div>

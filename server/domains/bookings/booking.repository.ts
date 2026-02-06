@@ -102,7 +102,7 @@ export class BookingRepository {
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
             .where(eq(kitchenBookings.chefId, chefId))
-            .orderBy(desc(kitchenBookings.bookingDate));
+            .orderBy(desc(kitchenBookings.createdAt));
 
         return results.map(row => ({
             ...this.mapKitchenBookingToDTO(row.booking),
@@ -156,7 +156,7 @@ export class BookingRepository {
                 // 'pending' paymentStatus means chef never completed checkout - don't show to manager
                 ne(kitchenBookings.paymentStatus, 'pending')
             ))
-            .orderBy(desc(kitchenBookings.bookingDate));
+            .orderBy(desc(kitchenBookings.createdAt));
 
         return results.map(row => {
             const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
@@ -250,7 +250,7 @@ export class BookingRepository {
             .from(kitchenBookings)
             .leftJoin(users, eq(kitchenBookings.chefId, users.id))
             .where(eq(kitchenBookings.kitchenId, kitchenId))
-            .orderBy(desc(kitchenBookings.bookingDate));
+            .orderBy(desc(kitchenBookings.createdAt));
     }
 
     async findConflictingBookings(kitchenId: number, date: Date, startTime: string, endTime: string, excludeBookingId?: number) {
@@ -308,7 +308,7 @@ export class BookingRepository {
             .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
             .where(eq(storageBookings.chefId, chefId))
-            .orderBy(desc(storageBookings.startDate));
+            .orderBy(desc(storageBookings.createdAt));
 
         // Get paid/resolved penalties for these bookings (with backwards compatibility)
         const bookingIds = result.map(r => r.id);
@@ -565,7 +565,7 @@ export class BookingRepository {
             .innerJoin(equipmentListings, eq(equipmentBookings.equipmentListingId, equipmentListings.id))
             .innerJoin(kitchens, eq(equipmentListings.kitchenId, kitchens.id))
             .where(eq(equipmentBookings.chefId, chefId))
-            .orderBy(desc(equipmentBookings.startDate));
+            .orderBy(desc(equipmentBookings.createdAt));
 
         return result.map(row => ({
             ...row,

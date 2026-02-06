@@ -297,6 +297,15 @@ function ClaimCard({
 }
 
 // Types for recent bookings
+interface EquipmentItem {
+  equipmentBookingId: number | null;
+  equipmentListingId: number;
+  equipmentType: string;
+  brand: string | null;
+  availabilityType: string;
+  status: string;
+}
+
 interface RecentBooking {
   id: number;
   type: 'kitchen' | 'storage';
@@ -308,6 +317,7 @@ interface RecentBooking {
   endDate: string;
   status: string;
   label: string;
+  equipment: EquipmentItem[];
 }
 
 // Evidence types for the form
@@ -343,6 +353,9 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
     claimedAmount: '',
   });
   
+  // Equipment damage state (for kitchen bookings)
+  const [selectedDamagedEquipment, setSelectedDamagedEquipment] = useState<Set<number>>(new Set());
+  
   // Evidence state
   const [pendingEvidence, setPendingEvidence] = useState<PendingEvidence[]>([]);
   const [newEvidenceType, setNewEvidenceType] = useState('photo_after');
@@ -375,6 +388,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
       damageDate: format(new Date(), 'yyyy-MM-dd'),
       claimedAmount: '',
     });
+    setSelectedDamagedEquipment(new Set());
     setPendingEvidence([]);
     setNewEvidenceType('photo_after');
     setNewEvidenceDescription('');
@@ -418,11 +432,23 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
     });
   }, []);
 
-  // Create claim mutation
+  // Create claim mutation — accepts submitImmediately to create+submit atomically
   const createMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ submitImmediately }: { submitImmediately: boolean }) => {
       if (!selectedBooking) throw new Error("Please select a booking");
       
+      // Build damaged items array from selected equipment
+      const damagedItems = selectedBooking.type === 'kitchen' && selectedDamagedEquipment.size > 0
+        ? selectedBooking.equipment
+            .filter(eq => selectedDamagedEquipment.has(eq.equipmentListingId))
+            .map(eq => ({
+              equipmentBookingId: eq.equipmentBookingId,
+              equipmentListingId: eq.equipmentListingId,
+              equipmentType: eq.equipmentType,
+              brand: eq.brand,
+            }))
+        : undefined;
+
       const response = await apiRequest('POST', '/api/manager/damage-claims', {
         bookingType: selectedBooking.type,
         [selectedBooking.type === 'storage' ? 'storageBookingId' : 'kitchenBookingId']: selectedBooking.id,
@@ -430,11 +456,10 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
         claimDescription: formData.claimDescription,
         damageDate: formData.damageDate,
         claimedAmountCents: Math.round(parseFloat(formData.claimedAmount) * 100),
+        ...(damagedItems && damagedItems.length > 0 ? { damagedItems } : {}),
+        ...(submitImmediately ? { submitImmediately: true } : {}),
       });
       return response.json();
-    },
-    onSuccess: () => {
-      // Claim created successfully
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -460,14 +485,6 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
     });
   };
 
-  // Submit claim mutation
-  const submitClaimMutation = useMutation({
-    mutationFn: async (claimId: number) => {
-      const response = await apiRequest('POST', `/api/manager/damage-claims/${claimId}/submit`);
-      return response.json();
-    },
-  });
-
   // Handle Save as Draft
   const handleSaveAsDraft = async () => {
     if (!selectedBooking) {
@@ -477,8 +494,8 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
 
     setIsUploading(true);
     try {
-      // Create claim
-      const result = await createMutation.mutateAsync();
+      // Create claim as draft
+      const result = await createMutation.mutateAsync({ submitImmediately: false });
       const claimId = result.claim.id;
 
       // Upload evidence if any
@@ -502,7 +519,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
     }
   };
 
-  // Handle Submit to Chef
+  // Handle Submit to Chef — atomic create+submit, no redundant draft
   const handleSubmitToChef = async () => {
     if (!selectedBooking) {
       toast({ title: "Error", description: "Please select a booking", variant: "destructive" });
@@ -520,17 +537,14 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
 
     setIsUploading(true);
     try {
-      // Create claim
-      const result = await createMutation.mutateAsync();
+      // Create claim and submit to chef in one atomic operation
+      const result = await createMutation.mutateAsync({ submitImmediately: true });
       const claimId = result.claim.id;
 
       // Upload all evidence
       for (const evidence of pendingEvidence) {
         await uploadEvidenceToClaim(claimId, evidence);
       }
-
-      // Submit to chef
-      await submitClaimMutation.mutateAsync(claimId);
 
       toast({ 
         title: "Claim submitted to chef", 
@@ -613,6 +627,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                     const [type, id] = value.split('-');
                     const booking = recentBookings.find(b => b.type === type && b.id === parseInt(id));
                     setSelectedBooking(booking || null);
+                    setSelectedDamagedEquipment(new Set());
                   }}
                 >
                   <SelectTrigger>
@@ -636,23 +651,84 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
 
             {/* Selected Booking Info */}
             {selectedBooking && (
-              <div className="p-3 border rounded-md bg-muted/30 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Type:</span>
-                  <Badge variant="outline">{selectedBooking.type === 'storage' ? 'Storage' : 'Kitchen'}</Badge>
+              <div className="p-3 border rounded-md bg-muted/30 space-y-3">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Type:</span>
+                    <Badge variant="outline">{selectedBooking.type === 'storage' ? 'Storage' : 'Kitchen'}</Badge>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Chef:</span>
+                    <span className="font-medium">{selectedBooking.chefName}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Location:</span>
+                    <span>{selectedBooking.locationName}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">End Date:</span>
+                    <span>{format(new Date(selectedBooking.endDate), 'MMM d, yyyy')}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Chef:</span>
-                  <span className="font-medium">{selectedBooking.chefName}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Location:</span>
-                  <span>{selectedBooking.locationName}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">End Date:</span>
-                  <span>{format(new Date(selectedBooking.endDate), 'MMM d, yyyy')}</span>
-                </div>
+
+                {/* Equipment Selection (Kitchen bookings only) */}
+                {selectedBooking.type === 'kitchen' && selectedBooking.equipment.length > 0 && (
+                  <div className="border-t pt-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">Damaged Equipment</Label>
+                      <span className="text-xs text-muted-foreground">Optional — select if applicable</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {selectedBooking.equipment.map((eq) => {
+                        const isSelected = selectedDamagedEquipment.has(eq.equipmentListingId);
+                        return (
+                          <button
+                            key={eq.equipmentListingId}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDamagedEquipment(prev => {
+                                const next = new Set(prev);
+                                if (next.has(eq.equipmentListingId)) {
+                                  next.delete(eq.equipmentListingId);
+                                } else {
+                                  next.add(eq.equipmentListingId);
+                                }
+                                return next;
+                              });
+                            }}
+                            className={cn(
+                              "w-full flex items-center gap-2 p-2 rounded-md border text-left text-sm transition-colors",
+                              isSelected
+                                ? "border-amber-500 bg-amber-50 dark:bg-amber-950/20"
+                                : "border-border hover:bg-muted/50"
+                            )}
+                          >
+                            <div className={cn(
+                              "h-4 w-4 rounded border flex items-center justify-center flex-shrink-0",
+                              isSelected
+                                ? "border-amber-500 bg-amber-500 text-white"
+                                : "border-muted-foreground/30"
+                            )}>
+                              {isSelected && <CheckCircle className="h-3 w-3" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <span className="font-medium capitalize">{eq.equipmentType}</span>
+                              {eq.brand && <span className="text-muted-foreground ml-1">({eq.brand})</span>}
+                            </div>
+                            <Badge variant="secondary" className="text-[10px] flex-shrink-0">
+                              {eq.availabilityType === 'included' ? 'Included' : 'Rented'}
+                            </Badge>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {selectedDamagedEquipment.size > 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        {selectedDamagedEquipment.size} equipment item{selectedDamagedEquipment.size > 1 ? 's' : ''} marked as damaged
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -860,7 +936,7 @@ export function DamageClaimQueue() {
   const queryClient = useQueryClient();
   const [showAll, setShowAll] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("action");
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }]);
   const [globalFilter, setGlobalFilter] = useState("");
 
   // Fetch claims
@@ -942,6 +1018,12 @@ export function DamageClaimQueue() {
 
   // TanStack Table columns
   const columns: ColumnDef<DamageClaim>[] = useMemo(() => [
+    {
+      accessorKey: "createdAt",
+      header: () => null,
+      cell: () => null,
+      enableHiding: true,
+    },
     {
       accessorKey: "claimTitle",
       header: ({ column }) => (
@@ -1109,7 +1191,7 @@ export function DamageClaimQueue() {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    state: { sorting, globalFilter },
+    state: { sorting, globalFilter, columnVisibility: { createdAt: false } },
     onGlobalFilterChange: setGlobalFilter,
   });
 

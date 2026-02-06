@@ -29,6 +29,14 @@ export interface ConnectAccountStatus {
   payoutsEnabled: boolean;
   detailsSubmitted: boolean;
   isReady: boolean;
+  requirements: {
+    currentlyDue: string[];
+    eventuallyDue: string[];
+    pastDue: string[];
+    pendingVerification: string[];
+    disabledReason: string | null;
+    currentDeadline: number | null;
+  };
 }
 
 /**
@@ -152,6 +160,7 @@ export async function getAccountStatus(accountId: string): Promise<ConnectAccoun
 
   try {
     const account = await stripe.accounts.retrieve(accountId);
+    const reqs = account.requirements;
     
     return {
       accountId: account.id,
@@ -159,6 +168,14 @@ export async function getAccountStatus(accountId: string): Promise<ConnectAccoun
       payoutsEnabled: account.payouts_enabled || false,
       detailsSubmitted: account.details_submitted || false,
       isReady: (account.charges_enabled && account.payouts_enabled) || false,
+      requirements: {
+        currentlyDue: reqs?.currently_due || [],
+        eventuallyDue: reqs?.eventually_due || [],
+        pastDue: reqs?.past_due || [],
+        pendingVerification: reqs?.pending_verification || [],
+        disabledReason: reqs?.disabled_reason || null,
+        currentDeadline: reqs?.current_deadline || null,
+      },
     };
   } catch (error: any) {
     console.error('Error retrieving account status:', error);

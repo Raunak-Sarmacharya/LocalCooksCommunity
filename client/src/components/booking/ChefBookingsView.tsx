@@ -29,6 +29,7 @@ import {
   MoreHorizontal,
   Eye,
   Download,
+  AlertTriangle,
   Ban,
   X,
   Package,
@@ -69,6 +70,7 @@ import { DEFAULT_TIMEZONE, isBookingPast } from "@/utils/timezone-utils"
 import { useQuery } from "@tanstack/react-query"
 import { StorageExtensionDialog } from "./StorageExtensionDialog"
 import { StorageCheckoutDialog } from "./StorageCheckoutDialog"
+import { CheckoutStatusTracker } from "./CheckoutStatusTracker"
 import { ExpiringStorageNotification } from "./ExpiringStorageNotification"
 import { PendingOverstayPenalties } from "../chef/PendingOverstayPenalties"
 import { auth } from "@/lib/firebase"
@@ -114,6 +116,8 @@ interface StorageBooking {
   endDate: string
   status: string
   checkoutStatus?: string
+  checkoutRequestedAt?: string
+  checkoutApprovedAt?: string
   totalPrice?: number
   serviceFee?: number
   basePrice?: number
@@ -257,6 +261,12 @@ const getChefBookingColumns = ({
   kitchens,
   storageBookings: allStorageBookings,
 }: BookingColumnsProps): ColumnDef<Booking>[] => [
+  {
+    accessorKey: "createdAt",
+    header: () => null,
+    cell: () => null,
+    enableHiding: true,
+  },
   {
     accessorKey: "status",
     header: ({ column }) => (
@@ -523,6 +533,7 @@ interface StorageBookingColumnsProps {
   onExtend: (storageBookingId: number) => void
   onDownloadInvoice: (storageBookingId: number) => void | Promise<void>
   onCheckout: (storageBookingId: number) => void
+  onViewCheckoutStatus: (storageBookingId: number) => void
   downloadingInvoiceId: number | null
   now: Date
 }
@@ -531,6 +542,7 @@ const getStorageBookingColumns = ({
   onExtend,
   onDownloadInvoice,
   onCheckout,
+  onViewCheckoutStatus,
   downloadingInvoiceId,
   now,
 }: StorageBookingColumnsProps): ColumnDef<StorageBooking>[] => [
@@ -623,7 +635,14 @@ const getStorageBookingColumns = ({
       const status = storageBooking.status
       const checkoutStatus = storageBooking.checkoutStatus
 
-      if (status === 'cancelled') {
+      if (status === 'cancelled' && checkoutStatus === 'checkout_claim_filed') {
+        return (
+          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Claim Filed
+          </Badge>
+        )
+      } else if (status === 'cancelled') {
         return (
           <Badge variant="destructive" className="bg-red-100 text-red-800 border-red-300">
             <XCircle className="h-3 w-3 mr-1" />
@@ -637,25 +656,32 @@ const getStorageBookingColumns = ({
             Pending Approval
           </Badge>
         )
+      } else if (status === 'confirmed' && checkoutStatus === 'checkout_requested') {
+        return (
+          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+            <Clock className="h-3 w-3 mr-1" />
+            Checkout Under Review
+          </Badge>
+        )
+      } else if (status === 'confirmed' && checkoutStatus === 'checkout_approved') {
+        return (
+          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Checkout Approved
+          </Badge>
+        )
+      } else if (status === 'confirmed' && checkoutStatus === 'completed') {
+        return (
+          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Cleared
+          </Badge>
+        )
       } else if (status === 'confirmed' && checkoutStatus === 'active') {
         return (
           <Badge variant="default" className="bg-green-600 hover:bg-green-700">
             <CheckCircle className="h-3 w-3 mr-1" />
             Active
-          </Badge>
-        )
-      } else if (status === 'confirmed' && checkoutStatus === 'pending_checkout') {
-        return (
-          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 border-yellow-300">
-            <Clock className="h-3 w-3 mr-1" />
-            Pending Checkout
-          </Badge>
-        )
-      } else if (status === 'confirmed' && checkoutStatus === 'completed') {
-        return (
-          <Badge variant="outline">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Completed
           </Badge>
         )
       } else if (status === 'confirmed') {
@@ -718,6 +744,16 @@ const getStorageBookingColumns = ({
                 </DropdownMenuItem>
               </>
             )}
+
+            {storageBooking.checkoutStatus && storageBooking.checkoutStatus !== 'active' && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onViewCheckoutStatus(storageBooking.id)}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Checkout Status
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )
@@ -739,11 +775,12 @@ export default function ChefBookingsView({
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<number | null>(null)
   const [extendDialogOpen, setExtendDialogOpen] = useState<number | null>(null)
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState<number | null>(null)
+  const [checkoutStatusBookingId, setCheckoutStatusBookingId] = useState<number | null>(null)
 
   // TanStack Table state
-  const [sorting, setSorting] = useState<SortingState>([{ id: "bookingDate", desc: false }])
+  const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({ createdAt: false })
 
   const [isAuthReady, setIsAuthReady] = useState(false)
   const [hasAuthUser, setHasAuthUser] = useState(false)
@@ -1029,6 +1066,7 @@ export default function ChefBookingsView({
       onExtend: (id) => setExtendDialogOpen(id),
       onDownloadInvoice: handleDownloadStorageInvoice,
       onCheckout: (id) => setCheckoutDialogOpen(id),
+      onViewCheckoutStatus: (id) => setCheckoutStatusBookingId(id),
       downloadingInvoiceId,
       now,
     }),
@@ -1390,6 +1428,17 @@ export default function ChefBookingsView({
             endDate: new Date().toISOString(),
           }}
           onSuccess={() => setCheckoutDialogOpen(null)}
+        />
+      )}
+
+      {/* Checkout Status Tracker */}
+      {checkoutStatusBookingId && (
+        <CheckoutStatusTracker
+          open={checkoutStatusBookingId !== null}
+          onOpenChange={(open) => !open && setCheckoutStatusBookingId(null)}
+          storageBookingId={checkoutStatusBookingId}
+          storageName={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkoutStatusBookingId)?.storageName}
+          checkoutStatus={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkoutStatusBookingId)?.checkoutStatus}
         />
       )}
     </div>

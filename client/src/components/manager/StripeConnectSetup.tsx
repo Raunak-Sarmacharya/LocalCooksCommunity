@@ -10,7 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, CreditCard, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
+import { Loader2, CreditCard, CheckCircle2, AlertCircle, ExternalLink, Clock, ShieldAlert, Ban } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { auth } from '@/lib/firebase';
@@ -450,40 +450,177 @@ export default function StripeConnectSetup() {
         </div>
       );
     } else {
-      // Account created but onboarding not complete - show setup needed state
+      // Account created but onboarding not complete - show dynamic stage-aware UI
+      const stage = stripeStatus?.verificationStage || 'incomplete';
+      
+      // Dynamic UI config based on verification stage
+      const stageConfig: Record<string, {
+        icon: typeof AlertCircle;
+        iconBg: string;
+        iconColor: string;
+        title: string;
+        subtitle: string;
+        buttonLabel: string;
+        buttonLoadingLabel: string;
+        buttonIcon: typeof CreditCard;
+        helpText: string;
+        isActionable: boolean;
+      }> = {
+        details_needed: {
+          icon: CreditCard,
+          iconBg: 'bg-blue-100 dark:bg-blue-950/30',
+          iconColor: 'text-blue-600 dark:text-blue-400',
+          title: 'Start Stripe Setup',
+          subtitle: 'Enter your business & bank details',
+          buttonLabel: 'Start Stripe Setup',
+          buttonLoadingLabel: 'Opening Setup...',
+          buttonIcon: CreditCard,
+          helpText: 'Opens Stripe in a new tab (~5 min)',
+          isActionable: true,
+        },
+        requires_additional_info: {
+          icon: AlertCircle,
+          iconBg: 'bg-amber-100 dark:bg-amber-950/30',
+          iconColor: 'text-amber-600 dark:text-amber-400',
+          title: 'Additional Info Needed',
+          subtitle: 'Stripe needs more details to verify your account',
+          buttonLabel: 'Provide Additional Information',
+          buttonLoadingLabel: 'Opening Stripe...',
+          buttonIcon: ExternalLink,
+          helpText: 'Stripe requires additional documents or details',
+          isActionable: true,
+        },
+        pending_verification: {
+          icon: Clock,
+          iconBg: 'bg-blue-100 dark:bg-blue-950/30',
+          iconColor: 'text-blue-600 dark:text-blue-400',
+          title: 'Verification In Progress',
+          subtitle: 'Stripe is reviewing your details',
+          buttonLabel: 'Check Verification Status',
+          buttonLoadingLabel: 'Opening Stripe...',
+          buttonIcon: Clock,
+          helpText: 'Usually takes a few minutes — we\'ll auto-refresh',
+          isActionable: true,
+        },
+        past_due: {
+          icon: ShieldAlert,
+          iconBg: 'bg-red-100 dark:bg-red-950/30',
+          iconColor: 'text-red-600 dark:text-red-400',
+          title: 'Action Required',
+          subtitle: 'Overdue requirements — update now to avoid restrictions',
+          buttonLabel: 'Update Required Information',
+          buttonLoadingLabel: 'Opening Stripe...',
+          buttonIcon: ShieldAlert,
+          helpText: 'Your account may be restricted until resolved',
+          isActionable: true,
+        },
+        payouts_disabled: {
+          icon: AlertCircle,
+          iconBg: 'bg-amber-100 dark:bg-amber-950/30',
+          iconColor: 'text-amber-600 dark:text-amber-400',
+          title: 'Add Bank Account',
+          subtitle: 'Charges enabled — add bank details to receive payouts',
+          buttonLabel: 'Add Bank Account',
+          buttonLoadingLabel: 'Opening Stripe...',
+          buttonIcon: ExternalLink,
+          helpText: 'You can accept payments but need a bank account for payouts',
+          isActionable: true,
+        },
+        charges_disabled: {
+          icon: AlertCircle,
+          iconBg: 'bg-amber-100 dark:bg-amber-950/30',
+          iconColor: 'text-amber-600 dark:text-amber-400',
+          title: 'Charges Not Enabled',
+          subtitle: 'Complete setup to accept payments',
+          buttonLabel: 'Complete Payment Setup',
+          buttonLoadingLabel: 'Opening Stripe...',
+          buttonIcon: CreditCard,
+          helpText: 'Additional verification needed to process charges',
+          isActionable: true,
+        },
+        rejected: {
+          icon: Ban,
+          iconBg: 'bg-red-100 dark:bg-red-950/30',
+          iconColor: 'text-red-600 dark:text-red-400',
+          title: 'Account Rejected',
+          subtitle: 'Stripe could not verify your account',
+          buttonLabel: 'Contact Support',
+          buttonLoadingLabel: 'Opening...',
+          buttonIcon: ExternalLink,
+          helpText: 'Please contact support for assistance',
+          isActionable: true,
+        },
+        incomplete: {
+          icon: CreditCard,
+          iconBg: 'bg-amber-100 dark:bg-amber-950/30',
+          iconColor: 'text-amber-600 dark:text-amber-400',
+          title: 'Complete Setup',
+          subtitle: 'Finish onboarding to receive payments',
+          buttonLabel: 'Continue Stripe Setup',
+          buttonLoadingLabel: 'Opening Setup...',
+          buttonIcon: CreditCard,
+          helpText: 'Opens Stripe in a new tab',
+          isActionable: true,
+        },
+      };
+
+      const config = stageConfig[stage] || stageConfig.incomplete;
+      const IconComponent = config.icon;
+      const ButtonIcon = config.buttonIcon;
+
       return (
         <div className="space-y-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-950/30 flex items-center justify-center">
-                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <div className={`w-10 h-10 rounded-lg ${config.iconBg} flex items-center justify-center`}>
+                <IconComponent className={`h-5 w-5 ${config.iconColor}`} />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Complete Setup</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Finish onboarding to receive payments</p>
+                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{config.title}</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{config.subtitle}</p>
               </div>
             </div>
             <img src="/stripe-logo.png" alt="Stripe" className="h-6" />
           </div>
           
+          {stage === 'pending_verification' && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+              <Clock className="h-4 w-4 text-blue-500 animate-pulse" />
+              <p className="text-xs text-blue-700 dark:text-blue-300">
+                Stripe is reviewing your submitted information. This usually takes a few minutes.
+              </p>
+            </div>
+          )}
+
+          {stage === 'past_due' && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
+              <ShieldAlert className="h-4 w-4 text-red-500" />
+              <p className="text-xs text-red-700 dark:text-red-300">
+                Some required information is overdue. Please update it to keep your account active.
+              </p>
+            </div>
+          )}
+
           <Button 
             onClick={handleAccessDashboard}
-            className="w-full bg-[#635bff] hover:bg-[#5851db]"
+            className={`w-full ${stage === 'past_due' || stage === 'rejected' ? 'bg-red-600 hover:bg-red-700' : 'bg-[#635bff] hover:bg-[#5851db]'}`}
             disabled={getDashboardLinkMutation.isPending}
           >
             {getDashboardLinkMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Opening Setup...
+                {config.buttonLoadingLabel}
               </>
             ) : (
               <>
-                <CreditCard className="mr-2 h-4 w-4" />
-                Complete Stripe Setup
+                <ButtonIcon className="mr-2 h-4 w-4" />
+                {config.buttonLabel}
               </>
             )}
           </Button>
           
+          <p className="text-xs text-slate-400 text-center">{config.helpText}</p>
+
           <Button 
             variant="ghost"
             onClick={() => checkStatusMutation.mutate()}

@@ -9,7 +9,7 @@ import {
     equipmentListings,
     paymentTransactions,
 } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { logger } from "../logger";
 import { requireChef, requireNoUnpaidPenalties } from "./middleware";
 import { createPaymentIntent } from "../services/stripe-service";
@@ -217,6 +217,7 @@ router.get("/chef/storage-bookings/:id", requireChef, async (req: Request, res: 
 // 1. Detect storage overstays
 // 2. Process expired damage claim deadlines
 // 3. Cancel expired payment authorizations (24-hour hold window)
+// 4. Auto-clear expired storage checkout review windows
 // It does NOT auto-charge - it only creates records for manager review.
 
 import { overstayPenaltyService } from "../services/overstay-penalty-service";
@@ -292,11 +293,23 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
         };
         console.log("[Cron] Expired authorizations processing complete:", authExpirySummary);
 
+        // Task 4: Auto-clear expired storage checkout review windows
+        console.log("[Cron] Task 4: Auto-clearing expired storage checkout reviews...");
+        const { processExpiredCheckoutReviews } = await import("../services/storage-checkout-service");
+        const checkoutAutoClearResults = await processExpiredCheckoutReviews();
+        
+        const checkoutAutoClearSummary = {
+            processed: checkoutAutoClearResults.processed,
+            cleared: checkoutAutoClearResults.cleared,
+            errors: checkoutAutoClearResults.errors,
+        };
+        console.log("[Cron] Storage checkout auto-clear complete:", checkoutAutoClearSummary);
+
         console.log("[Cron] All daily scheduled tasks complete");
 
         res.json({
             success: true,
-            message: `Daily tasks complete: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed, ${authExpiryResults.length} expired authorizations cancelled`,
+            message: `Daily tasks complete: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed, ${authExpiryResults.length} expired authorizations cancelled, ${checkoutAutoClearResults.cleared} checkout reviews auto-cleared`,
             overstays: {
                 summary: overstaySummary,
                 results: overstayResults.map(r => ({
@@ -321,6 +334,9 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
                     action: r.action,
                     error: r.error,
                 })),
+            },
+            checkoutAutoClear: {
+                summary: checkoutAutoClearSummary,
             },
         });
     } catch (error: unknown) {
@@ -635,7 +651,7 @@ router.get("/chef/storage-extensions/pending", requireChef, async (req: Request,
             .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
             .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
             .where(eq(storageBookings.chefId, chefId))
-            .orderBy(pendingStorageExtensions.createdAt);
+            .orderBy(desc(pendingStorageExtensions.createdAt));
 
         res.json(extensions);
     } catch (error: any) {

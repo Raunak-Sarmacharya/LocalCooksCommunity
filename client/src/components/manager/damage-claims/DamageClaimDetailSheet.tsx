@@ -72,6 +72,14 @@ interface DamageEvidence {
   vendorName: string | null;
 }
 
+interface DamagedItem {
+  equipmentBookingId?: number | null;
+  equipmentListingId: number;
+  equipmentType: string;
+  brand?: string | null;
+  description?: string | null;
+}
+
 interface DamageClaim {
   id: number;
   bookingType: string;
@@ -97,6 +105,7 @@ interface DamageClaim {
   chefName: string | null;
   locationName: string | null;
   evidence: DamageEvidence[];
+  damagedItems?: DamagedItem[];
 }
 
 interface DamageClaimDetailSheetProps {
@@ -355,6 +364,27 @@ export function DamageClaimDetailSheet({
                 <p>{claim.bookingType === 'storage' ? 'Storage' : 'Kitchen'}</p>
               </div>
             </div>
+
+            {/* Damaged Equipment Items */}
+            {claim.damagedItems && claim.damagedItems.length > 0 && (
+              <div className="border rounded-md p-3 space-y-2">
+                <Label className="text-xs text-muted-foreground">Damaged Equipment ({claim.damagedItems.length})</Label>
+                <div className="space-y-1.5">
+                  {claim.damagedItems.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-sm p-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-800">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                        <span className="font-medium capitalize">{item.equipmentType}</span>
+                        {item.brand && <span className="text-muted-foreground">({item.brand})</span>}
+                      </div>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {item.equipmentBookingId ? 'Rented' : 'Included'}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Chef Response */}
             {claim.chefResponse && (

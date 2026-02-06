@@ -29,7 +29,7 @@ export const bookingStatusEnum = pgEnum('booking_status', ['pending', 'confirmed
 export const storageTypeEnum = pgEnum('storage_type', ['dry', 'cold', 'freezer']);
 
 // Define enum for storage checkout status (hybrid verification workflow)
-export const checkoutStatusEnum = pgEnum('checkout_status', ['active', 'checkout_requested', 'checkout_approved', 'completed']);
+export const checkoutStatusEnum = pgEnum('checkout_status', ['active', 'checkout_requested', 'checkout_approved', 'completed', 'checkout_claim_filed']);
 export const storagePricingModelEnum = pgEnum('storage_pricing_model', ['monthly-flat', 'per-cubic-foot', 'hourly', 'daily']);
 export const bookingDurationUnitEnum = pgEnum('booking_duration_unit', ['hourly', 'daily', 'monthly']);
 export const listingStatusEnum = pgEnum('listing_status', ['draft', 'pending', 'approved', 'rejected', 'active', 'inactive']);
@@ -1053,7 +1053,7 @@ export const storageBookings = pgTable("storage_bookings", {
   totalPrice: numeric("total_price").notNull(), // In cents (daily_rate × number_of_days)
   pricingModel: storagePricingModelEnum("pricing_model").notNull(), // Always 'daily' now
   paymentStatus: paymentStatusEnum("payment_status").default("pending"),
-  paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID
+  paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (shared across bundled items in same kitchen booking)
   serviceFee: numeric("service_fee").default("0"), // Platform commission in cents
   currency: text("currency").default("CAD").notNull(),
   // Stripe fields for off-session penalty charging
@@ -1103,7 +1103,7 @@ export const updateStorageBookingSchema = z.object({
   paymentIntentId: z.string().optional(),
   serviceFee: z.number().int().min(0).optional(),
   // Checkout workflow fields
-  checkoutStatus: z.enum(["active", "checkout_requested", "checkout_approved", "completed"]).optional(),
+  checkoutStatus: z.enum(["active", "checkout_requested", "checkout_approved", "completed", "checkout_claim_filed"]).optional(),
   checkoutNotes: z.string().optional(),
   checkoutPhotoUrls: z.array(z.string()).optional(),
 });
@@ -1135,7 +1135,7 @@ export type UpdateStorageBooking = z.infer<typeof updateStorageBookingSchema>;
 export type UpdateStorageBookingStatus = z.infer<typeof updateStorageBookingStatusSchema>;
 export type StorageCheckoutRequest = z.infer<typeof storageCheckoutRequestSchema>;
 export type StorageCheckoutApproval = z.infer<typeof storageCheckoutApprovalSchema>;
-export type CheckoutStatus = "active" | "checkout_requested" | "checkout_approved" | "completed";
+export type CheckoutStatus = "active" | "checkout_requested" | "checkout_approved" | "completed" | "checkout_claim_filed";
 
 // ===== EQUIPMENT BOOKINGS TABLE =====
 // CRITICAL: Equipment can ONLY be booked as part of a kitchen booking (not standalone)
@@ -1154,7 +1154,7 @@ export const equipmentBookings = pgTable("equipment_bookings", {
   pricingModel: equipmentPricingModelEnum("pricing_model").notNull(), // Reuse enum
   damageDeposit: numeric("damage_deposit").default("0"), // In cents (only for rental)
   paymentStatus: paymentStatusEnum("payment_status").default("pending"), // Reuse enum
-  paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (nullable, unique)
+  paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (shared across bundled items in same kitchen booking)
   serviceFee: numeric("service_fee").default("0"), // Platform commission in cents
   currency: text("currency").default("CAD").notNull(),
   // NOTE: No delivery/pickup fields - equipment stays in kitchen
@@ -1672,6 +1672,9 @@ export const damageClaims = pgTable("damage_claims", {
   resolutionType: text("resolution_type"), // 'paid', 'waived', 'settled', 'expired', 'rejected'
   resolutionNotes: text("resolution_notes"),
   
+  // Damaged equipment items (for kitchen bookings with equipment)
+  damagedItems: jsonb("damaged_items").default([]), // Array of {equipmentBookingId?, equipmentListingId, equipmentType, brand?, description?}
+  
   // Timestamps
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -1724,6 +1727,17 @@ export const damageClaimHistory = pgTable("damage_claim_history", {
 const damageClaimStatusValues = ['draft', 'submitted', 'chef_accepted', 'chef_disputed', 'under_review', 'approved', 'partially_approved', 'rejected', 'charge_pending', 'charge_succeeded', 'charge_failed', 'resolved', 'expired'] as const;
 const evidenceTypeValues = ['photo_before', 'photo_after', 'receipt', 'invoice', 'video', 'document', 'third_party_report'] as const;
 
+// Damaged equipment item schema for kitchen booking claims
+export const damagedItemSchema = z.object({
+  equipmentBookingId: z.number().nullable().optional(), // null for included equipment
+  equipmentListingId: z.number(),
+  equipmentType: z.string(),
+  brand: z.string().nullable().optional(),
+  description: z.string().nullable().optional(), // damage description per item
+});
+
+export type DamagedItem = z.infer<typeof damagedItemSchema>;
+
 export const insertDamageClaimSchema = z.object({
   bookingType: z.enum(['kitchen', 'storage']),
   kitchenBookingId: z.number().optional(),
@@ -1736,6 +1750,7 @@ export const insertDamageClaimSchema = z.object({
   damageDate: z.string(), // ISO date string
   claimedAmountCents: z.number().int().min(1000), // Minimum $10
   chefResponseDeadline: z.date(),
+  damagedItems: z.array(damagedItemSchema).optional(), // Equipment items damaged (kitchen bookings)
 }).refine(
   (data) => {
     if (data.bookingType === 'kitchen') return data.kitchenBookingId !== undefined;

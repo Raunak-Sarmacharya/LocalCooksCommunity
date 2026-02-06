@@ -50,6 +50,14 @@ const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
 // TYPES
 // ============================================================================
 
+export interface DamagedItemInput {
+  equipmentBookingId?: number | null;
+  equipmentListingId: number;
+  equipmentType: string;
+  brand?: string | null;
+  description?: string | null;
+}
+
 export interface CreateDamageClaimInput {
   bookingType: 'kitchen' | 'storage';
   kitchenBookingId?: number;
@@ -59,6 +67,8 @@ export interface CreateDamageClaimInput {
   claimDescription: string;
   damageDate: string;
   claimedAmountCents: number;
+  damagedItems?: DamagedItemInput[];
+  submitImmediately?: boolean; // Skip draft — create as 'submitted' atomically
 }
 
 export interface DamageClaimWithDetails extends DamageClaim {
@@ -309,6 +319,25 @@ export async function createDamageClaim(input: CreateDamageClaimInput): Promise<
     const chefResponseDeadline = new Date();
     chefResponseDeadline.setHours(chefResponseDeadline.getHours() + chefResponseDeadlineHours);
 
+    const shouldSubmit = input.submitImmediately === true;
+    const initialStatus = shouldSubmit ? 'submitted' : 'draft';
+
+    // If submitting immediately, capture Stripe payment details upfront
+    let stripeCustomerId: string | null = null;
+    let stripePaymentMethodId: string | null = null;
+    if (shouldSubmit) {
+      const bookingId = input.bookingType === 'storage' ? input.storageBookingId : input.kitchenBookingId;
+      if (bookingId) {
+        try {
+          const paymentDetails = await getBookingPaymentDetails(input.bookingType, bookingId);
+          stripeCustomerId = paymentDetails.stripeCustomerId;
+          stripePaymentMethodId = paymentDetails.stripePaymentMethodId;
+        } catch (payErr) {
+          logger.warn(`[DamageClaimService] Could not get payment details for immediate submit:`, payErr as Error);
+        }
+      }
+    }
+
     // Create the claim
     const [claim] = await db.insert(damageClaims).values({
       bookingType: input.bookingType,
@@ -322,26 +351,84 @@ export async function createDamageClaim(input: CreateDamageClaimInput): Promise<
       damageDate: input.damageDate,
       claimedAmountCents: input.claimedAmountCents,
       chefResponseDeadline,
-      status: 'draft',
+      status: initialStatus,
+      damagedItems: input.damagedItems || [],
+      ...(shouldSubmit ? {
+        submittedAt: new Date(),
+        stripeCustomerId,
+        stripePaymentMethodId,
+      } : {}),
     }).returning();
 
-    // Create history entry
+    // Create history entry — single entry, no redundant draft
     await createHistoryEntry(
       claim.id,
       null,
-      'draft',
-      'created',
+      initialStatus,
+      shouldSubmit ? 'submitted' : 'created',
       'manager',
       input.managerId,
-      'Damage claim created'
+      shouldSubmit ? 'Damage claim created and submitted to chef' : 'Damage claim created as draft'
     );
 
-    logger.info(`[DamageClaimService] Created damage claim ${claim.id}`, {
+    logger.info(`[DamageClaimService] Created damage claim ${claim.id} (status: ${initialStatus})`, {
       bookingType: input.bookingType,
       chefId,
       managerId: input.managerId,
       claimedAmountCents: input.claimedAmountCents,
     });
+
+    // If submitted immediately, send notifications to chef
+    if (shouldSubmit) {
+      try {
+        const claimWithDetails = await getClaimById(claim.id);
+        if (claimWithDetails) {
+          const [chefUser] = await db.select({ username: users.username })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+          const [managerUser] = await db.select({ username: users.username })
+            .from(users)
+            .where(eq(users.id, input.managerId))
+            .limit(1);
+
+          if (chefUser?.username) {
+            const emailContent = generateDamageClaimFiledEmail({
+              chefEmail: chefUser.username,
+              chefName: claimWithDetails.chefName || chefUser.username || 'Chef',
+              managerName: claimWithDetails.managerName || managerUser?.username || 'Manager',
+              locationName: claimWithDetails.locationName || 'Unknown Location',
+              claimTitle: claim.claimTitle,
+              claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
+              damageDate: format(new Date(claim.damageDate), 'MMM d, yyyy'),
+              responseDeadline: format(new Date(claim.chefResponseDeadline), 'MMM d, yyyy h:mm a'),
+              claimId: claim.id,
+            });
+            await sendEmail(emailContent);
+            logger.info(`[DamageClaimService] Sent claim filed email to chef ${chefUser.username}`);
+
+            try {
+              const { notificationService } = await import('./notification.service');
+              await notificationService.notifyChefDamageClaimFiled({
+                chefId,
+                managerName: claimWithDetails.managerName || managerUser?.username || 'Manager',
+                responseDeadline: new Date(claim.chefResponseDeadline),
+                claimId: claim.id,
+                claimTitle: claim.claimTitle,
+                amountCents: claim.claimedAmountCents,
+                locationName: claimWithDetails.locationName || 'Unknown Location',
+                bookingType: claim.bookingType,
+              });
+            } catch (notifError) {
+              logger.error('[DamageClaimService] Failed to send in-app notification:', notifError);
+            }
+          }
+        }
+      } catch (emailError) {
+        logger.error('[DamageClaimService] Failed to send claim filed email:', emailError);
+      }
+    }
 
     return { success: true, claim };
   } catch (error: unknown) {
@@ -1408,11 +1495,12 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
       // ENTERPRISE STANDARD: Include application_fee_amount as serviceFee for accurate tracking
       // Manager revenue = chargeAmount - applicationFeeAmount (Stripe fee deducted)
       try {
-        const { createPaymentTransaction } = await import("./payment-transactions-service");
+        const { createPaymentTransaction, updatePaymentTransaction } = await import("./payment-transactions-service");
+        const { getStripePaymentAmounts } = await import("./stripe-service");
         const serviceFeeForTransaction = applicationFeeAmount || 0;
         const managerRevenueForTransaction = chargeAmount - serviceFeeForTransaction;
         
-        await createPaymentTransaction({
+        const ptRecord = await createPaymentTransaction({
           bookingId: claim.bookingType === 'storage' ? claim.storageBookingId! : claim.kitchenBookingId!,
           bookingType: claim.bookingType as 'kitchen' | 'storage',
           chefId: claim.chefId,
@@ -1431,8 +1519,29 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
             damage_claim_id: claimId.toString(),
             is_reimbursement: "true", // Flag to identify as reimbursement in UI
             no_tax: "true", // Flag to indicate no tax should be displayed
+            application_fee_cents: serviceFeeForTransaction.toString(),
           },
         }, db);
+
+        // ENTERPRISE STANDARD: Fetch and sync actual Stripe fees from Balance Transaction API
+        // Same pattern as overstay-penalty-service.ts — ensures stripe_processing_fee is populated
+        // so the manager's transaction history table shows the correct Stripe Fee column
+        if (ptRecord) {
+          const stripeAmounts = await getStripePaymentAmounts(paymentIntent.id, managerStripeAccountId || undefined);
+          if (stripeAmounts) {
+            await updatePaymentTransaction(ptRecord.id, {
+              paidAt: new Date(),
+              lastSyncedAt: new Date(),
+              stripeAmount: stripeAmounts.stripeAmount,
+              stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+              stripePlatformFee: stripeAmounts.stripePlatformFee,
+            }, db);
+            logger.info(`[DamageClaimService] Synced Stripe fees for damage claim ${claimId}:`, {
+              processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
+              platformFee: `$${(stripeAmounts.stripePlatformFee / 100).toFixed(2)}`,
+            });
+          }
+        }
 
         logger.info(`[DamageClaimService] Created payment transaction for damage claim ${claimId}`, {
           amount: chargeAmount,

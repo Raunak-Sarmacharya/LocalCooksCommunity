@@ -147,6 +147,13 @@ export interface StripeConnectStatus {
     chargesEnabled: boolean;
     detailsSubmitted: boolean;
     status: 'complete' | 'incomplete' | 'pending' | 'not_started';
+    verificationStage?: 'complete' | 'details_needed' | 'requires_additional_info' | 'pending_verification' | 'past_due' | 'payouts_disabled' | 'charges_disabled' | 'rejected' | 'incomplete';
+    requirements?: {
+        currentlyDue: string[];
+        pastDue: string[];
+        pendingVerification: string[];
+        currentDeadline: number | null;
+    };
 }
 
 // Filter state for transactions

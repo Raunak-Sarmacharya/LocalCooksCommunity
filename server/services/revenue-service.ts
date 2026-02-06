@@ -960,7 +960,7 @@ export async function getTransactionHistory(
       LEFT JOIN users u ON kb.chef_id = u.id
       LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
       ${kitchenWhereClause}
-      ORDER BY kb.booking_date DESC, kb.created_at DESC
+      ORDER BY kb.created_at DESC
     `);
 
     const kitchenTransactions = kitchenResult.rows.map((row: any) => {
@@ -994,7 +994,16 @@ export async function getTransactionHistory(
         // pt.amount is the total charged to Stripe (subtotal + tax)
         totalPriceCents = ptAmount;
         // EXCEPTION: Damage claims have NO TAX - they are reimbursements, not revenue
-        taxCents = isDamageClaim ? 0 : Math.round((kbTotalPrice * taxRatePercent) / 100);
+        if (isDamageClaim) {
+          taxCents = 0;
+        } else if (ptMetadata.partialCapture && ptMetadata.approvedTax != null) {
+          // PARTIAL CAPTURE: Use exact tax from capture engine metadata (source of truth)
+          // kb.total_price may be stale due to race condition between capture engine
+          // and payment_intent.succeeded webhook's syncStripeAmountsToBookings
+          taxCents = parseInt(String(ptMetadata.approvedTax)) || 0;
+        } else {
+          taxCents = Math.round((kbTotalPrice * taxRatePercent) / 100);
+        }
         serviceFeeCents = ptServiceFee > 0 ? ptServiceFee : kbServiceFee;
       } else {
         // Fallback: use kitchen_bookings values
@@ -1231,9 +1240,10 @@ export async function getTransactionHistory(
     }
 
     allTransactions.sort((a: { bookingDate: any; createdAt: string | number | Date; }, b: { bookingDate: any; createdAt: string | number | Date; }) => {
-      const aDate = new Date(a.bookingDate || a.createdAt).getTime();
-      const bDate = new Date(b.bookingDate || b.createdAt).getTime();
-      if (bDate !== aDate) return bDate - aDate;
+      // ENTERPRISE STANDARD: Sort by created_at DESC (newest-created first)
+      // Industry standard (Shopify, Airbnb, DoorDash): managers need to see
+      // the most recently placed orders at the top for immediate action,
+      // regardless of when the booking date is.
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
