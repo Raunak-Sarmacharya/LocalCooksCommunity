@@ -16,6 +16,7 @@ export interface DateRange {
 // Payment status types (matches database enum)
 export type PaymentStatus =
     | 'pending'
+    | 'authorized'
     | 'paid'
     | 'processing'
     | 'failed'

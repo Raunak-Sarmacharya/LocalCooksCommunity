@@ -1,7 +1,7 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign, Eye, RotateCcw } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign, Eye, RotateCcw, ClipboardCheck } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -82,6 +82,7 @@ interface BookingColumnsProps {
     onReject: (booking: Booking) => void;
     onCancel: (booking: Booking) => void;
     onRefund?: (booking: Booking) => void;
+    onTakeAction?: (booking: Booking) => void;
     hasApprovedLicense: boolean;
 }
 
@@ -102,7 +103,7 @@ const formatTime = (time: string) => {
     return `${displayHour}:${minutes} ${ampm}`;
 };
 
-export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, hasApprovedLicense }: BookingColumnsProps): ColumnDef<Booking>[] => [
+export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onTakeAction, hasApprovedLicense }: BookingColumnsProps): ColumnDef<Booking>[] => [
     {
         accessorKey: "kitchenName",
         header: ({ column }) => {
@@ -424,6 +425,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, has
         header: "Status",
         cell: ({ row }) => {
             const status = row.getValue("status") as string
+            const paymentStatus = row.original.paymentStatus;
 
             let variant: "default" | "secondary" | "destructive" | "outline" = "outline"
             let icon = null;
@@ -440,10 +442,18 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, has
             }
 
             return (
-                <Badge variant={variant} className="capitalize items-center flex w-fit">
-                    {icon}
-                    {status}
-                </Badge>
+                <div className="flex flex-col gap-1">
+                    <Badge variant={variant} className="capitalize items-center flex w-fit">
+                        {icon}
+                        {status}
+                    </Badge>
+                    {paymentStatus === 'authorized' && status === 'pending' && (
+                        <Badge variant="outline" className="text-[10px] text-blue-700 border-blue-200 bg-blue-50 w-fit">
+                            <DollarSign className="h-2.5 w-2.5 mr-0.5" />
+                            Payment Held
+                        </Badge>
+                    )}
+                </div>
             )
         },
     },
@@ -512,7 +522,18 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, has
                     <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
 
-                        {isPending && (
+                        {isPending && onTakeAction && (
+                            <DropdownMenuItem
+                                onClick={() => onTakeAction(booking)}
+                                disabled={!hasApprovedLicense}
+                                className="text-primary focus:text-primary focus:bg-primary/5"
+                            >
+                                <ClipboardCheck className="mr-2 h-4 w-4" />
+                                Take Action
+                            </DropdownMenuItem>
+                        )}
+
+                        {isPending && !onTakeAction && (
                             <>
                                 <DropdownMenuItem
                                     onClick={() => onConfirm(booking.id)}

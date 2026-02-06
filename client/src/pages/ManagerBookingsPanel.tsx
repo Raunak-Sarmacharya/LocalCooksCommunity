@@ -5,6 +5,10 @@ import { useToast } from "@/hooks/use-toast";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import { StorageExtensionApprovals } from "@/components/manager/StorageExtensionApprovals";
 import {
+  BookingActionSheet,
+  type BookingForAction,
+} from "@/components/manager/bookings/BookingActionSheet";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -46,6 +50,7 @@ interface Booking {
   stripeProcessingFee?: number; // Total Stripe processing fee (display only)
   managerRemainingBalance?: number; // Manager's remaining balance from this transaction
   managerRevenue?: number; // What manager originally received
+  paymentStatus?: string; // 'authorized' | 'paid' | 'pending' | etc.
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -90,6 +95,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [bookingToRefund, setBookingToRefund] = useState<Booking | null>(null);
   const [refundAmount, setRefundAmount] = useState<string>('');
+  const [actionSheetOpen, setActionSheetOpen] = useState(false);
+  const [bookingForAction, setBookingForAction] = useState<BookingForAction | null>(null);
 
   // Check if any location has approved license
   const hasApprovedLicense = locations.some((loc: any) => loc.kitchenLicenseStatus === 'approved');
@@ -184,13 +191,13 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
 
   // Update booking status mutation
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ bookingId, status }: { bookingId: number; status: string }) => {
+    mutationFn: async ({ bookingId, status, storageActions, equipmentActions }: { bookingId: number; status: string; storageActions?: Array<{ storageBookingId: number; action: string }>; equipmentActions?: Array<{ equipmentBookingId: number; action: string }> }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/bookings/${bookingId}/status`, {
         method: 'PUT',
         headers,
         credentials: "include",
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, storageActions, equipmentActions }),
       });
       if (!response.ok) {
         let errorMessage = 'Failed to update booking status';
@@ -247,15 +254,66 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     },
   });
 
-  const handleConfirm = (bookingId: number) => {
-    if (window.confirm('Confirm this booking?')) {
-      updateStatusMutation.mutate({ bookingId, status: 'confirmed' });
-    }
+  // Convert a Booking row to the shape needed by the action sheet
+  const toActionBooking = (booking: Booking): BookingForAction => ({
+    id: booking.id,
+    kitchenName: booking.kitchenName,
+    chefName: booking.chefName,
+    locationName: booking.locationName,
+    bookingDate: booking.bookingDate,
+    startTime: booking.startTime,
+    endTime: booking.endTime,
+    totalPrice: booking.totalPrice,
+    transactionAmount: booking.transactionAmount,
+    stripeProcessingFee: booking.stripeProcessingFee,
+    managerRevenue: booking.managerRevenue,
+    taxRatePercent: (booking as any).taxRatePercent,
+    storageItems: (booking as any).storageItems?.map((s: any) => ({
+      id: s.id,
+      storageBookingId: s.id,
+      name: s.name,
+      storageType: s.storageType,
+      totalPrice: s.totalPrice,
+      startDate: s.startDate,
+      endDate: s.endDate,
+    })),
+    equipmentItems: (booking as any).equipmentItems?.map((e: any) => ({
+      id: e.id,
+      equipmentBookingId: e.id,
+      name: e.name,
+      totalPrice: e.totalPrice,
+    })),
+    paymentStatus: booking.paymentStatus,
+  });
+
+  // Single "Take Action" handler — opens the unified action sheet
+  const handleTakeAction = (booking: Booking) => {
+    setBookingForAction(toActionBooking(booking));
+    setActionSheetOpen(true);
   };
 
+  // Legacy handlers kept for fallback (non-pending bookings)
   const handleCancelClick = (booking: Booking) => {
+    // Confirmed booking cancellation — use existing cancel dialog
     setBookingToCancel(booking);
     setCancelDialogOpen(true);
+  };
+
+  const handleActionSubmit = (params: {
+    bookingId: number;
+    status: 'confirmed' | 'cancelled';
+    storageActions?: Array<{ storageBookingId: number; action: string }>;
+    equipmentActions?: Array<{ equipmentBookingId: number; action: string }>;
+  }) => {
+    updateStatusMutation.mutate(
+      { bookingId: params.bookingId, status: params.status, storageActions: params.storageActions, equipmentActions: params.equipmentActions },
+      {
+        onSettled: () => {
+          setActionSheetOpen(false);
+          setBookingForAction(null);
+        },
+      }
+    );
   };
 
   const handleCancelConfirm = () => {
@@ -565,7 +623,11 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           <div className="space-y-4">
             <DataTable
               columns={getBookingColumns({
-                onConfirm: (id) => {
+                onConfirm: () => {},
+                onReject: handleCancelClick,
+                onCancel: handleCancelClick,
+                onRefund: handleRefundClick,
+                onTakeAction: (booking) => {
                   if (!hasApprovedLicense) {
                     toast({
                       title: "License Not Approved",
@@ -574,11 +636,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                     });
                     return;
                   }
-                  handleConfirm(id);
+                  handleTakeAction(booking as any);
                 },
-                onReject: handleCancelClick,
-                onCancel: handleCancelClick,
-                onRefund: handleRefundClick,
                 hasApprovedLicense
               })}
               data={filteredBookings}
@@ -682,6 +741,18 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Unified Booking Action Sheet */}
+      <BookingActionSheet
+        open={actionSheetOpen}
+        onOpenChange={(open) => {
+          setActionSheetOpen(open);
+          if (!open) setBookingForAction(null);
+        }}
+        booking={bookingForAction}
+        isLoading={updateStatusMutation.isPending}
+        onSubmit={handleActionSubmit}
+      />
 
       {/* Refund Dialog */}
       <AlertDialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>

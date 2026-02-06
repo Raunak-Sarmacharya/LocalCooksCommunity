@@ -292,6 +292,7 @@ interface PaymentStatusChartProps {
 }
 
 const statusColors: Record<PaymentStatus, string> = {
+    authorized: CHART_COLORS.blue,
     paid: CHART_COLORS.emerald,
     pending: CHART_COLORS.amber,
     processing: CHART_COLORS.blue,
@@ -302,6 +303,7 @@ const statusColors: Record<PaymentStatus, string> = {
 }
 
 const statusLabels: Record<PaymentStatus, string> = {
+    authorized: 'Payment Held',
     paid: 'Paid',
     pending: 'Pending',
     processing: 'Processing',

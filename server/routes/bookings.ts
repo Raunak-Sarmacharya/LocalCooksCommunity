@@ -216,10 +216,12 @@ router.get("/chef/storage-bookings/:id", requireChef, async (req: Request, res: 
 // This endpoint is called by Vercel cron daily to run all scheduled tasks:
 // 1. Detect storage overstays
 // 2. Process expired damage claim deadlines
+// 3. Cancel expired payment authorizations (24-hour hold window)
 // It does NOT auto-charge - it only creates records for manager review.
 
 import { overstayPenaltyService } from "../services/overstay-penalty-service";
 import { damageClaimService } from "../services/damage-claim-service";
+import { processExpiredAuthorizations } from "../services/auth-expiry-service";
 
 /**
  * POST /api/detect-overstays
@@ -234,6 +236,11 @@ import { damageClaimService } from "../services/damage-claim-service";
  *    - Finds claims where chef didn't respond by deadline
  *    - Auto-approves them (industry standard: silence = acceptance)
  *    - Notifies both chef and manager
+ * 
+ * 3. EXPIRED AUTHORIZATION CANCELLATION:
+ *    - Finds bookings/extensions with 'authorized' payment status older than 24 hours
+ *    - Cancels the Stripe PaymentIntent to release the hold on the chef's card
+ *    - Rejects the booking/extension and notifies the chef
  * 
  * Security: Uses Vercel cron secret for authentication
  */
@@ -272,11 +279,24 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
         };
         console.log("[Cron] Expired claims processing complete:", claimSummary);
 
+        // Task 3: Cancel expired payment authorizations (24-hour hold window)
+        console.log("[Cron] Task 3: Cancelling expired payment authorizations...");
+        const authExpiryResults = await processExpiredAuthorizations();
+        
+        const authExpirySummary = {
+            total: authExpiryResults.length,
+            canceled: authExpiryResults.filter(r => r.action === 'canceled').length,
+            errors: authExpiryResults.filter(r => r.action === 'error').length,
+            kitchenBookings: authExpiryResults.filter(r => r.type === 'kitchen_booking').length,
+            storageExtensions: authExpiryResults.filter(r => r.type === 'storage_extension').length,
+        };
+        console.log("[Cron] Expired authorizations processing complete:", authExpirySummary);
+
         console.log("[Cron] All daily scheduled tasks complete");
 
         res.json({
             success: true,
-            message: `Daily tasks complete: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed`,
+            message: `Daily tasks complete: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed, ${authExpiryResults.length} expired authorizations cancelled`,
             overstays: {
                 summary: overstaySummary,
                 results: overstayResults.map(r => ({
@@ -291,6 +311,15 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
                 results: expiredClaimResults.map(r => ({
                     claimId: r.claimId,
                     action: r.action,
+                })),
+            },
+            expiredAuthorizations: {
+                summary: authExpirySummary,
+                results: authExpiryResults.map(r => ({
+                    type: r.type,
+                    id: r.id,
+                    action: r.action,
+                    error: r.error,
                 })),
             },
         });
@@ -2498,8 +2527,12 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
             console.log(`[by-session] No booking found with paymentIntentId=${paymentIntentId}`);
         }
 
-        // FALLBACK: If booking doesn't exist but payment was successful, create it from session metadata
+        // FALLBACK: If booking doesn't exist but payment was successful/authorized, create it from session metadata
         // This handles cases where the webhook failed to process
+        // AUTH-THEN-CAPTURE: Also handle manual capture where payment_status='paid' but PI status='requires_capture'
+        const piObj = typeof session.payment_intent === 'object' ? session.payment_intent : null;
+        const fallbackIsManualCapture = piObj?.status === 'requires_capture';
+        const fallbackPaymentStatus = fallbackIsManualCapture ? 'authorized' : 'paid';
         if (!booking && session.payment_status === 'paid' && session.metadata?.type === 'kitchen_booking') {
             console.log(`[Fallback] Webhook may have failed - creating booking from session ${sessionId}`);
             
@@ -2537,7 +2570,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                     startTime,
                     endTime,
                     status: "pending", // Awaiting manager approval
-                    paymentStatus: "paid", // Payment already confirmed
+                    paymentStatus: fallbackPaymentStatus, // 'authorized' for manual capture, 'paid' for auto capture
                     paymentIntentId: paymentIntentId,
                     specialNotes,
                     totalPrice: totalPriceCents.toString(),

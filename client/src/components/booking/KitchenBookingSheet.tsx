@@ -745,6 +745,13 @@ export default function KitchenBookingSheet({
       
       // Redirect to Stripe Checkout
       if (data.sessionUrl) {
+        // Close the Sheet BEFORE redirecting to prevent Radix UI from leaving
+        // pointer-events: none on document.body (known Radix Dialog cleanup issue)
+        onOpenChange(false);
+        // Small delay to let Radix clean up body styles before navigation
+        await new Promise(resolve => setTimeout(resolve, 100));
+        // Belt-and-suspenders: force-clear pointer-events in case Radix didn't clean up
+        document.body.style.pointerEvents = '';
         window.location.href = data.sessionUrl;
       } else {
         throw new Error('No checkout URL returned');

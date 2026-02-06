@@ -14,7 +14,7 @@
 import { sql } from "drizzle-orm";
 import { getPaymentIntent } from './stripe-service';
 
-export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'partially_refunded' | 'processing' | 'canceled';
+export type PaymentStatus = 'pending' | 'authorized' | 'paid' | 'failed' | 'refunded' | 'partially_refunded' | 'processing' | 'canceled';
 
 export interface PaymentTrackingResult {
   success: boolean;

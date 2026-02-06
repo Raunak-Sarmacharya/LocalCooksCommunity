@@ -1,0 +1,936 @@
+import { useState, useMemo } from "react";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Package,
+  Boxes,
+  Calendar,
+  Clock,
+  MapPin,
+  ChefHat,
+  DollarSign,
+  AlertTriangle,
+  RefreshCcw,
+  Info,
+  Pencil,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export interface StorageItemForAction {
+  id: number;
+  storageBookingId: number;
+  name: string;
+  storageType: string;
+  totalPrice: number; // in cents
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface EquipmentItemForAction {
+  id: number;
+  equipmentBookingId: number;
+  name: string;
+  totalPrice: number; // in cents
+}
+
+export interface BookingForAction {
+  id: number;
+  kitchenName?: string;
+  chefName?: string;
+  locationName?: string;
+  bookingDate: string;
+  startTime: string;
+  endTime: string;
+  totalPrice?: number; // kitchen-only price in cents
+  storageItems?: StorageItemForAction[];
+  equipmentItems?: EquipmentItemForAction[];
+  // Payment info for refund preview
+  transactionAmount?: number; // total charged in cents
+  stripeProcessingFee?: number; // Stripe fee in cents
+  managerRevenue?: number; // manager received in cents
+  taxRatePercent?: number; // tax rate (e.g. 13 for 13%)
+  paymentStatus?: string; // 'authorized' | 'paid' | etc.
+}
+
+type ItemAction = "confirmed" | "cancelled";
+
+interface StorageDecision {
+  storageBookingId: number;
+  action: ItemAction;
+}
+
+interface EquipmentDecision {
+  equipmentBookingId: number;
+  action: ItemAction;
+}
+
+interface BookingActionSheetProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  booking: BookingForAction | null;
+  isLoading?: boolean;
+  onSubmit: (params: {
+    bookingId: number;
+    status: "confirmed" | "cancelled";
+    storageActions?: StorageDecision[];
+    equipmentActions?: EquipmentDecision[];
+  }) => void;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
+
+const formatTime = (time: string) => {
+  if (!time) return "";
+  const [hours, minutes] = time.split(":");
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minutes} ${ampm}`;
+};
+
+const formatStorageDate = (dateStr?: string) => {
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+};
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+export function BookingActionSheet({
+  open,
+  onOpenChange,
+  booking,
+  isLoading = false,
+  onSubmit,
+}: BookingActionSheetProps) {
+  const sheetKey = booking ? `${booking.id}` : "empty";
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      {open && booking ? (
+        <BookingActionSheetContent
+          key={sheetKey}
+          booking={booking}
+          isLoading={isLoading}
+          onSubmit={onSubmit}
+          onCancel={() => onOpenChange(false)}
+        />
+      ) : null}
+    </Sheet>
+  );
+}
+
+function BookingActionSheetContent({
+  booking,
+  isLoading,
+  onSubmit,
+  onCancel,
+}: {
+  booking: BookingForAction;
+  isLoading: boolean;
+  onSubmit: BookingActionSheetProps["onSubmit"];
+  onCancel: () => void;
+}) {
+  // Kitchen decision — toggleable
+  const [kitchenAction, setKitchenAction] = useState<ItemAction>("confirmed");
+
+  // Per-storage-booking decisions — all default to approved
+  const [storageDecisions, setStorageDecisions] = useState<Map<number, ItemAction>>(() => {
+    const defaults = new Map<number, ItemAction>();
+    if (booking.storageItems) {
+      for (const item of booking.storageItems) {
+        defaults.set(item.storageBookingId, "confirmed");
+      }
+    }
+    return defaults;
+  });
+
+  // Per-equipment-booking decisions — all default to approved
+  const [equipmentDecisions, setEquipmentDecisions] = useState<Map<number, ItemAction>>(() => {
+    const defaults = new Map<number, ItemAction>();
+    if (booking.equipmentItems) {
+      for (const item of booking.equipmentItems) {
+        defaults.set(item.equipmentBookingId, "confirmed");
+      }
+    }
+    return defaults;
+  });
+
+  // Editable refund amount override
+  const [isEditingRefund, setIsEditingRefund] = useState(false);
+  const [customRefundInput, setCustomRefundInput] = useState("");
+
+  const toggleKitchenAction = () => {
+    setKitchenAction((prev) => (prev === "confirmed" ? "cancelled" : "confirmed"));
+  };
+
+  const toggleStorageDecision = (storageBookingId: number) => {
+    setStorageDecisions((prev) => {
+      const next = new Map(prev);
+      const current = next.get(storageBookingId);
+      next.set(storageBookingId, current === "confirmed" ? "cancelled" : "confirmed");
+      return next;
+    });
+  };
+
+  const toggleEquipmentDecision = (equipmentBookingId: number) => {
+    setEquipmentDecisions((prev) => {
+      const next = new Map(prev);
+      const current = next.get(equipmentBookingId);
+      next.set(equipmentBookingId, current === "confirmed" ? "cancelled" : "confirmed");
+      return next;
+    });
+  };
+
+  const hasStorage = booking.storageItems && booking.storageItems.length > 0;
+  const hasEquipment = booking.equipmentItems && booking.equipmentItems.length > 0;
+  const isAuthorized = booking.paymentStatus === "authorized";
+
+  // ── Refund Calculation (Tax-inclusive, full Stripe fee deducted) ─────────────
+  // Formula:
+  //   rejectedSubtotal = sum of rejected item prices (pre-tax)
+  //   proportionalTax = rejectedSubtotal × taxRate / 100
+  //   grossRefund = rejectedSubtotal + proportionalTax
+  //   netRefund = max(0, grossRefund − fullStripeFee)
+  //   Full rejection → netRefund = transactionAmount − stripeFee = managerRevenue → balance = 0
+  const refundCalc = useMemo(() => {
+    const kitchenPriceCents = booking.totalPrice || 0;
+    const transactionAmount = booking.transactionAmount || 0;
+    const stripeFee = booking.stripeProcessingFee || 0;
+    const managerRevenue = booking.managerRevenue || 0;
+    const taxRatePercent = booking.taxRatePercent || 0;
+
+    // Sum rejected subtotals (pre-tax)
+    let rejectedKitchenCents = 0;
+    if (kitchenAction === "cancelled") {
+      rejectedKitchenCents = kitchenPriceCents;
+    }
+
+    let rejectedStorageCents = 0;
+    const rejectedStorageCount = { total: 0 };
+    if (booking.storageItems) {
+      for (const item of booking.storageItems) {
+        const decision = storageDecisions.get(item.storageBookingId) || "confirmed";
+        if (decision === "cancelled") {
+          rejectedStorageCents += item.totalPrice;
+          rejectedStorageCount.total++;
+        }
+      }
+    }
+
+    let rejectedEquipmentCents = 0;
+    const rejectedEquipmentCount = { total: 0 };
+    if (booking.equipmentItems) {
+      for (const item of booking.equipmentItems) {
+        const decision = equipmentDecisions.get(item.equipmentBookingId) || "confirmed";
+        if (decision === "cancelled") {
+          rejectedEquipmentCents += item.totalPrice;
+          rejectedEquipmentCount.total++;
+        }
+      }
+    }
+
+    const totalRejectedSubtotal = rejectedKitchenCents + rejectedStorageCents + rejectedEquipmentCents;
+
+    // Proportional tax on rejected items
+    const proportionalTax = Math.round((totalRejectedSubtotal * taxRatePercent) / 100);
+
+    // Gross refund = rejected subtotal + proportional tax
+    const grossRefund = totalRejectedSubtotal + proportionalTax;
+
+    // Proportional Stripe fee = stripeFee × (grossRefund / transactionAmount)
+    const proportionalStripeFee = transactionAmount > 0
+      ? Math.round(stripeFee * (grossRefund / transactionAmount))
+      : 0;
+
+    // Net refund = gross minus proportional Stripe fee (chef absorbs the fee)
+    const netRefund = Math.max(0, grossRefund - proportionalStripeFee);
+
+    // Cap at manager's available balance
+    const maxRefundable = Math.max(0, managerRevenue);
+    const autoRefundAmount = Math.min(netRefund, maxRefundable);
+
+    const hasAnyRejection = totalRejectedSubtotal > 0;
+    const totalItemCount = 1 + (booking.storageItems?.length || 0) + (booking.equipmentItems?.length || 0);
+    const totalRejectedCount = (kitchenAction === "cancelled" ? 1 : 0) + rejectedStorageCount.total + rejectedEquipmentCount.total;
+    const isFullRejection = totalRejectedCount === totalItemCount;
+
+    return {
+      transactionAmount,
+      stripeFee,
+      managerRevenue,
+      taxRatePercent,
+      rejectedKitchenCents,
+      rejectedStorageCents,
+      rejectedEquipmentCents,
+      totalRejectedSubtotal,
+      proportionalTax,
+      grossRefund,
+      proportionalStripeFee,
+      netRefund,
+      autoRefundAmount,
+      maxRefundable,
+      hasAnyRejection,
+      isFullRejection,
+      rejectedStorageCount: rejectedStorageCount.total,
+      rejectedEquipmentCount: rejectedEquipmentCount.total,
+    };
+  }, [kitchenAction, storageDecisions, equipmentDecisions, booking]);
+
+  // Custom refund amount (user-editable, capped at max)
+  const effectiveRefundAmount = useMemo(() => {
+    if (isEditingRefund && customRefundInput !== "") {
+      const customCents = Math.round(parseFloat(customRefundInput) * 100);
+      if (!isNaN(customCents) && customCents >= 0) {
+        return Math.min(customCents, refundCalc.maxRefundable);
+      }
+    }
+    return refundCalc.autoRefundAmount;
+  }, [isEditingRefund, customRefundInput, refundCalc]);
+
+  // Reset custom refund when auto amount changes
+  const handleEditRefund = () => {
+    setIsEditingRefund(true);
+    setCustomRefundInput((refundCalc.autoRefundAmount / 100).toFixed(2));
+  };
+
+  const handleResetRefund = () => {
+    setIsEditingRefund(false);
+    setCustomRefundInput("");
+  };
+
+  // ── Submit ────────────────────────────────────────────────────────────────
+  const handleSubmit = () => {
+    if (!booking) return;
+
+    const storageActions: StorageDecision[] | undefined = hasStorage
+      ? booking.storageItems!.map((item) => ({
+          storageBookingId: item.storageBookingId,
+          action: storageDecisions.get(item.storageBookingId) || "confirmed",
+        }))
+      : undefined;
+
+    const eqActions: EquipmentDecision[] | undefined = hasEquipment
+      ? booking.equipmentItems!.map((item) => ({
+          equipmentBookingId: item.equipmentBookingId,
+          action: equipmentDecisions.get(item.equipmentBookingId) || "confirmed",
+        }))
+      : undefined;
+
+    onSubmit({
+      bookingId: booking.id,
+      status: kitchenAction === "confirmed" ? "confirmed" : "cancelled",
+      storageActions,
+      equipmentActions: eqActions,
+    });
+  };
+
+  // Count approved vs rejected (across all item types)
+  const approvedCount = (kitchenAction === "confirmed" ? 1 : 0) +
+    (booking.storageItems?.filter((i) => storageDecisions.get(i.storageBookingId) === "confirmed").length || 0) +
+    (booking.equipmentItems?.filter((i) => equipmentDecisions.get(i.equipmentBookingId) === "confirmed").length || 0);
+  const rejectedCount = (kitchenAction === "cancelled" ? 1 : 0) +
+    (booking.storageItems?.filter((i) => storageDecisions.get(i.storageBookingId) === "cancelled").length || 0) +
+    (booking.equipmentItems?.filter((i) => equipmentDecisions.get(i.equipmentBookingId) === "cancelled").length || 0);
+
+  const allApproved = rejectedCount === 0;
+  const allRejected = approvedCount === 0;
+
+  return (
+    <SheetContent className="sm:max-w-[480px] flex flex-col p-0 gap-0 h-full max-h-screen overflow-hidden">
+      {/* Header */}
+      <SheetHeader className="px-6 pt-6 pb-4 border-b bg-muted/30 shrink-0">
+        <SheetTitle className="flex items-center gap-2 text-lg">
+          <RefreshCcw className="h-5 w-5 text-primary" />
+          Take Action on Booking
+        </SheetTitle>
+        <SheetDescription className="text-sm">
+          {isAuthorized
+            ? "Payment is held but not yet charged. Approve to charge, reject to release the hold."
+            : "Review and decide on each item individually. Rejected items will be automatically refunded."}
+        </SheetDescription>
+      </SheetHeader>
+
+      {/* Scrollable Body */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4">
+        {/* Booking Summary */}
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border">
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm truncate">
+              {booking.kitchenName || "Kitchen Booking"}
+            </p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
+              {booking.chefName && (
+                <span className="flex items-center gap-1">
+                  <ChefHat className="h-3 w-3" />
+                  {booking.chefName}
+                </span>
+              )}
+              {booking.locationName && (
+                <span className="flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {booking.locationName}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                {formatDate(booking.bookingDate)}
+              </span>
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {formatTime(booking.startTime)} – {formatTime(booking.endTime)}
+              </span>
+            </div>
+          </div>
+          {booking.transactionAmount != null && booking.transactionAmount > 0 && (
+            <Badge variant="secondary" className="shrink-0 font-mono text-xs">
+              <DollarSign className="h-3 w-3 mr-0.5" />
+              {formatPrice(booking.transactionAmount)}
+            </Badge>
+          )}
+        </div>
+
+        <Separator />
+
+        {/* Kitchen Booking — toggleable */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+            <ChefHat className="h-3.5 w-3.5" />
+            Kitchen Session
+          </p>
+          <button
+            type="button"
+            onClick={toggleKitchenAction}
+            className={cn(
+              "w-full flex items-center justify-between p-3 rounded-lg border transition-all duration-200 text-left",
+              "hover:shadow-sm active:scale-[0.99]",
+              kitchenAction === "confirmed"
+                ? "bg-green-50/50 border-green-200 hover:border-green-300"
+                : "bg-red-50/50 border-red-200 hover:border-red-300"
+            )}
+          >
+            <div className="flex items-center gap-2.5">
+              <div
+                className={cn(
+                  "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                  kitchenAction === "confirmed" ? "bg-green-100" : "bg-red-100"
+                )}
+              >
+                <ChefHat
+                  className={cn(
+                    "h-4 w-4",
+                    kitchenAction === "confirmed" ? "text-green-600" : "text-red-600"
+                  )}
+                />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Kitchen Booking</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatTime(booking.startTime)} – {formatTime(booking.endTime)}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {booking.totalPrice != null && booking.totalPrice > 0 && (
+                <span className="text-xs font-mono text-muted-foreground">
+                  {formatPrice(booking.totalPrice)}
+                </span>
+              )}
+              <Badge
+                className={cn(
+                  "text-[10px] transition-colors cursor-pointer",
+                  kitchenAction === "confirmed"
+                    ? "bg-green-100 text-green-700 border-green-200 hover:bg-green-200"
+                    : "bg-red-100 text-red-700 border-red-200 hover:bg-red-200"
+                )}
+              >
+                {kitchenAction === "confirmed" ? (
+                  <>
+                    <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                    Approve
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-2.5 w-2.5 mr-0.5" />
+                    Reject
+                  </>
+                )}
+              </Badge>
+            </div>
+          </button>
+        </div>
+
+        {/* Storage Items — individually toggleable */}
+        {hasStorage && (
+          <>
+            <Separator />
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Boxes className="h-3.5 w-3.5" />
+                Storage Rentals
+              </p>
+
+              {booking.storageItems!.map((item) => {
+                const decision = storageDecisions.get(item.storageBookingId) || "confirmed";
+                const isApproved = decision === "confirmed";
+                const dateRange =
+                  item.startDate && item.endDate
+                    ? item.startDate === item.endDate
+                      ? formatStorageDate(item.startDate)
+                      : `${formatStorageDate(item.startDate)} – ${formatStorageDate(item.endDate)}`
+                    : "";
+
+                return (
+                  <button
+                    key={item.storageBookingId}
+                    type="button"
+                    onClick={() => toggleStorageDecision(item.storageBookingId)}
+                    className={cn(
+                      "w-full flex items-center justify-between p-3 rounded-lg border transition-all duration-200 text-left group",
+                      "hover:shadow-sm active:scale-[0.99]",
+                      isApproved
+                        ? "bg-green-50/50 border-green-200 hover:border-green-300"
+                        : "bg-red-50/50 border-red-200 hover:border-red-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div
+                        className={cn(
+                          "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors",
+                          isApproved ? "bg-green-100" : "bg-red-100"
+                        )}
+                      >
+                        <Boxes
+                          className={cn(
+                            "h-4 w-4",
+                            isApproved ? "text-green-600" : "text-red-600"
+                          )}
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{item.name}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>{item.storageType}</span>
+                          {dateRange && (
+                            <>
+                              <span>·</span>
+                              <span>{dateRange}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {item.totalPrice > 0 && (
+                        <span className="text-xs font-mono text-muted-foreground">
+                          {formatPrice(item.totalPrice)}
+                        </span>
+                      )}
+                      <Badge
+                        className={cn(
+                          "text-[10px] transition-colors cursor-pointer",
+                          isApproved
+                            ? "bg-green-100 text-green-700 border-green-200 hover:bg-green-200"
+                            : "bg-red-100 text-red-700 border-red-200 hover:bg-red-200"
+                        )}
+                      >
+                        {isApproved ? (
+                          <>
+                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                            Approve
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="h-2.5 w-2.5 mr-0.5" />
+                            Reject
+                          </>
+                        )}
+                      </Badge>
+                    </div>
+                  </button>
+                );
+              })}
+
+              <p className="text-[11px] text-muted-foreground italic pl-1">
+                Click each item to toggle between approve and reject
+              </p>
+            </div>
+          </>
+        )}
+
+        {/* Equipment items — individually toggleable (same as storage) */}
+        {hasEquipment && (
+          <>
+            <Separator />
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Package className="h-3.5 w-3.5" />
+                Equipment Rentals
+              </p>
+
+              {booking.equipmentItems!.map((item) => {
+                const decision = equipmentDecisions.get(item.equipmentBookingId) || "confirmed";
+                const isApproved = decision === "confirmed";
+
+                return (
+                  <button
+                    key={item.equipmentBookingId}
+                    type="button"
+                    onClick={() => toggleEquipmentDecision(item.equipmentBookingId)}
+                    className={cn(
+                      "w-full flex items-center justify-between p-3 rounded-lg border transition-all duration-200 text-left group",
+                      "hover:shadow-sm active:scale-[0.99]",
+                      isApproved
+                        ? "bg-green-50/50 border-green-200 hover:border-green-300"
+                        : "bg-red-50/50 border-red-200 hover:border-red-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div
+                        className={cn(
+                          "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors",
+                          isApproved ? "bg-green-100" : "bg-red-100"
+                        )}
+                      >
+                        <Package
+                          className={cn(
+                            "h-4 w-4",
+                            isApproved ? "text-green-600" : "text-red-600"
+                          )}
+                        />
+                      </div>
+                      <p className="text-sm font-medium truncate">{item.name}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {item.totalPrice > 0 && (
+                        <span className="text-xs font-mono text-muted-foreground">
+                          {formatPrice(item.totalPrice)}
+                        </span>
+                      )}
+                      <Badge
+                        className={cn(
+                          "text-[10px] transition-colors cursor-pointer",
+                          isApproved
+                            ? "bg-green-100 text-green-700 border-green-200 hover:bg-green-200"
+                            : "bg-red-100 text-red-700 border-red-200 hover:bg-red-200"
+                        )}
+                      >
+                        {isApproved ? (
+                          <>
+                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                            Approve
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="h-2.5 w-2.5 mr-0.5" />
+                            Reject
+                          </>
+                        )}
+                      </Badge>
+                    </div>
+                  </button>
+                );
+              })}
+
+              <p className="text-[11px] text-muted-foreground italic pl-1">
+                Click each item to toggle between approve and reject
+              </p>
+            </div>
+          </>
+        )}
+
+        {/* ── Auth-Then-Capture Info ─────────────────────────────────────── */}
+        {isAuthorized && refundCalc.hasAnyRejection && (
+          <>
+            <Separator />
+            <div className="p-4 rounded-lg border border-blue-200 bg-blue-50/50 space-y-2">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-blue-600" />
+                <p className="text-sm font-semibold text-blue-800">
+                  No Charge — Authorization Will Be Released
+                </p>
+              </div>
+              <p className="text-xs text-blue-700">
+                The chef&apos;s card has a temporary hold of {booking.transactionAmount ? formatPrice(booking.transactionAmount) : "the booking amount"}.
+                Rejecting will release this hold — the chef will <strong>not be charged anything</strong> and no Stripe fees apply.
+              </p>
+            </div>
+          </>
+        )}
+
+        {isAuthorized && allApproved && (
+          <>
+            <Separator />
+            <div className="p-4 rounded-lg border border-blue-200 bg-blue-50/50 space-y-2">
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-blue-600" />
+                <p className="text-sm font-semibold text-blue-800">
+                  Payment Will Be Captured
+                </p>
+              </div>
+              <p className="text-xs text-blue-700">
+                Approving will charge the chef&apos;s card {booking.transactionAmount ? formatPrice(booking.transactionAmount) : "the held amount"}.
+                The hold will be converted to a final charge.
+              </p>
+            </div>
+          </>
+        )}
+
+        {/* ── Refund Preview (only for captured/paid payments) ───────────── */}
+        {!isAuthorized && refundCalc.hasAnyRejection && (
+          <>
+            <Separator />
+            <div className="space-y-3 p-4 rounded-lg border border-amber-200 bg-amber-50/50">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <p className="text-sm font-semibold text-amber-800">
+                  Automatic Refund Preview
+                </p>
+              </div>
+
+              {/* Transaction Breakdown */}
+              {refundCalc.transactionAmount > 0 && (
+                <div className="space-y-1 text-xs p-2.5 rounded-md bg-white/60 border border-amber-100">
+                  <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide mb-1">Transaction Breakdown</p>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Total charged</span>
+                    <span className="font-mono">{formatPrice(refundCalc.transactionAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Stripe fee (already deducted)</span>
+                    <span className="font-mono text-red-600">-{formatPrice(refundCalc.stripeFee)}</span>
+                  </div>
+                  <div className="flex justify-between font-medium text-foreground">
+                    <span>Available in kitchen account</span>
+                    <span className="font-mono">{formatPrice(refundCalc.managerRevenue)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Refund Breakdown */}
+              <div className="space-y-1.5 text-xs">
+                <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide">Refund Breakdown</p>
+                {refundCalc.rejectedKitchenCents > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Kitchen session (rejected)</span>
+                    <span className="font-mono">{formatPrice(refundCalc.rejectedKitchenCents)}</span>
+                  </div>
+                )}
+                {refundCalc.rejectedStorageCents > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Storage ({refundCalc.rejectedStorageCount} item{refundCalc.rejectedStorageCount !== 1 ? "s" : ""} rejected)</span>
+                    <span className="font-mono">{formatPrice(refundCalc.rejectedStorageCents)}</span>
+                  </div>
+                )}
+                {refundCalc.rejectedEquipmentCents > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Equipment ({refundCalc.rejectedEquipmentCount} item{refundCalc.rejectedEquipmentCount !== 1 ? "s" : ""} rejected)</span>
+                    <span className="font-mono">{formatPrice(refundCalc.rejectedEquipmentCents)}</span>
+                  </div>
+                )}
+                {refundCalc.proportionalTax > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Tax ({refundCalc.taxRatePercent}%)</span>
+                    <span className="font-mono">+{formatPrice(refundCalc.proportionalTax)}</span>
+                  </div>
+                )}
+                {refundCalc.grossRefund > 0 && (
+                  <div className="flex justify-between text-muted-foreground font-medium">
+                    <span>Gross refund</span>
+                    <span className="font-mono">{formatPrice(refundCalc.grossRefund)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Stripe fee (proportional)</span>
+                  <span className="font-mono text-red-600">-{formatPrice(refundCalc.proportionalStripeFee)}</span>
+                </div>
+                <Separator className="my-1" />
+                <div className="flex justify-between font-semibold text-sm">
+                  <span>Customer receives</span>
+                  <span className="font-mono text-green-700">{formatPrice(effectiveRefundAmount)}</span>
+                </div>
+                {effectiveRefundAmount < refundCalc.netRefund && (
+                  <p className="text-[10px] text-amber-600 italic">
+                    Capped at available balance ({formatPrice(refundCalc.maxRefundable)})
+                  </p>
+                )}
+              </div>
+
+              {/* Editable refund amount */}
+              <div className="space-y-2">
+                {!isEditingRefund ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleEditRefund}
+                    className="h-7 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-100 px-2"
+                  >
+                    <Pencil className="h-3 w-3 mr-1" />
+                    Modify refund amount
+                  </Button>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-amber-700">Custom refund amount</Label>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max={(refundCalc.maxRefundable / 100).toFixed(2)}
+                          value={customRefundInput}
+                          onChange={(e) => setCustomRefundInput(e.target.value)}
+                          className="h-8 pl-7 text-sm font-mono"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleResetRefund}
+                        className="h-8 text-xs px-2"
+                      >
+                        Reset
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-amber-600">
+                      Max: {formatPrice(refundCalc.maxRefundable)} (manager&apos;s available balance)
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Info note */}
+              <div className="flex items-start gap-1.5 text-[10px] text-amber-600">
+                <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                <span>
+                  Stripe fee and tax are proportionally included in the refund calculation.
+                  Refund is processed automatically from the kitchen account upon confirmation.
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* All approved confirmation (only for non-authorized bookings — authorized has its own section above) */}
+        {!isAuthorized && allApproved && (
+          <>
+            <Separator />
+            <div className="p-3 rounded-lg border border-green-200 bg-green-50/50">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                <p className="text-sm font-medium text-green-800">
+                  All items approved — no refund needed
+                </p>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Footer */}
+      <SheetFooter className="px-6 py-4 border-t bg-muted/30 shrink-0 !flex-col !space-x-0 gap-3">
+        {/* Summary badges */}
+        <div className="flex items-center gap-2 w-full">
+          {approvedCount > 0 && (
+            <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              {approvedCount} approved
+            </Badge>
+          )}
+          {rejectedCount > 0 && (
+            <Badge className="bg-red-100 text-red-700 border-red-200 text-xs">
+              <XCircle className="h-3 w-3 mr-1" />
+              {rejectedCount} rejected
+            </Badge>
+          )}
+          {!isAuthorized && refundCalc.hasAnyRejection && (
+            <Badge variant="outline" className="text-xs text-amber-700 border-amber-200 ml-auto">
+              <DollarSign className="h-3 w-3 mr-0.5" />
+              {formatPrice(effectiveRefundAmount)} refund
+            </Badge>
+          )}
+          {isAuthorized && refundCalc.hasAnyRejection && (
+            <Badge variant="outline" className="text-xs text-blue-700 border-blue-200 ml-auto">
+              No charge
+            </Badge>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex items-center justify-between w-full gap-3">
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+            className="flex-1"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className={cn(
+              "flex-1 min-w-[160px]",
+              allRejected
+                ? "bg-red-600 hover:bg-red-700 text-white"
+                : allApproved
+                ? "bg-green-600 hover:bg-green-700 text-white"
+                : "bg-primary hover:bg-primary/90 text-primary-foreground"
+            )}
+          >
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : allRejected ? (
+              <XCircle className="h-4 w-4 mr-2" />
+            ) : allApproved ? (
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+            ) : (
+              <RefreshCcw className="h-4 w-4 mr-2" />
+            )}
+            {isLoading
+              ? "Processing..."
+              : allRejected
+              ? "Reject All"
+              : allApproved
+              ? "Approve All"
+              : "Confirm Decisions"}
+          </Button>
+        </div>
+      </SheetFooter>
+    </SheetContent>
+  );
+}

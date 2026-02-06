@@ -105,6 +105,7 @@ interface Booking {
 interface StorageBooking {
   id: number
   storageListingId?: number
+  kitchenBookingId?: number
   storageName?: string
   storageType?: string
   locationName?: string
@@ -244,6 +245,7 @@ interface BookingColumnsProps {
   downloadingInvoiceId: number | null
   now: Date
   kitchens: Array<{ id: number; name: string; locationName?: string }>
+  storageBookings: StorageBooking[]
 }
 
 const getChefBookingColumns = ({
@@ -253,6 +255,7 @@ const getChefBookingColumns = ({
   downloadingInvoiceId,
   now,
   kitchens,
+  storageBookings: allStorageBookings,
 }: BookingColumnsProps): ColumnDef<Booking>[] => [
   {
     accessorKey: "status",
@@ -306,13 +309,34 @@ const getChefBookingColumns = ({
         // Ignore
       }
 
+      // Check for mixed storage statuses
+      const relatedStorage = allStorageBookings.filter(
+        (sb) => sb.kitchenBookingId === booking.id
+      )
+      const rejectedCount = relatedStorage.filter((sb) => sb.status === 'cancelled').length
+      const pendingStorageCount = relatedStorage.filter((sb) => sb.status === 'pending').length
+
       return (
-        <div className="flex items-center">
-          <Badge variant={variant} className={cn("capitalize items-center flex w-fit text-xs", className)}>
-            {icon}
-            {status}
-          </Badge>
-          {timeBadge}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center">
+            <Badge variant={variant} className={cn("capitalize items-center flex w-fit text-xs", className)}>
+              {icon}
+              {status}
+            </Badge>
+            {timeBadge}
+          </div>
+          {rejectedCount > 0 && (
+            <div className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded w-fit">
+              <Package className="h-2.5 w-2.5" />
+              {rejectedCount} storage rejected
+            </div>
+          )}
+          {pendingStorageCount > 0 && status === 'confirmed' && (
+            <div className="flex items-center gap-1 text-[10px] text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded w-fit">
+              <Package className="h-2.5 w-2.5" />
+              {pendingStorageCount} storage pending
+            </div>
+          )}
         </div>
       )
     },
@@ -410,7 +434,7 @@ const getChefBookingColumns = ({
         <div className="text-right">
           <div className="font-medium text-sm">{formatPrice(totalPrice)}</div>
           <div className="text-xs text-muted-foreground">
-            {row.original.paymentStatus === 'paid' ? 'Paid' : 'Pending'}
+            {row.original.paymentStatus === 'paid' ? 'Paid' : row.original.paymentStatus === 'authorized' ? 'Payment Held' : 'Pending'}
           </div>
         </div>
       )
@@ -599,7 +623,21 @@ const getStorageBookingColumns = ({
       const status = storageBooking.status
       const checkoutStatus = storageBooking.checkoutStatus
 
-      if (status === 'confirmed' && checkoutStatus === 'active') {
+      if (status === 'cancelled') {
+        return (
+          <Badge variant="destructive" className="bg-red-100 text-red-800 border-red-300">
+            <XCircle className="h-3 w-3 mr-1" />
+            Rejected
+          </Badge>
+        )
+      } else if (status === 'pending') {
+        return (
+          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+            <Clock className="h-3 w-3 mr-1" />
+            Pending Approval
+          </Badge>
+        )
+      } else if (status === 'confirmed' && checkoutStatus === 'active') {
         return (
           <Badge variant="default" className="bg-green-600 hover:bg-green-700">
             <CheckCircle className="h-3 w-3 mr-1" />
@@ -980,8 +1018,9 @@ export default function ChefBookingsView({
       downloadingInvoiceId,
       now,
       kitchens,
+      storageBookings: storageBookings as StorageBooking[],
     }),
-    [downloadingInvoiceId, now, kitchens, navigate]
+    [downloadingInvoiceId, now, kitchens, navigate, storageBookings]
   )
 
   // Storage table columns

@@ -862,6 +862,31 @@ export default function BookingControlPanel({
                           </span>
                         </div>
                       </div>
+                      {/* Inline storage status indicator — shows when storage has mixed statuses */}
+                      {(() => {
+                        const relatedStorage = storageBookings.filter(
+                          (sb: any) => sb.kitchenBookingId === booking.id
+                        );
+                        const rejectedCount = relatedStorage.filter((sb: any) => sb.status === 'cancelled').length;
+                        const pendingCount = relatedStorage.filter((sb: any) => sb.status === 'pending').length;
+                        if (rejectedCount > 0) {
+                          return (
+                            <div className="flex items-center gap-1 mt-1.5 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-md w-fit">
+                              <Package className="h-3 w-3" />
+                              <span>{rejectedCount} storage {rejectedCount === 1 ? 'item' : 'items'} rejected</span>
+                            </div>
+                          );
+                        }
+                        if (pendingCount > 0 && booking.status === 'confirmed') {
+                          return (
+                            <div className="flex items-center gap-1 mt-1.5 text-xs text-yellow-700 bg-yellow-50 px-2 py-0.5 rounded-md w-fit">
+                              <Package className="h-3 w-3" />
+                              <span>{pendingCount} storage {pendingCount === 1 ? 'item' : 'items'} pending</span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -1013,12 +1038,18 @@ export default function BookingControlPanel({
               <Package className="h-5 w-5 text-purple-600" />
               Storage Bookings
             </h3>
-            <span className="text-sm text-purple-600 font-medium">{storageBookings.length} active</span>
+            <span className="text-sm text-purple-600 font-medium">
+              {storageBookings.filter((sb: any) => sb.status !== 'cancelled').length} active
+              {storageBookings.some((sb: any) => sb.status === 'cancelled') && (
+                <span className="text-red-500 ml-1">
+                  · {storageBookings.filter((sb: any) => sb.status === 'cancelled').length} rejected
+                </span>
+              )}
+            </span>
           </div>
 
           <div className="space-y-3">
             {storageBookings
-              .filter((sb: any) => sb.status !== 'cancelled')
               .map((storageBooking: any) => {
                 const endDate = new Date(storageBooking.endDate);
                 const daysUntilExpiry = differenceInDays(endDate, startOfToday());
@@ -1030,7 +1061,11 @@ export default function BookingControlPanel({
                   <div
                     key={storageBooking.id}
                     className={`border rounded-lg transition-all ${
-                      isExpiringSoon
+                      storageBooking.status === 'cancelled'
+                        ? 'border-red-200 bg-red-50/30 opacity-75'
+                        : storageBooking.status === 'pending'
+                        ? 'border-yellow-300 bg-yellow-50/50'
+                        : isExpiringSoon
                         ? 'border-amber-300 bg-amber-50/50'
                         : isExpired && !storageBooking.paidPenalty
                         ? 'border-red-300 bg-red-50/50'
@@ -1097,7 +1132,7 @@ export default function BookingControlPanel({
                         </div>
 
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          {!isExpired && storageBooking.status !== 'cancelled' && (
+                          {!isExpired && storageBooking.status === 'confirmed' && (
                             <Button
                               size="sm"
                               variant="outline"

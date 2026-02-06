@@ -375,6 +375,8 @@ export default function BookingConfirmationPage() {
       
       // Redirect to Stripe Checkout
       if (data.sessionUrl) {
+        // Safety: ensure Radix UI hasn't left pointer-events:none on body
+        document.body.style.pointerEvents = '';
         window.location.href = data.sessionUrl;
       } else {
         throw new Error('No checkout URL returned');

@@ -3079,7 +3079,10 @@ router.put(
     try {
       const user = req.neonUser!;
       const id = parseInt(req.params.id);
-      const { status } = req.body;
+      const { status, storageActions, equipmentActions } = req.body;
+      // storageActions is an optional array of { storageBookingId: number, action: 'confirmed' | 'cancelled' }
+      // equipmentActions is an optional array of { equipmentBookingId: number, action: 'confirmed' | 'cancelled' }
+      // When provided, each booking is handled individually instead of inheriting the kitchen booking status
 
       if (!["confirmed", "cancelled", "pending"].includes(status)) {
         return res
@@ -3111,7 +3114,7 @@ router.put(
 
       // CRITICAL FIX: Block approval if payment was never completed
       // Bookings with paymentStatus='pending' have not been paid - they were abandoned at checkout
-      // Only allow confirmation if payment is 'processing' (checkout completed) or 'paid' (payment succeeded)
+      // Only allow confirmation if payment is 'processing', 'paid', or 'authorized' (manual capture)
       if (status === "confirmed") {
         const paymentStatus = (booking as any).paymentStatus;
         if (paymentStatus === "pending") {
@@ -3121,23 +3124,129 @@ router.put(
             paymentStatus: paymentStatus,
           });
         }
+
+        // AUTH-THEN-CAPTURE: If payment is authorized (held but not charged), capture it now
+        // This actually charges the customer's card when the manager approves
+        if (paymentStatus === "authorized") {
+          const bookingPIId = (booking as any).paymentIntentId;
+          if (bookingPIId) {
+            try {
+              const { capturePaymentIntent } = await import("../services/stripe-service");
+              const captureResult = await capturePaymentIntent(bookingPIId);
+              logger.info(`[Manager] AUTH-THEN-CAPTURE: Captured payment for booking ${id}`, {
+                paymentIntentId: bookingPIId,
+                capturedAmount: captureResult.amount,
+                status: captureResult.status,
+              });
+
+              // Update kitchen booking paymentStatus to 'paid' after successful capture
+              await db
+                .update(kitchenBookings)
+                .set({ paymentStatus: "paid", updatedAt: new Date() })
+                .where(eq(kitchenBookings.id, id));
+
+              // Update associated storage bookings paymentStatus to 'paid'
+              try {
+                const assocStorage = await bookingService.getStorageBookingsByKitchenBooking(id);
+                if (assocStorage && assocStorage.length > 0) {
+                  for (const sb of assocStorage) {
+                    if ((sb as any).paymentStatus === "authorized") {
+                      await db
+                        .update(storageBookingsTable)
+                        .set({ paymentStatus: "paid", updatedAt: new Date() })
+                        .where(eq(storageBookingsTable.id, sb.id));
+                    }
+                  }
+                }
+              } catch (storageCapErr: any) {
+                logger.warn(`[Manager] Could not update storage booking paymentStatus after capture:`, storageCapErr);
+              }
+
+              // Update associated equipment bookings paymentStatus to 'paid'
+              try {
+                const assocEquip = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+                if (assocEquip && assocEquip.length > 0) {
+                  for (const eb of assocEquip) {
+                    if ((eb as any).paymentStatus === "authorized") {
+                      await db
+                        .update(equipmentBookingsTable)
+                        .set({ paymentStatus: "paid", updatedAt: new Date() })
+                        .where(eq(equipmentBookingsTable.id, eb.id));
+                    }
+                  }
+                }
+              } catch (equipCapErr: any) {
+                logger.warn(`[Manager] Could not update equipment booking paymentStatus after capture:`, equipCapErr);
+              }
+
+              // Update payment_transactions status to 'succeeded'
+              // NOTE: Stripe fees will be synced by the payment_intent.succeeded webhook
+              try {
+                const { findPaymentTransactionByIntentId, updatePaymentTransaction } =
+                  await import("../services/payment-transactions-service");
+                const ptRecord = await findPaymentTransactionByIntentId(bookingPIId, db);
+                if (ptRecord) {
+                  await updatePaymentTransaction(ptRecord.id, {
+                    status: "succeeded",
+                    stripeStatus: "succeeded",
+                    paidAt: new Date(),
+                  }, db);
+                  logger.info(`[Manager] Updated payment_transactions ${ptRecord.id} to succeeded after capture`);
+                }
+              } catch (ptErr: any) {
+                logger.warn(`[Manager] Could not update payment_transactions after capture:`, ptErr);
+              }
+            } catch (captureError: any) {
+              logger.error(`[Manager] AUTH-THEN-CAPTURE: Failed to capture payment for booking ${id}:`, captureError);
+              return res.status(500).json({
+                error: "Failed to capture payment. The authorization may have expired. Please contact the chef to re-book.",
+                details: captureError.message,
+              });
+            }
+          }
+        }
       }
 
       // Update booking status
       await bookingService.updateBookingStatus(id, status);
 
-      // Update associated storage bookings to match kitchen booking status
+      // Update associated storage bookings — supports modular per-item approval
+      // If storageActions is provided, each storage booking is handled individually
+      // Otherwise, all storage bookings inherit the kitchen booking status (legacy behavior)
+      const storageActionResults: Array<{ storageBookingId: number; action: string; success: boolean }> = [];
       try {
-        const storageBookings =
+        const associatedStorageBookings =
           await bookingService.getStorageBookingsByKitchenBooking(id);
-        if (storageBookings && storageBookings.length > 0) {
-          for (const storageBooking of storageBookings) {
-            await bookingService.updateStorageBooking(storageBooking.id, {
-              status,
-            });
-            logger.info(
-              `[Manager] Updated storage booking ${storageBooking.id} to ${status} for kitchen booking ${id}`,
-            );
+        if (associatedStorageBookings && associatedStorageBookings.length > 0) {
+          if (Array.isArray(storageActions) && storageActions.length > 0) {
+            // Modular approval: apply per-storage-booking actions
+            const actionMap = new Map<number, string>();
+            for (const sa of storageActions) {
+              if (sa.storageBookingId && ['confirmed', 'cancelled'].includes(sa.action)) {
+                actionMap.set(sa.storageBookingId, sa.action);
+              }
+            }
+            for (const storageBooking of associatedStorageBookings) {
+              const action = actionMap.get(storageBooking.id) || status;
+              await bookingService.updateStorageBooking(storageBooking.id, {
+                status: action as 'pending' | 'confirmed' | 'cancelled',
+              });
+              storageActionResults.push({ storageBookingId: storageBooking.id, action, success: true });
+              logger.info(
+                `[Manager] Modular approval: storage booking ${storageBooking.id} → ${action} for kitchen booking ${id}`,
+              );
+            }
+          } else {
+            // Legacy behavior: all storage bookings inherit kitchen booking status
+            for (const storageBooking of associatedStorageBookings) {
+              await bookingService.updateStorageBooking(storageBooking.id, {
+                status,
+              });
+              storageActionResults.push({ storageBookingId: storageBooking.id, action: status, success: true });
+              logger.info(
+                `[Manager] Updated storage booking ${storageBooking.id} to ${status} for kitchen booking ${id}`,
+              );
+            }
           }
         }
       } catch (storageUpdateError) {
@@ -3148,139 +3257,437 @@ router.put(
         // Don't fail the main status update if storage update fails
       }
 
-      // Process refund based on booking status transition:
-      // - REJECTION (pending → cancelled): Auto-refund with customer absorbing Stripe fee
-      // - CANCELLATION (confirmed → cancelled): NO auto-refund, require manual "Issue Refund" action
+      // Update associated equipment bookings — supports modular per-item approval
+      const equipmentActionResults: Array<{ equipmentBookingId: number; action: string; success: boolean }> = [];
+      try {
+        const associatedEquipmentBookings =
+          await bookingService.getEquipmentBookingsByKitchenBooking(id);
+        if (associatedEquipmentBookings && associatedEquipmentBookings.length > 0) {
+          if (Array.isArray(equipmentActions) && equipmentActions.length > 0) {
+            // Modular approval: apply per-equipment-booking actions
+            const actionMap = new Map<number, string>();
+            for (const ea of equipmentActions) {
+              if (ea.equipmentBookingId && ['confirmed', 'cancelled'].includes(ea.action)) {
+                actionMap.set(ea.equipmentBookingId, ea.action);
+              }
+            }
+            for (const equipmentBooking of associatedEquipmentBookings) {
+              const action = actionMap.get(equipmentBooking.id) || status;
+              await bookingService.updateEquipmentBooking(equipmentBooking.id, {
+                status: action as 'pending' | 'confirmed' | 'cancelled',
+              });
+              equipmentActionResults.push({ equipmentBookingId: equipmentBooking.id, action, success: true });
+              logger.info(
+                `[Manager] Modular approval: equipment booking ${equipmentBooking.id} → ${action} for kitchen booking ${id}`,
+              );
+            }
+          } else {
+            // Legacy behavior: all equipment bookings inherit kitchen booking status
+            for (const equipmentBooking of associatedEquipmentBookings) {
+              await bookingService.updateEquipmentBooking(equipmentBooking.id, {
+                status,
+              });
+              equipmentActionResults.push({ equipmentBookingId: equipmentBooking.id, action: status, success: true });
+              logger.info(
+                `[Manager] Updated equipment booking ${equipmentBooking.id} to ${status} for kitchen booking ${id}`,
+              );
+            }
+          }
+        }
+      } catch (equipmentUpdateError) {
+        logger.error(
+          `[Manager] Error updating equipment bookings for kitchen booking ${id}:`,
+          equipmentUpdateError,
+        );
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // UNIFIED REFUND ENGINE
+      // ═══════════════════════════════════════════════════════════════════════════
+      //
+      // Calculates refund based on WHAT WAS ACTUALLY REJECTED.
+      // Handles all scenarios:
+      //   1. Kitchen rejected + all items rejected → refund entire available amount
+      //   2. Kitchen rejected + some items approved → refund only rejected item prices
+      //   3. Kitchen confirmed + some items rejected → refund only rejected item prices
+      //   4. All confirmed → no refund
+      //   5. Cancellation (confirmed → cancelled) → NO auto-refund (manual via Revenue Dashboard)
+      //
+      // FEE MODEL (TAX-INCLUSIVE, PROPORTIONAL STRIPE FEE DEDUCTED):
+      //   - Tax is proportionally included in the refund (rejectedSubtotal × taxRate)
+      //   - Stripe fee is proportionally deducted based on refund ratio
+      //   - Chefs absorb the proportional Stripe fee on refund (customer receives less)
+      //   - Full rejection → manager's available balance becomes 0
+      //
+      // FORMULA:
+      //   rejectedSubtotal = sum of rejected item prices (pre-tax)
+      //   proportionalTax = rejectedSubtotal × taxRatePercent / 100
+      //   grossRefund = rejectedSubtotal + proportionalTax
+      //   proportionalStripeFee = stripeFee × (grossRefund / transactionAmount)
+      //   netRefund = max(0, grossRefund − proportionalStripeFee)
+      //   cappedRefund = min(netRefund, managerRemainingBalance)
+      //
+      // VERIFICATION (full rejection):
+      //   grossRefund = transactionAmount
+      //   proportionalStripeFee = stripeFee × 1 = stripeFee
+      //   netRefund = transactionAmount − stripeFee = managerRevenue
+      //   balance = managerRevenue − managerRevenue = 0 ✓
+      // ═══════════════════════════════════════════════════════════════════════════
+
       let refundResult: {
         refundId: string;
         refundAmount: number;
         transferReversalId: string;
+        rejectedItems: string[];
       } | null = null;
+
       const previousStatus = booking.status; // Status BEFORE the update
-      const isRejection =
-        previousStatus === "pending" && status === "cancelled";
-      const isCancellation =
-        previousStatus === "confirmed" && status === "cancelled";
+      const isCancellation = previousStatus === "confirmed" && status === "cancelled";
+      const isFromPending = previousStatus === "pending";
 
-      if (status === "cancelled") {
-        const bookingPaymentIntentId = (booking as any).paymentIntentId;
-        const bookingPaymentStatus = (booking as any).paymentStatus;
+      const bookingPaymentIntentId = (booking as any).paymentIntentId;
+      const bookingPaymentStatus = (booking as any).paymentStatus;
+      const hasValidPayment =
+        bookingPaymentIntentId &&
+        (bookingPaymentStatus === "paid" || bookingPaymentStatus === "processing");
+      const isAuthorizedPayment =
+        bookingPaymentIntentId && bookingPaymentStatus === "authorized";
 
-        // Only auto-refund for REJECTIONS (pending bookings), NOT for cancellations (confirmed bookings)
-        // Cancellations require manual "Issue Refund" action from the manager
-        if (
-          isRejection &&
-          bookingPaymentIntentId &&
-          (bookingPaymentStatus === "paid" ||
-            bookingPaymentStatus === "processing")
-        ) {
+      // AUTH-THEN-CAPTURE: If payment is only authorized (not captured), CANCEL the PaymentIntent
+      // This releases the hold on the customer's card — NO charge, NO Stripe fees
+      if (isFromPending && isAuthorizedPayment && !isCancellation) {
+        try {
+          const { cancelPaymentIntent } = await import("../services/stripe-service");
+          const { findPaymentTransactionByIntentId, updatePaymentTransaction } =
+            await import("../services/payment-transactions-service");
+
+          const cancelResult = await cancelPaymentIntent(bookingPaymentIntentId);
+          logger.info(`[Manager] AUTH-THEN-CAPTURE: Cancelled authorization for booking ${id}`, {
+            paymentIntentId: bookingPaymentIntentId,
+            status: cancelResult.status,
+          });
+
+          // Update kitchen booking paymentStatus to 'failed' (authorization cancelled)
+          await db
+            .update(kitchenBookings)
+            .set({ paymentStatus: "failed", updatedAt: new Date() })
+            .where(eq(kitchenBookings.id, id));
+
+          // Update associated storage and equipment bookings paymentStatus
           try {
-            const { reverseTransferAndRefund } = await import(
-              "../services/stripe-service"
-            );
-            const {
-              findPaymentTransactionByIntentId,
-              updatePaymentTransaction,
-            } = await import("../services/payment-transactions-service");
+            const assocStorage = await bookingService.getStorageBookingsByKitchenBooking(id);
+            for (const sb of (assocStorage || [])) {
+              if ((sb as any).paymentStatus === "authorized") {
+                await db.update(storageBookingsTable)
+                  .set({ paymentStatus: "failed", updatedAt: new Date() })
+                  .where(eq(storageBookingsTable.id, sb.id));
+              }
+            }
+            const assocEquip = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+            for (const eb of (assocEquip || [])) {
+              if ((eb as any).paymentStatus === "authorized") {
+                await db.update(equipmentBookingsTable)
+                  .set({ paymentStatus: "failed", updatedAt: new Date() })
+                  .where(eq(equipmentBookingsTable.id, eb.id));
+              }
+            }
+          } catch (subBookErr: any) {
+            logger.warn(`[Manager] Could not update sub-booking paymentStatus after auth cancel:`, subBookErr);
+          }
 
-            // Get the payment transaction to calculate proper refund and reversal amounts
+          // Update payment_transactions status to 'canceled'
+          try {
+            const ptRecord = await findPaymentTransactionByIntentId(bookingPaymentIntentId, db);
+            if (ptRecord) {
+              await updatePaymentTransaction(ptRecord.id, {
+                status: "canceled",
+                stripeStatus: "canceled",
+              }, db);
+              logger.info(`[Manager] Updated payment_transactions ${ptRecord.id} to canceled after auth cancel`);
+            }
+          } catch (ptErr: any) {
+            logger.warn(`[Manager] Could not update payment_transactions after auth cancel:`, ptErr);
+          }
+        } catch (cancelError: any) {
+          logger.error(`[Manager] AUTH-THEN-CAPTURE: Failed to cancel authorization for booking ${id}:`, cancelError);
+          // Continue — booking status is already updated, auth will expire naturally
+        }
+      }
+
+      // Only auto-refund for transitions FROM pending with CAPTURED payments (rejections/partial approvals)
+      // Cancellations of confirmed bookings require manual "Issue Refund" from Revenue Dashboard
+      // NOTE: Authorized payments are handled above via cancelPaymentIntent (no refund needed)
+      if (isFromPending && hasValidPayment && !isCancellation) {
+        try {
+          const { reverseTransferAndRefund } = await import(
+            "../services/stripe-service"
+          );
+          const {
+            findPaymentTransactionByIntentId,
+            updatePaymentTransaction,
+          } = await import("../services/payment-transactions-service");
+
+          // ── Step 1: Determine what was rejected ──────────────────────────────
+          const kitchenWasRejected = status === "cancelled";
+
+          // Build list of rejected storage IDs from storageActions
+          let rejectedStorageIds: number[] = [];
+          if (Array.isArray(storageActions) && storageActions.length > 0) {
+            rejectedStorageIds = storageActions
+              .filter((sa: any) => sa.action === "cancelled")
+              .map((sa: any) => sa.storageBookingId);
+          } else if (kitchenWasRejected) {
+            // Legacy: no storageActions provided, kitchen rejected → all storage rejected too
+            rejectedStorageIds = storageActionResults
+              .filter((r) => r.action === "cancelled")
+              .map((r) => r.storageBookingId);
+          }
+
+          // Build list of rejected equipment IDs from equipmentActions
+          let rejectedEquipmentIds: number[] = [];
+          if (Array.isArray(equipmentActions) && equipmentActions.length > 0) {
+            rejectedEquipmentIds = equipmentActions
+              .filter((ea: any) => ea.action === "cancelled")
+              .map((ea: any) => ea.equipmentBookingId);
+          } else if (kitchenWasRejected) {
+            // Legacy: no equipmentActions provided, kitchen rejected → all equipment rejected too
+            rejectedEquipmentIds = equipmentActionResults
+              .filter((r) => r.action === "cancelled")
+              .map((r) => r.equipmentBookingId);
+          }
+
+          // ── Step 2: Calculate rejected amounts ───────────────────────────────
+          let rejectedKitchenCents = 0;
+          if (kitchenWasRejected) {
+            rejectedKitchenCents = parseInt(String((booking as any).totalPrice || "0")) || 0;
+          }
+
+          // Rejected storage prices from the DB
+          let rejectedStorageTotalCents = 0;
+          if (rejectedStorageIds.length > 0) {
+            const rejectedRows = await db
+              .select({
+                id: storageBookingsTable.id,
+                totalPrice: storageBookingsTable.totalPrice,
+              })
+              .from(storageBookingsTable)
+              .where(
+                sql`${storageBookingsTable.id} IN (${sql.join(
+                  rejectedStorageIds.map((rid: number) => sql`${rid}`),
+                  sql`, `,
+                )})`,
+              );
+
+            for (const row of rejectedRows) {
+              rejectedStorageTotalCents += parseInt(String(row.totalPrice || "0")) || 0;
+            }
+          }
+
+          // Rejected equipment prices from the DB
+          let rejectedEquipmentTotalCents = 0;
+          if (rejectedEquipmentIds.length > 0) {
+            const rejectedEqRows = await db
+              .select({
+                id: equipmentBookingsTable.id,
+                totalPrice: equipmentBookingsTable.totalPrice,
+              })
+              .from(equipmentBookingsTable)
+              .where(
+                sql`${equipmentBookingsTable.id} IN (${sql.join(
+                  rejectedEquipmentIds.map((rid: number) => sql`${rid}`),
+                  sql`, `,
+                )})`,
+              );
+
+            for (const row of rejectedEqRows) {
+              rejectedEquipmentTotalCents += parseInt(String(row.totalPrice || "0")) || 0;
+            }
+          }
+
+          const totalRejectedSubtotalCents = rejectedKitchenCents + rejectedStorageTotalCents + rejectedEquipmentTotalCents;
+
+          // ── Step 3: Calculate refund (tax-inclusive, full Stripe fee deducted) ─
+          if (totalRejectedSubtotalCents > 0) {
             const paymentTransaction = await findPaymentTransactionByIntentId(
               bookingPaymentIntentId,
               db,
             );
 
-            const totalPrice = (booking as any).totalPrice || 0;
             const transactionAmount = paymentTransaction
-              ? parseInt(String(paymentTransaction.amount || "0")) || totalPrice
-              : totalPrice;
+              ? parseInt(String(paymentTransaction.amount || "0")) || 0
+              : 0;
+            const baseAmount = paymentTransaction
+              ? parseInt(String(paymentTransaction.base_amount || "0")) || 0
+              : 0;
+            const stripeProcessingFee = paymentTransaction
+              ? parseInt(String(paymentTransaction.stripe_processing_fee || "0")) || 0
+              : 0;
+            const managerRevenue = paymentTransaction
+              ? parseInt(String(paymentTransaction.manager_revenue || "0")) || 0
+              : transactionAmount;
+            const currentRefundAmount = paymentTransaction
+              ? parseInt(String(paymentTransaction.refund_amount || "0")) || 0
+              : 0;
 
-            if (transactionAmount > 0) {
-              // UNIFIED REFUND MODEL: Customer Refund = Manager Deduction
-              // This ensures consistency between LocalCooks portal and Stripe dashboard
-              const { calculateRefundBreakdown } = await import(
-                "../services/stripe-service"
-              );
+            // Get tax rate from kitchen (already fetched and in scope)
+            const taxRatePercent = kitchen.taxRatePercent
+              ? parseFloat(String(kitchen.taxRatePercent))
+              : 0;
 
-              const stripeProcessingFee = paymentTransaction
-                ? parseInt(
-                    String(paymentTransaction.stripe_processing_fee || "0"),
-                  ) || 0
-                : 0;
-              const currentRefundAmount = paymentTransaction
-                ? parseInt(String(paymentTransaction.refund_amount || "0")) || 0
-                : 0;
-              const managerRevenue = paymentTransaction
-                ? parseInt(String(paymentTransaction.manager_revenue || "0")) ||
-                  0
-                : transactionAmount;
+            // Calculate proportional tax on rejected items
+            const proportionalTaxCents = Math.round(
+              (totalRejectedSubtotalCents * taxRatePercent) / 100,
+            );
 
-              // Use unified refund breakdown calculator
-              const refundBreakdown = calculateRefundBreakdown(
-                transactionAmount,
-                managerRevenue,
-                currentRefundAmount,
-                stripeProcessingFee,
-              );
+            // Gross refund = rejected subtotal + proportional tax
+            const grossRefundCents = totalRejectedSubtotalCents + proportionalTaxCents;
 
-              // UNIFIED: Both amounts are the same - no discrepancy!
-              const refundToCustomer = refundBreakdown.maxRefundableToCustomer;
-              const deductFromManager =
-                refundBreakdown.maxDeductibleFromManager;
+            // Proportional Stripe fee = stripeFee × (grossRefund / transactionAmount)
+            // Chef absorbs the proportional Stripe fee — it's deducted from what the customer gets back
+            const proportionalStripeFee = transactionAmount > 0
+              ? Math.round(stripeProcessingFee * (grossRefundCents / transactionAmount))
+              : 0;
+            const netRefundCents = Math.max(0, grossRefundCents - proportionalStripeFee);
 
-              // Process refund with transfer reversal (unified model)
-              refundResult = await reverseTransferAndRefund(
+            // Cap at manager's remaining balance
+            const managerRemainingBalance = Math.max(0, managerRevenue - currentRefundAmount);
+            const cappedRefundAmount = Math.min(netRefundCents, managerRemainingBalance);
+
+            // Build description of what was rejected
+            const rejectedItems: string[] = [];
+            if (kitchenWasRejected) rejectedItems.push("kitchen_booking");
+            if (rejectedStorageIds.length > 0) rejectedItems.push(...rejectedStorageIds.map(sid => `storage_${sid}`));
+            if (rejectedEquipmentIds.length > 0) rejectedItems.push(...rejectedEquipmentIds.map(eid => `equipment_${eid}`));
+
+            const isFullRefund = cappedRefundAmount >= managerRemainingBalance;
+            const refundType = kitchenWasRejected
+              ? (rejectedStorageIds.length > 0 || rejectedEquipmentIds.length > 0 ? "kitchen_and_items" : "kitchen_only")
+              : "items_only";
+
+            if (cappedRefundAmount > 0) {
+              // Process refund with transfer reversal
+              const stripeResult = await reverseTransferAndRefund(
                 bookingPaymentIntentId,
-                refundToCustomer, // Customer receives this amount
+                cappedRefundAmount,
                 "requested_by_customer",
                 {
-                  reverseTransferAmount: deductFromManager, // Manager debited same amount
+                  reverseTransferAmount: cappedRefundAmount,
                   refundApplicationFee: false,
                   metadata: {
                     booking_id: String(id),
-                    booking_type: "kitchen",
-                    cancellation_reason: "Booking rejected by manager",
+                    booking_type: refundType,
+                    cancellation_reason: kitchenWasRejected
+                      ? "Booking rejected by manager"
+                      : "Item(s) rejected by manager (partial approval)",
                     manager_id: String(user.id),
-                    refund_model: "unified",
-                    customer_receives: String(refundToCustomer),
-                    manager_debited: String(deductFromManager),
+                    refund_model: "tax_inclusive_proportional_stripe_deducted",
+                    rejected_kitchen: String(kitchenWasRejected),
+                    rejected_kitchen_cents: String(rejectedKitchenCents),
+                    rejected_storage_ids: JSON.stringify(rejectedStorageIds),
+                    rejected_storage_cents: String(rejectedStorageTotalCents),
+                    rejected_equipment_ids: JSON.stringify(rejectedEquipmentIds),
+                    rejected_equipment_cents: String(rejectedEquipmentTotalCents),
+                    total_rejected_subtotal_cents: String(totalRejectedSubtotalCents),
+                    proportional_tax_cents: String(proportionalTaxCents),
+                    tax_rate_percent: String(taxRatePercent),
+                    gross_refund_cents: String(grossRefundCents),
+                    proportional_stripe_fee_cents: String(proportionalStripeFee),
+                    total_stripe_fee: String(stripeProcessingFee),
+                    net_refund_cents: String(netRefundCents),
+                    transaction_amount: String(transactionAmount),
+                    base_amount: String(baseAmount),
+                    manager_revenue: String(managerRevenue),
+                    customer_receives: String(cappedRefundAmount),
+                    manager_debited: String(cappedRefundAmount),
                   },
                 },
               );
 
-              logger.info(`[Manager] Refund processed for booking ${id}`, {
+              refundResult = {
+                refundId: stripeResult.refundId,
+                refundAmount: stripeResult.refundAmount,
+                transferReversalId: stripeResult.transferReversalId,
+                rejectedItems,
+              };
+
+              logger.info(`[Manager] Unified refund processed for booking ${id}`, {
                 refundId: refundResult.refundId,
                 refundAmount: refundResult.refundAmount,
-                transferReversalId: refundResult.transferReversalId,
+                refundType,
+                kitchenRejected: kitchenWasRejected,
+                rejectedKitchenCents,
+                rejectedStorageIds,
+                rejectedStorageTotalCents,
+                rejectedEquipmentIds,
+                rejectedEquipmentTotalCents,
+                totalRejectedSubtotalCents,
+                proportionalTaxCents,
+                grossRefundCents,
+                proportionalStripeFee,
+                totalStripeFee: stripeProcessingFee,
+                netRefundCents,
+                cappedRefundAmount,
+                isFullRefund,
               });
 
-              // Update booking payment status to refunded
-              await db
-                .update(kitchenBookings)
-                .set({ paymentStatus: "refunded", updatedAt: new Date() })
-                .where(eq(kitchenBookings.id, id));
+              // ── Step 4: Update DB records ──────────────────────────────────────
 
-              // Update payment transaction if exists
+              // Update payment transaction
               if (paymentTransaction) {
+                const newTotalRefunded = currentRefundAmount + refundResult.refundAmount;
+                const newStatus = newTotalRefunded >= managerRevenue ? "refunded" : "partially_refunded";
                 await updatePaymentTransaction(
                   paymentTransaction.id,
                   {
-                    status: "refunded",
-                    refundAmount: refundResult.refundAmount,
+                    status: newStatus,
+                    refundAmount: newTotalRefunded,
                     refundId: refundResult.refundId,
-                    refundReason: "Booking cancelled by manager",
+                    refundReason: kitchenWasRejected
+                      ? `Booking rejected by manager (${refundType})`
+                      : `Partial refund: rejected ${rejectedStorageIds.length} storage + ${rejectedEquipmentIds.length} equipment`,
                     refundedAt: new Date(),
                   },
                   db,
                 );
               }
+
+              // Update kitchen booking paymentStatus
+              if (kitchenWasRejected) {
+                await db
+                  .update(kitchenBookings)
+                  .set({ paymentStatus: isFullRefund ? "refunded" : "partially_refunded", updatedAt: new Date() })
+                  .where(eq(kitchenBookings.id, id));
+              } else if (totalRejectedSubtotalCents > 0) {
+                // Kitchen approved but some items rejected → partially_refunded
+                await db
+                  .update(kitchenBookings)
+                  .set({ paymentStatus: "partially_refunded", updatedAt: new Date() })
+                  .where(eq(kitchenBookings.id, id));
+              }
+
+              // Update rejected storage bookings' paymentStatus to 'refunded'
+              for (const rejectedId of rejectedStorageIds) {
+                await db
+                  .update(storageBookingsTable)
+                  .set({ paymentStatus: "refunded", updatedAt: new Date() })
+                  .where(eq(storageBookingsTable.id, rejectedId));
+              }
+
+              // Update rejected equipment bookings' paymentStatus to 'refunded'
+              for (const rejectedId of rejectedEquipmentIds) {
+                await db
+                  .update(equipmentBookingsTable)
+                  .set({ paymentStatus: "refunded", updatedAt: new Date() })
+                  .where(eq(equipmentBookingsTable.id, rejectedId));
+              }
             }
-          } catch (refundError: any) {
-            logger.error(
-              `[Manager] Failed to process refund for booking ${id}:`,
-              refundError,
-            );
-            // Continue - booking is cancelled, refund can be retried manually from Revenue Dashboard
           }
+        } catch (refundError: any) {
+          logger.error(
+            `[Manager] Failed to process refund for booking ${id}:`,
+            refundError,
+          );
+          // Continue - booking status is updated, refund can be retried manually from Revenue Dashboard
         }
       }
 
@@ -3454,17 +3861,24 @@ router.put(
       const responseData: any = {
         success: true,
         message: `Booking ${status === "confirmed" ? "approved" : status}`,
+        storageActions: storageActionResults.length > 0 ? storageActionResults : undefined,
+        equipmentActions: equipmentActionResults.length > 0 ? equipmentActionResults : undefined,
       };
 
       if (refundResult) {
-        // Auto-refund was processed (for rejections)
+        // Unified refund was processed (covers full rejection, partial rejection, storage-only rejection)
+        const isFullRejection = status === "cancelled";
         responseData.refund = {
           refundId: refundResult.refundId,
           amount: refundResult.refundAmount,
-          message:
-            "Full refund processed successfully (customer absorbs Stripe processing fee)",
+          rejectedItems: refundResult.rejectedItems,
+          message: isFullRejection
+            ? "Refund processed for rejected items (customer absorbs proportional Stripe fee)"
+            : "Partial refund processed for rejected items (customer absorbs proportional Stripe fee)",
         };
-        responseData.message = "Booking rejected and refund processed";
+        responseData.message = isFullRejection
+          ? "Booking rejected and refund processed"
+          : "Booking approved with partial rejection. Refund processed for rejected items.";
       } else if (isCancellation) {
         // Cancellation of confirmed booking - no auto-refund
         responseData.requiresManualRefund = true;
@@ -4786,7 +5200,10 @@ router.get(
         .where(
           and(
             eq(locations.managerId, managerId),
-            eq(pendingStorageExtensions.status, "paid"), // Only show paid extensions awaiting approval
+            or(
+              eq(pendingStorageExtensions.status, "paid"),
+              eq(pendingStorageExtensions.status, "authorized"),
+            ), // Show paid and authorized extensions awaiting manager approval
           ),
         )
         .orderBy(desc(pendingStorageExtensions.createdAt));
@@ -4855,13 +5272,57 @@ router.post(
           .json({ error: "Not authorized to approve this extension" });
       }
 
-      // Verify extension is in 'paid' status
-      if (extension.status !== "paid") {
+      // Verify extension is in 'paid' or 'authorized' status
+      if (extension.status !== "paid" && extension.status !== "authorized") {
         return res
           .status(400)
           .json({
             error: `Cannot approve extension with status '${extension.status}'`,
           });
+      }
+
+      // AUTH-THEN-CAPTURE: If extension is authorized (not captured), capture the payment now
+      if (extension.status === "authorized") {
+        try {
+          // Get the PaymentIntent ID from the extension
+          const [extDetails] = await db
+            .select({ stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId })
+            .from(pendingStorageExtensions)
+            .where(eq(pendingStorageExtensions.id, extensionId))
+            .limit(1);
+
+          if (extDetails?.stripePaymentIntentId) {
+            const { capturePaymentIntent } = await import("../services/stripe-service");
+            const captureResult = await capturePaymentIntent(extDetails.stripePaymentIntentId);
+            logger.info(`[Manager] AUTH-THEN-CAPTURE: Captured storage extension payment ${extensionId}`, {
+              paymentIntentId: extDetails.stripePaymentIntentId,
+              capturedAmount: captureResult.amount,
+              status: captureResult.status,
+            });
+
+            // Update payment_transactions status to 'succeeded'
+            try {
+              const { findPaymentTransactionByIntentId, updatePaymentTransaction } =
+                await import("../services/payment-transactions-service");
+              const ptRecord = await findPaymentTransactionByIntentId(extDetails.stripePaymentIntentId, db);
+              if (ptRecord) {
+                await updatePaymentTransaction(ptRecord.id, {
+                  status: "succeeded",
+                  stripeStatus: "succeeded",
+                  paidAt: new Date(),
+                }, db);
+              }
+            } catch (ptErr: any) {
+              logger.warn(`[Manager] Could not update PT after storage extension capture:`, ptErr);
+            }
+          }
+        } catch (captureError: any) {
+          logger.error(`[Manager] AUTH-THEN-CAPTURE: Failed to capture storage extension payment ${extensionId}:`, captureError);
+          return res.status(500).json({
+            error: "Failed to capture payment for storage extension. The authorization may have expired.",
+            details: captureError.message,
+          });
+        }
       }
 
       // Update extension status to approved
@@ -5016,14 +5477,17 @@ router.post(
           .json({ error: "Not authorized to reject this extension" });
       }
 
-      // Verify extension is in 'paid' status
-      if (extension.status !== "paid") {
+      // Verify extension is in 'paid' or 'authorized' status
+      if (extension.status !== "paid" && extension.status !== "authorized") {
         return res
           .status(400)
           .json({
             error: `Cannot reject extension with status '${extension.status}'`,
           });
       }
+
+      // Track whether this was an authorized (not captured) extension for refund logic
+      const wasAuthorizedExtension = extension.status === "authorized";
 
       // Update extension status to rejected
       await db
@@ -5045,9 +5509,35 @@ router.post(
         },
       );
 
-      // Process refund if payment was made
+      // Process refund or cancel authorization if payment was made
       let refundResult = null;
       if (extension.stripePaymentIntentId) {
+        // AUTH-THEN-CAPTURE: If payment was only authorized (not captured), cancel the PI
+        // This releases the hold — NO charge, NO Stripe fees
+        if (wasAuthorizedExtension) {
+          try {
+            const { cancelPaymentIntent } = await import("../services/stripe-service");
+            const { findPaymentTransactionByMetadata, updatePaymentTransaction } =
+              await import("../services/payment-transactions-service");
+
+            await cancelPaymentIntent(extension.stripePaymentIntentId);
+            logger.info(`[Manager] AUTH-THEN-CAPTURE: Cancelled authorization for storage extension ${extensionId}`);
+
+            // Update payment_transactions to 'canceled'
+            const ptRecord = await findPaymentTransactionByMetadata(
+              "storage_extension_id", String(extensionId), db,
+            );
+            if (ptRecord) {
+              await updatePaymentTransaction(ptRecord.id, {
+                status: "canceled",
+                stripeStatus: "canceled",
+              }, db);
+            }
+          } catch (cancelError: any) {
+            logger.error(`[Manager] Failed to cancel auth for storage extension ${extensionId}:`, cancelError);
+          }
+        } else {
+        // Original refund logic for captured (paid) payments
         try {
           const { reverseTransferAndRefund } = await import(
             "../services/stripe-service"
@@ -5159,6 +5649,7 @@ router.post(
           );
           // Continue - extension is rejected, refund can be retried manually
         }
+        } // end else (captured payment refund)
       }
 
       // Send notification to chef about rejection and refund

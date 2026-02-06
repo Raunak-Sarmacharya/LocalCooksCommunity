@@ -233,7 +233,8 @@ export function StorageExtensionApprovals() {
                       <strong>{extension.extensionDays}</strong> day{extension.extensionDays > 1 ? 's' : ''} extension
                     </span>
                     <span className="text-gray-600">
-                      <strong>${(extension.extensionTotalPriceCents / 100).toFixed(2)}</strong> paid
+                      <strong>${(extension.extensionTotalPriceCents / 100).toFixed(2)}</strong>
+                      {extension.status === 'authorized' ? ' held' : ' paid'}
                     </span>
                   </div>
                 </div>
@@ -274,7 +275,9 @@ export function StorageExtensionApprovals() {
               Reject Extension Request
             </SheetTitle>
             <SheetDescription>
-              Are you sure you want to reject this extension request? The chef will be refunded.
+              {selectedExtension?.status === 'authorized'
+              ? "Are you sure you want to reject this extension request? The payment hold will be released — the chef will not be charged."
+              : "Are you sure you want to reject this extension request? The chef will be refunded."}
             </SheetDescription>
           </SheetHeader>
 
@@ -284,7 +287,7 @@ export function StorageExtensionApprovals() {
                 <p><strong>Storage:</strong> {selectedExtension.storageName}</p>
                 <p><strong>Chef:</strong> {selectedExtension.chefEmail}</p>
                 <p><strong>Extension:</strong> {selectedExtension.extensionDays} days</p>
-                <p><strong>Amount to refund:</strong> ${(selectedExtension.extensionTotalPriceCents / 100).toFixed(2)}</p>
+                <p><strong>{selectedExtension.status === 'authorized' ? 'Hold to release' : 'Amount to refund'}:</strong> ${(selectedExtension.extensionTotalPriceCents / 100).toFixed(2)}</p>
               </div>
 
               <div className="space-y-2">
@@ -315,7 +318,7 @@ export function StorageExtensionApprovals() {
               onClick={handleRejectConfirm}
               disabled={rejectMutation.isPending}
             >
-              {rejectMutation.isPending ? "Rejecting..." : "Reject & Refund"}
+              {rejectMutation.isPending ? "Rejecting..." : selectedExtension?.status === 'authorized' ? "Reject & Release Hold" : "Reject & Refund"}
             </Button>
           </SheetFooter>
         </SheetContent>

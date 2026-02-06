@@ -1,10 +1,7 @@
 import { db } from "../../db";
-import { eq, and, desc, sql, ne } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
     users,
-    locations,
-    kitchenBookings,
-    kitchens
 } from "@shared/schema";
 import { IManagerRepository, InvoiceFilters } from "./manager.types";
 import { logger } from "../../logger";
@@ -42,55 +39,64 @@ export class ManagerRepository implements IManagerRepository {
     async findInvoices(managerId: number, filters: InvoiceFilters) {
         const { startDate, endDate, locationId, limit = 50, offset = 0 } = filters;
 
-        // Build conditions
-        const conditions = [
-            eq(locations.managerId, managerId),
-            ne(kitchenBookings.status, 'cancelled'),
-            eq(kitchenBookings.paymentStatus, 'paid')
-        ];
+        // Use raw SQL to LEFT JOIN payment_transactions for the actual charged amount (includes tax)
+        // kitchenBookings.totalPrice is the SUBTOTAL before tax, but pt.amount is the total charged to the chef
+        const kitchenResult = await db.execute(sql`
+            SELECT 
+                kb.id,
+                kb.booking_date,
+                kb.start_time,
+                kb.end_time,
+                COALESCE(pt.amount, kb.total_price) as total_price,
+                kb.hourly_rate,
+                kb.duration_hours,
+                COALESCE(pt.service_fee, kb.service_fee) as service_fee,
+                kb.payment_status,
+                kb.payment_intent_id,
+                kb.currency,
+                k.name as kitchen_name,
+                l.name as location_name,
+                u.username as chef_name,
+                u.username as chef_email,
+                kb.created_at,
+                'kitchen' as booking_type
+            FROM kitchen_bookings kb
+            INNER JOIN kitchens k ON kb.kitchen_id = k.id
+            INNER JOIN locations l ON k.location_id = l.id
+            LEFT JOIN users u ON kb.chef_id = u.id
+            LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id 
+                AND pt.booking_type = 'kitchen' 
+                AND pt.status = 'succeeded'
+            WHERE l.manager_id = ${managerId}
+              AND kb.status != 'cancelled'
+              AND kb.payment_status = 'paid'
+              ${startDate ? sql`AND (DATE(kb.booking_date) >= ${Array.isArray(startDate) ? startDate[0] : String(startDate)}::date OR DATE(kb.created_at) >= ${Array.isArray(startDate) ? startDate[0] : String(startDate)}::date)` : sql``}
+              ${endDate ? sql`AND (DATE(kb.booking_date) <= ${Array.isArray(endDate) ? endDate[0] : String(endDate)}::date OR DATE(kb.created_at) <= ${Array.isArray(endDate) ? endDate[0] : String(endDate)}::date)` : sql``}
+              ${locationId ? sql`AND l.id = ${Number(locationId)}` : sql``}
+            ORDER BY kb.created_at DESC, kb.booking_date DESC
+            LIMIT ${limit}
+            OFFSET ${offset}
+        `);
 
-        if (startDate) {
-            const startStr = Array.isArray(startDate) ? startDate[0] : String(startDate);
-            conditions.push(sql`(DATE(${kitchenBookings.bookingDate}) >= ${startStr}::date OR DATE(${kitchenBookings.createdAt}) >= ${startStr}::date)`);
-        }
-
-        if (endDate) {
-            const endStr = Array.isArray(endDate) ? endDate[0] : String(endDate);
-            conditions.push(sql`(DATE(${kitchenBookings.bookingDate}) <= ${endStr}::date OR DATE(${kitchenBookings.createdAt}) <= ${endStr}::date)`);
-        }
-
-        if (locationId) {
-            conditions.push(eq(locations.id, locationId));
-        }
-
-        const rows = await db
-            .select({
-                id: kitchenBookings.id,
-                bookingDate: kitchenBookings.bookingDate,
-                startTime: kitchenBookings.startTime,
-                endTime: kitchenBookings.endTime,
-                totalPrice: kitchenBookings.totalPrice,
-                hourlyRate: kitchenBookings.hourlyRate,
-                durationHours: kitchenBookings.durationHours,
-                serviceFee: kitchenBookings.serviceFee,
-                paymentStatus: kitchenBookings.paymentStatus,
-                paymentIntentId: kitchenBookings.paymentIntentId,
-                currency: kitchenBookings.currency,
-                kitchenName: kitchens.name,
-                locationName: locations.name,
-                chefName: users.username,
-                chefEmail: users.username,
-                createdAt: kitchenBookings.createdAt,
-                bookingType: sql<'kitchen' | 'bundle'>`'kitchen'`.as('booking_type'),
-            })
-            .from(kitchenBookings)
-            .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
-            .innerJoin(locations, eq(kitchens.locationId, locations.id))
-            .leftJoin(users, eq(kitchenBookings.chefId, users.id))
-            .where(and(...conditions))
-            .orderBy(desc(kitchenBookings.createdAt), desc(kitchenBookings.bookingDate))
-            .limit(limit)
-            .offset(offset);
+        const rows = kitchenResult.rows.map((row: any) => ({
+            id: row.id,
+            bookingDate: row.booking_date,
+            startTime: row.start_time,
+            endTime: row.end_time,
+            totalPrice: row.total_price,
+            hourlyRate: row.hourly_rate,
+            durationHours: row.duration_hours,
+            serviceFee: row.service_fee,
+            paymentStatus: row.payment_status,
+            paymentIntentId: row.payment_intent_id,
+            currency: row.currency,
+            kitchenName: row.kitchen_name,
+            locationName: row.location_name,
+            chefName: row.chef_name,
+            chefEmail: row.chef_email,
+            createdAt: row.created_at,
+            bookingType: row.booking_type,
+        }));
 
         logger.info(`[ManagerRepository] Kitchen invoices query for manager ${managerId}: Found ${rows.length} invoices`);
 

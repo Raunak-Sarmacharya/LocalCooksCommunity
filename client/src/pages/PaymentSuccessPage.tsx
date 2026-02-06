@@ -424,9 +424,11 @@ export default function PaymentSuccessPage() {
                 <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <CheckCircle2 className="h-10 w-10 text-green-500" />
                 </div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Payment Confirmed!</h1>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">Booking Submitted!</h1>
                 <p className="text-lg text-gray-600">
-                  Your payment has been processed successfully. Your booking is now pending manager approval.
+                  {booking.paymentStatus === 'authorized'
+                    ? 'Your card has been temporarily held. The charge will only be applied once the manager approves your booking.'
+                    : 'Your payment has been processed successfully. Your booking is now pending manager approval.'}
                 </p>
                 <p className="text-sm text-blue-600 mt-2 flex items-center justify-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -490,15 +492,27 @@ export default function PaymentSuccessPage() {
               </div>
 
               {/* Payment Info */}
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                <h3 className="font-semibold text-green-900 mb-2">Payment Information</h3>
-                <p className="text-sm text-green-800 mb-2">
-                  Your payment has been successfully processed. The charge has been applied to your payment method.
-                </p>
-                <p className="text-sm text-green-700">
-                  You will receive an email confirmation with your booking details.
-                </p>
-              </div>
+              {booking.paymentStatus === 'authorized' ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                  <h3 className="font-semibold text-blue-900 mb-2">Payment Hold</h3>
+                  <p className="text-sm text-blue-800 mb-2">
+                    A temporary hold has been placed on your card. You will only be charged if the manager approves your booking within 24 hours.
+                  </p>
+                  <p className="text-sm text-blue-700">
+                    If the booking is not approved in time, the hold will be automatically released and your card will not be charged.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                  <h3 className="font-semibold text-green-900 mb-2">Payment Information</h3>
+                  <p className="text-sm text-green-800 mb-2">
+                    Your payment has been successfully processed. The charge has been applied to your payment method.
+                  </p>
+                  <p className="text-sm text-green-700">
+                    You will receive an email confirmation with your booking details.
+                  </p>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row gap-3">
@@ -510,25 +524,27 @@ export default function PaymentSuccessPage() {
                   <Eye className="mr-2 h-4 w-4" />
                   View Booking Details
                 </Button>
-                <Button
-                  onClick={handleDownloadInvoice}
-                  disabled={isDownloading}
-                  variant="outline"
-                  className="flex-1"
-                  size="lg"
-                >
-                  {isDownloading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating Invoice...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="mr-2 h-4 w-4" />
-                      Download Invoice
-                    </>
-                  )}
-                </Button>
+                {booking.paymentStatus !== 'authorized' && (
+                  <Button
+                    onClick={handleDownloadInvoice}
+                    disabled={isDownloading}
+                    variant="outline"
+                    className="flex-1"
+                    size="lg"
+                  >
+                    {isDownloading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Generating Invoice...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-2 h-4 w-4" />
+                        Download Invoice
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
               <div className="mt-3">
                 <Button

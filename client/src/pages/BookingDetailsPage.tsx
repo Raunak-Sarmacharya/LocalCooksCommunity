@@ -31,6 +31,10 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  BookingActionSheet,
+  type BookingForAction,
+} from "@/components/manager/bookings/BookingActionSheet";
 
 interface BookingDetails {
   id: number;
@@ -138,6 +142,7 @@ export default function BookingDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [actionSheetOpen, setActionSheetOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const handleViewChange = (_view: string) => {
@@ -331,6 +336,13 @@ export default function BookingDetailsPage() {
 
   const getPaymentStatusBadge = (status: string | undefined) => {
     switch (status) {
+      case "authorized":
+        return (
+          <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+            <CreditCard className="h-3 w-3 mr-1" />
+            Payment Held
+          </Badge>
+        );
       case "paid":
         return (
           <Badge className="bg-green-100 text-green-800 border-green-200">
@@ -395,13 +407,48 @@ export default function BookingDetailsPage() {
     };
   }, [booking]);
 
-  const handleUpdateStatus = async (status: 'confirmed' | 'cancelled') => {
-    if (!booking?.id) return;
+  const openActionSheet = () => {
+    setActionSheetOpen(true);
+  };
 
-    const action = status === 'confirmed' ? 'confirm' : 'reject';
-    if (!window.confirm(`${action === 'confirm' ? 'Confirm' : 'Reject'} this booking?`)) {
-      return;
-    }
+  const bookingForAction: BookingForAction | null = booking ? {
+    id: booking.id,
+    kitchenName: booking.kitchen?.name,
+    chefName: booking.chef?.fullName || booking.chef?.username,
+    locationName: booking.location?.name,
+    bookingDate: booking.bookingDate,
+    startTime: booking.startTime,
+    endTime: booking.endTime,
+    totalPrice: booking.totalPrice,
+    transactionAmount: booking.paymentTransaction?.amount,
+    stripeProcessingFee: booking.paymentTransaction?.stripeProcessingFee,
+    managerRevenue: booking.paymentTransaction?.managerRevenue,
+    taxRatePercent: booking.kitchen?.taxRatePercent ? Number(booking.kitchen.taxRatePercent) : undefined,
+    storageItems: booking.storageBookings?.map((s) => ({
+      id: s.id,
+      storageBookingId: s.id,
+      name: s.storageListing?.name || `Storage #${s.storageListingId}`,
+      storageType: s.storageListing?.storageType || 'Storage',
+      totalPrice: s.totalPrice,
+      startDate: s.startDate,
+      endDate: s.endDate,
+    })),
+    equipmentItems: booking.equipmentBookings?.map((e) => ({
+      id: e.id,
+      equipmentBookingId: e.id,
+      name: e.equipmentListing?.equipmentType || `Equipment #${e.equipmentListingId}`,
+      totalPrice: e.totalPrice,
+    })),
+    paymentStatus: booking.paymentStatus,
+  } : null;
+
+  const handleApprovalSubmit = async (params: {
+    bookingId: number;
+    status: 'confirmed' | 'cancelled';
+    storageActions?: Array<{ storageBookingId: number; action: string }>;
+    equipmentActions?: Array<{ equipmentBookingId: number; action: string }>;
+  }) => {
+    if (!booking?.id) return;
 
     setIsUpdatingStatus(true);
     try {
@@ -410,33 +457,41 @@ export default function BookingDetailsPage() {
         method: 'PUT',
         headers,
         credentials: "include",
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({
+          status: params.status,
+          storageActions: params.storageActions,
+          equipmentActions: params.equipmentActions,
+        }),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Failed to ${action} booking`);
+        throw new Error(errorData.error || `Failed to update booking`);
       }
 
-      // Update local state
-      setBooking({ ...booking, status });
+      // Update local state — also update storage booking statuses
+      const updatedStorageBookings = booking.storageBookings?.map((sb) => {
+        const action = params.storageActions?.find((a) => a.storageBookingId === sb.id);
+        return action ? { ...sb, status: action.action } : { ...sb, status: params.status };
+      });
+      setBooking({ ...booking, status: params.status, storageBookings: updatedStorageBookings });
 
-      // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
 
       toast({
         title: "Success",
-        description: status === 'confirmed' ? "Booking confirmed!" : "Booking rejected.",
+        description: params.status === 'confirmed' ? "Booking confirmed!" : "Booking rejected.",
       });
     } catch (err) {
-      console.error(`Error ${action}ing booking:`, err);
+      console.error('Error updating booking:', err);
       toast({
         title: "Error",
-        description: err instanceof Error ? err.message : `Failed to ${action} booking`,
+        description: err instanceof Error ? err.message : 'Failed to update booking',
         variant: "destructive",
       });
     } finally {
       setIsUpdatingStatus(false);
+      setActionSheetOpen(false);
     }
   };
 
@@ -503,31 +558,16 @@ export default function BookingDetailsPage() {
                 <div className="flex gap-2 mt-2">
                   <Button
                     size="sm"
-                    onClick={() => handleUpdateStatus('confirmed')}
+                    onClick={openActionSheet}
                     disabled={isUpdatingStatus}
-                    className="bg-green-600 hover:bg-green-700 text-white"
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground"
                   >
                     {isUpdatingStatus ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <>
                         <CheckCircle2 className="h-4 w-4 mr-1" />
-                        Approve
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => handleUpdateStatus('cancelled')}
-                    disabled={isUpdatingStatus}
-                  >
-                    {isUpdatingStatus ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        <XCircle className="h-4 w-4 mr-1" />
-                        Reject
+                        Take Action
                       </>
                     )}
                   </Button>
@@ -604,7 +644,16 @@ export default function BookingDetailsPage() {
                         <p className="font-semibold text-purple-700">
                           {formatCurrency(storage.totalPrice)}
                         </p>
-                        <Badge variant="outline" className={storage.status === "active" ? "border-green-300 text-green-700" : "border-gray-300 text-gray-600"}>
+                        <Badge variant="outline" className={
+                          storage.status === "confirmed" ? "border-green-300 text-green-700 bg-green-50" :
+                          storage.status === "cancelled" ? "border-red-300 text-red-700 bg-red-50" :
+                          storage.status === "pending" ? "border-yellow-300 text-yellow-700 bg-yellow-50" :
+                          storage.status === "active" ? "border-green-300 text-green-700 bg-green-50" :
+                          "border-gray-300 text-gray-600"
+                        }>
+                          {storage.status === "confirmed" && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                          {storage.status === "cancelled" && <XCircle className="h-3 w-3 mr-1" />}
+                          {storage.status === "pending" && <AlertCircle className="h-3 w-3 mr-1" />}
                           {storage.status}
                         </Badge>
                       </div>
@@ -888,6 +937,13 @@ export default function BookingDetailsPage() {
         ]}
       >
         {isLoading ? loadingContent : (error || !booking) ? errorContent : bookingContent}
+        <BookingActionSheet
+          open={actionSheetOpen}
+          onOpenChange={setActionSheetOpen}
+          booking={bookingForAction}
+          isLoading={isUpdatingStatus}
+          onSubmit={handleApprovalSubmit}
+        />
       </ManagerBookingLayout>
     );
   }

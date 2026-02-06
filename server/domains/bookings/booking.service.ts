@@ -6,6 +6,7 @@ import {
     CreateKitchenBookingDTO,
     KitchenBooking,
     StorageBooking,
+    EquipmentBooking,
     BookingPricingResult
 } from "./booking.types";
 import {
@@ -420,6 +421,10 @@ export class BookingService {
 
     async updateStorageBooking(id: number, updates: Partial<StorageBooking>) {
         return this.repo.updateStorageBooking(id, updates);
+    }
+
+    async updateEquipmentBooking(id: number, updates: Partial<EquipmentBooking>) {
+        return this.repo.updateEquipmentBooking(id, updates);
     }
 
     // ===== AVAILABILITY LOGIC =====

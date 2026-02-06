@@ -189,6 +189,10 @@ export async function createPendingCheckoutSession(
       line_items: lineItems,
       payment_intent_data: {
         ...paymentIntentData,
+        // AUTH-THEN-CAPTURE: Authorize the payment but don't charge until manager approves
+        // PaymentIntent will have status 'requires_capture' after checkout completes
+        // Manager approval triggers capture, rejection triggers cancellation (no charge)
+        capture_method: 'manual',
         // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
         receipt_email: customerEmail,
         // ENTERPRISE STANDARD: Save payment method for off-session charging
@@ -199,20 +203,9 @@ export async function createPendingCheckoutSession(
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: sessionMetadata,
-      // ENTERPRISE STANDARD: Enable automatic invoice generation
-      // Stripe sends paid invoice email to customer when payment succeeds
-      // Requires "Successful payments" enabled in Stripe Dashboard > Customer emails settings
-      invoice_creation: {
-        enabled: true,
-        invoice_data: {
-          description: `Kitchen Booking - ${bookingData.kitchenId}`,
-          metadata: {
-            booking_type: 'kitchen',
-            kitchen_id: String(bookingData.kitchenId),
-            chef_id: String(bookingData.chefId),
-          },
-        },
-      },
+      // NOTE: invoice_creation removed — incompatible with capture_method:'manual'
+      // Invoices are generated at capture time via payment_intent.succeeded webhook
+      // Stripe will send receipt email when payment is actually captured
     });
 
     if (!session.url) {
@@ -346,6 +339,10 @@ export async function createCheckoutSession(
       line_items: lineItems,
       payment_intent_data: {
         ...paymentIntentData,
+        // AUTH-THEN-CAPTURE: Authorize the payment but don't charge until manager approves
+        // PaymentIntent will have status 'requires_capture' after checkout completes
+        // Manager approval triggers capture, rejection triggers cancellation (no charge)
+        capture_method: 'manual',
         // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
         receipt_email: customerEmail,
         // ENTERPRISE STANDARD: Save payment method for off-session charging
@@ -362,19 +359,9 @@ export async function createCheckoutSession(
         manager_account_id: managerStripeAccountId,
         ...metadata,
       },
-      // ENTERPRISE STANDARD: Enable automatic invoice generation
-      // Stripe sends paid invoice email to customer when payment succeeds
-      // Requires "Successful payments" enabled in Stripe Dashboard > Customer emails settings
-      invoice_creation: {
-        enabled: true,
-        invoice_data: {
-          description: lineItemName,
-          metadata: {
-            booking_id: bookingId.toString(),
-            booking_type: metadata.booking_type || 'kitchen',
-          },
-        },
-      },
+      // NOTE: invoice_creation removed — incompatible with capture_method:'manual'
+      // Invoices are generated at capture time via payment_intent.succeeded webhook
+      // Stripe will send receipt email when payment is actually captured
     });
 
     if (!session.url) {

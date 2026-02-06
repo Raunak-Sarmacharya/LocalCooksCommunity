@@ -29,6 +29,12 @@ const paymentStatusConfig: Record<PaymentStatus, {
     icon: typeof CheckCircle;
     tooltip?: string;
 }> = {
+    authorized: {
+        label: 'Payment Held',
+        variant: 'outline',
+        icon: Clock,
+        tooltip: 'Payment is authorized but not yet captured — awaiting manager approval'
+    },
     paid: {
         label: 'Paid',
         variant: 'default',

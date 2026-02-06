@@ -423,8 +423,13 @@ export async function getStripePaymentAmounts(
 }
 
 /**
- * DEPRECATED: Capture PaymentIntent - no longer needed with automatic capture
- * This function is kept for backward compatibility but payments are now automatically captured
+ * Capture a PaymentIntent that was authorized with capture_method:'manual'
+ * Called when a manager APPROVES a booking — this actually charges the customer's card.
+ * 
+ * AUTH-THEN-CAPTURE FLOW:
+ * 1. Chef completes checkout → card authorized (held) but NOT charged
+ * 2. Manager approves booking → this function captures (charges) the payment
+ * 3. payment_intent.succeeded webhook fires → fees synced, status updated to 'paid'
  * 
  * @param paymentIntentId - The PaymentIntent ID to capture
  * @param amountToCapture - Optional: amount to capture (can be less than authorized amount)
@@ -462,9 +467,16 @@ export async function capturePaymentIntent(
 }
 
 /**
- * Cancel a PaymentIntent (releases authorization hold)
- * DEPRECATED: With automatic capture, payments are already captured.
- * Use createRefund instead for refunding captured payments.
+ * Cancel a PaymentIntent (releases authorization hold — NO charge to customer)
+ * Called when a manager REJECTS a booking that is still in 'authorized' state.
+ * 
+ * AUTH-THEN-CAPTURE FLOW:
+ * 1. Chef completes checkout → card authorized (held) but NOT charged
+ * 2. Manager rejects booking → this function cancels the authorization
+ * 3. Customer's card hold is released, no charge occurs, no Stripe fees incurred
+ * 
+ * NOTE: Only works on PaymentIntents with status 'requires_capture'.
+ * For already-captured payments, use createRefund/reverseTransferAndRefund instead.
  * 
  * @param paymentIntentId - The PaymentIntent ID to cancel
  * @returns PaymentIntentResult with canceled status

@@ -8,7 +8,7 @@
 import { sql, type SQL } from "drizzle-orm";
 
 export type BookingType = 'kitchen' | 'storage' | 'equipment' | 'bundle';
-export type TransactionStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'canceled' | 'refunded' | 'partially_refunded';
+export type TransactionStatus = 'pending' | 'authorized' | 'processing' | 'succeeded' | 'failed' | 'canceled' | 'refunded' | 'partially_refunded';
 
 export interface CreatePaymentTransactionParams {
   bookingId: number;

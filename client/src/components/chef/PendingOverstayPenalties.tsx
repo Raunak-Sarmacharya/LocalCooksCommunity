@@ -88,6 +88,8 @@ export function PendingOverstayPenalties() {
     },
     onSuccess: (data) => {
       if (data.checkoutUrl) {
+        // Safety: ensure Radix UI hasn't left pointer-events:none on body
+        document.body.style.pointerEvents = '';
         window.location.href = data.checkoutUrl;
       }
     },

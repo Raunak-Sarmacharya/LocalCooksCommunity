@@ -161,9 +161,14 @@ export function StorageExtensionDialog({
 
       return response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       // Redirect to Stripe Checkout
       if (data.sessionUrl) {
+        // Close the Sheet BEFORE redirecting to prevent Radix UI from leaving
+        // pointer-events: none on document.body (known Radix Dialog cleanup issue)
+        onOpenChange(false);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        document.body.style.pointerEvents = '';
         window.location.href = data.sessionUrl;
       } else {
         toast({

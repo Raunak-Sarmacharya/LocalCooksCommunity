@@ -33,7 +33,7 @@ export type CreateKitchenBookingDTO = z.infer<typeof createKitchenBookingSchema>
 };
 
 export type BookingStatus = 'pending' | 'confirmed' | 'cancelled';
-export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'partially_refunded';
+export type PaymentStatus = 'pending' | 'authorized' | 'paid' | 'failed' | 'refunded' | 'partially_refunded';
 
 // Service Types
 export interface BookingPricingResult {

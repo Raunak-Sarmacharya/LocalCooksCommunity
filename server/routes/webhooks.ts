@@ -10,6 +10,7 @@ import {
   kitchens,
   storageListings,
   equipmentListings,
+  pendingStorageExtensions,
 } from "@shared/schema";
 import { eq, and, ne, notInArray } from "drizzle-orm";
 import { logger } from "../logger";
@@ -377,8 +378,23 @@ async function handleCheckoutSessionCompleted(
     }
 
     // Also update payment_transactions record with paymentIntentId
+    // AUTH-THEN-CAPTURE: Determine if this is a manual capture (authorized but not charged) flow
+    // With capture_method:'manual', the PaymentIntent has status 'requires_capture' after checkout
+    const piObj = expandedSession.payment_intent;
+    const piStatus = piObj && typeof piObj === 'object' ? piObj.status : undefined;
+    const isManualCapture = piStatus === 'requires_capture';
+    
+    if (isManualCapture) {
+      logger.info(`[Webhook] AUTH-THEN-CAPTURE: Payment authorized (not captured) for session ${session.id}`, {
+        paymentIntentId,
+        piStatus,
+        paymentStatus: expandedSession.payment_status,
+      });
+    }
+
     // This links the payment_transactions record to the Stripe payment for fee syncing
-    // FIXED: Use "succeeded" status since checkout.session.completed with payment_status=paid means payment succeeded
+    // For manual capture: status = 'authorized' (held but not charged)
+    // For auto capture: status = 'succeeded' (charged immediately)
     if (paymentIntentId) {
       try {
         const { findPaymentTransactionByMetadata, updatePaymentTransaction } =
@@ -391,9 +407,9 @@ async function handleCheckoutSessionCompleted(
           db,
         );
         if (ptRecord) {
-          // Determine correct status based on payment_status
-          const paymentSucceeded = expandedSession.payment_status === "paid";
-          const correctStatus = paymentSucceeded ? "succeeded" : "processing";
+          // Determine correct status based on payment_status and capture method
+          const paymentSucceeded = expandedSession.payment_status === "paid" && !isManualCapture;
+          const correctStatus = isManualCapture ? "authorized" : (paymentSucceeded ? "succeeded" : "processing");
           
           const updateParams: Record<string, unknown> = {
             paymentIntentId,
@@ -403,7 +419,8 @@ async function handleCheckoutSessionCompleted(
             paidAt: paymentSucceeded ? new Date() : undefined,
           };
           
-          // If payment succeeded, try to fetch Stripe amounts
+          // If payment succeeded (auto capture), try to fetch Stripe amounts
+          // For manual capture, fees are synced at capture time via payment_intent.succeeded webhook
           if (paymentSucceeded) {
             try {
               // Get manager's Connect account for fee lookup
@@ -472,6 +489,7 @@ async function handleCheckoutSessionCompleted(
         metadata,
         stripeCustomerId,
         stripePaymentMethodId,
+        isManualCapture,
       );
     }
 
@@ -487,14 +505,15 @@ async function handleCheckoutSessionCompleted(
       );
     }
 
-    // ENTERPRISE-GRADE: Create booking from metadata when payment succeeds
+    // ENTERPRISE-GRADE: Create booking from metadata when payment succeeds or is authorized
     // This follows Stripe's recommended pattern - booking is ONLY created after payment
     // Eliminates orphan bookings from abandoned checkouts
+    // AUTH-THEN-CAPTURE: Also create booking when payment is authorized (manual capture)
     if (metadata.type === "kitchen_booking" && !metadata.booking_id) {
       // New flow: Create booking from metadata (booking_id not present means new enterprise flow)
       try {
-        // Check payment status - only create booking if paid
-        if (expandedSession.payment_status !== "paid") {
+        // Check payment status - create booking if paid (auto capture) or authorized (manual capture)
+        if (!isManualCapture && expandedSession.payment_status !== "paid") {
           logger.info(`[Webhook] Payment not yet confirmed for session ${session.id}, status: ${expandedSession.payment_status}`);
           // For async payments, booking will be created when async_payment_succeeded fires
           return;
@@ -540,10 +559,12 @@ async function handleCheckoutSessionCompleted(
           selectedEquipmentCount: selectedEquipmentIds.length,
         });
 
-        // Create the booking with payment already confirmed
+        // Create the booking with payment confirmed or authorized
         // IMPORTANT: Use direct DB insert instead of bookingService.createKitchenBooking
         // The booking service re-validates chef access which was already validated at checkout time
         // Direct insert is faster and more reliable in webhook context
+        // AUTH-THEN-CAPTURE: For manual capture, paymentStatus = 'authorized' (held, not charged)
+        const bookingPaymentStatus = isManualCapture ? "authorized" : "paid";
         let booking: { id: number; kitchenId: number; chefId: number | null; bookingDate: Date; startTime: string; endTime: string; status: string; paymentStatus: string | null; paymentIntentId: string | null } | undefined;
         
         try {
@@ -556,7 +577,7 @@ async function handleCheckoutSessionCompleted(
               startTime,
               endTime,
               status: "pending", // Awaiting manager approval
-              paymentStatus: "paid", // Payment already confirmed
+              paymentStatus: bookingPaymentStatus, // 'authorized' for manual capture, 'paid' for auto capture
               paymentIntentId: paymentIntentId,
               specialNotes,
               totalPrice: totalPriceCents.toString(),
@@ -671,9 +692,9 @@ async function handleCheckoutSessionCompleted(
 
                 // Storage bookings now require manager approval (like kitchen bookings)
                 // Status is 'pending' until manager confirms
-                // ENTERPRISE STANDARD: Storage is paid as part of kitchen booking checkout.
-                // Set paymentStatus='paid' and paymentIntentId so the record accurately reflects
-                // that payment has been collected. This is critical for:
+                // AUTH-THEN-CAPTURE: Storage paymentStatus mirrors kitchen booking:
+                // 'authorized' for manual capture (held, not charged), 'paid' for auto capture
+                // This is critical for:
                 // 1. Accurate payment tracking across all booking types
                 // 2. Off-session charging for overstay penalties (needs stripeCustomerId + stripePaymentMethodId)
                 // 3. Dispute resolution (needs paymentIntentId to reference the original charge)
@@ -688,7 +709,7 @@ async function handleCheckoutSessionCompleted(
                     status: 'pending', // Requires manager approval
                     totalPrice: priceCents.toString(),
                     pricingModel: storageListing.pricingModel || 'daily',
-                    paymentStatus: 'paid', // Payment confirmed via kitchen booking checkout
+                    paymentStatus: bookingPaymentStatus, // 'authorized' for manual capture, 'paid' for auto capture
                     paymentIntentId: paymentIntentId || null, // Link to the kitchen booking payment
                     serviceFee: '0',
                     currency: 'CAD',
@@ -807,6 +828,8 @@ async function handleCheckoutSessionCompleted(
                     : paymentIntentObj.latest_charge?.id)
                 : undefined;
 
+              // AUTH-THEN-CAPTURE: Use 'authorized' status for manual capture, 'succeeded' for auto capture
+              const ptStatus = isManualCapture ? "authorized" : "succeeded";
               const ptRecord = await createPaymentTransaction({
                 bookingId: booking.id,
                 bookingType: "kitchen",
@@ -818,8 +841,8 @@ async function handleCheckoutSessionCompleted(
                 managerRevenue: parseInt(metadata.booking_price_cents) - parseInt(metadata.platform_fee_cents || "0"),
                 currency: "CAD",
                 paymentIntentId,
-                status: "succeeded",
-                stripeStatus: "succeeded",
+                status: ptStatus,
+                stripeStatus: ptStatus,
                 metadata: {
                   checkout_session_id: session.id,
                   booking_id: booking.id.toString(),
@@ -832,7 +855,9 @@ async function handleCheckoutSessionCompleted(
               }, db);
               
               // Update with additional Stripe data (charge_id, paid_at, stripe fees)
-              if (ptRecord) {
+              // AUTH-THEN-CAPTURE: For manual capture, skip fee sync — no balance_transaction exists yet
+              // Fees will be synced when payment_intent.succeeded fires after manager captures
+              if (ptRecord && !isManualCapture) {
                 // Get manager's Stripe Connect account for fee lookup
                 let managerConnectAccountId: string | undefined;
                 try {
@@ -872,9 +897,11 @@ async function handleCheckoutSessionCompleted(
                 }
 
                 await updatePaymentTransaction(ptRecord.id, updateParams, db);
+              } else if (ptRecord && isManualCapture) {
+                logger.info(`[Webhook] AUTH-THEN-CAPTURE: Skipping fee sync for booking ${booking.id} — fees will sync at capture time`);
               }
               
-              logger.info(`[Webhook] Created payment_transactions record for booking ${booking.id} with full Stripe data`);
+              logger.info(`[Webhook] Created payment_transactions record for booking ${booking.id} with status '${ptStatus}'`);
             }
           }
         } catch (ptError) {
@@ -1211,7 +1238,7 @@ async function updateStorageBookingStripeIds(
 
 // Handle storage extension payment completion
 // ENTERPRISE-GRADE: Create pending_storage_extensions and payment_transactions ONLY when payment succeeds
-// This eliminates orphan records from abandoned checkouts
+// AUTH-THEN-CAPTURE: Also handles authorized (manual capture) payments
 async function handleStorageExtensionPaymentCompleted(
   sessionId: string,
   paymentIntentId: string | undefined,
@@ -1219,6 +1246,7 @@ async function handleStorageExtensionPaymentCompleted(
   metadata: Record<string, string>,
   stripeCustomerId: string | undefined,
   stripePaymentMethodId: string | undefined,
+  isManualCapture: boolean = false,
 ) {
   try {
     const { bookingService } = await import(
@@ -1252,7 +1280,7 @@ async function handleStorageExtensionPaymentCompleted(
 
     if (existingExtension) {
       // Already processed - but still update Stripe IDs if we have them
-      if (existingExtension.status === "paid" || existingExtension.status === "completed" || existingExtension.status === "approved") {
+      if (existingExtension.status === "paid" || existingExtension.status === "authorized" || existingExtension.status === "completed" || existingExtension.status === "approved") {
         logger.info(
           `[Webhook] Storage extension already processed for session ${sessionId} (status: ${existingExtension.status})`,
         );
@@ -1261,17 +1289,20 @@ async function handleStorageExtensionPaymentCompleted(
         return;
       }
       // Update existing record if it was somehow created with pending status
+      const extensionStatus = isManualCapture ? "authorized" : "paid";
       await bookingService.updatePendingStorageExtension(existingExtension.id, {
-        status: "paid",
+        status: extensionStatus,
         stripePaymentIntentId: paymentIntentId,
       });
-      logger.info(`[Webhook] Updated existing storage extension ${existingExtension.id} to paid`);
+      logger.info(`[Webhook] Updated existing storage extension ${existingExtension.id} to ${extensionStatus}`);
       // Still update storage booking with Stripe IDs for off-session charging
       await updateStorageBookingStripeIds(storageBookingId, chefId, stripeCustomerId, stripePaymentMethodId);
       return;
     }
 
-    // ENTERPRISE-GRADE: Create pending_storage_extensions record NOW (after payment succeeds)
+    // ENTERPRISE-GRADE: Create pending_storage_extensions record NOW (after payment succeeds/authorized)
+    // AUTH-THEN-CAPTURE: 'authorized' for manual capture, 'paid' for auto capture
+    const extensionPaymentStatus = isManualCapture ? "authorized" : "paid";
     const pendingExtension = await bookingService.createPendingStorageExtension({
       storageBookingId,
       newEndDate,
@@ -1281,7 +1312,7 @@ async function handleStorageExtensionPaymentCompleted(
       extensionTotalPriceCents,
       stripeSessionId: sessionId,
       stripePaymentIntentId: paymentIntentId,
-      status: "paid", // Payment already confirmed
+      status: extensionPaymentStatus,
     });
 
     logger.info(`[Webhook] Created pending_storage_extensions ${pendingExtension.id} for storage booking ${storageBookingId}`);
@@ -1297,6 +1328,8 @@ async function handleStorageExtensionPaymentCompleted(
       // CRITICAL: Log payment intent for debugging
       logger.info(`[Webhook] Creating payment_transactions for storage extension with paymentIntentId: ${paymentIntentId}, chargeId: ${chargeId}`);
 
+      // AUTH-THEN-CAPTURE: Use 'authorized' for manual capture, 'succeeded' for auto capture
+      const extPtStatus = isManualCapture ? "authorized" : "succeeded";
       const ptRecord = await createPaymentTransaction({
         bookingId: storageBookingId,
         bookingType: "storage",
@@ -1309,8 +1342,8 @@ async function handleStorageExtensionPaymentCompleted(
         currency: "CAD",
         paymentIntentId, // CRITICAL: Must be saved for Stripe fee syncing
         chargeId, // Also save charge ID
-        status: "succeeded",
-        stripeStatus: "succeeded",
+        status: extPtStatus,
+        stripeStatus: extPtStatus,
         metadata: {
           checkout_session_id: sessionId,
           storage_booking_id: storageBookingId.toString(),
@@ -1323,7 +1356,8 @@ async function handleStorageExtensionPaymentCompleted(
       }, db);
 
       // Update with Stripe amounts if available
-      if (ptRecord && paymentIntentId) {
+      // AUTH-THEN-CAPTURE: Skip fee sync for manual capture — no balance_transaction exists yet
+      if (ptRecord && paymentIntentId && !isManualCapture) {
         // Get manager's Stripe Connect account for fee lookup
         let managerConnectAccountId: string | undefined;
         if (!isNaN(managerId)) {
@@ -1601,6 +1635,7 @@ async function handlePaymentIntentSucceeded(
     }
 
     // Also update booking tables payment status for backward compatibility
+    // This handles both auto-capture and manual capture (after manager approval triggers capture)
     // Wrap in transaction for integrity
     await db.transaction(async (tx) => {
       await tx
@@ -1639,6 +1674,20 @@ async function handlePaymentIntentSucceeded(
           and(
             eq(equipmentBookings.paymentIntentId, paymentIntent.id),
             ne(equipmentBookings.paymentStatus, "paid"),
+          ),
+        );
+
+      // AUTH-THEN-CAPTURE: Also update pending_storage_extensions from 'authorized' to 'paid'
+      await tx
+        .update(pendingStorageExtensions)
+        .set({
+          status: "paid",
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(pendingStorageExtensions.stripePaymentIntentId, paymentIntent.id),
+            eq(pendingStorageExtensions.status, "authorized"),
           ),
         );
     });
@@ -1938,9 +1987,11 @@ async function handlePaymentIntentCanceled(
     }
 
     // Also update booking tables for backward compatibility
+    // AUTH-THEN-CAPTURE: This fires when manager rejects an authorized booking or when cron auto-cancels expired auths
     await db.transaction(async (tx) => {
       const excludedStatuses: (
         | "pending"
+        | "authorized"
         | "paid"
         | "refunded"
         | "failed"
@@ -1985,10 +2036,25 @@ async function handlePaymentIntentCanceled(
             notInArray(equipmentBookings.paymentStatus, excludedStatuses),
           ),
         );
+
+      // AUTH-THEN-CAPTURE: Also update pending_storage_extensions from 'authorized' to 'rejected'
+      await tx
+        .update(pendingStorageExtensions)
+        .set({
+          status: "rejected",
+          rejectionReason: "Payment authorization cancelled",
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(pendingStorageExtensions.stripePaymentIntentId, paymentIntent.id),
+            eq(pendingStorageExtensions.status, "authorized"),
+          ),
+        );
     });
 
     logger.info(
-      `[Webhook] Updated booking payment status for PaymentIntent ${paymentIntent.id}`,
+      `[Webhook] Updated booking payment status for canceled PaymentIntent ${paymentIntent.id}`,
     );
   } catch (error: any) {
     logger.error(

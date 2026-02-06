@@ -8,6 +8,7 @@ import { Route, Switch, useLocation } from "wouter";
 import { auth } from "./lib/firebase";
 import { queryClient } from "./lib/queryClient";
 import { useSubdomain } from "@/hooks/use-subdomain";
+import { useRadixBodyCleanup } from "@/hooks/use-radix-body-cleanup";
 import { getSubdomainFromHostname, isRouteAccessibleFromSubdomain, type SubdomainType } from "@shared/subdomain-utils";
 
 // Immediate load components (small/critical)
@@ -586,14 +587,21 @@ function ResetWelcomeFlagButton() {
   );
 }
 
+function RadixBodyCleanupProvider({ children }: { children: React.ReactNode }) {
+  useRadixBodyCleanup();
+  return <>{children}</>;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <CustomAlertsProvider>
           <TooltipProvider>
-            <SonnerToaster />
-            <Router />
+            <RadixBodyCleanupProvider>
+              <SonnerToaster />
+              <Router />
+            </RadixBodyCleanupProvider>
           </TooltipProvider>
         </CustomAlertsProvider>
       </AuthProvider>
