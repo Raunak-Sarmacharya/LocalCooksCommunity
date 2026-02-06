@@ -759,10 +759,12 @@ async function handleCheckoutSessionCompleted(
                     chefId,
                     startDate: bookingDate,
                     endDate: bookingDate,
-                    status: 'confirmed',
+                    status: 'pending', // Requires manager approval
                     totalPrice: sessionRateCents.toString(),
                     pricingModel: 'daily',
                     damageDeposit: (equipmentListing.damageDeposit || '0').toString(),
+                    paymentStatus: bookingPaymentStatus, // 'authorized' for manual capture, 'paid' for auto capture
+                    paymentIntentId: paymentIntentId || null, // Link to the kitchen booking payment
                     serviceFee: '0',
                     currency: 'CAD',
                   })
@@ -1590,6 +1592,18 @@ async function handlePaymentIntentSucceeded(
         managerConnectAccountId,
       );
 
+      // Merge Stripe PI metadata with existing PT metadata (preserves capture audit trail)
+      // CRITICAL: After partial capture, the manager approval engine stores capture details
+      // (approvedSubtotal, approvedTax, rejectedStorageIds, etc.) in PT metadata.
+      // We must not overwrite those with Stripe's PI metadata (which is the original checkout metadata).
+      const existingPtMetadata = transaction.metadata
+        ? (typeof transaction.metadata === 'string' ? JSON.parse(transaction.metadata) : transaction.metadata)
+        : {};
+      const mergedMetadata = {
+        ...existingPtMetadata,
+        stripeMetadata: paymentIntent.metadata, // Store Stripe's metadata under a nested key
+      };
+
       const updateParams: any = {
         status: "succeeded",
         stripeStatus: paymentIntent.status,
@@ -1600,7 +1614,7 @@ async function handlePaymentIntentSucceeded(
         paidAt: new Date(),
         lastSyncedAt: new Date(),
         webhookEventId: webhookEventId,
-        metadata: paymentIntent.metadata, // Sync metadata (includes tax_cents, tax_rate_percent) from Stripe
+        metadata: mergedMetadata,
       };
 
       // If we got Stripe amounts, sync them to override calculated amounts
@@ -1651,6 +1665,9 @@ async function handlePaymentIntentSucceeded(
           ),
         );
 
+      // CRITICAL: Do NOT overwrite 'failed' status on rejected items
+      // After partial capture, the capture engine marks rejected storage/equipment as 'failed'
+      // The webhook should only upgrade 'authorized'/'pending' → 'paid', never 'failed' → 'paid'
       await tx
         .update(storageBookings)
         .set({
@@ -1661,6 +1678,7 @@ async function handlePaymentIntentSucceeded(
           and(
             eq(storageBookings.paymentIntentId, paymentIntent.id),
             ne(storageBookings.paymentStatus, "paid"),
+            ne(storageBookings.paymentStatus, "failed"),
           ),
         );
 
@@ -1674,6 +1692,7 @@ async function handlePaymentIntentSucceeded(
           and(
             eq(equipmentBookings.paymentIntentId, paymentIntent.id),
             ne(equipmentBookings.paymentStatus, "paid"),
+            ne(equipmentBookings.paymentStatus, "failed"),
           ),
         );
 

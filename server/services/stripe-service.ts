@@ -431,25 +431,37 @@ export async function getStripePaymentAmounts(
  * 2. Manager approves booking → this function captures (charges) the payment
  * 3. payment_intent.succeeded webhook fires → fees synced, status updated to 'paid'
  * 
+ * PARTIAL CAPTURE:
+ * When manager approves some items and rejects others, pass amountToCapture < authorized amount.
+ * Stripe auto-releases the remaining hold — no refund needed, no extra fees.
+ * Also pass applicationFeeAmount recalculated for the partial amount to maintain platform break-even.
+ * 
  * @param paymentIntentId - The PaymentIntent ID to capture
- * @param amountToCapture - Optional: amount to capture (can be less than authorized amount)
- * @returns PaymentIntentResult with updated status
+ * @param amountToCapture - Optional: amount to capture in cents (can be less than authorized amount)
+ * @param applicationFeeAmount - Optional: updated application fee for the capture amount (for Connect break-even)
+ * @returns PaymentIntentResult with updated status and actual captured amount
  */
 export async function capturePaymentIntent(
   paymentIntentId: string,
-  amountToCapture?: number
+  amountToCapture?: number,
+  applicationFeeAmount?: number,
 ): Promise<PaymentIntentResult> {
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
   }
 
   try {
-    const captureParams: any = {};
+    const captureParams: Stripe.PaymentIntentCaptureParams = {};
     
-    // If amount is specified and different from authorized amount, capture that amount
-    // This allows capturing less than authorized (e.g., if final total is lower)
+    // Partial capture: charge only the approved portion, Stripe auto-releases the rest
     if (amountToCapture !== undefined) {
       captureParams.amount_to_capture = amountToCapture;
+    }
+
+    // Update application_fee_amount for partial capture to maintain platform break-even
+    // Without this, the original (higher) fee would apply to the smaller capture amount
+    if (applicationFeeAmount !== undefined) {
+      captureParams.application_fee_amount = applicationFeeAmount;
     }
 
     const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId, captureParams);

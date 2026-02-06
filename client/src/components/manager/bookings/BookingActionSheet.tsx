@@ -307,6 +307,64 @@ function BookingActionSheetContent({
     };
   }, [kitchenAction, storageDecisions, equipmentDecisions, booking]);
 
+  // ── Capture Calculation (for authorized bookings only) ───────────────────
+  // Calculates what will be captured vs released when manager partially approves
+  const captureCalc = useMemo(() => {
+    if (!isAuthorized) return null;
+
+    const kitchenPriceCents = booking.totalPrice || 0;
+    const transactionAmount = booking.transactionAmount || 0;
+    const taxRatePercent = booking.taxRatePercent || 0;
+
+    // Kitchen is approved when kitchenAction === 'confirmed'
+    const approvedKitchenCents = kitchenAction === "confirmed" ? kitchenPriceCents : 0;
+
+    // Approved storage
+    let approvedStorageCents = 0;
+    if (booking.storageItems) {
+      for (const item of booking.storageItems) {
+        const decision = storageDecisions.get(item.storageBookingId) || "confirmed";
+        if (decision === "confirmed") approvedStorageCents += item.totalPrice;
+      }
+    }
+
+    // Approved equipment
+    let approvedEquipmentCents = 0;
+    if (booking.equipmentItems) {
+      for (const item of booking.equipmentItems) {
+        const decision = equipmentDecisions.get(item.equipmentBookingId) || "confirmed";
+        if (decision === "confirmed") approvedEquipmentCents += item.totalPrice;
+      }
+    }
+
+    const approvedSubtotal = approvedKitchenCents + approvedStorageCents + approvedEquipmentCents;
+    const approvedTax = Math.round((approvedSubtotal * taxRatePercent) / 100);
+    const captureAmount = approvedSubtotal + approvedTax;
+    const releaseAmount = Math.max(0, transactionAmount - captureAmount);
+
+    // Estimated Stripe fee on capture amount (2.9% + $0.30)
+    const estimatedStripeFee = captureAmount > 0
+      ? Math.round(captureAmount * 0.029 + 30)
+      : 0;
+    const estimatedManagerNet = Math.max(0, captureAmount - estimatedStripeFee);
+    const isPartialCapture = captureAmount > 0 && captureAmount < transactionAmount;
+
+    return {
+      approvedKitchenCents,
+      approvedStorageCents,
+      approvedEquipmentCents,
+      approvedSubtotal,
+      approvedTax,
+      captureAmount,
+      releaseAmount,
+      estimatedStripeFee,
+      estimatedManagerNet,
+      isPartialCapture,
+      taxRatePercent,
+      transactionAmount,
+    };
+  }, [isAuthorized, kitchenAction, storageDecisions, equipmentDecisions, booking]);
+
   // Custom refund amount (user-editable, capped at max)
   const effectiveRefundAmount = useMemo(() => {
     if (isEditingRefund && customRefundInput !== "") {
@@ -671,8 +729,8 @@ function BookingActionSheetContent({
           </>
         )}
 
-        {/* ── Auth-Then-Capture Info ─────────────────────────────────────── */}
-        {isAuthorized && refundCalc.hasAnyRejection && (
+        {/* ── Auth-Then-Capture: Full Rejection ─────────────────────────── */}
+        {isAuthorized && allRejected && (
           <>
             <Separator />
             <div className="p-4 rounded-lg border border-blue-200 bg-blue-50/50 space-y-2">
@@ -684,25 +742,111 @@ function BookingActionSheetContent({
               </div>
               <p className="text-xs text-blue-700">
                 The chef&apos;s card has a temporary hold of {booking.transactionAmount ? formatPrice(booking.transactionAmount) : "the booking amount"}.
-                Rejecting will release this hold — the chef will <strong>not be charged anything</strong> and no Stripe fees apply.
+                Rejecting will release the entire hold — the chef will <strong>not be charged anything</strong> and no Stripe fees apply.
               </p>
             </div>
           </>
         )}
 
-        {isAuthorized && allApproved && (
+        {/* ── Auth-Then-Capture: Full Approval ────────────────────────────── */}
+        {isAuthorized && allApproved && captureCalc && (
           <>
             <Separator />
-            <div className="p-4 rounded-lg border border-blue-200 bg-blue-50/50 space-y-2">
+            <div className="space-y-3 p-4 rounded-lg border border-blue-200 bg-blue-50/50">
               <div className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-blue-600" />
                 <p className="text-sm font-semibold text-blue-800">
                   Payment Will Be Captured
                 </p>
               </div>
-              <p className="text-xs text-blue-700">
-                Approving will charge the chef&apos;s card {booking.transactionAmount ? formatPrice(booking.transactionAmount) : "the held amount"}.
-                The hold will be converted to a final charge.
+              <div className="space-y-1 text-xs p-2.5 rounded-md bg-white/60 border border-blue-100">
+                <p className="text-[10px] font-medium text-blue-700 uppercase tracking-wide mb-1">Capture Breakdown</p>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Chef will be charged</span>
+                  <span className="font-mono font-medium">{formatPrice(captureCalc.captureAmount)}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Est. Stripe fee</span>
+                  <span className="font-mono text-red-600">-{formatPrice(captureCalc.estimatedStripeFee)}</span>
+                </div>
+                <Separator className="my-1" />
+                <div className="flex justify-between font-semibold text-sm">
+                  <span>Est. you receive</span>
+                  <span className="font-mono text-green-700">{formatPrice(captureCalc.estimatedManagerNet)}</span>
+                </div>
+              </div>
+              <p className="text-[10px] text-blue-600 italic">
+                Stripe fee is estimated. Actual fee confirmed after capture.
+              </p>
+            </div>
+          </>
+        )}
+
+        {/* ── Auth-Then-Capture: Partial Approval ──────────────────────────── */}
+        {isAuthorized && captureCalc && captureCalc.isPartialCapture && (
+          <>
+            <Separator />
+            <div className="space-y-3 p-4 rounded-lg border border-amber-200 bg-amber-50/50">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <p className="text-sm font-semibold text-amber-800">
+                  Partial Capture — Only Approved Items Charged
+                </p>
+              </div>
+              <p className="text-xs text-amber-700">
+                The chef&apos;s card has a hold of {formatPrice(captureCalc.transactionAmount)}.
+                Only the approved portion will be charged — the rest is <strong>automatically released</strong> (no refund needed).
+              </p>
+
+              {/* Capture Breakdown */}
+              <div className="space-y-1 text-xs p-2.5 rounded-md bg-white/60 border border-amber-100">
+                <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide mb-1">Capture Breakdown</p>
+                {captureCalc.approvedKitchenCents > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Kitchen session</span>
+                    <span className="font-mono">{formatPrice(captureCalc.approvedKitchenCents)}</span>
+                  </div>
+                )}
+                {captureCalc.approvedStorageCents > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Approved storage</span>
+                    <span className="font-mono">{formatPrice(captureCalc.approvedStorageCents)}</span>
+                  </div>
+                )}
+                {captureCalc.approvedEquipmentCents > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Approved equipment</span>
+                    <span className="font-mono">{formatPrice(captureCalc.approvedEquipmentCents)}</span>
+                  </div>
+                )}
+                {captureCalc.approvedTax > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Tax ({captureCalc.taxRatePercent}%)</span>
+                    <span className="font-mono">+{formatPrice(captureCalc.approvedTax)}</span>
+                  </div>
+                )}
+                <Separator className="my-1" />
+                <div className="flex justify-between font-medium text-foreground">
+                  <span>Will be charged</span>
+                  <span className="font-mono">{formatPrice(captureCalc.captureAmount)}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Est. Stripe fee</span>
+                  <span className="font-mono text-red-600">-{formatPrice(captureCalc.estimatedStripeFee)}</span>
+                </div>
+                <div className="flex justify-between font-semibold text-sm text-green-700">
+                  <span>Est. you receive</span>
+                  <span className="font-mono">{formatPrice(captureCalc.estimatedManagerNet)}</span>
+                </div>
+              </div>
+
+              {/* Release Info */}
+              <div className="flex justify-between text-xs p-2 rounded-md bg-blue-50/80 border border-blue-100">
+                <span className="text-blue-700">Released back to chef</span>
+                <span className="font-mono font-medium text-blue-700">{formatPrice(captureCalc.releaseAmount)}</span>
+              </div>
+              <p className="text-[10px] text-amber-600 italic">
+                Stripe fee is estimated (2.9% + $0.30). Actual fee confirmed after capture.
               </p>
             </div>
           </>

@@ -1199,11 +1199,30 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
             return res.status(403).json({ error: "You don't have permission to view this invoice" });
         }
 
+        // ENTERPRISE STANDARD: Invoices only available after payment is captured
+        // For auth-then-capture flow, invoice should not exist until manager approves
+        const bookingPaymentStatus = (booking as any).paymentStatus || (booking as any).payment_status;
+        if (bookingPaymentStatus === 'authorized' || bookingPaymentStatus === 'pending') {
+            return res.status(400).json({ 
+                error: "Invoice not available yet. Payment must be captured (approved by manager) before an invoice can be generated." 
+            });
+        }
+
         // Get related data
         const chef = await userService.getUser(booking.chefId);
         const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
-        const storageBookings = await bookingService.getStorageBookingsByKitchenBooking(id);
-        const equipmentBookings = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+        const allStorageBookings = await bookingService.getStorageBookingsByKitchenBooking(id);
+        const allEquipmentBookings = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+
+        // Filter out rejected items (paymentStatus='failed') — only show captured/paid items on invoice
+        const storageBookings = (allStorageBookings || []).filter((sb: any) => {
+            const status = sb.paymentStatus || sb.payment_status;
+            return status !== 'failed';
+        });
+        const equipmentBookings = (allEquipmentBookings || []).filter((eb: any) => {
+            const status = eb.paymentStatus || eb.payment_status;
+            return status !== 'failed';
+        });
 
         // Get location details
         let location = null;
@@ -2037,8 +2056,9 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             totalPriceCents = kitchenPricing.totalPriceCents;
         }
 
-        // Calculate storage add-ons
+        // Calculate storage add-ons — track individual prices for Stripe line items
         const storageIds: number[] = [];
+        const storageLineItems: Array<{ name: string; priceCents: number }> = [];
         if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) {
             for (const storage of selectedStorage) {
                 try {
@@ -2060,6 +2080,10 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                             storagePrice = basePriceCents;
                         }
                         totalPriceCents += storagePrice;
+                        storageLineItems.push({
+                            name: `Storage: ${storageListing.name || storageListing.storageType || 'Storage Unit'}`,
+                            priceCents: storagePrice,
+                        });
                     }
                 } catch (error) {
                     console.error('Error calculating storage price:', error);
@@ -2067,7 +2091,8 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             }
         }
 
-        // Calculate equipment add-ons
+        // Calculate equipment add-ons — track individual prices for Stripe line items
+        const equipmentLineItems: Array<{ name: string; priceCents: number }> = [];
         if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds) && selectedEquipmentIds.length > 0) {
             for (const equipmentListingId of selectedEquipmentIds) {
                 try {
@@ -2075,6 +2100,10 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                     if (equipmentListing && equipmentListing.availabilityType !== 'included') {
                         const sessionRateCents = equipmentListing.sessionRate ? Math.round(parseFloat(String(equipmentListing.sessionRate))) : 0;
                         totalPriceCents += sessionRateCents;
+                        equipmentLineItems.push({
+                            name: `Equipment: ${equipmentListing.brand ? equipmentListing.brand + ' ' : ''}${equipmentListing.equipmentType || 'Equipment'}`,
+                            priceCents: sessionRateCents,
+                        });
                     }
                 } catch (error) {
                     console.error(`Error calculating equipment price for listing ${equipmentListingId}:`, error);
@@ -2101,6 +2130,11 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         // Create Stripe Checkout session with booking data in metadata
         // Booking will be created from this metadata in the webhook
         const { createPendingCheckoutSession } = await import('../services/stripe-checkout-service');
+        // Build kitchen-only price for line item breakdown
+        const kitchenOnlyPriceCents = Math.round(kitchenPricing.hourlyRateCents * effectiveDurationHours);
+        const kitchenLabel = `Kitchen Session (${effectiveDurationHours} hr${effectiveDurationHours !== 1 ? 's' : ''})`;
+        const taxLabel = taxRatePercent > 0 ? `Tax (${taxRatePercent}%)` : 'Tax';
+
         const checkoutSession = await createPendingCheckoutSession({
             bookingPriceInCents: totalWithTaxCents,
             platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
@@ -2122,7 +2156,16 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                 totalPriceCents,
                 taxCents,
                 hourlyRateCents: kitchenPricing.hourlyRateCents,
-                durationHours: effectiveDurationHours, // Use effective duration (slot count for staggered)
+                durationHours: effectiveDurationHours,
+            },
+            // Separate line items for Stripe Dashboard & receipt visibility
+            lineItemBreakdown: {
+                kitchenPriceCents: kitchenOnlyPriceCents,
+                kitchenLabel,
+                storageItems: storageLineItems,
+                equipmentItems: equipmentLineItems,
+                taxCents,
+                taxLabel,
             },
         });
 

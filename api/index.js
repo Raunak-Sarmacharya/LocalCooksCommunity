@@ -3389,10 +3389,14 @@ async function updatePaymentTransaction(transactionId, params, db2) {
   if (params.refundId !== void 0) {
     updates.push(sql2`refund_id = ${params.refundId}`);
   }
+  if (params.amount !== void 0) {
+    updates.push(sql2`amount = ${params.amount.toString()}`);
+  }
   if (params.refundAmount !== void 0) {
     updates.push(sql2`refund_amount = ${params.refundAmount.toString()}`);
+    const effectiveAmount = params.amount !== void 0 ? params.amount : currentAmount;
     const newRefundAmount = params.refundAmount;
-    const netAmount = currentAmount - newRefundAmount;
+    const netAmount = effectiveAmount - newRefundAmount;
     updates.push(sql2`net_amount = ${netAmount.toString()}`);
   }
   if (params.refundReason !== void 0) {
@@ -3546,7 +3550,8 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
         pt.base_amount,
         pt.service_fee,
         pt.amount as current_amount,
-        pt.manager_revenue as current_manager_revenue
+        pt.manager_revenue as current_manager_revenue,
+        pt.metadata
       FROM payment_transactions pt
       WHERE pt.payment_intent_id = ${paymentIntentId}
     `);
@@ -3557,6 +3562,11 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
     const transaction = transactionResult.rows[0];
     const bookingId = transaction.booking_id;
     const bookingType = transaction.booking_type;
+    const ptMetadata = transaction.metadata ? typeof transaction.metadata === "string" ? JSON.parse(transaction.metadata) : transaction.metadata : {};
+    if (ptMetadata.partialCapture) {
+      console.log(`[Stripe Sync] Skipping booking table sync for partially captured PaymentIntent ${paymentIntentId} \u2014 capture engine already set correct values`);
+      return;
+    }
     if (bookingType === "bundle") {
       const kitchenBooking = await db2.execute(sql2`
         SELECT id, total_price, service_fee
@@ -4274,7 +4284,7 @@ async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId)
     return null;
   }
 }
-async function capturePaymentIntent(paymentIntentId, amountToCapture) {
+async function capturePaymentIntent(paymentIntentId, amountToCapture, applicationFeeAmount) {
   if (!stripe) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
@@ -4282,6 +4292,9 @@ async function capturePaymentIntent(paymentIntentId, amountToCapture) {
     const captureParams = {};
     if (amountToCapture !== void 0) {
       captureParams.amount_to_capture = amountToCapture;
+    }
+    if (applicationFeeAmount !== void 0) {
+      captureParams.application_fee_amount = applicationFeeAmount;
     }
     const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId, captureParams);
     return {
@@ -16214,7 +16227,7 @@ var init_booking_service = __esm({
                   chefId: data.chefId,
                   startDate: storageStartDate,
                   endDate: storageEndDate,
-                  status: "confirmed",
+                  status: "pending",
                   totalPrice: priceCents.toString(),
                   pricingModel: listing.pricingModel || "daily",
                   serviceFee: "0",
@@ -16259,7 +16272,7 @@ var init_booking_service = __esm({
                   startDate: data.bookingDate,
                   endDate: data.bookingDate,
                   // Single day for hourly
-                  status: "confirmed",
+                  status: "pending",
                   totalPrice: priceCents.toString(),
                   pricingModel: listing.pricingModel || "daily",
                   serviceFee: "0",
@@ -16303,7 +16316,7 @@ var init_booking_service = __esm({
                   chefId: data.chefId,
                   startDate: data.bookingDate,
                   endDate: data.bookingDate,
-                  status: "confirmed",
+                  status: "pending",
                   totalPrice: sessionRateCents.toString(),
                   damageDeposit: (listing.damageDeposit || "0").toString(),
                   serviceFee: "0",
@@ -20703,6 +20716,11 @@ var init_manager = __esm({
           if (booking.managerId !== managerId) {
             return res.status(403).json({ error: "Access denied to this booking" });
           }
+          if (booking.paymentStatus === "authorized" || booking.paymentStatus === "pending") {
+            return res.status(400).json({
+              error: "Invoice not available yet. Payment must be captured before an invoice can be generated."
+            });
+          }
           if (booking.status === "cancelled" && !booking.paymentIntentId && !booking.totalPrice) {
             return res.status(400).json({
               error: "Invoice cannot be downloaded for cancelled bookings without payment information"
@@ -20722,13 +20740,14 @@ var init_manager = __esm({
               chef = chefRows[0];
             }
           }
-          const storageRows = await db.select({
+          const allStorageRows = await db.select({
             id: storageBookings.id,
             kitchenBookingId: storageBookings.kitchenBookingId,
             storageListingId: storageBookings.storageListingId,
             startDate: storageBookings.startDate,
             endDate: storageBookings.endDate,
             status: storageBookings.status,
+            paymentStatus: storageBookings.paymentStatus,
             totalPrice: storageBookings.totalPrice,
             storageName: storageListings.name,
             storageType: storageListings.storageType,
@@ -20738,11 +20757,13 @@ var init_manager = __esm({
             storageListings,
             eq27(storageBookings.storageListingId, storageListings.id)
           ).where(eq27(storageBookings.kitchenBookingId, bookingId));
-          const equipmentRows = await db.select({
+          const storageRows = allStorageRows.filter((sr) => sr.paymentStatus !== "failed");
+          const allEquipmentRows = await db.select({
             id: equipmentBookings.id,
             kitchenBookingId: equipmentBookings.kitchenBookingId,
             equipmentListingId: equipmentBookings.equipmentListingId,
             status: equipmentBookings.status,
+            paymentStatus: equipmentBookings.paymentStatus,
             totalPrice: equipmentBookings.totalPrice,
             equipmentType: equipmentListings.equipmentType,
             brand: equipmentListings.brand
@@ -20750,6 +20771,7 @@ var init_manager = __esm({
             equipmentListings,
             eq27(equipmentBookings.equipmentListingId, equipmentListings.id)
           ).where(eq27(equipmentBookings.kitchenBookingId, bookingId));
+          const equipmentRows = allEquipmentRows.filter((er) => er.paymentStatus !== "failed");
           const originalStorageDates = {};
           if (booking.paymentIntentId) {
             try {
@@ -22747,65 +22769,6 @@ var init_manager = __esm({
                 paymentStatus
               });
             }
-            if (paymentStatus === "authorized") {
-              const bookingPIId = booking.paymentIntentId;
-              if (bookingPIId) {
-                try {
-                  const { capturePaymentIntent: capturePaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-                  const captureResult = await capturePaymentIntent2(bookingPIId);
-                  logger.info(`[Manager] AUTH-THEN-CAPTURE: Captured payment for booking ${id}`, {
-                    paymentIntentId: bookingPIId,
-                    capturedAmount: captureResult.amount,
-                    status: captureResult.status
-                  });
-                  await db.update(kitchenBookings).set({ paymentStatus: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(kitchenBookings.id, id));
-                  try {
-                    const assocStorage = await bookingService.getStorageBookingsByKitchenBooking(id);
-                    if (assocStorage && assocStorage.length > 0) {
-                      for (const sb of assocStorage) {
-                        if (sb.paymentStatus === "authorized") {
-                          await db.update(storageBookings).set({ paymentStatus: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(storageBookings.id, sb.id));
-                        }
-                      }
-                    }
-                  } catch (storageCapErr) {
-                    logger.warn(`[Manager] Could not update storage booking paymentStatus after capture:`, storageCapErr);
-                  }
-                  try {
-                    const assocEquip = await bookingService.getEquipmentBookingsByKitchenBooking(id);
-                    if (assocEquip && assocEquip.length > 0) {
-                      for (const eb of assocEquip) {
-                        if (eb.paymentStatus === "authorized") {
-                          await db.update(equipmentBookings).set({ paymentStatus: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(equipmentBookings.id, eb.id));
-                        }
-                      }
-                    }
-                  } catch (equipCapErr) {
-                    logger.warn(`[Manager] Could not update equipment booking paymentStatus after capture:`, equipCapErr);
-                  }
-                  try {
-                    const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-                    const ptRecord = await findPaymentTransactionByIntentId2(bookingPIId, db);
-                    if (ptRecord) {
-                      await updatePaymentTransaction2(ptRecord.id, {
-                        status: "succeeded",
-                        stripeStatus: "succeeded",
-                        paidAt: /* @__PURE__ */ new Date()
-                      }, db);
-                      logger.info(`[Manager] Updated payment_transactions ${ptRecord.id} to succeeded after capture`);
-                    }
-                  } catch (ptErr) {
-                    logger.warn(`[Manager] Could not update payment_transactions after capture:`, ptErr);
-                  }
-                } catch (captureError) {
-                  logger.error(`[Manager] AUTH-THEN-CAPTURE: Failed to capture payment for booking ${id}:`, captureError);
-                  return res.status(500).json({
-                    error: "Failed to capture payment. The authorization may have expired. Please contact the chef to re-book.",
-                    details: captureError.message
-                  });
-                }
-              }
-            }
           }
           await bookingService.updateBookingStatus(id, status);
           const storageActionResults = [];
@@ -22886,7 +22849,6 @@ var init_manager = __esm({
               equipmentUpdateError
             );
           }
-          let refundResult = null;
           const previousStatus = booking.status;
           const isCancellation = previousStatus === "confirmed" && status === "cancelled";
           const isFromPending = previousStatus === "pending";
@@ -22894,7 +22856,147 @@ var init_manager = __esm({
           const bookingPaymentStatus = booking.paymentStatus;
           const hasValidPayment = bookingPaymentIntentId && (bookingPaymentStatus === "paid" || bookingPaymentStatus === "processing");
           const isAuthorizedPayment = bookingPaymentIntentId && bookingPaymentStatus === "authorized";
-          if (isFromPending && isAuthorizedPayment && !isCancellation) {
+          if (isFromPending && isAuthorizedPayment && status === "confirmed") {
+            try {
+              const { capturePaymentIntent: capturePaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+              const { calculateCheckoutFeesAsync: calculateCheckoutFeesAsync2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
+              const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+              const bookingHourlyRate = parseFloat(String(booking.hourlyRate || "0"));
+              const bookingDurationHours = parseFloat(String(booking.durationHours || "1"));
+              const kitchenOnlyPriceCents = Math.round(bookingHourlyRate * bookingDurationHours);
+              const approvedStorageIds = /* @__PURE__ */ new Set();
+              const rejectedStorageIds = /* @__PURE__ */ new Set();
+              for (const r of storageActionResults) {
+                if (r.action === "confirmed") approvedStorageIds.add(r.storageBookingId);
+                else if (r.action === "cancelled") rejectedStorageIds.add(r.storageBookingId);
+              }
+              const approvedEquipmentIds = /* @__PURE__ */ new Set();
+              const rejectedEquipmentIds = /* @__PURE__ */ new Set();
+              for (const r of equipmentActionResults) {
+                if (r.action === "confirmed") approvedEquipmentIds.add(r.equipmentBookingId);
+                else if (r.action === "cancelled") rejectedEquipmentIds.add(r.equipmentBookingId);
+              }
+              let approvedStorageCents = 0;
+              let approvedEquipmentCents = 0;
+              const assocStorage = await bookingService.getStorageBookingsByKitchenBooking(id);
+              for (const sb of assocStorage || []) {
+                const price = Math.round(parseFloat(String(sb.totalPrice || "0")));
+                if (rejectedStorageIds.has(sb.id)) {
+                } else {
+                  approvedStorageCents += price;
+                  approvedStorageIds.add(sb.id);
+                }
+              }
+              const assocEquip = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+              for (const eb of assocEquip || []) {
+                const price = Math.round(parseFloat(String(eb.totalPrice || "0")));
+                if (rejectedEquipmentIds.has(eb.id)) {
+                } else {
+                  approvedEquipmentCents += price;
+                  approvedEquipmentIds.add(eb.id);
+                }
+              }
+              const approvedSubtotalCents = kitchenOnlyPriceCents + approvedStorageCents + approvedEquipmentCents;
+              const taxRatePercent = kitchen?.taxRatePercent ? parseFloat(String(kitchen.taxRatePercent)) : 0;
+              const approvedTaxCents = Math.round(approvedSubtotalCents * taxRatePercent / 100);
+              const captureAmountCents = approvedSubtotalCents + approvedTaxCents;
+              const feeCalc = await calculateCheckoutFeesAsync2(captureAmountCents);
+              const newApplicationFeeCents = feeCalc.totalPlatformFeeInCents;
+              const originalTotalPriceCents = Math.round(parseFloat(String(booking.totalPrice || "0")));
+              const originalTaxCents = Math.round(originalTotalPriceCents * taxRatePercent / 100);
+              const originalAuthorizedAmount = originalTotalPriceCents + originalTaxCents;
+              const isPartialCapture = captureAmountCents < originalAuthorizedAmount;
+              logger.info(`[Manager] PARTIAL CAPTURE ENGINE for booking ${id}:`, {
+                kitchenOnlyPriceCents,
+                approvedStorageCents,
+                approvedEquipmentCents,
+                approvedSubtotalCents,
+                taxRatePercent,
+                approvedTaxCents,
+                captureAmountCents,
+                originalAuthorizedAmount,
+                isPartialCapture,
+                newApplicationFeeCents,
+                rejectedStorageIds: Array.from(rejectedStorageIds),
+                rejectedEquipmentIds: Array.from(rejectedEquipmentIds)
+              });
+              const captureResult = isPartialCapture ? await capturePaymentIntent2(bookingPaymentIntentId, captureAmountCents, newApplicationFeeCents) : await capturePaymentIntent2(bookingPaymentIntentId);
+              logger.info(`[Manager] AUTH-THEN-CAPTURE: ${isPartialCapture ? "Partial" : "Full"} capture for booking ${id}`, {
+                paymentIntentId: bookingPaymentIntentId,
+                capturedAmount: captureResult.amount,
+                status: captureResult.status
+              });
+              await db.update(kitchenBookings).set({
+                paymentStatus: "paid",
+                totalPrice: approvedSubtotalCents.toString(),
+                updatedAt: /* @__PURE__ */ new Date()
+              }).where(eq27(kitchenBookings.id, id));
+              logger.info(`[Manager] Updated kb.total_price from ${originalTotalPriceCents} to ${approvedSubtotalCents} (approved subtotal after partial capture)`);
+              for (const sb of assocStorage || []) {
+                if (rejectedStorageIds.has(sb.id)) {
+                  await db.update(storageBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(storageBookings.id, sb.id));
+                } else {
+                  await db.update(storageBookings).set({ paymentStatus: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(storageBookings.id, sb.id));
+                }
+              }
+              for (const eb of assocEquip || []) {
+                if (rejectedEquipmentIds.has(eb.id)) {
+                  await db.update(equipmentBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(equipmentBookings.id, eb.id));
+                } else {
+                  await db.update(equipmentBookings).set({ paymentStatus: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(equipmentBookings.id, eb.id));
+                }
+              }
+              try {
+                const ptRecord = await findPaymentTransactionByIntentId2(bookingPaymentIntentId, db);
+                if (ptRecord) {
+                  const capturedBaseAmount = captureAmountCents - newApplicationFeeCents;
+                  const capturedManagerRevenue = capturedBaseAmount;
+                  const existingMetadata = ptRecord.metadata ? typeof ptRecord.metadata === "string" ? JSON.parse(ptRecord.metadata) : ptRecord.metadata : {};
+                  const captureMetadata = {
+                    ...existingMetadata,
+                    partialCapture: isPartialCapture,
+                    capturedAmount: captureAmountCents,
+                    originalAuthorizedAmount,
+                    approvedSubtotal: approvedSubtotalCents,
+                    approvedTax: approvedTaxCents,
+                    taxRatePercent,
+                    applicationFee: newApplicationFeeCents,
+                    approvedStorageIds: Array.from(approvedStorageIds),
+                    approvedEquipmentIds: Array.from(approvedEquipmentIds),
+                    rejectedStorageIds: Array.from(rejectedStorageIds),
+                    rejectedEquipmentIds: Array.from(rejectedEquipmentIds),
+                    capturedAt: (/* @__PURE__ */ new Date()).toISOString()
+                  };
+                  await updatePaymentTransaction2(ptRecord.id, {
+                    status: "succeeded",
+                    stripeStatus: "succeeded",
+                    paidAt: /* @__PURE__ */ new Date(),
+                    amount: captureAmountCents,
+                    metadata: captureMetadata
+                  }, db);
+                  await db.execute(sql12`
+                UPDATE payment_transactions
+                SET base_amount = ${capturedBaseAmount.toString()},
+                    service_fee = ${newApplicationFeeCents.toString()},
+                    manager_revenue = ${capturedManagerRevenue.toString()},
+                    net_amount = ${captureAmountCents.toString()}
+                WHERE id = ${ptRecord.id}
+              `);
+                  logger.info(`[Manager] Updated payment_transactions ${ptRecord.id}: amount=${captureAmountCents}, base=${capturedBaseAmount}, fee=${newApplicationFeeCents}, revenue=${capturedManagerRevenue}`);
+                }
+              } catch (ptErr) {
+                logger.warn(`[Manager] Could not update payment_transactions after capture:`, ptErr);
+              }
+            } catch (captureError) {
+              logger.error(`[Manager] PARTIAL CAPTURE ENGINE: Failed for booking ${id}:`, captureError);
+              return res.status(500).json({
+                error: "Failed to capture payment. The authorization may have expired. Please contact the chef to re-book.",
+                details: captureError.message
+              });
+            }
+          }
+          let refundResult = null;
+          if (isFromPending && isAuthorizedPayment && status === "cancelled") {
             try {
               const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
               const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
@@ -26660,7 +26762,8 @@ async function createPendingCheckoutSession(params) {
     successUrl,
     cancelUrl,
     bookingData,
-    lineItemName = "Kitchen Session Booking"
+    lineItemName = "Kitchen Session Booking",
+    lineItemBreakdown
   } = params;
   if (bookingPriceInCents <= 0) {
     throw new Error("Booking price must be greater than 0");
@@ -26678,16 +26781,79 @@ async function createPendingCheckoutSession(params) {
     throw new Error("Customer email is required");
   }
   try {
-    const lineItems = [
-      {
-        price_data: {
-          currency: currency.toLowerCase(),
-          product_data: { name: lineItemName },
-          unit_amount: bookingPriceInCents
-        },
-        quantity: 1
+    let lineItems;
+    if (lineItemBreakdown) {
+      lineItems = [];
+      if (lineItemBreakdown.kitchenPriceCents > 0) {
+        lineItems.push({
+          price_data: {
+            currency: currency.toLowerCase(),
+            product_data: { name: lineItemBreakdown.kitchenLabel || lineItemName },
+            unit_amount: lineItemBreakdown.kitchenPriceCents
+          },
+          quantity: 1
+        });
       }
-    ];
+      if (lineItemBreakdown.storageItems && lineItemBreakdown.storageItems.length > 0) {
+        for (const item of lineItemBreakdown.storageItems) {
+          if (item.priceCents > 0) {
+            lineItems.push({
+              price_data: {
+                currency: currency.toLowerCase(),
+                product_data: { name: item.name },
+                unit_amount: item.priceCents
+              },
+              quantity: 1
+            });
+          }
+        }
+      }
+      if (lineItemBreakdown.equipmentItems && lineItemBreakdown.equipmentItems.length > 0) {
+        for (const item of lineItemBreakdown.equipmentItems) {
+          if (item.priceCents > 0) {
+            lineItems.push({
+              price_data: {
+                currency: currency.toLowerCase(),
+                product_data: { name: item.name },
+                unit_amount: item.priceCents
+              },
+              quantity: 1
+            });
+          }
+        }
+      }
+      if (lineItemBreakdown.taxCents > 0) {
+        lineItems.push({
+          price_data: {
+            currency: currency.toLowerCase(),
+            product_data: { name: lineItemBreakdown.taxLabel || "Tax" },
+            unit_amount: lineItemBreakdown.taxCents
+          },
+          quantity: 1
+        });
+      }
+      if (lineItems.length === 0) {
+        lineItems.push({
+          price_data: {
+            currency: currency.toLowerCase(),
+            product_data: { name: lineItemName },
+            unit_amount: bookingPriceInCents
+          },
+          quantity: 1
+        });
+      }
+    } else {
+      lineItems = [
+        {
+          price_data: {
+            currency: currency.toLowerCase(),
+            product_data: { name: lineItemName },
+            unit_amount: bookingPriceInCents
+          },
+          quantity: 1
+        }
+      ];
+    }
     const paymentIntentData = {
       transfer_data: { destination: managerStripeAccountId },
       metadata: {
@@ -27788,10 +27954,24 @@ var init_bookings = __esm({
         if (booking.chefId !== req.neonUser.id) {
           return res.status(403).json({ error: "You don't have permission to view this invoice" });
         }
+        const bookingPaymentStatus = booking.paymentStatus || booking.payment_status;
+        if (bookingPaymentStatus === "authorized" || bookingPaymentStatus === "pending") {
+          return res.status(400).json({
+            error: "Invoice not available yet. Payment must be captured (approved by manager) before an invoice can be generated."
+          });
+        }
         const chef = await userService.getUser(booking.chefId);
         const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
-        const storageBookings2 = await bookingService.getStorageBookingsByKitchenBooking(id);
-        const equipmentBookings2 = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+        const allStorageBookings = await bookingService.getStorageBookingsByKitchenBooking(id);
+        const allEquipmentBookings = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+        const storageBookings2 = (allStorageBookings || []).filter((sb) => {
+          const status = sb.paymentStatus || sb.payment_status;
+          return status !== "failed";
+        });
+        const equipmentBookings2 = (allEquipmentBookings || []).filter((eb) => {
+          const status = eb.paymentStatus || eb.payment_status;
+          return status !== "failed";
+        });
         let location = null;
         if (kitchen && kitchen.locationId) {
           const locationId = kitchen.locationId || kitchen.location_id;
@@ -28396,6 +28576,7 @@ var init_bookings = __esm({
           totalPriceCents = kitchenPricing.totalPriceCents;
         }
         const storageIds = [];
+        const storageLineItems = [];
         if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) {
           for (const storage of selectedStorage) {
             try {
@@ -28416,12 +28597,17 @@ var init_bookings = __esm({
                   storagePrice = basePriceCents;
                 }
                 totalPriceCents += storagePrice;
+                storageLineItems.push({
+                  name: `Storage: ${storageListing.name || storageListing.storageType || "Storage Unit"}`,
+                  priceCents: storagePrice
+                });
               }
             } catch (error) {
               console.error("Error calculating storage price:", error);
             }
           }
         }
+        const equipmentLineItems = [];
         if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds) && selectedEquipmentIds.length > 0) {
           for (const equipmentListingId of selectedEquipmentIds) {
             try {
@@ -28429,6 +28615,10 @@ var init_bookings = __esm({
               if (equipmentListing && equipmentListing.availabilityType !== "included") {
                 const sessionRateCents = equipmentListing.sessionRate ? Math.round(parseFloat(String(equipmentListing.sessionRate))) : 0;
                 totalPriceCents += sessionRateCents;
+                equipmentLineItems.push({
+                  name: `Equipment: ${equipmentListing.brand ? equipmentListing.brand + " " : ""}${equipmentListing.equipmentType || "Equipment"}`,
+                  priceCents: sessionRateCents
+                });
               }
             } catch (error) {
               console.error(`Error calculating equipment price for listing ${equipmentListingId}:`, error);
@@ -28442,6 +28632,9 @@ var init_bookings = __esm({
         const feeCalculation = await calculateCheckoutFeesAsync2(totalWithTaxCents);
         const baseUrl = getBaseUrl(req);
         const { createPendingCheckoutSession: createPendingCheckoutSession2 } = await Promise.resolve().then(() => (init_stripe_checkout_service(), stripe_checkout_service_exports));
+        const kitchenOnlyPriceCents = Math.round(kitchenPricing.hourlyRateCents * effectiveDurationHours);
+        const kitchenLabel = `Kitchen Session (${effectiveDurationHours} hr${effectiveDurationHours !== 1 ? "s" : ""})`;
+        const taxLabel = taxRatePercent > 0 ? `Tax (${taxRatePercent}%)` : "Tax";
         const checkoutSession = await createPendingCheckoutSession2({
           bookingPriceInCents: totalWithTaxCents,
           platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
@@ -28464,7 +28657,15 @@ var init_bookings = __esm({
             taxCents,
             hourlyRateCents: kitchenPricing.hourlyRateCents,
             durationHours: effectiveDurationHours
-            // Use effective duration (slot count for staggered)
+          },
+          // Separate line items for Stripe Dashboard & receipt visibility
+          lineItemBreakdown: {
+            kitchenPriceCents: kitchenOnlyPriceCents,
+            kitchenLabel,
+            storageItems: storageLineItems,
+            equipmentItems: equipmentLineItems,
+            taxCents,
+            taxLabel
           }
         });
         console.log(`[Checkout] Created pending checkout session ${checkoutSession.sessionId} - booking will be created in webhook`);
@@ -31735,10 +31936,15 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
                   chefId,
                   startDate: bookingDate,
                   endDate: bookingDate,
-                  status: "confirmed",
+                  status: "pending",
+                  // Requires manager approval
                   totalPrice: sessionRateCents.toString(),
                   pricingModel: "daily",
                   damageDeposit: (equipmentListing.damageDeposit || "0").toString(),
+                  paymentStatus: bookingPaymentStatus,
+                  // 'authorized' for manual capture, 'paid' for auto capture
+                  paymentIntentId: paymentIntentId || null,
+                  // Link to the kitchen booking payment
                   serviceFee: "0",
                   currency: "CAD"
                 }).returning();
@@ -32331,6 +32537,12 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         paymentIntent.id,
         managerConnectAccountId
       );
+      const existingPtMetadata = transaction.metadata ? typeof transaction.metadata === "string" ? JSON.parse(transaction.metadata) : transaction.metadata : {};
+      const mergedMetadata = {
+        ...existingPtMetadata,
+        stripeMetadata: paymentIntent.metadata
+        // Store Stripe's metadata under a nested key
+      };
       const updateParams = {
         status: "succeeded",
         stripeStatus: paymentIntent.status,
@@ -32338,8 +32550,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         paidAt: /* @__PURE__ */ new Date(),
         lastSyncedAt: /* @__PURE__ */ new Date(),
         webhookEventId,
-        metadata: paymentIntent.metadata
-        // Sync metadata (includes tax_cents, tax_rate_percent) from Stripe
+        metadata: mergedMetadata
       };
       if (stripeAmounts) {
         updateParams.stripeAmount = stripeAmounts.stripeAmount;
@@ -32381,7 +32592,8 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
       }).where(
         and21(
           eq34(storageBookings.paymentIntentId, paymentIntent.id),
-          ne5(storageBookings.paymentStatus, "paid")
+          ne5(storageBookings.paymentStatus, "paid"),
+          ne5(storageBookings.paymentStatus, "failed")
         )
       );
       await tx.update(equipmentBookings).set({
@@ -32390,7 +32602,8 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
       }).where(
         and21(
           eq34(equipmentBookings.paymentIntentId, paymentIntent.id),
-          ne5(equipmentBookings.paymentStatus, "paid")
+          ne5(equipmentBookings.paymentStatus, "paid"),
+          ne5(equipmentBookings.paymentStatus, "failed")
         )
       );
       await tx.update(pendingStorageExtensions).set({

@@ -71,6 +71,15 @@ export interface CreatePendingCheckoutSessionParams {
   };
   /** Custom line item name shown to customer (default: 'Kitchen Session Booking') */
   lineItemName?: string;
+  /** Optional breakdown for separate Stripe line items (kitchen, storage, equipment, tax) */
+  lineItemBreakdown?: {
+    kitchenPriceCents: number;
+    kitchenLabel?: string; // e.g. "Kitchen Session (3 hours)"
+    storageItems?: Array<{ name: string; priceCents: number }>;
+    equipmentItems?: Array<{ name: string; priceCents: number }>;
+    taxCents: number;
+    taxLabel?: string; // e.g. "Tax (13%)"
+  };
 }
 
 /**
@@ -100,6 +109,7 @@ export async function createPendingCheckoutSession(
     cancelUrl,
     bookingData,
     lineItemName = 'Kitchen Session Booking',
+    lineItemBreakdown,
   } = params;
 
   // Validate amounts
@@ -120,16 +130,96 @@ export async function createPendingCheckoutSession(
   }
 
   try {
-    const lineItems = [
-      {
-        price_data: {
-          currency: currency.toLowerCase(),
-          product_data: { name: lineItemName },
-          unit_amount: bookingPriceInCents,
+    // Build line items — separate items for kitchen, storage, equipment, tax
+    // This gives customers and managers clear visibility in Stripe Dashboard & receipts
+    let lineItems: Array<{
+      price_data: { currency: string; product_data: { name: string }; unit_amount: number };
+      quantity: number;
+    }>;
+
+    if (lineItemBreakdown) {
+      lineItems = [];
+
+      // Kitchen session line item
+      if (lineItemBreakdown.kitchenPriceCents > 0) {
+        lineItems.push({
+          price_data: {
+            currency: currency.toLowerCase(),
+            product_data: { name: lineItemBreakdown.kitchenLabel || lineItemName },
+            unit_amount: lineItemBreakdown.kitchenPriceCents,
+          },
+          quantity: 1,
+        });
+      }
+
+      // Storage line items (one per storage booking)
+      if (lineItemBreakdown.storageItems && lineItemBreakdown.storageItems.length > 0) {
+        for (const item of lineItemBreakdown.storageItems) {
+          if (item.priceCents > 0) {
+            lineItems.push({
+              price_data: {
+                currency: currency.toLowerCase(),
+                product_data: { name: item.name },
+                unit_amount: item.priceCents,
+              },
+              quantity: 1,
+            });
+          }
+        }
+      }
+
+      // Equipment line items (one per equipment booking)
+      if (lineItemBreakdown.equipmentItems && lineItemBreakdown.equipmentItems.length > 0) {
+        for (const item of lineItemBreakdown.equipmentItems) {
+          if (item.priceCents > 0) {
+            lineItems.push({
+              price_data: {
+                currency: currency.toLowerCase(),
+                product_data: { name: item.name },
+                unit_amount: item.priceCents,
+              },
+              quantity: 1,
+            });
+          }
+        }
+      }
+
+      // Tax line item (only if tax > 0)
+      if (lineItemBreakdown.taxCents > 0) {
+        lineItems.push({
+          price_data: {
+            currency: currency.toLowerCase(),
+            product_data: { name: lineItemBreakdown.taxLabel || 'Tax' },
+            unit_amount: lineItemBreakdown.taxCents,
+          },
+          quantity: 1,
+        });
+      }
+
+      // Fallback: if breakdown produced no items, use single combined line item
+      if (lineItems.length === 0) {
+        lineItems.push({
+          price_data: {
+            currency: currency.toLowerCase(),
+            product_data: { name: lineItemName },
+            unit_amount: bookingPriceInCents,
+          },
+          quantity: 1,
+        });
+      }
+    } else {
+      // Legacy: single combined line item
+      lineItems = [
+        {
+          price_data: {
+            currency: currency.toLowerCase(),
+            product_data: { name: lineItemName },
+            unit_amount: bookingPriceInCents,
+          },
+          quantity: 1,
         },
-        quantity: 1,
-      },
-    ];
+      ];
+    }
 
     const paymentIntentData: {
       transfer_data: { destination: string };

@@ -173,13 +173,14 @@ export class BookingService {
                         }
 
                         // Create Storage Booking Record with explicit dates
+                        // Status must be 'pending' — manager approval required before confirmation
                         const storageBooking = await this.repo.createStorageBooking({
                             kitchenBookingId: booking.id,
                             storageListingId: listing.id,
                             chefId: data.chefId,
                             startDate: storageStartDate,
                             endDate: storageEndDate,
-                            status: 'confirmed',
+                            status: 'pending',
                             totalPrice: priceCents.toString(),
                             pricingModel: listing.pricingModel || 'daily',
                             serviceFee: '0',
@@ -226,13 +227,14 @@ export class BookingService {
                         }
 
                         // Create Storage Booking Record
+                        // Status must be 'pending' — manager approval required before confirmation
                         const storageBooking = await this.repo.createStorageBooking({
                             kitchenBookingId: booking.id,
                             storageListingId: listing.id,
                             chefId: data.chefId,
                             startDate: data.bookingDate,
                             endDate: data.bookingDate, // Single day for hourly
-                            status: 'confirmed',
+                            status: 'pending',
                             totalPrice: priceCents.toString(),
                             pricingModel: listing.pricingModel || 'daily',
                             serviceFee: '0', // No service fee for customer
@@ -276,13 +278,14 @@ export class BookingService {
                         const sessionRateCents = Math.round(parseFloat(String(listing.sessionRate || '0')));
                         logger.info(`[BookingService] Creating equipment booking: kitchenBookingId=${booking.id}, equipmentListingId=${listing.id}, sessionRateCents=${sessionRateCents}`);
                         
+                        // Status must be 'pending' — manager approval required before confirmation
                         const eqBooking = await this.repo.createEquipmentBooking({
                             kitchenBookingId: booking.id,
                             equipmentListingId: listing.id,
                             chefId: data.chefId,
                             startDate: data.bookingDate,
                             endDate: data.bookingDate,
-                            status: 'confirmed',
+                            status: 'pending',
                             totalPrice: sessionRateCents.toString(),
                             damageDeposit: (listing.damageDeposit || '0').toString(), 
                             serviceFee: '0',

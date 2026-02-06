@@ -43,6 +43,8 @@ export interface UpdatePaymentTransactionParams {
   lastSyncedAt?: Date;
   webhookEventId?: string;
   metadata?: Record<string, any>;
+  // Amount override (for partial capture — captured amount may differ from authorized amount)
+  amount?: number;
   // Stripe-synced amounts (optional - if provided, will override calculated amounts)
   stripeAmount?: number; // Actual Stripe amount in cents
   stripeNetAmount?: number; // Actual Stripe net amount after all fees in cents
@@ -220,12 +222,17 @@ export async function updatePaymentTransaction(
     updates.push(sql`refund_id = ${params.refundId}`);
   }
 
+  if (params.amount !== undefined) {
+    updates.push(sql`amount = ${params.amount.toString()}`);
+  }
+
   if (params.refundAmount !== undefined) {
     updates.push(sql`refund_amount = ${params.refundAmount.toString()}`);
 
     // Update net_amount = amount - refund_amount
+    const effectiveAmount = params.amount !== undefined ? params.amount : currentAmount;
     const newRefundAmount = params.refundAmount;
-    const netAmount = currentAmount - newRefundAmount;
+    const netAmount = effectiveAmount - newRefundAmount;
     updates.push(sql`net_amount = ${netAmount.toString()}`);
   }
 
@@ -448,7 +455,8 @@ export async function syncStripeAmountsToBookings(
         pt.base_amount,
         pt.service_fee,
         pt.amount as current_amount,
-        pt.manager_revenue as current_manager_revenue
+        pt.manager_revenue as current_manager_revenue,
+        pt.metadata
       FROM payment_transactions pt
       WHERE pt.payment_intent_id = ${paymentIntentId}
     `);
@@ -461,6 +469,20 @@ export async function syncStripeAmountsToBookings(
     const transaction: any = transactionResult.rows[0];
     const bookingId = transaction.booking_id;
     const bookingType = transaction.booking_type;
+
+    // CRITICAL: Skip booking table sync for partially captured bookings
+    // After partial capture, the capture engine already set correct values:
+    //   - kb.total_price = approved subtotal (pre-tax)
+    //   - storage/equipment bookings marked paid/failed accordingly
+    // syncStripeAmountsToBookings would overwrite total_price with Stripe amount (includes tax)
+    // which breaks the revenue service tax calculation
+    const ptMetadata = transaction.metadata
+      ? (typeof transaction.metadata === 'string' ? JSON.parse(transaction.metadata) : transaction.metadata)
+      : {};
+    if (ptMetadata.partialCapture) {
+      console.log(`[Stripe Sync] Skipping booking table sync for partially captured PaymentIntent ${paymentIntentId} — capture engine already set correct values`);
+      return;
+    }
 
     // For bundle bookings, we need to get all related bookings
     if (bookingType === 'bundle') {

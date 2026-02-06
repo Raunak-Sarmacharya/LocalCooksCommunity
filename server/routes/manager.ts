@@ -230,6 +230,14 @@ router.get(
         return res.status(403).json({ error: "Access denied to this booking" });
       }
 
+      // ENTERPRISE STANDARD: Invoices only available after payment is captured
+      // For auth-then-capture flow, invoice should not exist until manager approves
+      if (booking.paymentStatus === 'authorized' || booking.paymentStatus === 'pending') {
+        return res.status(400).json({
+          error: "Invoice not available yet. Payment must be captured before an invoice can be generated.",
+        });
+      }
+
       // Allow invoice download for all bookings (managers should be able to download invoices for their bookings)
       // Only block cancelled bookings that have no payment information at all
       if (
@@ -262,7 +270,8 @@ router.get(
       }
 
       // Get storage and equipment bookings with listing details for invoice
-      const storageRows = await db
+      // Filter out rejected items (paymentStatus='failed') — only show captured/paid items
+      const allStorageRows = await db
         .select({
           id: storageBookingsTable.id,
           kitchenBookingId: storageBookingsTable.kitchenBookingId,
@@ -270,6 +279,7 @@ router.get(
           startDate: storageBookingsTable.startDate,
           endDate: storageBookingsTable.endDate,
           status: storageBookingsTable.status,
+          paymentStatus: storageBookingsTable.paymentStatus,
           totalPrice: storageBookingsTable.totalPrice,
           storageName: storageListings.name,
           storageType: storageListings.storageType,
@@ -281,13 +291,15 @@ router.get(
           eq(storageBookingsTable.storageListingId, storageListings.id),
         )
         .where(eq(storageBookingsTable.kitchenBookingId, bookingId));
+      const storageRows = allStorageRows.filter((sr) => sr.paymentStatus !== 'failed');
 
-      const equipmentRows = await db
+      const allEquipmentRows = await db
         .select({
           id: equipmentBookingsTable.id,
           kitchenBookingId: equipmentBookingsTable.kitchenBookingId,
           equipmentListingId: equipmentBookingsTable.equipmentListingId,
           status: equipmentBookingsTable.status,
+          paymentStatus: equipmentBookingsTable.paymentStatus,
           totalPrice: equipmentBookingsTable.totalPrice,
           equipmentType: equipmentListings.equipmentType,
           brand: equipmentListings.brand,
@@ -298,6 +310,7 @@ router.get(
           eq(equipmentBookingsTable.equipmentListingId, equipmentListings.id),
         )
         .where(eq(equipmentBookingsTable.kitchenBookingId, bookingId));
+      const equipmentRows = allEquipmentRows.filter((er) => er.paymentStatus !== 'failed');
 
       // Fetch kitchen booking payment transaction to get original storage dates
       // This ensures invoice shows original booking, not extensions
@@ -3124,87 +3137,9 @@ router.put(
             paymentStatus: paymentStatus,
           });
         }
-
-        // AUTH-THEN-CAPTURE: If payment is authorized (held but not charged), capture it now
-        // This actually charges the customer's card when the manager approves
-        if (paymentStatus === "authorized") {
-          const bookingPIId = (booking as any).paymentIntentId;
-          if (bookingPIId) {
-            try {
-              const { capturePaymentIntent } = await import("../services/stripe-service");
-              const captureResult = await capturePaymentIntent(bookingPIId);
-              logger.info(`[Manager] AUTH-THEN-CAPTURE: Captured payment for booking ${id}`, {
-                paymentIntentId: bookingPIId,
-                capturedAmount: captureResult.amount,
-                status: captureResult.status,
-              });
-
-              // Update kitchen booking paymentStatus to 'paid' after successful capture
-              await db
-                .update(kitchenBookings)
-                .set({ paymentStatus: "paid", updatedAt: new Date() })
-                .where(eq(kitchenBookings.id, id));
-
-              // Update associated storage bookings paymentStatus to 'paid'
-              try {
-                const assocStorage = await bookingService.getStorageBookingsByKitchenBooking(id);
-                if (assocStorage && assocStorage.length > 0) {
-                  for (const sb of assocStorage) {
-                    if ((sb as any).paymentStatus === "authorized") {
-                      await db
-                        .update(storageBookingsTable)
-                        .set({ paymentStatus: "paid", updatedAt: new Date() })
-                        .where(eq(storageBookingsTable.id, sb.id));
-                    }
-                  }
-                }
-              } catch (storageCapErr: any) {
-                logger.warn(`[Manager] Could not update storage booking paymentStatus after capture:`, storageCapErr);
-              }
-
-              // Update associated equipment bookings paymentStatus to 'paid'
-              try {
-                const assocEquip = await bookingService.getEquipmentBookingsByKitchenBooking(id);
-                if (assocEquip && assocEquip.length > 0) {
-                  for (const eb of assocEquip) {
-                    if ((eb as any).paymentStatus === "authorized") {
-                      await db
-                        .update(equipmentBookingsTable)
-                        .set({ paymentStatus: "paid", updatedAt: new Date() })
-                        .where(eq(equipmentBookingsTable.id, eb.id));
-                    }
-                  }
-                }
-              } catch (equipCapErr: any) {
-                logger.warn(`[Manager] Could not update equipment booking paymentStatus after capture:`, equipCapErr);
-              }
-
-              // Update payment_transactions status to 'succeeded'
-              // NOTE: Stripe fees will be synced by the payment_intent.succeeded webhook
-              try {
-                const { findPaymentTransactionByIntentId, updatePaymentTransaction } =
-                  await import("../services/payment-transactions-service");
-                const ptRecord = await findPaymentTransactionByIntentId(bookingPIId, db);
-                if (ptRecord) {
-                  await updatePaymentTransaction(ptRecord.id, {
-                    status: "succeeded",
-                    stripeStatus: "succeeded",
-                    paidAt: new Date(),
-                  }, db);
-                  logger.info(`[Manager] Updated payment_transactions ${ptRecord.id} to succeeded after capture`);
-                }
-              } catch (ptErr: any) {
-                logger.warn(`[Manager] Could not update payment_transactions after capture:`, ptErr);
-              }
-            } catch (captureError: any) {
-              logger.error(`[Manager] AUTH-THEN-CAPTURE: Failed to capture payment for booking ${id}:`, captureError);
-              return res.status(500).json({
-                error: "Failed to capture payment. The authorization may have expired. Please contact the chef to re-book.",
-                details: captureError.message,
-              });
-            }
-          }
-        }
+        // AUTH-THEN-CAPTURE: If payment is authorized, capture is deferred until AFTER
+        // storage/equipment actions are determined, so we can do PARTIAL capture.
+        // See the "PARTIAL CAPTURE ENGINE" block below.
       }
 
       // Update booking status
@@ -3302,44 +3237,26 @@ router.put(
       }
 
       // ═══════════════════════════════════════════════════════════════════════════
-      // UNIFIED REFUND ENGINE
+      // PARTIAL CAPTURE ENGINE (Auth-Then-Capture)
       // ═══════════════════════════════════════════════════════════════════════════
       //
-      // Calculates refund based on WHAT WAS ACTUALLY REJECTED.
-      // Handles all scenarios:
-      //   1. Kitchen rejected + all items rejected → refund entire available amount
-      //   2. Kitchen rejected + some items approved → refund only rejected item prices
-      //   3. Kitchen confirmed + some items rejected → refund only rejected item prices
-      //   4. All confirmed → no refund
-      //   5. Cancellation (confirmed → cancelled) → NO auto-refund (manual via Revenue Dashboard)
+      // For authorized (held) payments, we capture ONLY the approved portion.
+      // Stripe auto-releases the remaining hold — no refund needed.
       //
-      // FEE MODEL (TAX-INCLUSIVE, PROPORTIONAL STRIPE FEE DEDUCTED):
-      //   - Tax is proportionally included in the refund (rejectedSubtotal × taxRate)
-      //   - Stripe fee is proportionally deducted based on refund ratio
-      //   - Chefs absorb the proportional Stripe fee on refund (customer receives less)
-      //   - Full rejection → manager's available balance becomes 0
+      // FLOW:
+      //   1. Determine which items are approved vs rejected (from actions above)
+      //   2. Calculate approved subtotal from individual item prices
+      //   3. Apply proportional tax (only if kitchen has taxRatePercent set)
+      //   4. Recalculate application_fee for platform break-even on capture amount
+      //   5. Capture partial amount via Stripe (remaining auto-released)
+      //   6. Mark approved items as 'paid', rejected items as 'failed'
       //
-      // FORMULA:
-      //   rejectedSubtotal = sum of rejected item prices (pre-tax)
-      //   proportionalTax = rejectedSubtotal × taxRatePercent / 100
-      //   grossRefund = rejectedSubtotal + proportionalTax
-      //   proportionalStripeFee = stripeFee × (grossRefund / transactionAmount)
-      //   netRefund = max(0, grossRefund − proportionalStripeFee)
-      //   cappedRefund = min(netRefund, managerRemainingBalance)
-      //
-      // VERIFICATION (full rejection):
-      //   grossRefund = transactionAmount
-      //   proportionalStripeFee = stripeFee × 1 = stripeFee
-      //   netRefund = transactionAmount − stripeFee = managerRevenue
-      //   balance = managerRevenue − managerRevenue = 0 ✓
+      // WHY PARTIAL CAPTURE > FULL CAPTURE + REFUND:
+      //   - Customer sees only the approved charge (not full + refund)
+      //   - No refund processing fees or delays
+      //   - Stripe fee is calculated on the smaller (actual) amount
+      //   - Platform break-even is maintained on the actual captured amount
       // ═══════════════════════════════════════════════════════════════════════════
-
-      let refundResult: {
-        refundId: string;
-        refundAmount: number;
-        transferReversalId: string;
-        rejectedItems: string[];
-      } | null = null;
 
       const previousStatus = booking.status; // Status BEFORE the update
       const isCancellation = previousStatus === "confirmed" && status === "cancelled";
@@ -3353,9 +3270,249 @@ router.put(
       const isAuthorizedPayment =
         bookingPaymentIntentId && bookingPaymentStatus === "authorized";
 
-      // AUTH-THEN-CAPTURE: If payment is only authorized (not captured), CANCEL the PaymentIntent
-      // This releases the hold on the customer's card — NO charge, NO Stripe fees
-      if (isFromPending && isAuthorizedPayment && !isCancellation) {
+      // AUTH-THEN-CAPTURE: Partial capture for approved bookings
+      if (isFromPending && isAuthorizedPayment && status === "confirmed") {
+        try {
+          const { capturePaymentIntent } = await import("../services/stripe-service");
+          const { calculateCheckoutFeesAsync } = await import("../services/stripe-checkout-fee-service");
+          const { findPaymentTransactionByIntentId, updatePaymentTransaction } =
+            await import("../services/payment-transactions-service");
+
+          // ── Step 1: Compute kitchen-only price (pre-tax) ────────────────────────
+          const bookingHourlyRate = parseFloat(String((booking as any).hourlyRate || "0"));
+          const bookingDurationHours = parseFloat(String((booking as any).durationHours || "1"));
+          const kitchenOnlyPriceCents = Math.round(bookingHourlyRate * bookingDurationHours);
+
+          // ── Step 2: Determine approved/rejected storage & equipment ─────────────
+          const approvedStorageIds = new Set<number>();
+          const rejectedStorageIds = new Set<number>();
+          for (const r of storageActionResults) {
+            if (r.action === "confirmed") approvedStorageIds.add(r.storageBookingId);
+            else if (r.action === "cancelled") rejectedStorageIds.add(r.storageBookingId);
+          }
+
+          const approvedEquipmentIds = new Set<number>();
+          const rejectedEquipmentIds = new Set<number>();
+          for (const r of equipmentActionResults) {
+            if (r.action === "confirmed") approvedEquipmentIds.add(r.equipmentBookingId);
+            else if (r.action === "cancelled") rejectedEquipmentIds.add(r.equipmentBookingId);
+          }
+
+          // ── Step 3: Fetch storage/equipment prices and sum approved amounts ─────
+          let approvedStorageCents = 0;
+          let approvedEquipmentCents = 0;
+
+          const assocStorage = await bookingService.getStorageBookingsByKitchenBooking(id);
+          for (const sb of (assocStorage || [])) {
+            const price = Math.round(parseFloat(String(sb.totalPrice || "0")));
+            if (rejectedStorageIds.has(sb.id)) {
+              // Rejected — will be marked 'failed'
+            } else {
+              // Approved (explicitly or by default when no storageActions provided)
+              approvedStorageCents += price;
+              approvedStorageIds.add(sb.id);
+            }
+          }
+
+          const assocEquip = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+          for (const eb of (assocEquip || [])) {
+            const price = Math.round(parseFloat(String(eb.totalPrice || "0")));
+            if (rejectedEquipmentIds.has(eb.id)) {
+              // Rejected — will be marked 'failed'
+            } else {
+              approvedEquipmentCents += price;
+              approvedEquipmentIds.add(eb.id);
+            }
+          }
+
+          // ── Step 4: Calculate approved subtotal + proportional tax ───────────────
+          // Kitchen is always approved when status === 'confirmed'
+          const approvedSubtotalCents = kitchenOnlyPriceCents + approvedStorageCents + approvedEquipmentCents;
+
+          // Tax: only if the kitchen has taxRatePercent set (manager-configured)
+          const taxRatePercent = kitchen?.taxRatePercent
+            ? parseFloat(String(kitchen.taxRatePercent))
+            : 0;
+          const approvedTaxCents = Math.round((approvedSubtotalCents * taxRatePercent) / 100);
+          const captureAmountCents = approvedSubtotalCents + approvedTaxCents;
+
+          // ── Step 5: Recalculate application_fee for platform break-even ─────────
+          // On partial capture, we MUST recalculate the fee on the smaller amount
+          // Otherwise the original (higher) fee would exceed what we capture
+          const feeCalc = await calculateCheckoutFeesAsync(captureAmountCents);
+          const newApplicationFeeCents = feeCalc.totalPlatformFeeInCents;
+
+          // ── Step 6: Determine if this is a partial or full capture ──────────────
+          const originalTotalPriceCents = Math.round(parseFloat(String((booking as any).totalPrice || "0")));
+          const originalTaxCents = Math.round((originalTotalPriceCents * taxRatePercent) / 100);
+          const originalAuthorizedAmount = originalTotalPriceCents + originalTaxCents;
+          const isPartialCapture = captureAmountCents < originalAuthorizedAmount;
+
+          logger.info(`[Manager] PARTIAL CAPTURE ENGINE for booking ${id}:`, {
+            kitchenOnlyPriceCents,
+            approvedStorageCents,
+            approvedEquipmentCents,
+            approvedSubtotalCents,
+            taxRatePercent,
+            approvedTaxCents,
+            captureAmountCents,
+            originalAuthorizedAmount,
+            isPartialCapture,
+            newApplicationFeeCents,
+            rejectedStorageIds: Array.from(rejectedStorageIds),
+            rejectedEquipmentIds: Array.from(rejectedEquipmentIds),
+          });
+
+          // ── Step 7: Capture via Stripe ──────────────────────────────────────────
+          const captureResult = isPartialCapture
+            ? await capturePaymentIntent(bookingPaymentIntentId, captureAmountCents, newApplicationFeeCents)
+            : await capturePaymentIntent(bookingPaymentIntentId);
+
+          logger.info(`[Manager] AUTH-THEN-CAPTURE: ${isPartialCapture ? 'Partial' : 'Full'} capture for booking ${id}`, {
+            paymentIntentId: bookingPaymentIntentId,
+            capturedAmount: captureResult.amount,
+            status: captureResult.status,
+          });
+
+          // ── Step 8: Update kitchen booking total_price to reflect captured subtotal ──
+          // CRITICAL: Revenue service calculates tax as kb.total_price * taxRate / 100
+          // After partial capture, total_price must reflect ONLY the approved subtotal
+          // Otherwise tax and net revenue will be calculated on the original (higher) amount
+          await db
+            .update(kitchenBookings)
+            .set({
+              paymentStatus: "paid",
+              totalPrice: approvedSubtotalCents.toString(),
+              updatedAt: new Date(),
+            })
+            .where(eq(kitchenBookings.id, id));
+          logger.info(`[Manager] Updated kb.total_price from ${originalTotalPriceCents} to ${approvedSubtotalCents} (approved subtotal after partial capture)`);
+
+          // Storage: 'paid' for approved, 'failed' for rejected (hold auto-released)
+          for (const sb of (assocStorage || [])) {
+            if (rejectedStorageIds.has(sb.id)) {
+              await db.update(storageBookingsTable)
+                .set({ paymentStatus: "failed", updatedAt: new Date() })
+                .where(eq(storageBookingsTable.id, sb.id));
+            } else {
+              await db.update(storageBookingsTable)
+                .set({ paymentStatus: "paid", updatedAt: new Date() })
+                .where(eq(storageBookingsTable.id, sb.id));
+            }
+          }
+
+          // Equipment: 'paid' for approved, 'failed' for rejected (hold auto-released)
+          for (const eb of (assocEquip || [])) {
+            if (rejectedEquipmentIds.has(eb.id)) {
+              await db.update(equipmentBookingsTable)
+                .set({ paymentStatus: "failed", updatedAt: new Date() })
+                .where(eq(equipmentBookingsTable.id, eb.id));
+            } else {
+              await db.update(equipmentBookingsTable)
+                .set({ paymentStatus: "paid", updatedAt: new Date() })
+                .where(eq(equipmentBookingsTable.id, eb.id));
+            }
+          }
+
+          // ── Step 9: Update payment_transactions with full financial fields ────────
+          // CRITICAL: Update ALL financial fields so revenue service calculates correctly
+          // Stripe fees will be synced by the payment_intent.succeeded webhook later
+          try {
+            const ptRecord = await findPaymentTransactionByIntentId(bookingPaymentIntentId, db);
+            if (ptRecord) {
+              // base_amount = captured amount minus platform fee
+              const capturedBaseAmount = captureAmountCents - newApplicationFeeCents;
+              // manager_revenue = base_amount (before Stripe processing fee is known)
+              // Will be overwritten by webhook with actual Stripe net amount
+              const capturedManagerRevenue = capturedBaseAmount;
+
+              // Build metadata with capture details for audit trail
+              const existingMetadata = ptRecord.metadata
+                ? (typeof ptRecord.metadata === 'string' ? JSON.parse(ptRecord.metadata) : ptRecord.metadata)
+                : {};
+              const captureMetadata = {
+                ...existingMetadata,
+                partialCapture: isPartialCapture,
+                capturedAmount: captureAmountCents,
+                originalAuthorizedAmount,
+                approvedSubtotal: approvedSubtotalCents,
+                approvedTax: approvedTaxCents,
+                taxRatePercent,
+                applicationFee: newApplicationFeeCents,
+                approvedStorageIds: Array.from(approvedStorageIds),
+                approvedEquipmentIds: Array.from(approvedEquipmentIds),
+                rejectedStorageIds: Array.from(rejectedStorageIds),
+                rejectedEquipmentIds: Array.from(rejectedEquipmentIds),
+                capturedAt: new Date().toISOString(),
+              };
+
+              await updatePaymentTransaction(ptRecord.id, {
+                status: "succeeded",
+                stripeStatus: "succeeded",
+                paidAt: new Date(),
+                amount: captureAmountCents,
+                metadata: captureMetadata,
+              }, db);
+
+              // Also update base_amount, service_fee, manager_revenue, net_amount directly
+              // (updatePaymentTransaction doesn't have dedicated params for these non-Stripe fields)
+              await db.execute(sql`
+                UPDATE payment_transactions
+                SET base_amount = ${capturedBaseAmount.toString()},
+                    service_fee = ${newApplicationFeeCents.toString()},
+                    manager_revenue = ${capturedManagerRevenue.toString()},
+                    net_amount = ${captureAmountCents.toString()}
+                WHERE id = ${ptRecord.id}
+              `);
+
+              logger.info(`[Manager] Updated payment_transactions ${ptRecord.id}: amount=${captureAmountCents}, base=${capturedBaseAmount}, fee=${newApplicationFeeCents}, revenue=${capturedManagerRevenue}`);
+            }
+          } catch (ptErr: any) {
+            logger.warn(`[Manager] Could not update payment_transactions after capture:`, ptErr);
+          }
+        } catch (captureError: any) {
+          logger.error(`[Manager] PARTIAL CAPTURE ENGINE: Failed for booking ${id}:`, captureError);
+          return res.status(500).json({
+            error: "Failed to capture payment. The authorization may have expired. Please contact the chef to re-book.",
+            details: captureError.message,
+          });
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // UNIFIED REFUND ENGINE (for already-captured/paid bookings only)
+      // ═══════════════════════════════════════════════════════════════════════════
+      //
+      // NOTE: This engine is SKIPPED for authorized bookings because:
+      // - Partial capture handles approved/rejected item pricing (above)
+      // - hasValidPayment is false when original paymentStatus was 'authorized'
+      //
+      // For already-PAID bookings (e.g., legacy flow or post-capture rejections):
+      //   1. Kitchen rejected + all items rejected → refund entire available amount
+      //   2. Kitchen rejected + some items approved → refund only rejected item prices
+      //   3. Kitchen confirmed + some items rejected → refund only rejected item prices
+      //   4. All confirmed → no refund
+      //   5. Cancellation (confirmed → cancelled) → NO auto-refund (manual via Revenue Dashboard)
+      //
+      // FEE MODEL (TAX-INCLUSIVE, PROPORTIONAL STRIPE FEE DEDUCTED):
+      //   rejectedSubtotal = sum of rejected item prices (pre-tax)
+      //   proportionalTax = rejectedSubtotal × taxRatePercent / 100
+      //   grossRefund = rejectedSubtotal + proportionalTax
+      //   proportionalStripeFee = stripeFee × (grossRefund / transactionAmount)
+      //   netRefund = max(0, grossRefund − proportionalStripeFee)
+      //   cappedRefund = min(netRefund, managerRemainingBalance)
+      // ═══════════════════════════════════════════════════════════════════════════
+
+      let refundResult: {
+        refundId: string;
+        refundAmount: number;
+        transferReversalId: string;
+        rejectedItems: string[];
+      } | null = null;
+
+      // AUTH-THEN-CAPTURE: If payment is only authorized and manager REJECTS, CANCEL the PaymentIntent
+      // This releases the entire hold on the customer's card — NO charge, NO Stripe fees
+      if (isFromPending && isAuthorizedPayment && status === "cancelled") {
         try {
           const { cancelPaymentIntent } = await import("../services/stripe-service");
           const { findPaymentTransactionByIntentId, updatePaymentTransaction } =
