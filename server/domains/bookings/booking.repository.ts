@@ -244,11 +244,17 @@ export class BookingRepository {
         return db
             .select({
                 ...getKitchenBookingSelection(),
-                chefName: users.username,
-                chefEmail: users.username, // Fallback/Placeholder logic as in original
+                chefName: sql<string>`COALESCE(${chefKitchenApplications.fullName}, ${users.username})`.as('chef_name'),
+                chefEmail: sql<string>`COALESCE(${chefKitchenApplications.email}, ${users.username})`.as('chef_email'),
             })
             .from(kitchenBookings)
+            .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
             .leftJoin(users, eq(kitchenBookings.chefId, users.id))
+            .leftJoin(chefKitchenApplications, and(
+                eq(chefKitchenApplications.chefId, kitchenBookings.chefId),
+                eq(chefKitchenApplications.locationId, locations.id)
+            ))
             .where(eq(kitchenBookings.kitchenId, kitchenId))
             .orderBy(desc(kitchenBookings.createdAt));
     }

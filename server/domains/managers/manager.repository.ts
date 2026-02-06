@@ -56,14 +56,15 @@ export class ManagerRepository implements IManagerRepository {
                 kb.currency,
                 k.name as kitchen_name,
                 l.name as location_name,
-                u.username as chef_name,
-                u.username as chef_email,
+                COALESCE(cka.full_name, u.username) as chef_name,
+                COALESCE(cka.email, u.username) as chef_email,
                 kb.created_at,
                 'kitchen' as booking_type
             FROM kitchen_bookings kb
             INNER JOIN kitchens k ON kb.kitchen_id = k.id
             INNER JOIN locations l ON k.location_id = l.id
             LEFT JOIN users u ON kb.chef_id = u.id
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = kb.chef_id AND cka.location_id = l.id
             LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id 
                 AND pt.booking_type = 'kitchen' 
                 AND pt.status = 'succeeded'
@@ -115,8 +116,8 @@ export class ManagerRepository implements IManagerRepository {
                 k.name as kitchen_name,
                 sl.name as storage_name,
                 l.name as location_name,
-                u.username as chef_name,
-                u.username as chef_email,
+                COALESCE(cka.full_name, u.username) as chef_name,
+                COALESCE(cka.email, u.username) as chef_email,
                 pt.created_at,
                 pt.metadata,
                 'storage' as booking_type
@@ -126,6 +127,7 @@ export class ManagerRepository implements IManagerRepository {
             JOIN kitchens k ON sl.kitchen_id = k.id
             JOIN locations l ON k.location_id = l.id
             LEFT JOIN users u ON sb.chef_id = u.id
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = sb.chef_id AND cka.location_id = l.id
             WHERE pt.manager_id = ${managerId}
               AND pt.booking_type = 'storage'
               AND pt.status = 'succeeded'

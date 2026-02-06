@@ -934,8 +934,8 @@ export async function getTransactionHistory(
         k.name as kitchen_name,
         l.id as location_id,
         l.name as location_name,
-        u.username as chef_name,
-        u.username as chef_email,
+        COALESCE(cka.full_name, u.username) as chef_name,
+        COALESCE(cka.email, u.username) as chef_email,
         kb.created_at,
         kb.updated_at,
         -- Actual amount from payment_transactions (what was actually charged to Stripe)
@@ -958,6 +958,7 @@ export async function getTransactionHistory(
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       LEFT JOIN users u ON kb.chef_id = u.id
+      LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = kb.chef_id AND cka.location_id = l.id
       LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
       ${kitchenWhereClause}
       ORDER BY kb.created_at DESC
@@ -1101,14 +1102,15 @@ export async function getTransactionHistory(
         k.name as kitchen_name,
         l.id as location_id,
         l.name as location_name,
-        u.username as chef_name,
-        u.username as chef_email
+        COALESCE(cka.full_name, u.username) as chef_name,
+        COALESCE(cka.email, u.username) as chef_email
       FROM payment_transactions pt
       JOIN storage_bookings sb ON pt.booking_id = sb.id
       JOIN storage_listings sl ON sb.storage_listing_id = sl.id
       JOIN kitchens k ON sl.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       LEFT JOIN users u ON sb.chef_id = u.id
+      LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = sb.chef_id AND cka.location_id = l.id
       WHERE pt.manager_id = ${managerId}
         AND pt.booking_type = 'storage'
         AND (pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')

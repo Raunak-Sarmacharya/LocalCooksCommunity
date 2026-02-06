@@ -202,7 +202,35 @@ function BookingActionSheetContent({
   const [customRefundInput, setCustomRefundInput] = useState("");
 
   const toggleKitchenAction = () => {
-    setKitchenAction((prev) => (prev === "confirmed" ? "cancelled" : "confirmed"));
+    setKitchenAction((prev) => {
+      const next = prev === "confirmed" ? "cancelled" : "confirmed";
+      // When kitchen is rejected, the entire PaymentIntent is cancelled/released.
+      // All addons must be rejected too — they share the same payment.
+      // When kitchen is re-approved, restore addons to confirmed.
+      if (booking.storageItems) {
+        setStorageDecisions((sd) => {
+          const updated = new Map(sd);
+          for (const item of booking.storageItems!) {
+            if (!item.rejected) {
+              updated.set(item.storageBookingId, next);
+            }
+          }
+          return updated;
+        });
+      }
+      if (booking.equipmentItems) {
+        setEquipmentDecisions((ed) => {
+          const updated = new Map(ed);
+          for (const item of booking.equipmentItems!) {
+            if (!item.rejected) {
+              updated.set(item.equipmentBookingId, next);
+            }
+          }
+          return updated;
+        });
+      }
+      return next;
+    });
   };
 
   const toggleStorageDecision = (storageBookingId: number) => {
@@ -230,7 +258,9 @@ function BookingActionSheetContent({
   const rejectedEquipmentItems = booking.equipmentItems?.filter(i => i.rejected) || [];
   const hasStorage = booking.storageItems && booking.storageItems.length > 0;
   const hasEquipment = booking.equipmentItems && booking.equipmentItems.length > 0;
+  const hasAddons = (actionableStorageItems.length + actionableEquipmentItems.length) > 0;
   const isAuthorized = booking.paymentStatus === "authorized";
+  const kitchenIsRejected = kitchenAction === "cancelled";
 
   // ── Refund Calculation (Tax-inclusive, full Stripe fee deducted) ─────────────
   // Formula:
@@ -412,7 +442,18 @@ function BookingActionSheetContent({
   const handleSubmit = () => {
     if (!booking) return;
 
-    // Only send actions for actionable items (not already-rejected)
+    // When kitchen is rejected, the entire booking is cancelled.
+    // The backend cancels the PaymentIntent and cascades to all sub-bookings.
+    // No need to send individual addon actions — they're all cancelled implicitly.
+    if (kitchenAction === "cancelled") {
+      onSubmit({
+        bookingId: booking.id,
+        status: "cancelled",
+      });
+      return;
+    }
+
+    // Kitchen approved — send individual addon actions for modular approval
     const storageActions: StorageDecision[] | undefined = actionableStorageItems.length > 0
       ? actionableStorageItems.map((item) => ({
           storageBookingId: item.storageBookingId,
@@ -429,7 +470,7 @@ function BookingActionSheetContent({
 
     onSubmit({
       bookingId: booking.id,
-      status: kitchenAction === "confirmed" ? "confirmed" : "cancelled",
+      status: "confirmed",
       storageActions,
       equipmentActions: eqActions,
     });
@@ -586,6 +627,7 @@ function BookingActionSheetContent({
               {actionableStorageItems.map((item) => {
                 const decision = storageDecisions.get(item.storageBookingId) || "confirmed";
                 const isApproved = decision === "confirmed";
+                const isDisabled = kitchenIsRejected; // Addons can't be approved if kitchen is rejected
                 const dateRange =
                   item.startDate && item.endDate
                     ? item.startDate === item.endDate
@@ -597,10 +639,13 @@ function BookingActionSheetContent({
                   <button
                     key={item.storageBookingId}
                     type="button"
-                    onClick={() => toggleStorageDecision(item.storageBookingId)}
+                    onClick={() => !isDisabled && toggleStorageDecision(item.storageBookingId)}
+                    disabled={isDisabled}
                     className={cn(
                       "w-full flex items-center justify-between p-3 rounded-lg border transition-all duration-200 text-left group",
-                      "hover:shadow-sm active:scale-[0.99]",
+                      isDisabled
+                        ? "opacity-60 cursor-not-allowed"
+                        : "hover:shadow-sm active:scale-[0.99]",
                       isApproved
                         ? "bg-green-50/50 border-green-200 hover:border-green-300"
                         : "bg-red-50/50 border-red-200 hover:border-red-300"
@@ -689,7 +734,7 @@ function BookingActionSheetContent({
                 </div>
               ))}
 
-              {actionableStorageItems.length > 0 && (
+              {actionableStorageItems.length > 0 && !kitchenIsRejected && (
                 <p className="text-[11px] text-muted-foreground italic pl-1">
                   Click each item to toggle between approve and reject
                 </p>
@@ -712,15 +757,19 @@ function BookingActionSheetContent({
               {actionableEquipmentItems.map((item) => {
                 const decision = equipmentDecisions.get(item.equipmentBookingId) || "confirmed";
                 const isApproved = decision === "confirmed";
+                const isDisabled = kitchenIsRejected; // Addons can't be approved if kitchen is rejected
 
                 return (
                   <button
                     key={item.equipmentBookingId}
                     type="button"
-                    onClick={() => toggleEquipmentDecision(item.equipmentBookingId)}
+                    onClick={() => !isDisabled && toggleEquipmentDecision(item.equipmentBookingId)}
+                    disabled={isDisabled}
                     className={cn(
                       "w-full flex items-center justify-between p-3 rounded-lg border transition-all duration-200 text-left group",
-                      "hover:shadow-sm active:scale-[0.99]",
+                      isDisabled
+                        ? "opacity-60 cursor-not-allowed"
+                        : "hover:shadow-sm active:scale-[0.99]",
                       isApproved
                         ? "bg-green-50/50 border-green-200 hover:border-green-300"
                         : "bg-red-50/50 border-red-200 hover:border-red-300"
@@ -795,7 +844,7 @@ function BookingActionSheetContent({
                 </div>
               ))}
 
-              {actionableEquipmentItems.length > 0 && (
+              {actionableEquipmentItems.length > 0 && !kitchenIsRejected && (
                 <p className="text-[11px] text-muted-foreground italic pl-1">
                   Click each item to toggle between approve and reject
                 </p>
@@ -804,8 +853,29 @@ function BookingActionSheetContent({
           </>
         )}
 
-        {/* ── Auth-Then-Capture: Full Rejection ─────────────────────────── */}
-        {isAuthorized && allRejected && (
+        {/* ── Kitchen Rejected + Has Addons: Entire Booking Cancelled Banner ── */}
+        {kitchenIsRejected && hasAddons && (
+          <>
+            <Separator />
+            <div className="p-4 rounded-lg border border-red-200 bg-red-50/50 space-y-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-red-600" />
+                <p className="text-sm font-semibold text-red-800">
+                  Entire Booking Will Be Cancelled
+                </p>
+              </div>
+              <p className="text-xs text-red-700">
+                Rejecting the kitchen session cancels the <strong>entire booking</strong> including all storage and equipment add-ons.
+                {isAuthorized
+                  ? " The payment hold will be fully released — the chef will not be charged anything."
+                  : " A refund will be processed for the full booking amount."}
+              </p>
+            </div>
+          </>
+        )}
+
+        {/* ── Auth-Then-Capture: Full Rejection (kitchen-only, no addons) ── */}
+        {isAuthorized && allRejected && !hasAddons && (
           <>
             <Separator />
             <div className="p-4 rounded-lg border border-blue-200 bg-blue-50/50 space-y-2">
@@ -1142,8 +1212,8 @@ function BookingActionSheetContent({
             )}
             {isLoading
               ? "Processing..."
-              : allRejected
-              ? "Reject All"
+              : kitchenIsRejected
+              ? (hasAddons ? "Reject Entire Booking" : "Reject Booking")
               : allApproved
               ? "Approve All"
               : "Confirm Decisions"}
