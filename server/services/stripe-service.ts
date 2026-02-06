@@ -332,7 +332,12 @@ export async function getStripePaymentAmounts(
     }
 
     // Calculate amounts
-    const stripeAmount = paymentIntent.amount; // Total amount charged
+    // CRITICAL: Use charge.amount (actual captured/charged amount) NOT paymentIntent.amount
+    // For partial captures: paymentIntent.amount = original authorized (e.g. 8800)
+    //                       charge.amount = actual captured (e.g. 4400)
+    // For full captures/auto-capture: both are identical
+    // Using paymentIntent.amount would overwrite the capture engine's correct values
+    const stripeAmount = charge.amount; // Actual amount charged (handles partial capture correctly)
     let stripeNetAmount = stripeAmount;
     let stripeProcessingFee = 0;
     let stripePlatformFee = 0;

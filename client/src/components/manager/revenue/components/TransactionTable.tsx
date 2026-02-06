@@ -255,6 +255,7 @@ export function TransactionTable({
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">All Status</SelectItem>
+                                <SelectItem value="authorized">Payment Held</SelectItem>
                                 <SelectItem value="paid">Paid</SelectItem>
                                 <SelectItem value="processing">Processing</SelectItem>
                                 <SelectItem value="pending">Pending</SelectItem>

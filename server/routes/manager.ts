@@ -291,7 +291,7 @@ router.get(
           eq(storageBookingsTable.storageListingId, storageListings.id),
         )
         .where(eq(storageBookingsTable.kitchenBookingId, bookingId));
-      const storageRows = allStorageRows.filter((sr) => sr.paymentStatus !== 'failed');
+      const storageRows = allStorageRows.filter((sr) => sr.paymentStatus !== 'failed' && sr.status !== 'cancelled');
 
       const allEquipmentRows = await db
         .select({
@@ -310,7 +310,7 @@ router.get(
           eq(equipmentBookingsTable.equipmentListingId, equipmentListings.id),
         )
         .where(eq(equipmentBookingsTable.kitchenBookingId, bookingId));
-      const equipmentRows = allEquipmentRows.filter((er) => er.paymentStatus !== 'failed');
+      const equipmentRows = allEquipmentRows.filter((er) => er.paymentStatus !== 'failed' && er.status !== 'cancelled');
 
       // Fetch kitchen booking payment transaction to get original storage dates
       // This ensures invoice shows original booking, not extensions
@@ -3374,19 +3374,37 @@ router.put(
             status: captureResult.status,
           });
 
-          // ── Step 8: Update kitchen booking total_price to reflect captured subtotal ──
-          // CRITICAL: Revenue service calculates tax as kb.total_price * taxRate / 100
-          // After partial capture, total_price must reflect ONLY the approved subtotal
-          // Otherwise tax and net revenue will be calculated on the original (higher) amount
+          // ── Step 8: Update kitchen booking total_price + JSONB items ──────────────
+          // total_price = approvedSubtotal (kitchen + approved storage + approved equipment)
+          // This is the PRE-TAX base used by the revenue service for tax calculations:
+          //   Tax = kb.total_price * tax_rate_percent / 100
+          // The invoice service calculates kitchen amount from hourlyRate × durationHours
+          // (not from totalPrice), so no double-counting occurs.
+          // The details page also calculates kitchen-only from hourlyRate × durationHours.
+          //
+          // JSONB FIX: Remove rejected items from storageItems/equipmentItems JSONB fields
+          // These JSONB snapshots are used by the bookings table view (getBookingsByManagerId)
+          // Without this update, the table view shows stale items including rejected ones
+          const currentStorageItems: any[] = (booking as any).storageItems || [];
+          const currentEquipmentItems: any[] = (booking as any).equipmentItems || [];
+          const updatedStorageItems = currentStorageItems.filter(
+            (item: any) => !rejectedStorageIds.has(item.id)
+          );
+          const updatedEquipmentItems = currentEquipmentItems.filter(
+            (item: any) => !rejectedEquipmentIds.has(item.id)
+          );
+
           await db
             .update(kitchenBookings)
             .set({
               paymentStatus: "paid",
               totalPrice: approvedSubtotalCents.toString(),
+              storageItems: updatedStorageItems,
+              equipmentItems: updatedEquipmentItems,
               updatedAt: new Date(),
             })
             .where(eq(kitchenBookings.id, id));
-          logger.info(`[Manager] Updated kb.total_price from ${originalTotalPriceCents} to ${approvedSubtotalCents} (approved subtotal after partial capture)`);
+          logger.info(`[Manager] Updated kb: total_price=${approvedSubtotalCents} (approved subtotal), removed ${rejectedStorageIds.size} rejected storage + ${rejectedEquipmentIds.size} rejected equipment from JSONB`);
 
           // Storage: 'paid' for approved, 'failed' for rejected (hold auto-released)
           for (const sb of (assocStorage || [])) {

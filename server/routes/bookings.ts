@@ -1214,14 +1214,17 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
         const allStorageBookings = await bookingService.getStorageBookingsByKitchenBooking(id);
         const allEquipmentBookings = await bookingService.getEquipmentBookingsByKitchenBooking(id);
 
-        // Filter out rejected items (paymentStatus='failed') — only show captured/paid items on invoice
+        // Filter out rejected items — only show captured/paid items on invoice
+        // Belt-and-suspenders: check both paymentStatus AND booking status
         const storageBookings = (allStorageBookings || []).filter((sb: any) => {
-            const status = sb.paymentStatus || sb.payment_status;
-            return status !== 'failed';
+            const payStatus = sb.paymentStatus || sb.payment_status;
+            const bookingStatus = sb.status;
+            return payStatus !== 'failed' && bookingStatus !== 'cancelled';
         });
         const equipmentBookings = (allEquipmentBookings || []).filter((eb: any) => {
-            const status = eb.paymentStatus || eb.payment_status;
-            return status !== 'failed';
+            const payStatus = eb.paymentStatus || eb.payment_status;
+            const bookingStatus = eb.status;
+            return payStatus !== 'failed' && bookingStatus !== 'cancelled';
         });
 
         // Get location details

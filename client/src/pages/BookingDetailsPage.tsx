@@ -82,6 +82,7 @@ interface BookingDetails {
     endDate: string;
     totalPrice: number;
     status: string;
+    paymentStatus?: string;
     storageListing?: {
       name: string;
       storageType: string;
@@ -93,6 +94,7 @@ interface BookingDetails {
     equipmentListingId: number;
     totalPrice: number;
     status: string;
+    paymentStatus?: string;
     equipmentListing?: {
       equipmentType: string;
       brand?: string;
@@ -371,6 +373,27 @@ export default function BookingDetailsPage() {
             Refunded
           </Badge>
         );
+      case "partially_refunded":
+        return (
+          <Badge className="bg-orange-100 text-orange-800 border-orange-200">
+            <Receipt className="h-3 w-3 mr-1" />
+            Partial Refund
+          </Badge>
+        );
+      case "failed":
+        return (
+          <Badge className="bg-red-100 text-red-800 border-red-200">
+            <XCircle className="h-3 w-3 mr-1" />
+            Failed
+          </Badge>
+        );
+      case "canceled":
+        return (
+          <Badge className="bg-gray-100 text-gray-800 border-gray-200">
+            <XCircle className="h-3 w-3 mr-1" />
+            Canceled
+          </Badge>
+        );
       default:
         return null;
     }
@@ -391,10 +414,18 @@ export default function BookingDetailsPage() {
     if (!booking) return { kitchen: 0, storage: 0, equipment: 0, subtotal: 0, tax: 0, total: 0 };
 
     const kitchenTotal = booking.totalPrice || 0;
-    const storageTotal = booking.storageBookings?.reduce((sum, s) => sum + (s.totalPrice || 0), 0) || 0;
-    const equipmentTotal = booking.equipmentBookings?.reduce((sum, e) => sum + (e.totalPrice || 0), 0) || 0;
+    // PARTIAL CAPTURE AWARENESS: Only sum approved items (exclude rejected/failed)
+    // After partial capture, rejected items have paymentStatus='failed' and status='cancelled'
+    const storageTotal = booking.storageBookings?.reduce((sum, s) => {
+      if (s.paymentStatus === 'failed' || s.status === 'cancelled') return sum;
+      return sum + (s.totalPrice || 0);
+    }, 0) || 0;
+    const equipmentTotal = booking.equipmentBookings?.reduce((sum, e) => {
+      if (e.paymentStatus === 'failed' || e.status === 'cancelled') return sum;
+      return sum + (e.totalPrice || 0);
+    }, 0) || 0;
 
-    // Subtotal is kitchen + storage + equipment (what was actually paid, excluding tax)
+    // Subtotal is kitchen + approved storage + approved equipment (what was actually charged)
     const subtotal = kitchenTotal + storageTotal + equipmentTotal;
 
     return {
@@ -406,6 +437,17 @@ export default function BookingDetailsPage() {
       total: subtotal,
     };
   }, [booking]);
+
+  // PARTIAL CAPTURE AWARENESS: Filtered lists for display (exclude rejected/failed items)
+  // These are used for rendering storage/equipment sections — rejected items should not appear
+  const approvedStorageBookings = useMemo(() => 
+    booking?.storageBookings?.filter(s => s.paymentStatus !== 'failed' && s.status !== 'cancelled') || [],
+    [booking]
+  );
+  const approvedEquipmentBookings = useMemo(() => 
+    booking?.equipmentBookings?.filter(e => e.paymentStatus !== 'failed' && e.status !== 'cancelled') || [],
+    [booking]
+  );
 
   const openActionSheet = () => {
     setActionSheetOpen(true);
@@ -424,21 +466,27 @@ export default function BookingDetailsPage() {
     stripeProcessingFee: booking.paymentTransaction?.stripeProcessingFee,
     managerRevenue: booking.paymentTransaction?.managerRevenue,
     taxRatePercent: booking.kitchen?.taxRatePercent ? Number(booking.kitchen.taxRatePercent) : undefined,
-    storageItems: booking.storageBookings?.map((s) => ({
-      id: s.id,
-      storageBookingId: s.id,
-      name: s.storageListing?.name || `Storage #${s.storageListingId}`,
-      storageType: s.storageListing?.storageType || 'Storage',
-      totalPrice: s.totalPrice,
-      startDate: s.startDate,
-      endDate: s.endDate,
-    })),
-    equipmentItems: booking.equipmentBookings?.map((e) => ({
-      id: e.id,
-      equipmentBookingId: e.id,
-      name: e.equipmentListing?.equipmentType || `Equipment #${e.equipmentListingId}`,
-      totalPrice: e.totalPrice,
-    })),
+    // PARTIAL CAPTURE AWARENESS: Only include approved items in action sheet
+    // Rejected items (paymentStatus='failed') should not appear as actionable
+    storageItems: booking.storageBookings
+      ?.filter((s) => s.paymentStatus !== 'failed' && s.status !== 'cancelled')
+      .map((s) => ({
+        id: s.id,
+        storageBookingId: s.id,
+        name: s.storageListing?.name || `Storage #${s.storageListingId}`,
+        storageType: s.storageListing?.storageType || 'Storage',
+        totalPrice: s.totalPrice,
+        startDate: s.startDate,
+        endDate: s.endDate,
+      })),
+    equipmentItems: booking.equipmentBookings
+      ?.filter((e) => e.paymentStatus !== 'failed' && e.status !== 'cancelled')
+      .map((e) => ({
+        id: e.id,
+        equipmentBookingId: e.id,
+        name: e.equipmentListing?.equipmentType || `Equipment #${e.equipmentListingId}`,
+        totalPrice: e.totalPrice,
+      })),
     paymentStatus: booking.paymentStatus,
   } : null;
 
@@ -614,7 +662,7 @@ export default function BookingDetailsPage() {
             </CardContent>
           </Card>
 
-          {booking.storageBookings && booking.storageBookings.length > 0 && (
+          {approvedStorageBookings.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -624,7 +672,7 @@ export default function BookingDetailsPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {booking.storageBookings.map((storage) => (
+                  {approvedStorageBookings.map((storage) => (
                     <div
                       key={storage.id}
                       className="flex items-center justify-between p-4 bg-purple-50 rounded-lg border border-purple-200"
@@ -664,7 +712,7 @@ export default function BookingDetailsPage() {
             </Card>
           )}
 
-          {booking.equipmentBookings && booking.equipmentBookings.length > 0 && (
+          {approvedEquipmentBookings.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -674,7 +722,7 @@ export default function BookingDetailsPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {booking.equipmentBookings.map((equipment) => (
+                  {approvedEquipmentBookings.map((equipment) => (
                     <div
                       key={equipment.id}
                       className="flex items-center justify-between p-4 bg-amber-50 rounded-lg border border-amber-200"
@@ -792,6 +840,23 @@ export default function BookingDetailsPage() {
                   </span>
                 </div>
 
+                {/* AUTH-HOLD AWARENESS: Show prominent banner for authorized (held) payments */}
+                {booking.paymentStatus === 'authorized' && (
+                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <CreditCard className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                      <div className="text-xs text-blue-800">
+                        <p className="font-semibold mb-0.5">Payment Held</p>
+                        <p className="text-blue-700">
+                          {isManagerView 
+                            ? "This payment is authorized but not yet captured. Approve or reject from the action sheet to capture or release the hold."
+                            : "Your card has been authorized. The charge will be finalized once the kitchen manager approves your booking."}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Chef View - Payment Breakdown (without Stripe fee) */}
                 {!isManagerView && booking.paymentTransaction && (
                   <>
@@ -803,7 +868,6 @@ export default function BookingDetailsPage() {
                         <span className="font-medium">{formatCurrency(totals.subtotal)}</span>
                       </div>
                       {(() => {
-                        // Use kitchen's tax rate from database
                         const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
                         const subtotal = totals.subtotal || 0;
                         const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
@@ -817,8 +881,12 @@ export default function BookingDetailsPage() {
                       })()}
                       <Separator className="my-2" />
                       <div className="flex justify-between text-sm font-semibold">
-                        <span className="text-gray-900">Amount Paid</span>
-                        <span className="text-green-600">{formatCurrency(booking.paymentTransaction.amount)}</span>
+                        <span className="text-gray-900">
+                          {booking.paymentStatus === 'authorized' ? 'Amount Authorized' : 'Amount Paid'}
+                        </span>
+                        <span className={booking.paymentStatus === 'authorized' ? 'text-blue-600' : 'text-green-600'}>
+                          {formatCurrency(booking.paymentTransaction.amount)}
+                        </span>
                       </div>
                     </div>
                   </>
@@ -829,38 +897,48 @@ export default function BookingDetailsPage() {
                   <>
                     <Separator />
                     <div className="space-y-2 pt-2">
-                      <p className="text-xs font-medium text-gray-500 uppercase">Revenue Breakdown</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase">
+                        {booking.paymentStatus === 'authorized' ? 'Authorization Details' : 'Revenue Breakdown'}
+                      </p>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Gross Amount</span>
+                        <span className="text-gray-600">
+                          {booking.paymentStatus === 'authorized' ? 'Authorized Amount' : 'Gross Amount'}
+                        </span>
                         <span className="font-medium">{formatCurrency(booking.paymentTransaction.amount)}</span>
                       </div>
-                      {/* Tax = totals.subtotal * tax_rate / 100 (includes kitchen + storage + equipment) */}
                       {(() => {
                         const amount = booking.paymentTransaction.amount || 0;
                         const stripeFee = booking.paymentTransaction.stripeProcessingFee || 0;
-                        // Use kitchen's tax rate from database
                         const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
-                        // Tax should be calculated on full subtotal (kitchen + storage + equipment)
                         const subtotal = totals.subtotal || 0;
                         const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
                         const netRevenue = amount - taxAmount - stripeFee;
+                        const isAuthorized = booking.paymentStatus === 'authorized';
                         
                         return (
                           <>
                             {taxRatePercent > 0 && (
                               <div className="flex justify-between text-sm">
-                                <span className="text-gray-600">Tax Collected ({taxRatePercent}%)</span>
+                                <span className="text-gray-600">
+                                  {isAuthorized ? `Est. Tax (${taxRatePercent}%)` : `Tax Collected (${taxRatePercent}%)`}
+                                </span>
                                 <span className="font-medium text-amber-600">-{formatCurrency(taxAmount)}</span>
                               </div>
                             )}
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-600">Stripe Fee</span>
-                              <span className="font-medium text-red-600">-{formatCurrency(stripeFee)}</span>
-                            </div>
+                            {!isAuthorized && (
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-600">Stripe Fee</span>
+                                <span className="font-medium text-red-600">-{formatCurrency(stripeFee)}</span>
+                              </div>
+                            )}
                             <Separator className="my-2" />
                             <div className="flex justify-between text-sm font-semibold">
-                              <span className="text-gray-900">Your Net Revenue</span>
-                              <span className="text-green-600">{formatCurrency(netRevenue)}</span>
+                              <span className="text-gray-900">
+                                {isAuthorized ? 'Est. Net Revenue' : 'Your Net Revenue'}
+                              </span>
+                              <span className={isAuthorized ? 'text-blue-600' : 'text-green-600'}>
+                                {formatCurrency(isAuthorized ? amount - taxAmount : netRevenue)}
+                              </span>
                             </div>
                           </>
                         );
@@ -870,7 +948,7 @@ export default function BookingDetailsPage() {
                 )}
               </div>
 
-              {booking.paymentStatus === "paid" && (
+              {(booking.paymentStatus === "paid" || booking.paymentStatus === "partially_refunded") && (
                 <Button
                   onClick={handleDownloadInvoice}
                   disabled={isDownloading}

@@ -84,13 +84,31 @@ export async function generateInvoicePDF(
              hourlyRate = kitchenAmount / durationHours;
         }
       }
-      // FALLBACK 2: Booking total price (assuming it is Subtotal)
+      // FALLBACK 2: Booking total price
+      // IMPORTANT: After partial capture, kb.total_price = approvedSubtotalCents which includes
+      // kitchen + approved storage + approved equipment. Since storage and equipment are added
+      // as separate line items below, we must subtract their amounts to get kitchen-only price.
+      // This prevents double-counting.
       else if (booking.total_price || booking.totalPrice) {
-         // Assuming totalPrice now reflects Subtotal (or Subtotal+Tax in some contexts, but let's assume Subtotal due to recent changes)
-         // To be safe, if we have specific rates, calculate from them.
-         // If not, usually stored total_price is the booking price (without add-ons).
          const totalPriceCents = parseFloat(String(booking.total_price || booking.totalPrice));
-         kitchenAmount = totalPriceCents / 100;
+         
+         // Subtract storage/equipment amounts that will be added separately
+         let addonsCents = 0;
+         if (storageBookings && storageBookings.length > 0) {
+           for (const sb of storageBookings) {
+             const sbPrice = parseFloat(String(sb.total_price || sb.totalPrice || 0));
+             if (sbPrice > 0) addonsCents += sbPrice;
+           }
+         }
+         if (equipmentBookings && equipmentBookings.length > 0) {
+           for (const eb of equipmentBookings) {
+             const ebPrice = parseFloat(String(eb.total_price || eb.totalPrice || 0));
+             if (ebPrice > 0) addonsCents += ebPrice;
+           }
+         }
+         
+         const kitchenOnlyCents = Math.max(0, totalPriceCents - addonsCents);
+         kitchenAmount = kitchenOnlyCents / 100;
          
          if (booking.duration_hours || booking.durationHours) {
             durationHours = parseFloat(String(booking.duration_hours || booking.durationHours));
@@ -263,6 +281,15 @@ export async function generateInvoicePDF(
   // Calculate totals
   const subtotalCents = Math.round(totalAmount * 100);
   const subtotalWithTaxCents = subtotalCents + taxCents;
+
+  // PARTIAL CAPTURE VERIFICATION: Cross-check invoice total with actual Stripe captured amount
+  // If they differ significantly, log a warning — the invoice breakdown may be stale
+  if (stripeTotalAmount > 0) {
+    const diff = Math.abs(subtotalWithTaxCents - stripeTotalAmount);
+    if (diff > 1) { // Allow 1 cent rounding tolerance
+      console.warn(`[Invoice] MISMATCH: Calculated total (${subtotalWithTaxCents}) differs from Stripe captured amount (${stripeTotalAmount}) by ${diff} cents. Items: ${items.length}, Subtotal: ${subtotalCents}, Tax: ${taxCents}`);
+    }
+  }
   
   // Platform fees for Manager Payout View
   const platformFeeCents = Math.round(platformFee * 100);

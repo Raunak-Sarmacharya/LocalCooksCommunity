@@ -212,8 +212,17 @@ export class BookingRepository {
                 locationName: row.location.name,
                 locationTimezone: row.location.timezone,
                 // Include storage and equipment items from JSONB fields
-                storageItems: row.booking.storageItems || [],
-                equipmentItems: row.booking.equipmentItems || [],
+                // DEFENSIVE: After partial capture, JSONB is updated to remove rejected items (Fix #2).
+                // This filter is belt-and-suspenders for any legacy data where JSONB wasn't cleaned up.
+                // Items with id matching a failed/cancelled relational booking should not appear.
+                storageItems: (Array.isArray(row.booking.storageItems) ? row.booking.storageItems : []).filter((item: any) => {
+                    if (item.status === 'failed' || item.status === 'cancelled') return false;
+                    return true;
+                }),
+                equipmentItems: (Array.isArray(row.booking.equipmentItems) ? row.booking.equipmentItems : []).filter((item: any) => {
+                    if (item.status === 'failed' || item.status === 'cancelled') return false;
+                    return true;
+                }),
                 // Kitchen's tax rate for revenue calculations (consistent with transaction history)
                 taxRatePercent,
                 // Use actual Stripe transaction data for accurate payment display

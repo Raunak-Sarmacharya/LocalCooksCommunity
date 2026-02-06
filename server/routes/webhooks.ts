@@ -1618,7 +1618,17 @@ async function handlePaymentIntentSucceeded(
       };
 
       // If we got Stripe amounts, sync them to override calculated amounts
+      // PARTIAL CAPTURE AWARENESS: charge.amount (used by getStripePaymentAmounts) correctly
+      // reflects the captured amount, not the original authorized amount.
+      // For partial captures: charge.amount = captured (e.g. 4400), paymentIntent.amount = authorized (e.g. 8800)
       if (stripeAmounts) {
+        const isPartialCapture = paymentIntent.amount !== paymentIntent.amount_received;
+        if (isPartialCapture) {
+          logger.info(
+            `[Webhook] PARTIAL CAPTURE detected for ${paymentIntent.id}: authorized=$${(paymentIntent.amount / 100).toFixed(2)}, captured=$${((paymentIntent.amount_received || 0) / 100).toFixed(2)}, charge.amount=$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
+          );
+        }
+
         updateParams.stripeAmount = stripeAmounts.stripeAmount;
         updateParams.stripeNetAmount = stripeAmounts.stripeNetAmount;
         updateParams.stripeProcessingFee = stripeAmounts.stripeProcessingFee;
@@ -1630,6 +1640,7 @@ async function handlePaymentIntentSucceeded(
             netAmount: `$${(stripeAmounts.stripeNetAmount / 100).toFixed(2)}`,
             processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
             platformFee: `$${(stripeAmounts.stripePlatformFee / 100).toFixed(2)}`,
+            isPartialCapture,
           },
         );
       }
