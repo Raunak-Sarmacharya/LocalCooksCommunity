@@ -106,6 +106,15 @@ export async function getRevenueMetricsFromTransactions(
       throw new Error('Incomplete payment_transactions coverage');
     }
 
+    // Look up the manager's location timezone for accurate date filtering
+    const metricsTimezoneResult = await db.execute(sql`
+      SELECT COALESCE(l.timezone, 'America/St_Johns') as timezone
+      FROM locations l
+      WHERE l.manager_id = ${managerIdParam}
+      LIMIT 1
+    `);
+    const metricsTimezone = metricsTimezoneResult.rows[0]?.timezone || 'America/St_Johns';
+
     // Simplified WHERE clause - use manager_id directly from payment_transactions
     // This works for all booking types (kitchen, storage, equipment, overstay penalties)
     // Include refunded/partially_refunded to track refund amounts properly
@@ -120,34 +129,35 @@ export async function getRevenueMetricsFromTransactions(
       const start = startDate ? (typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0]) : null;
       const end = endDate ? (typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0]) : null;
 
+      // Convert UTC timestamps to manager's local timezone before date comparison
       if (start && end) {
         simpleWhereConditions.push(sql`
           (
             (pt.status = 'succeeded' AND (
-              (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date AND DATE(pt.paid_at) <= ${end}::date)
-              OR (pt.paid_at IS NULL AND DATE(pt.created_at) >= ${start}::date AND DATE(pt.created_at) <= ${end}::date)
+              (pt.paid_at IS NOT NULL AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) >= ${start}::date AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) <= ${end}::date)
+              OR (pt.paid_at IS NULL AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) >= ${start}::date AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) <= ${end}::date)
             ))
-            OR (pt.status != 'succeeded' AND DATE(pt.created_at) >= ${start}::date AND DATE(pt.created_at) <= ${end}::date)
+            OR (pt.status != 'succeeded' AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) >= ${start}::date AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) <= ${end}::date)
           )
         `);
       } else if (start) {
         simpleWhereConditions.push(sql`
           (
             (pt.status = 'succeeded' AND (
-              (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date)
-              OR (pt.paid_at IS NULL AND DATE(pt.created_at) >= ${start}::date)
+              (pt.paid_at IS NOT NULL AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) >= ${start}::date)
+              OR (pt.paid_at IS NULL AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) >= ${start}::date)
             ))
-            OR (pt.status != 'succeeded' AND DATE(pt.created_at) >= ${start}::date)
+            OR (pt.status != 'succeeded' AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) >= ${start}::date)
           )
         `);
       } else if (end) {
         simpleWhereConditions.push(sql`
           (
             (pt.status = 'succeeded' AND (
-              (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) <= ${end}::date)
-              OR (pt.paid_at IS NULL AND DATE(pt.created_at) <= ${end}::date)
+              (pt.paid_at IS NOT NULL AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) <= ${end}::date)
+              OR (pt.paid_at IS NULL AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) <= ${end}::date)
             ))
-            OR (pt.status != 'succeeded' AND DATE(pt.created_at) <= ${end}::date)
+            OR (pt.status != 'succeeded' AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) <= ${end}::date)
           )
         `);
       }
@@ -550,6 +560,17 @@ export async function getRevenueByDateFromTransactions(
       throw new Error('payment_transactions table does not exist');
     }
 
+    // Look up the manager's location timezone for accurate date grouping
+    // A payment at 11:30 PM Newfoundland = 3:00 AM UTC next day — without timezone conversion,
+    // DATE() in UTC would group this on the wrong date
+    const tzResult = await db.execute(sql`
+      SELECT COALESCE(l.timezone, 'America/St_Johns') as timezone
+      FROM locations l
+      WHERE l.manager_id = ${managerId}
+      LIMIT 1
+    `);
+    const managerTimezone = tzResult.rows[0]?.timezone || 'America/St_Johns';
+
     const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
     const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
 
@@ -570,24 +591,31 @@ export async function getRevenueByDateFromTransactions(
       )
     `);
 
-    // Date filtering logic
+    // Date filtering logic — convert UTC timestamps to manager's local timezone before extracting date
+    // timestamp without time zone in a GMT session is effectively UTC
+    // AT TIME ZONE 'UTC' declares it as UTC, then AT TIME ZONE tz converts to local
     whereConditions.push(sql`
       (
-        (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date AND DATE(pt.paid_at) <= ${end}::date)
-        OR (pt.status != 'succeeded' AND DATE(pt.created_at) >= ${start}::date AND DATE(pt.created_at) <= ${end}::date)
+        (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL 
+          AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) >= ${start}::date 
+          AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) <= ${end}::date)
+        OR (pt.status != 'succeeded' 
+          AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) >= ${start}::date 
+          AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) <= ${end}::date)
       )
     `);
 
     const whereClause = sql`WHERE ${sql.join(whereConditions, sql` AND `)}`;
 
     // Get revenue by date from payment_transactions
+    // Convert to manager's local timezone for correct date grouping
     const result = await db.execute(sql`
       SELECT 
         DATE(
           CASE 
             WHEN pt.status = 'succeeded' AND pt.paid_at IS NOT NULL 
-            THEN pt.paid_at
-            ELSE pt.created_at
+            THEN pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}
+            ELSE pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}
           END
         )::text as date,
         COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
@@ -608,8 +636,8 @@ export async function getRevenueByDateFromTransactions(
       GROUP BY DATE(
         CASE 
           WHEN pt.status = 'succeeded' AND pt.paid_at IS NOT NULL 
-          THEN pt.paid_at
-          ELSE pt.created_at
+          THEN pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}
+          ELSE pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}
         END
       )
       ORDER BY date ASC

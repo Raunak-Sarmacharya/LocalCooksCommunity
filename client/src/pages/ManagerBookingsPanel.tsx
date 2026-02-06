@@ -643,6 +643,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               data={filteredBookings}
               filterColumn="chefName" // filter by Chef name by default
               filterPlaceholder="Filter by chef..."
+              defaultSorting={[{ id: 'bookingDate', desc: true }]}
             />
           </div>
         )}

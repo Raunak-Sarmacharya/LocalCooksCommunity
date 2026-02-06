@@ -8,7 +8,7 @@
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
+// date-fns format removed — using toLocaleDateString with timeZone for timezone-aware display
 import {
   ColumnDef,
   flexRender,
@@ -186,10 +186,10 @@ function getTransactionColumns(): ColumnDef<Transaction>[] {
           <div className="space-y-1">
             <div className="flex items-center gap-1 text-sm font-medium">
               <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-              {format(new Date(date), 'MMM d, yyyy')}
+              {new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/St_Johns' })}
             </div>
             <div className="text-xs text-muted-foreground">
-              {format(new Date(date), 'h:mm a')}
+              {new Date(date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/St_Johns' })}
             </div>
           </div>
         );

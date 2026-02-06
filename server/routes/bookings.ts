@@ -1998,7 +1998,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             return res.status(404).json({ error: "Location not found" });
         }
 
-        const timezone = (location as any).timezone || "America/Edmonton";
+        const timezone = (location as any).timezone || "America/St_Johns";
         const minimumBookingWindowHours = (location as any).minimumBookingWindowHours ?? 1;
 
         // Validate booking time
@@ -2234,13 +2234,13 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
         // Get location to get timezone and minimum booking window
         const kitchenLocationId2 = kitchenDetails.locationId;
         let location = null;
-        let timezone = "America/Edmonton"; // Default fallback
+        let timezone = "America/St_Johns"; // Default fallback
         let minimumBookingWindowHours = 1; // Default fallback
 
         if (kitchenLocationId2) {
             location = await locationService.getLocationById(kitchenLocationId2);
             if (location) {
-                timezone = (location as any).timezone || "America/Edmonton";
+                timezone = (location as any).timezone || "America/St_Johns";
                 // Use manager's setting - allow 0 for same-day bookings
                 const minWindow = (location as any).minimumBookingWindowHours ?? (location as any).minimum_booking_window_hours;
                 if (minWindow !== null && minWindow !== undefined) {
@@ -2387,7 +2387,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                     startTime,
                     endTime,
                     specialNotes,
-                    timezone: (location as any)?.timezone || 'America/Edmonton',
+                    timezone: (location as any)?.timezone || 'America/St_Johns',
                     locationName: (location as any)?.name
                 });
                 await sendEmail(chefEmail);
@@ -2528,7 +2528,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                                 startTime: bookingByIntent.startTime,
                                 endTime: bookingByIntent.endTime,
                                 specialNotes: bookingByIntent.specialNotes || undefined,
-                                timezone: location.timezone || "America/Edmonton",
+                                timezone: location.timezone || "America/St_Johns",
                                 locationName: location.name,
                                 bookingId: bookingByIntent.id,
                             });
@@ -2551,7 +2551,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                                 startTime: bookingByIntent.startTime,
                                 endTime: bookingByIntent.endTime,
                                 specialNotes: bookingByIntent.specialNotes || undefined,
-                                timezone: location.timezone || "America/Edmonton",
+                                timezone: location.timezone || "America/St_Johns",
                                 locationName: location.name,
                             });
                             const chefEmailSent = await sendEmail(chefEmail, { trackingId: `booking_${bookingByIntent.id}_chef` });
@@ -2738,7 +2738,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                                 startTime,
                                 endTime,
                                 specialNotes: specialNotes || undefined,
-                                timezone: location.timezone || "America/Edmonton",
+                                timezone: location.timezone || "America/St_Johns",
                                 locationName: location.name,
                                 bookingId: newBooking.id,
                             });

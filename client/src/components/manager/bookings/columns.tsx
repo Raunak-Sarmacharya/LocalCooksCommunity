@@ -92,6 +92,7 @@ const formatDate = (dateStr: string) => {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
+        timeZone: 'America/St_Johns',
     });
 };
 
@@ -120,7 +121,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
         cell: ({ row }) => {
             const createdAt = row.original.createdAt;
             const formattedCreatedAt = createdAt 
-                ? new Date(createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                ? new Date(createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/St_Johns' })
                 : null;
             return (
                 <div className="flex flex-col">
@@ -254,7 +255,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
                                             {storageItems.map((s, idx) => {
                                                 const formatStorageDate = (dateStr?: string) => {
                                                     if (!dateStr) return '';
-                                                    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                                    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/St_Johns' });
                                                 };
                                                 // Use storage dates if available, otherwise fall back to booking date
                                                 const startDate = s.startDate || row.original.bookingDate;
@@ -293,7 +294,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
                                             {storageItems.map((item, idx) => {
                                                 const formatStorageDate = (dateStr?: string) => {
                                                     if (!dateStr) return '';
-                                                    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                                    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/St_Johns' });
                                                 };
                                                 const dateRange = item.startDate && item.endDate 
                                                     ? (item.startDate === item.endDate 

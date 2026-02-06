@@ -68,7 +68,7 @@ export function TransactionTable({
     onViewDetails,
     onRefundTransaction,
 }: TransactionTableProps) {
-    const [sorting, setSorting] = useState<SortingState>([])
+    const [sorting, setSorting] = useState<SortingState>([{ id: 'bookingDate', desc: true }])
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
     const [globalFilter, setGlobalFilter] = useState('')

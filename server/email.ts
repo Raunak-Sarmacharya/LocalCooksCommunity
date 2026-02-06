@@ -397,8 +397,8 @@ const getOrganizationName = (): string => {
 
 // Get unsubscribe email from environment or generate from domain
 const getUnsubscribeEmail = (): string => {
-  // Use the specific email address for unsubscribe requests
-  return 'localcooks@localcook.shop';
+  const domain = getDomainFromEmail(process.env.EMAIL_USER || '');
+  return `unsubscribe@${domain}`;
 };
 
 // Helper function to get support email based on configured domain
@@ -1409,14 +1409,14 @@ export async function sendApplicationRejectedEmail(applicationData: any, reason?
         We'd be happy to reconsider your application when you're ready.
       </div>
       
-      <a href="https://local-cooks-community.vercel.app/apply" class="cta-button" style="color: white !important; text-decoration: none !important;">Learn About Requirements</a>
+      <a href="${getWebsiteUrl()}/apply" class="cta-button" style="color: white !important; text-decoration: none !important;">Learn About Requirements</a>
     </div>
     <div class="footer">
       <p class="footer-text">Thank you for your interest in ${organizationName}!</p>
       <div class="footer-links">
         <a href="mailto:${supportEmail}">Support</a> • 
         <a href="mailto:${supportEmail}?subject=Unsubscribe">Unsubscribe</a> • 
-        <a href="https://local-cooks-community.vercel.app/privacy">Privacy Policy</a>
+        <a href="${getPrivacyUrl()}">Privacy Policy</a>
       </div>
     </div>
   </div>
@@ -1435,7 +1435,7 @@ Status: Not Approved
 ${reason ? `Feedback: ${reason}\n\n` : ''}Next Steps:
 We encourage you to gain more experience and reapply in the future. We'd be happy to reconsider your application when you're ready.
 
-Learn more about requirements: https://local-cooks-community.vercel.app/apply
+Learn more about requirements: ${getWebsiteUrl()}/apply
 
 Thank you for your interest in ${organizationName}!
 
@@ -2760,8 +2760,8 @@ Visit: ${getWebsiteUrl()}
 
 export const generateManagerMagicLinkEmail = (userData: { email: string; name: string; resetToken: string }): EmailContent => {
   const subject = 'Set Up Your Manager Account - Local Cooks';
-  // Use password reset with manager redirect parameter
-  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  // Use kitchen subdomain for manager password reset
+  const baseUrl = getDashboardUrl('kitchen');
   const resetUrl = `${baseUrl}/password-reset?token=${userData.resetToken}&role=manager`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${userData.name},</h2><p class="message">Your manager account has been created for the Local Cooks commercial kitchen booking system!</p><p class="message">Click the button below to set up your password and access your manager dashboard:</p><a href="${resetUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Set Up Password</a><div class="info-box"><strong>🔐 Account Access:</strong><br>You'll be able to manage kitchen schedules, view bookings, and set up availability for your location.</div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: userData.email, subject, text: `Hello ${userData.name}, Your manager account has been created. Click here to set up your password: ${resetUrl}`, html };
@@ -2770,9 +2770,8 @@ export const generateManagerMagicLinkEmail = (userData: { email: string; name: s
 // Manager credentials email with username and password
 export const generateManagerCredentialsEmail = (userData: { email: string; name: string; username: string; password: string }): EmailContent => {
   const subject = 'Your Manager Account - Local Cooks Community';
-  // Use manager login page URL for managers
-  const baseUrl = getWebsiteUrl();
-  const loginUrl = `${baseUrl}/manager/login`;
+  // Use kitchen subdomain for manager login
+  const loginUrl = `${getDashboardUrl('kitchen')}/manager/login`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${userData.name || 'Manager'},</h2><p class="message">Your manager account has been created for the Local Cooks kitchen booking system!</p><div class="info-box"><strong>🔐 Your Login Credentials:</strong><table class="credentials-table"><tr><td>Username:</td><td><code>${userData.username}</code></td></tr><tr><td>Password:</td><td><code>${userData.password}</code></td></tr></table></div><div class="warning-box"><p class="warning-text"><strong>⚠️ Important:</strong> Please change your password after your first login for security.</p></div><p class="message">You'll be able to manage kitchen schedules, view bookings, and set up availability for your locations.</p><a href="${loginUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Login Now</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: userData.email, subject, text: `Hello ${userData.name || 'Manager'}, Your manager account has been created! Username: ${userData.username}, Password: ${userData.password}. Login at: ${loginUrl}`, html };
 };
@@ -2781,7 +2780,7 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail: st
   const subject = `New Kitchen Booking - ${bookingData.kitchenName}`;
   const timezone = bookingData.timezone || 'America/St_Johns';
   const locationName = bookingData.locationName || bookingData.kitchenName;
-  const bookingDetailsUrl = `${getDashboardUrl()}/manager/booking/${bookingData.bookingId}`;
+  const bookingDetailsUrl = `${getDashboardUrl('kitchen')}/manager/booking/${bookingData.bookingId}`;
 
   // Convert bookingDate to Date object for display
   const bookingDateObj = bookingData.bookingDate instanceof Date
@@ -2854,7 +2853,7 @@ export const generateBookingPaymentReceivedEmail = (data: {
   const formattedAmount = `$${(data.amountCents / 100).toFixed(2)} ${data.currency}`;
   const bookingDateObj = data.bookingDate instanceof Date ? data.bookingDate : new Date(data.bookingDate);
   const formattedDate = bookingDateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  const bookingDetailsUrl = `${getDashboardUrl()}/manager/booking/${data.bookingId}`;
+  const bookingDetailsUrl = `${getDashboardUrl('kitchen')}/manager/booking/${data.bookingId}`;
   
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">💰 Payment Received!</h2><p class="message">Great news! Payment has been received for a kitchen booking:</p><div class="info-box"><strong>👨‍🍳 Chef:</strong> ${data.chefName}<br><strong>🏢 Kitchen:</strong> ${data.kitchenName}<br><strong>📅 Date:</strong> ${formattedDate}<br><strong>⏰ Time:</strong> ${data.startTime} - ${data.endTime}<br><strong>💵 Amount:</strong> <span style="color: #16a34a; font-weight: 600;">${formattedAmount}</span><br><strong>📊 Payment Status:</strong> <span style="color: #16a34a; font-weight: 600;">Paid</span></div><p class="message">The booking is now confirmed and ready. Please review the booking details.</p><div style="text-align: center; margin: 24px 0;"><a href="${bookingDetailsUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Booking Details</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   
@@ -2869,7 +2868,7 @@ export const generateBookingPaymentReceivedEmail = (data: {
 // Booking cancellation notification email for managers (when chef cancels)
 export const generateBookingCancellationNotificationEmail = (bookingData: { managerEmail: string; chefName: string; kitchenName: string; bookingDate: string; startTime: string; endTime: string; cancellationReason?: string }): EmailContent => {
   const subject = `Booking Cancelled - ${bookingData.kitchenName}`;
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Booking Cancelled</h2><p class="message">A chef has cancelled their booking:</p><div class="info-box"><strong>👨‍🍳 Chef:</strong> ${bookingData.chefName}<br><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${new Date(bookingData.bookingDate).toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: #dc2626; font-weight: 600;">Cancelled</span>${bookingData.cancellationReason ? `<br><br><strong>📝 Reason:</strong> ${bookingData.cancellationReason}` : ''}</div><a href="${getDashboardUrl()}/manager/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Booking Cancelled</h2><p class="message">A chef has cancelled their booking:</p><div class="info-box"><strong>👨‍🍳 Chef:</strong> ${bookingData.chefName}<br><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${new Date(bookingData.bookingDate).toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: #dc2626; font-weight: 600;">Cancelled</span>${bookingData.cancellationReason ? `<br><br><strong>📝 Reason:</strong> ${bookingData.cancellationReason}` : ''}</div><a href="${getDashboardUrl('kitchen')}/manager/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: bookingData.managerEmail, subject, text: `Booking Cancelled - Chef: ${bookingData.chefName}, Kitchen: ${bookingData.kitchenName}, Date: ${new Date(bookingData.bookingDate).toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}`, html };
 };
 
@@ -2937,8 +2936,8 @@ export const generateBookingStatusChangeNotificationEmail = (bookingData: { mana
   }
 
   const calendarButton = bookingData.status === 'confirmed' && calendarUrl
-    ? `<p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>📎 Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl()}/manager/bookings" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View Bookings</a></div>`
-    : `<a href="${getDashboardUrl()}/manager/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Bookings</a>`;
+    ? `<p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>📎 Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl('kitchen')}/manager/bookings" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View Bookings</a></div>`
+    : `<a href="${getDashboardUrl('kitchen')}/manager/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Bookings</a>`;
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Booking ${statusText}</h2><p class="message">The booking status has been updated:</p><div class="info-box"><strong>👨‍🍳 Chef:</strong> ${bookingData.chefName}<br><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: ${statusColor}; font-weight: 600;">${statusText}</span></div>${calendarButton}<div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   const textCalendar = bookingData.status === 'confirmed' && calendarUrl ? ` Add to calendar: ${calendarUrl}` : '';
@@ -2997,7 +2996,7 @@ export const generateBookingRequestEmail = (bookingData: { chefEmail: string; ch
     eventUid // Use consistent UID for synchronization
   );
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${bookingData.chefName},</h2><p class="message">We've received your kitchen booking request! The manager has been notified and will review it shortly.</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Pending Approval</span>${bookingData.specialNotes ? `<br><br><strong>📝 Notes:</strong> ${bookingData.specialNotes}` : ''}</div><p class="message">You'll receive a confirmation email once the manager approves your booking.</p><p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>📎 Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl()}/bookings" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View My Bookings</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${bookingData.chefName},</h2><p class="message">We've received your kitchen booking request! The manager has been notified and will review it shortly.</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Pending Approval</span>${bookingData.specialNotes ? `<br><br><strong>📝 Notes:</strong> ${bookingData.specialNotes}` : ''}</div><p class="message">You'll receive a confirmation email once the manager approves your booking.</p><p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>📎 Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl()}/book-kitchen" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View My Bookings</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return {
     to: bookingData.chefEmail,
     subject,
@@ -3057,7 +3056,7 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
     eventUid // Use consistent UID for synchronization
   );
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${bookingData.chefName},</h2><p class="message">Great news! Your kitchen booking has been <strong style="color: #16a34a;">CONFIRMED</strong> ✅</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: #16a34a; font-weight: 600;">Confirmed</span>${bookingData.specialNotes ? `<br><br><strong>📝 Notes:</strong> ${bookingData.specialNotes}` : ''}</div><p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>📎 Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl()}/bookings" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View My Bookings</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you need to make changes, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${bookingData.chefName},</h2><p class="message">Great news! Your kitchen booking has been <strong style="color: #16a34a;">CONFIRMED</strong> ✅</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: #16a34a; font-weight: 600;">Confirmed</span>${bookingData.specialNotes ? `<br><br><strong>📝 Notes:</strong> ${bookingData.specialNotes}` : ''}</div><p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>📎 Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl()}/book-kitchen" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View My Bookings</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you need to make changes, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return {
     to: bookingData.chefEmail,
     subject,
@@ -3073,14 +3072,14 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
 
 export const generateBookingCancellationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string; startTime: string; endTime: string; cancellationReason?: string }): EmailContent => {
   const subject = `Booking Cancelled - ${bookingData.kitchenName}`;
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${bookingData.chefName},</h2><p class="message">Your kitchen booking has been cancelled.</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${new Date(bookingData.bookingDate).toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: #dc2626; font-weight: 600;">Cancelled</span>${bookingData.cancellationReason ? `<br><br><strong>📝 Reason:</strong> ${bookingData.cancellationReason}` : ''}</div><p class="message">You can make a new booking anytime from your dashboard.</p><a href="${getDashboardUrl()}/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">Browse Available Kitchens</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${bookingData.chefName},</h2><p class="message">Your kitchen booking has been cancelled.</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${new Date(bookingData.bookingDate).toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: #dc2626; font-weight: 600;">Cancelled</span>${bookingData.cancellationReason ? `<br><br><strong>📝 Reason:</strong> ${bookingData.cancellationReason}` : ''}</div><p class="message">You can make a new booking anytime from your dashboard.</p><a href="${getDashboardUrl()}/book-kitchen" class="cta-button" style="color: white !important; text-decoration: none !important;">Browse Available Kitchens</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: bookingData.chefEmail, subject, text: `Hello ${bookingData.chefName}, Your kitchen booking has been cancelled. Kitchen: ${bookingData.kitchenName}, Date: ${new Date(bookingData.bookingDate).toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}${bookingData.cancellationReason ? `. Reason: ${bookingData.cancellationReason}` : ''}`, html };
 };
 
 // Kitchen availability change notification email for chefs
 export const generateKitchenAvailabilityChangeEmail = (data: { chefEmail: string; chefName: string; kitchenName: string; changeType: string; details: string }): EmailContent => {
   const subject = `Kitchen Availability Update - ${data.kitchenName}`;
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">The availability for <strong>${data.kitchenName}</strong> has been updated.</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${data.kitchenName}<br><strong>📋 Change Type:</strong> ${data.changeType}<br><strong>📝 Details:</strong> ${data.details}</div><p class="message">Please check the updated availability before making your next booking.</p><a href="${getDashboardUrl()}/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Kitchen Availability</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">The availability for <strong>${data.kitchenName}</strong> has been updated.</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${data.kitchenName}<br><strong>📋 Change Type:</strong> ${data.changeType}<br><strong>📝 Details:</strong> ${data.details}</div><p class="message">Please check the updated availability before making your next booking.</p><a href="${getDashboardUrl()}/book-kitchen" class="cta-button" style="color: white !important; text-decoration: none !important;">View Kitchen Availability</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: data.chefEmail, subject, text: `Hello ${data.chefName}, The availability for ${data.kitchenName} has been updated. Change Type: ${data.changeType}. Details: ${data.details}`, html };
 };
 
@@ -3091,15 +3090,14 @@ export const generateKitchenSettingsChangeEmail = (data: { email: string; name: 
   const message = data.isChef
     ? `The settings for <strong>${data.kitchenName}</strong> have been updated. This may affect your existing or future bookings.`
     : `The settings for <strong>${data.kitchenName}</strong> have been updated.`;
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">${greeting}</h2><p class="message">${message}</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${data.kitchenName}<br><strong>📝 Changes:</strong> ${data.changes}</div>${data.isChef ? `<p class="message">Please review the updated settings before making your next booking.</p><a href="${getDashboardUrl()}/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Kitchen Details</a>` : `<a href="${getDashboardUrl()}/manager/booking-dashboard" class="cta-button" style="color: white !important; text-decoration: none !important;">View Kitchen Settings</a>`}<div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">${greeting}</h2><p class="message">${message}</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${data.kitchenName}<br><strong>📝 Changes:</strong> ${data.changes}</div>${data.isChef ? `<p class="message">Please review the updated settings before making your next booking.</p><a href="${getDashboardUrl()}/book-kitchen" class="cta-button" style="color: white !important; text-decoration: none !important;">View Kitchen Details</a>` : `<a href="${getDashboardUrl('kitchen')}/manager/booking-dashboard" class="cta-button" style="color: white !important; text-decoration: none !important;">View Kitchen Settings</a>`}<div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: data.email, subject, text: `${greeting} ${message} Kitchen: ${data.kitchenName}. Changes: ${data.changes}`, html };
 };
 
 // Chef profile request notification email for managers
 export const generateChefProfileRequestEmail = (data: { managerEmail: string; chefName: string; chefEmail: string; locationName: string; locationId: number }): EmailContent => {
   const subject = `Chef Access Request - ${data.locationName}`;
-  const baseUrl = getWebsiteUrl();
-  const reviewUrl = `${baseUrl}/manager/chefs?locationId=${data.locationId}`;
+  const reviewUrl = `${getDashboardUrl('kitchen')}/manager/applications`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">New Chef Access Request</h2><p class="message">A chef has requested access to your location and kitchen facilities:</p><div class="info-box"><strong>👨‍🍳 Chef Name:</strong> ${data.chefName}<br><strong>📧 Chef Email:</strong> ${data.chefEmail}<br><strong>📍 Location:</strong> ${data.locationName}<br><strong>📊 Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Pending Review</span></div><p class="message">Please review the chef's profile and approve or reject their request from your manager dashboard.</p><a href="${reviewUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review Chef Request</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: data.managerEmail, subject, text: `New Chef Access Request - Chef: ${data.chefName} (${data.chefEmail}) has requested access to location: ${data.locationName}. Status: Pending Review. Please review from your manager dashboard.`, html };
 };
@@ -3107,8 +3105,7 @@ export const generateChefProfileRequestEmail = (data: { managerEmail: string; ch
 // Chef location access approved notification email for chefs
 export const generateChefLocationAccessApprovedEmail = (data: { chefEmail: string; chefName: string; locationName: string; locationId: number }): EmailContent => {
   const subject = `Kitchen Access Approved - ${data.locationName}`;
-  const baseUrl = getWebsiteUrl();
-  const bookingsUrl = `${baseUrl}/bookings`;
+  const bookingsUrl = `${getDashboardUrl()}/book-kitchen`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Great news! The manager has <strong style="color: #16a34a;">APPROVED</strong> your chef profile for kitchen access at <strong>${data.locationName}</strong> ✅</p><div class="info-box"><strong>🏢 Location:</strong> ${data.locationName}<br><strong>📊 Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">You can now book kitchen facilities at this location. Start making your bookings from your dashboard!</p><a href="${bookingsUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Available Kitchens</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: data.chefEmail, subject, text: `Hello ${data.chefName}, Great news! The manager has approved your chef profile for kitchen access at ${data.locationName}. You can now book kitchen facilities at this location.`, html };
 };
@@ -3116,8 +3113,7 @@ export const generateChefLocationAccessApprovedEmail = (data: { chefEmail: strin
 // Chef kitchen access approved notification email for chefs (when manager approves kitchen profile)
 export const generateChefKitchenAccessApprovedEmail = (data: { chefEmail: string; chefName: string; kitchenName: string; kitchenId: number }): EmailContent => {
   const subject = `Kitchen Access Approved - ${data.kitchenName}`;
-  const baseUrl = getWebsiteUrl();
-  const bookingsUrl = `${baseUrl}/bookings`;
+  const bookingsUrl = `${getDashboardUrl()}/book-kitchen`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Great news! The manager has <strong style="color: #16a34a;">APPROVED</strong> your chef profile for kitchen access at <strong>${data.kitchenName}</strong> ✅</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${data.kitchenName}<br><strong>📊 Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">You can now book this kitchen. Start making your bookings from your dashboard!</p><a href="${bookingsUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Available Kitchens</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: data.chefEmail, subject, text: `Hello ${data.chefName}, Great news! The manager has approved your chef profile for kitchen access at ${data.kitchenName}. You can now book this kitchen.`, html };
 };
@@ -3125,8 +3121,7 @@ export const generateChefKitchenAccessApprovedEmail = (data: { chefEmail: string
 // Location notification email changed notification email
 export const generateLocationEmailChangedEmail = (data: { email: string; locationName: string; locationId: number }): EmailContent => {
   const subject = `Location Notification Email Updated - ${data.locationName}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/manager/dashboard`;
+  const dashboardUrl = `${getDashboardUrl('kitchen')}/manager/dashboard`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Location Notification Email Updated</h2><p class="message">This email address has been set as the notification email for <strong>${data.locationName}</strong>.</p><div class="info-box"><strong>📍 Location:</strong> ${data.locationName}<br><strong>📧 Notification Email:</strong> ${data.email}</div><p class="message">You will now receive email notifications for bookings, cancellations, and other important updates for this location.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Dashboard</a><div class="divider"></div></div><div class="footer"><p class="footer-text">If you didn't make this change, please contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: data.email, subject, text: `Location Notification Email Updated - This email address has been set as the notification email for ${data.locationName}. You will now receive email notifications for bookings, cancellations, and other important updates for this location.`, html };
 };
@@ -3146,8 +3141,7 @@ export const generateStorageExtensionPendingApprovalEmail = (data: {
   locationName?: string;
 }): EmailContent => {
   const subject = `Storage Extension Request - ${data.storageName}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/manager/storage`;
+  const dashboardUrl = `${getDashboardUrl('kitchen')}/manager/bookings`;
   const formattedPrice = `$${(data.totalPrice / 100).toFixed(2)}`;
   const formattedDate = data.newEndDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   
@@ -3171,8 +3165,7 @@ export const generateStorageExtensionPaymentReceivedEmail = (data: {
   totalPrice: number;
 }): EmailContent => {
   const subject = `Storage Extension Payment Received - ${data.storageName}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/bookings`;
+  const dashboardUrl = `${getDashboardUrl()}/dashboard`;
   const formattedPrice = `$${(data.totalPrice / 100).toFixed(2)}`;
   const formattedDate = data.newEndDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   
@@ -3195,8 +3188,7 @@ export const generateStorageExtensionApprovedEmail = (data: {
   newEndDate: Date;
 }): EmailContent => {
   const subject = `Storage Extension Approved - ${data.storageName}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/bookings`;
+  const dashboardUrl = `${getDashboardUrl()}/dashboard`;
   const formattedDate = data.newEndDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Great news! Your storage extension has been <strong style="color: #16a34a;">APPROVED</strong> ✅</p><div class="info-box"><strong>📦 Storage:</strong> ${data.storageName}<br><strong>📅 Extension:</strong> ${data.extensionDays} days<br><strong>📆 New End Date:</strong> ${formattedDate}<br><strong>📊 Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">Your storage booking has been extended. You can continue using the storage until the new end date.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
@@ -3219,8 +3211,7 @@ export const generateStorageExtensionRejectedEmail = (data: {
   refundAmount?: number;
 }): EmailContent => {
   const subject = `Storage Extension Declined - ${data.storageName}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/bookings`;
+  const dashboardUrl = `${getDashboardUrl()}/dashboard`;
   const refundText = data.refundAmount ? `A refund of $${(data.refundAmount / 100).toFixed(2)} has been processed and will be credited to your original payment method within 5-10 business days.` : 'A refund will be processed shortly.';
   
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Unfortunately, your storage extension request has been declined.</p><div class="info-box"><strong>📦 Storage:</strong> ${data.storageName}<br><strong>📅 Requested Extension:</strong> ${data.extensionDays} days<br><strong>📊 Status:</strong> <span style="color: #dc2626; font-weight: 600;">Declined</span>${data.rejectionReason ? `<br><br><strong>📝 Reason:</strong> ${data.rejectionReason}` : ''}</div><p class="message">${refundText}</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
@@ -3249,8 +3240,7 @@ export const generateStorageExpiringWarningEmail = (data: {
   dailyRateCents: number;
 }): EmailContent => {
   const subject = `⚠️ Storage Booking Expiring ${data.daysUntilExpiry === 0 ? 'Today' : `in ${data.daysUntilExpiry} Day${data.daysUntilExpiry > 1 ? 's' : ''}`}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/chef/bookings`;
+  const dashboardUrl = `${getDashboardUrl()}/dashboard`;
   const formattedEndDate = data.endDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const dailyRate = (data.dailyRateCents / 100).toFixed(2);
   const penaltyPerDay = ((data.dailyRateCents * data.penaltyRate) / 100).toFixed(2);
@@ -3279,8 +3269,7 @@ export const generateOverstayDetectedEmail = (data: {
   const subject = data.isInGracePeriod 
     ? `📦 Storage Overstay - Grace Period Active` 
     : `⚠️ Storage Overstay - Penalty Pending Review`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/chef/bookings`;
+  const dashboardUrl = `${getDashboardUrl()}/dashboard`;
   const formattedEndDate = data.endDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const formattedGraceEnd = data.gracePeriodEndsAt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const penaltyAmount = (data.calculatedPenaltyCents / 100).toFixed(2);
@@ -3309,8 +3298,7 @@ export const generatePenaltyChargedEmail = (data: {
   chargeDate: Date;
 }): EmailContent => {
   const subject = `💳 Overstay Penalty Charged - $${(data.penaltyAmountCents / 100).toFixed(2)} CAD`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/chef/bookings`;
+  const dashboardUrl = `${getDashboardUrl()}/dashboard`;
   const formattedDate = data.chargeDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const penaltyAmount = (data.penaltyAmountCents / 100).toFixed(2);
   
@@ -3340,8 +3328,7 @@ export const generateOverstayManagerNotificationEmail = (data: {
   const subject = data.isInGracePeriod 
     ? `📦 Storage Overstay Detected - ${data.storageName}` 
     : `⚠️ Overstay Pending Review - ${data.storageName}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/manager/overstays`;
+  const dashboardUrl = `${getDashboardUrl('kitchen')}/manager/overstays`;
   const formattedEndDate = data.endDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const formattedGraceEnd = data.gracePeriodEndsAt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const penaltyAmount = (data.calculatedPenaltyCents / 100).toFixed(2);
@@ -3374,8 +3361,7 @@ export const generateNewKitchenApplicationManagerEmail = (data: {
   submittedAt: Date;
 }): EmailContent => {
   const subject = `New Kitchen Application - ${data.chefName}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/manager/booking-dashboard?view=applications`;
+  const dashboardUrl = `${getDashboardUrl('kitchen')}/manager/applications`;
   const formattedDate = data.submittedAt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">New Kitchen Application</h2><p class="message">A chef has submitted an application to use your kitchen:</p><div class="info-box"><strong>👨‍🍳 Chef Name:</strong> ${data.chefName}<br><strong>📧 Email:</strong> ${data.chefEmail}<br><strong>🏢 Location:</strong> ${data.locationName}<br><strong>📅 Submitted:</strong> ${formattedDate}</div><p class="message">Please review this application and approve or reject it from your manager dashboard.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review Application</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
@@ -3396,8 +3382,7 @@ export const generateKitchenApplicationApprovedEmail = (data: {
   kitchenName?: string;
 }): EmailContent => {
   const subject = `Kitchen Application Approved - ${data.locationName}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/dashboard?view=discover`;
+  const dashboardUrl = `${getDashboardUrl()}/book-kitchen`;
   
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Great news! 🎉 Your kitchen application has been <strong style="color: #16a34a;">APPROVED</strong>!</p><div class="info-box"><strong>🏢 Location:</strong> ${data.locationName}${data.kitchenName ? `<br><strong>🍳 Kitchen:</strong> ${data.kitchenName}` : ''}<br><strong>📊 Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">You can now book time slots at this kitchen. Visit your dashboard to make your first booking!</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Book Kitchen Now</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   
@@ -3417,8 +3402,7 @@ export const generateKitchenApplicationRejectedEmail = (data: {
   feedback?: string;
 }): EmailContent => {
   const subject = `Kitchen Application Update - ${data.locationName}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/dashboard?view=applications`;
+  const dashboardUrl = `${getDashboardUrl()}/dashboard`;
   
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Thank you for your interest in using our kitchen facilities. Unfortunately, your application could not be approved at this time.</p><div class="info-box"><strong>🏢 Location:</strong> ${data.locationName}<br><strong>📊 Status:</strong> <span style="color: #dc2626; font-weight: 600;">Not Approved</span>${data.feedback ? `<br><br><strong>📝 Feedback:</strong> ${data.feedback}` : ''}</div><p class="message">You may reapply in the future or explore other kitchen locations on our platform.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Applications</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   
@@ -3442,8 +3426,7 @@ export const generateKitchenLicenseApprovedEmail = (data: {
   approvedAt: Date;
 }): EmailContent => {
   const subject = `Kitchen License Approved - ${data.locationName}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/manager/booking-dashboard?view=settings`;
+  const dashboardUrl = `${getDashboardUrl('kitchen')}/manager/booking-dashboard`;
   const formattedDate = data.approvedAt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.managerName},</h2><p class="message">Great news! 🎉 Your kitchen license has been <strong style="color: #16a34a;">APPROVED</strong> by the admin team!</p><div class="info-box"><strong>🏢 Location:</strong> ${data.locationName}<br><strong>📅 Approved On:</strong> ${formattedDate}<br><strong>📊 Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">Your kitchen is now fully licensed and can accept chef applications and bookings.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Dashboard</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
@@ -3464,8 +3447,7 @@ export const generateKitchenLicenseRejectedEmail = (data: {
   feedback?: string;
 }): EmailContent => {
   const subject = `Kitchen License Update Required - ${data.locationName}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/manager/booking-dashboard?view=settings`;
+  const dashboardUrl = `${getDashboardUrl('kitchen')}/manager/booking-dashboard`;
   
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.managerName},</h2><p class="message">Your kitchen license submission requires attention. The admin team was unable to approve it at this time.</p><div class="info-box"><strong>🏢 Location:</strong> ${data.locationName}<br><strong>📊 Status:</strong> <span style="color: #dc2626; font-weight: 600;">Rejected</span>${data.feedback ? `<br><br><strong>📝 Feedback:</strong> ${data.feedback}` : ''}</div><p class="message">Please review the feedback and upload a new license document from your dashboard.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Upload New License</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   
@@ -3487,8 +3469,7 @@ export const generateKitchenLicenseSubmittedAdminEmail = (data: {
   submittedAt: Date;
 }): EmailContent => {
   const subject = `Kitchen License Pending Review - ${data.locationName}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/admin/licenses`;
+  const dashboardUrl = `${getDashboardUrl('admin')}/admin`;
   const formattedDate = data.submittedAt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Kitchen License Pending Review</h2><p class="message">A manager has submitted a kitchen license for your review:</p><div class="info-box"><strong>👤 Manager:</strong> ${data.managerName}<br><strong>📧 Email:</strong> ${data.managerEmail}<br><strong>🏢 Location:</strong> ${data.locationName}<br><strong>📅 Submitted:</strong> ${formattedDate}<br><strong>📊 Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Pending Review</span></div><p class="message">Please review and approve or reject this license from the admin dashboard.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review License</a><div class="divider"></div></div><div class="footer"><p class="footer-text">This is an automated notification from Local Cooks Community.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
@@ -3518,8 +3499,7 @@ export const generateDamageClaimFiledEmail = (data: {
   claimId: number;
 }): EmailContent => {
   const subject = `Damage Claim Filed - Action Required`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/dashboard?view=damage-claims`;
+  const dashboardUrl = `${getDashboardUrl()}/dashboard`;
   
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">A damage claim has been filed against your booking. Please review and respond before the deadline.</p><div class="info-box"><strong>📋 Claim:</strong> ${data.claimTitle}<br><strong>💰 Amount:</strong> ${data.claimedAmount}<br><strong>🏢 Location:</strong> ${data.locationName}<br><strong>👤 Filed by:</strong> ${data.managerName}<br><strong>📅 Damage Date:</strong> ${data.damageDate}<br><strong>⏰ Response Deadline:</strong> <span style="color: #dc2626; font-weight: 600;">${data.responseDeadline}</span></div><p class="message">You can accept the claim or dispute it for admin review. If you don't respond by the deadline, the claim may be automatically approved.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review & Respond</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   
@@ -3544,8 +3524,7 @@ export const generateDamageClaimResponseEmail = (data: {
 }): EmailContent => {
   const isAccepted = data.response === 'accepted';
   const subject = `Damage Claim ${isAccepted ? 'Accepted' : 'Disputed'} - ${data.claimTitle}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/manager/booking-dashboard?view=damage-claims`;
+  const dashboardUrl = `${getDashboardUrl('kitchen')}/manager/booking-dashboard`;
   
   const statusColor = isAccepted ? '#16a34a' : '#dc2626';
   const statusText = isAccepted ? 'ACCEPTED' : 'DISPUTED';
@@ -3576,8 +3555,7 @@ export const generateDamageClaimDisputedAdminEmail = (data: {
   claimId: number;
 }): EmailContent => {
   const subject = `Damage Claim Disputed - Admin Review Required`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/admin/damage-claims`;
+  const dashboardUrl = `${getDashboardUrl('admin')}/admin`;
   
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Damage Claim Dispute - Review Required</h2><p class="message">A chef has disputed a damage claim and requires your review:</p><div class="info-box"><strong>📋 Claim:</strong> ${data.claimTitle}<br><strong>💰 Amount:</strong> ${data.claimedAmount}<br><strong>🏢 Location:</strong> ${data.locationName}<br><strong>👤 Manager:</strong> ${data.managerName}<br><strong>👨‍🍳 Chef:</strong> ${data.chefName} (${data.chefEmail})<br><br><strong>💬 Chef's Dispute Reason:</strong><br>${data.chefResponse}</div><p class="message">Please review the evidence and make a decision.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review Dispute</a><div class="divider"></div></div><div class="footer"><p class="footer-text">This is an automated notification from Local Cooks Community.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   
@@ -3614,10 +3592,9 @@ export const generateDamageClaimDecisionEmail = (data: {
   };
   
   const subject = `Damage Claim ${decisionLabels[data.decision]} - ${data.claimTitle}`;
-  const baseUrl = getWebsiteUrl();
   const dashboardUrl = isChef 
-    ? `${baseUrl}/dashboard?view=damage-claims`
-    : `${baseUrl}/manager/booking-dashboard?view=damage-claims`;
+    ? `${getDashboardUrl()}/dashboard`
+    : `${getDashboardUrl('kitchen')}/manager/booking-dashboard`;
   
   const amountText = data.decision === 'partially_approved' && data.finalAmount
     ? `<br><strong>💰 Final Amount:</strong> ${data.finalAmount} (originally ${data.claimedAmount})`
@@ -3650,8 +3627,7 @@ export const generateDamageClaimChargedEmail = (data: {
   claimId: number;
 }): EmailContent => {
   const subject = `Payment Processed - Damage Claim`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/dashboard?view=damage-claims`;
+  const dashboardUrl = `${getDashboardUrl()}/dashboard`;
   
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">A payment has been processed for a damage claim.</p><div class="info-box"><strong>📋 Claim:</strong> ${data.claimTitle}<br><strong>💰 Amount Charged:</strong> ${data.chargedAmount}<br><strong>🏢 Location:</strong> ${data.locationName}<br><strong>📊 Status:</strong> <span style="color: #16a34a; font-weight: 600;">Payment Complete</span></div><p class="message">This charge was made to your saved payment method. A receipt has been sent to your email by Stripe.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Details</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   
@@ -3676,8 +3652,7 @@ export const generateNewUserRegistrationAdminEmail = (data: {
   registrationDate: Date;
 }): EmailContent => {
   const subject = `New ${data.userRole.charAt(0).toUpperCase() + data.userRole.slice(1)} Registration - ${data.newUserName}`;
-  const baseUrl = getWebsiteUrl();
-  const dashboardUrl = `${baseUrl}/admin/users`;
+  const dashboardUrl = `${getDashboardUrl('admin')}/admin`;
   const formattedDate = data.registrationDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const roleColor = data.userRole === 'admin' ? '#dc2626' : data.userRole === 'manager' ? '#2563eb' : '#16a34a';
   const roleLabel = data.userRole.charAt(0).toUpperCase() + data.userRole.slice(1);

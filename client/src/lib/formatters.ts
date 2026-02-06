@@ -43,17 +43,19 @@ export function formatPrice(amountInCents: number | null | undefined): string {
  * Format date string to readable format
  * @param dateStr - ISO date string
  * @param format - Format type
+ * @param timezone - IANA timezone (defaults to Newfoundland for consistent display)
  */
 export function formatDate(
     dateStr: string | Date,
-    format: 'short' | 'long' | 'full' = 'short'
+    format: 'short' | 'long' | 'full' = 'short',
+    timezone: string = 'America/St_Johns'
 ): string {
     const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
 
     const formatOptions: Record<string, Intl.DateTimeFormatOptions> = {
-        short: { month: 'short', day: 'numeric', year: 'numeric' },
-        long: { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' },
-        full: { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' },
+        short: { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone },
+        long: { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone },
+        full: { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: timezone },
     };
 
     return date.toLocaleDateString('en-US', formatOptions[format]);
@@ -63,10 +65,11 @@ export function formatDate(
 /**
  * Format date for chart axis labels
  * @param dateStr - ISO date string
+ * @param timezone - IANA timezone (defaults to Newfoundland for consistent display)
  */
-export function formatChartDate(dateStr: string): string {
+export function formatChartDate(dateStr: string, timezone: string = 'America/St_Johns'): string {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: timezone });
 }
 
 /**

@@ -2,14 +2,14 @@ import { format, parseISO, isAfter, differenceInHours } from "date-fns";
 import { TZDate } from "@date-fns/tz";
 
 // Check if a booking time is in the past
-export function isBookingTimePast(dateStr: string, timeStr: string, timezone: string = 'America/Edmonton'): boolean {
+export function isBookingTimePast(dateStr: string, timeStr: string, timezone: string = 'America/St_Johns'): boolean {
     const bookingDateTime = createBookingDateTime(dateStr, timeStr, timezone);
     const now = new TZDate(new Date(), timezone);
     return isAfter(now, bookingDateTime);
 }
 
 // Get hours until booking
-export function getHoursUntilBooking(dateStr: string, timeStr: string, timezone: string = 'America/Edmonton'): number {
+export function getHoursUntilBooking(dateStr: string, timeStr: string, timezone: string = 'America/St_Johns'): number {
     const bookingDateTime = createBookingDateTime(dateStr, timeStr, timezone);
     const now = new TZDate(new Date(), timezone);
     return differenceInHours(bookingDateTime, now);

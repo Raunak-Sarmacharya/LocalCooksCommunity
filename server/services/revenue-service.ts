@@ -794,15 +794,24 @@ export async function getRevenueByDate(
     const startParam = start ? sql`${start}::date` : sql`CURRENT_DATE - INTERVAL '30 days'`;
     const endParam = end ? sql`${end}::date` : sql`CURRENT_DATE`;
 
+    // Look up the manager's location timezone for accurate date grouping
+    const tzResult = await db.execute(sql`
+      SELECT COALESCE(l.timezone, 'America/St_Johns') as timezone
+      FROM locations l
+      WHERE l.manager_id = ${managerIdParam}
+      LIMIT 1
+    `);
+    const managerTimezone = tzResult.rows[0]?.timezone || 'America/St_Johns';
+
     // Get service fee rate (for reference, but we use direct subtraction now)
     const { getServiceFeeRate } = await import('./pricing-service');
     const serviceFeeRate = await getServiceFeeRate();
 
     // Query revenue by date
-    // Note: Drizzle SQL template params are positional $1, $2, etc. automatically
+    // Convert to manager's local timezone for correct date grouping
     const result = await db.execute(sql`
       SELECT 
-        DATE(kb.booking_date)::text as date,
+        DATE(kb.booking_date AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone})::text as date,
         COALESCE(SUM(
           COALESCE(
             kb.total_price,
@@ -820,9 +829,9 @@ export async function getRevenueByDate(
       JOIN locations l ON k.location_id = l.id
       WHERE l.manager_id = ${managerIdParam}
         AND kb.status != 'cancelled'
-        AND DATE(kb.booking_date) >= ${startParam}
-        AND DATE(kb.booking_date) <= ${endParam}
-      GROUP BY DATE(kb.booking_date)
+        AND DATE(kb.booking_date AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) >= ${startParam}
+        AND DATE(kb.booking_date AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) <= ${endParam}
+      GROUP BY DATE(kb.booking_date AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone})
       ORDER BY date ASC
     `);
 

@@ -968,7 +968,7 @@ async function handleCheckoutSessionCompleted(
                   startTime,
                   endTime,
                   specialNotes: specialNotes || undefined,
-                  timezone: location.timezone || "America/Edmonton",
+                  timezone: location.timezone || "America/St_Johns",
                   locationName: location.name,
                   bookingId: booking.id,
                 });
@@ -1030,7 +1030,7 @@ async function handleCheckoutSessionCompleted(
               startTime,
               endTime,
               specialNotes: specialNotes || undefined,
-              timezone: location?.timezone || "America/Edmonton",
+              timezone: location?.timezone || "America/St_Johns",
               locationName: location?.name,
             });
             const emailSent = await sendEmail(chefEmail);

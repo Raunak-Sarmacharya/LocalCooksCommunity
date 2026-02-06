@@ -3874,7 +3874,7 @@ router.put(
           chef = await userService.getUser(booking.chefId);
         }
 
-        const timezone = (location as any).timezone || "America/Edmonton";
+        const timezone = (location as any).timezone || "America/St_Johns";
         const locationName = location.name;
 
         if (chef) {

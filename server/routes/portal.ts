@@ -458,7 +458,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
             // Get location notification email
             const locationData = await locationService.getLocationById(userLocationId);
             const notificationEmail = (locationData as any)?.notificationEmail;
-            const timezone = (locationData as any)?.timezone || 'America/Edmonton';
+            const timezone = (locationData as any)?.timezone || 'America/St_Johns';
             const locationName = (locationData as any)?.name || 'Location';
 
             // Send to manager
