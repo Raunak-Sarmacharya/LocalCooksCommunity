@@ -46,7 +46,7 @@ interface EquipmentItem {
 // Define strict types
 interface Booking {
     id: number;
-    status: 'pending' | 'confirmed' | 'cancelled';
+    status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
     bookingDate: string;
     startTime: string;
     endTime: string;

@@ -425,7 +425,7 @@ export async function getPendingOverstayReviews(locationId?: number): Promise<Pe
     .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
     .leftJoin(users, eq(storageBookings.chefId, users.id))
     .where(
-      inArray(storageOverstayRecords.status, ['detected', 'grace_period', 'pending_review', 'charge_failed'])
+      inArray(storageOverstayRecords.status, ['detected', 'grace_period', 'pending_review', 'penalty_approved', 'charge_pending', 'charge_failed', 'escalated'])
     )
     .orderBy(desc(storageOverstayRecords.daysOverdue));
 
@@ -668,7 +668,13 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
     return { success: false, error: 'Overstay record not found' };
   }
 
-  if (record.status !== 'penalty_approved') {
+  // ENTERPRISE STANDARD: Allow charging from multiple statuses
+  // - penalty_approved: initial charge after manager approval
+  // - charge_failed: retry after a previous failure (legacy records)
+  // - charge_pending: recovery from stuck state (e.g. server crash during previous charge)
+  // - escalated: admin force-retry (e.g. chef updated their card)
+  const chargeableStatuses = ['penalty_approved', 'charge_failed', 'charge_pending', 'escalated'];
+  if (!chargeableStatuses.includes(record.status)) {
     return { success: false, error: `Cannot charge record in status: ${record.status}` };
   }
 
@@ -1065,21 +1071,23 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
         chargeId: chargeId || undefined,
       };
     } else {
-      // Payment requires action (3DS/SCA) or failed
-      // ENTERPRISE STANDARD: Create a Stripe Checkout session for chef to complete payment
-      const requires3DS = paymentIntent.status === 'requires_action' || 
-                          paymentIntent.status === 'requires_confirmation' ||
-                          paymentIntent.status === 'requires_payment_method';
+      // ENTERPRISE STANDARD: Auto-charge failed — immediately escalate and create self-serve checkout
+      // No retry system. On any failure: escalate → chef gets payment link → admin notified.
+      const failureReason = paymentIntent.status === 'requires_action' || 
+                            paymentIntent.status === 'requires_confirmation' ||
+                            paymentIntent.status === 'requires_payment_method'
+        ? `Payment requires authentication (3DS/SCA)`
+        : `Payment status: ${paymentIntent.status}`;
 
       await db
         .update(storageOverstayRecords)
         .set({
-          status: 'charge_failed',
+          status: 'escalated',
           stripePaymentIntentId: paymentIntent.id,
           chargeFailedAt: new Date(),
-          chargeFailureReason: requires3DS 
-            ? `Payment requires authentication (3DS/SCA). A payment link has been sent to the chef.`
-            : `Payment status: ${paymentIntent.status}`,
+          chargeFailureReason: failureReason,
+          resolutionType: 'escalated_collection',
+          resolutionNotes: `Auto-escalated: off-session charge failed (${failureReason}). Self-serve payment link sent to chef.`,
           updatedAt: new Date(),
         })
         .where(eq(storageOverstayRecords.id, overstayRecordId));
@@ -1087,92 +1095,43 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
       await createOverstayHistoryEntry(
         overstayRecordId,
         'charge_pending',
-        'charge_failed',
-        'charge_attempt',
+        'escalated',
+        'auto_escalation',
         'system',
-        requires3DS 
-          ? `Payment requires 3DS/SCA authentication. Creating payment link for chef.`
-          : `Payment failed: ${paymentIntent.status}`,
-        { paymentIntentId: paymentIntent.id, status: paymentIntent.status, requires3DS }
+        `Off-session charge failed: ${failureReason}. Escalated immediately.`,
+        { paymentIntentId: paymentIntent.id, status: paymentIntent.status }
       );
 
-      // If 3DS/SCA is required, create a payment link and send to chef
-      if (requires3DS && booking.chefId) {
-        try {
-          const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL || 'https://localcooks.com';
-          const checkoutResult = await createPenaltyPaymentCheckout(
-            overstayRecordId,
-            booking.chefId,
-            `${baseUrl}/chef/payments/success?overstay=${overstayRecordId}`,
-            `${baseUrl}/chef/payments/cancel?overstay=${overstayRecordId}`
-          );
+      // Create self-serve checkout session and email chef
+      await sendEscalationPaymentLinkToChef(overstayRecordId, record, booking.chefId, failureReason);
 
-          if ('checkoutUrl' in checkoutResult) {
-            // Send email to chef with payment link
-            const [chef] = await db
-              .select({ email: users.username })
-              .from(users)
-              .where(eq(users.id, booking.chefId))
-              .limit(1);
-
-            if (chef?.email) {
-              const { sendEmail } = await import('../email');
-              await sendEmail({
-                to: chef.email,
-                subject: `Action Required: Complete Your Overstay Penalty Payment`,
-                html: `
-                  <h2>Payment Authentication Required</h2>
-                  <p>Your card requires additional verification (3D Secure) to complete the overstay penalty payment.</p>
-                  <p><strong>Amount:</strong> $${((record.finalPenaltyCents || 0) / 100).toFixed(2)}</p>
-                  <p><strong>Days Overdue:</strong> ${record.daysOverdue}</p>
-                  <p>Please click the link below to complete your payment:</p>
-                  <p><a href="${checkoutResult.checkoutUrl}" style="display: inline-block; padding: 12px 24px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 6px;">Complete Payment</a></p>
-                  <p>This link will expire in 24 hours.</p>
-                  <p><em>Note: You will not be able to make new bookings until this penalty is resolved.</em></p>
-                `,
-                text: `Payment Authentication Required\n\nYour card requires additional verification to complete the overstay penalty payment.\n\nAmount: $${((record.finalPenaltyCents || 0) / 100).toFixed(2)}\nDays Overdue: ${record.daysOverdue}\n\nComplete your payment here: ${checkoutResult.checkoutUrl}\n\nThis link will expire in 24 hours.`,
-              });
-              logger.info(`[OverstayService] Sent 3DS payment link email to chef ${chef.email} for overstay ${overstayRecordId}`);
-            }
-
-            await createOverstayHistoryEntry(
-              overstayRecordId,
-              'charge_failed',
-              'charge_failed',
-              'payment_link_sent',
-              'system',
-              `3DS/SCA payment link sent to chef`,
-              { checkoutUrl: checkoutResult.checkoutUrl }
-            );
-          }
-        } catch (checkoutError) {
-          logger.error(`[OverstayService] Failed to create 3DS payment link:`, checkoutError);
-        }
-      }
-
-      // Check if escalation is needed after this failure
-      // This runs async but we don't await to avoid blocking the response
-      checkAndEscalateOverstay(overstayRecordId).catch(err => 
-        logger.error(`[OverstayService] Escalation check failed:`, err)
-      );
+      // Notify admins of escalation
+      await sendEscalationAdminEmail(overstayRecordId, record, failureReason);
 
       return { 
         success: false, 
-        error: requires3DS 
-          ? `Payment requires authentication. A payment link has been sent to the chef's email.`
-          : `Payment failed: ${paymentIntent.status}`,
-        requires3DS,
+        error: `Auto-charge failed (${failureReason}). Escalated — payment link sent to chef.`,
       };
     }
   } catch (error: any) {
+    // ENTERPRISE STANDARD: On ANY Stripe exception, immediately escalate + create self-serve checkout.
+    // No retry system. Covers: 3DS/SCA, card declined, expired card, insufficient funds, network errors.
     const errorMessage = error.message || 'Unknown error';
-    
+    const stripeErrorCode = error.code || error.raw?.code || '';
+    const failureReason = stripeErrorCode === 'authentication_required' || 
+                           errorMessage.includes('requires authentication') ||
+                           errorMessage.includes('authentication_required')
+      ? `Payment requires authentication (3DS/SCA)`
+      : errorMessage;
+
     await db
       .update(storageOverstayRecords)
       .set({
-        status: 'charge_failed',
+        status: 'escalated',
         chargeFailedAt: new Date(),
-        chargeFailureReason: errorMessage,
+        chargeFailureReason: failureReason,
+        resolutionType: 'escalated_collection',
+        resolutionNotes: `Auto-escalated: off-session charge threw error (${failureReason}). Self-serve payment link sent to chef.`,
         updatedAt: new Date(),
       })
       .where(eq(storageOverstayRecords.id, overstayRecordId));
@@ -1180,168 +1139,188 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
     await createOverstayHistoryEntry(
       overstayRecordId,
       'charge_pending',
-      'charge_failed',
-      'charge_attempt',
+      'escalated',
+      'auto_escalation',
       'system',
-      `Charge failed: ${errorMessage}`,
-      { error: errorMessage }
+      `Off-session charge error: ${failureReason}. Escalated immediately.`,
+      { error: errorMessage, stripeErrorCode }
     );
 
-    logger.error(`[OverstayService] Penalty charge failed`, {
+    logger.error(`[OverstayService] Penalty charge failed — escalated immediately`, {
       overstayRecordId,
       error: errorMessage,
+      stripeErrorCode,
     });
 
-    // Check if escalation is needed after this failure
-    checkAndEscalateOverstay(overstayRecordId).catch(err => 
-      logger.error(`[OverstayService] Escalation check failed:`, err)
-    );
+    // Create self-serve checkout session and email chef
+    await sendEscalationPaymentLinkToChef(overstayRecordId, record, booking.chefId, failureReason);
 
-    return { success: false, error: errorMessage };
+    // Notify admins of escalation
+    await sendEscalationAdminEmail(overstayRecordId, record, failureReason);
+
+    return { success: false, error: `Auto-charge failed (${failureReason}). Escalated — payment link sent to chef.` };
   }
 }
 
 // ============================================================================
-// ESCALATION FUNCTIONS
+// ESCALATION HELPER FUNCTIONS
 // ============================================================================
 
-const MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION = 3;
-
 /**
- * Count the number of failed charge attempts for an overstay record
- * Used to determine if escalation is needed
+ * Send a self-serve Stripe Checkout payment link to the chef on escalation.
+ * Called immediately when auto-charge fails — no retry system.
+ * 
+ * Flow: Auto-charge fails → escalate → chef gets this payment link → if chef pays, webhook resolves it.
  */
-async function countFailedChargeAttempts(overstayRecordId: number): Promise<number> {
-  const [result] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(storageOverstayHistory)
-    .where(
-      and(
-        eq(storageOverstayHistory.overstayRecordId, overstayRecordId),
-        eq(storageOverstayHistory.eventType, 'charge_attempt'),
-        eq(storageOverstayHistory.newStatus, 'charge_failed')
-      )
+async function sendEscalationPaymentLinkToChef(
+  overstayRecordId: number,
+  record: StorageOverstayRecord,
+  chefId: number | null,
+  failureReason: string
+): Promise<void> {
+  if (!chefId) return;
+
+  try {
+    // Get chef email
+    const [chef] = await db
+      .select({ email: users.username })
+      .from(users)
+      .where(eq(users.id, chefId))
+      .limit(1);
+
+    if (!chef?.email) {
+      logger.warn(`[OverstayService] No email found for chef ${chefId} — cannot send escalation payment link`);
+      return;
+    }
+
+    // Get storage name for email context
+    const [booking] = await db
+      .select({ storageName: storageListings.name })
+      .from(storageBookings)
+      .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+      .where(eq(storageBookings.id, record.storageBookingId))
+      .limit(1);
+
+    const storageName = booking?.storageName || 'Storage';
+    const penaltyAmount = ((record.finalPenaltyCents || record.calculatedPenaltyCents || 0) / 100).toFixed(2);
+
+    // Create Stripe Checkout session
+    const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL || 'https://localcooks.com';
+    const checkoutResult = await createPenaltyPaymentCheckout(
+      overstayRecordId,
+      chefId,
+      `${baseUrl}/chef/payments/success?overstay=${overstayRecordId}`,
+      `${baseUrl}/chef/payments/cancel?overstay=${overstayRecordId}`
     );
-  
-  return result?.count || 0;
+
+    if ('checkoutUrl' in checkoutResult) {
+      const { sendEmail } = await import('../email');
+      await sendEmail({
+        to: chef.email,
+        subject: `⚠️ Action Required: Overstay Penalty Payment - $${penaltyAmount} CAD`,
+        html: `
+          <h2>⚠️ Overstay Penalty — Payment Required</h2>
+          <p>We were unable to automatically charge your saved payment method for your storage overstay penalty.</p>
+          <p><strong>Reason:</strong> ${failureReason}</p>
+          <p><strong>Amount:</strong> $${penaltyAmount} CAD</p>
+          <p><strong>Storage:</strong> ${storageName}</p>
+          <p><strong>Days Overdue:</strong> ${record.daysOverdue}</p>
+          <p>Please pay immediately using the secure link below:</p>
+          <p><a href="${checkoutResult.checkoutUrl}" style="display: inline-block; padding: 12px 24px; background-color: #DC2626; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Pay Now — $${penaltyAmount} CAD</a></p>
+          <p>This link will expire in 24 hours.</p>
+          <p><em>You will not be able to make new bookings until this penalty is resolved. If payment is not received, this matter may be referred for manual collection.</em></p>
+        `,
+        text: `Overstay Penalty — Payment Required\n\nReason: ${failureReason}\nAmount: $${penaltyAmount} CAD\nStorage: ${storageName}\nDays Overdue: ${record.daysOverdue}\n\nPay now: ${checkoutResult.checkoutUrl}\n\nThis link expires in 24 hours.`,
+      });
+      logger.info(`[OverstayService] Sent escalation payment link to chef ${chef.email} for overstay ${overstayRecordId}`);
+
+      await createOverstayHistoryEntry(
+        overstayRecordId,
+        'escalated',
+        'escalated',
+        'escalation_payment_link_sent',
+        'system',
+        `Escalation payment link sent to chef ${chef.email}`,
+        { checkoutUrl: checkoutResult.checkoutUrl, chefEmail: chef.email, failureReason }
+      );
+    }
+  } catch (error) {
+    logger.error(`[OverstayService] Failed to send escalation payment link to chef:`, error);
+  }
 }
 
 /**
- * Check if an overstay should be escalated and escalate if needed
- * Called after each charge failure
- * 
- * Escalation criteria:
- * - 3 or more failed charge attempts
- * - No successful payment
- * 
- * Escalation actions:
- * - Update status to 'escalated'
- * - Notify admin for manual collection
- * - Log in history
+ * Notify all admin users when an overstay penalty is escalated.
+ * Called immediately when auto-charge fails — no retry system.
  */
-export async function checkAndEscalateOverstay(
-  overstayRecordId: number
-): Promise<{ escalated: boolean; reason?: string }> {
+async function sendEscalationAdminEmail(
+  overstayRecordId: number,
+  record: StorageOverstayRecord,
+  failureReason: string
+): Promise<void> {
   try {
-    const record = await getOverstayRecord(overstayRecordId);
-    if (!record) {
-      return { escalated: false, reason: 'Record not found' };
+    const { sendEmail } = await import('../email');
+
+    // Get booking context
+    const [booking] = await db
+      .select({
+        storageName: storageListings.name,
+        chefId: storageBookings.chefId,
+      })
+      .from(storageBookings)
+      .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+      .where(eq(storageBookings.id, record.storageBookingId))
+      .limit(1);
+
+    let chefEmail = 'Unknown';
+    if (booking?.chefId) {
+      const [chef] = await db
+        .select({ email: users.username })
+        .from(users)
+        .where(eq(users.id, booking.chefId))
+        .limit(1);
+      chefEmail = chef?.email || 'Unknown';
     }
 
-    // Don't escalate if already resolved or escalated
-    if (['charge_succeeded', 'resolved', 'escalated', 'penalty_waived'].includes(record.status)) {
-      return { escalated: false, reason: 'Already resolved or escalated' };
+    const penaltyAmount = ((record.finalPenaltyCents || record.calculatedPenaltyCents || 0) / 100).toFixed(2);
+
+    // Get all admin users
+    const admins = await db
+      .select({ username: users.username })
+      .from(users)
+      .where(eq(users.role, 'admin'));
+
+    if (admins.length === 0) {
+      logger.warn(`[OverstayService] No admin users found — escalation email NOT sent for overstay ${overstayRecordId}`);
+      return;
     }
 
-    // Count failed attempts
-    const failedAttempts = await countFailedChargeAttempts(overstayRecordId);
-    
-    if (failedAttempts >= MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION) {
-      logger.info(`[OverstayService] Escalating overstay ${overstayRecordId} after ${failedAttempts} failed charge attempts`);
-
-      // Update to escalated status
-      await db
-        .update(storageOverstayRecords)
-        .set({
-          status: 'escalated',
-          resolvedAt: new Date(),
-          resolutionType: 'escalated_collection',
-          resolutionNotes: `Auto-escalated after ${failedAttempts} failed charge attempts. Requires manual collection.`,
-          updatedAt: new Date(),
-        })
-        .where(eq(storageOverstayRecords.id, overstayRecordId));
-
-      // Create history entry
-      await createOverstayHistoryEntry(
-        overstayRecordId,
-        record.status as OverstayStatus,
-        'escalated',
-        'auto_escalation',
-        'system',
-        `Auto-escalated after ${failedAttempts} failed charge attempts`,
-        { failedAttempts, threshold: MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION }
-      );
-
-      // Send admin notification
-      try {
-        const { sendEmail } = await import('../email');
-        const adminEmail = process.env.ADMIN_EMAIL || process.env.SUPPORT_EMAIL;
-        
-        if (adminEmail) {
-          // Get booking details for context
-          const [booking] = await db
-            .select({
-              storageName: storageListings.name,
-              chefId: storageBookings.chefId,
-            })
-            .from(storageBookings)
-            .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
-            .where(eq(storageBookings.id, record.storageBookingId))
-            .limit(1);
-
-          let chefEmail = 'Unknown';
-          if (booking?.chefId) {
-            const [chef] = await db
-              .select({ email: users.username })
-              .from(users)
-              .where(eq(users.id, booking.chefId))
-              .limit(1);
-            chefEmail = chef?.email || 'Unknown';
-          }
-
-          await sendEmail({
-            to: adminEmail,
-            subject: `⚠️ Escalated Overstay Penalty - Manual Collection Required`,
-            html: `
-              <h2>Overstay Penalty Escalated for Manual Collection</h2>
-              <p>An overstay penalty has been escalated after ${failedAttempts} failed charge attempts.</p>
-              <h3>Details:</h3>
-              <ul>
-                <li><strong>Overstay Record ID:</strong> ${overstayRecordId}</li>
-                <li><strong>Storage:</strong> ${booking?.storageName || 'Unknown'}</li>
-                <li><strong>Chef Email:</strong> ${chefEmail}</li>
-                <li><strong>Penalty Amount:</strong> $${((record.finalPenaltyCents || record.calculatedPenaltyCents || 0) / 100).toFixed(2)}</li>
-                <li><strong>Days Overdue:</strong> ${record.daysOverdue}</li>
-                <li><strong>Failed Attempts:</strong> ${failedAttempts}</li>
-                <li><strong>Last Failure Reason:</strong> ${record.chargeFailureReason || 'Unknown'}</li>
-              </ul>
-              <p>Please review and take appropriate collection action.</p>
-            `,
-            text: `Overstay Penalty Escalated\n\nRecord ID: ${overstayRecordId}\nChef: ${chefEmail}\nAmount: $${((record.finalPenaltyCents || record.calculatedPenaltyCents || 0) / 100).toFixed(2)}\nFailed Attempts: ${failedAttempts}`,
-          });
-          logger.info(`[OverstayService] Sent escalation notification to admin for overstay ${overstayRecordId}`);
-        }
-      } catch (emailError) {
-        logger.error(`[OverstayService] Failed to send escalation email:`, emailError);
+    for (const admin of admins) {
+      if (admin.username) {
+        await sendEmail({
+          to: admin.username,
+          subject: `⚠️ Escalated Overstay Penalty — Auto-Charge Failed`,
+          html: `
+            <h2>Overstay Penalty Escalated</h2>
+            <p>An overstay penalty auto-charge failed and has been escalated. A self-serve payment link has been sent to the chef.</p>
+            <h3>Details:</h3>
+            <ul>
+              <li><strong>Overstay Record ID:</strong> ${overstayRecordId}</li>
+              <li><strong>Storage:</strong> ${booking?.storageName || 'Unknown'}</li>
+              <li><strong>Chef Email:</strong> ${chefEmail}</li>
+              <li><strong>Penalty Amount:</strong> $${penaltyAmount} CAD</li>
+              <li><strong>Days Overdue:</strong> ${record.daysOverdue}</li>
+              <li><strong>Failure Reason:</strong> ${failureReason}</li>
+            </ul>
+            <p>If the chef does not pay via the link, please take appropriate collection action.</p>
+          `,
+          text: `Overstay Penalty Escalated\n\nRecord ID: ${overstayRecordId}\nChef: ${chefEmail}\nAmount: $${penaltyAmount} CAD\nReason: ${failureReason}`,
+        });
       }
-
-      return { escalated: true, reason: `${failedAttempts} failed charge attempts` };
     }
-
-    return { escalated: false, reason: `Only ${failedAttempts} failed attempts (threshold: ${MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION})` };
-  } catch (error) {
-    logger.error(`[OverstayService] Error checking escalation for overstay ${overstayRecordId}:`, error);
-    return { escalated: false, reason: 'Error during escalation check' };
+    logger.info(`[OverstayService] Sent escalation notification to ${admins.length} admin(s) for overstay ${overstayRecordId}`);
+  } catch (emailError) {
+    logger.error(`[OverstayService] Failed to send escalation admin email:`, emailError);
   }
 }
 
@@ -1592,7 +1571,7 @@ export async function getChefPendingPenalties(chefId: number) {
  */
 export async function getChefAllPenalties(chefId: number) {
   // Statuses that are relevant to show the chef (approved, paid, waived, resolved)
-  const relevantStatuses: OverstayStatus[] = ['penalty_approved', 'charge_pending', 'charge_succeeded', 'charge_failed', 'penalty_waived', 'resolved'];
+  const relevantStatuses: OverstayStatus[] = ['penalty_approved', 'charge_pending', 'charge_succeeded', 'charge_failed', 'escalated', 'penalty_waived', 'resolved'];
   
   const records = await db
     .select({
@@ -1630,11 +1609,13 @@ export async function getChefAllPenalties(chefId: number) {
   return records.map(r => {
     // BACKWARDS COMPATIBILITY: Determine payment status using multiple indicators
     // 1. Primary: status field
-    // 2. Fallback: stripeChargeId exists (charge was made)
+    // 2. Fallback: stripeChargeId exists AND status isn't a failure/escalated state
+    //    (stripeChargeId is set when a charge is attempted, not only when it succeeds)
     // 3. Fallback: resolutionType === 'paid'
     // 4. Fallback: chargeSucceededAt exists
+    const failureStatuses = ['charge_failed', 'escalated', 'charge_pending'];
     const statusIndicatesPaid = r.status === 'charge_succeeded';
-    const hasStripeCharge = !!r.stripeChargeId;
+    const hasStripeCharge = !!r.stripeChargeId && !failureStatuses.includes(r.status);
     const resolutionIndicatesPaid = r.resolutionType === 'paid';
     const hasChargeSucceededTimestamp = !!r.chargeSucceededAt;
     
@@ -1642,10 +1623,11 @@ export async function getChefAllPenalties(chefId: number) {
     const isPaid = statusIndicatesPaid || hasStripeCharge || resolutionIndicatesPaid || hasChargeSucceededTimestamp;
     
     // Consider resolved if paid, waived, or explicitly resolved
+    // Note: resolvedAt can be set during escalation, so only trust it for non-failure statuses
     const isResolved = isPaid || 
       r.status === 'penalty_waived' || 
       r.status === 'resolved' ||
-      !!r.resolvedAt;
+      (!failureStatuses.includes(r.status) && !!r.resolvedAt);
     
     return {
       ...r,
@@ -1700,8 +1682,9 @@ export async function createPenaltyPaymentCheckout(
       return { error: 'Unauthorized: This penalty does not belong to you' };
     }
 
-    // Verify status is penalty_approved
-    if (overstayRecord.status !== 'penalty_approved') {
+    // Verify status allows payment — penalty_approved, charge_failed, or escalated
+    const payableStatuses = ['penalty_approved', 'charge_failed', 'escalated'];
+    if (!payableStatuses.includes(overstayRecord.status)) {
       return { error: `Cannot pay penalty in status: ${overstayRecord.status}` };
     }
 
@@ -1830,20 +1813,25 @@ export async function createPenaltyPaymentCheckout(
 
     const session = await stripe.checkout.sessions.create(sessionParams);
 
-    // Update record to charge_pending
+    // ENTERPRISE STANDARD: Do NOT change status here.
+    // The status should remain as-is (charge_failed, escalated, etc.).
+    // When the chef completes payment, the Stripe webhook (checkout.session.completed)
+    // will update the status to charge_succeeded. Setting charge_pending here was
+    // overwriting the charge_failed status and causing records to get "stuck".
+    // Store the checkout session ID for tracking instead.
     await db
       .update(storageOverstayRecords)
       .set({
-        status: 'charge_pending',
         updatedAt: new Date(),
       })
       .where(eq(storageOverstayRecords.id, overstayRecordId));
 
-    logger.info(`[OverstayService] Created penalty payment checkout`, {
+    logger.info(`[OverstayService] Created penalty payment checkout (status unchanged)`, {
       overstayRecordId,
       chefId,
       penaltyAmountCents,
       sessionId: session.id,
+      currentStatus: overstayRecord.status,
     });
 
     return { checkoutUrl: session.url! };
@@ -2057,7 +2045,8 @@ export async function hasChefUnpaidPenalties(chefId: number): Promise<boolean> {
     'pending_review',
     'penalty_approved',
     'charge_pending',
-    'charge_failed'
+    'charge_failed',
+    'escalated'
   ];
 
   const [result] = await db
@@ -2085,7 +2074,8 @@ export async function getChefUnpaidPenalties(chefId: number) {
     'pending_review', 
     'penalty_approved',
     'charge_pending',
-    'charge_failed'
+    'charge_failed',
+    'escalated'
   ];
 
   const records = await db
@@ -2122,7 +2112,7 @@ export async function getChefUnpaidPenalties(chefId: number) {
     storageType: r.storageType || 'dry',
     kitchenName: r.kitchenName || 'Kitchen',
     penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0,
-    requiresImmediatePayment: ['penalty_approved', 'charge_failed'].includes(r.status),
+    requiresImmediatePayment: ['penalty_approved', 'charge_failed', 'escalated'].includes(r.status),
   }));
 }
 
@@ -2350,5 +2340,4 @@ export const overstayPenaltyService = {
   hasChefUnpaidPenalties,
   getChefUnpaidPenalties,
   refundOverstayPenalty,
-  checkAndEscalateOverstay,
 };

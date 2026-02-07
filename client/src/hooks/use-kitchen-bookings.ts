@@ -11,7 +11,7 @@ interface Booking {
   startTime: string;
   endTime: string;
   selectedSlots?: Array<string | { startTime: string; endTime: string }>; // Discrete time slots
-  status: "pending" | "confirmed" | "cancelled";
+  status: "pending" | "confirmed" | "cancelled" | "completed";
   specialNotes?: string;
   createdAt: string;
   updatedAt: string;

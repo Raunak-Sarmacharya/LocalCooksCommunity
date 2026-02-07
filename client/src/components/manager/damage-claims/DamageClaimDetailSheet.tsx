@@ -145,6 +145,7 @@ function getStatusBadge(status: string) {
     charge_pending: { variant: "default", label: "Charging..." },
     charge_succeeded: { variant: "secondary", label: "Paid" },
     charge_failed: { variant: "destructive", label: "Charge Failed" },
+    escalated: { variant: "destructive", label: "Escalated — Awaiting Chef Payment" },
     resolved: { variant: "outline", label: "Resolved" },
     expired: { variant: "outline", label: "Expired" },
   };

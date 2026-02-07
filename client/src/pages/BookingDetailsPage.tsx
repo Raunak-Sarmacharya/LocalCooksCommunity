@@ -760,7 +760,11 @@ export default function BookingDetailsPage() {
                         <span className={`text-sm font-mono ${rejected ? "text-muted-foreground line-through" : ""}`}>
                           {formatCurrency(storage.totalPrice)}
                         </span>
-                        {storage.status === "cancelled" ? (
+                        {storage.status === "completed" ? (
+                          <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200">
+                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />cleared
+                          </Badge>
+                        ) : storage.status === "cancelled" ? (
                           <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
                             <XCircle className="h-2.5 w-2.5 mr-0.5" />rejected
                           </Badge>

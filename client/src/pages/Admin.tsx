@@ -3,6 +3,8 @@ import PromoCodeSender from "@/components/admin/PromoCodeSender";
 import ChefKitchenAccessManager from "@/components/admin/ChefKitchenAccessManager";
 import DamageClaimReview from "@/components/admin/DamageClaimReview";
 import DamageClaimSettings from "@/components/admin/DamageClaimSettings";
+import OverstayPenaltySettings from "@/components/admin/OverstayPenaltySettings";
+import EscalatedPenalties from "@/components/admin/EscalatedPenalties";
 import {
   formatApplicationStatus,
   formatCertificationStatus,
@@ -184,7 +186,7 @@ function AdminDashboard() {
 
   // Update active tab when category changes
   useEffect(() => {
-    if (activeCategory === "applications" && activeTab !== "applications" && activeTab !== "kitchen-licenses" && activeTab !== "damage-claims") {
+    if (activeCategory === "applications" && activeTab !== "applications" && activeTab !== "kitchen-licenses" && activeTab !== "damage-claims" && activeTab !== "escalated-penalties") {
       setActiveTab("applications");
     } else if (activeCategory === "management" && activeTab !== "chef-kitchen-access" && activeTab !== "kitchen-management") {
       setActiveTab("chef-kitchen-access");
@@ -192,7 +194,7 @@ function AdminDashboard() {
       setActiveTab("promos");
     } else if (activeCategory === "revenue" && activeTab !== "manager-revenues" && activeTab !== "platform-overview") {
       setActiveTab("manager-revenues");
-    } else if (activeCategory === "settings" && activeTab !== "platform-settings" && activeTab !== "account-settings" && activeTab !== "damage-claim-settings") {
+    } else if (activeCategory === "settings" && activeTab !== "platform-settings" && activeTab !== "account-settings" && activeTab !== "damage-claim-settings" && activeTab !== "overstay-settings") {
       setActiveTab("platform-settings");
     }
   }, [activeCategory, activeTab]);
@@ -1069,7 +1071,7 @@ function AdminDashboard() {
                 {/* Sub-tabs within category */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                   {activeCategory === "applications" && (
-                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
+                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
                       <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
                         <Shield className="h-4 w-4" />
                         Chef Applications
@@ -1081,6 +1083,10 @@ function AdminDashboard() {
                       <TabsTrigger value="damage-claims" className="flex items-center gap-2 rounded-lg">
                         <AlertTriangle className="h-4 w-4" />
                         Damage Claims
+                      </TabsTrigger>
+                      <TabsTrigger value="escalated-penalties" className="flex items-center gap-2 rounded-lg">
+                        <AlertTriangle className="h-4 w-4" />
+                        Escalated
                       </TabsTrigger>
                     </TabsList>
                   )}
@@ -1121,10 +1127,14 @@ function AdminDashboard() {
                   )}
 
                   {activeCategory === "settings" && (
-                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
+                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
                       <TabsTrigger value="platform-settings" className="flex items-center gap-2 rounded-lg">
                         <Settings className="h-4 w-4" />
                         Platform Settings
+                      </TabsTrigger>
+                      <TabsTrigger value="overstay-settings" className="flex items-center gap-2 rounded-lg">
+                        <Clock className="h-4 w-4" />
+                        Storage & Overstay
                       </TabsTrigger>
                       <TabsTrigger value="damage-claim-settings" className="flex items-center gap-2 rounded-lg">
                         <AlertTriangle className="h-4 w-4" />
@@ -1293,9 +1303,23 @@ function AdminDashboard() {
                     </div>
                   </TabsContent>
 
+                  {/* Escalated Penalties Tab Content */}
+                  <TabsContent value="escalated-penalties" className="mt-0">
+                    <ErrorBoundary>
+                      <EscalatedPenalties />
+                    </ErrorBoundary>
+                  </TabsContent>
+
                   {/* Platform Settings Tab Content */}
                   <TabsContent value="platform-settings" className="mt-0">
                     <PlatformSettingsView />
+                  </TabsContent>
+
+                  {/* Overstay & Storage Settings Tab Content */}
+                  <TabsContent value="overstay-settings" className="mt-0">
+                    <ErrorBoundary>
+                      <OverstayPenaltySettings />
+                    </ErrorBoundary>
                   </TabsContent>
 
                   {/* Damage Claim Settings Tab Content */}

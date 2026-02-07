@@ -626,8 +626,16 @@ export function OverstayPenaltyQueue() {
       });
       return response.json();
     },
-    onSuccess: () => {
-      toast({ title: "Penalty approved & charged", description: "The penalty has been approved and the chef's card has been charged." });
+    onSuccess: (data) => {
+      if (data?.chargeResult?.success) {
+        toast({ title: "Penalty approved & charged", description: "The penalty has been approved and the chef's card has been charged." });
+      } else {
+        toast({ 
+          title: "Penalty approved — charge failed", 
+          description: data?.chargeResult?.error || "Auto-charge failed. A payment link has been sent to the chef's email.",
+          variant: "destructive",
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/manager/overstays'] });
     },
     onError: (error: Error) => {
@@ -842,14 +850,42 @@ export function OverstayPenaltyQueue() {
           )}
 
           {/* Approved, awaiting charge */}
-          {overstays.filter(o => o.status === 'penalty_approved').length > 0 && (
+          {overstays.filter(o => o.status === 'penalty_approved' || o.status === 'charge_pending').length > 0 && (
             <div className="mb-6">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                 <CreditCard className="w-5 h-5 text-blue-500" />
                 Ready to Charge
               </h3>
               {overstays
-                .filter(o => o.status === 'penalty_approved')
+                .filter(o => o.status === 'penalty_approved' || o.status === 'charge_pending')
+                .map(overstay => (
+                  <OverstayCard
+                    key={overstay.overstayId}
+                    overstay={overstay}
+                    onApprove={(id, amount, notes) => approveMutation.mutate({ id, amount, notes })}
+                    onWaive={(id, reason, notes) => waiveMutation.mutate({ id, reason, notes })}
+                    onCharge={(id) => chargeMutation.mutate(id)}
+                    onResolve={(id, type, notes) => resolveMutation.mutate({ id, type, notes })}
+                    isProcessing={isProcessing}
+                  />
+                ))}
+            </div>
+          )}
+
+          {/* Escalated — requires manual collection */}
+          {overstays.filter(o => o.status === 'escalated').length > 0 && (
+            <div className="mb-6">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+                <h3 className="text-lg font-semibold flex items-center gap-2 text-red-700">
+                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                  Escalated — Manual Collection Required ({overstays.filter(o => o.status === 'escalated').length})
+                </h3>
+                <p className="text-sm text-red-600 mt-1">
+                  These penalties failed auto-charge after multiple attempts. A payment link has been sent to the chef. Admin has been notified.
+                </p>
+              </div>
+              {overstays
+                .filter(o => o.status === 'escalated')
                 .map(overstay => (
                   <OverstayCard
                     key={overstay.overstayId}

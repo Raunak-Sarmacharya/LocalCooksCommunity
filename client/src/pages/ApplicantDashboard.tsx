@@ -78,6 +78,7 @@ import ChefSupportPage from "@/components/chef/ChefSupportPage";
 import { IssuesAndRefunds } from "@/components/chef/IssuesAndRefunds";
 import { TransactionHistory } from "@/components/chef/TransactionHistory";
 import TidioController from "@/components/chat/TidioController";
+import OutstandingDuesBanner from "@/components/chef/OutstandingDuesBanner";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
 import DocumentUpload, { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
 import { SellerApplicationCard, KitchenApplicationCard } from "@/components/chef/applications";
@@ -1235,6 +1236,9 @@ export default function ApplicantDashboard() {
           </Button>
         </div>
       )}
+
+      {/* Outstanding Dues Banner — blocks bookings until resolved */}
+      <OutstandingDuesBanner />
 
       {renderContent()}
 

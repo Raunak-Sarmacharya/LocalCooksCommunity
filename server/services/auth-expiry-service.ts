@@ -4,9 +4,16 @@
  * Handles automatic cancellation of expired payment authorizations.
  * When a chef completes checkout with manual capture, the payment is only authorized (held).
  * The manager has 24 hours to approve or reject. If no action is taken,
- * this service cancels the authorization to release the hold on the chef's card.
+ * the authorization is cancelled to release the hold on the chef's card.
  * 
- * Called by the daily cron job (/detect-overstays endpoint).
+ * Enforcement uses TWO complementary strategies (industry standard):
+ * 
+ * 1. LAZY EVALUATION (primary): When manager fetches bookings or chef views
+ *    their booking, expired authorizations are cancelled inline before returning
+ *    data. This ensures near-instant enforcement regardless of cron frequency.
+ * 
+ * 2. CRON SWEEP (safety net): Daily cron catches any authorizations that were
+ *    never read after expiry (e.g. nobody opened the dashboard for days).
  */
 
 import { db } from "../db";
@@ -32,8 +39,189 @@ export interface AuthExpiryResult {
 
 const AUTH_EXPIRY_HOURS = 24;
 
+// ============================================================================
+// LAZY EVALUATION — called inline during read operations
+// ============================================================================
+
+/**
+ * Check if a single kitchen booking's authorization has expired, and if so,
+ * cancel it inline. Called during read operations (lazy evaluation).
+ * 
+ * Returns true if the authorization was expired and cancelled.
+ */
+export async function lazyExpireKitchenBookingAuth(booking: {
+  id: number;
+  paymentStatus: string | null;
+  paymentIntentId: string | null;
+  chefId: number | null;
+  kitchenId: number;
+  createdAt: Date | null;
+  status: string | null;
+}): Promise<boolean> {
+  // Only applies to authorized + pending bookings
+  if (booking.paymentStatus !== 'authorized' || booking.status !== 'pending') return false;
+  if (!booking.paymentIntentId || !booking.createdAt) return false;
+
+  const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1000);
+  if (new Date(booking.createdAt) >= cutoffTime) return false;
+
+  try {
+    logger.info(`[AuthExpiry] Lazy-expiring kitchen booking ${booking.id} — authorization older than ${AUTH_EXPIRY_HOURS}h`);
+
+    // Cancel the PaymentIntent to release the hold
+    const { cancelPaymentIntent } = await import("./stripe-service");
+    await cancelPaymentIntent(booking.paymentIntentId);
+
+    // Update kitchen booking
+    await db
+      .update(kitchenBookings)
+      .set({
+        status: "cancelled",
+        paymentStatus: "failed",
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(kitchenBookings.id, booking.id),
+          eq(kitchenBookings.paymentStatus, "authorized"), // Atomic guard
+        )
+      );
+
+    // Update associated storage bookings
+    await db
+      .update(storageBookingsTable)
+      .set({ paymentStatus: "failed", updatedAt: new Date() })
+      .where(
+        and(
+          eq(storageBookingsTable.kitchenBookingId, booking.id),
+          eq(storageBookingsTable.paymentStatus, "authorized"),
+        ),
+      );
+
+    // Update associated equipment bookings
+    await db
+      .update(equipmentBookingsTable)
+      .set({ paymentStatus: "failed", updatedAt: new Date() })
+      .where(
+        and(
+          eq(equipmentBookingsTable.kitchenBookingId, booking.id),
+          eq(equipmentBookingsTable.paymentStatus, "authorized"),
+        ),
+      );
+
+    // Update payment_transactions
+    try {
+      const { findPaymentTransactionByIntentId, updatePaymentTransaction } =
+        await import("./payment-transactions-service");
+      const pt = await findPaymentTransactionByIntentId(booking.paymentIntentId, db);
+      if (pt) {
+        await updatePaymentTransaction(pt.id, {
+          status: "canceled",
+          stripeStatus: "canceled",
+        }, db);
+      }
+    } catch (ptErr: any) {
+      logger.warn(`[AuthExpiry] Lazy: Could not update PT for booking ${booking.id}:`, ptErr);
+    }
+
+    // Notify the chef (fire-and-forget)
+    try {
+      await sendAuthExpiryNotification(booking.chefId, booking.id, "kitchen_booking", booking.kitchenId);
+    } catch (notifErr: any) {
+      logger.warn(`[AuthExpiry] Lazy: Could not send notification for booking ${booking.id}:`, notifErr);
+    }
+
+    logger.info(`[AuthExpiry] Lazy-expired kitchen booking ${booking.id} successfully`);
+    return true;
+  } catch (err: any) {
+    logger.error(`[AuthExpiry] Lazy: Error expiring booking ${booking.id}:`, err);
+    return false;
+  }
+}
+
+/**
+ * Check if a single storage extension's authorization has expired, and if so,
+ * cancel it inline. Called during read operations (lazy evaluation).
+ * 
+ * Returns true if the authorization was expired and cancelled.
+ */
+export async function lazyExpireStorageExtensionAuth(extension: {
+  id: number;
+  status: string | null;
+  stripePaymentIntentId: string | null;
+  createdAt: Date | null;
+  storageBookingId: number;
+}): Promise<boolean> {
+  if (extension.status !== 'authorized') return false;
+  if (!extension.stripePaymentIntentId || !extension.createdAt) return false;
+
+  const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1000);
+  if (new Date(extension.createdAt) >= cutoffTime) return false;
+
+  try {
+    logger.info(`[AuthExpiry] Lazy-expiring storage extension ${extension.id} — authorization older than ${AUTH_EXPIRY_HOURS}h`);
+
+    const { cancelPaymentIntent } = await import("./stripe-service");
+    await cancelPaymentIntent(extension.stripePaymentIntentId);
+
+    await db
+      .update(pendingStorageExtensions)
+      .set({
+        status: "expired",
+        rejectionReason: "Payment authorization expired — manager did not respond within 24 hours",
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(pendingStorageExtensions.id, extension.id),
+          eq(pendingStorageExtensions.status, "authorized"), // Atomic guard
+        )
+      );
+
+    // Update payment_transactions
+    try {
+      const { findPaymentTransactionByIntentId, updatePaymentTransaction } =
+        await import("./payment-transactions-service");
+      const pt = await findPaymentTransactionByIntentId(extension.stripePaymentIntentId, db);
+      if (pt) {
+        await updatePaymentTransaction(pt.id, {
+          status: "canceled",
+          stripeStatus: "canceled",
+        }, db);
+      }
+    } catch (ptErr: any) {
+      logger.warn(`[AuthExpiry] Lazy: Could not update PT for extension ${extension.id}:`, ptErr);
+    }
+
+    // Get chefId for notification
+    try {
+      const [sb] = await db
+        .select({ chefId: storageBookingsTable.chefId })
+        .from(storageBookingsTable)
+        .where(eq(storageBookingsTable.id, extension.storageBookingId))
+        .limit(1);
+      if (sb?.chefId) {
+        await sendAuthExpiryNotification(sb.chefId, extension.id, "storage_extension");
+      }
+    } catch (notifErr: any) {
+      logger.warn(`[AuthExpiry] Lazy: Could not send notification for extension ${extension.id}:`, notifErr);
+    }
+
+    logger.info(`[AuthExpiry] Lazy-expired storage extension ${extension.id} successfully`);
+    return true;
+  } catch (err: any) {
+    logger.error(`[AuthExpiry] Lazy: Error expiring extension ${extension.id}:`, err);
+    return false;
+  }
+}
+
+// ============================================================================
+// CRON SWEEP — safety net, catches anything not cleared by lazy evaluation
+// ============================================================================
+
 /**
  * Find and cancel all expired payment authorizations.
+ * Called by the daily cron job as a safety-net sweep.
  * - Kitchen bookings with paymentStatus='authorized' older than 24 hours
  * - Storage extensions with status='authorized' older than 24 hours
  */

@@ -58,7 +58,7 @@ interface Booking {
   bookingDate: string;
   startTime: string;
   endTime: string;
-  status: "pending" | "confirmed" | "cancelled";
+  status: "pending" | "confirmed" | "cancelled" | "completed";
   specialNotes?: string;
   createdAt: string;
   updatedAt: string;

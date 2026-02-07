@@ -157,6 +157,7 @@ function getStatusBadge(status: string) {
     charge_pending: { variant: "default", label: "Payment Processing" },
     charge_succeeded: { variant: "destructive", label: "Charged" },
     charge_failed: { variant: "outline", label: "Charge Failed" },
+    escalated: { variant: "destructive", label: "Payment Required" },
     resolved: { variant: "outline", label: "Resolved" },
     expired: { variant: "outline", label: "Expired" },
   };
@@ -231,7 +232,9 @@ function ResponseDialog({
   }, [claim.chefResponseDeadline]);
 
   // Check if claim is already resolved (no response allowed)
-  const isResolved = ['charge_succeeded', 'resolved', 'rejected', 'expired', 'charge_failed'].includes(claim.status);
+  const isResolved = ['charge_succeeded', 'resolved', 'rejected', 'expired', 'charge_failed', 'escalated'].includes(claim.status);
+  const isEscalated = claim.status === 'escalated';
+  const [isPaying, setIsPaying] = useState(false);
   const canRespond = claim.status === 'submitted' && !isExpired && !isResolved;
 
   return (
@@ -246,8 +249,48 @@ function ResponseDialog({
           </SheetDescription>
         </SheetHeader>
 
+        {/* Escalated — Payment Required Banner */}
+        {isEscalated && (
+          <Alert className="border-red-500 bg-red-50">
+            <AlertTriangle className="h-4 w-4 text-red-600" />
+            <AlertTitle className="text-red-800">Payment Required</AlertTitle>
+            <AlertDescription className="text-red-700">
+              <p className="mb-3">
+                We were unable to automatically charge your saved payment method for this damage claim.
+                Please pay {formatCurrency(claim.finalAmountCents || claim.claimedAmountCents)} to resolve this claim.
+              </p>
+              <Button
+                size="sm"
+                className="bg-red-600 hover:bg-red-700 text-white"
+                disabled={isPaying}
+                onClick={async () => {
+                  setIsPaying(true);
+                  try {
+                    const res = await apiRequest('POST', `/api/chef/damage-claims/${claim.id}/pay`);
+                    const data = await res.json();
+                    if (data.checkoutUrl) {
+                      window.location.href = data.checkoutUrl;
+                    }
+                  } catch (error: unknown) {
+                    const message = error instanceof Error ? error.message : 'Failed to start payment';
+                    toast({ title: "Payment Error", description: message, variant: "destructive" });
+                    setIsPaying(false);
+                  }
+                }}
+              >
+                {isPaying ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                ) : (
+                  <CreditCard className="h-4 w-4 mr-1.5" />
+                )}
+                Pay Now — {formatCurrency(claim.finalAmountCents || claim.claimedAmountCents)}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Resolved Status Banner */}
-        {isResolved && (
+        {isResolved && !isEscalated && (
           <Alert className={claim.status === 'charge_succeeded' ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-gray-50'}>
             <CheckCircle className={`h-4 w-4 ${claim.status === 'charge_succeeded' ? 'text-green-600' : 'text-gray-600'}`} />
             <AlertTitle className={claim.status === 'charge_succeeded' ? 'text-green-800' : 'text-gray-800'}>
@@ -732,7 +775,7 @@ export function PendingDamageClaims() {
   const { pendingClaims, inProgressClaims, resolvedClaims } = useMemo(() => {
     const pending = claims.filter(c => c.status === 'submitted');
     const inProgress = claims.filter(c => 
-      ['chef_accepted', 'chef_disputed', 'under_review', 'approved', 'partially_approved', 'charge_pending'].includes(c.status)
+      ['chef_accepted', 'chef_disputed', 'under_review', 'approved', 'partially_approved', 'charge_pending', 'escalated'].includes(c.status)
     );
     const resolved = claims.filter(c => 
       ['charge_succeeded', 'resolved', 'rejected', 'expired', 'charge_failed'].includes(c.status)

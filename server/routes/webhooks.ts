@@ -505,6 +505,18 @@ async function handleCheckoutSessionCompleted(
       );
     }
 
+    // Handle damage claim payment
+    if (metadata.type === "damage_claim") {
+      logger.info(`[Webhook] Processing damage claim payment for session ${session.id}`);
+      await handleDamageClaimPaymentCompleted(
+        session.id,
+        paymentIntentId || "",
+        chargeId || "",
+        metadata,
+        expandedSession.payment_status,
+      );
+    }
+
     // ENTERPRISE-GRADE: Create booking from metadata when payment succeeds or is authorized
     // This follows Stripe's recommended pattern - booking is ONLY created after payment
     // Eliminates orphan bookings from abandoned checkouts
@@ -2455,12 +2467,12 @@ async function handleOverstayPenaltyPaymentCompleted(
       })
       .where(eq(storageOverstayRecords.id, overstayRecordId));
 
-    // Create history entry
+    // Create history entry — use actual previous status from the record
     await db
       .insert(storageOverstayHistory)
       .values({
         overstayRecordId,
-        previousStatus: "charge_pending",
+        previousStatus: overstayRecord.status,
         newStatus: "charge_succeeded",
         eventType: "charge_attempt",
         eventSource: "stripe_webhook",
@@ -2553,6 +2565,160 @@ async function handleOverstayPenaltyPaymentCompleted(
 
   } catch (error) {
     logger.error(`[Webhook] Error handling overstay penalty payment:`, error);
+  }
+}
+
+/**
+ * Handle damage claim payment completed via Stripe Checkout
+ * Called when chef pays a damage claim through the self-serve payment link
+ */
+async function handleDamageClaimPaymentCompleted(
+  sessionId: string,
+  paymentIntentId: string,
+  chargeId: string,
+  metadata: Record<string, string>,
+  paymentStatus: string,
+) {
+  try {
+    const claimId = parseInt(metadata.damage_claim_id);
+    const chefId = parseInt(metadata.chef_id);
+
+    if (isNaN(claimId)) {
+      logger.error(`[Webhook] Invalid damage_claim_id in metadata: ${metadata.damage_claim_id}`);
+      return;
+    }
+
+    if (paymentStatus !== "paid") {
+      logger.info(`[Webhook] Damage claim payment not yet confirmed for session ${sessionId}, status: ${paymentStatus}`);
+      return;
+    }
+
+    const { damageClaims, damageClaimHistory, users } = await import("@shared/schema");
+
+    // Get the claim record
+    const [claim] = await db
+      .select()
+      .from(damageClaims)
+      .where(eq(damageClaims.id, claimId))
+      .limit(1);
+
+    if (!claim) {
+      logger.error(`[Webhook] Damage claim ${claimId} not found`);
+      return;
+    }
+
+    const chargeAmount = claim.finalAmountCents || claim.claimedAmountCents || 0;
+
+    // Update the damage claim to charge_succeeded
+    await db
+      .update(damageClaims)
+      .set({
+        status: "charge_succeeded",
+        stripePaymentIntentId: paymentIntentId || null,
+        stripeChargeId: chargeId || null,
+        chargeSucceededAt: new Date(),
+        resolvedAt: new Date(),
+        resolutionType: "paid",
+        updatedAt: new Date(),
+      })
+      .where(eq(damageClaims.id, claimId));
+
+    // Create history entry — use actual previous status from the record
+    await db
+      .insert(damageClaimHistory)
+      .values({
+        damageClaimId: claimId,
+        previousStatus: claim.status,
+        newStatus: "charge_succeeded",
+        action: "charge_attempt",
+        actionBy: "stripe_webhook",
+        notes: `Chef paid damage claim via Stripe Checkout. Session: ${sessionId}`,
+        metadata: {
+          sessionId,
+          paymentIntentId,
+          chargeId,
+          chefId: chefId.toString(),
+        },
+      });
+
+    // Create payment_transactions record
+    try {
+      const { createPaymentTransaction, updatePaymentTransaction } = await import("../services/payment-transactions-service");
+      const { getStripePaymentAmounts } = await import("../services/stripe-service");
+
+      const ptRecord = await createPaymentTransaction({
+        bookingId: claim.bookingType === 'storage' ? (claim.storageBookingId || claimId) : (claim.kitchenBookingId || claimId),
+        bookingType: claim.bookingType as 'kitchen' | 'storage',
+        chefId: isNaN(chefId) ? null : chefId,
+        managerId: claim.managerId || null,
+        amount: chargeAmount,
+        baseAmount: chargeAmount,
+        serviceFee: 0,
+        managerRevenue: chargeAmount,
+        currency: "CAD",
+        paymentIntentId,
+        status: "succeeded",
+        stripeStatus: "succeeded",
+        metadata: {
+          checkout_session_id: sessionId,
+          type: "damage_claim",
+          damage_claim_id: claimId.toString(),
+          charge_id: chargeId || "",
+        },
+      }, db);
+
+      // Fetch and sync actual Stripe fees
+      if (ptRecord && paymentIntentId) {
+        let managerConnectAccountId: string | undefined;
+        if (claim.managerId) {
+          try {
+            const [manager] = await db
+              .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+              .from(users)
+              .where(eq(users.id, claim.managerId))
+              .limit(1);
+            if (manager?.stripeConnectAccountId) {
+              managerConnectAccountId = manager.stripeConnectAccountId;
+            }
+          } catch {
+            logger.warn(`[Webhook] Could not fetch manager Connect account for damage claim`);
+          }
+        }
+
+        const stripeAmounts = await getStripePaymentAmounts(paymentIntentId, managerConnectAccountId);
+        if (stripeAmounts) {
+          await updatePaymentTransaction(ptRecord.id, {
+            chargeId,
+            paidAt: new Date(),
+            lastSyncedAt: new Date(),
+            stripeAmount: stripeAmounts.stripeAmount,
+            stripeNetAmount: stripeAmounts.stripeNetAmount,
+            stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+            stripePlatformFee: stripeAmounts.stripePlatformFee,
+          }, db);
+          logger.info(`[Webhook] Synced Stripe amounts for damage claim ${claimId}:`, {
+            amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
+            processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
+          });
+        }
+      }
+
+      logger.info(`[Webhook] Created payment_transactions record for damage claim ${claimId}`);
+    } catch (ptError) {
+      logger.error(`[Webhook] Failed to create payment_transactions for damage claim:`, ptError);
+    }
+
+    logger.info(`[Webhook] ✅ Damage claim payment completed`, {
+      claimId,
+      chefId,
+      sessionId,
+      paymentIntentId,
+      chargeId,
+      chargeAmount,
+    });
+
+  } catch (error) {
+    logger.error(`[Webhook] Error handling damage claim payment:`, error);
   }
 }
 

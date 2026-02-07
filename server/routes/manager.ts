@@ -2523,6 +2523,31 @@ router.get(
     try {
       const user = req.neonUser!;
       const bookings = await bookingService.getBookingsByManager(user.id);
+
+      // ── Lazy evaluation: expire any authorized bookings past 24-hour window ──
+      // Industry standard: enforce time windows on read, not just via daily cron
+      const { lazyExpireKitchenBookingAuth } = await import(
+        "../services/auth-expiry-service"
+      );
+      for (const b of bookings) {
+        if (b.paymentStatus === "authorized" && b.status === "pending") {
+          const wasExpired = await lazyExpireKitchenBookingAuth({
+            id: b.id,
+            paymentStatus: b.paymentStatus,
+            paymentIntentId: b.paymentIntentId ?? null,
+            chefId: b.chefId ?? null,
+            kitchenId: b.kitchenId,
+            createdAt: b.createdAt ? new Date(b.createdAt) : null,
+            status: b.status,
+          });
+          if (wasExpired) {
+            // Update the in-memory object so the response reflects the change
+            b.status = "cancelled";
+            b.paymentStatus = "failed";
+          }
+        }
+      }
+
       res.json(bookings);
     } catch (error: any) {
       console.error("Error fetching bookings:", error);
@@ -5426,6 +5451,7 @@ router.get(
             pendingStorageExtensions.extensionTotalPriceCents,
           status: pendingStorageExtensions.status,
           createdAt: pendingStorageExtensions.createdAt,
+          stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
           // Storage booking details
           currentEndDate: storageBookingsTable.endDate,
           storageName: storageListings.name,
@@ -5463,7 +5489,26 @@ router.get(
         )
         .orderBy(desc(pendingStorageExtensions.createdAt));
 
-      res.json(pendingExtensions);
+      // ── Lazy evaluation: expire any authorized extensions past 24-hour window ──
+      const { lazyExpireStorageExtensionAuth } = await import(
+        "../services/auth-expiry-service"
+      );
+      const stillPending = [];
+      for (const ext of pendingExtensions) {
+        if (ext.status === "authorized") {
+          const wasExpired = await lazyExpireStorageExtensionAuth({
+            id: ext.id,
+            status: ext.status,
+            stripePaymentIntentId: ext.stripePaymentIntentId,
+            createdAt: ext.createdAt ? new Date(ext.createdAt) : null,
+            storageBookingId: ext.storageBookingId,
+          });
+          if (wasExpired) continue; // Remove from pending list
+        }
+        stillPending.push(ext);
+      }
+
+      res.json(stillPending);
     } catch (error) {
       logger.error("Error fetching pending storage extensions:", error);
       return errorResponse(res, error);
@@ -6020,12 +6065,15 @@ router.get(
         const filteredAll = allOverstays.filter((o) =>
           locationIds.includes(o.locationId),
         );
-        // Past = all records that are not in pending statuses
+        // Past = all records that are not in active statuses
         const pendingStatuses = [
           "detected",
           "grace_period",
           "pending_review",
+          "penalty_approved",
+          "charge_pending",
           "charge_failed",
+          "escalated",
         ];
         pastOverstays = filteredAll.filter(
           (o) => !pendingStatuses.includes(o.status),

@@ -339,7 +339,7 @@ var init_schema = __esm({
     userRoleEnum = pgEnum("user_role", ["admin", "chef", "manager"]);
     documentVerificationStatusEnum = pgEnum("document_verification_status", ["pending", "approved", "rejected", "expired"]);
     applicationTypeEnum = pgEnum("application_type", ["chef"]);
-    bookingStatusEnum = pgEnum("booking_status", ["pending", "confirmed", "cancelled"]);
+    bookingStatusEnum = pgEnum("booking_status", ["pending", "confirmed", "cancelled", "completed"]);
     storageTypeEnum = pgEnum("storage_type", ["dry", "cold", "freezer"]);
     checkoutStatusEnum = pgEnum("checkout_status", ["active", "checkout_requested", "checkout_approved", "completed", "checkout_claim_filed"]);
     storagePricingModelEnum = pgEnum("storage_pricing_model", ["monthly-flat", "per-cubic-foot", "hourly", "daily"]);
@@ -953,7 +953,7 @@ var init_schema = __esm({
       bookingDate: z2.string().or(z2.date()),
       startTime: z2.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
       endTime: z2.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
-      status: z2.enum(["pending", "confirmed", "cancelled"]).optional(),
+      status: z2.enum(["pending", "confirmed", "cancelled", "completed"]).optional(),
       specialNotes: z2.string().optional()
     }).omit({
       id: true,
@@ -962,7 +962,7 @@ var init_schema = __esm({
     });
     updateKitchenBookingSchema = z2.object({
       id: z2.number(),
-      status: z2.enum(["pending", "confirmed", "cancelled"]).optional(),
+      status: z2.enum(["pending", "confirmed", "cancelled", "completed"]).optional(),
       specialNotes: z2.string().optional()
     });
     insertChefLocationAccessSchema = createInsertSchema(chefLocationAccess, {
@@ -1288,7 +1288,7 @@ var init_schema = __esm({
       chefId: z2.number().optional(),
       startDate: z2.string().or(z2.date()),
       endDate: z2.string().or(z2.date()),
-      status: z2.enum(["pending", "confirmed", "cancelled"]).optional(),
+      status: z2.enum(["pending", "confirmed", "cancelled", "completed"]).optional(),
       totalPrice: z2.number().int().positive("Total price must be positive"),
       pricingModel: z2.enum(["monthly-flat", "per-cubic-foot", "hourly", "daily"]),
       paymentStatus: z2.enum(["pending", "authorized", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
@@ -1303,7 +1303,7 @@ var init_schema = __esm({
     });
     updateStorageBookingSchema = z2.object({
       id: z2.number(),
-      status: z2.enum(["pending", "confirmed", "cancelled"]).optional(),
+      status: z2.enum(["pending", "confirmed", "cancelled", "completed"]).optional(),
       paymentStatus: z2.enum(["pending", "authorized", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
       paymentIntentId: z2.string().optional(),
       serviceFee: z2.number().int().min(0).optional(),
@@ -1314,7 +1314,7 @@ var init_schema = __esm({
     });
     updateStorageBookingStatusSchema = z2.object({
       id: z2.number(),
-      status: z2.enum(["pending", "confirmed", "cancelled"])
+      status: z2.enum(["pending", "confirmed", "cancelled", "completed"])
     });
     storageCheckoutRequestSchema = z2.object({
       storageBookingId: z2.number(),
@@ -1363,7 +1363,7 @@ var init_schema = __esm({
       chefId: z2.number().optional(),
       startDate: z2.string().or(z2.date()),
       endDate: z2.string().or(z2.date()),
-      status: z2.enum(["pending", "confirmed", "cancelled"]).optional(),
+      status: z2.enum(["pending", "confirmed", "cancelled", "completed"]).optional(),
       totalPrice: z2.number().int().positive("Total price must be positive"),
       pricingModel: z2.enum(["hourly", "daily", "weekly", "monthly"]),
       damageDeposit: z2.number().int().min(0).optional(),
@@ -1379,7 +1379,7 @@ var init_schema = __esm({
     });
     updateEquipmentBookingSchema = z2.object({
       id: z2.number(),
-      status: z2.enum(["pending", "confirmed", "cancelled"]).optional(),
+      status: z2.enum(["pending", "confirmed", "cancelled", "completed"]).optional(),
       paymentStatus: z2.enum(["pending", "authorized", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
       paymentIntentId: z2.string().optional(),
       damageDeposit: z2.number().int().min(0).optional(),
@@ -1387,7 +1387,7 @@ var init_schema = __esm({
     });
     updateEquipmentBookingStatusSchema = z2.object({
       id: z2.number(),
-      status: z2.enum(["pending", "confirmed", "cancelled"])
+      status: z2.enum(["pending", "confirmed", "cancelled", "completed"])
     });
     platformSettings = pgTable("platform_settings", {
       id: serial("id").primaryKey(),
@@ -1747,6 +1747,8 @@ var init_schema = __esm({
       // Claim submitted, awaiting chef response
       "chef_accepted",
       // Chef accepted responsibility
+      "escalated",
+      // Escalated after repeated charge failures — manual collection required
       "chef_disputed",
       // Chef disputes the claim
       "under_review",
@@ -1868,7 +1870,7 @@ var init_schema = __esm({
       metadata: jsonb("metadata").default({}),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
-    damageClaimStatusValues = ["draft", "submitted", "chef_accepted", "chef_disputed", "under_review", "approved", "partially_approved", "rejected", "charge_pending", "charge_succeeded", "charge_failed", "resolved", "expired"];
+    damageClaimStatusValues = ["draft", "submitted", "chef_accepted", "chef_disputed", "under_review", "approved", "partially_approved", "rejected", "charge_pending", "charge_succeeded", "charge_failed", "resolved", "expired", "escalated"];
     evidenceTypeValues = ["photo_before", "photo_after", "receipt", "invoice", "video", "document", "third_party_report"];
     damagedItemSchema = z2.object({
       equipmentBookingId: z2.number().nullable().optional(),
@@ -7322,7 +7324,6 @@ Notes: ${bookingData.specialNotes}` : ""}`;
 var overstay_penalty_service_exports = {};
 __export(overstay_penalty_service_exports, {
   chargeApprovedPenalty: () => chargeApprovedPenalty,
-  checkAndEscalateOverstay: () => checkAndEscalateOverstay,
   createPenaltyPaymentCheckout: () => createPenaltyPaymentCheckout,
   detectOverstays: () => detectOverstays,
   getAllOverstayRecords: () => getAllOverstayRecords,
@@ -7558,7 +7559,7 @@ async function getPendingOverstayReviews(locationId) {
     stripeCustomerId: storageBookings.stripeCustomerId,
     stripePaymentMethodId: storageBookings.stripePaymentMethodId
   }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq3(storageListings.kitchenId, kitchens.id)).leftJoin(users, eq3(storageBookings.chefId, users.id)).where(
-    inArray(storageOverstayRecords.status, ["detected", "grace_period", "pending_review", "charge_failed"])
+    inArray(storageOverstayRecords.status, ["detected", "grace_period", "pending_review", "penalty_approved", "charge_pending", "charge_failed", "escalated"])
   ).orderBy(desc(storageOverstayRecords.daysOverdue));
   const results = await query;
   const filtered = locationId ? results.filter((r) => r.locationId === locationId) : results;
@@ -7723,7 +7724,8 @@ async function chargeApprovedPenalty(overstayRecordId) {
   if (!record) {
     return { success: false, error: "Overstay record not found" };
   }
-  if (record.status !== "penalty_approved") {
+  const chargeableStatuses = ["penalty_approved", "charge_failed", "charge_pending", "escalated"];
+  if (!chargeableStatuses.includes(record.status)) {
     return { success: false, error: `Cannot charge record in status: ${record.status}` };
   }
   if (!record.finalPenaltyCents || record.finalPenaltyCents <= 0) {
@@ -7980,199 +7982,173 @@ async function chargeApprovedPenalty(overstayRecordId) {
         chargeId: chargeId || void 0
       };
     } else {
-      const requires3DS = paymentIntent.status === "requires_action" || paymentIntent.status === "requires_confirmation" || paymentIntent.status === "requires_payment_method";
+      const failureReason = paymentIntent.status === "requires_action" || paymentIntent.status === "requires_confirmation" || paymentIntent.status === "requires_payment_method" ? `Payment requires authentication (3DS/SCA)` : `Payment status: ${paymentIntent.status}`;
       await db.update(storageOverstayRecords).set({
-        status: "charge_failed",
+        status: "escalated",
         stripePaymentIntentId: paymentIntent.id,
         chargeFailedAt: /* @__PURE__ */ new Date(),
-        chargeFailureReason: requires3DS ? `Payment requires authentication (3DS/SCA). A payment link has been sent to the chef.` : `Payment status: ${paymentIntent.status}`,
+        chargeFailureReason: failureReason,
+        resolutionType: "escalated_collection",
+        resolutionNotes: `Auto-escalated: off-session charge failed (${failureReason}). Self-serve payment link sent to chef.`,
         updatedAt: /* @__PURE__ */ new Date()
       }).where(eq3(storageOverstayRecords.id, overstayRecordId));
       await createOverstayHistoryEntry(
         overstayRecordId,
         "charge_pending",
-        "charge_failed",
-        "charge_attempt",
+        "escalated",
+        "auto_escalation",
         "system",
-        requires3DS ? `Payment requires 3DS/SCA authentication. Creating payment link for chef.` : `Payment failed: ${paymentIntent.status}`,
-        { paymentIntentId: paymentIntent.id, status: paymentIntent.status, requires3DS }
+        `Off-session charge failed: ${failureReason}. Escalated immediately.`,
+        { paymentIntentId: paymentIntent.id, status: paymentIntent.status }
       );
-      if (requires3DS && booking.chefId) {
-        try {
-          const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL || "https://localcooks.com";
-          const checkoutResult = await createPenaltyPaymentCheckout(
-            overstayRecordId,
-            booking.chefId,
-            `${baseUrl}/chef/payments/success?overstay=${overstayRecordId}`,
-            `${baseUrl}/chef/payments/cancel?overstay=${overstayRecordId}`
-          );
-          if ("checkoutUrl" in checkoutResult) {
-            const [chef] = await db.select({ email: users.username }).from(users).where(eq3(users.id, booking.chefId)).limit(1);
-            if (chef?.email) {
-              const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-              await sendEmail2({
-                to: chef.email,
-                subject: `Action Required: Complete Your Overstay Penalty Payment`,
-                html: `
-                  <h2>Payment Authentication Required</h2>
-                  <p>Your card requires additional verification (3D Secure) to complete the overstay penalty payment.</p>
-                  <p><strong>Amount:</strong> $${((record.finalPenaltyCents || 0) / 100).toFixed(2)}</p>
-                  <p><strong>Days Overdue:</strong> ${record.daysOverdue}</p>
-                  <p>Please click the link below to complete your payment:</p>
-                  <p><a href="${checkoutResult.checkoutUrl}" style="display: inline-block; padding: 12px 24px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 6px;">Complete Payment</a></p>
-                  <p>This link will expire in 24 hours.</p>
-                  <p><em>Note: You will not be able to make new bookings until this penalty is resolved.</em></p>
-                `,
-                text: `Payment Authentication Required
-
-Your card requires additional verification to complete the overstay penalty payment.
-
-Amount: $${((record.finalPenaltyCents || 0) / 100).toFixed(2)}
-Days Overdue: ${record.daysOverdue}
-
-Complete your payment here: ${checkoutResult.checkoutUrl}
-
-This link will expire in 24 hours.`
-              });
-              logger.info(`[OverstayService] Sent 3DS payment link email to chef ${chef.email} for overstay ${overstayRecordId}`);
-            }
-            await createOverstayHistoryEntry(
-              overstayRecordId,
-              "charge_failed",
-              "charge_failed",
-              "payment_link_sent",
-              "system",
-              `3DS/SCA payment link sent to chef`,
-              { checkoutUrl: checkoutResult.checkoutUrl }
-            );
-          }
-        } catch (checkoutError) {
-          logger.error(`[OverstayService] Failed to create 3DS payment link:`, checkoutError);
-        }
-      }
-      checkAndEscalateOverstay(overstayRecordId).catch(
-        (err) => logger.error(`[OverstayService] Escalation check failed:`, err)
-      );
+      await sendEscalationPaymentLinkToChef(overstayRecordId, record, booking.chefId, failureReason);
+      await sendEscalationAdminEmail(overstayRecordId, record, failureReason);
       return {
         success: false,
-        error: requires3DS ? `Payment requires authentication. A payment link has been sent to the chef's email.` : `Payment failed: ${paymentIntent.status}`,
-        requires3DS
+        error: `Auto-charge failed (${failureReason}). Escalated \u2014 payment link sent to chef.`
       };
     }
   } catch (error) {
     const errorMessage = error.message || "Unknown error";
+    const stripeErrorCode = error.code || error.raw?.code || "";
+    const failureReason = stripeErrorCode === "authentication_required" || errorMessage.includes("requires authentication") || errorMessage.includes("authentication_required") ? `Payment requires authentication (3DS/SCA)` : errorMessage;
     await db.update(storageOverstayRecords).set({
-      status: "charge_failed",
+      status: "escalated",
       chargeFailedAt: /* @__PURE__ */ new Date(),
-      chargeFailureReason: errorMessage,
+      chargeFailureReason: failureReason,
+      resolutionType: "escalated_collection",
+      resolutionNotes: `Auto-escalated: off-session charge threw error (${failureReason}). Self-serve payment link sent to chef.`,
       updatedAt: /* @__PURE__ */ new Date()
     }).where(eq3(storageOverstayRecords.id, overstayRecordId));
     await createOverstayHistoryEntry(
       overstayRecordId,
       "charge_pending",
-      "charge_failed",
-      "charge_attempt",
+      "escalated",
+      "auto_escalation",
       "system",
-      `Charge failed: ${errorMessage}`,
-      { error: errorMessage }
+      `Off-session charge error: ${failureReason}. Escalated immediately.`,
+      { error: errorMessage, stripeErrorCode }
     );
-    logger.error(`[OverstayService] Penalty charge failed`, {
+    logger.error(`[OverstayService] Penalty charge failed \u2014 escalated immediately`, {
       overstayRecordId,
-      error: errorMessage
+      error: errorMessage,
+      stripeErrorCode
     });
-    checkAndEscalateOverstay(overstayRecordId).catch(
-      (err) => logger.error(`[OverstayService] Escalation check failed:`, err)
-    );
-    return { success: false, error: errorMessage };
+    await sendEscalationPaymentLinkToChef(overstayRecordId, record, booking.chefId, failureReason);
+    await sendEscalationAdminEmail(overstayRecordId, record, failureReason);
+    return { success: false, error: `Auto-charge failed (${failureReason}). Escalated \u2014 payment link sent to chef.` };
   }
 }
-async function countFailedChargeAttempts(overstayRecordId) {
-  const [result] = await db.select({ count: sql3`count(*)` }).from(storageOverstayHistory).where(
-    and(
-      eq3(storageOverstayHistory.overstayRecordId, overstayRecordId),
-      eq3(storageOverstayHistory.eventType, "charge_attempt"),
-      eq3(storageOverstayHistory.newStatus, "charge_failed")
-    )
-  );
-  return result?.count || 0;
-}
-async function checkAndEscalateOverstay(overstayRecordId) {
+async function sendEscalationPaymentLinkToChef(overstayRecordId, record, chefId, failureReason) {
+  if (!chefId) return;
   try {
-    const record = await getOverstayRecord(overstayRecordId);
-    if (!record) {
-      return { escalated: false, reason: "Record not found" };
+    const [chef] = await db.select({ email: users.username }).from(users).where(eq3(users.id, chefId)).limit(1);
+    if (!chef?.email) {
+      logger.warn(`[OverstayService] No email found for chef ${chefId} \u2014 cannot send escalation payment link`);
+      return;
     }
-    if (["charge_succeeded", "resolved", "escalated", "penalty_waived"].includes(record.status)) {
-      return { escalated: false, reason: "Already resolved or escalated" };
-    }
-    const failedAttempts = await countFailedChargeAttempts(overstayRecordId);
-    if (failedAttempts >= MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION) {
-      logger.info(`[OverstayService] Escalating overstay ${overstayRecordId} after ${failedAttempts} failed charge attempts`);
-      await db.update(storageOverstayRecords).set({
-        status: "escalated",
-        resolvedAt: /* @__PURE__ */ new Date(),
-        resolutionType: "escalated_collection",
-        resolutionNotes: `Auto-escalated after ${failedAttempts} failed charge attempts. Requires manual collection.`,
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq3(storageOverstayRecords.id, overstayRecordId));
+    const [booking] = await db.select({ storageName: storageListings.name }).from(storageBookings).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).where(eq3(storageBookings.id, record.storageBookingId)).limit(1);
+    const storageName = booking?.storageName || "Storage";
+    const penaltyAmount = ((record.finalPenaltyCents || record.calculatedPenaltyCents || 0) / 100).toFixed(2);
+    const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL || "https://localcooks.com";
+    const checkoutResult = await createPenaltyPaymentCheckout(
+      overstayRecordId,
+      chefId,
+      `${baseUrl}/chef/payments/success?overstay=${overstayRecordId}`,
+      `${baseUrl}/chef/payments/cancel?overstay=${overstayRecordId}`
+    );
+    if ("checkoutUrl" in checkoutResult) {
+      const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+      await sendEmail2({
+        to: chef.email,
+        subject: `\u26A0\uFE0F Action Required: Overstay Penalty Payment - $${penaltyAmount} CAD`,
+        html: `
+          <h2>\u26A0\uFE0F Overstay Penalty \u2014 Payment Required</h2>
+          <p>We were unable to automatically charge your saved payment method for your storage overstay penalty.</p>
+          <p><strong>Reason:</strong> ${failureReason}</p>
+          <p><strong>Amount:</strong> $${penaltyAmount} CAD</p>
+          <p><strong>Storage:</strong> ${storageName}</p>
+          <p><strong>Days Overdue:</strong> ${record.daysOverdue}</p>
+          <p>Please pay immediately using the secure link below:</p>
+          <p><a href="${checkoutResult.checkoutUrl}" style="display: inline-block; padding: 12px 24px; background-color: #DC2626; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Pay Now \u2014 $${penaltyAmount} CAD</a></p>
+          <p>This link will expire in 24 hours.</p>
+          <p><em>You will not be able to make new bookings until this penalty is resolved. If payment is not received, this matter may be referred for manual collection.</em></p>
+        `,
+        text: `Overstay Penalty \u2014 Payment Required
+
+Reason: ${failureReason}
+Amount: $${penaltyAmount} CAD
+Storage: ${storageName}
+Days Overdue: ${record.daysOverdue}
+
+Pay now: ${checkoutResult.checkoutUrl}
+
+This link expires in 24 hours.`
+      });
+      logger.info(`[OverstayService] Sent escalation payment link to chef ${chef.email} for overstay ${overstayRecordId}`);
       await createOverstayHistoryEntry(
         overstayRecordId,
-        record.status,
         "escalated",
-        "auto_escalation",
+        "escalated",
+        "escalation_payment_link_sent",
         "system",
-        `Auto-escalated after ${failedAttempts} failed charge attempts`,
-        { failedAttempts, threshold: MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION }
+        `Escalation payment link sent to chef ${chef.email}`,
+        { checkoutUrl: checkoutResult.checkoutUrl, chefEmail: chef.email, failureReason }
       );
-      try {
-        const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-        const adminEmail = process.env.ADMIN_EMAIL || process.env.SUPPORT_EMAIL;
-        if (adminEmail) {
-          const [booking] = await db.select({
-            storageName: storageListings.name,
-            chefId: storageBookings.chefId
-          }).from(storageBookings).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).where(eq3(storageBookings.id, record.storageBookingId)).limit(1);
-          let chefEmail = "Unknown";
-          if (booking?.chefId) {
-            const [chef] = await db.select({ email: users.username }).from(users).where(eq3(users.id, booking.chefId)).limit(1);
-            chefEmail = chef?.email || "Unknown";
-          }
-          await sendEmail2({
-            to: adminEmail,
-            subject: `\u26A0\uFE0F Escalated Overstay Penalty - Manual Collection Required`,
-            html: `
-              <h2>Overstay Penalty Escalated for Manual Collection</h2>
-              <p>An overstay penalty has been escalated after ${failedAttempts} failed charge attempts.</p>
-              <h3>Details:</h3>
-              <ul>
-                <li><strong>Overstay Record ID:</strong> ${overstayRecordId}</li>
-                <li><strong>Storage:</strong> ${booking?.storageName || "Unknown"}</li>
-                <li><strong>Chef Email:</strong> ${chefEmail}</li>
-                <li><strong>Penalty Amount:</strong> $${((record.finalPenaltyCents || record.calculatedPenaltyCents || 0) / 100).toFixed(2)}</li>
-                <li><strong>Days Overdue:</strong> ${record.daysOverdue}</li>
-                <li><strong>Failed Attempts:</strong> ${failedAttempts}</li>
-                <li><strong>Last Failure Reason:</strong> ${record.chargeFailureReason || "Unknown"}</li>
-              </ul>
-              <p>Please review and take appropriate collection action.</p>
-            `,
-            text: `Overstay Penalty Escalated
+    }
+  } catch (error) {
+    logger.error(`[OverstayService] Failed to send escalation payment link to chef:`, error);
+  }
+}
+async function sendEscalationAdminEmail(overstayRecordId, record, failureReason) {
+  try {
+    const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+    const [booking] = await db.select({
+      storageName: storageListings.name,
+      chefId: storageBookings.chefId
+    }).from(storageBookings).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).where(eq3(storageBookings.id, record.storageBookingId)).limit(1);
+    let chefEmail = "Unknown";
+    if (booking?.chefId) {
+      const [chef] = await db.select({ email: users.username }).from(users).where(eq3(users.id, booking.chefId)).limit(1);
+      chefEmail = chef?.email || "Unknown";
+    }
+    const penaltyAmount = ((record.finalPenaltyCents || record.calculatedPenaltyCents || 0) / 100).toFixed(2);
+    const admins = await db.select({ username: users.username }).from(users).where(eq3(users.role, "admin"));
+    if (admins.length === 0) {
+      logger.warn(`[OverstayService] No admin users found \u2014 escalation email NOT sent for overstay ${overstayRecordId}`);
+      return;
+    }
+    for (const admin2 of admins) {
+      if (admin2.username) {
+        await sendEmail2({
+          to: admin2.username,
+          subject: `\u26A0\uFE0F Escalated Overstay Penalty \u2014 Auto-Charge Failed`,
+          html: `
+            <h2>Overstay Penalty Escalated</h2>
+            <p>An overstay penalty auto-charge failed and has been escalated. A self-serve payment link has been sent to the chef.</p>
+            <h3>Details:</h3>
+            <ul>
+              <li><strong>Overstay Record ID:</strong> ${overstayRecordId}</li>
+              <li><strong>Storage:</strong> ${booking?.storageName || "Unknown"}</li>
+              <li><strong>Chef Email:</strong> ${chefEmail}</li>
+              <li><strong>Penalty Amount:</strong> $${penaltyAmount} CAD</li>
+              <li><strong>Days Overdue:</strong> ${record.daysOverdue}</li>
+              <li><strong>Failure Reason:</strong> ${failureReason}</li>
+            </ul>
+            <p>If the chef does not pay via the link, please take appropriate collection action.</p>
+          `,
+          text: `Overstay Penalty Escalated
 
 Record ID: ${overstayRecordId}
 Chef: ${chefEmail}
-Amount: $${((record.finalPenaltyCents || record.calculatedPenaltyCents || 0) / 100).toFixed(2)}
-Failed Attempts: ${failedAttempts}`
-          });
-          logger.info(`[OverstayService] Sent escalation notification to admin for overstay ${overstayRecordId}`);
-        }
-      } catch (emailError) {
-        logger.error(`[OverstayService] Failed to send escalation email:`, emailError);
+Amount: $${penaltyAmount} CAD
+Reason: ${failureReason}`
+        });
       }
-      return { escalated: true, reason: `${failedAttempts} failed charge attempts` };
     }
-    return { escalated: false, reason: `Only ${failedAttempts} failed attempts (threshold: ${MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION})` };
-  } catch (error) {
-    logger.error(`[OverstayService] Error checking escalation for overstay ${overstayRecordId}:`, error);
-    return { escalated: false, reason: "Error during escalation check" };
+    logger.info(`[OverstayService] Sent escalation notification to ${admins.length} admin(s) for overstay ${overstayRecordId}`);
+  } catch (emailError) {
+    logger.error(`[OverstayService] Failed to send escalation admin email:`, emailError);
   }
 }
 async function resolveOverstay(overstayRecordId, resolutionType, resolutionNotes, resolvedBy) {
@@ -8302,7 +8278,7 @@ async function getChefPendingPenalties(chefId) {
   }));
 }
 async function getChefAllPenalties(chefId) {
-  const relevantStatuses = ["penalty_approved", "charge_pending", "charge_succeeded", "charge_failed", "penalty_waived", "resolved"];
+  const relevantStatuses = ["penalty_approved", "charge_pending", "charge_succeeded", "charge_failed", "escalated", "penalty_waived", "resolved"];
   const records = await db.select({
     overstayId: storageOverstayRecords.id,
     storageBookingId: storageOverstayRecords.storageBookingId,
@@ -8329,12 +8305,13 @@ async function getChefAllPenalties(chefId) {
     )
   ).orderBy(desc(storageOverstayRecords.penaltyApprovedAt));
   return records.map((r) => {
+    const failureStatuses = ["charge_failed", "escalated", "charge_pending"];
     const statusIndicatesPaid = r.status === "charge_succeeded";
-    const hasStripeCharge = !!r.stripeChargeId;
+    const hasStripeCharge = !!r.stripeChargeId && !failureStatuses.includes(r.status);
     const resolutionIndicatesPaid = r.resolutionType === "paid";
     const hasChargeSucceededTimestamp = !!r.chargeSucceededAt;
     const isPaid = statusIndicatesPaid || hasStripeCharge || resolutionIndicatesPaid || hasChargeSucceededTimestamp;
-    const isResolved = isPaid || r.status === "penalty_waived" || r.status === "resolved" || !!r.resolvedAt;
+    const isResolved = isPaid || r.status === "penalty_waived" || r.status === "resolved" || !failureStatuses.includes(r.status) && !!r.resolvedAt;
     return {
       ...r,
       storageName: r.storageName || "Storage",
@@ -8362,7 +8339,8 @@ async function createPenaltyPaymentCheckout(overstayRecordId, chefId, successUrl
     if (booking.chefId !== chefId) {
       return { error: "Unauthorized: This penalty does not belong to you" };
     }
-    if (overstayRecord.status !== "penalty_approved") {
+    const payableStatuses = ["penalty_approved", "charge_failed", "escalated"];
+    if (!payableStatuses.includes(overstayRecord.status)) {
       return { error: `Cannot pay penalty in status: ${overstayRecord.status}` };
     }
     const [listing] = await db.select().from(storageListings).where(eq3(storageListings.id, booking.storageListingId)).limit(1);
@@ -8447,14 +8425,14 @@ async function createPenaltyPaymentCheckout(overstayRecordId, chefId, successUrl
     }
     const session = await stripe2.checkout.sessions.create(sessionParams);
     await db.update(storageOverstayRecords).set({
-      status: "charge_pending",
       updatedAt: /* @__PURE__ */ new Date()
     }).where(eq3(storageOverstayRecords.id, overstayRecordId));
-    logger.info(`[OverstayService] Created penalty payment checkout`, {
+    logger.info(`[OverstayService] Created penalty payment checkout (status unchanged)`, {
       overstayRecordId,
       chefId,
       penaltyAmountCents,
-      sessionId: session.id
+      sessionId: session.id,
+      currentStatus: overstayRecord.status
     });
     return { checkoutUrl: session.url };
   } catch (error) {
@@ -8573,7 +8551,8 @@ async function hasChefUnpaidPenalties(chefId) {
     "pending_review",
     "penalty_approved",
     "charge_pending",
-    "charge_failed"
+    "charge_failed",
+    "escalated"
   ];
   const [result] = await db.select({ count: sql3`count(*)` }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).where(
     and(
@@ -8590,7 +8569,8 @@ async function getChefUnpaidPenalties(chefId) {
     "pending_review",
     "penalty_approved",
     "charge_pending",
-    "charge_failed"
+    "charge_failed",
+    "escalated"
   ];
   const records = await db.select({
     overstayId: storageOverstayRecords.id,
@@ -8618,7 +8598,7 @@ async function getChefUnpaidPenalties(chefId) {
     storageType: r.storageType || "dry",
     kitchenName: r.kitchenName || "Kitchen",
     penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0,
-    requiresImmediatePayment: ["penalty_approved", "charge_failed"].includes(r.status)
+    requiresImmediatePayment: ["penalty_approved", "charge_failed", "escalated"].includes(r.status)
   }));
 }
 async function refundOverstayPenalty(overstayRecordId, refundReason, refundedBy, partialAmountCents) {
@@ -8753,7 +8733,7 @@ Reason: ${refundReason}`
     return { success: false, error: error.message || "Failed to process refund" };
   }
 }
-var stripeSecretKey2, stripe2, MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION, overstayPenaltyService;
+var stripeSecretKey2, stripe2, overstayPenaltyService;
 var init_overstay_penalty_service = __esm({
   "server/services/overstay-penalty-service.ts"() {
     "use strict";
@@ -8765,7 +8745,6 @@ var init_overstay_penalty_service = __esm({
     stripe2 = stripeSecretKey2 ? new Stripe2(stripeSecretKey2, {
       apiVersion: "2025-12-15.clover"
     }) : null;
-    MAX_CHARGE_ATTEMPTS_BEFORE_ESCALATION = 3;
     overstayPenaltyService = {
       detectOverstays,
       getPendingOverstayReviews,
@@ -8785,8 +8764,7 @@ var init_overstay_penalty_service = __esm({
       sendPenaltyChargedEmail,
       hasChefUnpaidPenalties,
       getChefUnpaidPenalties,
-      refundOverstayPenalty,
-      checkAndEscalateOverstay
+      refundOverstayPenalty
     };
   }
 });
@@ -8926,6 +8904,7 @@ __export(damage_claim_service_exports, {
   chargeApprovedClaim: () => chargeApprovedClaim,
   chefRespondToClaim: () => chefRespondToClaim,
   createDamageClaim: () => createDamageClaim,
+  createDamageClaimPaymentCheckout: () => createDamageClaimPaymentCheckout,
   damageClaimService: () => damageClaimService,
   deleteDraftClaim: () => deleteDraftClaim,
   getChefPendingClaims: () => getChefPendingClaims,
@@ -9356,6 +9335,8 @@ async function getChefPendingClaims(chefId) {
     // Successfully charged (RESOLVED)
     "charge_failed",
     // Charge failed
+    "escalated",
+    // Auto-charge failed — chef needs to pay via link
     "resolved",
     // Resolved (RESOLVED)
     "rejected",
@@ -9514,21 +9495,25 @@ async function chefRespondToClaim(claimId, chefId, response) {
           }
         }
         if (response.action === "dispute") {
-          const adminEmail = process.env.ADMIN_EMAIL;
-          if (adminEmail) {
-            const adminEmailContent = generateDamageClaimDisputedAdminEmail({
-              adminEmail,
-              chefName: claimWithDetails.chefName || chefUser?.username || "Chef",
-              chefEmail: claimWithDetails.chefEmail || chefUser?.username || "",
-              managerName: claimWithDetails.managerName || managerUser?.username || "Manager",
-              locationName: claimWithDetails.locationName || "Unknown Location",
-              claimTitle: claim.claimTitle,
-              claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-              chefResponse: response.response,
-              claimId: claim.id
-            });
-            await sendEmail(adminEmailContent);
-            logger.info(`[DamageClaimService] Sent dispute notification to admin`);
+          const admins = await db.select({ username: users.username }).from(users).where(eq5(users.role, "admin"));
+          for (const admin2 of admins) {
+            if (admin2.username) {
+              const adminEmailContent = generateDamageClaimDisputedAdminEmail({
+                adminEmail: admin2.username,
+                chefName: claimWithDetails.chefName || chefUser?.username || "Chef",
+                chefEmail: claimWithDetails.chefEmail || chefUser?.username || "",
+                managerName: claimWithDetails.managerName || managerUser?.username || "Manager",
+                locationName: claimWithDetails.locationName || "Unknown Location",
+                claimTitle: claim.claimTitle,
+                claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
+                chefResponse: response.response,
+                claimId: claim.id
+              });
+              await sendEmail(adminEmailContent);
+            }
+          }
+          if (admins.length > 0) {
+            logger.info(`[DamageClaimService] Sent dispute notification to ${admins.length} admin(s)`);
           }
         }
       }
@@ -9718,7 +9703,8 @@ async function chargeApprovedClaim(claimId) {
   if (!claim) {
     return { success: false, error: "Claim not found" };
   }
-  if (!["approved", "partially_approved", "chef_accepted"].includes(claim.status)) {
+  const chargeableStatuses = ["approved", "partially_approved", "chef_accepted", "charge_failed", "charge_pending", "escalated"];
+  if (!chargeableStatuses.includes(claim.status)) {
     return { success: false, error: `Cannot charge claim in status: ${claim.status}` };
   }
   const chargeAmount = claim.finalAmountCents;
@@ -9959,43 +9945,263 @@ async function chargeApprovedClaim(claimId) {
         chargeId: chargeId || void 0
       };
     } else {
+      const failureReason = paymentIntent.status === "requires_action" || paymentIntent.status === "requires_confirmation" || paymentIntent.status === "requires_payment_method" ? `Payment requires authentication (3DS/SCA)` : `Payment status: ${paymentIntent.status}`;
       await db.update(damageClaims).set({
-        status: "charge_failed",
+        status: "escalated",
         stripePaymentIntentId: paymentIntent.id,
         chargeFailedAt: /* @__PURE__ */ new Date(),
-        chargeFailureReason: `Payment status: ${paymentIntent.status}`,
+        chargeFailureReason: failureReason,
+        resolutionType: "escalated_collection",
+        resolutionNotes: `Auto-escalated: off-session charge failed (${failureReason}). Self-serve payment link sent to chef.`,
         updatedAt: /* @__PURE__ */ new Date()
       }).where(eq5(damageClaims.id, claimId));
       await createHistoryEntry(
         claimId,
         "charge_pending",
-        "charge_failed",
-        "charge_attempt",
+        "escalated",
+        "auto_escalation",
         "system",
         void 0,
-        `Payment requires action: ${paymentIntent.status}`
+        `Off-session charge failed: ${failureReason}. Escalated immediately.`,
+        { paymentIntentId: paymentIntent.id, status: paymentIntent.status }
       );
-      return { success: false, error: `Payment requires action: ${paymentIntent.status}` };
+      await sendDamageClaimPaymentLinkToChef(claimId, claim, failureReason);
+      await sendDamageClaimEscalationAdminEmail(claimId, claim, failureReason);
+      return {
+        success: false,
+        error: `Auto-charge failed (${failureReason}). Escalated \u2014 payment link sent to chef.`
+      };
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const stripeErrorCode = error?.code || error?.raw?.code || "";
+    const failureReason = stripeErrorCode === "authentication_required" || errorMessage.includes("requires authentication") || errorMessage.includes("authentication_required") ? `Payment requires authentication (3DS/SCA)` : errorMessage;
     await db.update(damageClaims).set({
-      status: "charge_failed",
+      status: "escalated",
       chargeFailedAt: /* @__PURE__ */ new Date(),
-      chargeFailureReason: errorMessage,
+      chargeFailureReason: failureReason,
+      resolutionType: "escalated_collection",
+      resolutionNotes: `Auto-escalated: off-session charge threw error (${failureReason}). Self-serve payment link sent to chef.`,
       updatedAt: /* @__PURE__ */ new Date()
     }).where(eq5(damageClaims.id, claimId));
     await createHistoryEntry(
       claimId,
       "charge_pending",
-      "charge_failed",
-      "charge_attempt",
+      "escalated",
+      "auto_escalation",
       "system",
       void 0,
-      `Charge failed: ${errorMessage}`
+      `Off-session charge error: ${failureReason}. Escalated immediately.`,
+      { error: errorMessage, stripeErrorCode }
     );
-    logger.error(`[DamageClaimService] Charge failed for claim ${claimId}:`, errorMessage);
-    return { success: false, error: errorMessage };
+    logger.error(`[DamageClaimService] Charge failed \u2014 escalated immediately for claim ${claimId}:`, {
+      error: errorMessage,
+      stripeErrorCode
+    });
+    await sendDamageClaimPaymentLinkToChef(claimId, claim, failureReason);
+    await sendDamageClaimEscalationAdminEmail(claimId, claim, failureReason);
+    return { success: false, error: `Auto-charge failed (${failureReason}). Escalated \u2014 payment link sent to chef.` };
+  }
+}
+async function sendDamageClaimPaymentLinkToChef(claimId, claim, failureReason) {
+  try {
+    const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL || "https://localcooks.com";
+    const checkoutResult = await createDamageClaimPaymentCheckout(
+      claimId,
+      claim.chefId,
+      `${baseUrl}/chef/payments/success?damage_claim=${claimId}`,
+      `${baseUrl}/chef/payments/cancel?damage_claim=${claimId}`
+    );
+    if ("checkoutUrl" in checkoutResult) {
+      const [chef] = await db.select({ email: users.username }).from(users).where(eq5(users.id, claim.chefId)).limit(1);
+      if (chef?.email) {
+        const amount = ((claim.finalAmountCents || claim.claimedAmountCents) / 100).toFixed(2);
+        await sendEmail({
+          to: chef.email,
+          subject: `\u26A0\uFE0F Action Required: Damage Claim Payment \u2014 $${amount} CAD`,
+          html: `
+            <h2>\u26A0\uFE0F Damage Claim \u2014 Payment Required</h2>
+            <p>We were unable to automatically charge your saved payment method for the damage claim.</p>
+            <p><strong>Reason:</strong> ${failureReason}</p>
+            <p><strong>Claim:</strong> ${claim.claimTitle}</p>
+            <p><strong>Amount:</strong> $${amount} CAD</p>
+            <p>Please pay immediately using the secure link below:</p>
+            <p><a href="${checkoutResult.checkoutUrl}" style="display: inline-block; padding: 12px 24px; background-color: #DC2626; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Pay Now \u2014 $${amount} CAD</a></p>
+            <p>This link will expire in 24 hours.</p>
+            <p><em>You will not be able to make new bookings until this claim is resolved. If payment is not received, this matter may be referred for manual collection.</em></p>
+          `,
+          text: `Damage Claim \u2014 Payment Required
+
+Reason: ${failureReason}
+Claim: ${claim.claimTitle}
+Amount: $${amount} CAD
+
+Pay now: ${checkoutResult.checkoutUrl}
+
+This link expires in 24 hours.`
+        });
+        logger.info(`[DamageClaimService] Sent escalation payment link to chef ${chef.email} for claim ${claimId}`);
+      }
+      await createHistoryEntry(
+        claimId,
+        "escalated",
+        "escalated",
+        "escalation_payment_link_sent",
+        "system",
+        void 0,
+        `Escalation payment link sent to chef (reason: ${failureReason})`,
+        { checkoutUrl: checkoutResult.checkoutUrl, failureReason }
+      );
+    } else {
+      logger.error(`[DamageClaimService] Failed to create payment link for claim ${claimId}:`, checkoutResult);
+    }
+  } catch (error) {
+    logger.error(`[DamageClaimService] Failed to send escalation payment link for claim ${claimId}:`, error);
+  }
+}
+async function sendDamageClaimEscalationAdminEmail(claimId, claim, failureReason) {
+  try {
+    const [chef] = await db.select({ email: users.username }).from(users).where(eq5(users.id, claim.chefId)).limit(1);
+    const chefEmail = chef?.email || "Unknown";
+    const amount = ((claim.finalAmountCents || claim.claimedAmountCents) / 100).toFixed(2);
+    const admins = await db.select({ username: users.username }).from(users).where(eq5(users.role, "admin"));
+    if (admins.length === 0) {
+      logger.warn(`[DamageClaimService] No admin users found \u2014 escalation email NOT sent for claim ${claimId}`);
+      return;
+    }
+    for (const admin2 of admins) {
+      if (admin2.username) {
+        await sendEmail({
+          to: admin2.username,
+          subject: `\u26A0\uFE0F Escalated Damage Claim \u2014 Auto-Charge Failed`,
+          html: `
+            <h2>Damage Claim Escalated</h2>
+            <p>A damage claim auto-charge failed and has been escalated. A self-serve payment link has been sent to the chef.</p>
+            <h3>Details:</h3>
+            <ul>
+              <li><strong>Claim ID:</strong> ${claimId}</li>
+              <li><strong>Claim:</strong> ${claim.claimTitle}</li>
+              <li><strong>Chef Email:</strong> ${chefEmail}</li>
+              <li><strong>Amount:</strong> $${amount} CAD</li>
+              <li><strong>Failure Reason:</strong> ${failureReason}</li>
+            </ul>
+            <p>If the chef does not pay via the link, please take appropriate collection action.</p>
+          `,
+          text: `Damage Claim Escalated
+
+Claim ID: ${claimId}
+Claim: ${claim.claimTitle}
+Chef: ${chefEmail}
+Amount: $${amount} CAD
+Reason: ${failureReason}`
+        });
+      }
+    }
+    logger.info(`[DamageClaimService] Sent escalation notification to ${admins.length} admin(s) for claim ${claimId}`);
+  } catch (emailError) {
+    logger.error(`[DamageClaimService] Failed to send admin escalation email for claim ${claimId}:`, emailError);
+  }
+}
+async function createDamageClaimPaymentCheckout(claimId, chefId, successUrl, cancelUrl) {
+  if (!stripe3) {
+    return { error: "Stripe not configured" };
+  }
+  try {
+    const [claim] = await db.select().from(damageClaims).where(eq5(damageClaims.id, claimId)).limit(1);
+    if (!claim) return { error: "Claim not found" };
+    if (claim.chefId !== chefId) {
+      return { error: "Unauthorized: This claim does not belong to you" };
+    }
+    const payableStatuses = ["approved", "partially_approved", "chef_accepted", "charge_failed", "escalated"];
+    if (!payableStatuses.includes(claim.status)) {
+      return { error: `Cannot pay claim in status: ${claim.status}` };
+    }
+    const chargeAmount = claim.finalAmountCents || claim.claimedAmountCents;
+    if (!chargeAmount || chargeAmount <= 0) {
+      return { error: "No amount to charge" };
+    }
+    let customerId = null;
+    if (claim.bookingType === "storage" && claim.storageBookingId) {
+      const [booking] = await db.select({ stripeCustomerId: storageBookings.stripeCustomerId }).from(storageBookings).where(eq5(storageBookings.id, claim.storageBookingId)).limit(1);
+      customerId = booking?.stripeCustomerId || null;
+    } else if (claim.bookingType === "kitchen" && claim.kitchenBookingId) {
+      const [booking] = await db.select({ stripeCustomerId: kitchenBookings.stripeCustomerId }).from(kitchenBookings).where(eq5(kitchenBookings.id, claim.kitchenBookingId)).limit(1);
+      customerId = booking?.stripeCustomerId || null;
+    }
+    if (!customerId) {
+      const [user] = await db.select({ stripeCustomerId: users.stripeCustomerId }).from(users).where(eq5(users.id, chefId)).limit(1);
+      customerId = user?.stripeCustomerId || null;
+    }
+    let managerStripeAccountId = null;
+    const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq5(users.id, claim.managerId)).limit(1);
+    managerStripeAccountId = manager?.stripeConnectAccountId || null;
+    let applicationFeeAmount;
+    if (managerStripeAccountId) {
+      const { calculateCheckoutFees: calculateCheckoutFees2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
+      const feeResult = calculateCheckoutFees2(chargeAmount / 100);
+      applicationFeeAmount = feeResult.stripeProcessingFeeInCents;
+    }
+    const [chef] = await db.select({ email: users.username }).from(users).where(eq5(users.id, chefId)).limit(1);
+    const sessionParams = {
+      payment_method_types: ["card"],
+      mode: "payment",
+      line_items: [{
+        price_data: {
+          currency: "cad",
+          product_data: {
+            name: `Damage Claim: ${claim.claimTitle}`,
+            description: `Damage claim #${claimId}`
+          },
+          unit_amount: chargeAmount
+        },
+        quantity: 1
+      }],
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata: {
+        type: "damage_claim",
+        damage_claim_id: claimId.toString(),
+        chef_id: chefId.toString(),
+        manager_id: claim.managerId.toString()
+      },
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          description: `Damage Claim: ${claim.claimTitle}`,
+          metadata: {
+            type: "damage_claim",
+            damage_claim_id: claimId.toString()
+          }
+        }
+      }
+    };
+    if (customerId) {
+      sessionParams.customer = customerId;
+    } else if (chef?.email) {
+      sessionParams.customer_email = chef.email;
+    }
+    if (chef?.email) {
+      sessionParams.payment_intent_data = {
+        receipt_email: chef.email
+      };
+    }
+    if (managerStripeAccountId) {
+      sessionParams.payment_intent_data = {
+        ...sessionParams.payment_intent_data,
+        transfer_data: {
+          destination: managerStripeAccountId
+        }
+      };
+      if (applicationFeeAmount && applicationFeeAmount > 0) {
+        sessionParams.payment_intent_data.application_fee_amount = applicationFeeAmount;
+      }
+    }
+    const session = await stripe3.checkout.sessions.create(sessionParams);
+    logger.info(`[DamageClaimService] Created Checkout session for claim ${claimId}: ${session.url}`);
+    return { checkoutUrl: session.url };
+  } catch (error) {
+    logger.error(`[DamageClaimService] Failed to create Checkout session for claim ${claimId}:`, error);
+    return { error: error instanceof Error ? error.message : "Failed to create payment session" };
   }
 }
 async function getClaimById(claimId) {
@@ -10312,7 +10518,8 @@ async function hasChefUnpaidDamageClaims(chefId) {
     "partially_approved",
     "chef_accepted",
     "charge_pending",
-    "charge_failed"
+    "charge_failed",
+    "escalated"
   ];
   const [result] = await db.select({ count: sql4`count(*)` }).from(damageClaims).where(
     and2(
@@ -10328,7 +10535,8 @@ async function getChefUnpaidDamageClaims(chefId) {
     "partially_approved",
     "chef_accepted",
     "charge_pending",
-    "charge_failed"
+    "charge_failed",
+    "escalated"
   ];
   const claims = await db.select({
     claimId: damageClaims.id,
@@ -10364,7 +10572,7 @@ async function getChefUnpaidDamageClaims(chefId) {
       claimedAmountCents: claim.claimedAmountCents,
       finalAmountCents: finalAmount,
       approvedAmountCents: claim.approvedAmountCents,
-      requiresImmediatePayment: ["approved", "partially_approved", "chef_accepted", "charge_failed"].includes(claim.status),
+      requiresImmediatePayment: ["approved", "partially_approved", "chef_accepted", "charge_failed", "escalated"].includes(claim.status),
       kitchenName,
       bookingType: claim.bookingType,
       createdAt: claim.createdAt
@@ -10402,7 +10610,8 @@ var init_damage_claim_service = __esm({
       processExpiredClaims,
       refundDamageClaim,
       hasChefUnpaidDamageClaims,
-      getChefUnpaidDamageClaims
+      getChefUnpaidDamageClaims,
+      createDamageClaimPaymentCheckout
     };
   }
 });
@@ -15011,9 +15220,9 @@ var init_files = __esm({
             const searchPattern = `%${filename}`;
             const { kitchens: kitchens3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
             const { db: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-            const { or: or6, like, sql: sql19 } = await import("drizzle-orm");
+            const { or: or7, like, sql: sql19 } = await import("drizzle-orm");
             const [kitchenMatch] = await db2.select({ id: kitchens3.id }).from(kitchens3).where(
-              or6(
+              or7(
                 like(kitchens3.imageUrl, searchPattern),
                 sql19`${kitchens3.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
                 // also try with just filename if that's how it's stored in array
@@ -15565,16 +15774,40 @@ var init_booking_repository = __esm({
         const results = await db.select({
           booking: kitchenBookings,
           kitchen: kitchens,
-          location: locations
-        }).from(kitchenBookings).innerJoin(kitchens, eq17(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq17(kitchens.locationId, locations.id)).where(eq17(kitchenBookings.chefId, chefId)).orderBy(desc9(kitchenBookings.createdAt));
-        return results.map((row) => ({
-          ...this.mapKitchenBookingToDTO(row.booking),
-          kitchen: row.kitchen,
-          location: row.location,
-          kitchenName: row.kitchen.name,
-          locationName: row.location.name,
-          locationTimezone: row.location.timezone
-        }));
+          location: locations,
+          // Payment transaction data for accurate payment state display
+          transactionStatus: paymentTransactions.status,
+          transactionAmount: paymentTransactions.amount
+        }).from(kitchenBookings).innerJoin(kitchens, eq17(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq17(kitchens.locationId, locations.id)).leftJoin(paymentTransactions, and11(
+          eq17(paymentTransactions.bookingId, kitchenBookings.id),
+          or2(
+            eq17(paymentTransactions.bookingType, "kitchen"),
+            eq17(paymentTransactions.bookingType, "bundle")
+          )
+        )).where(eq17(kitchenBookings.chefId, chefId)).orderBy(desc9(kitchenBookings.createdAt));
+        return results.map((row) => {
+          const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
+          const transactionStatus = row.transactionStatus || null;
+          const isVoidedAuthorization = transactionStatus === "canceled";
+          const isAuthorizedHold = mappedBooking.paymentStatus === "authorized";
+          const rawTransactionAmount = row.transactionAmount ? parseFloat(row.transactionAmount) : null;
+          const originalAuthorizedAmount = isVoidedAuthorization ? rawTransactionAmount ?? mappedBooking.totalPrice : null;
+          return {
+            ...mappedBooking,
+            kitchen: row.kitchen,
+            location: row.location,
+            kitchenName: row.kitchen.name,
+            locationName: row.location.name,
+            locationTimezone: row.location.timezone,
+            // ── Payment State Flags ────────────────────────────────────────
+            isVoidedAuthorization,
+            // true when PT was canceled before capture — $0 charged
+            isAuthorizedHold,
+            // true when payment is held but not yet captured
+            originalAuthorizedAmount
+            // Original auth amount for voided display context
+          };
+        });
       }
       async getBookingsByManagerId(managerId) {
         const results = await db.select({
@@ -15612,19 +15845,24 @@ var init_booking_repository = __esm({
         )).orderBy(desc9(kitchenBookings.createdAt));
         return results.map((row) => {
           const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
+          const transactionStatus = row.transactionStatus || null;
+          const isVoidedAuthorization = transactionStatus === "canceled";
+          const isAuthorizedHold = mappedBooking.paymentStatus === "authorized";
           const transactionId = row.transactionId || null;
-          const transactionAmount = row.transactionAmount ? parseFloat(row.transactionAmount) : null;
-          const serviceFee = row.transactionServiceFee ? parseFloat(row.transactionServiceFee) : 0;
-          const managerRevenue = row.transactionManagerRevenue ? parseFloat(row.transactionManagerRevenue) : null;
-          const refundAmount = row.transactionRefundAmount ? parseFloat(row.transactionRefundAmount) : 0;
-          const stripeProcessingFee = row.transactionStripeProcessingFee ? parseFloat(row.transactionStripeProcessingFee) : 0;
+          const rawTransactionAmount = row.transactionAmount ? parseFloat(row.transactionAmount) : null;
+          const transactionAmount = isVoidedAuthorization ? 0 : rawTransactionAmount;
+          const serviceFee = isVoidedAuthorization ? 0 : row.transactionServiceFee ? parseFloat(row.transactionServiceFee) : 0;
+          const managerRevenue = isVoidedAuthorization ? 0 : row.transactionManagerRevenue ? parseFloat(row.transactionManagerRevenue) : null;
+          const refundAmount = isVoidedAuthorization ? 0 : row.transactionRefundAmount ? parseFloat(row.transactionRefundAmount) : 0;
+          const stripeProcessingFee = isVoidedAuthorization ? 0 : row.transactionStripeProcessingFee ? parseFloat(row.transactionStripeProcessingFee) : 0;
           const kbTotalPrice = mappedBooking.totalPrice || 0;
           const taxRatePercent = row.taxRatePercent ? parseFloat(String(row.taxRatePercent)) : 0;
-          const taxAmount = Math.round(kbTotalPrice * taxRatePercent / 100);
+          const taxAmount = isVoidedAuthorization ? 0 : Math.round(kbTotalPrice * taxRatePercent / 100);
           const totalCharged = transactionAmount ?? kbTotalPrice;
-          const netRevenue = totalCharged - taxAmount - stripeProcessingFee;
-          const managerRemainingBalance = managerRevenue ? Math.max(0, managerRevenue - refundAmount) : 0;
+          const netRevenue = isVoidedAuthorization ? 0 : totalCharged - taxAmount - stripeProcessingFee;
+          const managerRemainingBalance = isVoidedAuthorization ? 0 : managerRevenue ? Math.max(0, managerRevenue - refundAmount) : 0;
           const refundableAmount = managerRemainingBalance;
+          const originalAuthorizedAmount = isVoidedAuthorization ? rawTransactionAmount ?? kbTotalPrice : null;
           return {
             ...mappedBooking,
             kitchen: row.kitchen,
@@ -15653,33 +15891,43 @@ var init_booking_repository = __esm({
             transactionId,
             // Payment transaction ID (for refunds)
             transactionAmount,
-            // Actual amount charged (from payment_transactions) = $110
+            // Actual amount charged (0 for voided auths, captured amount otherwise)
             taxAmount,
-            // Tax = kb.total_price * tax_rate / 100 (same as transaction history) = $10
+            // Tax = kb.total_price * tax_rate / 100 (0 for voided auths)
             serviceFee,
             // Platform fee (from payment_transactions)
             managerRevenue,
-            // What manager receives (from payment_transactions)
+            // What manager receives (0 for voided auths)
             netRevenue,
-            // Net = transactionAmount - taxAmount - stripeFee (same as transaction history) = $96.51
+            // Net = transactionAmount - taxAmount - stripeFee (0 for voided auths)
             refundAmount,
-            // Amount already refunded
+            // Amount already refunded (0 for voided auths)
             refundableAmount,
-            // SIMPLE: Max refundable = manager's remaining balance
+            // SIMPLE: Max refundable = manager's remaining balance (0 for voided auths)
             stripeProcessingFee,
-            // Total Stripe processing fee (display only - sunk cost)
-            managerRemainingBalance
-            // Manager's remaining balance from this transaction
+            // Total Stripe processing fee (0 for voided auths)
+            managerRemainingBalance,
+            // Manager's remaining balance from this transaction (0 for voided auths)
+            // ── Voided Authorization Context ────────────────────────────────────
+            // These fields let the client distinguish between "never charged" vs "$0 booking"
+            isVoidedAuthorization,
+            // true when PT was canceled before capture — no money moved
+            isAuthorizedHold,
+            // true when payment is held but not yet captured
+            originalAuthorizedAmount
+            // Original auth amount for voided display (e.g., "Hold of $88 released")
           };
         });
       }
       async getBookingsByKitchen(kitchenId) {
         return db.select({
           ...getKitchenBookingSelection(),
-          chefName: users.username,
-          chefEmail: users.username
-          // Fallback/Placeholder logic as in original
-        }).from(kitchenBookings).leftJoin(users, eq17(kitchenBookings.chefId, users.id)).where(eq17(kitchenBookings.kitchenId, kitchenId)).orderBy(desc9(kitchenBookings.createdAt));
+          chefName: sql7`COALESCE(${chefKitchenApplications.fullName}, ${users.username})`.as("chef_name"),
+          chefEmail: sql7`COALESCE(${chefKitchenApplications.email}, ${users.username})`.as("chef_email")
+        }).from(kitchenBookings).innerJoin(kitchens, eq17(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq17(kitchens.locationId, locations.id)).leftJoin(users, eq17(kitchenBookings.chefId, users.id)).leftJoin(chefKitchenApplications, and11(
+          eq17(chefKitchenApplications.chefId, kitchenBookings.chefId),
+          eq17(chefKitchenApplications.locationId, locations.id)
+        )).where(eq17(kitchenBookings.kitchenId, kitchenId)).orderBy(desc9(kitchenBookings.createdAt));
       }
       async findConflictingBookings(kitchenId, date2, startTime, endTime, excludeBookingId) {
         const dateStr = date2.toISOString().split("T")[0];
@@ -17103,14 +17351,15 @@ var init_manager_repository = __esm({
                 kb.currency,
                 k.name as kitchen_name,
                 l.name as location_name,
-                u.username as chef_name,
-                u.username as chef_email,
+                COALESCE(cka.full_name, u.username) as chef_name,
+                COALESCE(cka.email, u.username) as chef_email,
                 kb.created_at,
                 'kitchen' as booking_type
             FROM kitchen_bookings kb
             INNER JOIN kitchens k ON kb.kitchen_id = k.id
             INNER JOIN locations l ON k.location_id = l.id
             LEFT JOIN users u ON kb.chef_id = u.id
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = kb.chef_id AND cka.location_id = l.id
             LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id 
                 AND pt.booking_type = 'kitchen' 
                 AND pt.status = 'succeeded'
@@ -17158,8 +17407,8 @@ var init_manager_repository = __esm({
                 k.name as kitchen_name,
                 sl.name as storage_name,
                 l.name as location_name,
-                u.username as chef_name,
-                u.username as chef_email,
+                COALESCE(cka.full_name, u.username) as chef_name,
+                COALESCE(cka.email, u.username) as chef_email,
                 pt.created_at,
                 pt.metadata,
                 'storage' as booking_type
@@ -17169,6 +17418,7 @@ var init_manager_repository = __esm({
             JOIN kitchens k ON sl.kitchen_id = k.id
             JOIN locations l ON k.location_id = l.id
             LEFT JOIN users u ON sb.chef_id = u.id
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = sb.chef_id AND cka.location_id = l.id
             WHERE pt.manager_id = ${managerId}
               AND pt.booking_type = 'storage'
               AND pt.status = 'succeeded'
@@ -18372,8 +18622,8 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         k.name as kitchen_name,
         l.id as location_id,
         l.name as location_name,
-        u.username as chef_name,
-        u.username as chef_email,
+        COALESCE(cka.full_name, u.username) as chef_name,
+        COALESCE(cka.email, u.username) as chef_email,
         kb.created_at,
         kb.updated_at,
         -- Actual amount from payment_transactions (what was actually charged to Stripe)
@@ -18396,6 +18646,7 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       LEFT JOIN users u ON kb.chef_id = u.id
+      LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = kb.chef_id AND cka.location_id = l.id
       LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
       ${kitchenWhereClause}
       ORDER BY kb.created_at DESC
@@ -18507,14 +18758,15 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         k.name as kitchen_name,
         l.id as location_id,
         l.name as location_name,
-        u.username as chef_name,
-        u.username as chef_email
+        COALESCE(cka.full_name, u.username) as chef_name,
+        COALESCE(cka.email, u.username) as chef_email
       FROM payment_transactions pt
       JOIN storage_bookings sb ON pt.booking_id = sb.id
       JOIN storage_listings sl ON sb.storage_listing_id = sl.id
       JOIN kitchens k ON sl.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       LEFT JOIN users u ON sb.chef_id = u.id
+      LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = sb.chef_id AND cka.location_id = l.id
       WHERE pt.manager_id = ${managerId}
         AND pt.booking_type = 'storage'
         AND (pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')
@@ -20246,10 +20498,315 @@ var init_payout_statement_service = __esm({
   }
 });
 
+// server/services/auth-expiry-service.ts
+var auth_expiry_service_exports = {};
+__export(auth_expiry_service_exports, {
+  lazyExpireKitchenBookingAuth: () => lazyExpireKitchenBookingAuth,
+  lazyExpireStorageExtensionAuth: () => lazyExpireStorageExtensionAuth,
+  processExpiredAuthorizations: () => processExpiredAuthorizations
+});
+import { eq as eq26, and as and15, lt as lt3, sql as sql12 } from "drizzle-orm";
+async function lazyExpireKitchenBookingAuth(booking) {
+  if (booking.paymentStatus !== "authorized" || booking.status !== "pending") return false;
+  if (!booking.paymentIntentId || !booking.createdAt) return false;
+  const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1e3);
+  if (new Date(booking.createdAt) >= cutoffTime) return false;
+  try {
+    logger.info(`[AuthExpiry] Lazy-expiring kitchen booking ${booking.id} \u2014 authorization older than ${AUTH_EXPIRY_HOURS}h`);
+    const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+    await cancelPaymentIntent2(booking.paymentIntentId);
+    await db.update(kitchenBookings).set({
+      status: "cancelled",
+      paymentStatus: "failed",
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(
+      and15(
+        eq26(kitchenBookings.id, booking.id),
+        eq26(kitchenBookings.paymentStatus, "authorized")
+        // Atomic guard
+      )
+    );
+    await db.update(storageBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(
+      and15(
+        eq26(storageBookings.kitchenBookingId, booking.id),
+        eq26(storageBookings.paymentStatus, "authorized")
+      )
+    );
+    await db.update(equipmentBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(
+      and15(
+        eq26(equipmentBookings.kitchenBookingId, booking.id),
+        eq26(equipmentBookings.paymentStatus, "authorized")
+      )
+    );
+    try {
+      const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+      const pt = await findPaymentTransactionByIntentId2(booking.paymentIntentId, db);
+      if (pt) {
+        await updatePaymentTransaction2(pt.id, {
+          status: "canceled",
+          stripeStatus: "canceled"
+        }, db);
+      }
+    } catch (ptErr) {
+      logger.warn(`[AuthExpiry] Lazy: Could not update PT for booking ${booking.id}:`, ptErr);
+    }
+    try {
+      await sendAuthExpiryNotification(booking.chefId, booking.id, "kitchen_booking", booking.kitchenId);
+    } catch (notifErr) {
+      logger.warn(`[AuthExpiry] Lazy: Could not send notification for booking ${booking.id}:`, notifErr);
+    }
+    logger.info(`[AuthExpiry] Lazy-expired kitchen booking ${booking.id} successfully`);
+    return true;
+  } catch (err) {
+    logger.error(`[AuthExpiry] Lazy: Error expiring booking ${booking.id}:`, err);
+    return false;
+  }
+}
+async function lazyExpireStorageExtensionAuth(extension) {
+  if (extension.status !== "authorized") return false;
+  if (!extension.stripePaymentIntentId || !extension.createdAt) return false;
+  const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1e3);
+  if (new Date(extension.createdAt) >= cutoffTime) return false;
+  try {
+    logger.info(`[AuthExpiry] Lazy-expiring storage extension ${extension.id} \u2014 authorization older than ${AUTH_EXPIRY_HOURS}h`);
+    const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+    await cancelPaymentIntent2(extension.stripePaymentIntentId);
+    await db.update(pendingStorageExtensions).set({
+      status: "expired",
+      rejectionReason: "Payment authorization expired \u2014 manager did not respond within 24 hours",
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(
+      and15(
+        eq26(pendingStorageExtensions.id, extension.id),
+        eq26(pendingStorageExtensions.status, "authorized")
+        // Atomic guard
+      )
+    );
+    try {
+      const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+      const pt = await findPaymentTransactionByIntentId2(extension.stripePaymentIntentId, db);
+      if (pt) {
+        await updatePaymentTransaction2(pt.id, {
+          status: "canceled",
+          stripeStatus: "canceled"
+        }, db);
+      }
+    } catch (ptErr) {
+      logger.warn(`[AuthExpiry] Lazy: Could not update PT for extension ${extension.id}:`, ptErr);
+    }
+    try {
+      const [sb] = await db.select({ chefId: storageBookings.chefId }).from(storageBookings).where(eq26(storageBookings.id, extension.storageBookingId)).limit(1);
+      if (sb?.chefId) {
+        await sendAuthExpiryNotification(sb.chefId, extension.id, "storage_extension");
+      }
+    } catch (notifErr) {
+      logger.warn(`[AuthExpiry] Lazy: Could not send notification for extension ${extension.id}:`, notifErr);
+    }
+    logger.info(`[AuthExpiry] Lazy-expired storage extension ${extension.id} successfully`);
+    return true;
+  } catch (err) {
+    logger.error(`[AuthExpiry] Lazy: Error expiring extension ${extension.id}:`, err);
+    return false;
+  }
+}
+async function processExpiredAuthorizations() {
+  const results = [];
+  const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1e3);
+  logger.info(`[AuthExpiry] Processing expired authorizations (cutoff: ${cutoffTime.toISOString()})`);
+  try {
+    const expiredBookings = await db.select({
+      id: kitchenBookings.id,
+      paymentIntentId: kitchenBookings.paymentIntentId,
+      chefId: kitchenBookings.chefId,
+      kitchenId: kitchenBookings.kitchenId,
+      createdAt: kitchenBookings.createdAt
+    }).from(kitchenBookings).where(
+      and15(
+        eq26(kitchenBookings.paymentStatus, "authorized"),
+        eq26(kitchenBookings.status, "pending"),
+        lt3(kitchenBookings.createdAt, cutoffTime)
+      )
+    );
+    logger.info(`[AuthExpiry] Found ${expiredBookings.length} expired kitchen booking authorizations`);
+    for (const booking of expiredBookings) {
+      if (!booking.paymentIntentId) continue;
+      try {
+        const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+        await cancelPaymentIntent2(booking.paymentIntentId);
+        await db.update(kitchenBookings).set({
+          status: "cancelled",
+          paymentStatus: "failed",
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq26(kitchenBookings.id, booking.id));
+        await db.update(storageBookings).set({
+          paymentStatus: "failed",
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(
+          and15(
+            eq26(storageBookings.kitchenBookingId, booking.id),
+            eq26(storageBookings.paymentStatus, "authorized")
+          )
+        );
+        await db.update(equipmentBookings).set({
+          paymentStatus: "failed",
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(
+          and15(
+            eq26(equipmentBookings.kitchenBookingId, booking.id),
+            eq26(equipmentBookings.paymentStatus, "authorized")
+          )
+        );
+        try {
+          const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+          const pt = await findPaymentTransactionByIntentId2(booking.paymentIntentId, db);
+          if (pt) {
+            await updatePaymentTransaction2(pt.id, {
+              status: "canceled",
+              stripeStatus: "canceled"
+            }, db);
+          }
+        } catch (ptErr) {
+          logger.warn(`[AuthExpiry] Could not update PT for booking ${booking.id}:`, ptErr);
+        }
+        try {
+          await sendAuthExpiryNotification(booking.chefId, booking.id, "kitchen_booking", booking.kitchenId);
+        } catch (notifErr) {
+          logger.warn(`[AuthExpiry] Could not send notification for booking ${booking.id}:`, notifErr);
+        }
+        results.push({
+          type: "kitchen_booking",
+          id: booking.id,
+          paymentIntentId: booking.paymentIntentId,
+          chefId: booking.chefId,
+          action: "canceled"
+        });
+        logger.info(`[AuthExpiry] Cancelled authorization for kitchen booking ${booking.id}`);
+      } catch (err) {
+        logger.error(`[AuthExpiry] Error cancelling auth for booking ${booking.id}:`, err);
+        results.push({
+          type: "kitchen_booking",
+          id: booking.id,
+          paymentIntentId: booking.paymentIntentId,
+          chefId: booking.chefId,
+          action: "error",
+          error: err.message
+        });
+      }
+    }
+  } catch (queryErr) {
+    logger.error(`[AuthExpiry] Error querying expired kitchen bookings:`, queryErr);
+  }
+  try {
+    const expiredExtensions = await db.select({
+      id: pendingStorageExtensions.id,
+      stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
+      storageBookingId: pendingStorageExtensions.storageBookingId,
+      createdAt: pendingStorageExtensions.createdAt,
+      chefId: sql12`(
+          SELECT sb.chef_id FROM storage_bookings sb 
+          WHERE sb.id = ${pendingStorageExtensions.storageBookingId}
+        )`.as("chefId")
+    }).from(pendingStorageExtensions).where(
+      and15(
+        eq26(pendingStorageExtensions.status, "authorized"),
+        lt3(pendingStorageExtensions.createdAt, cutoffTime)
+      )
+    );
+    logger.info(`[AuthExpiry] Found ${expiredExtensions.length} expired storage extension authorizations`);
+    for (const ext of expiredExtensions) {
+      if (!ext.stripePaymentIntentId) continue;
+      try {
+        const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+        await cancelPaymentIntent2(ext.stripePaymentIntentId);
+        await db.update(pendingStorageExtensions).set({
+          status: "expired",
+          rejectionReason: "Payment authorization expired \u2014 manager did not respond within 24 hours",
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq26(pendingStorageExtensions.id, ext.id));
+        try {
+          const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+          const pt = await findPaymentTransactionByIntentId2(ext.stripePaymentIntentId, db);
+          if (pt) {
+            await updatePaymentTransaction2(pt.id, {
+              status: "canceled",
+              stripeStatus: "canceled"
+            }, db);
+          }
+        } catch (ptErr) {
+          logger.warn(`[AuthExpiry] Could not update PT for extension ${ext.id}:`, ptErr);
+        }
+        try {
+          await sendAuthExpiryNotification(ext.chefId, ext.id, "storage_extension");
+        } catch (notifErr) {
+          logger.warn(`[AuthExpiry] Could not send notification for extension ${ext.id}:`, notifErr);
+        }
+        results.push({
+          type: "storage_extension",
+          id: ext.id,
+          paymentIntentId: ext.stripePaymentIntentId,
+          chefId: ext.chefId,
+          action: "canceled"
+        });
+        logger.info(`[AuthExpiry] Cancelled authorization for storage extension ${ext.id}`);
+      } catch (err) {
+        logger.error(`[AuthExpiry] Error cancelling auth for extension ${ext.id}:`, err);
+        results.push({
+          type: "storage_extension",
+          id: ext.id,
+          paymentIntentId: ext.stripePaymentIntentId,
+          chefId: ext.chefId,
+          action: "error",
+          error: err.message
+        });
+      }
+    }
+  } catch (queryErr) {
+    logger.error(`[AuthExpiry] Error querying expired storage extensions:`, queryErr);
+  }
+  logger.info(`[AuthExpiry] Processed ${results.length} expired authorizations (${results.filter((r) => r.action === "canceled").length} canceled, ${results.filter((r) => r.action === "error").length} errors)`);
+  return results;
+}
+async function sendAuthExpiryNotification(chefId, recordId, type, kitchenId) {
+  if (!chefId) return;
+  try {
+    const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+    const [chef] = await db.select({ username: users.username }).from(users).where(eq26(users.id, chefId)).limit(1);
+    if (!chef?.username) return;
+    let kitchenName = "Kitchen";
+    if (kitchenId) {
+      const [kitchen] = await db.select({ name: kitchens.name }).from(kitchens).where(eq26(kitchens.id, kitchenId)).limit(1);
+      if (kitchen) kitchenName = kitchen.name;
+    }
+    try {
+      await notificationService2.createForChef({
+        chefId,
+        type: "booking_cancelled",
+        title: "Booking Authorization Expired",
+        message: type === "kitchen_booking" ? `Your kitchen booking #${recordId} at ${kitchenName} was automatically cancelled because the manager did not respond within 24 hours. Your card has not been charged.` : `Your storage extension request #${recordId} was automatically cancelled because the manager did not respond within 24 hours. Your card has not been charged.`,
+        metadata: { type, recordId: String(recordId) }
+      });
+    } catch {
+    }
+  } catch (err) {
+    logger.warn(`[AuthExpiry] Error sending notification to chef ${chefId}:`, err);
+  }
+}
+var AUTH_EXPIRY_HOURS;
+var init_auth_expiry_service = __esm({
+  "server/services/auth-expiry-service.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    init_logger();
+    AUTH_EXPIRY_HOURS = 24;
+  }
+});
+
 // server/services/storage-checkout-service.ts
 var storage_checkout_service_exports = {};
 __export(storage_checkout_service_exports, {
   addCheckoutPhotos: () => addCheckoutPhotos,
+  autoCleanExpiredCheckout: () => autoCleanExpiredCheckout,
   getCheckoutHistory: () => getCheckoutHistory,
   getCheckoutStatus: () => getCheckoutStatus,
   getPendingCheckoutReviews: () => getPendingCheckoutReviews,
@@ -20258,7 +20815,7 @@ __export(storage_checkout_service_exports, {
   processExpiredCheckoutReviews: () => processExpiredCheckoutReviews,
   requestStorageCheckout: () => requestStorageCheckout
 });
-import { eq as eq26, desc as desc12, and as and15, or as or3, inArray as inArray6, lt as lt3 } from "drizzle-orm";
+import { eq as eq27, desc as desc12, and as and16, or as or3, inArray as inArray6, lt as lt4 } from "drizzle-orm";
 async function requestStorageCheckout(storageBookingId, chefId, checkoutNotes, checkoutPhotoUrls) {
   try {
     if (!storageBookingId || storageBookingId <= 0) {
@@ -20267,7 +20824,7 @@ async function requestStorageCheckout(storageBookingId, chefId, checkoutNotes, c
     if (!chefId || chefId <= 0) {
       return { success: false, error: "Invalid chef ID" };
     }
-    const [booking] = await db.select().from(storageBookings).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+    const [booking] = await db.select().from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
     if (!booking) {
       return { success: false, error: "Storage booking not found" };
     }
@@ -20276,6 +20833,9 @@ async function requestStorageCheckout(storageBookingId, chefId, checkoutNotes, c
     }
     if (booking.status === "cancelled") {
       return { success: false, error: "Cannot checkout a cancelled booking" };
+    }
+    if (booking.status === "completed") {
+      return { success: false, error: "This booking has already been checked out" };
     }
     if (booking.status === "pending") {
       return { success: false, error: "Cannot checkout a pending booking. The booking must be confirmed first." };
@@ -20305,7 +20865,7 @@ async function requestStorageCheckout(storageBookingId, chefId, checkoutNotes, c
       checkoutDeniedBy: null,
       checkoutDenialReason: null,
       updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq26(storageBookings.id, storageBookingId));
+    }).where(eq27(storageBookings.id, storageBookingId));
     logger.info(`[StorageCheckout] Chef ${chefId} requested checkout for storage booking ${storageBookingId}`, {
       hasPhotos: (checkoutPhotoUrls?.length || 0) > 0,
       photoCount: checkoutPhotoUrls?.length || 0
@@ -20327,7 +20887,7 @@ async function requestStorageCheckout(storageBookingId, chefId, checkoutNotes, c
 }
 async function addCheckoutPhotos(storageBookingId, chefId, newPhotoUrls) {
   try {
-    const [booking] = await db.select().from(storageBookings).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+    const [booking] = await db.select().from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
     if (!booking) {
       return { success: false, error: "Storage booking not found" };
     }
@@ -20346,7 +20906,7 @@ async function addCheckoutPhotos(storageBookingId, chefId, newPhotoUrls) {
     await db.update(storageBookings).set({
       checkoutPhotoUrls: allPhotos,
       updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq26(storageBookings.id, storageBookingId));
+    }).where(eq27(storageBookings.id, storageBookingId));
     logger.info(`[StorageCheckout] Added ${newPhotoUrls.length} photos to checkout request for booking ${storageBookingId}`);
     return {
       success: true,
@@ -20360,7 +20920,7 @@ async function addCheckoutPhotos(storageBookingId, chefId, newPhotoUrls) {
 }
 async function verifyManagerPermission(storageBookingId, managerId) {
   try {
-    const [result] = await db.select({ managerId: locations.managerId }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq26(kitchens.locationId, locations.id)).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+    const [result] = await db.select({ managerId: locations.managerId }).from(storageBookings).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).where(eq27(storageBookings.id, storageBookingId)).limit(1);
     return result?.managerId === managerId;
   } catch (error) {
     logger.error(`[StorageCheckout] Error verifying manager permission:`, error);
@@ -20376,18 +20936,18 @@ async function sendCheckoutRequestNotification(storageBookingId, chefId) {
       managerId: locations.managerId,
       notificationEmail: locations.notificationEmail,
       endDate: storageBookings.endDate
-    }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq26(kitchens.locationId, locations.id)).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+    }).from(storageBookings).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).where(eq27(storageBookings.id, storageBookingId)).limit(1);
     if (!booking || !booking.managerId) {
       return;
     }
     let chefEmail = "Unknown Chef";
     if (chefId) {
-      const [chef] = await db.select({ username: users.username }).from(users).where(eq26(users.id, chefId)).limit(1);
+      const [chef] = await db.select({ username: users.username }).from(users).where(eq27(users.id, chefId)).limit(1);
       chefEmail = chef?.username || "Unknown Chef";
     }
     let managerEmail = booking.notificationEmail;
     if (!managerEmail) {
-      const [manager] = await db.select({ username: users.username }).from(users).where(eq26(users.id, booking.managerId)).limit(1);
+      const [manager] = await db.select({ username: users.username }).from(users).where(eq27(users.id, booking.managerId)).limit(1);
       managerEmail = manager?.username;
     }
     if (!managerEmail) {
@@ -20429,12 +20989,12 @@ Please review the checkout request in your dashboard.`
 async function sendCheckoutClearedNotification(storageBookingId, chefId, isAutoClear = false) {
   try {
     if (!chefId) return;
-    const [chef] = await db.select({ username: users.username }).from(users).where(eq26(users.id, chefId)).limit(1);
+    const [chef] = await db.select({ username: users.username }).from(users).where(eq27(users.id, chefId)).limit(1);
     if (!chef?.username) return;
     const [booking] = await db.select({
       storageName: storageListings.name,
       kitchenName: kitchens.name
-    }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+    }).from(storageBookings).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).where(eq27(storageBookings.id, storageBookingId)).limit(1);
     if (!booking) return;
     const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
     const clearedBy = isAutoClear ? "automatically (review window expired with no issues reported)" : "by the kitchen manager";
@@ -20470,12 +21030,12 @@ Thank you for using Local Cooks!`
 async function sendCheckoutClaimNotification(storageBookingId, chefId, claimId, claimTitle) {
   try {
     if (!chefId) return;
-    const [chef] = await db.select({ username: users.username }).from(users).where(eq26(users.id, chefId)).limit(1);
+    const [chef] = await db.select({ username: users.username }).from(users).where(eq27(users.id, chefId)).limit(1);
     if (!chef?.username) return;
     const [booking] = await db.select({
       storageName: storageListings.name,
       kitchenName: kitchens.name
-    }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+    }).from(storageBookings).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).where(eq27(storageBookings.id, storageBookingId)).limit(1);
     if (!booking) return;
     const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
     const emailContent = {
@@ -20537,7 +21097,7 @@ async function processCheckoutClear(storageBookingId, managerId, managerNotes) {
     id: storageBookings.id,
     chefId: storageBookings.chefId,
     checkoutStatus: storageBookings.checkoutStatus
-  }).from(storageBookings).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+  }).from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
   if (!booking) {
     return { success: false, error: "Storage booking not found" };
   }
@@ -20554,10 +21114,9 @@ async function processCheckoutClear(storageBookingId, managerId, managerNotes) {
     checkoutApprovedAt: /* @__PURE__ */ new Date(),
     checkoutApprovedBy: managerId,
     checkoutNotes: managerNotes ? `Manager: ${managerNotes}` : "Storage cleared \u2014 no issues found",
-    status: "cancelled",
-    // Using 'cancelled' as completed since we don't have a 'completed' status
+    status: "completed",
     updatedAt: /* @__PURE__ */ new Date()
-  }).where(eq26(storageBookings.id, storageBookingId));
+  }).where(eq27(storageBookings.id, storageBookingId));
   logger.info(`[StorageCheckout] Manager ${managerId} cleared storage for booking ${storageBookingId} \u2014 no issues`);
   try {
     await sendCheckoutClearedNotification(storageBookingId, booking.chefId);
@@ -20577,7 +21136,7 @@ async function processCheckoutStartClaim(storageBookingId, managerId, claimData,
     chefId: storageBookings.chefId,
     checkoutStatus: storageBookings.checkoutStatus,
     checkoutRequestedAt: storageBookings.checkoutRequestedAt
-  }).from(storageBookings).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+  }).from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
   if (!booking) {
     return { success: false, error: "Storage booking not found" };
   }
@@ -20631,7 +21190,7 @@ async function processCheckoutStartClaim(storageBookingId, managerId, claimData,
   }
   const claimId = claimResult.claim.id;
   try {
-    const [bookingWithPhotos] = await db.select({ checkoutPhotoUrls: storageBookings.checkoutPhotoUrls }).from(storageBookings).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+    const [bookingWithPhotos] = await db.select({ checkoutPhotoUrls: storageBookings.checkoutPhotoUrls }).from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
     const photoUrls = bookingWithPhotos?.checkoutPhotoUrls;
     if (photoUrls && photoUrls.length > 0) {
       const { damageEvidence: damageEvidence2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
@@ -20656,9 +21215,9 @@ async function processCheckoutStartClaim(storageBookingId, managerId, claimData,
     checkoutApprovedBy: managerId,
     checkoutNotes: managerNotes ? `Manager: ${managerNotes} | Claim #${claimId} filed` : `Damage/cleaning claim #${claimId} filed during checkout review`,
     // Mark booking as completed — storage is released, but claim is tracked separately
-    status: "cancelled",
+    status: "completed",
     updatedAt: /* @__PURE__ */ new Date()
-  }).where(eq26(storageBookings.id, storageBookingId));
+  }).where(eq27(storageBookings.id, storageBookingId));
   logger.info(`[StorageCheckout] Manager ${managerId} started claim #${claimId} for storage booking ${storageBookingId}`);
   try {
     await sendCheckoutClaimNotification(storageBookingId, booking.chefId, claimId, claimData.claimTitle);
@@ -20673,6 +21232,36 @@ async function processCheckoutStartClaim(storageBookingId, managerId, claimData,
     damageClaimId: claimId
   };
 }
+async function autoCleanExpiredCheckout(bookingId, chefId, checkoutRequestedAt, reviewWindowHours) {
+  if (!checkoutRequestedAt) return false;
+  const reviewWindowMs = reviewWindowHours * 60 * 60 * 1e3;
+  const deadline = new Date(checkoutRequestedAt.getTime() + reviewWindowMs);
+  if (/* @__PURE__ */ new Date() <= deadline) return false;
+  try {
+    await db.update(storageBookings).set({
+      checkoutStatus: "completed",
+      checkoutApprovedAt: /* @__PURE__ */ new Date(),
+      checkoutNotes: `Auto-cleared by system \u2014 review window (${reviewWindowHours}h) expired with no issues reported`,
+      status: "completed",
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(
+      and16(
+        eq27(storageBookings.id, bookingId),
+        eq27(storageBookings.checkoutStatus, "checkout_requested")
+      )
+    );
+    logger.info(`[StorageCheckout] Lazy auto-cleared booking ${bookingId} \u2014 review window expired`);
+    try {
+      await sendCheckoutClearedNotification(bookingId, chefId, true);
+    } catch (notifyError) {
+      logger.error(`[StorageCheckout] Error sending auto-clear notification for booking ${bookingId}:`, notifyError);
+    }
+    return true;
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error lazy auto-clearing booking ${bookingId}:`, error);
+    return false;
+  }
+}
 async function processExpiredCheckoutReviews() {
   const result = { processed: 0, cleared: 0, errors: 0 };
   try {
@@ -20685,9 +21274,9 @@ async function processExpiredCheckoutReviews() {
       chefId: storageBookings.chefId,
       checkoutRequestedAt: storageBookings.checkoutRequestedAt
     }).from(storageBookings).where(
-      and15(
-        eq26(storageBookings.checkoutStatus, "checkout_requested"),
-        lt3(storageBookings.checkoutRequestedAt, cutoffTime)
+      and16(
+        eq27(storageBookings.checkoutStatus, "checkout_requested"),
+        lt4(storageBookings.checkoutRequestedAt, cutoffTime)
       )
     );
     result.processed = expiredCheckouts.length;
@@ -20702,10 +21291,9 @@ async function processExpiredCheckoutReviews() {
           checkoutStatus: "completed",
           checkoutApprovedAt: /* @__PURE__ */ new Date(),
           checkoutNotes: `Auto-cleared by system \u2014 review window (${settings.reviewWindowHours}h) expired with no issues reported`,
-          status: "cancelled",
-          // Using 'cancelled' as completed
+          status: "completed",
           updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq26(storageBookings.id, checkout.id));
+        }).where(eq27(storageBookings.id, checkout.id));
         result.cleared++;
         logger.info(`[StorageCheckout] Auto-cleared booking ${checkout.id} \u2014 review window expired`);
         try {
@@ -20750,11 +21338,29 @@ async function getPendingCheckoutReviews(locationId) {
       checkoutRequestedAt: storageBookings.checkoutRequestedAt,
       checkoutNotes: storageBookings.checkoutNotes,
       checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
-    }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq26(kitchens.locationId, locations.id)).leftJoin(users, eq26(storageBookings.chefId, users.id)).where(eq26(storageBookings.checkoutStatus, "checkout_requested")).orderBy(desc12(storageBookings.checkoutRequestedAt));
+    }).from(storageBookings).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).leftJoin(users, eq27(storageBookings.chefId, users.id)).where(eq27(storageBookings.checkoutStatus, "checkout_requested")).orderBy(desc12(storageBookings.checkoutRequestedAt));
     const results = await query;
     const filtered = locationId ? results.filter((r) => r.locationId === locationId) : results;
     const now = /* @__PURE__ */ new Date();
-    return filtered.map((r) => {
+    const stillPending = [];
+    for (const r of filtered) {
+      const reviewDeadline = r.checkoutRequestedAt ? new Date(r.checkoutRequestedAt.getTime() + reviewWindowMs) : null;
+      const isExpired = reviewDeadline ? now > reviewDeadline : false;
+      if (isExpired) {
+        const wasCleared = await autoCleanExpiredCheckout(
+          r.storageBookingId,
+          r.chefId,
+          r.checkoutRequestedAt,
+          settings.reviewWindowHours
+        );
+        if (wasCleared) {
+          logger.info(`[StorageCheckout] Lazy-cleared booking ${r.storageBookingId} during getPendingCheckoutReviews`);
+          continue;
+        }
+      }
+      stillPending.push(r);
+    }
+    return stillPending.map((r) => {
       const endDate = new Date(r.endDate);
       const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1e3 * 60 * 60 * 24));
       const reviewDeadline = r.checkoutRequestedAt ? new Date(r.checkoutRequestedAt.getTime() + reviewWindowMs) : null;
@@ -20813,12 +21419,12 @@ async function getCheckoutHistory(locationIds, limit = 20) {
       checkoutApprovedAt: storageBookings.checkoutApprovedAt,
       checkoutNotes: storageBookings.checkoutNotes,
       checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
-    }).from(storageBookings).innerJoin(storageListings, eq26(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq26(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq26(kitchens.locationId, locations.id)).leftJoin(users, eq26(storageBookings.chefId, users.id)).where(
-      and15(
+    }).from(storageBookings).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).leftJoin(users, eq27(storageBookings.chefId, users.id)).where(
+      and16(
         inArray6(locations.id, locationIds),
         or3(
-          eq26(storageBookings.checkoutStatus, "completed"),
-          eq26(storageBookings.checkoutStatus, "checkout_claim_filed")
+          eq27(storageBookings.checkoutStatus, "completed"),
+          eq27(storageBookings.checkoutStatus, "checkout_claim_filed")
         )
       )
     ).orderBy(desc12(storageBookings.checkoutApprovedAt)).limit(limit);
@@ -20864,7 +21470,7 @@ async function getCheckoutStatus(storageBookingId) {
       checkoutApprovedAt: storageBookings.checkoutApprovedAt,
       checkoutPhotoUrls: storageBookings.checkoutPhotoUrls,
       checkoutNotes: storageBookings.checkoutNotes
-    }).from(storageBookings).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+    }).from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
     if (!booking) {
       return null;
     }
@@ -20873,6 +21479,29 @@ async function getCheckoutStatus(storageBookingId) {
     const now = /* @__PURE__ */ new Date();
     const reviewDeadline = booking.checkoutRequestedAt ? new Date(booking.checkoutRequestedAt.getTime() + settings.reviewWindowHours * 60 * 60 * 1e3) : null;
     const isReviewExpired = reviewDeadline ? now > reviewDeadline : false;
+    if (isReviewExpired && booking.checkoutStatus === "checkout_requested") {
+      const [bookingFull] = await db.select({ chefId: storageBookings.chefId }).from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
+      const wasCleared = await autoCleanExpiredCheckout(
+        storageBookingId,
+        bookingFull?.chefId ?? null,
+        booking.checkoutRequestedAt,
+        settings.reviewWindowHours
+      );
+      if (wasCleared) {
+        logger.info(`[StorageCheckout] Lazy-cleared booking ${storageBookingId} during getCheckoutStatus`);
+        return {
+          checkoutStatus: "completed",
+          checkoutRequestedAt: booking.checkoutRequestedAt,
+          checkoutApprovedAt: /* @__PURE__ */ new Date(),
+          checkoutPhotoUrls: booking.checkoutPhotoUrls || [],
+          checkoutNotes: `Auto-cleared by system \u2014 review window (${settings.reviewWindowHours}h) expired with no issues reported`,
+          reviewDeadline,
+          isReviewExpired: true,
+          extendedClaimDeadline: booking.checkoutRequestedAt ? new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1e3) : null,
+          canFileExtendedClaim: booking.checkoutRequestedAt ? now <= new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1e3) : false
+        };
+      }
+    }
     const extendedClaimDeadline = booking.checkoutRequestedAt ? new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1e3) : null;
     const canFileExtendedClaim = extendedClaimDeadline ? now <= extendedClaimDeadline : false;
     return {
@@ -20893,7 +21522,7 @@ async function getCheckoutStatus(storageBookingId) {
 }
 async function isCheckoutInProgress(storageBookingId) {
   try {
-    const [booking] = await db.select({ checkoutStatus: storageBookings.checkoutStatus }).from(storageBookings).where(eq26(storageBookings.id, storageBookingId)).limit(1);
+    const [booking] = await db.select({ checkoutStatus: storageBookings.checkoutStatus }).from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
     if (!booking) {
       return false;
     }
@@ -20920,11 +21549,11 @@ __export(manager_exports, {
 });
 import { Router as Router14 } from "express";
 import {
-  eq as eq27,
+  eq as eq28,
   inArray as inArray7,
-  and as and16,
+  and as and17,
   desc as desc13,
-  sql as sql12,
+  sql as sql13,
   or as or4,
   gte as gte3,
   lte as lte3
@@ -20932,21 +21561,21 @@ import {
 import { format as format4 } from "date-fns";
 async function getManagerIdForBooking(bookingId, bookingType, db2) {
   if (bookingType === "kitchen" || bookingType === "bundle") {
-    const [row] = await db2.select({ managerId: locations.managerId }).from(kitchenBookings).innerJoin(kitchens, eq27(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).where(eq27(kitchenBookings.id, bookingId)).limit(1);
+    const [row] = await db2.select({ managerId: locations.managerId }).from(kitchenBookings).innerJoin(kitchens, eq28(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(kitchenBookings.id, bookingId)).limit(1);
     return row?.managerId ?? null;
   }
   if (bookingType === "storage") {
     const [row] = await db2.select({ managerId: locations.managerId }).from(storageBookings).innerJoin(
       storageListings,
-      eq27(storageBookings.storageListingId, storageListings.id)
-    ).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).where(eq27(storageBookings.id, bookingId)).limit(1);
+      eq28(storageBookings.storageListingId, storageListings.id)
+    ).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(storageBookings.id, bookingId)).limit(1);
     return row?.managerId ?? null;
   }
   if (bookingType === "equipment") {
     const [row] = await db2.select({ managerId: locations.managerId }).from(equipmentBookings).innerJoin(
       equipmentListings,
-      eq27(equipmentBookings.equipmentListingId, equipmentListings.id)
-    ).innerJoin(kitchens, eq27(equipmentListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).where(eq27(equipmentBookings.id, bookingId)).limit(1);
+      eq28(equipmentBookings.equipmentListingId, equipmentListings.id)
+    ).innerJoin(kitchens, eq28(equipmentListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(equipmentBookings.id, bookingId)).limit(1);
     return row?.managerId ?? null;
   }
   return null;
@@ -21046,7 +21675,7 @@ var init_manager = __esm({
             kitchenTaxRatePercent: kitchens.taxRatePercent,
             locationName: locations.name,
             managerId: locations.managerId
-          }).from(kitchenBookings).innerJoin(kitchens, eq27(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).where(eq27(kitchenBookings.id, bookingId)).limit(1);
+          }).from(kitchenBookings).innerJoin(kitchens, eq28(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(kitchenBookings.id, bookingId)).limit(1);
           if (!booking) {
             return res.status(404).json({ error: "Booking not found" });
           }
@@ -21065,7 +21694,7 @@ var init_manager = __esm({
           }
           let chef = null;
           if (booking.chefId) {
-            const chefResult = await db.execute(sql12`
+            const chefResult = await db.execute(sql13`
                 SELECT u.id, u.username, cka.full_name
                 FROM users u
                 LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -21092,8 +21721,8 @@ var init_manager = __esm({
             // Daily rate in cents
           }).from(storageBookings).innerJoin(
             storageListings,
-            eq27(storageBookings.storageListingId, storageListings.id)
-          ).where(eq27(storageBookings.kitchenBookingId, bookingId));
+            eq28(storageBookings.storageListingId, storageListings.id)
+          ).where(eq28(storageBookings.kitchenBookingId, bookingId));
           const storageRows = allStorageRows.filter((sr) => sr.paymentStatus !== "failed" && sr.status !== "cancelled");
           const allEquipmentRows = await db.select({
             id: equipmentBookings.id,
@@ -21106,8 +21735,8 @@ var init_manager = __esm({
             brand: equipmentListings.brand
           }).from(equipmentBookings).innerJoin(
             equipmentListings,
-            eq27(equipmentBookings.equipmentListingId, equipmentListings.id)
-          ).where(eq27(equipmentBookings.kitchenBookingId, bookingId));
+            eq28(equipmentBookings.equipmentListingId, equipmentListings.id)
+          ).where(eq28(equipmentBookings.kitchenBookingId, bookingId));
           const equipmentRows = allEquipmentRows.filter((er) => er.paymentStatus !== "failed" && er.status !== "cancelled");
           const originalStorageDates = {};
           if (booking.paymentIntentId) {
@@ -21221,15 +21850,15 @@ var init_manager = __esm({
             taxRatePercent: kitchens.taxRatePercent
           }).from(storageBookings).innerJoin(
             storageListings,
-            eq27(storageBookings.storageListingId, storageListings.id)
-          ).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).where(eq27(storageBookings.id, storageBookingId)).limit(1);
+            eq28(storageBookings.storageListingId, storageListings.id)
+          ).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(storageBookings.id, storageBookingId)).limit(1);
           if (!storageBooking) {
             return res.status(404).json({ error: "Storage booking not found" });
           }
           const managerOwnsLocation = await db.select({ id: locations.id }).from(locations).where(
-            and16(
-              eq27(locations.id, storageBooking.locationId),
-              eq27(locations.managerId, managerId)
+            and17(
+              eq28(locations.id, storageBooking.locationId),
+              eq28(locations.managerId, managerId)
             )
           ).limit(1);
           if (managerOwnsLocation.length === 0) {
@@ -21246,10 +21875,10 @@ var init_manager = __esm({
             stripeProcessingFee: paymentTransactions.stripeProcessingFee,
             managerRevenue: paymentTransactions.managerRevenue
           }).from(paymentTransactions).where(
-            and16(
-              eq27(paymentTransactions.bookingId, storageBookingId),
-              eq27(paymentTransactions.bookingType, "storage"),
-              eq27(paymentTransactions.status, "succeeded")
+            and17(
+              eq28(paymentTransactions.bookingId, storageBookingId),
+              eq28(paymentTransactions.bookingType, "storage"),
+              eq28(paymentTransactions.status, "succeeded")
             )
           ).orderBy(desc13(paymentTransactions.createdAt)).limit(1);
           let extensionDetails = null;
@@ -21257,7 +21886,7 @@ var init_manager = __esm({
           if (metadata?.storage_extension_id) {
             const extensionId = parseInt(String(metadata.storage_extension_id));
             if (!isNaN(extensionId)) {
-              const extensionResult = await db.execute(sql12`
+              const extensionResult = await db.execute(sql13`
                     SELECT 
                         pse.id,
                         pse.extension_days,
@@ -21281,7 +21910,7 @@ var init_manager = __esm({
           }
           let chef = null;
           if (storageBooking.chefId) {
-            const chefResult = await db.execute(sql12`
+            const chefResult = await db.execute(sql13`
                 SELECT u.id, u.username, cka.full_name
                 FROM users u
                 LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -21342,7 +21971,7 @@ var init_manager = __esm({
             chargeSucceededAt: storageOverstayRecords2.chargeSucceededAt,
             stripePaymentIntentId: storageOverstayRecords2.stripePaymentIntentId,
             stripeChargeId: storageOverstayRecords2.stripeChargeId
-          }).from(storageOverstayRecords2).where(eq27(storageOverstayRecords2.id, overstayRecordId)).limit(1);
+          }).from(storageOverstayRecords2).where(eq28(storageOverstayRecords2.id, overstayRecordId)).limit(1);
           if (!overstayRecord) {
             return res.status(404).json({ error: "Overstay record not found" });
           }
@@ -21352,7 +21981,7 @@ var init_manager = __esm({
             startDate: storageBookings2.startDate,
             endDate: storageBookings2.endDate,
             storageListingId: storageBookings2.storageListingId
-          }).from(storageBookings2).where(eq27(storageBookings2.id, overstayRecord.storageBookingId)).limit(1);
+          }).from(storageBookings2).where(eq28(storageBookings2.id, overstayRecord.storageBookingId)).limit(1);
           if (!storageBooking) {
             return res.status(404).json({ error: "Storage booking not found" });
           }
@@ -21361,7 +21990,7 @@ var init_manager = __esm({
             name: storageListings3.name,
             storageType: storageListings3.storageType,
             kitchenId: storageListings3.kitchenId
-          }).from(storageListings3).where(eq27(storageListings3.id, storageBooking.storageListingId)).limit(1);
+          }).from(storageListings3).where(eq28(storageListings3.id, storageBooking.storageListingId)).limit(1);
           if (!listing) {
             return res.status(404).json({ error: "Storage listing not found" });
           }
@@ -21370,7 +21999,7 @@ var init_manager = __esm({
             name: kitchens3.name,
             locationId: kitchens3.locationId,
             taxRatePercent: kitchens3.taxRatePercent
-          }).from(kitchens3).where(eq27(kitchens3.id, listing.kitchenId)).limit(1);
+          }).from(kitchens3).where(eq28(kitchens3.id, listing.kitchenId)).limit(1);
           if (!kitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
           }
@@ -21379,9 +22008,9 @@ var init_manager = __esm({
             managerId: locations5.managerId,
             name: locations5.name
           }).from(locations5).where(
-            and16(
-              eq27(locations5.id, kitchen.locationId),
-              eq27(locations5.managerId, managerId)
+            and17(
+              eq28(locations5.id, kitchen.locationId),
+              eq28(locations5.managerId, managerId)
             )
           ).limit(1);
           if (!location) {
@@ -21398,10 +22027,10 @@ var init_manager = __esm({
             stripeProcessingFee: paymentTransactions.stripeProcessingFee,
             managerRevenue: paymentTransactions.managerRevenue
           }).from(paymentTransactions).where(
-            and16(
-              eq27(paymentTransactions.bookingId, overstayRecord.storageBookingId),
-              eq27(paymentTransactions.bookingType, "storage"),
-              eq27(paymentTransactions.status, "succeeded")
+            and17(
+              eq28(paymentTransactions.bookingId, overstayRecord.storageBookingId),
+              eq28(paymentTransactions.bookingType, "storage"),
+              eq28(paymentTransactions.status, "succeeded")
             )
           ).orderBy(desc13(paymentTransactions.createdAt)).limit(1);
           const metadata = transaction?.metadata;
@@ -21412,7 +22041,7 @@ var init_manager = __esm({
           }
           let chef = null;
           if (storageBooking.chefId) {
-            const chefResult = await db.execute(sql12`
+            const chefResult = await db.execute(sql13`
                 SELECT u.id, u.username, cka.full_name
                 FROM users u
                 LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -21640,7 +22269,7 @@ var init_manager = __esm({
               explanation: refundBreakdown.explanation
             });
           }
-          const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq27(users.id, managerId)).limit(1);
+          const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq28(users.id, managerId)).limit(1);
           if (!manager?.stripeConnectAccountId) {
             return res.status(400).json({ error: "Manager Stripe Connect account not found" });
           }
@@ -21738,11 +22367,11 @@ var init_manager = __esm({
           );
           const paymentStatus = newStatus === "refunded" ? "refunded" : "partially_refunded";
           if (transaction.booking_type === "kitchen" || transaction.booking_type === "bundle") {
-            await db.update(kitchenBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq27(kitchenBookings.id, transaction.booking_id));
+            await db.update(kitchenBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq28(kitchenBookings.id, transaction.booking_id));
           } else if (transaction.booking_type === "storage") {
-            await db.update(storageBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq27(storageBookings.id, transaction.booking_id));
+            await db.update(storageBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq28(storageBookings.id, transaction.booking_id));
           } else if (transaction.booking_type === "equipment") {
-            await db.update(equipmentBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq27(equipmentBookings.id, transaction.booking_id));
+            await db.update(equipmentBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq28(equipmentBookings.id, transaction.booking_id));
           }
           const newBreakdown = calculateRefundBreakdown2(
             totalAmount,
@@ -21785,7 +22414,7 @@ var init_manager = __esm({
         try {
           const managerId = req.neonUser.id;
           const fromSetup = req.body?.from === "setup" || req.query.from === "setup";
-          const userResult = await db.execute(sql12`
+          const userResult = await db.execute(sql13`
             SELECT id, username as email, stripe_connect_account_id 
             FROM users 
             WHERE id = ${managerId} 
@@ -21854,7 +22483,7 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const managerId = req.neonUser.id;
-          const userResult = await db.execute(sql12`
+          const userResult = await db.execute(sql13`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${managerId} 
@@ -21888,7 +22517,7 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const managerId = req.neonUser.id;
-          const userResult = await db.execute(sql12`
+          const userResult = await db.execute(sql13`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${managerId} 
@@ -21933,7 +22562,7 @@ var init_manager = __esm({
           const [manager] = await db.select({
             stripeConnectAccountId: users.stripeConnectAccountId,
             stripeConnectOnboardingStatus: users.stripeConnectOnboardingStatus
-          }).from(users).where(eq27(users.id, managerId)).limit(1);
+          }).from(users).where(eq28(users.id, managerId)).limit(1);
           if (!manager?.stripeConnectAccountId) {
             return res.json({
               connected: false,
@@ -21981,7 +22610,7 @@ var init_manager = __esm({
             if (status === "complete" && dbStatus !== "complete" || status !== "complete" && dbStatus === "complete") {
               await db.update(users).set({
                 stripeConnectOnboardingStatus: status === "complete" ? "complete" : "in_progress"
-              }).where(eq27(users.id, managerId));
+              }).where(eq28(users.id, managerId));
             }
             res.json({
               connected: true,
@@ -22023,7 +22652,7 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const managerId = req.neonUser.id;
-          const [manager] = await db.select().from(users).where(eq27(users.id, managerId)).limit(1);
+          const [manager] = await db.select().from(users).where(eq28(users.id, managerId)).limit(1);
           if (!manager?.stripeConnectAccountId) {
             return res.status(400).json({ error: "No Stripe account connected" });
           }
@@ -22034,7 +22663,7 @@ var init_manager = __esm({
             stripeConnectOnboardingStatus: onboardingStatus
             // If they are fully ready, ensure manager onboarding is arguably complete for payments part
             // keeping it simple for now, just updating stripe status
-          }).where(eq27(users.id, managerId));
+          }).where(eq28(users.id, managerId));
           res.json({
             connected: true,
             accountId: manager.stripeConnectAccountId,
@@ -22091,7 +22720,7 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const managerId = req.neonUser.id;
-          const [userResult] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq27(users.id, managerId)).limit(1);
+          const [userResult] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq28(users.id, managerId)).limit(1);
           if (!userResult?.stripeConnectAccountId) {
             return res.json({
               available: 0,
@@ -22152,7 +22781,7 @@ var init_manager = __esm({
         try {
           const managerId = req.neonUser.id;
           const payoutId = req.params.payoutId;
-          const [userResult] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq27(users.id, managerId)).limit(1);
+          const [userResult] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq28(users.id, managerId)).limit(1);
           if (!userResult?.stripeConnectAccountId) {
             return res.status(404).json({ error: "No Stripe Connect account linked" });
           }
@@ -22185,12 +22814,12 @@ var init_manager = __esm({
             locationName: locations.name,
             chefName: users.username,
             chefEmail: users.username
-          }).from(kitchenBookings).innerJoin(kitchens, eq27(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).leftJoin(users, eq27(kitchenBookings.chefId, users.id)).where(
-            and16(
-              eq27(locations.managerId, managerId),
-              eq27(kitchenBookings.paymentStatus, "paid"),
-              sql12`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
-              sql12`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
+          }).from(kitchenBookings).innerJoin(kitchens, eq28(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).leftJoin(users, eq28(kitchenBookings.chefId, users.id)).where(
+            and17(
+              eq28(locations.managerId, managerId),
+              eq28(kitchenBookings.paymentStatus, "paid"),
+              sql13`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
+              sql13`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
             )
           ).orderBy(desc13(kitchenBookings.bookingDate));
           res.json({
@@ -22248,7 +22877,7 @@ var init_manager = __esm({
             id: users.id,
             username: users.username,
             stripeConnectAccountId: users.stripeConnectAccountId
-          }).from(users).where(eq27(users.id, managerId)).limit(1);
+          }).from(users).where(eq28(users.id, managerId)).limit(1);
           if (!manager?.stripeConnectAccountId) {
             return res.status(404).json({ error: "No Stripe Connect account linked" });
           }
@@ -22274,12 +22903,12 @@ var init_manager = __esm({
             locationName: locations.name,
             chefName: users.username,
             chefEmail: users.username
-          }).from(kitchenBookings).innerJoin(kitchens, eq27(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).leftJoin(users, eq27(kitchenBookings.chefId, users.id)).where(
-            and16(
-              eq27(locations.managerId, managerId),
-              eq27(kitchenBookings.paymentStatus, "paid"),
-              sql12`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
-              sql12`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
+          }).from(kitchenBookings).innerJoin(kitchens, eq28(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).leftJoin(users, eq28(kitchenBookings.chefId, users.id)).where(
+            and17(
+              eq28(locations.managerId, managerId),
+              eq28(kitchenBookings.paymentStatus, "paid"),
+              sql13`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
+              sql13`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
             )
           ).orderBy(desc13(kitchenBookings.bookingDate));
           const { getBalanceTransactions: getBalanceTransactions2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
@@ -22678,6 +23307,24 @@ var init_manager = __esm({
         try {
           const user = req.neonUser;
           const bookings = await bookingService.getBookingsByManager(user.id);
+          const { lazyExpireKitchenBookingAuth: lazyExpireKitchenBookingAuth2 } = await Promise.resolve().then(() => (init_auth_expiry_service(), auth_expiry_service_exports));
+          for (const b of bookings) {
+            if (b.paymentStatus === "authorized" && b.status === "pending") {
+              const wasExpired = await lazyExpireKitchenBookingAuth2({
+                id: b.id,
+                paymentStatus: b.paymentStatus,
+                paymentIntentId: b.paymentIntentId ?? null,
+                chefId: b.chefId ?? null,
+                kitchenId: b.kitchenId,
+                createdAt: b.createdAt ? new Date(b.createdAt) : null,
+                status: b.status
+              });
+              if (wasExpired) {
+                b.status = "cancelled";
+                b.paymentStatus = "failed";
+              }
+            }
+          }
           res.json(bookings);
         } catch (error) {
           console.error("Error fetching bookings:", error);
@@ -22692,12 +23339,12 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const managerId = req.neonUser.id;
-          const userResults = await db.select().from(users).where(eq27(users.id, managerId)).limit(1);
+          const userResults = await db.select().from(users).where(eq28(users.id, managerId)).limit(1);
           const userData = userResults[0];
           if (!userData) {
             return res.status(404).json({ error: "Manager profile not found" });
           }
-          const managerLocations = await db.select().from(locations).where(eq27(locations.managerId, managerId));
+          const managerLocations = await db.select().from(locations).where(eq28(locations.managerId, managerId));
           let profile = {};
           try {
             const profileData = userData.managerProfileData;
@@ -22763,12 +23410,12 @@ var init_manager = __esm({
             await userService.updateUser(user.id, { username });
           }
           if (Object.keys(profileUpdates).length > 0) {
-            const [currentUser] = await db.select({ managerProfileData: users.managerProfileData }).from(users).where(eq27(users.id, user.id)).limit(1);
+            const [currentUser] = await db.select({ managerProfileData: users.managerProfileData }).from(users).where(eq28(users.id, user.id)).limit(1);
             const currentData = currentUser?.managerProfileData || {};
             const newData = { ...currentData, ...profileUpdates };
-            await db.update(users).set({ managerProfileData: newData }).where(eq27(users.id, user.id));
+            await db.update(users).set({ managerProfileData: newData }).where(eq28(users.id, user.id));
           }
-          const [updatedUser] = await db.select({ managerProfileData: users.managerProfileData }).from(users).where(eq27(users.id, user.id)).limit(1);
+          const [updatedUser] = await db.select({ managerProfileData: users.managerProfileData }).from(users).where(eq28(users.id, user.id)).limit(1);
           const finalProfile = updatedUser?.managerProfileData || {};
           res.json({
             profileImageUrl: finalProfile.profileImageUrl || null,
@@ -22802,7 +23449,7 @@ var init_manager = __esm({
         try {
           const user = req.neonUser;
           const { users: users5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-          const managedLocations = await db.select().from(locations).where(eq27(locations.managerId, user.id));
+          const managedLocations = await db.select().from(locations).where(eq28(locations.managerId, user.id));
           if (managedLocations.length === 0) return res.json([]);
           const locationIds = managedLocations.map((loc) => loc.id);
           const applications4 = await db.select({
@@ -22811,8 +23458,8 @@ var init_manager = __esm({
             user: users5
           }).from(portalUserApplications).innerJoin(
             locations,
-            eq27(portalUserApplications.locationId, locations.id)
-          ).innerJoin(users5, eq27(portalUserApplications.userId, users5.id)).where(inArray7(portalUserApplications.locationId, locationIds));
+            eq28(portalUserApplications.locationId, locations.id)
+          ).innerJoin(users5, eq28(portalUserApplications.userId, users5.id)).where(inArray7(portalUserApplications.locationId, locationIds));
           const formatted = applications4.map((app2) => ({
             ...app2.application,
             location: {
@@ -22951,9 +23598,9 @@ var init_manager = __esm({
                 fullName: chefKitchenApplications.fullName,
                 phone: chefKitchenApplications.phone
               }).from(chefKitchenApplications).where(
-                and16(
-                  eq27(chefKitchenApplications.chefId, booking.chefId),
-                  eq27(chefKitchenApplications.locationId, location.id)
+                and17(
+                  eq28(chefKitchenApplications.chefId, booking.chefId),
+                  eq28(chefKitchenApplications.locationId, location.id)
                 )
               ).limit(1);
               chef = {
@@ -22996,7 +23643,7 @@ var init_manager = __esm({
                 storageType: storageListings.storageType,
                 photos: storageListings.photos,
                 basePrice: storageListings.basePrice
-              }).from(storageListings).where(eq27(storageListings.id, sb.storageListingId)).limit(1);
+              }).from(storageListings).where(eq28(storageListings.id, sb.storageListingId)).limit(1);
               const originalDates = originalStorageDates[sb.id];
               let originalPrice = sb.totalPrice;
               let displayStartDate = sb.startDate;
@@ -23022,7 +23669,7 @@ var init_manager = __esm({
               const [listing] = await db.select({
                 equipmentType: equipmentListings.equipmentType,
                 brand: equipmentListings.brand
-              }).from(equipmentListings).where(eq27(equipmentListings.id, eb.equipmentListingId)).limit(1);
+              }).from(equipmentListings).where(eq28(equipmentListings.id, eb.equipmentListingId)).limit(1);
               return {
                 ...eb,
                 equipmentListing: listing || null
@@ -23041,12 +23688,12 @@ var init_manager = __esm({
               stripeProcessingFee: paymentTransactions.stripeProcessingFee,
               paidAt: paymentTransactions.paidAt
             }).from(paymentTransactions).where(
-              and16(
-                eq27(paymentTransactions.bookingId, id),
+              and17(
+                eq28(paymentTransactions.bookingId, id),
                 // Include both 'kitchen' and 'bundle' booking types for accurate payment data
                 or4(
-                  eq27(paymentTransactions.bookingType, "kitchen"),
-                  eq27(paymentTransactions.bookingType, "bundle")
+                  eq28(paymentTransactions.bookingType, "kitchen"),
+                  eq28(paymentTransactions.bookingType, "bundle")
                 )
               )
             ).limit(1);
@@ -23325,20 +23972,20 @@ var init_manager = __esm({
                 storageItems: updatedStorageItems,
                 equipmentItems: updatedEquipmentItems,
                 updatedAt: /* @__PURE__ */ new Date()
-              }).where(eq27(kitchenBookings.id, id));
+              }).where(eq28(kitchenBookings.id, id));
               logger.info(`[Manager] Updated kb: total_price=${approvedSubtotalCents} (approved subtotal), marked ${rejectedStorageIds.size} rejected storage + ${rejectedEquipmentIds.size} rejected equipment in JSONB`);
               for (const sb of assocStorage || []) {
                 if (rejectedStorageIds.has(sb.id)) {
-                  await db.update(storageBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(storageBookings.id, sb.id));
+                  await db.update(storageBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(storageBookings.id, sb.id));
                 } else {
-                  await db.update(storageBookings).set({ paymentStatus: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(storageBookings.id, sb.id));
+                  await db.update(storageBookings).set({ paymentStatus: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(storageBookings.id, sb.id));
                 }
               }
               for (const eb of assocEquip || []) {
                 if (rejectedEquipmentIds.has(eb.id)) {
-                  await db.update(equipmentBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(equipmentBookings.id, eb.id));
+                  await db.update(equipmentBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(equipmentBookings.id, eb.id));
                 } else {
-                  await db.update(equipmentBookings).set({ paymentStatus: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(equipmentBookings.id, eb.id));
+                  await db.update(equipmentBookings).set({ paymentStatus: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(equipmentBookings.id, eb.id));
                 }
               }
               try {
@@ -23369,7 +24016,7 @@ var init_manager = __esm({
                     amount: captureAmountCents,
                     metadata: captureMetadata
                   }, db);
-                  await db.execute(sql12`
+                  await db.execute(sql13`
                 UPDATE payment_transactions
                 SET base_amount = ${capturedBaseAmount.toString()},
                     service_fee = ${newApplicationFeeCents.toString()},
@@ -23400,18 +24047,18 @@ var init_manager = __esm({
                 paymentIntentId: bookingPaymentIntentId,
                 status: cancelResult.status
               });
-              await db.update(kitchenBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(kitchenBookings.id, id));
+              await db.update(kitchenBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(kitchenBookings.id, id));
               try {
                 const assocStorage = await bookingService.getStorageBookingsByKitchenBooking(id);
                 for (const sb of assocStorage || []) {
                   if (sb.paymentStatus === "authorized") {
-                    await db.update(storageBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(storageBookings.id, sb.id));
+                    await db.update(storageBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(storageBookings.id, sb.id));
                   }
                 }
                 const assocEquip = await bookingService.getEquipmentBookingsByKitchenBooking(id);
                 for (const eb of assocEquip || []) {
                   if (eb.paymentStatus === "authorized") {
-                    await db.update(equipmentBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(equipmentBookings.id, eb.id));
+                    await db.update(equipmentBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(equipmentBookings.id, eb.id));
                   }
                 }
               } catch (subBookErr) {
@@ -23463,9 +24110,9 @@ var init_manager = __esm({
                   id: storageBookings.id,
                   totalPrice: storageBookings.totalPrice
                 }).from(storageBookings).where(
-                  sql12`${storageBookings.id} IN (${sql12.join(
-                    rejectedStorageIds.map((rid) => sql12`${rid}`),
-                    sql12`, `
+                  sql13`${storageBookings.id} IN (${sql13.join(
+                    rejectedStorageIds.map((rid) => sql13`${rid}`),
+                    sql13`, `
                   )})`
                 );
                 for (const row of rejectedRows) {
@@ -23478,9 +24125,9 @@ var init_manager = __esm({
                   id: equipmentBookings.id,
                   totalPrice: equipmentBookings.totalPrice
                 }).from(equipmentBookings).where(
-                  sql12`${equipmentBookings.id} IN (${sql12.join(
-                    rejectedEquipmentIds.map((rid) => sql12`${rid}`),
-                    sql12`, `
+                  sql13`${equipmentBookings.id} IN (${sql13.join(
+                    rejectedEquipmentIds.map((rid) => sql13`${rid}`),
+                    sql13`, `
                   )})`
                 );
                 for (const row of rejectedEqRows) {
@@ -23589,15 +24236,15 @@ var init_manager = __esm({
                     );
                   }
                   if (kitchenWasRejected) {
-                    await db.update(kitchenBookings).set({ paymentStatus: isFullRefund ? "refunded" : "partially_refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(kitchenBookings.id, id));
+                    await db.update(kitchenBookings).set({ paymentStatus: isFullRefund ? "refunded" : "partially_refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(kitchenBookings.id, id));
                   } else if (totalRejectedSubtotalCents > 0) {
-                    await db.update(kitchenBookings).set({ paymentStatus: "partially_refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(kitchenBookings.id, id));
+                    await db.update(kitchenBookings).set({ paymentStatus: "partially_refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(kitchenBookings.id, id));
                   }
                   for (const rejectedId of rejectedStorageIds) {
-                    await db.update(storageBookings).set({ paymentStatus: "refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(storageBookings.id, rejectedId));
+                    await db.update(storageBookings).set({ paymentStatus: "refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(storageBookings.id, rejectedId));
                   }
                   for (const rejectedId of rejectedEquipmentIds) {
-                    await db.update(equipmentBookings).set({ paymentStatus: "refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq27(equipmentBookings.id, rejectedId));
+                    await db.update(equipmentBookings).set({ paymentStatus: "refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(equipmentBookings.id, rejectedId));
                   }
                   if (rejectedStorageIds.length > 0 || rejectedEquipmentIds.length > 0) {
                     const rejStorageSet = new Set(rejectedStorageIds);
@@ -23606,7 +24253,7 @@ var init_manager = __esm({
                     const curEquip = booking.equipmentItems || [];
                     const markedStorage = curStorage.map((item) => rejStorageSet.has(item.id) ? { ...item, rejected: true } : item);
                     const markedEquip = curEquip.map((item) => rejEquipSet.has(item.id) ? { ...item, rejected: true } : item);
-                    await db.update(kitchenBookings).set({ storageItems: markedStorage, equipmentItems: markedEquip, updatedAt: /* @__PURE__ */ new Date() }).where(eq27(kitchenBookings.id, id));
+                    await db.update(kitchenBookings).set({ storageItems: markedStorage, equipmentItems: markedEquip, updatedAt: /* @__PURE__ */ new Date() }).where(eq28(kitchenBookings.id, id));
                   }
                 }
               }
@@ -23765,6 +24412,9 @@ var init_manager = __esm({
               message: isFullRejection ? "Refund processed for rejected items (customer absorbs proportional Stripe fee)" : "Partial refund processed for rejected items (customer absorbs proportional Stripe fee)"
             };
             responseData.message = isFullRejection ? "Booking rejected and refund processed" : "Booking approved with partial rejection. Refund processed for rejected items.";
+          } else if (isFromPending && isAuthorizedPayment && status === "cancelled") {
+            responseData.authorizationVoided = true;
+            responseData.message = "Booking rejected \u2014 payment hold released. No charge was made.";
           } else if (isCancellation) {
             responseData.requiresManualRefund = true;
             responseData.message = "Booking cancelled. Use 'Issue Refund' to process refund manually.";
@@ -23919,9 +24569,9 @@ var init_manager = __esm({
             });
           }
           const locationResults = await db.select().from(locations).where(
-            and16(
-              eq27(locations.id, locationIdNum),
-              eq27(locations.managerId, user.id)
+            and17(
+              eq28(locations.id, locationIdNum),
+              eq28(locations.managerId, user.id)
             )
           );
           const location = locationResults[0];
@@ -24068,7 +24718,7 @@ var init_manager = __esm({
             "[PUT] Updates object logo_url value:",
             updates.logo_url
           );
-          const updatedResults = await db.update(locations).set(updates).where(eq27(locations.id, locationIdNum)).returning();
+          const updatedResults = await db.update(locations).set(updates).where(eq28(locations.id, locationIdNum)).returning();
           console.log(
             "[PUT] Updated location from DB (full object):",
             JSON.stringify(updatedResults[0], null, 2)
@@ -24430,7 +25080,7 @@ var init_manager = __esm({
           if (kitchenLicenseUrl && updates.kitchenLicenseStatus === "pending") {
             try {
               const { generateKitchenLicenseSubmittedAdminEmail: generateKitchenLicenseSubmittedAdminEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-              const admins = await db.select({ username: users.username }).from(users).where(eq27(users.role, "admin"));
+              const admins = await db.select({ username: users.username }).from(users).where(eq28(users.role, "admin"));
               for (const admin2 of admins) {
                 if (admin2.username) {
                   const adminEmail = generateKitchenLicenseSubmittedAdminEmail2({
@@ -24593,9 +25243,9 @@ var init_manager = __esm({
           }
           const { kitchenAvailability: kitchenAvailability2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
           const [existing] = await db.select().from(kitchenAvailability2).where(
-            and16(
-              eq27(kitchenAvailability2.kitchenId, kitchenId),
-              eq27(kitchenAvailability2.dayOfWeek, dayOfWeek)
+            and17(
+              eq28(kitchenAvailability2.kitchenId, kitchenId),
+              eq28(kitchenAvailability2.dayOfWeek, dayOfWeek)
             )
           ).limit(1);
           let result;
@@ -24604,7 +25254,7 @@ var init_manager = __esm({
               startTime: startTime || "00:00",
               endTime: endTime || "00:00",
               isAvailable: isAvailable ?? false
-            }).where(eq27(kitchenAvailability2.id, existing.id)).returning();
+            }).where(eq28(kitchenAvailability2.id, existing.id)).returning();
           } else {
             [result] = await db.insert(kitchenAvailability2).values({
               kitchenId,
@@ -24637,6 +25287,7 @@ var init_manager = __esm({
             extensionTotalPriceCents: pendingStorageExtensions.extensionTotalPriceCents,
             status: pendingStorageExtensions.status,
             createdAt: pendingStorageExtensions.createdAt,
+            stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
             // Storage booking details
             currentEndDate: storageBookings.endDate,
             storageName: storageListings.name,
@@ -24649,24 +25300,39 @@ var init_manager = __esm({
             locationId: locations.id
           }).from(pendingStorageExtensions).innerJoin(
             storageBookings,
-            eq27(
+            eq28(
               pendingStorageExtensions.storageBookingId,
               storageBookings.id
             )
           ).innerJoin(
             storageListings,
-            eq27(storageBookings.storageListingId, storageListings.id)
-          ).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).innerJoin(users, eq27(storageBookings.chefId, users.id)).where(
-            and16(
-              eq27(locations.managerId, managerId),
+            eq28(storageBookings.storageListingId, storageListings.id)
+          ).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).innerJoin(users, eq28(storageBookings.chefId, users.id)).where(
+            and17(
+              eq28(locations.managerId, managerId),
               or4(
-                eq27(pendingStorageExtensions.status, "paid"),
-                eq27(pendingStorageExtensions.status, "authorized")
+                eq28(pendingStorageExtensions.status, "paid"),
+                eq28(pendingStorageExtensions.status, "authorized")
               )
               // Show paid and authorized extensions awaiting manager approval
             )
           ).orderBy(desc13(pendingStorageExtensions.createdAt));
-          res.json(pendingExtensions);
+          const { lazyExpireStorageExtensionAuth: lazyExpireStorageExtensionAuth2 } = await Promise.resolve().then(() => (init_auth_expiry_service(), auth_expiry_service_exports));
+          const stillPending = [];
+          for (const ext of pendingExtensions) {
+            if (ext.status === "authorized") {
+              const wasExpired = await lazyExpireStorageExtensionAuth2({
+                id: ext.id,
+                status: ext.status,
+                stripePaymentIntentId: ext.stripePaymentIntentId,
+                createdAt: ext.createdAt ? new Date(ext.createdAt) : null,
+                storageBookingId: ext.storageBookingId
+              });
+              if (wasExpired) continue;
+            }
+            stillPending.push(ext);
+          }
+          res.json(stillPending);
         } catch (error) {
           logger.error("Error fetching pending storage extensions:", error);
           return errorResponse(res, error);
@@ -24696,14 +25362,14 @@ var init_manager = __esm({
             storageName: storageListings.name
           }).from(pendingStorageExtensions).innerJoin(
             storageBookings,
-            eq27(
+            eq28(
               pendingStorageExtensions.storageBookingId,
               storageBookings.id
             )
           ).innerJoin(
             storageListings,
-            eq27(storageBookings.storageListingId, storageListings.id)
-          ).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).innerJoin(users, eq27(storageBookings.chefId, users.id)).where(eq27(pendingStorageExtensions.id, extensionId)).limit(1);
+            eq28(storageBookings.storageListingId, storageListings.id)
+          ).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).innerJoin(users, eq28(storageBookings.chefId, users.id)).where(eq28(pendingStorageExtensions.id, extensionId)).limit(1);
           if (!extension) {
             return res.status(404).json({ error: "Extension request not found" });
           }
@@ -24717,7 +25383,7 @@ var init_manager = __esm({
           }
           if (extension.status === "authorized") {
             try {
-              const [extDetails] = await db.select({ stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId }).from(pendingStorageExtensions).where(eq27(pendingStorageExtensions.id, extensionId)).limit(1);
+              const [extDetails] = await db.select({ stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId }).from(pendingStorageExtensions).where(eq28(pendingStorageExtensions.id, extensionId)).limit(1);
               if (extDetails?.stripePaymentIntentId) {
                 const { capturePaymentIntent: capturePaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
                 const captureResult = await capturePaymentIntent2(extDetails.stripePaymentIntentId);
@@ -24753,7 +25419,7 @@ var init_manager = __esm({
             managerId,
             approvedAt: /* @__PURE__ */ new Date(),
             updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq27(pendingStorageExtensions.id, extensionId));
+          }).where(eq28(pendingStorageExtensions.id, extensionId));
           await bookingService.extendStorageBooking(
             extension.storageBookingId,
             extension.newEndDate
@@ -24762,7 +25428,7 @@ var init_manager = __esm({
             status: "completed",
             completedAt: /* @__PURE__ */ new Date(),
             updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq27(pendingStorageExtensions.id, extensionId));
+          }).where(eq28(pendingStorageExtensions.id, extensionId));
           logger.info(
             `[Manager] Storage extension ${extensionId} approved by manager ${managerId}`,
             {
@@ -24848,14 +25514,14 @@ var init_manager = __esm({
             chefEmail: users.username
           }).from(pendingStorageExtensions).innerJoin(
             storageBookings,
-            eq27(
+            eq28(
               pendingStorageExtensions.storageBookingId,
               storageBookings.id
             )
           ).innerJoin(
             storageListings,
-            eq27(storageBookings.storageListingId, storageListings.id)
-          ).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).innerJoin(users, eq27(storageBookings.chefId, users.id)).where(eq27(pendingStorageExtensions.id, extensionId)).limit(1);
+            eq28(storageBookings.storageListingId, storageListings.id)
+          ).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).innerJoin(users, eq28(storageBookings.chefId, users.id)).where(eq28(pendingStorageExtensions.id, extensionId)).limit(1);
           if (!extension) {
             return res.status(404).json({ error: "Extension request not found" });
           }
@@ -24874,7 +25540,7 @@ var init_manager = __esm({
             rejectedAt: /* @__PURE__ */ new Date(),
             rejectionReason: reason || "Extension request declined by manager",
             updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq27(pendingStorageExtensions.id, extensionId));
+          }).where(eq28(pendingStorageExtensions.id, extensionId));
           logger.info(
             `[Manager] Storage extension ${extensionId} rejected by manager ${managerId}`,
             {
@@ -24961,7 +25627,7 @@ var init_manager = __esm({
                   await db.update(pendingStorageExtensions).set({
                     status: "refunded",
                     updatedAt: /* @__PURE__ */ new Date()
-                  }).where(eq27(pendingStorageExtensions.id, extensionId));
+                  }).where(eq28(pendingStorageExtensions.id, extensionId));
                   if (paymentTransaction) {
                     await updatePaymentTransaction2(
                       paymentTransaction.id,
@@ -25046,7 +25712,7 @@ var init_manager = __esm({
         try {
           const managerId = req.neonUser.id;
           const includeAll = req.query.includeAll === "true";
-          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq27(locations.managerId, managerId));
+          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq28(locations.managerId, managerId));
           const locationIds = managerLocations.map((l) => l.id);
           if (locationIds.length === 0) {
             return res.json({ overstays: [], pastOverstays: [], stats: null });
@@ -25065,7 +25731,10 @@ var init_manager = __esm({
               "detected",
               "grace_period",
               "pending_review",
-              "charge_failed"
+              "penalty_approved",
+              "charge_pending",
+              "charge_failed",
+              "escalated"
             ];
             pastOverstays = filteredAll.filter(
               (o) => !pendingStatuses.includes(o.status)
@@ -25136,24 +25805,20 @@ var init_manager = __esm({
           if (!result.success) {
             return res.status(400).json({ error: result.error });
           }
-          const { skipAutoCharge } = req.body;
-          let chargeResult = null;
-          if (!skipAutoCharge) {
-            logger.info(
-              `[Manager] Auto-charging overstay penalty ${overstayId} after manager approval`
+          logger.info(
+            `[Manager] Auto-charging overstay penalty ${overstayId} after manager approval`
+          );
+          const chargeResult = await overstayPenaltyService.chargeApprovedPenalty(overstayId);
+          if (!chargeResult.success) {
+            logger.warn(
+              `[Manager] Auto-charge failed for overstay ${overstayId}: ${chargeResult.error}`
             );
-            chargeResult = await overstayPenaltyService.chargeApprovedPenalty(overstayId);
-            if (!chargeResult.success) {
-              logger.warn(
-                `[Manager] Auto-charge failed for overstay ${overstayId}: ${chargeResult.error}`
-              );
-            }
           }
           res.json({
             success: true,
-            message: chargeResult?.success ? "Penalty approved and charged successfully" : skipAutoCharge ? "Penalty approved (auto-charge skipped)" : `Penalty approved but charge failed: ${chargeResult?.error || "Unknown error"}`,
+            message: chargeResult.success ? "Penalty approved and charged successfully" : `Penalty approved but charge failed: ${chargeResult.error || "Unknown error"}`,
             chargeResult,
-            autoCharged: !skipAutoCharge
+            autoCharged: true
           });
         } catch (error) {
           logger.error("Error approving penalty:", error);
@@ -25270,7 +25935,7 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const managerId = req.neonUser.id;
-          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq27(locations.managerId, managerId));
+          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq28(locations.managerId, managerId));
           const locationIds = managerLocations.map((l) => l.id);
           if (locationIds.length === 0) {
             return res.json({ stats: null });
@@ -25290,7 +25955,7 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const managerId = req.neonUser.id;
-          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq27(locations.managerId, managerId));
+          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq28(locations.managerId, managerId));
           const locationIds = managerLocations.map((l) => l.id);
           if (locationIds.length === 0) {
             return res.json({ pendingCheckouts: [] });
@@ -25324,7 +25989,7 @@ var init_manager = __esm({
         try {
           const managerId = req.neonUser.id;
           const limit = parseInt(req.query.limit) || 20;
-          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq27(locations.managerId, managerId));
+          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq28(locations.managerId, managerId));
           const locationIds = managerLocations.map((l) => l.id);
           if (locationIds.length === 0) {
             return res.json({ checkoutHistory: [] });
@@ -25512,7 +26177,7 @@ var init_manager = __esm({
           const [listing] = await db.select({
             id: storageListings.id,
             managerId: locations.managerId
-          }).from(storageListings).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).where(eq27(storageListings.id, listingId)).limit(1);
+          }).from(storageListings).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(storageListings.id, listingId)).limit(1);
           if (!listing) {
             return res.status(404).json({ error: "Storage listing not found" });
           }
@@ -25544,7 +26209,7 @@ var init_manager = __esm({
           if (overstayPolicyText !== void 0) {
             updates.overstayPolicyText = overstayPolicyText || null;
           }
-          await db.update(storageListings).set(updates).where(eq27(storageListings.id, listingId));
+          await db.update(storageListings).set(updates).where(eq28(storageListings.id, listingId));
           logger.info(
             `[Manager] Updated penalty config for storage listing ${listingId}`,
             {
@@ -25580,7 +26245,7 @@ var init_manager = __esm({
             overstayPenaltyRate: locations.overstayPenaltyRate,
             overstayMaxPenaltyDays: locations.overstayMaxPenaltyDays,
             overstayPolicyText: locations.overstayPolicyText
-          }).from(locations).where(eq27(locations.id, locationId)).limit(1);
+          }).from(locations).where(eq28(locations.id, locationId)).limit(1);
           if (!location) {
             return res.status(404).json({ error: "Location not found" });
           }
@@ -25617,7 +26282,7 @@ var init_manager = __esm({
           if (isNaN(locationId)) {
             return res.status(400).json({ error: "Invalid location ID" });
           }
-          const [location] = await db.select({ id: locations.id, managerId: locations.managerId }).from(locations).where(eq27(locations.id, locationId)).limit(1);
+          const [location] = await db.select({ id: locations.id, managerId: locations.managerId }).from(locations).where(eq28(locations.id, locationId)).limit(1);
           if (!location) {
             return res.status(404).json({ error: "Location not found" });
           }
@@ -25661,7 +26326,7 @@ var init_manager = __esm({
           if (policyText !== void 0) {
             updates.overstayPolicyText = policyText || null;
           }
-          await db.update(locations).set(updates).where(eq27(locations.id, locationId));
+          await db.update(locations).set(updates).where(eq28(locations.id, locationId));
           logger.info(
             `[Manager] Updated location ${locationId} overstay penalty defaults`,
             {
@@ -25690,7 +26355,7 @@ var init_manager = __esm({
           const deadlineDays = limits.claimSubmissionDeadlineDays;
           const cutoffDate = /* @__PURE__ */ new Date();
           cutoffDate.setDate(cutoffDate.getDate() - deadlineDays);
-          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq27(locations.managerId, managerId));
+          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq28(locations.managerId, managerId));
           const locationIds = managerLocations.map((l) => l.id);
           if (locationIds.length === 0) {
             return res.json({ bookings: [], deadlineDays });
@@ -25707,14 +26372,14 @@ var init_manager = __esm({
             chefName: users.username,
             kitchenName: kitchens.name,
             locationName: locations.name
-          }).from(kitchenBookings).innerJoin(kitchens, eq27(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).innerJoin(users, eq27(kitchenBookings.chefId, users.id)).where(
-            and16(
+          }).from(kitchenBookings).innerJoin(kitchens, eq28(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).innerJoin(users, eq28(kitchenBookings.chefId, users.id)).where(
+            and17(
               inArray7(locations.id, locationIds),
               gte3(kitchenBookings.bookingDate, cutoffDate),
               // Not older than deadline
               lte3(kitchenBookings.bookingDate, now),
               // Must be in the past (booking date <= now)
-              eq27(kitchenBookings.status, "confirmed")
+              eq28(kitchenBookings.status, "confirmed")
             )
           ).orderBy(desc13(kitchenBookings.bookingDate)).limit(50);
           const recentStorageBookings = await db.select({
@@ -25728,15 +26393,15 @@ var init_manager = __esm({
             locationName: locations.name
           }).from(storageBookings).innerJoin(
             storageListings,
-            eq27(storageBookings.storageListingId, storageListings.id)
-          ).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).innerJoin(users, eq27(storageBookings.chefId, users.id)).where(
-            and16(
+            eq28(storageBookings.storageListingId, storageListings.id)
+          ).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).innerJoin(users, eq28(storageBookings.chefId, users.id)).where(
+            and17(
               inArray7(locations.id, locationIds),
               gte3(storageBookings.endDate, cutoffDate),
               // Not older than deadline
               lte3(storageBookings.endDate, now),
               // Must be in the past (end date <= now)
-              eq27(storageBookings.status, "confirmed")
+              eq28(storageBookings.status, "confirmed")
             )
           ).orderBy(desc13(storageBookings.endDate)).limit(50);
           const kitchenBookingIds = recentKitchenBookings.map((b) => b.id);
@@ -25750,8 +26415,8 @@ var init_manager = __esm({
               brand: equipmentListings.brand,
               availabilityType: equipmentListings.availabilityType,
               status: equipmentBookings.status
-            }).from(equipmentBookings).innerJoin(equipmentListings, eq27(equipmentBookings.equipmentListingId, equipmentListings.id)).where(
-              sql12`${equipmentBookings.kitchenBookingId} IN (${sql12.join(kitchenBookingIds.map((id) => sql12`${id}`), sql12`, `)})`
+            }).from(equipmentBookings).innerJoin(equipmentListings, eq28(equipmentBookings.equipmentListingId, equipmentListings.id)).where(
+              sql13`${equipmentBookings.kitchenBookingId} IN (${sql13.join(kitchenBookingIds.map((id) => sql13`${id}`), sql13`, `)})`
             );
             for (const eq_item of rentedEquipment) {
               const list = equipmentMap.get(eq_item.kitchenBookingId) || [];
@@ -25774,10 +26439,10 @@ var init_manager = __esm({
                 brand: equipmentListings.brand,
                 availabilityType: equipmentListings.availabilityType
               }).from(equipmentListings).where(
-                and16(
-                  sql12`${equipmentListings.kitchenId} IN (${sql12.join(kitchenIds.map((id) => sql12`${id}`), sql12`, `)})`,
-                  eq27(equipmentListings.availabilityType, "included"),
-                  eq27(equipmentListings.isActive, true)
+                and17(
+                  sql13`${equipmentListings.kitchenId} IN (${sql13.join(kitchenIds.map((id) => sql13`${id}`), sql13`, `)})`,
+                  eq28(equipmentListings.availabilityType, "included"),
+                  eq28(equipmentListings.isActive, true)
                 )
               );
               for (const kb of recentKitchenBookings) {
@@ -26190,7 +26855,7 @@ __export(notifications_exports, {
   markAsRead: () => markAsRead
 });
 import { Router as Router15 } from "express";
-import { sql as sql13 } from "drizzle-orm";
+import { sql as sql14 } from "drizzle-orm";
 async function createNotification2(params) {
   const {
     managerId,
@@ -26204,7 +26869,7 @@ async function createNotification2(params) {
     actionLabel,
     expiresAt
   } = params;
-  const result = await db.execute(sql13`
+  const result = await db.execute(sql14`
     INSERT INTO manager_notifications 
     (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
     VALUES (
@@ -26244,7 +26909,7 @@ async function getNotifications(managerId, options = {}) {
   }
   const typeCondition = type ? `AND type = '${type}'::notification_type` : "";
   const locationCondition = locationId ? `AND (location_id = ${locationId} OR location_id IS NULL)` : "";
-  const notificationsResult = await db.execute(sql13.raw(`
+  const notificationsResult = await db.execute(sql14.raw(`
     SELECT 
       id, manager_id, location_id, type, priority, title, message, 
       metadata, is_read, read_at, is_archived, archived_at, 
@@ -26264,7 +26929,7 @@ async function getNotifications(managerId, options = {}) {
     LIMIT ${limit}
     OFFSET ${offset}
   `));
-  const countResult = await db.execute(sql13.raw(`
+  const countResult = await db.execute(sql14.raw(`
     SELECT COUNT(*) as total
     FROM manager_notifications
     WHERE manager_id = ${managerId}
@@ -26287,7 +26952,7 @@ async function getNotifications(managerId, options = {}) {
 }
 async function getUnreadCount(managerId, locationId) {
   const locationCondition = locationId ? `AND (location_id = ${locationId} OR location_id IS NULL)` : "";
-  const result = await db.execute(sql13.raw(`
+  const result = await db.execute(sql14.raw(`
     SELECT COUNT(*) as count
     FROM manager_notifications
     WHERE manager_id = ${managerId}
@@ -26300,18 +26965,18 @@ async function getUnreadCount(managerId, locationId) {
 }
 async function markAsRead(managerId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql13`
+  const result = await db.execute(sql14`
     UPDATE manager_notifications
     SET is_read = true, read_at = NOW()
     WHERE manager_id = ${managerId}
-      AND id IN (${sql13.join(notificationIds.map((id) => sql13`${id}`), sql13`, `)})
+      AND id IN (${sql14.join(notificationIds.map((id) => sql14`${id}`), sql14`, `)})
       AND is_read = false
   `);
   return { updated: result.rowCount || 0 };
 }
 async function markAllAsRead(managerId, locationId) {
-  const locationCondition = locationId ? sql13`AND location_id = ${locationId}` : sql13``;
-  const result = await db.execute(sql13`
+  const locationCondition = locationId ? sql14`AND location_id = ${locationId}` : sql14``;
+  const result = await db.execute(sql14`
     UPDATE manager_notifications
     SET is_read = true, read_at = NOW()
     WHERE manager_id = ${managerId}
@@ -26322,31 +26987,31 @@ async function markAllAsRead(managerId, locationId) {
 }
 async function archiveNotifications(managerId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql13`
+  const result = await db.execute(sql14`
     UPDATE manager_notifications
     SET is_archived = true, archived_at = NOW()
     WHERE manager_id = ${managerId}
-      AND id IN (${sql13.join(notificationIds.map((id) => sql13`${id}`), sql13`, `)})
+      AND id IN (${sql14.join(notificationIds.map((id) => sql14`${id}`), sql14`, `)})
       AND is_archived = false
   `);
   return { updated: result.rowCount || 0 };
 }
 async function unarchiveNotifications(managerId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql13`
+  const result = await db.execute(sql14`
     UPDATE manager_notifications
     SET is_archived = false, archived_at = NULL
     WHERE manager_id = ${managerId}
-      AND id IN (${sql13.join(notificationIds.map((id) => sql13`${id}`), sql13`, `)})
+      AND id IN (${sql14.join(notificationIds.map((id) => sql14`${id}`), sql14`, `)})
       AND is_archived = true
   `);
   return { updated: result.rowCount || 0 };
 }
 async function cleanupOldNotifications(daysOld = 90) {
-  const result = await db.execute(sql13`
+  const result = await db.execute(sql14`
     DELETE FROM manager_notifications
     WHERE is_archived = true
-      AND archived_at < NOW() - INTERVAL '${sql13.raw(String(daysOld))} days'
+      AND archived_at < NOW() - INTERVAL '${sql14.raw(String(daysOld))} days'
   `);
   return { deleted: result.rowCount || 0 };
 }
@@ -26476,7 +27141,7 @@ var init_notifications = __esm({
       try {
         const managerId = req.neonUser.id;
         const notificationId = parseInt(req.params.id);
-        const result = await db.execute(sql13`
+        const result = await db.execute(sql14`
       DELETE FROM manager_notifications
       WHERE id = ${notificationId}
         AND manager_id = ${managerId}
@@ -26506,7 +27171,7 @@ __export(chef_notifications_exports, {
   notificationService: () => notificationService
 });
 import { Router as Router16 } from "express";
-import { sql as sql14 } from "drizzle-orm";
+import { sql as sql15 } from "drizzle-orm";
 async function getNotifications2(chefId, options = {}) {
   const {
     page = 1,
@@ -26526,7 +27191,7 @@ async function getNotifications2(chefId, options = {}) {
     filterCondition = "AND is_archived = false";
   }
   const typeCondition = type ? `AND type = '${type}'::chef_notification_type` : "";
-  const notificationsResult = await db.execute(sql14.raw(`
+  const notificationsResult = await db.execute(sql15.raw(`
     SELECT 
       id, chef_id, type, priority, title, message, 
       metadata, is_read, read_at, is_archived, archived_at, 
@@ -26545,7 +27210,7 @@ async function getNotifications2(chefId, options = {}) {
     LIMIT ${limit}
     OFFSET ${offset}
   `));
-  const countResult = await db.execute(sql14.raw(`
+  const countResult = await db.execute(sql15.raw(`
     SELECT COUNT(*) as total
     FROM chef_notifications
     WHERE chef_id = ${chefId}
@@ -26566,7 +27231,7 @@ async function getNotifications2(chefId, options = {}) {
   };
 }
 async function getUnreadCount2(chefId) {
-  const result = await db.execute(sql14.raw(`
+  const result = await db.execute(sql15.raw(`
     SELECT COUNT(*) as count
     FROM chef_notifications
     WHERE chef_id = ${chefId}
@@ -26578,17 +27243,17 @@ async function getUnreadCount2(chefId) {
 }
 async function markAsRead2(chefId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql14`
+  const result = await db.execute(sql15`
     UPDATE chef_notifications
     SET is_read = true, read_at = NOW()
     WHERE chef_id = ${chefId}
-      AND id IN (${sql14.join(notificationIds.map((id) => sql14`${id}`), sql14`, `)})
+      AND id IN (${sql15.join(notificationIds.map((id) => sql15`${id}`), sql15`, `)})
       AND is_read = false
   `);
   return { updated: result.rowCount || 0 };
 }
 async function markAllAsRead2(chefId) {
-  const result = await db.execute(sql14`
+  const result = await db.execute(sql15`
     UPDATE chef_notifications
     SET is_read = true, read_at = NOW()
     WHERE chef_id = ${chefId}
@@ -26599,11 +27264,11 @@ async function markAllAsRead2(chefId) {
 }
 async function archiveNotifications2(chefId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql14`
+  const result = await db.execute(sql15`
     UPDATE chef_notifications
     SET is_archived = true, archived_at = NOW()
     WHERE chef_id = ${chefId}
-      AND id IN (${sql14.join(notificationIds.map((id) => sql14`${id}`), sql14`, `)})
+      AND id IN (${sql15.join(notificationIds.map((id) => sql15`${id}`), sql15`, `)})
       AND is_archived = false
   `);
   return { updated: result.rowCount || 0 };
@@ -26704,7 +27369,7 @@ var init_chef_notifications = __esm({
       try {
         const chefId = req.neonUser.id;
         const notificationId = parseInt(req.params.id);
-        const result = await db.execute(sql14`
+        const result = await db.execute(sql15`
       DELETE FROM chef_notifications
       WHERE id = ${notificationId}
         AND chef_id = ${chefId}
@@ -26723,7 +27388,7 @@ var init_chef_notifications = __esm({
 });
 
 // server/routes/middleware.ts
-import { eq as eq29, desc as desc15 } from "drizzle-orm";
+import { eq as eq30, desc as desc15 } from "drizzle-orm";
 async function getAuthenticatedUser(req) {
   if (req.neonUser) {
     return {
@@ -26841,11 +27506,11 @@ async function requirePortalUser(req, res, next) {
     if (!user) {
       return res.status(401).json({ error: "Authentication required" });
     }
-    const accessRecords = await db.select().from(portalUserLocationAccess).where(eq29(portalUserLocationAccess.portalUserId, user.id)).limit(1);
+    const accessRecords = await db.select().from(portalUserLocationAccess).where(eq30(portalUserLocationAccess.portalUserId, user.id)).limit(1);
     if (accessRecords.length > 0) {
       return next();
     }
-    const applications4 = await db.select().from(portalUserApplications).where(eq29(portalUserApplications.userId, user.id)).orderBy(desc15(portalUserApplications.createdAt)).limit(1);
+    const applications4 = await db.select().from(portalUserApplications).where(eq30(portalUserApplications.userId, user.id)).orderBy(desc15(portalUserApplications.createdAt)).limit(1);
     if (applications4.length > 0) {
       const app2 = applications4[0];
       if (app2.status === "approved") {
@@ -26881,7 +27546,7 @@ __export(kitchens_exports, {
   default: () => kitchens_default
 });
 import { Router as Router17 } from "express";
-import { eq as eq30, inArray as inArray8, desc as desc16, and as and18 } from "drizzle-orm";
+import { eq as eq31, inArray as inArray8, desc as desc16, and as and19 } from "drizzle-orm";
 var router17, kitchens_default;
 var init_kitchens = __esm({
   "server/routes/kitchens.ts"() {
@@ -26996,9 +27661,9 @@ var init_kitchens = __esm({
         if (!location) {
           return res.status(404).json({ error: "Location not found" });
         }
-        const chefApp = await db.select().from(applications).where(and18(
-          eq30(applications.userId, chefId),
-          eq30(applications.status, "approved")
+        const chefApp = await db.select().from(applications).where(and19(
+          eq31(applications.userId, chefId),
+          eq31(applications.status, "approved")
         )).orderBy(desc16(applications.createdAt)).limit(1);
         const profile = await chefService.shareProfileWithLocation(chefId, locationId);
         if (profile && profile.status === "pending") {
@@ -27030,7 +27695,7 @@ var init_kitchens = __esm({
     router17.get("/chef/profiles", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const locationAccessRecords = await db.select().from(chefLocationAccess).where(eq30(chefLocationAccess.chefId, chefId));
+        const locationAccessRecords = await db.select().from(chefLocationAccess).where(eq31(chefLocationAccess.chefId, chefId));
         const locationIds = locationAccessRecords.map((access) => access.locationId);
         if (locationIds.length === 0) {
           return res.json([]);
@@ -27096,201 +27761,6 @@ var init_kitchens = __esm({
       }
     });
     kitchens_default = router17;
-  }
-});
-
-// server/services/auth-expiry-service.ts
-import { eq as eq31, and as and19, lt as lt4, sql as sql15 } from "drizzle-orm";
-async function processExpiredAuthorizations() {
-  const results = [];
-  const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1e3);
-  logger.info(`[AuthExpiry] Processing expired authorizations (cutoff: ${cutoffTime.toISOString()})`);
-  try {
-    const expiredBookings = await db.select({
-      id: kitchenBookings.id,
-      paymentIntentId: kitchenBookings.paymentIntentId,
-      chefId: kitchenBookings.chefId,
-      kitchenId: kitchenBookings.kitchenId,
-      createdAt: kitchenBookings.createdAt
-    }).from(kitchenBookings).where(
-      and19(
-        eq31(kitchenBookings.paymentStatus, "authorized"),
-        eq31(kitchenBookings.status, "pending"),
-        lt4(kitchenBookings.createdAt, cutoffTime)
-      )
-    );
-    logger.info(`[AuthExpiry] Found ${expiredBookings.length} expired kitchen booking authorizations`);
-    for (const booking of expiredBookings) {
-      if (!booking.paymentIntentId) continue;
-      try {
-        const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-        await cancelPaymentIntent2(booking.paymentIntentId);
-        await db.update(kitchenBookings).set({
-          status: "cancelled",
-          paymentStatus: "failed",
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq31(kitchenBookings.id, booking.id));
-        await db.update(storageBookings).set({
-          paymentStatus: "failed",
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(
-          and19(
-            eq31(storageBookings.kitchenBookingId, booking.id),
-            eq31(storageBookings.paymentStatus, "authorized")
-          )
-        );
-        await db.update(equipmentBookings).set({
-          paymentStatus: "failed",
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(
-          and19(
-            eq31(equipmentBookings.kitchenBookingId, booking.id),
-            eq31(equipmentBookings.paymentStatus, "authorized")
-          )
-        );
-        try {
-          const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-          const pt = await findPaymentTransactionByIntentId2(booking.paymentIntentId, db);
-          if (pt) {
-            await updatePaymentTransaction2(pt.id, {
-              status: "canceled",
-              stripeStatus: "canceled"
-            }, db);
-          }
-        } catch (ptErr) {
-          logger.warn(`[AuthExpiry] Could not update PT for booking ${booking.id}:`, ptErr);
-        }
-        try {
-          await sendAuthExpiryNotification(booking.chefId, booking.id, "kitchen_booking", booking.kitchenId);
-        } catch (notifErr) {
-          logger.warn(`[AuthExpiry] Could not send notification for booking ${booking.id}:`, notifErr);
-        }
-        results.push({
-          type: "kitchen_booking",
-          id: booking.id,
-          paymentIntentId: booking.paymentIntentId,
-          chefId: booking.chefId,
-          action: "canceled"
-        });
-        logger.info(`[AuthExpiry] Cancelled authorization for kitchen booking ${booking.id}`);
-      } catch (err) {
-        logger.error(`[AuthExpiry] Error cancelling auth for booking ${booking.id}:`, err);
-        results.push({
-          type: "kitchen_booking",
-          id: booking.id,
-          paymentIntentId: booking.paymentIntentId,
-          chefId: booking.chefId,
-          action: "error",
-          error: err.message
-        });
-      }
-    }
-  } catch (queryErr) {
-    logger.error(`[AuthExpiry] Error querying expired kitchen bookings:`, queryErr);
-  }
-  try {
-    const expiredExtensions = await db.select({
-      id: pendingStorageExtensions.id,
-      stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
-      storageBookingId: pendingStorageExtensions.storageBookingId,
-      createdAt: pendingStorageExtensions.createdAt,
-      chefId: sql15`(
-          SELECT sb.chef_id FROM storage_bookings sb 
-          WHERE sb.id = ${pendingStorageExtensions.storageBookingId}
-        )`.as("chefId")
-    }).from(pendingStorageExtensions).where(
-      and19(
-        eq31(pendingStorageExtensions.status, "authorized"),
-        lt4(pendingStorageExtensions.createdAt, cutoffTime)
-      )
-    );
-    logger.info(`[AuthExpiry] Found ${expiredExtensions.length} expired storage extension authorizations`);
-    for (const ext of expiredExtensions) {
-      if (!ext.stripePaymentIntentId) continue;
-      try {
-        const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-        await cancelPaymentIntent2(ext.stripePaymentIntentId);
-        await db.update(pendingStorageExtensions).set({
-          status: "expired",
-          rejectionReason: "Payment authorization expired \u2014 manager did not respond within 24 hours",
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq31(pendingStorageExtensions.id, ext.id));
-        try {
-          const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-          const pt = await findPaymentTransactionByIntentId2(ext.stripePaymentIntentId, db);
-          if (pt) {
-            await updatePaymentTransaction2(pt.id, {
-              status: "canceled",
-              stripeStatus: "canceled"
-            }, db);
-          }
-        } catch (ptErr) {
-          logger.warn(`[AuthExpiry] Could not update PT for extension ${ext.id}:`, ptErr);
-        }
-        try {
-          await sendAuthExpiryNotification(ext.chefId, ext.id, "storage_extension");
-        } catch (notifErr) {
-          logger.warn(`[AuthExpiry] Could not send notification for extension ${ext.id}:`, notifErr);
-        }
-        results.push({
-          type: "storage_extension",
-          id: ext.id,
-          paymentIntentId: ext.stripePaymentIntentId,
-          chefId: ext.chefId,
-          action: "canceled"
-        });
-        logger.info(`[AuthExpiry] Cancelled authorization for storage extension ${ext.id}`);
-      } catch (err) {
-        logger.error(`[AuthExpiry] Error cancelling auth for extension ${ext.id}:`, err);
-        results.push({
-          type: "storage_extension",
-          id: ext.id,
-          paymentIntentId: ext.stripePaymentIntentId,
-          chefId: ext.chefId,
-          action: "error",
-          error: err.message
-        });
-      }
-    }
-  } catch (queryErr) {
-    logger.error(`[AuthExpiry] Error querying expired storage extensions:`, queryErr);
-  }
-  logger.info(`[AuthExpiry] Processed ${results.length} expired authorizations (${results.filter((r) => r.action === "canceled").length} canceled, ${results.filter((r) => r.action === "error").length} errors)`);
-  return results;
-}
-async function sendAuthExpiryNotification(chefId, recordId, type, kitchenId) {
-  if (!chefId) return;
-  try {
-    const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
-    const [chef] = await db.select({ username: users.username }).from(users).where(eq31(users.id, chefId)).limit(1);
-    if (!chef?.username) return;
-    let kitchenName = "Kitchen";
-    if (kitchenId) {
-      const [kitchen] = await db.select({ name: kitchens.name }).from(kitchens).where(eq31(kitchens.id, kitchenId)).limit(1);
-      if (kitchen) kitchenName = kitchen.name;
-    }
-    try {
-      await notificationService2.createForChef({
-        chefId,
-        type: "booking_cancelled",
-        title: "Booking Authorization Expired",
-        message: type === "kitchen_booking" ? `Your kitchen booking #${recordId} at ${kitchenName} was automatically cancelled because the manager did not respond within 24 hours. Your card has not been charged.` : `Your storage extension request #${recordId} was automatically cancelled because the manager did not respond within 24 hours. Your card has not been charged.`,
-        metadata: { type, recordId: String(recordId) }
-      });
-    } catch {
-    }
-  } catch (err) {
-    logger.warn(`[AuthExpiry] Error sending notification to chef ${chefId}:`, err);
-  }
-}
-var AUTH_EXPIRY_HOURS;
-var init_auth_expiry_service = __esm({
-  "server/services/auth-expiry-service.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    init_logger();
-    AUTH_EXPIRY_HOURS = 24;
   }
 });
 
@@ -27642,7 +28112,7 @@ __export(bookings_exports, {
   default: () => bookings_default
 });
 import { Router as Router18 } from "express";
-import { eq as eq32, and as and20, desc as desc17 } from "drizzle-orm";
+import { eq as eq32, and as and20, or as or6, desc as desc17 } from "drizzle-orm";
 function getBaseUrl(req) {
   const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5001";
   const isLocalhost = host.includes("localhost") || host.includes("127.0.0.1");
@@ -27741,6 +28211,15 @@ var init_bookings = __esm({
       } catch (error) {
         console.error("Error fetching storage bookings:", error);
         res.status(500).json({ error: "Failed to fetch storage bookings" });
+      }
+    });
+    router18.get("/chef/equipment-bookings", requireChef, async (req, res) => {
+      try {
+        const equipmentBookings2 = await bookingService.getEquipmentBookingsByChef(req.neonUser.id);
+        res.json(equipmentBookings2);
+      } catch (error) {
+        console.error("Error fetching equipment bookings:", error);
+        res.status(500).json({ error: "Failed to fetch equipment bookings" });
       }
     });
     router18.get("/chef/storage-bookings/expiring", requireChef, async (req, res) => {
@@ -28098,12 +28577,28 @@ var init_bookings = __esm({
           approvedAt: pendingStorageExtensions2.approvedAt,
           rejectedAt: pendingStorageExtensions2.rejectedAt,
           rejectionReason: pendingStorageExtensions2.rejectionReason,
+          stripePaymentIntentId: pendingStorageExtensions2.stripePaymentIntentId,
           // Storage booking details
           currentEndDate: storageBookings2.endDate,
           storageName: storageListings3.name,
           storageType: storageListings3.storageType,
           kitchenName: kitchens.name
         }).from(pendingStorageExtensions2).innerJoin(storageBookings2, eq32(pendingStorageExtensions2.storageBookingId, storageBookings2.id)).innerJoin(storageListings3, eq32(storageBookings2.storageListingId, storageListings3.id)).innerJoin(kitchens, eq32(storageListings3.kitchenId, kitchens.id)).where(eq32(storageBookings2.chefId, chefId)).orderBy(desc17(pendingStorageExtensions2.createdAt));
+        const { lazyExpireStorageExtensionAuth: lazyExpireStorageExtensionAuth2 } = await Promise.resolve().then(() => (init_auth_expiry_service(), auth_expiry_service_exports));
+        for (const ext of extensions) {
+          if (ext.status === "authorized") {
+            const wasExpired = await lazyExpireStorageExtensionAuth2({
+              id: ext.id,
+              status: ext.status,
+              stripePaymentIntentId: ext.stripePaymentIntentId,
+              createdAt: ext.createdAt ? new Date(ext.createdAt) : null,
+              storageBookingId: ext.storageBookingId
+            });
+            if (wasExpired) {
+              ext.status = "expired";
+            }
+          }
+        }
         res.json(extensions);
       } catch (error) {
         console.error("Error fetching chef's pending storage extensions:", error);
@@ -28464,7 +28959,10 @@ var init_bookings = __esm({
           }).from(paymentTransactions).where(
             and20(
               eq32(paymentTransactions.bookingId, id),
-              eq32(paymentTransactions.bookingType, "kitchen")
+              or6(
+                eq32(paymentTransactions.bookingType, "kitchen"),
+                eq32(paymentTransactions.bookingType, "bundle")
+              )
             )
           ).limit(1);
           if (txn) {
@@ -29679,10 +30177,70 @@ var init_bookings = __esm({
         const chefId = req.neonUser.id;
         console.log(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
         const bookings = await bookingService.getKitchenBookingsByChef(chefId);
+        const { lazyExpireKitchenBookingAuth: lazyExpireKitchenBookingAuth2 } = await Promise.resolve().then(() => (init_auth_expiry_service(), auth_expiry_service_exports));
+        for (const b of bookings) {
+          if (b.paymentStatus === "authorized" && b.status === "pending") {
+            const wasExpired = await lazyExpireKitchenBookingAuth2({
+              id: b.id,
+              paymentStatus: b.paymentStatus,
+              paymentIntentId: b.paymentIntentId ?? null,
+              chefId: b.chefId ?? null,
+              kitchenId: b.kitchenId,
+              createdAt: b.createdAt ? new Date(b.createdAt) : null,
+              status: b.status
+            });
+            if (wasExpired) {
+              b.status = "cancelled";
+              b.paymentStatus = "failed";
+            }
+          }
+        }
         res.json(bookings);
       } catch (error) {
         console.error("Error fetching bookings:", error);
         res.status(500).json({ error: "Failed to fetch bookings" });
+      }
+    });
+    router18.get("/chef/outstanding-dues", requireChef, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const { getChefUnpaidPenalties: getChefUnpaidPenalties2 } = await Promise.resolve().then(() => (init_overstay_penalty_service(), overstay_penalty_service_exports));
+        const { getChefUnpaidDamageClaims: getChefUnpaidDamageClaims2 } = await Promise.resolve().then(() => (init_damage_claim_service(), damage_claim_service_exports));
+        const [penalties, claims] = await Promise.all([
+          getChefUnpaidPenalties2(chefId),
+          getChefUnpaidDamageClaims2(chefId)
+        ]);
+        const overstayItems = penalties.filter((p) => p.requiresImmediatePayment).map((p) => ({
+          id: p.overstayId,
+          type: "overstay_penalty",
+          title: `Overstay Penalty \u2014 ${p.storageName}`,
+          description: `${p.daysOverdue} days overdue at ${p.kitchenName}`,
+          amountCents: p.penaltyAmountCents,
+          status: p.status,
+          createdAt: p.detectedAt,
+          payEndpoint: `/api/chef/overstay-penalties/${p.overstayId}/pay`
+        }));
+        const claimItems = claims.filter((c) => c.requiresImmediatePayment).map((c) => ({
+          id: c.claimId,
+          type: "damage_claim",
+          title: `Damage Claim \u2014 ${c.claimTitle}`,
+          description: c.kitchenName ? `${c.bookingType} booking at ${c.kitchenName}` : `${c.bookingType} booking`,
+          amountCents: c.finalAmountCents,
+          status: c.status,
+          createdAt: c.createdAt,
+          payEndpoint: `/api/chef/damage-claims/${c.claimId}/pay`
+        }));
+        const allItems = [...overstayItems, ...claimItems];
+        const totalOwedCents = allItems.reduce((sum, item) => sum + item.amountCents, 0);
+        res.json({
+          hasOutstandingDues: allItems.length > 0,
+          totalCount: allItems.length,
+          totalOwedCents,
+          items: allItems
+        });
+      } catch (error) {
+        logger.error("Error fetching chef outstanding dues:", error);
+        res.status(500).json({ error: "Failed to fetch outstanding dues" });
       }
     });
     router18.get("/chef/overstay-penalties", requireChef, async (req, res) => {
@@ -29728,6 +30286,30 @@ var init_bookings = __esm({
       } catch (error) {
         logger.error("Error fetching chef damage claims:", error);
         res.status(500).json({ error: "Failed to fetch damage claims" });
+      }
+    });
+    router18.post("/chef/damage-claims/:id/pay", requireChef, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const claimId = parseInt(req.params.id);
+        if (isNaN(claimId)) {
+          return res.status(400).json({ error: "Invalid claim ID" });
+        }
+        const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5001";
+        const isLocalhost = host.includes("localhost") || host.includes("127.0.0.1");
+        const protocol = isLocalhost ? "http" : req.get("x-forwarded-proto") || "https";
+        const baseUrl = `${protocol}://${host}`;
+        const successUrl = `${baseUrl}/dashboard?claim_paid=success&claim_id=${claimId}`;
+        const cancelUrl = `${baseUrl}/dashboard?claim_paid=cancelled&claim_id=${claimId}`;
+        const { createDamageClaimPaymentCheckout: createDamageClaimPaymentCheckout2 } = await Promise.resolve().then(() => (init_damage_claim_service(), damage_claim_service_exports));
+        const result = await createDamageClaimPaymentCheckout2(claimId, chefId, successUrl, cancelUrl);
+        if ("error" in result) {
+          return res.status(400).json({ error: result.error });
+        }
+        res.json({ checkoutUrl: result.checkoutUrl });
+      } catch (error) {
+        logger.error("Error creating damage claim payment checkout:", error);
+        res.status(500).json({ error: "Failed to create payment session" });
       }
     });
     router18.get("/chef/damage-claims/:id/invoice", requireChef, async (req, res) => {
@@ -30188,7 +30770,7 @@ __export(admin_exports, {
   default: () => admin_default
 });
 import { Router as Router21 } from "express";
-import { eq as eq33, sql as sql16 } from "drizzle-orm";
+import { eq as eq33, sql as sql16, desc as desc18 } from "drizzle-orm";
 async function getAuthenticatedUser2(req) {
   if (req.neonUser) {
     return {
@@ -30214,7 +30796,6 @@ var init_admin = __esm({
     init_kitchen_service();
     init_chef_service();
     init_booking_service();
-    init_schema();
     init_stripe_checkout_fee_service();
     init_damage_claim_service();
     init_damage_claim_limits_service();
@@ -32046,6 +32627,136 @@ var init_admin = __esm({
         res.status(500).json({ error: "Failed to charge damage claim" });
       }
     });
+    router21.get("/overstay-settings", requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
+      try {
+        const { getOverstayPlatformDefaults: getOverstayPlatformDefaults2 } = await Promise.resolve().then(() => (init_overstay_defaults_service(), overstay_defaults_service_exports));
+        const defaults = await getOverstayPlatformDefaults2();
+        res.json({
+          settings: {
+            gracePeriodDays: defaults.gracePeriodDays,
+            penaltyRatePercent: defaults.penaltyRate * 100,
+            maxPenaltyDays: defaults.maxPenaltyDays
+          },
+          defaults: {
+            gracePeriodDays: 3,
+            penaltyRatePercent: 10,
+            maxPenaltyDays: 30
+          }
+        });
+      } catch (error) {
+        console.error("Error fetching overstay settings:", error);
+        res.status(500).json({ error: "Failed to fetch overstay settings" });
+      }
+    });
+    router21.put("/overstay-settings", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const { gracePeriodDays, penaltyRatePercent, maxPenaltyDays } = req.body;
+        const updates = [];
+        if (gracePeriodDays !== void 0) {
+          if (gracePeriodDays < 0 || gracePeriodDays > 14) {
+            return res.status(400).json({ error: "Grace period must be between 0 and 14 days" });
+          }
+          updates.push({
+            key: "overstay_grace_period_days",
+            value: String(gracePeriodDays),
+            description: "Default grace period days before overstay penalty kicks in"
+          });
+        }
+        if (penaltyRatePercent !== void 0) {
+          if (penaltyRatePercent < 1 || penaltyRatePercent > 100) {
+            return res.status(400).json({ error: "Penalty rate must be between 1% and 100%" });
+          }
+          updates.push({
+            key: "overstay_penalty_rate",
+            value: String(penaltyRatePercent / 100),
+            description: "Default daily penalty rate as decimal (e.g. 0.10 = 10%)"
+          });
+        }
+        if (maxPenaltyDays !== void 0) {
+          if (maxPenaltyDays < 1 || maxPenaltyDays > 90) {
+            return res.status(400).json({ error: "Max penalty days must be between 1 and 90" });
+          }
+          updates.push({
+            key: "overstay_max_penalty_days",
+            value: String(maxPenaltyDays),
+            description: "Maximum number of days penalties can accumulate"
+          });
+        }
+        if (updates.length === 0) {
+          return res.status(400).json({ error: "No valid updates provided" });
+        }
+        for (const update of updates) {
+          await db.insert(platformSettings).values({
+            key: update.key,
+            value: update.value,
+            description: update.description
+          }).onConflictDoUpdate({
+            target: platformSettings.key,
+            set: {
+              value: update.value,
+              updatedAt: /* @__PURE__ */ new Date()
+            }
+          });
+        }
+        const { getOverstayPlatformDefaults: getOverstayPlatformDefaults2 } = await Promise.resolve().then(() => (init_overstay_defaults_service(), overstay_defaults_service_exports));
+        const newDefaults = await getOverstayPlatformDefaults2();
+        console.log("[Admin] Updated overstay settings:", newDefaults);
+        res.json({
+          success: true,
+          message: `Updated ${updates.length} overstay setting(s)`
+        });
+      } catch (error) {
+        console.error("Error updating overstay settings:", error);
+        res.status(500).json({ error: "Failed to update overstay settings" });
+      }
+    });
+    router21.get("/escalated-penalties", requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
+      try {
+        const { storageOverstayRecords: storageOverstayRecords2, storageBookings: storageBookings2, storageListings: storageListings3, kitchens: kitchens3, users: users5, damageClaims: damageClaims2, locations: locations5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const escalatedOverstays = await db.select({
+          id: storageOverstayRecords2.id,
+          storageBookingId: storageOverstayRecords2.storageBookingId,
+          status: storageOverstayRecords2.status,
+          daysOverdue: storageOverstayRecords2.daysOverdue,
+          calculatedPenaltyCents: storageOverstayRecords2.calculatedPenaltyCents,
+          finalPenaltyCents: storageOverstayRecords2.finalPenaltyCents,
+          chargeFailureReason: storageOverstayRecords2.chargeFailureReason,
+          detectedAt: storageOverstayRecords2.detectedAt,
+          resolvedAt: storageOverstayRecords2.resolvedAt,
+          storageName: storageListings3.name,
+          kitchenName: kitchens3.name,
+          locationName: locations5.name,
+          chefEmail: users5.username
+        }).from(storageOverstayRecords2).innerJoin(storageBookings2, eq33(storageOverstayRecords2.storageBookingId, storageBookings2.id)).innerJoin(storageListings3, eq33(storageBookings2.storageListingId, storageListings3.id)).innerJoin(kitchens3, eq33(storageListings3.kitchenId, kitchens3.id)).innerJoin(locations5, eq33(kitchens3.locationId, locations5.id)).leftJoin(users5, eq33(storageBookings2.chefId, users5.id)).where(eq33(storageOverstayRecords2.status, "escalated")).orderBy(desc18(storageOverstayRecords2.detectedAt));
+        const escalatedClaims = await db.select({
+          id: damageClaims2.id,
+          claimTitle: damageClaims2.claimTitle,
+          status: damageClaims2.status,
+          claimedAmountCents: damageClaims2.claimedAmountCents,
+          finalAmountCents: damageClaims2.finalAmountCents,
+          chargeFailureReason: damageClaims2.chargeFailureReason,
+          bookingType: damageClaims2.bookingType,
+          createdAt: damageClaims2.createdAt,
+          locationName: locations5.name,
+          chefEmail: users5.username
+        }).from(damageClaims2).innerJoin(locations5, eq33(damageClaims2.locationId, locations5.id)).leftJoin(users5, eq33(damageClaims2.chefId, users5.id)).where(eq33(damageClaims2.status, "escalated")).orderBy(desc18(damageClaims2.createdAt));
+        res.json({
+          overstays: escalatedOverstays,
+          damageClaims: escalatedClaims,
+          summary: {
+            totalEscalatedOverstays: escalatedOverstays.length,
+            totalEscalatedClaims: escalatedClaims.length,
+            totalEscalatedAmountCents: [
+              ...escalatedOverstays.map((o) => o.finalPenaltyCents || o.calculatedPenaltyCents || 0),
+              ...escalatedClaims.map((c) => c.finalAmountCents || c.claimedAmountCents || 0)
+            ].reduce((sum, val) => sum + val, 0)
+          }
+        });
+      } catch (error) {
+        console.error("Error fetching escalated penalties:", error);
+        res.status(500).json({ error: "Failed to fetch escalated penalties" });
+      }
+    });
     admin_default = router21;
   }
 });
@@ -32378,6 +33089,16 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
         session.id,
         paymentIntentId,
         chargeId,
+        metadata,
+        expandedSession.payment_status
+      );
+    }
+    if (metadata.type === "damage_claim") {
+      logger.info(`[Webhook] Processing damage claim payment for session ${session.id}`);
+      await handleDamageClaimPaymentCompleted(
+        session.id,
+        paymentIntentId || "",
+        chargeId || "",
         metadata,
         expandedSession.payment_status
       );
@@ -33723,7 +34444,7 @@ async function handleOverstayPenaltyPaymentCompleted(sessionId, paymentIntentId,
     }).where(eq34(storageOverstayRecords2.id, overstayRecordId));
     await db.insert(storageOverstayHistory2).values({
       overstayRecordId,
-      previousStatus: "charge_pending",
+      previousStatus: overstayRecord.status,
       newStatus: "charge_succeeded",
       eventType: "charge_attempt",
       eventSource: "stripe_webhook",
@@ -33804,6 +34525,116 @@ async function handleOverstayPenaltyPaymentCompleted(sessionId, paymentIntentId,
     });
   } catch (error) {
     logger.error(`[Webhook] Error handling overstay penalty payment:`, error);
+  }
+}
+async function handleDamageClaimPaymentCompleted(sessionId, paymentIntentId, chargeId, metadata, paymentStatus) {
+  try {
+    const claimId = parseInt(metadata.damage_claim_id);
+    const chefId = parseInt(metadata.chef_id);
+    if (isNaN(claimId)) {
+      logger.error(`[Webhook] Invalid damage_claim_id in metadata: ${metadata.damage_claim_id}`);
+      return;
+    }
+    if (paymentStatus !== "paid") {
+      logger.info(`[Webhook] Damage claim payment not yet confirmed for session ${sessionId}, status: ${paymentStatus}`);
+      return;
+    }
+    const { damageClaims: damageClaims2, damageClaimHistory: damageClaimHistory2, users: users5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+    const [claim] = await db.select().from(damageClaims2).where(eq34(damageClaims2.id, claimId)).limit(1);
+    if (!claim) {
+      logger.error(`[Webhook] Damage claim ${claimId} not found`);
+      return;
+    }
+    const chargeAmount = claim.finalAmountCents || claim.claimedAmountCents || 0;
+    await db.update(damageClaims2).set({
+      status: "charge_succeeded",
+      stripePaymentIntentId: paymentIntentId || null,
+      stripeChargeId: chargeId || null,
+      chargeSucceededAt: /* @__PURE__ */ new Date(),
+      resolvedAt: /* @__PURE__ */ new Date(),
+      resolutionType: "paid",
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq34(damageClaims2.id, claimId));
+    await db.insert(damageClaimHistory2).values({
+      damageClaimId: claimId,
+      previousStatus: claim.status,
+      newStatus: "charge_succeeded",
+      action: "charge_attempt",
+      actionBy: "stripe_webhook",
+      notes: `Chef paid damage claim via Stripe Checkout. Session: ${sessionId}`,
+      metadata: {
+        sessionId,
+        paymentIntentId,
+        chargeId,
+        chefId: chefId.toString()
+      }
+    });
+    try {
+      const { createPaymentTransaction: createPaymentTransaction2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+      const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+      const ptRecord = await createPaymentTransaction2({
+        bookingId: claim.bookingType === "storage" ? claim.storageBookingId || claimId : claim.kitchenBookingId || claimId,
+        bookingType: claim.bookingType,
+        chefId: isNaN(chefId) ? null : chefId,
+        managerId: claim.managerId || null,
+        amount: chargeAmount,
+        baseAmount: chargeAmount,
+        serviceFee: 0,
+        managerRevenue: chargeAmount,
+        currency: "CAD",
+        paymentIntentId,
+        status: "succeeded",
+        stripeStatus: "succeeded",
+        metadata: {
+          checkout_session_id: sessionId,
+          type: "damage_claim",
+          damage_claim_id: claimId.toString(),
+          charge_id: chargeId || ""
+        }
+      }, db);
+      if (ptRecord && paymentIntentId) {
+        let managerConnectAccountId;
+        if (claim.managerId) {
+          try {
+            const [manager] = await db.select({ stripeConnectAccountId: users5.stripeConnectAccountId }).from(users5).where(eq34(users5.id, claim.managerId)).limit(1);
+            if (manager?.stripeConnectAccountId) {
+              managerConnectAccountId = manager.stripeConnectAccountId;
+            }
+          } catch {
+            logger.warn(`[Webhook] Could not fetch manager Connect account for damage claim`);
+          }
+        }
+        const stripeAmounts = await getStripePaymentAmounts2(paymentIntentId, managerConnectAccountId);
+        if (stripeAmounts) {
+          await updatePaymentTransaction2(ptRecord.id, {
+            chargeId,
+            paidAt: /* @__PURE__ */ new Date(),
+            lastSyncedAt: /* @__PURE__ */ new Date(),
+            stripeAmount: stripeAmounts.stripeAmount,
+            stripeNetAmount: stripeAmounts.stripeNetAmount,
+            stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+            stripePlatformFee: stripeAmounts.stripePlatformFee
+          }, db);
+          logger.info(`[Webhook] Synced Stripe amounts for damage claim ${claimId}:`, {
+            amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
+            processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`
+          });
+        }
+      }
+      logger.info(`[Webhook] Created payment_transactions record for damage claim ${claimId}`);
+    } catch (ptError) {
+      logger.error(`[Webhook] Failed to create payment_transactions for damage claim:`, ptError);
+    }
+    logger.info(`[Webhook] \u2705 Damage claim payment completed`, {
+      claimId,
+      chefId,
+      sessionId,
+      paymentIntentId,
+      chargeId,
+      chargeAmount
+    });
+  } catch (error) {
+    logger.error(`[Webhook] Error handling damage claim payment:`, error);
   }
 }
 async function handleChargeUpdated(charge, previousAttributes, _webhookEventId) {
@@ -34391,7 +35222,7 @@ __export(portal_exports, {
   default: () => portal_default
 });
 import { Router as Router24 } from "express";
-import { eq as eq36, desc as desc18 } from "drizzle-orm";
+import { eq as eq36, desc as desc19 } from "drizzle-orm";
 var router24, portal_default;
 var init_portal = __esm({
   "server/routes/portal.ts"() {
@@ -34416,7 +35247,7 @@ var init_portal = __esm({
             status: "approved"
           });
         }
-        const applications4 = await db.select().from(portalUserApplications).where(eq36(portalUserApplications.userId, user.id)).orderBy(desc18(portalUserApplications.createdAt)).limit(1);
+        const applications4 = await db.select().from(portalUserApplications).where(eq36(portalUserApplications.userId, user.id)).orderBy(desc19(portalUserApplications.createdAt)).limit(1);
         if (applications4.length > 0) {
           const app2 = applications4[0];
           return res.json({
@@ -34727,7 +35558,7 @@ __export(chef_exports, {
 });
 import { Router as Router25 } from "express";
 import { sql as sql18, eq as eq37 } from "drizzle-orm";
-import { and as and23, desc as desc19 } from "drizzle-orm";
+import { and as and23, desc as desc20 } from "drizzle-orm";
 var router25, chef_default;
 var init_chef = __esm({
   "server/routes/chef.ts"() {
@@ -34961,7 +35792,7 @@ var init_chef = __esm({
           eq37(paymentTransactions.bookingId, storageBookingId),
           eq37(paymentTransactions.bookingType, "storage"),
           eq37(paymentTransactions.status, "succeeded")
-        )).orderBy(desc19(paymentTransactions.createdAt)).limit(1);
+        )).orderBy(desc20(paymentTransactions.createdAt)).limit(1);
         if (!transaction) {
           return res.status(404).json({ error: "No payment found for this storage booking" });
         }
@@ -35090,7 +35921,7 @@ var init_chef = __esm({
           eq37(paymentTransactions.bookingId, overstayRecord.storageBookingId),
           eq37(paymentTransactions.bookingType, "storage"),
           eq37(paymentTransactions.status, "succeeded")
-        )).orderBy(desc19(paymentTransactions.createdAt)).limit(1);
+        )).orderBy(desc20(paymentTransactions.createdAt)).limit(1);
         if (!transaction) {
           return res.status(404).json({ error: "No payment found for this overstay penalty" });
         }

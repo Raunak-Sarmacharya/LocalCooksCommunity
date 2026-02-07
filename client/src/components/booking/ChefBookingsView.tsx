@@ -87,7 +87,7 @@ interface Booking {
   startTime: string
   endTime: string
   selectedSlots?: Array<string | { startTime: string; endTime: string }>
-  status: "pending" | "confirmed" | "cancelled"
+  status: "pending" | "confirmed" | "cancelled" | "completed"
   specialNotes?: string
   createdAt: string
   updatedAt: string
@@ -147,7 +147,7 @@ interface ChefBookingsViewProps {
   kitchens?: Array<{ id: number; name: string; locationName?: string }>
 }
 
-type FilterType = "all" | "pending" | "confirmed" | "cancelled"
+type FilterType = "all" | "pending" | "confirmed" | "cancelled" | "completed"
 type ViewType = "upcoming" | "past" | "all"
 
 // Helper functions
@@ -239,7 +239,7 @@ const getTimeUntilBooking = (bookingDateTime: Date, now: Date) => {
 }
 
 const canCancelBooking = (booking: Booking, now: Date): boolean => {
-  if (booking.status === 'cancelled') return false
+  if (booking.status === 'cancelled' || booking.status === 'completed') return false
 
   try {
     const dateStr = booking.bookingDate?.split('T')[0] || booking.bookingDate
@@ -341,7 +341,7 @@ const getChefBookingColumns = ({
       const relatedStorage = allStorageBookings.filter(
         (sb) => sb.kitchenBookingId === booking.id
       )
-      const rejectedStorageCount = relatedStorage.filter((sb) => sb.status === 'cancelled').length
+      const rejectedStorageCount = relatedStorage.filter((sb) => sb.status === 'cancelled' && sb.checkoutStatus !== 'completed' && sb.checkoutStatus !== 'checkout_claim_filed').length
       const pendingStorageCount = relatedStorage.filter((sb) => sb.status === 'pending').length
 
       // Check for mixed equipment statuses (mirrors storage logic)
@@ -751,13 +751,22 @@ const getStorageBookingColumns = ({
       const status = storageBooking.status
       const checkoutStatus = storageBooking.checkoutStatus
 
-      if (status === 'cancelled' && checkoutStatus === 'checkout_claim_filed') {
+      // Completed bookings — checkout cleared or claim filed
+      if (status === 'completed' && checkoutStatus === 'checkout_claim_filed') {
         return (
           <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
             <AlertTriangle className="h-3 w-3 mr-1" />
             Claim Filed
           </Badge>
         )
+      } else if (status === 'completed') {
+        return (
+          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Cleared
+          </Badge>
+        )
+      // Cancelled bookings — genuinely rejected by manager
       } else if (status === 'cancelled') {
         return (
           <Badge variant="destructive" className="bg-red-100 text-red-800 border-red-300">
@@ -784,13 +793,6 @@ const getStorageBookingColumns = ({
           <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
             <CheckCircle className="h-3 w-3 mr-1" />
             Checkout Approved
-          </Badge>
-        )
-      } else if (status === 'confirmed' && checkoutStatus === 'completed') {
-        return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Cleared
           </Badge>
         )
       } else if (status === 'confirmed' && checkoutStatus === 'active') {
@@ -1031,7 +1033,7 @@ export default function ChefBookingsView({
 
   // Status counts for current view
   const statusCounts = useMemo(() => {
-    const counts = { all: 0, pending: 0, confirmed: 0, cancelled: 0 }
+    const counts = { all: 0, pending: 0, confirmed: 0, cancelled: 0, completed: 0 }
     currentViewData.forEach((b) => {
       counts.all++
       if (b.status in counts) counts[b.status as keyof typeof counts]++
@@ -1243,6 +1245,7 @@ export default function ChefBookingsView({
     pending: { variant: "secondary" as const, className: "bg-yellow-100 text-yellow-800 border-yellow-300 hover:bg-yellow-200" },
     confirmed: { variant: "default" as const, className: "bg-green-600 hover:bg-green-700" },
     cancelled: { variant: "destructive" as const, className: "" },
+    completed: { variant: "outline" as const, className: "bg-green-50 text-green-700 border-green-200 hover:bg-green-100" },
   }
 
   return (

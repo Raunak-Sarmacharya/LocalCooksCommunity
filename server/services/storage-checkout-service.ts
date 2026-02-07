@@ -123,9 +123,12 @@ export async function requestStorageCheckout(
       return { success: false, error: 'You do not have permission to checkout this storage booking' };
     }
 
-    // Verify booking status allows checkout - must be confirmed (not pending or cancelled)
+    // Verify booking status allows checkout - must be confirmed (not pending, cancelled, or completed)
     if (booking.status === 'cancelled') {
       return { success: false, error: 'Cannot checkout a cancelled booking' };
+    }
+    if (booking.status === 'completed') {
+      return { success: false, error: 'This booking has already been checked out' };
     }
     if (booking.status === 'pending') {
       return { success: false, error: 'Cannot checkout a pending booking. The booking must be confirmed first.' };
@@ -579,7 +582,7 @@ async function processCheckoutClear(
       checkoutNotes: managerNotes
         ? `Manager: ${managerNotes}`
         : 'Storage cleared — no issues found',
-      status: 'cancelled', // Using 'cancelled' as completed since we don't have a 'completed' status
+      status: 'completed',
       updatedAt: new Date(),
     })
     .where(eq(storageBookings.id, storageBookingId));
@@ -735,7 +738,7 @@ async function processCheckoutStartClaim(
         ? `Manager: ${managerNotes} | Claim #${claimId} filed`
         : `Damage/cleaning claim #${claimId} filed during checkout review`,
       // Mark booking as completed — storage is released, but claim is tracked separately
-      status: 'cancelled',
+      status: 'completed',
       updatedAt: new Date(),
     })
     .where(eq(storageBookings.id, storageBookingId));
@@ -759,13 +762,74 @@ async function processCheckoutStartClaim(
 }
 
 // ============================================================================
-// AUTO-CLEAR EXPIRED REVIEW WINDOWS (Cron Job)
+// AUTO-CLEAR EXPIRED REVIEW WINDOWS
+// ============================================================================
+// Enforcement uses TWO complementary strategies (industry standard):
+//
+// 1. LAZY EVALUATION (primary): On every read of pending checkouts or checkout
+//    status, expired review windows are auto-cleared inline before returning data.
+//    This ensures near-instant enforcement regardless of cron frequency.
+//
+// 2. CRON SWEEP (safety net): Daily cron catches any checkouts that were never
+//    read after expiry (e.g. manager never opened the dashboard). This is the
+//    same pattern used by Airbnb/Turo for review windows and Stripe for auth expiry.
 // ============================================================================
 
 /**
+ * Auto-clear a single storage checkout whose review window has expired.
+ * Called inline during read operations (lazy evaluation).
+ * Returns true if the checkout was auto-cleared, false otherwise.
+ */
+export async function autoCleanExpiredCheckout(
+  bookingId: number,
+  chefId: number | null,
+  checkoutRequestedAt: Date | null,
+  reviewWindowHours: number,
+): Promise<boolean> {
+  if (!checkoutRequestedAt) return false;
+
+  const reviewWindowMs = reviewWindowHours * 60 * 60 * 1000;
+  const deadline = new Date(checkoutRequestedAt.getTime() + reviewWindowMs);
+  if (new Date() <= deadline) return false;
+
+  try {
+    // Atomically clear only if still in checkout_requested (prevents double-clear race)
+    await db
+      .update(storageBookings)
+      .set({
+        checkoutStatus: 'completed',
+        checkoutApprovedAt: new Date(),
+        checkoutNotes: `Auto-cleared by system — review window (${reviewWindowHours}h) expired with no issues reported`,
+        status: 'completed',
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(storageBookings.id, bookingId),
+          eq(storageBookings.checkoutStatus, 'checkout_requested'),
+        )
+      );
+
+    logger.info(`[StorageCheckout] Lazy auto-cleared booking ${bookingId} — review window expired`);
+
+    // Fire-and-forget notification
+    try {
+      await sendCheckoutClearedNotification(bookingId, chefId, true);
+    } catch (notifyError) {
+      logger.error(`[StorageCheckout] Error sending auto-clear notification for booking ${bookingId}:`, notifyError);
+    }
+
+    return true;
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error lazy auto-clearing booking ${bookingId}:`, error);
+    return false;
+  }
+}
+
+/**
  * Auto-clear storage checkouts where the review window has expired.
- * Called by the cron job — if manager doesn't act within the review window,
- * storage is automatically cleared (no issues assumed), matching industry norms.
+ * Called by the cron job as a safety-net sweep — catches anything not
+ * already cleared by lazy evaluation on read.
  */
 export async function processExpiredCheckoutReviews(): Promise<AutoClearResult> {
   const result: AutoClearResult = { processed: 0, cleared: 0, errors: 0 };
@@ -811,7 +875,7 @@ export async function processExpiredCheckoutReviews(): Promise<AutoClearResult> 
             checkoutStatus: 'completed',
             checkoutApprovedAt: new Date(),
             checkoutNotes: `Auto-cleared by system — review window (${settings.reviewWindowHours}h) expired with no issues reported`,
-            status: 'cancelled', // Using 'cancelled' as completed
+            status: 'completed',
             updatedAt: new Date(),
           })
           .where(eq(storageBookings.id, checkout.id));
@@ -843,6 +907,9 @@ export async function processExpiredCheckoutReviews(): Promise<AutoClearResult> 
 /**
  * Get all pending checkout requests for a manager's locations.
  * Includes computed reviewDeadline and isReviewExpired based on admin settings.
+ * 
+ * LAZY EVALUATION: Any expired review windows are auto-cleared inline before
+ * returning data. This ensures near-instant enforcement even with a daily cron.
  */
 export async function getPendingCheckoutReviews(locationId?: number): Promise<PendingCheckoutReview[]> {
   try {
@@ -891,7 +958,31 @@ export async function getPendingCheckoutReviews(locationId?: number): Promise<Pe
 
     const now = new Date();
 
-    return filtered.map(r => {
+    // ── Lazy evaluation: auto-clear any expired review windows on read ──
+    const stillPending: typeof filtered = [];
+    for (const r of filtered) {
+      const reviewDeadline = r.checkoutRequestedAt
+        ? new Date(r.checkoutRequestedAt.getTime() + reviewWindowMs)
+        : null;
+      const isExpired = reviewDeadline ? now > reviewDeadline : false;
+
+      if (isExpired) {
+        // Auto-clear in background — don't block the response for notification
+        const wasCleared = await autoCleanExpiredCheckout(
+          r.storageBookingId,
+          r.chefId,
+          r.checkoutRequestedAt,
+          settings.reviewWindowHours,
+        );
+        if (wasCleared) {
+          logger.info(`[StorageCheckout] Lazy-cleared booking ${r.storageBookingId} during getPendingCheckoutReviews`);
+          continue; // Remove from pending list — it's now completed
+        }
+      }
+      stillPending.push(r);
+    }
+
+    return stillPending.map(r => {
       const endDate = new Date(r.endDate);
       const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
       
@@ -1055,6 +1146,43 @@ export async function getCheckoutStatus(storageBookingId: number): Promise<{
       ? new Date(booking.checkoutRequestedAt.getTime() + settings.reviewWindowHours * 60 * 60 * 1000)
       : null;
     const isReviewExpired = reviewDeadline ? now > reviewDeadline : false;
+
+    // ── Lazy evaluation: auto-clear if review window expired and still checkout_requested ──
+    if (isReviewExpired && booking.checkoutStatus === 'checkout_requested') {
+      // Need chefId for notification — quick lookup
+      const [bookingFull] = await db
+        .select({ chefId: storageBookings.chefId })
+        .from(storageBookings)
+        .where(eq(storageBookings.id, storageBookingId))
+        .limit(1);
+
+      const wasCleared = await autoCleanExpiredCheckout(
+        storageBookingId,
+        bookingFull?.chefId ?? null,
+        booking.checkoutRequestedAt,
+        settings.reviewWindowHours,
+      );
+
+      if (wasCleared) {
+        logger.info(`[StorageCheckout] Lazy-cleared booking ${storageBookingId} during getCheckoutStatus`);
+        // Return the updated status
+        return {
+          checkoutStatus: 'completed' as CheckoutStatus,
+          checkoutRequestedAt: booking.checkoutRequestedAt,
+          checkoutApprovedAt: new Date(),
+          checkoutPhotoUrls: (booking.checkoutPhotoUrls as string[]) || [],
+          checkoutNotes: `Auto-cleared by system — review window (${settings.reviewWindowHours}h) expired with no issues reported`,
+          reviewDeadline,
+          isReviewExpired: true,
+          extendedClaimDeadline: booking.checkoutRequestedAt
+            ? new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1000)
+            : null,
+          canFileExtendedClaim: booking.checkoutRequestedAt
+            ? now <= new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1000)
+            : false,
+        };
+      }
+    }
 
     const extendedClaimDeadline = booking.checkoutRequestedAt
       ? new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1000)

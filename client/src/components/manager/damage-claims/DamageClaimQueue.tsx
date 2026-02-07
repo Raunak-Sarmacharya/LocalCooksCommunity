@@ -157,6 +157,7 @@ function getStatusBadge(status: string) {
     charge_pending: { variant: "default", label: "Charging..." },
     charge_succeeded: { variant: "secondary", label: "Paid" },
     charge_failed: { variant: "destructive", label: "Charge Failed" },
+    escalated: { variant: "destructive", label: "Escalated — Awaiting Chef Payment" },
     resolved: { variant: "outline", label: "Resolved" },
     expired: { variant: "outline", label: "Expired" },
   };
@@ -999,7 +1000,7 @@ export function DamageClaimQueue() {
   const draftClaims = useMemo(() => claims.filter(c => c.status === 'draft'), [claims]);
   const pendingClaims = useMemo(() => claims.filter(c => ['submitted', 'under_review'].includes(c.status)), [claims]);
   const actionRequiredClaims = useMemo(() => claims.filter(c => 
-    ['approved', 'partially_approved', 'chef_accepted', 'charge_failed'].includes(c.status)
+    ['approved', 'partially_approved', 'chef_accepted', 'charge_failed', 'escalated'].includes(c.status)
   ), [claims]);
   const resolvedClaims = useMemo(() => claims.filter(c => 
     ['charge_succeeded', 'resolved', 'rejected', 'expired'].includes(c.status)

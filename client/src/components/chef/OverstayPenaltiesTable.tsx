@@ -107,13 +107,22 @@ function getStatusBadge(penalty: OverstayPenalty) {
   if (penalty.isResolved) {
     return <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">Resolved</Badge>;
   }
+  if (penalty.status === 'escalated') {
+    return <Badge variant="destructive" className="bg-red-600">Action Required</Badge>;
+  }
+  if (penalty.status === 'charge_failed') {
+    return <Badge variant="destructive">Payment Failed</Badge>;
+  }
+  if (penalty.status === 'charge_pending') {
+    return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">Processing</Badge>;
+  }
   return <Badge variant="destructive">Payment Required</Badge>;
 }
 
 // Column definitions
 function getOverstayPenaltyColumns(
   onPay: (penalty: OverstayPenalty) => void,
-  isPaying: boolean
+  payingId: number | null
 ): ColumnDef<OverstayPenalty>[] {
   return [
     {
@@ -238,15 +247,17 @@ function getOverstayPenaltyColumns(
           return null;
         }
 
+        const isThisPaying = payingId === penalty.overstayId;
+
         return (
           <Button
             size="sm"
             onClick={() => onPay(penalty)}
-            disabled={isPaying}
+            disabled={payingId !== null}
             className="bg-orange-600 hover:bg-orange-700"
           >
             <CreditCard className="h-4 w-4 mr-1" />
-            {isPaying ? 'Processing...' : 'Pay Now'}
+            {isThisPaying ? 'Processing...' : 'Pay Now'}
           </Button>
         );
       },
@@ -315,13 +326,16 @@ export function OverstayPenaltiesTable() {
     return penalties;
   }, [viewType, pendingPenalties, resolvedPenalties, penalties]);
 
+  // Track which specific penalty is being paid
+  const payingId = payMutation.isPending ? (payMutation.variables ?? null) : null;
+
   // Column definitions
   const columns = useMemo(
     () => getOverstayPenaltyColumns(
       (penalty) => payMutation.mutate(penalty.overstayId),
-      payMutation.isPending
+      payingId
     ),
-    [payMutation.isPending]
+    [payingId]
   );
 
   // TanStack Table instance

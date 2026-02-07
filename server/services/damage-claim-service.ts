@@ -770,6 +770,7 @@ export async function getChefPendingClaims(chefId: number): Promise<DamageClaimW
     'charge_pending',      // Payment processing
     'charge_succeeded',    // Successfully charged (RESOLVED)
     'charge_failed',       // Charge failed
+    'escalated',           // Auto-charge failed — chef needs to pay via link
     'resolved',            // Resolved (RESOLVED)
     'rejected',            // Rejected by admin (RESOLVED)
     'expired',             // Expired (RESOLVED)
@@ -992,23 +993,31 @@ export async function chefRespondToClaim(
           }
         }
 
-        // If disputed, notify admin
+        // If disputed, notify all admins — same pattern as kitchen license / registration notifications
         if (response.action === 'dispute') {
-          const adminEmail = process.env.ADMIN_EMAIL;
-          if (adminEmail) {
-            const adminEmailContent = generateDamageClaimDisputedAdminEmail({
-              adminEmail,
-              chefName: claimWithDetails.chefName || chefUser?.username || 'Chef',
-              chefEmail: claimWithDetails.chefEmail || chefUser?.username || '',
-              managerName: claimWithDetails.managerName || managerUser?.username || 'Manager',
-              locationName: claimWithDetails.locationName || 'Unknown Location',
-              claimTitle: claim.claimTitle,
-              claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
-              chefResponse: response.response,
-              claimId: claim.id,
-            });
-            await sendEmail(adminEmailContent);
-            logger.info(`[DamageClaimService] Sent dispute notification to admin`);
+          const admins = await db
+            .select({ username: users.username })
+            .from(users)
+            .where(eq(users.role, 'admin'));
+
+          for (const admin of admins) {
+            if (admin.username) {
+              const adminEmailContent = generateDamageClaimDisputedAdminEmail({
+                adminEmail: admin.username,
+                chefName: claimWithDetails.chefName || chefUser?.username || 'Chef',
+                chefEmail: claimWithDetails.chefEmail || chefUser?.username || '',
+                managerName: claimWithDetails.managerName || managerUser?.username || 'Manager',
+                locationName: claimWithDetails.locationName || 'Unknown Location',
+                claimTitle: claim.claimTitle,
+                claimedAmount: `$${(claim.claimedAmountCents / 100).toFixed(2)}`,
+                chefResponse: response.response,
+                claimId: claim.id,
+              });
+              await sendEmail(adminEmailContent);
+            }
+          }
+          if (admins.length > 0) {
+            logger.info(`[DamageClaimService] Sent dispute notification to ${admins.length} admin(s)`);
           }
         }
       }
@@ -1282,7 +1291,13 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
     return { success: false, error: 'Claim not found' };
   }
 
-  if (!['approved', 'partially_approved', 'chef_accepted'].includes(claim.status)) {
+  // ENTERPRISE STANDARD: Allow charging from approved states + recovery statuses
+  // - approved/partially_approved/chef_accepted: initial charge after decision
+  // - charge_failed: retry after a previous failure (legacy records)
+  // - charge_pending: recovery from stuck state (e.g. server crash during previous charge)
+  // - escalated: admin force-retry (e.g. chef updated their card)
+  const chargeableStatuses = ['approved', 'partially_approved', 'chef_accepted', 'charge_failed', 'charge_pending', 'escalated'];
+  if (!chargeableStatuses.includes(claim.status)) {
     return { success: false, error: `Cannot charge claim in status: ${claim.status}` };
   }
 
@@ -1618,13 +1633,23 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
         chargeId: chargeId || undefined,
       };
     } else {
+      // ENTERPRISE STANDARD: Auto-charge failed — immediately escalate and create self-serve checkout.
+      // No retry system. On any failure: escalate → chef gets payment link → admin notified.
+      const failureReason = paymentIntent.status === 'requires_action' || 
+                            paymentIntent.status === 'requires_confirmation' ||
+                            paymentIntent.status === 'requires_payment_method'
+        ? `Payment requires authentication (3DS/SCA)`
+        : `Payment status: ${paymentIntent.status}`;
+
       await db
         .update(damageClaims)
         .set({
-          status: 'charge_failed',
+          status: 'escalated',
           stripePaymentIntentId: paymentIntent.id,
           chargeFailedAt: new Date(),
-          chargeFailureReason: `Payment status: ${paymentIntent.status}`,
+          chargeFailureReason: failureReason,
+          resolutionType: 'escalated_collection',
+          resolutionNotes: `Auto-escalated: off-session charge failed (${failureReason}). Self-serve payment link sent to chef.`,
           updatedAt: new Date(),
         })
         .where(eq(damageClaims.id, claimId));
@@ -1632,24 +1657,44 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
       await createHistoryEntry(
         claimId,
         'charge_pending',
-        'charge_failed',
-        'charge_attempt',
+        'escalated',
+        'auto_escalation',
         'system',
         undefined,
-        `Payment requires action: ${paymentIntent.status}`
+        `Off-session charge failed: ${failureReason}. Escalated immediately.`,
+        { paymentIntentId: paymentIntent.id, status: paymentIntent.status }
       );
 
-      return { success: false, error: `Payment requires action: ${paymentIntent.status}` };
+      // Create self-serve checkout session and email chef
+      await sendDamageClaimPaymentLinkToChef(claimId, claim, failureReason);
+
+      // Notify admins of escalation
+      await sendDamageClaimEscalationAdminEmail(claimId, claim, failureReason);
+
+      return { 
+        success: false, 
+        error: `Auto-charge failed (${failureReason}). Escalated — payment link sent to chef.`,
+      };
     }
   } catch (error: unknown) {
+    // ENTERPRISE STANDARD: On ANY Stripe exception, immediately escalate + create self-serve checkout.
+    // No retry system. Covers: 3DS/SCA, card declined, expired card, insufficient funds, network errors.
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const stripeErrorCode = (error as any)?.code || (error as any)?.raw?.code || '';
+    const failureReason = stripeErrorCode === 'authentication_required' || 
+                           errorMessage.includes('requires authentication') ||
+                           errorMessage.includes('authentication_required')
+      ? `Payment requires authentication (3DS/SCA)`
+      : errorMessage;
 
     await db
       .update(damageClaims)
       .set({
-        status: 'charge_failed',
+        status: 'escalated',
         chargeFailedAt: new Date(),
-        chargeFailureReason: errorMessage,
+        chargeFailureReason: failureReason,
+        resolutionType: 'escalated_collection',
+        resolutionNotes: `Auto-escalated: off-session charge threw error (${failureReason}). Self-serve payment link sent to chef.`,
         updatedAt: new Date(),
       })
       .where(eq(damageClaims.id, claimId));
@@ -1657,16 +1702,312 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
     await createHistoryEntry(
       claimId,
       'charge_pending',
-      'charge_failed',
-      'charge_attempt',
+      'escalated',
+      'auto_escalation',
       'system',
       undefined,
-      `Charge failed: ${errorMessage}`
+      `Off-session charge error: ${failureReason}. Escalated immediately.`,
+      { error: errorMessage, stripeErrorCode }
     );
 
-    logger.error(`[DamageClaimService] Charge failed for claim ${claimId}:`, errorMessage);
+    logger.error(`[DamageClaimService] Charge failed — escalated immediately for claim ${claimId}:`, {
+      error: errorMessage,
+      stripeErrorCode,
+    });
 
-    return { success: false, error: errorMessage };
+    // Create self-serve checkout session and email chef
+    await sendDamageClaimPaymentLinkToChef(claimId, claim, failureReason);
+
+    // Notify admins of escalation
+    await sendDamageClaimEscalationAdminEmail(claimId, claim, failureReason);
+
+    return { success: false, error: `Auto-charge failed (${failureReason}). Escalated — payment link sent to chef.` };
+  }
+}
+
+// ============================================================================
+// CHARGE FAILURE RECOVERY FUNCTIONS (Enterprise Standard)
+// ============================================================================
+
+/**
+ * Send a self-serve Stripe Checkout payment link to the chef on escalation.
+ * Called immediately when auto-charge fails — no retry system.
+ *
+ * Flow: Auto-charge fails → escalate → chef gets this payment link → if chef pays, webhook resolves it.
+ */
+async function sendDamageClaimPaymentLinkToChef(
+  claimId: number,
+  claim: DamageClaim,
+  failureReason: string
+): Promise<void> {
+  try {
+    const baseUrl = process.env.FRONTEND_URL || process.env.VITE_API_URL || 'https://localcooks.com';
+    const checkoutResult = await createDamageClaimPaymentCheckout(
+      claimId,
+      claim.chefId,
+      `${baseUrl}/chef/payments/success?damage_claim=${claimId}`,
+      `${baseUrl}/chef/payments/cancel?damage_claim=${claimId}`
+    );
+
+    if ('checkoutUrl' in checkoutResult) {
+      const [chef] = await db
+        .select({ email: users.username })
+        .from(users)
+        .where(eq(users.id, claim.chefId))
+        .limit(1);
+
+      if (chef?.email) {
+        const amount = ((claim.finalAmountCents || claim.claimedAmountCents) / 100).toFixed(2);
+        await sendEmail({
+          to: chef.email,
+          subject: `⚠️ Action Required: Damage Claim Payment — $${amount} CAD`,
+          html: `
+            <h2>⚠️ Damage Claim — Payment Required</h2>
+            <p>We were unable to automatically charge your saved payment method for the damage claim.</p>
+            <p><strong>Reason:</strong> ${failureReason}</p>
+            <p><strong>Claim:</strong> ${claim.claimTitle}</p>
+            <p><strong>Amount:</strong> $${amount} CAD</p>
+            <p>Please pay immediately using the secure link below:</p>
+            <p><a href="${checkoutResult.checkoutUrl}" style="display: inline-block; padding: 12px 24px; background-color: #DC2626; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Pay Now — $${amount} CAD</a></p>
+            <p>This link will expire in 24 hours.</p>
+            <p><em>You will not be able to make new bookings until this claim is resolved. If payment is not received, this matter may be referred for manual collection.</em></p>
+          `,
+          text: `Damage Claim — Payment Required\n\nReason: ${failureReason}\nClaim: ${claim.claimTitle}\nAmount: $${amount} CAD\n\nPay now: ${checkoutResult.checkoutUrl}\n\nThis link expires in 24 hours.`,
+        });
+        logger.info(`[DamageClaimService] Sent escalation payment link to chef ${chef.email} for claim ${claimId}`);
+      }
+
+      await createHistoryEntry(
+        claimId,
+        'escalated',
+        'escalated',
+        'escalation_payment_link_sent',
+        'system',
+        undefined,
+        `Escalation payment link sent to chef (reason: ${failureReason})`,
+        { checkoutUrl: checkoutResult.checkoutUrl, failureReason }
+      );
+    } else {
+      logger.error(`[DamageClaimService] Failed to create payment link for claim ${claimId}:`, checkoutResult);
+    }
+  } catch (error) {
+    logger.error(`[DamageClaimService] Failed to send escalation payment link for claim ${claimId}:`, error);
+  }
+}
+
+/**
+ * Notify all admin users when a damage claim is escalated.
+ * Called immediately when auto-charge fails — no retry system.
+ */
+async function sendDamageClaimEscalationAdminEmail(
+  claimId: number,
+  claim: DamageClaim,
+  failureReason: string
+): Promise<void> {
+  try {
+    // Get chef email for context
+    const [chef] = await db
+      .select({ email: users.username })
+      .from(users)
+      .where(eq(users.id, claim.chefId))
+      .limit(1);
+    const chefEmail = chef?.email || 'Unknown';
+    const amount = ((claim.finalAmountCents || claim.claimedAmountCents) / 100).toFixed(2);
+
+    // Get all admin users
+    const admins = await db
+      .select({ username: users.username })
+      .from(users)
+      .where(eq(users.role, 'admin'));
+
+    if (admins.length === 0) {
+      logger.warn(`[DamageClaimService] No admin users found — escalation email NOT sent for claim ${claimId}`);
+      return;
+    }
+
+    for (const admin of admins) {
+      if (admin.username) {
+        await sendEmail({
+          to: admin.username,
+          subject: `⚠️ Escalated Damage Claim — Auto-Charge Failed`,
+          html: `
+            <h2>Damage Claim Escalated</h2>
+            <p>A damage claim auto-charge failed and has been escalated. A self-serve payment link has been sent to the chef.</p>
+            <h3>Details:</h3>
+            <ul>
+              <li><strong>Claim ID:</strong> ${claimId}</li>
+              <li><strong>Claim:</strong> ${claim.claimTitle}</li>
+              <li><strong>Chef Email:</strong> ${chefEmail}</li>
+              <li><strong>Amount:</strong> $${amount} CAD</li>
+              <li><strong>Failure Reason:</strong> ${failureReason}</li>
+            </ul>
+            <p>If the chef does not pay via the link, please take appropriate collection action.</p>
+          `,
+          text: `Damage Claim Escalated\n\nClaim ID: ${claimId}\nClaim: ${claim.claimTitle}\nChef: ${chefEmail}\nAmount: $${amount} CAD\nReason: ${failureReason}`,
+        });
+      }
+    }
+    logger.info(`[DamageClaimService] Sent escalation notification to ${admins.length} admin(s) for claim ${claimId}`);
+  } catch (emailError) {
+    logger.error(`[DamageClaimService] Failed to send admin escalation email for claim ${claimId}:`, emailError);
+  }
+}
+
+/**
+ * Create a Stripe Checkout session for chef to pay a damage claim manually
+ * Used when off-session charge fails (3DS, card declined, etc.)
+ */
+export async function createDamageClaimPaymentCheckout(
+  claimId: number,
+  chefId: number,
+  successUrl: string,
+  cancelUrl: string
+): Promise<{ checkoutUrl: string } | { error: string }> {
+  if (!stripe) {
+    return { error: 'Stripe not configured' };
+  }
+
+  try {
+    const [claim] = await db
+      .select()
+      .from(damageClaims)
+      .where(eq(damageClaims.id, claimId))
+      .limit(1);
+
+    if (!claim) return { error: 'Claim not found' };
+
+    if (claim.chefId !== chefId) {
+      return { error: 'Unauthorized: This claim does not belong to you' };
+    }
+
+    // Allow payment for: approved, partially_approved, chef_accepted, charge_failed, escalated
+    const payableStatuses = ['approved', 'partially_approved', 'chef_accepted', 'charge_failed', 'escalated'];
+    if (!payableStatuses.includes(claim.status)) {
+      return { error: `Cannot pay claim in status: ${claim.status}` };
+    }
+
+    const chargeAmount = claim.finalAmountCents || claim.claimedAmountCents;
+    if (!chargeAmount || chargeAmount <= 0) {
+      return { error: 'No amount to charge' };
+    }
+
+    // Get customer ID
+    let customerId: string | null = null;
+    if (claim.bookingType === 'storage' && claim.storageBookingId) {
+      const [booking] = await db
+        .select({ stripeCustomerId: storageBookings.stripeCustomerId })
+        .from(storageBookings)
+        .where(eq(storageBookings.id, claim.storageBookingId))
+        .limit(1);
+      customerId = booking?.stripeCustomerId || null;
+    } else if (claim.bookingType === 'kitchen' && claim.kitchenBookingId) {
+      const [booking] = await db
+        .select({ stripeCustomerId: kitchenBookings.stripeCustomerId })
+        .from(kitchenBookings)
+        .where(eq(kitchenBookings.id, claim.kitchenBookingId))
+        .limit(1);
+      customerId = booking?.stripeCustomerId || null;
+    }
+
+    // Fallback: get customer ID from users table
+    if (!customerId) {
+      const [user] = await db
+        .select({ stripeCustomerId: users.stripeCustomerId })
+        .from(users)
+        .where(eq(users.id, chefId))
+        .limit(1);
+      customerId = user?.stripeCustomerId || null;
+    }
+
+    // Get manager's Stripe Connect account for destination charge
+    let managerStripeAccountId: string | null = null;
+    const [manager] = await db
+      .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+      .from(users)
+      .where(eq(users.id, claim.managerId))
+      .limit(1);
+    managerStripeAccountId = manager?.stripeConnectAccountId || null;
+
+    // Calculate application fee for break-even
+    let applicationFeeAmount: number | undefined;
+    if (managerStripeAccountId) {
+      const { calculateCheckoutFees } = await import('./stripe-checkout-fee-service');
+      const feeResult = calculateCheckoutFees(chargeAmount / 100);
+      applicationFeeAmount = feeResult.stripeProcessingFeeInCents;
+    }
+
+    // Get chef email
+    const [chef] = await db
+      .select({ email: users.username })
+      .from(users)
+      .where(eq(users.id, chefId))
+      .limit(1);
+
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
+      payment_method_types: ['card'],
+      mode: 'payment',
+      line_items: [{
+        price_data: {
+          currency: 'cad',
+          product_data: {
+            name: `Damage Claim: ${claim.claimTitle}`,
+            description: `Damage claim #${claimId}`,
+          },
+          unit_amount: chargeAmount,
+        },
+        quantity: 1,
+      }],
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata: {
+        type: 'damage_claim',
+        damage_claim_id: claimId.toString(),
+        chef_id: chefId.toString(),
+        manager_id: claim.managerId.toString(),
+      },
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          description: `Damage Claim: ${claim.claimTitle}`,
+          metadata: {
+            type: 'damage_claim',
+            damage_claim_id: claimId.toString(),
+          },
+        },
+      },
+    };
+
+    if (customerId) {
+      sessionParams.customer = customerId;
+    } else if (chef?.email) {
+      sessionParams.customer_email = chef.email;
+    }
+
+    if (chef?.email) {
+      sessionParams.payment_intent_data = {
+        receipt_email: chef.email,
+      };
+    }
+
+    if (managerStripeAccountId) {
+      sessionParams.payment_intent_data = {
+        ...sessionParams.payment_intent_data,
+        transfer_data: {
+          destination: managerStripeAccountId,
+        },
+      };
+      if (applicationFeeAmount && applicationFeeAmount > 0) {
+        sessionParams.payment_intent_data.application_fee_amount = applicationFeeAmount;
+      }
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+
+    logger.info(`[DamageClaimService] Created Checkout session for claim ${claimId}: ${session.url}`);
+    return { checkoutUrl: session.url! };
+  } catch (error) {
+    logger.error(`[DamageClaimService] Failed to create Checkout session for claim ${claimId}:`, error);
+    return { error: error instanceof Error ? error.message : 'Failed to create payment session' };
   }
 }
 
@@ -2205,6 +2546,7 @@ export async function hasChefUnpaidDamageClaims(chefId: number): Promise<boolean
     'chef_accepted',
     'charge_pending',
     'charge_failed',
+    'escalated',
   ];
 
   const [result] = await db
@@ -2242,6 +2584,7 @@ export async function getChefUnpaidDamageClaims(chefId: number): Promise<{
     'chef_accepted',
     'charge_pending',
     'charge_failed',
+    'escalated',
   ];
 
   const claims = await db
@@ -2301,7 +2644,7 @@ export async function getChefUnpaidDamageClaims(chefId: number): Promise<{
       claimedAmountCents: claim.claimedAmountCents,
       finalAmountCents: finalAmount,
       approvedAmountCents: claim.approvedAmountCents,
-      requiresImmediatePayment: ['approved', 'partially_approved', 'chef_accepted', 'charge_failed'].includes(claim.status),
+      requiresImmediatePayment: ['approved', 'partially_approved', 'chef_accepted', 'charge_failed', 'escalated'].includes(claim.status),
       kitchenName,
       bookingType: claim.bookingType,
       createdAt: claim.createdAt,
@@ -2331,4 +2674,5 @@ export const damageClaimService = {
   refundDamageClaim,
   hasChefUnpaidDamageClaims,
   getChefUnpaidDamageClaims,
+  createDamageClaimPaymentCheckout,
 };

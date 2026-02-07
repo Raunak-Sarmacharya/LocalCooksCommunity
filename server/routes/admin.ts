@@ -8,8 +8,9 @@ import {
     users,
     locations,
     chefLocationAccess,
+    platformSettings,
 } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, desc } from "drizzle-orm";
 
 // Import Domain Services
 
@@ -1780,7 +1781,6 @@ router.post('/send-promo-email', requireFirebaseAuthWithUser, requireAdmin, asyn
 // Enterprise-grade admin-configurable fee management
 // ===================================
 
-import { platformSettings } from "@shared/schema";
 import { clearFeeConfigCache, getFeeConfig } from "../services/stripe-checkout-fee-service";
 
 /**
@@ -2415,6 +2415,191 @@ router.post("/damage-claims/:id/charge", requireFirebaseAuthWithUser, requireAdm
     } catch (error) {
         console.error("Error charging damage claim:", error);
         res.status(500).json({ error: "Failed to charge damage claim" });
+    }
+});
+
+// ============================================================================
+// OVERSTAY PENALTY SETTINGS (Admin Configurable)
+// ============================================================================
+
+/**
+ * GET /admin/overstay-settings
+ * Get current overstay penalty platform defaults + escalation threshold
+ */
+router.get("/overstay-settings", requireFirebaseAuthWithUser, requireAdmin, async (_req: Request, res: Response) => {
+    try {
+        const { getOverstayPlatformDefaults } = await import('../services/overstay-defaults-service');
+        const defaults = await getOverstayPlatformDefaults();
+
+        res.json({
+            settings: {
+                gracePeriodDays: defaults.gracePeriodDays,
+                penaltyRatePercent: defaults.penaltyRate * 100,
+                maxPenaltyDays: defaults.maxPenaltyDays,
+            },
+            defaults: {
+                gracePeriodDays: 3,
+                penaltyRatePercent: 10,
+                maxPenaltyDays: 30,
+            },
+        });
+    } catch (error) {
+        console.error("Error fetching overstay settings:", error);
+        res.status(500).json({ error: "Failed to fetch overstay settings" });
+    }
+});
+
+/**
+ * PUT /admin/overstay-settings
+ * Update overstay penalty platform defaults (admin only)
+ */
+router.put("/overstay-settings", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { gracePeriodDays, penaltyRatePercent, maxPenaltyDays } = req.body;
+
+        const updates: { key: string; value: string; description: string }[] = [];
+
+        if (gracePeriodDays !== undefined) {
+            if (gracePeriodDays < 0 || gracePeriodDays > 14) {
+                return res.status(400).json({ error: "Grace period must be between 0 and 14 days" });
+            }
+            updates.push({
+                key: 'overstay_grace_period_days',
+                value: String(gracePeriodDays),
+                description: 'Default grace period days before overstay penalty kicks in',
+            });
+        }
+
+        if (penaltyRatePercent !== undefined) {
+            if (penaltyRatePercent < 1 || penaltyRatePercent > 100) {
+                return res.status(400).json({ error: "Penalty rate must be between 1% and 100%" });
+            }
+            updates.push({
+                key: 'overstay_penalty_rate',
+                value: String(penaltyRatePercent / 100),
+                description: 'Default daily penalty rate as decimal (e.g. 0.10 = 10%)',
+            });
+        }
+
+        if (maxPenaltyDays !== undefined) {
+            if (maxPenaltyDays < 1 || maxPenaltyDays > 90) {
+                return res.status(400).json({ error: "Max penalty days must be between 1 and 90" });
+            }
+            updates.push({
+                key: 'overstay_max_penalty_days',
+                value: String(maxPenaltyDays),
+                description: 'Maximum number of days penalties can accumulate',
+            });
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ error: "No valid updates provided" });
+        }
+
+        for (const update of updates) {
+            await db
+                .insert(platformSettings)
+                .values({
+                    key: update.key,
+                    value: update.value,
+                    description: update.description,
+                })
+                .onConflictDoUpdate({
+                    target: platformSettings.key,
+                    set: {
+                        value: update.value,
+                        updatedAt: new Date(),
+                    },
+                });
+        }
+
+        const { getOverstayPlatformDefaults } = await import('../services/overstay-defaults-service');
+        const newDefaults = await getOverstayPlatformDefaults();
+        console.log('[Admin] Updated overstay settings:', newDefaults);
+
+        res.json({
+            success: true,
+            message: `Updated ${updates.length} overstay setting(s)`,
+        });
+    } catch (error) {
+        console.error("Error updating overstay settings:", error);
+        res.status(500).json({ error: "Failed to update overstay settings" });
+    }
+});
+
+// ============================================================================
+// ESCALATED PENALTIES DASHBOARD (Admin)
+// ============================================================================
+
+/**
+ * GET /admin/escalated-penalties
+ * Get all escalated overstay penalties and damage claims across all locations
+ */
+router.get("/escalated-penalties", requireFirebaseAuthWithUser, requireAdmin, async (_req: Request, res: Response) => {
+    try {
+        const { storageOverstayRecords, storageBookings, storageListings, kitchens, users, damageClaims, locations } = await import('@shared/schema');
+
+        // Escalated overstay penalties
+        const escalatedOverstays = await db
+            .select({
+                id: storageOverstayRecords.id,
+                storageBookingId: storageOverstayRecords.storageBookingId,
+                status: storageOverstayRecords.status,
+                daysOverdue: storageOverstayRecords.daysOverdue,
+                calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+                finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+                chargeFailureReason: storageOverstayRecords.chargeFailureReason,
+                detectedAt: storageOverstayRecords.detectedAt,
+                resolvedAt: storageOverstayRecords.resolvedAt,
+                storageName: storageListings.name,
+                kitchenName: kitchens.name,
+                locationName: locations.name,
+                chefEmail: users.username,
+            })
+            .from(storageOverstayRecords)
+            .innerJoin(storageBookings, eq(storageOverstayRecords.storageBookingId, storageBookings.id))
+            .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .leftJoin(users, eq(storageBookings.chefId, users.id))
+            .where(eq(storageOverstayRecords.status, 'escalated'))
+            .orderBy(desc(storageOverstayRecords.detectedAt));
+
+        // Escalated damage claims
+        const escalatedClaims = await db
+            .select({
+                id: damageClaims.id,
+                claimTitle: damageClaims.claimTitle,
+                status: damageClaims.status,
+                claimedAmountCents: damageClaims.claimedAmountCents,
+                finalAmountCents: damageClaims.finalAmountCents,
+                chargeFailureReason: damageClaims.chargeFailureReason,
+                bookingType: damageClaims.bookingType,
+                createdAt: damageClaims.createdAt,
+                locationName: locations.name,
+                chefEmail: users.username,
+            })
+            .from(damageClaims)
+            .innerJoin(locations, eq(damageClaims.locationId, locations.id))
+            .leftJoin(users, eq(damageClaims.chefId, users.id))
+            .where(eq(damageClaims.status, 'escalated'))
+            .orderBy(desc(damageClaims.createdAt));
+
+        res.json({
+            overstays: escalatedOverstays,
+            damageClaims: escalatedClaims,
+            summary: {
+                totalEscalatedOverstays: escalatedOverstays.length,
+                totalEscalatedClaims: escalatedClaims.length,
+                totalEscalatedAmountCents: [
+                    ...escalatedOverstays.map(o => o.finalPenaltyCents || o.calculatedPenaltyCents || 0),
+                    ...escalatedClaims.map(c => c.finalAmountCents || c.claimedAmountCents || 0),
+                ].reduce((sum, val) => sum + val, 0),
+            },
+        });
+    } catch (error) {
+        console.error("Error fetching escalated penalties:", error);
+        res.status(500).json({ error: "Failed to fetch escalated penalties" });
     }
 });
 

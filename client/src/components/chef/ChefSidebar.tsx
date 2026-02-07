@@ -115,7 +115,7 @@ const navGroups: NavGroup[] = [
             },
             {
                 id: "issues-refunds",
-                label: "Issues & Refunds",
+                label: "Resolution Center",
                 icon: AlertTriangle,
             },
         ],

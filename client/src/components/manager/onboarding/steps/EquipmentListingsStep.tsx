@@ -545,7 +545,6 @@ export default function EquipmentListingsStep() {
                                       updateSelectedEquipment(templateId, { 
                                         availabilityType: v,
                                         sessionRate: v === 'included' ? 0 : equipment.sessionRate,
-                                        damageDeposit: v === 'included' ? 0 : equipment.damageDeposit
                                       })
                                     }
                                   >
@@ -557,41 +556,22 @@ export default function EquipmentListingsStep() {
                                   </Select>
                                 </div>
                                 {equipment.availabilityType === 'rental' && (
-                                  <>
-                                    <div className="flex items-center gap-2">
-                                      <Label className="text-[10px] w-16 text-muted-foreground">Rate</Label>
-                                      <div className="relative flex-1">
-                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
-                                        <Input
-                                          type="number"
-                                          min="0"
-                                          step="0.01"
-                                          value={equipment.sessionRate}
-                                          onChange={(e) => updateSelectedEquipment(templateId, { 
-                                            sessionRate: parseFloat(e.target.value) || 0 
-                                          })}
-                                          className="h-7 text-xs pl-5"
-                                        />
-                                      </div>
+                                  <div className="flex items-center gap-2">
+                                    <Label className="text-[10px] w-16 text-muted-foreground">Rate</Label>
+                                    <div className="relative flex-1">
+                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={equipment.sessionRate}
+                                        onChange={(e) => updateSelectedEquipment(templateId, { 
+                                          sessionRate: parseFloat(e.target.value) || 0 
+                                        })}
+                                        className="h-7 text-xs pl-5"
+                                      />
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                      <Label className="text-[10px] w-16 text-muted-foreground">Deposit</Label>
-                                      <div className="relative flex-1">
-                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
-                                        <Input
-                                          type="number"
-                                          min="0"
-                                          step="0.01"
-                                          value={equipment.damageDeposit}
-                                          onChange={(e) => updateSelectedEquipment(templateId, { 
-                                            damageDeposit: parseFloat(e.target.value) || 0 
-                                          })}
-                                          className="h-7 text-xs pl-5"
-                                          placeholder="0.00"
-                                        />
-                                      </div>
-                                    </div>
-                                  </>
+                                  </div>
                                 )}
                                 <div className="space-y-1">
                                   <Label className="text-[10px] text-muted-foreground">Description</Label>

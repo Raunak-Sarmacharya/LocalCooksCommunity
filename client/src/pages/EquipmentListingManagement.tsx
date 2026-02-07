@@ -543,7 +543,7 @@ function EquipmentListingContent({
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
                                   <Label className="text-xs">Availability</Label>
-                                  <Select value={customEquipment.availabilityType} onValueChange={(v: 'included' | 'rental') => setCustomEquipment(prev => ({ ...prev, availabilityType: v, sessionRate: v === 'included' ? 0 : prev.sessionRate, damageDeposit: v === 'included' ? 0 : prev.damageDeposit }))}>
+                                  <Select value={customEquipment.availabilityType} onValueChange={(v: 'included' | 'rental') => setCustomEquipment(prev => ({ ...prev, availabilityType: v, sessionRate: v === 'included' ? 0 : prev.sessionRate }))}>
                                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="included">Included</SelectItem>
@@ -566,21 +566,6 @@ function EquipmentListingContent({
                                   </div>
                                 )}
                               </div>
-                              {customEquipment.availabilityType === 'rental' && (
-                                <div>
-                                  <Label className="text-xs">Damage Deposit (CAD)</Label>
-                                  <div className="relative mt-1">
-                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
-                                    <Input 
-                                      type="number" min="0" step="0.01"
-                                      value={customEquipment.damageDeposit} 
-                                      onChange={(e) => setCustomEquipment(prev => ({ ...prev, damageDeposit: parseFloat(e.target.value) || 0 }))}
-                                      className="pl-5"
-                                      placeholder="0.00"
-                                    />
-                                  </div>
-                                </div>
-                              )}
                               <Button 
                                 className="w-full mt-2" 
                                 onClick={() => {
@@ -636,22 +621,13 @@ function EquipmentListingContent({
                                 </Select>
                               </div>
                               {equipment.availabilityType === 'rental' && (
-                                <>
-                                  <div className="flex items-center gap-2">
-                                    <Label className="text-xs w-20">Rate</Label>
-                                    <div className="relative flex-1">
-                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
-                                      <Input type="number" min="0" step="0.01" value={equipment.sessionRate} onChange={(e) => updateSelectedEquipment(templateId, { sessionRate: parseFloat(e.target.value) || 0 })} className="h-8 text-xs pl-5" />
-                                    </div>
+                                <div className="flex items-center gap-2">
+                                  <Label className="text-xs w-20">Rate</Label>
+                                  <div className="relative flex-1">
+                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                                    <Input type="number" min="0" step="0.01" value={equipment.sessionRate} onChange={(e) => updateSelectedEquipment(templateId, { sessionRate: parseFloat(e.target.value) || 0 })} className="h-8 text-xs pl-5" />
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <Label className="text-xs w-20">Deposit</Label>
-                                    <div className="relative flex-1">
-                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
-                                      <Input type="number" min="0" step="0.01" value={equipment.damageDeposit} onChange={(e) => updateSelectedEquipment(templateId, { damageDeposit: parseFloat(e.target.value) || 0 })} className="h-8 text-xs pl-5" placeholder="0.00" />
-                                    </div>
-                                  </div>
-                                </>
+                                </div>
                               )}
                               <div className="flex items-center gap-2">
                                 <Label className="text-xs w-20">Condition</Label>
@@ -750,35 +726,18 @@ function EquipmentListingContent({
               </div>
               
               {editingListing.availabilityType === 'rental' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">Session Rate (CAD)</Label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        step="0.01" 
-                        value={editingListing.sessionRate || ''} 
-                        onChange={(e) => setEditingListing({ ...editingListing, sessionRate: parseFloat(e.target.value) || 0 })}
-                        className="pl-10"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">Damage Deposit</Label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        step="0.01" 
-                        value={editingListing.damageDeposit || ''} 
-                        onChange={(e) => setEditingListing({ ...editingListing, damageDeposit: parseFloat(e.target.value) || 0 })}
-                        className="pl-10"
-                        placeholder="0.00"
-                      />
-                    </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Session Rate (CAD)</Label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input 
+                      type="number" 
+                      min="0" 
+                      step="0.01" 
+                      value={editingListing.sessionRate || ''} 
+                      onChange={(e) => setEditingListing({ ...editingListing, sessionRate: parseFloat(e.target.value) || 0 })}
+                      className="pl-10"
+                    />
                   </div>
                 </div>
               )}

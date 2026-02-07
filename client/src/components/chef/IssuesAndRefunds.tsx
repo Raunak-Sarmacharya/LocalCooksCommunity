@@ -89,7 +89,7 @@ export function IssuesAndRefunds() {
           <AlertTriangle className="h-5 w-5 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Issues & Refunds</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Resolution Center</h1>
           <p className="text-sm text-muted-foreground">
             View damage claims and overstay penalties
           </p>

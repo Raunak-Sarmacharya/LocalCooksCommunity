@@ -222,9 +222,17 @@ router.get("/chef/storage-bookings/:id", requireChef, async (req: Request, res: 
 });
 
 // ============================================================================
-// DAILY SCHEDULED TASKS ENDPOINT (Cron Job)
+// DAILY SCHEDULED TASKS ENDPOINT (Cron Sweep — Safety Net)
 // ============================================================================
-// This endpoint is called by Vercel cron daily to run all scheduled tasks:
+// This endpoint is called by Vercel cron daily (6 AM) as a SAFETY NET.
+// Primary enforcement is via LAZY EVALUATION on read paths (see below).
+//
+// Dual enforcement strategy (industry standard — Airbnb/Turo/Stripe pattern):
+//   1. LAZY EVALUATION (primary): Time windows enforced inline when data is
+//      read by manager/chef. Near-instant enforcement regardless of cron frequency.
+//   2. CRON SWEEP (this endpoint): Catches anything never read after expiry.
+//
+// Tasks:
 // 1. Detect storage overstays
 // 2. Process expired damage claim deadlines
 // 3. Cancel expired payment authorizations (24-hour hold window)
@@ -651,6 +659,7 @@ router.get("/chef/storage-extensions/pending", requireChef, async (req: Request,
                 approvedAt: pendingStorageExtensions.approvedAt,
                 rejectedAt: pendingStorageExtensions.rejectedAt,
                 rejectionReason: pendingStorageExtensions.rejectionReason,
+                stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
                 // Storage booking details
                 currentEndDate: storageBookings.endDate,
                 storageName: storageListings.name,
@@ -663,6 +672,25 @@ router.get("/chef/storage-extensions/pending", requireChef, async (req: Request,
             .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
             .where(eq(storageBookings.chefId, chefId))
             .orderBy(desc(pendingStorageExtensions.createdAt));
+
+        // ── Lazy evaluation: expire any authorized extensions past 24-hour window ──
+        const { lazyExpireStorageExtensionAuth } = await import(
+            "../services/auth-expiry-service"
+        );
+        for (const ext of extensions) {
+            if (ext.status === "authorized") {
+                const wasExpired = await lazyExpireStorageExtensionAuth({
+                    id: ext.id,
+                    status: ext.status,
+                    stripePaymentIntentId: ext.stripePaymentIntentId,
+                    createdAt: ext.createdAt ? new Date(ext.createdAt) : null,
+                    storageBookingId: ext.storageBookingId,
+                });
+                if (wasExpired) {
+                    (ext as any).status = "expired";
+                }
+            }
+        }
 
         res.json(extensions);
     } catch (error: any) {
@@ -2845,10 +2873,97 @@ router.get("/chef/bookings", requireChef, async (req: Request, res: Response) =>
 
         // Check if firebaseStorage.getBookingsByChef exists, if not use pool
         const bookings = await bookingService.getKitchenBookingsByChef(chefId);
+
+        // ── Lazy evaluation: expire any authorized bookings past 24-hour window ──
+        const { lazyExpireKitchenBookingAuth } = await import(
+            "../services/auth-expiry-service"
+        );
+        for (const b of bookings) {
+            if (b.paymentStatus === "authorized" && b.status === "pending") {
+                const wasExpired = await lazyExpireKitchenBookingAuth({
+                    id: b.id,
+                    paymentStatus: b.paymentStatus,
+                    paymentIntentId: b.paymentIntentId ?? null,
+                    chefId: b.chefId ?? null,
+                    kitchenId: b.kitchenId,
+                    createdAt: b.createdAt ? new Date(b.createdAt) : null,
+                    status: b.status,
+                });
+                if (wasExpired) {
+                    b.status = "cancelled";
+                    b.paymentStatus = "failed";
+                }
+            }
+        }
+
         res.json(bookings);
     } catch (error) {
         console.error("Error fetching bookings:", error);
         res.status(500).json({ error: "Failed to fetch bookings" });
+    }
+});
+
+// ============================================================================
+// CHEF OUTSTANDING DUES — UNIFIED ENDPOINT
+// ============================================================================
+
+/**
+ * GET /chef/outstanding-dues
+ * Unified endpoint: returns ALL outstanding dues (overstay penalties + damage claims)
+ * Industry standard: single API call for chef to see everything they owe
+ * Used by the OutstandingDuesBanner and booking gate
+ */
+router.get("/chef/outstanding-dues", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+
+        const { getChefUnpaidPenalties } = await import('../services/overstay-penalty-service');
+        const { getChefUnpaidDamageClaims } = await import('../services/damage-claim-service');
+
+        const [penalties, claims] = await Promise.all([
+            getChefUnpaidPenalties(chefId),
+            getChefUnpaidDamageClaims(chefId),
+        ]);
+
+        // Map to unified shape
+        const overstayItems = penalties
+            .filter(p => p.requiresImmediatePayment)
+            .map(p => ({
+                id: p.overstayId,
+                type: 'overstay_penalty' as const,
+                title: `Overstay Penalty — ${p.storageName}`,
+                description: `${p.daysOverdue} days overdue at ${p.kitchenName}`,
+                amountCents: p.penaltyAmountCents,
+                status: p.status,
+                createdAt: p.detectedAt,
+                payEndpoint: `/api/chef/overstay-penalties/${p.overstayId}/pay`,
+            }));
+
+        const claimItems = claims
+            .filter(c => c.requiresImmediatePayment)
+            .map(c => ({
+                id: c.claimId,
+                type: 'damage_claim' as const,
+                title: `Damage Claim — ${c.claimTitle}`,
+                description: c.kitchenName ? `${c.bookingType} booking at ${c.kitchenName}` : `${c.bookingType} booking`,
+                amountCents: c.finalAmountCents,
+                status: c.status,
+                createdAt: c.createdAt,
+                payEndpoint: `/api/chef/damage-claims/${c.claimId}/pay`,
+            }));
+
+        const allItems = [...overstayItems, ...claimItems];
+        const totalOwedCents = allItems.reduce((sum, item) => sum + item.amountCents, 0);
+
+        res.json({
+            hasOutstandingDues: allItems.length > 0,
+            totalCount: allItems.length,
+            totalOwedCents,
+            items: allItems,
+        });
+    } catch (error) {
+        logger.error("Error fetching chef outstanding dues:", error);
+        res.status(500).json({ error: "Failed to fetch outstanding dues" });
     }
 });
 
@@ -2926,6 +3041,42 @@ router.get("/chef/damage-claims", requireChef, async (req: Request, res: Respons
     } catch (error) {
         logger.error("Error fetching chef damage claims:", error);
         res.status(500).json({ error: "Failed to fetch damage claims" });
+    }
+});
+
+/**
+ * POST /chef/damage-claims/:id/pay
+ * Create a Stripe Checkout session for the chef to pay their damage claim
+ */
+router.post("/chef/damage-claims/:id/pay", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const claimId = parseInt(req.params.id);
+
+        if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+        }
+
+        // Get base URL for success/cancel URLs
+        const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:5001';
+        const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+        const protocol = isLocalhost ? 'http' : (req.get('x-forwarded-proto') || 'https');
+        const baseUrl = `${protocol}://${host}`;
+
+        const successUrl = `${baseUrl}/dashboard?claim_paid=success&claim_id=${claimId}`;
+        const cancelUrl = `${baseUrl}/dashboard?claim_paid=cancelled&claim_id=${claimId}`;
+
+        const { createDamageClaimPaymentCheckout } = await import('../services/damage-claim-service');
+        const result = await createDamageClaimPaymentCheckout(claimId, chefId, successUrl, cancelUrl);
+
+        if ('error' in result) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({ checkoutUrl: result.checkoutUrl });
+    } catch (error) {
+        logger.error("Error creating damage claim payment checkout:", error);
+        res.status(500).json({ error: "Failed to create payment session" });
     }
 });
 

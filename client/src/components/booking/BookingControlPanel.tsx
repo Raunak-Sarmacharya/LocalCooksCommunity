@@ -18,7 +18,7 @@ interface Booking {
   bookingDate: string;
   startTime: string;
   endTime: string;
-  status: "pending" | "confirmed" | "cancelled";
+  status: "pending" | "confirmed" | "cancelled" | "completed";
   specialNotes?: string;
   createdAt: string;
   updatedAt: string;
@@ -40,7 +40,7 @@ interface BookingControlPanelProps {
   kitchens?: Array<{ id: number; name: string; locationName?: string }>;
 }
 
-type FilterType = "all" | "pending" | "confirmed" | "cancelled";
+type FilterType = "all" | "pending" | "confirmed" | "cancelled" | "completed";
 type ViewType = "upcoming" | "past" | "all";
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -708,6 +708,7 @@ export default function BookingControlPanel({
               pending: { bg: "bg-yellow-100", activeBg: "bg-yellow-200", text: "text-yellow-700", border: "border-yellow-300" },
               confirmed: { bg: "bg-green-100", activeBg: "bg-green-200", text: "text-green-700", border: "border-green-300" },
               cancelled: { bg: "bg-red-100", activeBg: "bg-red-200", text: "text-red-700", border: "border-red-300" },
+              completed: { bg: "bg-emerald-100", activeBg: "bg-emerald-200", text: "text-emerald-700", border: "border-emerald-300" },
             }[filter];
             
             return (

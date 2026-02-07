@@ -46,7 +46,7 @@ interface Booking {
   bookingDate: string;
   startTime: string;
   endTime: string;
-  status: 'pending' | 'confirmed' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   chefName?: string;
   portalUserName?: string;
   kitchenName?: string;
@@ -217,6 +217,15 @@ export default function BookingCalendarWidget({
       hoverBg: 'hover:bg-gray-100',
       icon: XCircle,
       label: 'Cancelled',
+    },
+    completed: {
+      color: 'bg-emerald-400',
+      textColor: 'text-emerald-700',
+      bgColor: 'bg-emerald-50',
+      borderColor: 'border-emerald-200',
+      hoverBg: 'hover:bg-emerald-100',
+      icon: CheckCircle2,
+      label: 'Completed',
     },
   };
 
