@@ -77,6 +77,10 @@ export type Booking = {
     taxRatePercent?: number; // kitchen's tax rate percentage for revenue calculations
     taxAmount?: number; // in cents - tax = kb.total_price * tax_rate / 100 (same as transaction history)
     netRevenue?: number; // in cents - net = transactionAmount - taxAmount - stripeFee (same as transaction history)
+    // ── Voided Authorization Context ────────────────────────────────────────
+    isVoidedAuthorization?: boolean; // true when PT was canceled before capture — $0 moved
+    isAuthorizedHold?: boolean;      // true when payment is held but not yet captured
+    originalAuthorizedAmount?: number; // Original auth amount for voided display context (in cents)
 }
 
 interface BookingColumnsProps {
@@ -368,6 +372,10 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
             </div>
         ),
         cell: ({ row }) => {
+            const isVoided = row.original.isVoidedAuthorization === true;
+            const isAuthHold = row.original.isAuthorizedHold === true;
+            const originalAuthAmount = row.original.originalAuthorizedAmount;
+
             // Use actual Stripe transaction data when available
             const transactionAmount = row.original.transactionAmount;
             const stripeFee = row.original.stripeProcessingFee ?? 0;
@@ -383,11 +391,75 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
             const netAmount = row.original.netRevenue ?? (displayAmount - taxAmount - stripeFee);
             
             const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-            
+
+            // ── VOIDED AUTHORIZATION: No money captured, hold released ────────────
+            if (isVoided) {
+                return (
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="text-right cursor-help">
+                                    <div className="font-medium text-sm text-muted-foreground">No Charge</div>
+                                    <div className="text-xs text-blue-600">Hold released</div>
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                                <div className="space-y-1 text-sm">
+                                    <p className="font-medium text-blue-700">Authorization Voided</p>
+                                    {originalAuthAmount != null && originalAuthAmount > 0 && (
+                                        <div className="flex justify-between gap-4 text-muted-foreground">
+                                            <span>Original hold:</span>
+                                            <span className="font-mono line-through">{formatPrice(originalAuthAmount)}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between gap-4 font-medium">
+                                        <span>Amount charged:</span>
+                                        <span className="font-mono">$0.00</span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground pt-1">
+                                        The payment hold was released before capture. No charge was made and no Stripe fees apply.
+                                    </p>
+                                </div>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                );
+            }
+
+            // ── AUTHORIZED HOLD: Pending capture (manager hasn't acted yet) ──────
+            if (isAuthHold) {
+                return (
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="text-right cursor-help">
+                                    <div className="font-medium text-sm">{formatPrice(displayAmount)}</div>
+                                    <div className="text-xs text-blue-600">Payment held</div>
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                                <div className="space-y-1 text-sm">
+                                    <p className="font-medium text-blue-700">Payment Hold (Not Yet Charged)</p>
+                                    <div className="flex justify-between gap-4">
+                                        <span>Hold amount:</span>
+                                        <span className="font-medium font-mono">{formatPrice(displayAmount)}</span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground pt-1">
+                                        This amount is held on the chef&apos;s card. Use &quot;Take Action&quot; to approve (capture) or reject (release).
+                                    </p>
+                                </div>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                );
+            }
+
+            // ── NO PAYMENT DATA: Fallback ────────────────────────────────────────
             if (displayAmount === 0) {
                 return <span className="text-muted-foreground text-xs">—</span>;
             }
 
+            // ── CAPTURED PAYMENT: Show actual Stripe data with revenue breakdown ──
             // Show actual Stripe data if we have transaction data, otherwise show pending
             const hasTransactionData = transactionAmount !== null && transactionAmount !== undefined;
 
@@ -461,13 +533,22 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
                 icon = <Clock className="h-3 w-3 mr-1" />
             }
 
+            const isVoided = row.original.isVoidedAuthorization === true;
+            const isAuthHold = row.original.isAuthorizedHold === true;
+
             return (
                 <div className="flex flex-col gap-1">
                     <Badge variant={variant} className="capitalize items-center flex w-fit">
                         {icon}
                         {status}
                     </Badge>
-                    {paymentStatus === 'authorized' && status === 'pending' && (
+                    {isVoided && (
+                        <Badge variant="outline" className="text-[10px] text-gray-600 border-gray-300 bg-gray-50 w-fit">
+                            <DollarSign className="h-2.5 w-2.5 mr-0.5" />
+                            Auth Voided
+                        </Badge>
+                    )}
+                    {isAuthHold && status === 'pending' && (
                         <Badge variant="outline" className="text-[10px] text-blue-700 border-blue-200 bg-blue-50 w-fit">
                             <DollarSign className="h-2.5 w-2.5 mr-0.5" />
                             Payment Held

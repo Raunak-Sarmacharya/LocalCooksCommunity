@@ -176,7 +176,7 @@ function OverstayCard({
   isProcessing 
 }: { 
   overstay: OverstayRecord;
-  onApprove: (id: number, amount?: number, notes?: string, autoCharge?: boolean) => void;
+  onApprove: (id: number, amount?: number, notes?: string) => void;
   onWaive: (id: number, reason: string, notes?: string) => void;
   onCharge: (id: number) => void;
   onResolve: (id: number, type: string, notes?: string) => void;
@@ -189,7 +189,6 @@ function OverstayCard({
   const [adjustedAmount, setAdjustedAmount] = useState<string>((overstay.calculatedPenaltyCents / 100).toFixed(2));
   const [waiveReason, setWaiveReason] = useState("");
   const [managerNotes, setManagerNotes] = useState("");
-  const [autoCharge, setAutoCharge] = useState(false);
   const [resolutionType, setResolutionType] = useState<string>("extended");
 
   const isInGracePeriod = overstay.status === 'grace_period' || overstay.status === 'detected';
@@ -443,19 +442,6 @@ function OverstayCard({
                 className="mt-1"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="autoCharge"
-                checked={autoCharge}
-                onChange={(e) => setAutoCharge(e.target.checked)}
-                disabled={!hasPaymentMethod}
-              />
-              <label htmlFor="autoCharge" className="text-sm">
-                Charge immediately after approval
-                {!hasPaymentMethod && <span className="text-red-500 ml-1">(No payment method)</span>}
-              </label>
-            </div>
           </div>
           <SheetFooter className="mt-6">
             <Button variant="outline" onClick={() => setShowApproveDialog(false)}>Cancel</Button>
@@ -464,12 +450,13 @@ function OverstayCard({
                 const amountCents = Math.round(parseFloat(adjustedAmount) * 100);
                 // Enforce maximum penalty cap
                 const cappedAmountCents = Math.min(amountCents, overstay.calculatedPenaltyCents);
-                onApprove(overstay.overstayId, cappedAmountCents, managerNotes, autoCharge);
+                onApprove(overstay.overstayId, cappedAmountCents, managerNotes);
                 setShowApproveDialog(false);
               }}
               disabled={isProcessing || parseFloat(adjustedAmount) * 100 > overstay.calculatedPenaltyCents}
             >
-              Approve
+              <CreditCard className="w-4 h-4 mr-1" />
+              Approve & Charge
             </Button>
           </SheetFooter>
         </SheetContent>
@@ -606,16 +593,15 @@ export function OverstayPenaltyQueue() {
 
   // Approve mutation
   const approveMutation = useMutation({
-    mutationFn: async ({ id, amount, notes, autoCharge }: { id: number; amount?: number; notes?: string; autoCharge?: boolean }) => {
+    mutationFn: async ({ id, amount, notes }: { id: number; amount?: number; notes?: string }) => {
       const response = await apiRequest('POST', `/api/manager/overstays/${id}/approve`, {
         finalPenaltyCents: amount,
         managerNotes: notes,
-        autoCharge,
       });
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Penalty approved", description: "The penalty has been approved." });
+      toast({ title: "Penalty approved & charged", description: "The penalty has been approved and the chef's card has been charged." });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/overstays'] });
     },
     onError: (error: Error) => {
@@ -796,7 +782,7 @@ export function OverstayPenaltyQueue() {
                   <OverstayCard
                     key={overstay.overstayId}
                     overstay={overstay}
-                    onApprove={(id, amount, notes, autoCharge) => approveMutation.mutate({ id, amount, notes, autoCharge })}
+                    onApprove={(id, amount, notes) => approveMutation.mutate({ id, amount, notes })}
                     onWaive={(id, reason, notes) => waiveMutation.mutate({ id, reason, notes })}
                     onCharge={(id) => chargeMutation.mutate(id)}
                     onResolve={(id, type, notes) => resolveMutation.mutate({ id, type, notes })}
@@ -819,7 +805,7 @@ export function OverstayPenaltyQueue() {
                   <OverstayCard
                     key={overstay.overstayId}
                     overstay={overstay}
-                    onApprove={(id, amount, notes, autoCharge) => approveMutation.mutate({ id, amount, notes, autoCharge })}
+                    onApprove={(id, amount, notes) => approveMutation.mutate({ id, amount, notes })}
                     onWaive={(id, reason, notes) => waiveMutation.mutate({ id, reason, notes })}
                     onCharge={(id) => chargeMutation.mutate(id)}
                     onResolve={(id, type, notes) => resolveMutation.mutate({ id, type, notes })}
@@ -842,7 +828,7 @@ export function OverstayPenaltyQueue() {
                   <OverstayCard
                     key={overstay.overstayId}
                     overstay={overstay}
-                    onApprove={(id, amount, notes, autoCharge) => approveMutation.mutate({ id, amount, notes, autoCharge })}
+                    onApprove={(id, amount, notes) => approveMutation.mutate({ id, amount, notes })}
                     onWaive={(id, reason, notes) => waiveMutation.mutate({ id, reason, notes })}
                     onCharge={(id) => chargeMutation.mutate(id)}
                     onResolve={(id, type, notes) => resolveMutation.mutate({ id, type, notes })}

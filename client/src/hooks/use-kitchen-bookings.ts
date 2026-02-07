@@ -142,6 +142,12 @@ export function useKitchenBookings() {
         locationName: booking.locationName || booking.location_name,
         locationTimezone: booking.locationTimezone || booking.location_timezone,
         kitchenName: booking.kitchenName || booking.kitchen_name,
+        // Payment state flags (from server PT join)
+        totalPrice: booking.totalPrice || booking.total_price,
+        paymentStatus: booking.paymentStatus || booking.payment_status,
+        isVoidedAuthorization: booking.isVoidedAuthorization ?? false,
+        isAuthorizedHold: booking.isAuthorizedHold ?? false,
+        originalAuthorizedAmount: booking.originalAuthorizedAmount ?? null,
       }));
       
       return normalizedBookings;

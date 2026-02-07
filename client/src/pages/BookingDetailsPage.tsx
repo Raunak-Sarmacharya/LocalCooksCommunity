@@ -3,19 +3,22 @@ import { useLocation, useRoute } from "wouter";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import ManagerBookingLayout from "@/layouts/ManagerBookingLayout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   ArrowLeft,
-  Calendar,
-  Clock,
   MapPin,
   User,
   ChefHat,
   Package,
   Wrench,
-  DollarSign,
   FileText,
   Download,
   Loader2,
@@ -26,6 +29,8 @@ import {
   Phone,
   Mail,
   Receipt,
+  Hash,
+  Info,
 } from "lucide-react";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -312,27 +317,27 @@ export default function BookingDetailsPage() {
     switch (status) {
       case "confirmed":
         return (
-          <Badge className="bg-green-100 text-green-800 border-green-200">
+          <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50/50 font-medium">
             <CheckCircle2 className="h-3 w-3 mr-1" />
             Confirmed
           </Badge>
         );
       case "pending":
         return (
-          <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
+          <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50/50 font-medium">
             <AlertCircle className="h-3 w-3 mr-1" />
-            Pending Approval
+            Pending
           </Badge>
         );
       case "cancelled":
         return (
-          <Badge className="bg-red-100 text-red-800 border-red-200">
+          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
             <XCircle className="h-3 w-3 mr-1" />
             Cancelled
           </Badge>
         );
       default:
-        return <Badge variant="secondary">{status}</Badge>;
+        return <Badge variant="outline" className="font-medium">{status}</Badge>;
     }
   };
 
@@ -340,56 +345,65 @@ export default function BookingDetailsPage() {
     switch (status) {
       case "authorized":
         return (
-          <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
             <CreditCard className="h-3 w-3 mr-1" />
-            Payment Held
+            Held
           </Badge>
         );
       case "paid":
         return (
-          <Badge className="bg-green-100 text-green-800 border-green-200">
+          <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50/50 font-medium">
             <CreditCard className="h-3 w-3 mr-1" />
             Paid
           </Badge>
         );
       case "processing":
         return (
-          <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
             <Loader2 className="h-3 w-3 mr-1 animate-spin" />
             Processing
           </Badge>
         );
       case "pending":
         return (
-          <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
+          <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50/50 font-medium">
             <AlertCircle className="h-3 w-3 mr-1" />
             Pending
           </Badge>
         );
       case "refunded":
         return (
-          <Badge className="bg-gray-100 text-gray-800 border-gray-200">
+          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
             <Receipt className="h-3 w-3 mr-1" />
             Refunded
           </Badge>
         );
       case "partially_refunded":
         return (
-          <Badge className="bg-orange-100 text-orange-800 border-orange-200">
+          <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50/50 font-medium">
             <Receipt className="h-3 w-3 mr-1" />
             Partial Refund
           </Badge>
         );
       case "failed":
+        // Distinguish voided authorization (cancelled booking with 'failed' payment) from actual failures
+        if (booking?.status === 'cancelled') {
+          return (
+            <Badge variant="outline" className="text-muted-foreground border-border font-medium">
+              <CreditCard className="h-3 w-3 mr-1" />
+              Auth Voided
+            </Badge>
+          );
+        }
         return (
-          <Badge className="bg-red-100 text-red-800 border-red-200">
+          <Badge variant="outline" className="text-destructive border-destructive/30 font-medium">
             <XCircle className="h-3 w-3 mr-1" />
             Failed
           </Badge>
         );
       case "canceled":
         return (
-          <Badge className="bg-gray-100 text-gray-800 border-gray-200">
+          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
             <XCircle className="h-3 w-3 mr-1" />
             Canceled
           </Badge>
@@ -521,6 +535,22 @@ export default function BookingDetailsPage() {
         throw new Error(errorData.error || `Failed to update booking`);
       }
 
+      const responseData = await response.json().catch(() => ({}));
+
+      // Determine updated paymentStatus based on server response
+      // - Voided auth (rejected authorized booking): paymentStatus → 'failed'
+      // - Approved authorized booking: paymentStatus → 'paid'
+      // - Rejected paid booking with refund: paymentStatus → 'refunded' or 'partially_refunded'
+      // - Cancelled confirmed booking: paymentStatus unchanged ('paid')
+      let updatedPaymentStatus = booking.paymentStatus;
+      if (responseData.authorizationVoided) {
+        updatedPaymentStatus = 'failed';
+      } else if (params.status === 'confirmed' && booking.paymentStatus === 'authorized') {
+        updatedPaymentStatus = 'paid';
+      } else if (responseData.refund && params.status === 'cancelled') {
+        updatedPaymentStatus = 'refunded';
+      }
+
       // Update local state — update both storage AND equipment booking statuses
       const updatedStorageBookings = booking.storageBookings?.map((sb) => {
         const action = params.storageActions?.find((a) => a.storageBookingId === sb.id);
@@ -536,14 +566,38 @@ export default function BookingDetailsPage() {
         }
         return { ...eb, status: params.status };
       });
-      setBooking({ ...booking, status: params.status, storageBookings: updatedStorageBookings, equipmentBookings: updatedEquipmentBookings });
+      setBooking({
+        ...booking,
+        status: params.status,
+        paymentStatus: updatedPaymentStatus,
+        storageBookings: updatedStorageBookings,
+        equipmentBookings: updatedEquipmentBookings,
+      });
 
       queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
 
-      toast({
-        title: "Success",
-        description: params.status === 'confirmed' ? "Booking confirmed!" : "Booking rejected.",
-      });
+      // Show contextual toast based on server response
+      if (responseData.authorizationVoided) {
+        toast({
+          title: "Booking Rejected",
+          description: "Payment hold released — no charge was made to the chef.",
+        });
+      } else if (responseData.refund) {
+        toast({
+          title: "Booking Rejected & Refunded",
+          description: `Refund of $${(responseData.refund.amount / 100).toFixed(2)} processed.`,
+        });
+      } else if (responseData.requiresManualRefund) {
+        toast({
+          title: "Booking Cancelled",
+          description: "Use 'Issue Refund' from the revenue dashboard to process the refund.",
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: params.status === 'confirmed' ? "Booking confirmed!" : "Booking rejected.",
+        });
+      }
     } catch (err) {
       console.error('Error updating booking:', err);
       toast({
@@ -569,8 +623,8 @@ export default function BookingDetailsPage() {
   const loadingContent = (
     <div className="flex items-center justify-center py-20">
       <div className="text-center">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
-        <p className="text-gray-600">Loading booking details...</p>
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mx-auto mb-3" />
+        <p className="text-sm text-muted-foreground">Loading booking details…</p>
       </div>
     </div>
   );
@@ -578,290 +632,273 @@ export default function BookingDetailsPage() {
   // Error content
   const errorContent = (
     <div className="py-12">
-      <Card className="max-w-2xl mx-auto bg-white shadow-md">
-        <CardContent className="p-8 text-center">
-          <div className="text-red-500 mb-4">
-            <FileText className="h-12 w-12 mx-auto" />
-          </div>
-          <h1 className="text-2xl font-bold mb-4">Booking Not Found</h1>
-          <p className="text-gray-600 mb-6">{error || "Unable to load booking details"}</p>
-          <Button onClick={handleBack} variant="outline">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Go Back
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="max-w-md mx-auto text-center">
+        <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+          <FileText className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <h1 className="text-lg font-semibold mb-2">Booking Not Found</h1>
+        <p className="text-sm text-muted-foreground mb-6">{error || "Unable to load booking details"}</p>
+        <Button onClick={handleBack} variant="outline" size="sm">
+          <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+          Go Back
+        </Button>
+      </div>
     </div>
   );
 
   // Main booking content
   const bookingContent = booking && (
+    <TooltipProvider>
     <div className="max-w-4xl mx-auto">
-      <Card className="mb-6 overflow-hidden">
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <p className="text-blue-100 text-sm mb-1">Booking #{booking.id}</p>
-              <h1 className="text-2xl md:text-3xl font-bold">
-                {booking.kitchen?.name || "Kitchen Booking"}
-              </h1>
-              {booking.location && (
-                <p className="text-blue-100 flex items-center mt-2">
-                  <MapPin className="h-4 w-4 mr-1" />
-                  {booking.location.name}
-                  {booking.location.address && ` - ${booking.location.address}`}
-                </p>
-              )}
-            </div>
-            <div className="flex flex-col gap-2">
-              {getStatusBadge(booking.status)}
-              {getPaymentStatusBadge(booking.paymentStatus)}
-              {isManagerView && booking.status === 'pending' && (
-                <div className="flex gap-2 mt-2">
-                  <Button
-                    size="sm"
-                    onClick={openActionSheet}
-                    disabled={isUpdatingStatus}
-                    className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                  >
-                    {isUpdatingStatus ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        <CheckCircle2 className="h-4 w-4 mr-1" />
-                        Take Action
-                      </>
-                    )}
-                  </Button>
-                </div>
-              )}
-            </div>
+      {/* ── Page Header ── */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+          <Hash className="h-3 w-3" />
+          <span className="font-mono">{booking.id}</span>
+          <span className="text-border">·</span>
+          <span>{formatShortDate(booking.createdAt)}</span>
+          {booking.paymentIntentId && (
+            <>
+              <span className="text-border">·</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="font-mono cursor-help">ref …{booking.paymentIntentId.slice(-8)}</span>
+                </TooltipTrigger>
+                <TooltipContent>Payment Reference</TooltipContent>
+              </Tooltip>
+            </>
+          )}
+        </div>
+
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div className="space-y-1.5">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {booking.kitchen?.name || "Kitchen Booking"}
+            </h1>
+            {booking.location && (
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5" />
+                {booking.location.name}
+                {booking.location.address && ` · ${booking.location.address}`}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {getStatusBadge(booking.status)}
+            {getPaymentStatusBadge(booking.paymentStatus)}
+            {isManagerView && booking.status === 'pending' && (
+              <Button
+                size="sm"
+                onClick={openActionSheet}
+                disabled={isUpdatingStatus}
+              >
+                {isUpdatingStatus ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                    Take Action
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </div>
-      </Card>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Calendar className="h-5 w-5 text-blue-600" />
-                Date & Time
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <p className="text-sm text-gray-500 mb-1">Date</p>
-                  <p className="font-semibold text-gray-900">
-                    {formatDate(booking.bookingDate)}
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <p className="text-sm text-gray-500 mb-1">Duration</p>
-                  <p className="font-semibold text-gray-900">
-                    {calculateDuration()} hour{calculateDuration() !== 1 ? "s" : ""}
-                  </p>
-                </div>
-              </div>
-              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                <p className="text-sm text-gray-500 mb-1 flex items-center gap-1">
-                  <Clock className="h-4 w-4" />
-                  Time Slots
-                </p>
-                <p className="font-semibold text-green-800 text-lg">
-                  {formatBookingTimeSlots()}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+      <Separator className="mb-8" />
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-8">
+          {/* ── Schedule ── */}
+          <section>
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Schedule</h2>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Date</p>
+                <p className="text-sm font-medium">{formatDate(booking.bookingDate)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Time</p>
+                <p className="text-sm font-medium">{formatBookingTimeSlots()}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Duration</p>
+                <p className="text-sm font-medium">{calculateDuration()} hr{calculateDuration() !== 1 ? "s" : ""}</p>
+              </div>
+            </div>
+          </section>
+
+          {/* ── Add-ons: Storage ── */}
           {allStorageBookings.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Package className="h-5 w-5 text-purple-600" />
-                  Storage Bookings
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {allStorageBookings.map((storage) => {
-                    const rejected = isItemRejected(storage);
-                    return (
-                      <div
-                        key={storage.id}
-                        className={`flex items-center justify-between p-4 rounded-lg border ${
-                          rejected
-                            ? "bg-red-50/50 border-red-200 opacity-75"
-                            : "bg-purple-50 border-purple-200"
-                        }`}
-                      >
-                        <div>
-                          <p className={`font-medium ${rejected ? "text-gray-500 line-through" : "text-gray-900"}`}>
-                            {storage.storageListing?.name || `Storage #${storage.storageListingId}`}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {storage.storageListing?.storageType}
-                          </p>
-                          <p className="text-xs text-gray-400">
-                            {formatShortDate(storage.startDate)} - {formatShortDate(storage.endDate)}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className={`font-semibold ${rejected ? "text-red-400 line-through" : "text-purple-700"}`}>
-                            {formatCurrency(storage.totalPrice)}
-                          </p>
-                          <Badge variant="outline" className={
-                            storage.status === "confirmed" ? "border-green-300 text-green-700 bg-green-50" :
-                            storage.status === "cancelled" ? "border-red-300 text-red-700 bg-red-50" :
-                            storage.status === "pending" ? "border-yellow-300 text-yellow-700 bg-yellow-50" :
-                            storage.status === "active" ? "border-green-300 text-green-700 bg-green-50" :
-                            "border-gray-300 text-gray-600"
-                          }>
-                            {storage.status === "confirmed" && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                            {storage.status === "cancelled" && <XCircle className="h-3 w-3 mr-1" />}
-                            {storage.status === "pending" && <AlertCircle className="h-3 w-3 mr-1" />}
-                            {storage.status === "cancelled" ? "rejected" : storage.status}
-                          </Badge>
-                        </div>
+            <section>
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                <Package className="h-3.5 w-3.5" />
+                Storage
+              </h2>
+              <div className="space-y-2">
+                {allStorageBookings.map((storage) => {
+                  const rejected = isItemRejected(storage);
+                  return (
+                    <div
+                      key={storage.id}
+                      className={`flex items-center justify-between py-3 px-4 rounded-lg border ${
+                        rejected ? "bg-muted/40 border-border opacity-60" : "border-border"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className={`text-sm font-medium ${rejected ? "text-muted-foreground line-through" : ""}`}>
+                          {storage.storageListing?.name || `Storage #${storage.storageListingId}`}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {storage.storageListing?.storageType}
+                          {storage.startDate && ` · ${formatShortDate(storage.startDate)} – ${formatShortDate(storage.endDate)}`}
+                        </p>
                       </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className={`text-sm font-mono ${rejected ? "text-muted-foreground line-through" : ""}`}>
+                          {formatCurrency(storage.totalPrice)}
+                        </span>
+                        {storage.status === "cancelled" ? (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
+                            <XCircle className="h-2.5 w-2.5 mr-0.5" />rejected
+                          </Badge>
+                        ) : storage.status === "confirmed" || storage.status === "active" ? (
+                          <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200">
+                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />confirmed
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200">
+                            <AlertCircle className="h-2.5 w-2.5 mr-0.5" />{storage.status}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           )}
 
+          {/* ── Add-ons: Equipment ── */}
           {allEquipmentBookings.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Wrench className="h-5 w-5 text-amber-600" />
-                  Equipment Rentals
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {allEquipmentBookings.map((equipment) => {
-                    const rejected = isItemRejected(equipment);
-                    return (
-                      <div
-                        key={equipment.id}
-                        className={`flex items-center justify-between p-4 rounded-lg border ${
-                          rejected
-                            ? "bg-red-50/50 border-red-200 opacity-75"
-                            : "bg-amber-50 border-amber-200"
-                        }`}
-                      >
-                        <div>
-                          <p className={`font-medium ${rejected ? "text-gray-500 line-through" : "text-gray-900"}`}>
-                            {equipment.equipmentListing?.equipmentType || `Equipment #${equipment.equipmentListingId}`}
-                          </p>
-                          {equipment.equipmentListing?.brand && (
-                            <p className="text-sm text-gray-500">{equipment.equipmentListing.brand}</p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <p className={`font-semibold ${rejected ? "text-red-400 line-through" : "text-amber-700"}`}>
-                            {formatCurrency(equipment.totalPrice)}
-                          </p>
-                          <Badge variant="outline" className={
-                            equipment.status === "confirmed" ? "border-green-300 text-green-700 bg-green-50" :
-                            equipment.status === "cancelled" ? "border-red-300 text-red-700 bg-red-50" :
-                            equipment.status === "pending" ? "border-yellow-300 text-yellow-700 bg-yellow-50" :
-                            equipment.status === "active" ? "border-green-300 text-green-700 bg-green-50" :
-                            "border-gray-300 text-gray-600"
-                          }>
-                            {equipment.status === "confirmed" && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                            {equipment.status === "cancelled" && <XCircle className="h-3 w-3 mr-1" />}
-                            {equipment.status === "pending" && <AlertCircle className="h-3 w-3 mr-1" />}
-                            {equipment.status === "cancelled" ? "rejected" : equipment.status}
-                          </Badge>
-                        </div>
+            <section>
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                <Wrench className="h-3.5 w-3.5" />
+                Equipment
+              </h2>
+              <div className="space-y-2">
+                {allEquipmentBookings.map((equipment) => {
+                  const rejected = isItemRejected(equipment);
+                  return (
+                    <div
+                      key={equipment.id}
+                      className={`flex items-center justify-between py-3 px-4 rounded-lg border ${
+                        rejected ? "bg-muted/40 border-border opacity-60" : "border-border"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className={`text-sm font-medium ${rejected ? "text-muted-foreground line-through" : ""}`}>
+                          {equipment.equipmentListing?.equipmentType || `Equipment #${equipment.equipmentListingId}`}
+                        </p>
+                        {equipment.equipmentListing?.brand && (
+                          <p className="text-xs text-muted-foreground">{equipment.equipmentListing.brand}</p>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className={`text-sm font-mono ${rejected ? "text-muted-foreground line-through" : ""}`}>
+                          {formatCurrency(equipment.totalPrice)}
+                        </span>
+                        {equipment.status === "cancelled" ? (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
+                            <XCircle className="h-2.5 w-2.5 mr-0.5" />rejected
+                          </Badge>
+                        ) : equipment.status === "confirmed" || equipment.status === "active" ? (
+                          <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200">
+                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />confirmed
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200">
+                            <AlertCircle className="h-2.5 w-2.5 mr-0.5" />{equipment.status}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           )}
 
+          {/* ── Notes ── */}
           {booking.specialNotes && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <FileText className="h-5 w-5 text-gray-600" />
-                  Special Notes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-gray-700 whitespace-pre-wrap">{booking.specialNotes}</p>
-              </CardContent>
-            </Card>
+            <section>
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5" />
+                Notes
+              </h2>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">{booking.specialNotes}</p>
+            </section>
           )}
 
+          {/* ── Chef Information (Manager only) ── */}
           {isManagerView && booking.chef && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <User className="h-5 w-5 text-blue-600" />
-                  Chef Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                    <ChefHat className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-900">
-                      {booking.chef.fullName || booking.chef.username}
-                    </p>
-                    <p className="text-sm text-gray-500 flex items-center gap-1">
+            <section>
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5" />
+                Chef
+              </h2>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0">
+                  <ChefHat className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">
+                    {booking.chef.fullName || booking.chef.username}
+                  </p>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                    <span className="flex items-center gap-1">
                       <Mail className="h-3 w-3" />
                       {booking.chef.username}
-                    </p>
+                    </span>
                     {booking.chef.phone && (
-                      <p className="text-sm text-gray-500 flex items-center gap-1">
+                      <span className="flex items-center gap-1">
                         <Phone className="h-3 w-3" />
                         {booking.chef.phone}
-                      </p>
+                      </span>
                     )}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           )}
         </div>
 
+        {/* ── Sidebar ── */}
         <div className="space-y-6">
-          <Card className="sticky top-24">
-            <CardHeader className="bg-gradient-to-r from-gray-50 to-blue-50">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <DollarSign className="h-5 w-5 text-green-600" />
-                Payment Summary
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4">
-              <div className="space-y-3">
+          <Card className="sticky top-24 border-border shadow-none">
+            <CardContent className="p-5">
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Payment</h3>
+
+              <div className="space-y-2.5">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">
-                    Kitchen ({calculateDuration()} hr{calculateDuration() !== 1 ? "s" : ""})
+                  <span className="text-muted-foreground">
+                    Kitchen · {calculateDuration()} hr{calculateDuration() !== 1 ? "s" : ""}
                   </span>
-                  <span className="font-medium">
+                  <span className="font-mono">
                     {formatCurrency(totals.kitchen > 0 ? totals.kitchen : booking.totalPrice)}
                   </span>
                 </div>
 
                 {allStorageTotal > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Storage</span>
+                    <span className="text-muted-foreground">Storage</span>
                     <div className="text-right">
                       {rejectedStorageTotal > 0 && rejectedStorageTotal < allStorageTotal && (
-                        <span className="font-medium text-red-400 line-through mr-2 text-xs">{formatCurrency(allStorageTotal)}</span>
+                        <span className="font-mono text-muted-foreground line-through mr-2 text-xs">{formatCurrency(allStorageTotal)}</span>
                       )}
-                      <span className={`font-medium ${rejectedStorageTotal > 0 && rejectedStorageTotal === allStorageTotal ? "text-red-400 line-through" : "text-purple-700"}`}>
+                      <span className={`font-mono ${rejectedStorageTotal > 0 && rejectedStorageTotal === allStorageTotal ? "text-muted-foreground line-through" : ""}`}>
                         {rejectedStorageTotal === allStorageTotal ? formatCurrency(allStorageTotal) : formatCurrency(totals.storage)}
                       </span>
                     </div>
@@ -870,149 +907,179 @@ export default function BookingDetailsPage() {
 
                 {allEquipmentTotal > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Equipment</span>
+                    <span className="text-muted-foreground">Equipment</span>
                     <div className="text-right">
                       {rejectedEquipmentTotal > 0 && rejectedEquipmentTotal < allEquipmentTotal && (
-                        <span className="font-medium text-red-400 line-through mr-2 text-xs">{formatCurrency(allEquipmentTotal)}</span>
+                        <span className="font-mono text-muted-foreground line-through mr-2 text-xs">{formatCurrency(allEquipmentTotal)}</span>
                       )}
-                      <span className={`font-medium ${rejectedEquipmentTotal > 0 && rejectedEquipmentTotal === allEquipmentTotal ? "text-red-400 line-through" : "text-amber-700"}`}>
+                      <span className={`font-mono ${rejectedEquipmentTotal > 0 && rejectedEquipmentTotal === allEquipmentTotal ? "text-muted-foreground line-through" : ""}`}>
                         {rejectedEquipmentTotal === allEquipmentTotal ? formatCurrency(allEquipmentTotal) : formatCurrency(totals.equipment)}
                       </span>
                     </div>
                   </div>
                 )}
 
-                <Separator />
+                <Separator className="my-3" />
 
-                <div className="flex justify-between items-center pt-2">
-                  <span className="font-semibold text-gray-900">Total</span>
-                  <span className="text-xl font-bold text-green-600">
-                    {formatCurrency(totals.subtotal)} {booking.currency || "CAD"}
+                <div className="flex justify-between items-baseline">
+                  <span className="text-sm font-medium">
+                    {booking.paymentStatus === 'failed' && booking.status === 'cancelled'
+                      ? 'Original Quote'
+                      : 'Total'}
+                  </span>
+                  <span className={`text-lg font-semibold font-mono ${
+                    booking.paymentStatus === 'failed' && booking.status === 'cancelled'
+                      ? 'text-muted-foreground line-through'
+                      : ''
+                  }`}>
+                    {formatCurrency(totals.subtotal)}
+                    <span className="text-xs font-normal text-muted-foreground ml-1">{booking.currency || "CAD"}</span>
                   </span>
                 </div>
+              </div>
 
-                {/* AUTH-HOLD AWARENESS: Show prominent banner for authorized (held) payments */}
-                {booking.paymentStatus === 'authorized' && (
-                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <CreditCard className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                      <div className="text-xs text-blue-800">
-                        <p className="font-semibold mb-0.5">Payment Held</p>
-                        <p className="text-blue-700">
-                          {isManagerView 
-                            ? "This payment is authorized but not yet captured. Approve or reject from the action sheet to capture or release the hold."
-                            : "Your card has been authorized. The charge will be finalized once the kitchen manager approves your booking."}
-                        </p>
-                      </div>
+              {/* VOIDED AUTH: Show when booking was cancelled before capture — no money moved */}
+              {booking.paymentStatus === 'failed' && booking.status === 'cancelled' && (
+                <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-muted-foreground">
+                      <p className="font-medium mb-0.5">Authorization Voided — No Charge</p>
+                      <p>
+                        {isManagerView
+                          ? "The payment hold was released when this booking was rejected. No charge was made to the chef and no Stripe fees apply."
+                          : "The payment hold on your card has been released. You were not charged for this booking."}
+                      </p>
                     </div>
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Chef View - Payment Breakdown (without Stripe fee) */}
-                {!isManagerView && booking.paymentTransaction && (
-                  <>
-                    <Separator />
-                    <div className="space-y-2 pt-2">
-                      <p className="text-xs font-medium text-gray-500 uppercase">Payment Breakdown</p>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Subtotal</span>
-                        <span className="font-medium">{formatCurrency(totals.subtotal)}</span>
-                      </div>
-                      {(() => {
-                        const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
-                        const subtotal = totals.subtotal || 0;
-                        const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
-                        
-                        return taxRatePercent > 0 ? (
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-600">Tax ({taxRatePercent}%)</span>
-                            <span className="font-medium text-amber-600">{formatCurrency(taxAmount)}</span>
-                          </div>
-                        ) : null;
-                      })()}
-                      <Separator className="my-2" />
-                      <div className="flex justify-between text-sm font-semibold">
-                        <span className="text-gray-900">
-                          {booking.paymentStatus === 'authorized' ? 'Amount Authorized' : 'Amount Paid'}
-                        </span>
-                        <span className={booking.paymentStatus === 'authorized' ? 'text-blue-600' : 'text-green-600'}>
-                          {formatCurrency(booking.paymentTransaction.amount)}
-                        </span>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* Manager View - Revenue Breakdown (with Stripe fee) */}
-                {isManagerView && booking.paymentTransaction && (
-                  <>
-                    <Separator />
-                    <div className="space-y-2 pt-2">
-                      <p className="text-xs font-medium text-gray-500 uppercase">
-                        {booking.paymentStatus === 'authorized' ? 'Authorization Details' : 'Revenue Breakdown'}
+              {/* AUTH-HOLD AWARENESS: Show prominent banner for authorized (held) payments */}
+              {booking.paymentStatus === 'authorized' && (
+                <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <CreditCard className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-muted-foreground">
+                      <p className="font-medium mb-0.5">Payment Held</p>
+                      <p>
+                        {isManagerView 
+                          ? "This payment is authorized but not yet captured. Approve or reject from the action sheet to capture or release the hold."
+                          : "Your card has been authorized. The charge will be finalized once the kitchen manager approves your booking."}
                       </p>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">
-                          {booking.paymentStatus === 'authorized' ? 'Authorized Amount' : 'Gross Amount'}
-                        </span>
-                        <span className="font-medium">{formatCurrency(booking.paymentTransaction.amount)}</span>
-                      </div>
-                      {(() => {
-                        const amount = booking.paymentTransaction.amount || 0;
-                        const stripeFee = booking.paymentTransaction.stripeProcessingFee || 0;
-                        const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
-                        const subtotal = totals.subtotal || 0;
-                        const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
-                        const netRevenue = amount - taxAmount - stripeFee;
-                        const isAuthorized = booking.paymentStatus === 'authorized';
-                        
-                        return (
-                          <>
-                            {taxRatePercent > 0 && (
-                              <div className="flex justify-between text-sm">
-                                <span className="text-gray-600">
-                                  {isAuthorized ? `Est. Tax (${taxRatePercent}%)` : `Tax Collected (${taxRatePercent}%)`}
-                                </span>
-                                <span className="font-medium text-amber-600">-{formatCurrency(taxAmount)}</span>
-                              </div>
-                            )}
-                            {!isAuthorized && (
-                              <div className="flex justify-between text-sm">
-                                <span className="text-gray-600">Stripe Fee</span>
-                                <span className="font-medium text-red-600">-{formatCurrency(stripeFee)}</span>
-                              </div>
-                            )}
-                            <Separator className="my-2" />
-                            <div className="flex justify-between text-sm font-semibold">
-                              <span className="text-gray-900">
-                                {isAuthorized ? 'Est. Net Revenue' : 'Your Net Revenue'}
-                              </span>
-                              <span className={isAuthorized ? 'text-blue-600' : 'text-green-600'}>
-                                {formatCurrency(isAuthorized ? amount - taxAmount : netRevenue)}
-                              </span>
-                            </div>
-                          </>
-                        );
-                      })()}
                     </div>
-                  </>
-                )}
-              </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Chef View - Payment Breakdown (without Stripe fee) */}
+              {/* VOIDED AUTH: Skip breakdown entirely — no money was captured */}
+              {!isManagerView && booking.paymentTransaction && !(booking.paymentStatus === 'failed' && booking.status === 'cancelled') && (
+                <>
+                  <Separator className="my-4" />
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Breakdown</h3>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span className="font-mono">{formatCurrency(totals.subtotal)}</span>
+                    </div>
+                    {(() => {
+                      const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
+                      const subtotal = totals.subtotal || 0;
+                      const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
+                      
+                      return taxRatePercent > 0 ? (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Tax ({taxRatePercent}%)</span>
+                          <span className="font-mono">{formatCurrency(taxAmount)}</span>
+                        </div>
+                      ) : null;
+                    })()}
+                    <Separator className="my-2" />
+                    <div className="flex justify-between text-sm font-medium">
+                      <span>
+                        {booking.paymentStatus === 'authorized' ? 'Amount Authorized' : 'Amount Paid'}
+                      </span>
+                      <span className="font-mono">
+                        {formatCurrency(booking.paymentTransaction.amount)}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Manager View - Revenue Breakdown (with Stripe fee) */}
+              {/* VOIDED AUTH: Skip breakdown entirely — no money was captured */}
+              {isManagerView && booking.paymentTransaction && !(booking.paymentStatus === 'failed' && booking.status === 'cancelled') && (
+                <>
+                  <Separator className="my-4" />
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+                      {booking.paymentStatus === 'authorized' ? 'Authorization' : 'Revenue'}
+                    </h3>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        {booking.paymentStatus === 'authorized' ? 'Authorized' : 'Gross'}
+                      </span>
+                      <span className="font-mono">{formatCurrency(booking.paymentTransaction.amount)}</span>
+                    </div>
+                    {(() => {
+                      const amount = booking.paymentTransaction.amount || 0;
+                      const stripeFee = booking.paymentTransaction.stripeProcessingFee || 0;
+                      const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
+                      const subtotal = totals.subtotal || 0;
+                      const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
+                      const netRevenue = amount - taxAmount - stripeFee;
+                      const isAuthorized = booking.paymentStatus === 'authorized';
+                      
+                      return (
+                        <>
+                          {taxRatePercent > 0 && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">
+                                {isAuthorized ? `Est. Tax (${taxRatePercent}%)` : `Tax (${taxRatePercent}%)`}
+                              </span>
+                              <span className="font-mono text-muted-foreground">−{formatCurrency(taxAmount)}</span>
+                            </div>
+                          )}
+                          {!isAuthorized && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Stripe Fee</span>
+                              <span className="font-mono text-muted-foreground">−{formatCurrency(stripeFee)}</span>
+                            </div>
+                          )}
+                          <Separator className="my-2" />
+                          <div className="flex justify-between text-sm font-medium">
+                            <span>
+                              {isAuthorized ? 'Est. Net Revenue' : 'Net Revenue'}
+                            </span>
+                            <span className="font-mono">
+                              {formatCurrency(isAuthorized ? amount - taxAmount : netRevenue)}
+                            </span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </>
+              )}
 
               {(booking.paymentStatus === "paid" || booking.paymentStatus === "partially_refunded") && (
                 <Button
                   onClick={handleDownloadInvoice}
                   disabled={isDownloading}
-                  className="w-full mt-6 bg-blue-600 hover:bg-blue-700"
+                  variant="outline"
+                  className="w-full mt-5"
+                  size="sm"
                 >
                   {isDownloading ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating...
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      Generating…
                     </>
                   ) : (
                     <>
-                      <Download className="mr-2 h-4 w-4" />
+                      <Download className="mr-1.5 h-3.5 w-3.5" />
                       Download Invoice
                     </>
                   )}
@@ -1021,38 +1088,23 @@ export default function BookingDetailsPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm text-gray-500">Booking Details</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm space-y-2">
+          {/* ── Meta ── */}
+          <div className="text-xs text-muted-foreground space-y-1.5 px-1">
+            <div className="flex justify-between">
+              <span>Created</span>
+              <span>{formatShortDate(booking.createdAt)}</span>
+            </div>
+            {booking.updatedAt && (
               <div className="flex justify-between">
-                <span className="text-gray-500">Booking ID</span>
-                <span className="font-mono text-gray-700">#{booking.id}</span>
+                <span>Updated</span>
+                <span>{formatShortDate(booking.updatedAt)}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Created</span>
-                <span className="text-gray-700">{formatShortDate(booking.createdAt)}</span>
-              </div>
-              {booking.updatedAt && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Last Updated</span>
-                  <span className="text-gray-700">{formatShortDate(booking.updatedAt)}</span>
-                </div>
-              )}
-              {booking.paymentIntentId && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Payment Ref</span>
-                  <span className="font-mono text-xs text-gray-600 truncate max-w-[120px]">
-                    {booking.paymentIntentId.slice(-8)}
-                  </span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+            )}
+          </div>
         </div>
       </div>
     </div>
+    </TooltipProvider>
   );
 
   // Render with appropriate layout

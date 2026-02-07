@@ -102,6 +102,10 @@ interface Booking {
   }
   totalPrice?: number
   paymentStatus?: string
+  // ── Payment State Flags (from server PT join) ────────────────────────
+  isVoidedAuthorization?: boolean  // true when PT canceled before capture — $0 charged
+  isAuthorizedHold?: boolean       // true when payment held but not yet captured
+  originalAuthorizedAmount?: number // Original auth amount for voided display context (cents)
 }
 
 interface StorageBooking {
@@ -122,6 +126,18 @@ interface StorageBooking {
   serviceFee?: number
   basePrice?: number
   minimumBookingDuration?: number
+}
+
+interface EquipmentBooking {
+  id: number
+  equipmentListingId?: number
+  kitchenBookingId?: number
+  equipmentType?: string
+  brand?: string
+  kitchenName?: string
+  status: string
+  totalPrice?: number
+  paymentStatus?: string
 }
 
 interface ChefBookingsViewProps {
@@ -250,6 +266,7 @@ interface BookingColumnsProps {
   now: Date
   kitchens: Array<{ id: number; name: string; locationName?: string }>
   storageBookings: StorageBooking[]
+  equipmentBookings: EquipmentBooking[]
 }
 
 const getChefBookingColumns = ({
@@ -260,6 +277,7 @@ const getChefBookingColumns = ({
   now,
   kitchens,
   storageBookings: allStorageBookings,
+  equipmentBookings: allEquipmentBookings,
 }: BookingColumnsProps): ColumnDef<Booking>[] => [
   {
     accessorKey: "createdAt",
@@ -323,8 +341,17 @@ const getChefBookingColumns = ({
       const relatedStorage = allStorageBookings.filter(
         (sb) => sb.kitchenBookingId === booking.id
       )
-      const rejectedCount = relatedStorage.filter((sb) => sb.status === 'cancelled').length
+      const rejectedStorageCount = relatedStorage.filter((sb) => sb.status === 'cancelled').length
       const pendingStorageCount = relatedStorage.filter((sb) => sb.status === 'pending').length
+
+      // Check for mixed equipment statuses (mirrors storage logic)
+      const relatedEquipment = allEquipmentBookings.filter(
+        (eb) => eb.kitchenBookingId === booking.id
+      )
+      const rejectedEquipmentCount = relatedEquipment.filter((eb) => eb.status === 'cancelled').length
+
+      const isVoided = booking.isVoidedAuthorization === true
+      const isAuthHold = booking.isAuthorizedHold === true
 
       return (
         <div className="flex flex-col gap-1">
@@ -335,10 +362,31 @@ const getChefBookingColumns = ({
             </Badge>
             {timeBadge}
           </div>
-          {rejectedCount > 0 && (
+          {isVoided && (
+            <div className="flex items-center gap-1 text-[10px] text-gray-600 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200 w-fit">
+              <XCircle className="h-2.5 w-2.5" />
+              No charge
+            </div>
+          )}
+          {isAuthHold && status === 'pending' && (
+            <div className="flex items-center gap-1 text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 w-fit">
+              <Clock className="h-2.5 w-2.5" />
+              Payment held
+            </div>
+          )}
+          {/* Only show individual addon rejection badges when the booking itself was NOT fully voided.
+              Full voided auth already communicates everything was rejected — individual badges would be redundant
+              and misleading (implying kitchen was approved but specific addons were individually rejected). */}
+          {!isVoided && rejectedStorageCount > 0 && (
             <div className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded w-fit">
               <Package className="h-2.5 w-2.5" />
-              {rejectedCount} storage rejected
+              {rejectedStorageCount} storage rejected
+            </div>
+          )}
+          {!isVoided && rejectedEquipmentCount > 0 && (
+            <div className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded w-fit">
+              <Package className="h-2.5 w-2.5" />
+              {rejectedEquipmentCount} equipment rejected
             </div>
           )}
           {pendingStorageCount > 0 && status === 'confirmed' && (
@@ -433,19 +481,86 @@ const getChefBookingColumns = ({
     ),
     cell: ({ row }) => {
       const totalPrice = row.original.totalPrice
+      const isVoided = row.original.isVoidedAuthorization === true
+      const isAuthHold = row.original.isAuthorizedHold === true
+      const originalAuthAmount = row.original.originalAuthorizedAmount
+      const paymentStatus = row.original.paymentStatus
+
+      const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`
+
+      // ── VOIDED AUTHORIZATION: No money captured ────────────────────────
+      if (isVoided) {
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-right cursor-help">
+                  <div className="font-medium text-sm text-muted-foreground">No Charge</div>
+                  <div className="text-xs text-gray-500">Hold released</div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium">Booking Rejected</p>
+                  {originalAuthAmount != null && originalAuthAmount > 0 && (
+                    <div className="flex justify-between gap-4 text-muted-foreground">
+                      <span>Original hold:</span>
+                      <span className="font-mono line-through">{formatPrice(originalAuthAmount)}</span>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    The payment hold on your card was released. You were not charged.
+                  </p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )
+      }
 
       if (!totalPrice) {
         return <span className="text-muted-foreground text-xs">—</span>
       }
 
-      const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`
+      // ── AUTHORIZED HOLD: Pending manager action ────────────────────────
+      if (isAuthHold) {
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-right cursor-help">
+                  <div className="font-medium text-sm">{formatPrice(totalPrice)}</div>
+                  <div className="text-xs text-blue-600">Payment held</div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium text-blue-700">Payment Hold</p>
+                  <p className="text-xs text-muted-foreground">
+                    This amount is held on your card. The charge will be finalized once the kitchen manager approves your booking.
+                  </p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )
+      }
+
+      // ── CAPTURED / DEFAULT ─────────────────────────────────────────────
+      const statusLabel = paymentStatus === 'paid' ? 'Paid'
+        : paymentStatus === 'refunded' ? 'Refunded'
+        : paymentStatus === 'partially_refunded' ? 'Partial Refund'
+        : paymentStatus === 'processing' ? 'Processing'
+        : 'Pending'
+
+      const statusColor = paymentStatus === 'paid' ? 'text-green-600'
+        : paymentStatus === 'refunded' || paymentStatus === 'partially_refunded' ? 'text-orange-600'
+        : 'text-muted-foreground'
 
       return (
         <div className="text-right">
           <div className="font-medium text-sm">{formatPrice(totalPrice)}</div>
-          <div className="text-xs text-muted-foreground">
-            {row.original.paymentStatus === 'paid' ? 'Paid' : row.original.paymentStatus === 'authorized' ? 'Payment Held' : 'Pending'}
-          </div>
+          <div className={`text-xs ${statusColor}`}>{statusLabel}</div>
         </div>
       )
     },
@@ -480,7 +595,8 @@ const getChefBookingColumns = ({
       const booking = row.original
       const showCancel = canCancelBooking(booking, now)
       const isDownloading = downloadingInvoiceId === booking.id
-      const canDownloadInvoice = booking.status !== 'cancelled'
+      const isVoided = booking.isVoidedAuthorization === true
+      const canDownloadInvoice = booking.status !== 'cancelled' && !isVoided
 
       return (
         <DropdownMenu>
@@ -808,6 +924,21 @@ export default function ChefBookingsView({
     },
   })
 
+  // Equipment bookings query (mirrors storage bookings pattern)
+  const { data: equipmentBookings = [] } = useQuery({
+    queryKey: ['/api/chef/equipment-bookings'],
+    enabled: isAuthReady && hasAuthUser,
+    queryFn: async () => {
+      const headers = await getAuthHeaders()
+      const response = await fetch('/api/chef/equipment-bookings', {
+        headers,
+        credentials: 'include',
+      })
+      if (!response.ok) throw new Error('Failed to fetch equipment bookings')
+      return response.json()
+    },
+  })
+
   const now = useMemo(() => new Date(), [])
 
   // Categorize bookings
@@ -1056,8 +1187,9 @@ export default function ChefBookingsView({
       now,
       kitchens,
       storageBookings: storageBookings as StorageBooking[],
+      equipmentBookings: equipmentBookings as EquipmentBooking[],
     }),
-    [downloadingInvoiceId, now, kitchens, navigate, storageBookings]
+    [downloadingInvoiceId, now, kitchens, navigate, storageBookings, equipmentBookings]
   )
 
   // Storage table columns

@@ -86,7 +86,7 @@ interface Transaction {
   metadata: Record<string, unknown> | null;
 }
 
-type TransactionViewType = "all" | "succeeded" | "refunded" | "pending";
+type TransactionViewType = "all" | "succeeded" | "refunded" | "pending" | "canceled";
 
 // Helper functions
 function formatCurrency(cents: number): string {
@@ -118,10 +118,17 @@ function getStatusBadge(status: string, refundAmount: number) {
       </Badge>
     );
   }
-  if (status === 'failed' || status === 'canceled') {
+  if (status === 'canceled') {
+    return (
+      <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">
+        No Charge
+      </Badge>
+    );
+  }
+  if (status === 'failed') {
     return (
       <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-        {status === 'canceled' ? 'Canceled' : 'Failed'}
+        Failed
       </Badge>
     );
   }
@@ -245,6 +252,20 @@ function getTransactionColumns(): ColumnDef<Transaction>[] {
       cell: ({ row }) => {
         const tx = row.original;
         const hasRefund = tx.refundAmount > 0;
+        const isVoidedAuth = tx.status === 'canceled';
+        
+        if (isVoidedAuth) {
+          return (
+            <div className="text-right">
+              <div className="font-medium text-sm text-muted-foreground">No Charge</div>
+              {tx.amount > 0 && (
+                <div className="text-xs text-gray-400 line-through">
+                  {formatCurrency(tx.amount)}
+                </div>
+              )}
+            </div>
+          );
+        }
         
         return (
           <div className="text-right">
@@ -297,7 +318,7 @@ export function TransactionHistory() {
   const transactions = data?.transactions || [];
 
   // Categorize transactions
-  const { succeededTx, refundedTx, pendingTx } = useMemo(() => {
+  const { succeededTx, refundedTx, pendingTx, canceledTx } = useMemo(() => {
     const succeeded = transactions.filter(t => t.status === 'succeeded' && t.refundAmount === 0);
     const refunded = transactions.filter(t => 
       t.status === 'refunded' || t.status === 'partially_refunded' || t.refundAmount > 0
@@ -305,7 +326,8 @@ export function TransactionHistory() {
     const pending = transactions.filter(t => 
       t.status === 'pending' || t.status === 'processing'
     );
-    return { succeededTx: succeeded, refundedTx: refunded, pendingTx: pending };
+    const canceled = transactions.filter(t => t.status === 'canceled');
+    return { succeededTx: succeeded, refundedTx: refunded, pendingTx: pending, canceledTx: canceled };
   }, [transactions]);
 
   // Get current view data
@@ -313,8 +335,9 @@ export function TransactionHistory() {
     if (viewType === "succeeded") return succeededTx;
     if (viewType === "refunded") return refundedTx;
     if (viewType === "pending") return pendingTx;
+    if (viewType === "canceled") return canceledTx;
     return transactions;
-  }, [viewType, succeededTx, refundedTx, pendingTx, transactions]);
+  }, [viewType, succeededTx, refundedTx, pendingTx, canceledTx, transactions]);
 
   // Calculate totals
   const totals = useMemo(() => {
@@ -484,6 +507,13 @@ export function TransactionHistory() {
                 Pending
                 <Badge variant="secondary" className="ml-1">{pendingTx.length}</Badge>
               </TabsTrigger>
+              {canceledTx.length > 0 && (
+                <TabsTrigger value="canceled" className="flex-1 min-w-[70px] text-xs sm:text-sm px-2 py-1.5">
+                  <span className="hidden sm:inline">No Charge</span>
+                  <span className="sm:hidden">Void</span>
+                  <Badge variant="secondary" className="ml-1">{canceledTx.length}</Badge>
+                </TabsTrigger>
+              )}
             </TabsList>
           </Tabs>
 
@@ -513,7 +543,8 @@ export function TransactionHistory() {
                         "hover:bg-muted/50",
                         row.original.status === "succeeded" && row.original.refundAmount === 0 && "bg-green-50/30",
                         (row.original.status === "refunded" || row.original.refundAmount > 0) && "bg-purple-50/30",
-                        (row.original.status === "pending" || row.original.status === "processing") && "bg-yellow-50/30"
+                        (row.original.status === "pending" || row.original.status === "processing") && "bg-yellow-50/30",
+                        row.original.status === "canceled" && "bg-gray-50/40"
                       )}
                     >
                       {row.getVisibleCells().map((cell) => (

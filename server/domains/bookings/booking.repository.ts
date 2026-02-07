@@ -97,21 +97,52 @@ export class BookingRepository {
                 booking: kitchenBookings,
                 kitchen: kitchens,
                 location: locations,
+                // Payment transaction data for accurate payment state display
+                transactionStatus: paymentTransactions.status,
+                transactionAmount: paymentTransactions.amount,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .leftJoin(paymentTransactions, and(
+                eq(paymentTransactions.bookingId, kitchenBookings.id),
+                or(
+                    eq(paymentTransactions.bookingType, 'kitchen'),
+                    eq(paymentTransactions.bookingType, 'bundle')
+                )
+            ))
             .where(eq(kitchenBookings.chefId, chefId))
             .orderBy(desc(kitchenBookings.createdAt));
 
-        return results.map(row => ({
-            ...this.mapKitchenBookingToDTO(row.booking),
-            kitchen: row.kitchen,
-            location: row.location,
-            kitchenName: row.kitchen.name,
-            locationName: row.location.name,
-            locationTimezone: row.location.timezone,
-        }));
+        return results.map(row => {
+            const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
+
+            // ── Payment State Detection (mirrors manager logic) ───────────────
+            const transactionStatus = (row.transactionStatus as string | null) || null;
+            const isVoidedAuthorization = transactionStatus === 'canceled';
+            const isAuthorizedHold = mappedBooking.paymentStatus === 'authorized';
+
+            // For voided auths, preserve original amount for display context
+            const rawTransactionAmount = row.transactionAmount
+                ? parseFloat(row.transactionAmount as string)
+                : null;
+            const originalAuthorizedAmount = isVoidedAuthorization
+                ? (rawTransactionAmount ?? mappedBooking.totalPrice)
+                : null;
+
+            return {
+                ...mappedBooking,
+                kitchen: row.kitchen,
+                location: row.location,
+                kitchenName: row.kitchen.name,
+                locationName: row.location.name,
+                locationTimezone: row.location.timezone,
+                // ── Payment State Flags ────────────────────────────────────────
+                isVoidedAuthorization,  // true when PT was canceled before capture — $0 charged
+                isAuthorizedHold,       // true when payment is held but not yet captured
+                originalAuthorizedAmount, // Original auth amount for voided display context
+            };
+        });
     }
 
     async getBookingsByManagerId(managerId: number) {
@@ -160,23 +191,41 @@ export class BookingRepository {
 
         return results.map(row => {
             const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
+
+            // ── Payment Transaction Status Detection ─────────────────────────────
+            // The PT status determines whether money actually moved:
+            //   'canceled' → Authorization voided, $0 captured, hold released
+            //   'authorized' → Hold placed but not yet captured (pending manager action)
+            //   'succeeded'/'paid' → Money captured and transferred
+            const transactionStatus = (row.transactionStatus as string | null) || null;
+            const isVoidedAuthorization = transactionStatus === 'canceled';
+            const isAuthorizedHold = mappedBooking.paymentStatus === 'authorized';
+
             // Use actual Stripe transaction data for accurate display
             const transactionId = row.transactionId || null;
-            const transactionAmount = row.transactionAmount 
+
+            // ── VOIDED AUTH FIX ─────────────────────────────────────────────────
+            // When PT status is 'canceled', the PaymentIntent was voided before capture.
+            // Stripe confirms: amount_received=0, amount_capturable=0 after cancel.
+            // All effective financial fields must be $0 — no money changed hands.
+            // The original authorized amount is preserved in the PT record for audit,
+            // but the display layer must reflect reality.
+            const rawTransactionAmount = row.transactionAmount
                 ? parseFloat(row.transactionAmount as string) 
                 : null;
-            const serviceFee = row.transactionServiceFee 
+            const transactionAmount = isVoidedAuthorization ? 0 : rawTransactionAmount;
+            const serviceFee = isVoidedAuthorization ? 0 : (row.transactionServiceFee 
                 ? parseFloat(row.transactionServiceFee as string) 
-                : 0;
-            const managerRevenue = row.transactionManagerRevenue
+                : 0);
+            const managerRevenue = isVoidedAuthorization ? 0 : (row.transactionManagerRevenue
                 ? parseFloat(row.transactionManagerRevenue as string)
-                : null;
-            const refundAmount = row.transactionRefundAmount
+                : null);
+            const refundAmount = isVoidedAuthorization ? 0 : (row.transactionRefundAmount
                 ? parseFloat(row.transactionRefundAmount as string)
-                : 0;
-            const stripeProcessingFee = row.transactionStripeProcessingFee
+                : 0);
+            const stripeProcessingFee = isVoidedAuthorization ? 0 : (row.transactionStripeProcessingFee
                 ? parseFloat(row.transactionStripeProcessingFee as string)
-                : 0;
+                : 0);
             
             // ENTERPRISE STANDARD: Calculate tax EXACTLY like transaction history table
             // Tax = kitchen_bookings.total_price * tax_rate_percent / 100
@@ -184,23 +233,32 @@ export class BookingRepository {
             // pt.amount is the TOTAL (after tax) - e.g., $110
             const kbTotalPrice = mappedBooking.totalPrice || 0; // Subtotal before tax from kitchen_bookings
             const taxRatePercent = row.taxRatePercent ? parseFloat(String(row.taxRatePercent)) : 0;
-            const taxAmount = Math.round((kbTotalPrice * taxRatePercent) / 100);
+            const taxAmount = isVoidedAuthorization ? 0 : Math.round((kbTotalPrice * taxRatePercent) / 100);
             
             // Net revenue = total charged - tax - stripe fee (same as transaction history)
+            // For voided authorizations: all values are 0, so netRevenue = 0
             const totalCharged = transactionAmount ?? kbTotalPrice;
-            const netRevenue = totalCharged - taxAmount - stripeProcessingFee;
+            const netRevenue = isVoidedAuthorization ? 0 : (totalCharged - taxAmount - stripeProcessingFee);
             
             // SIMPLE REFUND MODEL: Manager's balance is the cap
             // Stripe fee is a sunk cost — it's gone from day 1 and not refundable
             // Manager enters $20 → Customer gets $20, Manager debited $20
+            // For voided authorizations: no money was captured, so nothing to refund
             
             // Manager's remaining balance = what they received minus what's already been refunded
-            const managerRemainingBalance = managerRevenue 
+            const managerRemainingBalance = isVoidedAuthorization ? 0 : (managerRevenue 
                 ? Math.max(0, managerRevenue - refundAmount)
-                : 0;
+                : 0);
             
             // Max refundable = manager's remaining balance (simple!)
             const refundableAmount = managerRemainingBalance;
+
+            // For authorized holds, preserve the original amount for display context
+            // (the client shows "Payment held: $XX" differently from "Total charged: $XX")
+            const originalAuthorizedAmount = isVoidedAuthorization
+                ? (rawTransactionAmount ?? kbTotalPrice)
+                : null;
+
             return {
                 ...mappedBooking,
                 kitchen: row.kitchen,
@@ -227,15 +285,20 @@ export class BookingRepository {
                 taxRatePercent,
                 // Use actual Stripe transaction data for accurate payment display
                 transactionId,     // Payment transaction ID (for refunds)
-                transactionAmount, // Actual amount charged (from payment_transactions) = $110
-                taxAmount,         // Tax = kb.total_price * tax_rate / 100 (same as transaction history) = $10
+                transactionAmount, // Actual amount charged (0 for voided auths, captured amount otherwise)
+                taxAmount,         // Tax = kb.total_price * tax_rate / 100 (0 for voided auths)
                 serviceFee,        // Platform fee (from payment_transactions)
-                managerRevenue,    // What manager receives (from payment_transactions)
-                netRevenue,        // Net = transactionAmount - taxAmount - stripeFee (same as transaction history) = $96.51
-                refundAmount,      // Amount already refunded
-                refundableAmount,  // SIMPLE: Max refundable = manager's remaining balance
-                stripeProcessingFee,   // Total Stripe processing fee (display only - sunk cost)
-                managerRemainingBalance, // Manager's remaining balance from this transaction
+                managerRevenue,    // What manager receives (0 for voided auths)
+                netRevenue,        // Net = transactionAmount - taxAmount - stripeFee (0 for voided auths)
+                refundAmount,      // Amount already refunded (0 for voided auths)
+                refundableAmount,  // SIMPLE: Max refundable = manager's remaining balance (0 for voided auths)
+                stripeProcessingFee,   // Total Stripe processing fee (0 for voided auths)
+                managerRemainingBalance, // Manager's remaining balance from this transaction (0 for voided auths)
+                // ── Voided Authorization Context ────────────────────────────────────
+                // These fields let the client distinguish between "never charged" vs "$0 booking"
+                isVoidedAuthorization,  // true when PT was canceled before capture — no money moved
+                isAuthorizedHold,       // true when payment is held but not yet captured
+                originalAuthorizedAmount, // Original auth amount for voided display (e.g., "Hold of $88 released")
             };
         });
     }

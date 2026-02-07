@@ -4129,6 +4129,11 @@ router.put(
         responseData.message = isFullRejection
           ? "Booking rejected and refund processed"
           : "Booking approved with partial rejection. Refund processed for rejected items.";
+      } else if (isFromPending && isAuthorizedPayment && status === "cancelled") {
+        // Voided authorization — no money was captured, hold released
+        responseData.authorizationVoided = true;
+        responseData.message =
+          "Booking rejected — payment hold released. No charge was made.";
       } else if (isCancellation) {
         // Cancellation of confirmed booking - no auto-refund
         responseData.requiresManualRefund = true;
@@ -6120,35 +6125,28 @@ router.post(
       // ENTERPRISE STANDARD: Auto-charge the saved payment method when manager approves
       // This follows the Turo model - customer's card is charged automatically without their intervention
       // The payment method was saved during booking checkout with setup_future_usage: 'off_session'
-      // Manager can opt-out by setting skipAutoCharge: true (e.g., for manual resolution)
-      const { skipAutoCharge } = req.body;
-      let chargeResult = null;
+      // If off-session charge fails (3DS/SCA), a payment link is automatically sent to the chef
+      logger.info(
+        `[Manager] Auto-charging overstay penalty ${overstayId} after manager approval`,
+      );
+      const chargeResult =
+        await overstayPenaltyService.chargeApprovedPenalty(overstayId);
 
-      if (!skipAutoCharge) {
-        logger.info(
-          `[Manager] Auto-charging overstay penalty ${overstayId} after manager approval`,
+      if (!chargeResult.success) {
+        // Charge failed - log but don't fail the approval
+        // The penalty is still approved, but payment needs manual resolution
+        logger.warn(
+          `[Manager] Auto-charge failed for overstay ${overstayId}: ${chargeResult.error}`,
         );
-        chargeResult =
-          await overstayPenaltyService.chargeApprovedPenalty(overstayId);
-
-        if (!chargeResult.success) {
-          // Charge failed - log but don't fail the approval
-          // The penalty is still approved, but payment needs manual resolution
-          logger.warn(
-            `[Manager] Auto-charge failed for overstay ${overstayId}: ${chargeResult.error}`,
-          );
-        }
       }
 
       res.json({
         success: true,
-        message: chargeResult?.success
+        message: chargeResult.success
           ? "Penalty approved and charged successfully"
-          : skipAutoCharge
-            ? "Penalty approved (auto-charge skipped)"
-            : `Penalty approved but charge failed: ${chargeResult?.error || "Unknown error"}`,
+          : `Penalty approved but charge failed: ${chargeResult.error || "Unknown error"}`,
         chargeResult,
-        autoCharged: !skipAutoCharge,
+        autoCharged: true,
       });
     } catch (error) {
       logger.error("Error approving penalty:", error);

@@ -239,6 +239,12 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           title: "Booking Rejected & Refunded",
           description: `Refund of $${(data.refund.amount / 100).toFixed(2)} processed (customer absorbs Stripe fee).`,
         });
+      } else if (data?.authorizationVoided) {
+        // Voided authorization — no money was captured
+        toast({
+          title: "Booking Rejected",
+          description: "Payment hold released — no charge was made to the chef.",
+        });
       } else {
         toast({
           title: "Success",

@@ -9,7 +9,7 @@ import {
     equipmentListings,
     paymentTransactions,
 } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, or, desc } from "drizzle-orm";
 import { logger } from "../logger";
 import { requireChef, requireNoUnpaidPenalties } from "./middleware";
 import { createPaymentIntent } from "../services/stripe-service";
@@ -140,6 +140,17 @@ router.get("/chef/storage-bookings", requireChef, async (req: Request, res: Resp
     } catch (error) {
         console.error("Error fetching storage bookings:", error);
         res.status(500).json({ error: "Failed to fetch storage bookings" });
+    }
+});
+
+// Get chef's equipment bookings (mirrors storage-bookings pattern)
+router.get("/chef/equipment-bookings", requireChef, async (req: Request, res: Response) => {
+    try {
+        const equipmentBookings = await bookingService.getEquipmentBookingsByChef(req.neonUser!.id);
+        res.json(equipmentBookings);
+    } catch (error) {
+        console.error("Error fetching equipment bookings:", error);
+        res.status(500).json({ error: "Failed to fetch equipment bookings" });
     }
 });
 
@@ -1149,7 +1160,10 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                 .where(
                     and(
                         eq(paymentTransactions.bookingId, id),
-                        eq(paymentTransactions.bookingType, 'kitchen')
+                        or(
+                            eq(paymentTransactions.bookingType, 'kitchen'),
+                            eq(paymentTransactions.bookingType, 'bundle')
+                        )
                     )
                 )
                 .limit(1);
