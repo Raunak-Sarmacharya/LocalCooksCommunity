@@ -58,7 +58,6 @@ export default function ManagerBookingLayout({
                 locations={[]}
                 selectedLocation={null}
                 onLocationChange={() => navigate("/manager/dashboard")}
-                onCreateLocation={() => navigate("/manager/dashboard")}
             />
             <SidebarInset>
                 <header className="flex h-16 shrink-0 items-center justify-between gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">

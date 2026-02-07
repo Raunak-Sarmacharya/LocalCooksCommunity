@@ -172,8 +172,6 @@ export default function ManagerBookingDashboard() {
     }
     return 'overview';
   });
-  // State for Create Location Sheet
-  const [showCreateLocation, setShowCreateLocation] = useState(false);
 
   // Handle locationId from URL for direct navigation to views like application-requirements
   useEffect(() => {
@@ -536,8 +534,6 @@ export default function ManagerBookingDashboard() {
     setLocation('/manager/setup');
   };
 
-  const showCreateLocationHandler = () => window.dispatchEvent(new Event('start-new-location'));
-
   return (
     <DashboardLayout
       activeView={activeView}
@@ -545,7 +541,6 @@ export default function ManagerBookingDashboard() {
       locations={locations}
       selectedLocation={selectedLocation}
       onLocationChange={(loc) => setSelectedLocation(loc as Location)}
-      onCreateLocation={showCreateLocationHandler}
     >
       {/* Onboarding Status Banners */}
       <OnboardingStatusBanner
@@ -679,7 +674,7 @@ export default function ManagerBookingDashboard() {
         <ManagerLocationsPage
           locations={locations}
           isLoading={isLoadingLocations}
-          onCreateLocation={() => setShowCreateLocation(true)}
+          onCreateLocation={() => {}}
           onSelectLocation={(loc) => {
             setSelectedLocation(loc as Location);
             setActiveView('overview');
@@ -805,20 +800,13 @@ export default function ManagerBookingDashboard() {
         </div>
       )}
 
-      {/* Create Location Dialog handled via state in parent, but componentized */}
-      <CreateLocationSheet
-        open={showCreateLocation}
-        onOpenChange={setShowCreateLocation}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
-        }}
-      />
-
     </DashboardLayout>
   );
 }
 
-// Sub-component for the Create Location Sheet
+// [PARKED] CreateLocationSheet — Multi-location "Add New Location" is parked with Coming Soon badges.
+// This component will be re-enabled when the full multi-location onboarding flow is implemented.
+// See gap analysis: engine.reset(), per-location completedSteps scoping, hasPerformedInitialAutoSkip reset.
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createLocationSchema, type CreateLocationFormValues } from "@/schemas/locationSchema";
@@ -833,6 +821,7 @@ import {
 } from "@/components/ui/form";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean; onOpenChange: (open: boolean) => void; onSuccess: () => void }) {
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
 

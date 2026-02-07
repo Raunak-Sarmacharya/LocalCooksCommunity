@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Building2, Search, Filter, RefreshCw } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -219,13 +220,25 @@ export default function ManagerLocationsPage({
             Manage all your kitchen locations and their approval status
           </p>
         </div>
-        <Button
-          onClick={onCreateLocation}
-          className="bg-[#F51042] hover:bg-[#d10e3a] text-white gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Add New Location
-        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                disabled
+                className="gap-2 opacity-60 cursor-not-allowed"
+              >
+                <Plus className="w-4 h-4" />
+                Add New Location
+                <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary ring-1 ring-inset ring-primary/20 ml-1">
+                  Coming Soon
+                </span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-xs text-xs">
+              <p>Multi-location support is coming soon. You'll be able to add and manage multiple kitchen locations.</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       {/* Filters */}
@@ -292,13 +305,19 @@ export default function ManagerLocationsPage({
               <p className="text-gray-500 mb-6">
                 Create your first location to start managing your kitchens
               </p>
-              <Button
-                onClick={onCreateLocation}
-                className="bg-[#F51042] hover:bg-[#d10e3a] text-white gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Add Your First Location
-              </Button>
+              <div className="flex flex-col items-center gap-3">
+                <Button
+                  disabled
+                  className="gap-2 opacity-60 cursor-not-allowed"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Your First Location
+                  <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary ring-1 ring-inset ring-primary/20 ml-1">
+                    Coming Soon
+                  </span>
+                </Button>
+                <p className="text-xs text-muted-foreground">Multi-location support is coming soon</p>
+              </div>
             </>
           ) : (
             <>

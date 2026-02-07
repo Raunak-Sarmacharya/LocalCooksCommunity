@@ -447,14 +447,11 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // Listen for manual trigger from Help Center or other parts of the app
   useEffect(() => {
     const handleOpenRequest = () => setIsOpen(true);
-    const handleNewLocationRequest = () => value.startNewLocation();
 
     window.addEventListener('open-onboarding-from-help', handleOpenRequest);
-    window.addEventListener('start-new-location', handleNewLocationRequest);
 
     return () => {
       window.removeEventListener('open-onboarding-from-help', handleOpenRequest);
-      window.removeEventListener('start-new-location', handleNewLocationRequest);
     }
   }, [setIsOpen]);
 
