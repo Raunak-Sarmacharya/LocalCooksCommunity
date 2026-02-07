@@ -197,6 +197,11 @@ function OverstayCard({
   const canResolve = !['resolved', 'charge_succeeded', 'escalated'].includes(overstay.status);
   const hasPaymentMethod = overstay.stripeCustomerId && overstay.stripePaymentMethodId;
 
+  // Derived calculation values (mirrors server formula for transparent display)
+  const penaltyRateDecimal = parseFloat(overstay.penaltyRate);
+  const penaltyDays = isInGracePeriod ? 0 : Math.min(overstay.daysOverdue - overstay.gracePeriodDays, overstay.maxPenaltyDays);
+  const dailyPenaltyChargeCents = Math.round(overstay.dailyRateCents * (1 + penaltyRateDecimal));
+
   return (
     <>
       <Card className={`mb-4 ${isInGracePeriod ? 'border-yellow-200' : overstay.status === 'pending_review' ? 'border-orange-200' : ''}`}>
@@ -215,7 +220,7 @@ function OverstayCard({
             <div className="flex flex-col items-end gap-2">
               {getStatusBadge(overstay.status)}
               <span className="text-sm text-muted-foreground">
-                {overstay.daysOverdue} day{overstay.daysOverdue !== 1 ? 's' : ''} overdue
+                {overstay.daysOverdue} day{overstay.daysOverdue !== 1 ? 's' : ''} past end date
               </span>
             </div>
           </div>
@@ -227,18 +232,39 @@ function OverstayCard({
               <p className="font-medium">{format(new Date(overstay.bookingEndDate), 'MMM d, yyyy')}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Grace Period Ends</p>
-              <p className="font-medium">{format(new Date(overstay.gracePeriodEndsAt), 'MMM d, yyyy')}</p>
+              <p className="text-xs text-muted-foreground">Grace Period</p>
+              <p className="font-medium">{overstay.gracePeriodDays} day{overstay.gracePeriodDays !== 1 ? 's' : ''} (ends {format(new Date(overstay.gracePeriodEndsAt), 'MMM d')})</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Daily Rate</p>
-              <p className="font-medium">{formatCurrency(overstay.dailyRateCents)}</p>
+              <p className="text-xs text-muted-foreground">Billable Days</p>
+              <p className="font-medium text-orange-600">{penaltyDays} day{penaltyDays !== 1 ? 's' : ''}</p>
+              {!isInGracePeriod && penaltyDays > 0 && (
+                <p className="text-[10px] text-muted-foreground">{overstay.daysOverdue} overdue − {overstay.gracePeriodDays} grace{penaltyDays === overstay.maxPenaltyDays ? ' (capped)' : ''}</p>
+              )}
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Calculated Penalty</p>
               <p className="font-medium text-orange-600">{formatCurrency(overstay.calculatedPenaltyCents)}</p>
             </div>
           </div>
+
+          {/* Transparent formula breakdown */}
+          {!isInGracePeriod && penaltyDays > 0 && (
+            <div className="bg-muted/40 border rounded-md p-3 mb-2 text-sm">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Penalty Calculation</p>
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm">
+                <span className="font-mono">{formatCurrency(overstay.dailyRateCents)}/day</span>
+                <span className="text-muted-foreground">×</span>
+                <span className="font-mono">(1 + {(penaltyRateDecimal * 100).toFixed(0)}%)</span>
+                <span className="text-muted-foreground">=</span>
+                <span className="font-mono font-medium">{formatCurrency(dailyPenaltyChargeCents)}/day</span>
+                <span className="text-muted-foreground">×</span>
+                <span className="font-mono">{penaltyDays} day{penaltyDays !== 1 ? 's' : ''}</span>
+                <span className="text-muted-foreground">=</span>
+                <span className="font-mono font-semibold text-orange-600">{formatCurrency(overstay.calculatedPenaltyCents)}</span>
+              </div>
+            </div>
+          )}
 
           {/* Tax breakdown summary */}
           {overstay.kitchenTaxRatePercent > 0 && (
@@ -396,7 +422,7 @@ function OverstayCard({
                 className="mt-1"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Maximum allowed: {formatCurrency(overstay.calculatedPenaltyCents)} (based on ${(overstay.dailyRateCents / 100).toFixed(2)}/day × {(parseFloat(overstay.penaltyRate) * 100).toFixed(0)}% rate)
+                Maximum: {formatCurrency(overstay.calculatedPenaltyCents)} — {formatCurrency(dailyPenaltyChargeCents)}/day × {penaltyDays} billable day{penaltyDays !== 1 ? 's' : ''} ({overstay.daysOverdue} overdue − {overstay.gracePeriodDays} grace)
               </p>
             </div>
 
