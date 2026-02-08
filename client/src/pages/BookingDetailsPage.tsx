@@ -40,6 +40,11 @@ import {
   BookingActionSheet,
   type BookingForAction,
 } from "@/components/manager/bookings/BookingActionSheet";
+import {
+  BookingManagementSheet,
+  type BookingForManagement,
+  type ManagementSubmitParams,
+} from "@/components/manager/bookings/BookingManagementSheet";
 
 interface BookingDetails {
   id: number;
@@ -113,6 +118,10 @@ interface BookingDetails {
     status: string;
     stripeProcessingFee?: number;
     paidAt?: string;
+    refundAmount?: number;
+    netAmount?: number;
+    refundedAt?: string;
+    refundReason?: string;
   };
 }
 
@@ -150,10 +159,12 @@ export default function BookingDetailsPage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
+  const [managementSheetOpen, setManagementSheetOpen] = useState(false);
+  const [isManagementProcessing, setIsManagementProcessing] = useState(false);
   const queryClient = useQueryClient();
 
-  const handleViewChange = (_view: string) => {
-    navigate("/dashboard");
+  const handleViewChange = (view: string) => {
+    navigate(`/dashboard?view=${view}`);
   };
 
   useEffect(() => {
@@ -329,13 +340,19 @@ export default function BookingDetailsPage() {
             Pending
           </Badge>
         );
-      case "cancelled":
+      case "cancelled": {
+        // Industry standard: distinguish by cause
+        const isExpired = booking?.paymentStatus === 'failed';
+        const isRefunded = booking?.paymentStatus === 'refunded';
+        const cancelledLabel = isExpired ? 'Expired' : isRefunded ? 'Refunded' : 'Cancelled';
+        const cancelledIcon = isExpired ? <AlertCircle className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />;
         return (
           <Badge variant="outline" className="text-muted-foreground border-border font-medium">
-            <XCircle className="h-3 w-3 mr-1" />
-            Cancelled
+            {cancelledIcon}
+            {cancelledLabel}
           </Badge>
         );
+      }
       default:
         return <Badge variant="outline" className="font-medium">{status}</Badge>;
     }
@@ -424,22 +441,40 @@ export default function BookingDetailsPage() {
     return endH - startH;
   };
 
+  // ── Payment state helpers ─────────────────────────────────────────────────
+  // VOID = auth was cancelled before capture (paymentStatus='failed') — never charged
+  // REFUND = payment was captured then refunded (paymentStatus='refunded') — money returned
+  const isRefunded = booking?.paymentStatus === 'refunded';
+  const isPartiallyRefunded = booking?.paymentStatus === 'partially_refunded';
+  const hasRefund = isRefunded || isPartiallyRefunded;
+  const refundAmount = booking?.paymentTransaction?.refundAmount || 0;
+
+  // Helper: item was voided (never charged — exclude from totals)
+  const isItemVoided = (item: { paymentStatus?: string; status: string }) =>
+    item.paymentStatus === 'failed';
+
+  // Helper: item was refunded (was charged, then money returned — include in totals, show as refunded)
+  const isItemRefunded = (item: { paymentStatus?: string; status: string }) =>
+    item.paymentStatus === 'refunded' && item.status === 'cancelled';
+
+
   const totals = useMemo(() => {
     if (!booking) return { kitchen: 0, storage: 0, equipment: 0, subtotal: 0, tax: 0, total: 0 };
 
     const kitchenTotal = booking.totalPrice || 0;
-    // PARTIAL CAPTURE AWARENESS: Only sum approved items (exclude rejected/failed)
-    // After partial capture, rejected items have paymentStatus='failed' and status='cancelled'
+    // VOID AWARENESS: Only exclude items with paymentStatus='failed' (never charged).
+    // REFUND AWARENESS: Items with paymentStatus='refunded' WERE charged — include them
+    // in the "Amount Charged" calculation. Refund is shown separately below.
     const storageTotal = booking.storageBookings?.reduce((sum, s) => {
-      if (s.paymentStatus === 'failed' || s.status === 'cancelled') return sum;
+      if (s.paymentStatus === 'failed') return sum; // Voided — never charged
       return sum + (s.totalPrice || 0);
     }, 0) || 0;
     const equipmentTotal = booking.equipmentBookings?.reduce((sum, e) => {
-      if (e.paymentStatus === 'failed' || e.status === 'cancelled') return sum;
+      if (e.paymentStatus === 'failed') return sum; // Voided — never charged
       return sum + (e.totalPrice || 0);
     }, 0) || 0;
 
-    // Subtotal is kitchen + approved storage + approved equipment (what was actually charged)
+    // Subtotal is kitchen + non-voided storage + non-voided equipment (what was actually charged)
     const subtotal = kitchenTotal + storageTotal + equipmentTotal;
 
     return {
@@ -456,19 +491,19 @@ export default function BookingDetailsPage() {
   const allStorageBookings = booking?.storageBookings || [];
   const allEquipmentBookings = booking?.equipmentBookings || [];
 
-  // Helper to check if an item was rejected (failed payment or cancelled status)
-  const isItemRejected = (item: { paymentStatus?: string; status: string }) =>
-    item.paymentStatus === 'failed' || item.status === 'cancelled';
-
   // Original totals including ALL items (for showing what was originally booked)
   const allStorageTotal = allStorageBookings.reduce((sum, s) => sum + (s.totalPrice || 0), 0);
   const allEquipmentTotal = allEquipmentBookings.reduce((sum, e) => sum + (e.totalPrice || 0), 0);
-  // Rejected totals for strikethrough display
-  const rejectedStorageTotal = allStorageBookings.filter(isItemRejected).reduce((sum, s) => sum + (s.totalPrice || 0), 0);
-  const rejectedEquipmentTotal = allEquipmentBookings.filter(isItemRejected).reduce((sum, e) => sum + (e.totalPrice || 0), 0);
+  // Voided totals (never charged) for sidebar strikethrough — only voided items, not refunded
+  const rejectedStorageTotal = allStorageBookings.filter(isItemVoided).reduce((sum, s) => sum + (s.totalPrice || 0), 0);
+  const rejectedEquipmentTotal = allEquipmentBookings.filter(isItemVoided).reduce((sum, e) => sum + (e.totalPrice || 0), 0);
 
   const openActionSheet = () => {
     setActionSheetOpen(true);
+  };
+
+  const openManagementSheet = () => {
+    setManagementSheetOpen(true);
   };
 
   const bookingForAction: BookingForAction | null = booking ? {
@@ -542,16 +577,31 @@ export default function BookingDetailsPage() {
       // - Approved authorized booking: paymentStatus → 'paid'
       // - Rejected paid booking with refund: paymentStatus → 'refunded' or 'partially_refunded'
       // - Cancelled confirmed booking: paymentStatus unchanged ('paid')
+      const hadRefund = !!responseData.refund;
       let updatedPaymentStatus = booking.paymentStatus;
       if (responseData.authorizationVoided) {
         updatedPaymentStatus = 'failed';
       } else if (params.status === 'confirmed' && booking.paymentStatus === 'authorized') {
         updatedPaymentStatus = 'paid';
-      } else if (responseData.refund && params.status === 'cancelled') {
+      } else if (hadRefund && params.status === 'cancelled') {
         updatedPaymentStatus = 'refunded';
       }
 
-      // Update local state — update both storage AND equipment booking statuses
+      // For refund scenarios (post-capture rejection), reload to get accurate data from server
+      // because the refund engine updates payment_transactions, paymentStatus, and item statuses
+      // and local patching would be incomplete (refund amounts, item paymentStatus='refunded', etc.)
+      if (hadRefund) {
+        queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
+        toast({
+          title: "Booking Rejected & Refunded",
+          description: `Refund of $${(responseData.refund.amount / 100).toFixed(2)} processed.`,
+        });
+        window.location.reload();
+        return;
+      }
+
+      // For non-refund scenarios (void or simple approve), update local state directly
+      // Cancelled items have paymentStatus='failed' (voided — never charged)
       const updatedStorageBookings = booking.storageBookings?.map((sb) => {
         const action = params.storageActions?.find((a) => a.storageBookingId === sb.id);
         if (action) {
@@ -582,11 +632,6 @@ export default function BookingDetailsPage() {
           title: "Booking Rejected",
           description: "Payment hold released — no charge was made to the chef.",
         });
-      } else if (responseData.refund) {
-        toast({
-          title: "Booking Rejected & Refunded",
-          description: `Refund of $${(responseData.refund.amount / 100).toFixed(2)} processed.`,
-        });
       } else if (responseData.requiresManualRefund) {
         toast({
           title: "Booking Cancelled",
@@ -608,6 +653,139 @@ export default function BookingDetailsPage() {
     } finally {
       setIsUpdatingStatus(false);
       setActionSheetOpen(false);
+    }
+  };
+
+  // ── Management Sheet data (for confirmed/paid bookings) ──────────────
+  const bookingForManagement: BookingForManagement | null = booking ? {
+    id: booking.id,
+    kitchenName: booking.kitchen?.name,
+    chefName: booking.chef?.fullName || booking.chef?.username,
+    locationName: booking.location?.name,
+    bookingDate: booking.bookingDate,
+    startTime: booking.startTime,
+    endTime: booking.endTime,
+    totalPrice: booking.totalPrice,
+    status: booking.status,
+    paymentStatus: booking.paymentStatus,
+    transactionAmount: booking.paymentTransaction?.amount,
+    stripeProcessingFee: booking.paymentTransaction?.stripeProcessingFee,
+    managerRevenue: booking.paymentTransaction?.managerRevenue,
+    taxRatePercent: booking.kitchen?.taxRatePercent ? Number(booking.kitchen.taxRatePercent) : undefined,
+    // refundableAmount uses managerRevenue — the ManagementSheet subtracts alreadyRefunded (refundAmount) itself
+    refundableAmount: booking.paymentTransaction?.managerRevenue,
+    refundAmount: booking.paymentTransaction?.refundAmount || 0,
+    cancellationRequested: booking.status === 'cancellation_requested',
+    storageItems: booking.storageBookings?.map((s) => ({
+      id: s.id,
+      storageBookingId: s.id,
+      name: s.storageListing?.name || `Storage #${s.storageListingId}`,
+      storageType: s.storageListing?.storageType || 'Storage',
+      totalPrice: s.totalPrice,
+      startDate: s.startDate,
+      endDate: s.endDate,
+      status: s.status,
+      cancellationRequested: false, // detail endpoint doesn't expose this directly
+    })),
+    equipmentItems: booking.equipmentBookings?.map((e) => ({
+      id: e.id,
+      equipmentBookingId: e.id,
+      name: e.equipmentListing?.equipmentType || `Equipment #${e.equipmentListingId}`,
+      totalPrice: e.totalPrice,
+      status: e.status,
+    })),
+  } : null;
+
+  const handleManagementSubmit = async (params: ManagementSubmitParams) => {
+    if (!booking?.id) return;
+    setIsManagementProcessing(true);
+    try {
+      const headers = await getAuthHeaders();
+
+      switch (params.action) {
+        case "cancel-booking":
+        case "cancel-booking-refund": {
+          const res = await fetch(`/api/manager/bookings/${params.bookingId}/status`, {
+            method: 'PUT', headers, credentials: "include",
+            body: JSON.stringify({
+              status: 'cancelled',
+              refundOnCancel: params.action === "cancel-booking-refund",
+              storageActions: params.storageActions,
+              equipmentActions: params.equipmentActions,
+            }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel'); }
+          const data = await res.json().catch(() => ({}));
+          toast({ title: "Booking Cancelled", description: data?.refund ? `Refund of $${(data.refund.amount / 100).toFixed(2)} processed.` : "Booking cancelled." });
+          // Reload to get fresh payment status, refund amounts, and item statuses from server
+          window.location.reload();
+          break;
+        }
+        case "partial-cancel":
+        case "partial-cancel-refund": {
+          const statusRes = await fetch(`/api/manager/bookings/${params.bookingId}/status`, {
+            method: 'PUT', headers, credentials: "include",
+            body: JSON.stringify({ status: 'confirmed', storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
+          });
+          if (!statusRes.ok) { const d = await statusRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to update'); }
+          toast({ title: "Items Cancelled", description: "Selected items have been cancelled." });
+          // Refresh booking data
+          window.location.reload();
+          break;
+        }
+        case "refund-only": {
+          toast({ title: "Info", description: "Use the Bookings panel to issue refunds (requires transaction ID)." });
+          break;
+        }
+        case "accept-cancellation": {
+          const res = await fetch(`/api/manager/bookings/${params.bookingId}/cancellation-request`, {
+            method: 'PUT', headers, credentials: "include",
+            body: JSON.stringify({ action: 'accept' }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+          setBooking({ ...booking, status: 'cancelled' });
+          toast({ title: "Cancellation Accepted" });
+          break;
+        }
+        case "decline-cancellation": {
+          const res = await fetch(`/api/manager/bookings/${params.bookingId}/cancellation-request`, {
+            method: 'PUT', headers, credentials: "include",
+            body: JSON.stringify({ action: 'decline' }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+          setBooking({ ...booking, status: 'confirmed' });
+          toast({ title: "Cancellation Declined" });
+          break;
+        }
+        case "accept-storage-cancel": {
+          if (!params.storageCancellationId) throw new Error("No storage booking ID");
+          const res = await fetch(`/api/manager/storage-bookings/${params.storageCancellationId}/cancellation-request`, {
+            method: 'PUT', headers, credentials: "include",
+            body: JSON.stringify({ action: 'accept' }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+          toast({ title: "Storage Cancellation Accepted" });
+          window.location.reload();
+          break;
+        }
+        case "decline-storage-cancel": {
+          if (!params.storageCancellationId) throw new Error("No storage booking ID");
+          const res = await fetch(`/api/manager/storage-bookings/${params.storageCancellationId}/cancellation-request`, {
+            method: 'PUT', headers, credentials: "include",
+            body: JSON.stringify({ action: 'decline' }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
+          toast({ title: "Storage Cancellation Declined" });
+          break;
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
+      setManagementSheetOpen(false);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Something went wrong.", variant: "destructive" });
+    } finally {
+      setIsManagementProcessing(false);
     }
   };
 
@@ -689,6 +867,7 @@ export default function BookingDetailsPage() {
             {getPaymentStatusBadge(booking.paymentStatus)}
             {isManagerView && booking.status === 'pending' && (
               <Button
+                type="button"
                 size="sm"
                 onClick={openActionSheet}
                 disabled={isUpdatingStatus}
@@ -700,6 +879,21 @@ export default function BookingDetailsPage() {
                     <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
                     Take Action
                   </>
+                )}
+              </Button>
+            )}
+            {isManagerView && (booking.status === 'confirmed' || booking.status === 'cancellation_requested') && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={openManagementSheet}
+                disabled={isManagementProcessing}
+              >
+                {isManagementProcessing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <>Manage Booking</>
                 )}
               </Button>
             )}
@@ -739,16 +933,18 @@ export default function BookingDetailsPage() {
               </h2>
               <div className="space-y-2">
                 {allStorageBookings.map((storage) => {
-                  const rejected = isItemRejected(storage);
+                  const voided = isItemVoided(storage);
+                  const refunded = isItemRefunded(storage);
+                  const cancelled = voided || refunded || storage.status === 'cancelled';
                   return (
                     <div
                       key={storage.id}
                       className={`flex items-center justify-between py-3 px-4 rounded-lg border ${
-                        rejected ? "bg-muted/40 border-border opacity-60" : "border-border"
+                        cancelled ? "bg-muted/40 border-border opacity-60" : "border-border"
                       }`}
                     >
                       <div className="min-w-0">
-                        <p className={`text-sm font-medium ${rejected ? "text-muted-foreground line-through" : ""}`}>
+                        <p className={`text-sm font-medium ${cancelled ? "text-muted-foreground line-through" : ""}`}>
                           {storage.storageListing?.name || `Storage #${storage.storageListingId}`}
                         </p>
                         <p className="text-xs text-muted-foreground">
@@ -757,16 +953,24 @@ export default function BookingDetailsPage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        <span className={`text-sm font-mono ${rejected ? "text-muted-foreground line-through" : ""}`}>
+                        <span className={`text-sm font-mono ${cancelled ? "text-muted-foreground line-through" : ""}`}>
                           {formatCurrency(storage.totalPrice)}
                         </span>
                         {storage.status === "completed" ? (
                           <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200">
                             <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />cleared
                           </Badge>
+                        ) : refunded ? (
+                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200">
+                            <Receipt className="h-2.5 w-2.5 mr-0.5" />refunded
+                          </Badge>
+                        ) : voided ? (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
+                            <XCircle className="h-2.5 w-2.5 mr-0.5" />not charged
+                          </Badge>
                         ) : storage.status === "cancelled" ? (
                           <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
-                            <XCircle className="h-2.5 w-2.5 mr-0.5" />rejected
+                            <XCircle className="h-2.5 w-2.5 mr-0.5" />cancelled
                           </Badge>
                         ) : storage.status === "confirmed" || storage.status === "active" ? (
                           <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200">
@@ -794,16 +998,18 @@ export default function BookingDetailsPage() {
               </h2>
               <div className="space-y-2">
                 {allEquipmentBookings.map((equipment) => {
-                  const rejected = isItemRejected(equipment);
+                  const voided = isItemVoided(equipment);
+                  const refunded = isItemRefunded(equipment);
+                  const cancelled = voided || refunded || equipment.status === 'cancelled';
                   return (
                     <div
                       key={equipment.id}
                       className={`flex items-center justify-between py-3 px-4 rounded-lg border ${
-                        rejected ? "bg-muted/40 border-border opacity-60" : "border-border"
+                        cancelled ? "bg-muted/40 border-border opacity-60" : "border-border"
                       }`}
                     >
                       <div className="min-w-0">
-                        <p className={`text-sm font-medium ${rejected ? "text-muted-foreground line-through" : ""}`}>
+                        <p className={`text-sm font-medium ${cancelled ? "text-muted-foreground line-through" : ""}`}>
                           {equipment.equipmentListing?.equipmentType || `Equipment #${equipment.equipmentListingId}`}
                         </p>
                         {equipment.equipmentListing?.brand && (
@@ -811,12 +1017,20 @@ export default function BookingDetailsPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        <span className={`text-sm font-mono ${rejected ? "text-muted-foreground line-through" : ""}`}>
+                        <span className={`text-sm font-mono ${cancelled ? "text-muted-foreground line-through" : ""}`}>
                           {formatCurrency(equipment.totalPrice)}
                         </span>
-                        {equipment.status === "cancelled" ? (
+                        {refunded ? (
+                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200">
+                            <Receipt className="h-2.5 w-2.5 mr-0.5" />refunded
+                          </Badge>
+                        ) : voided ? (
                           <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
-                            <XCircle className="h-2.5 w-2.5 mr-0.5" />rejected
+                            <XCircle className="h-2.5 w-2.5 mr-0.5" />not charged
+                          </Badge>
+                        ) : equipment.status === "cancelled" ? (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
+                            <XCircle className="h-2.5 w-2.5 mr-0.5" />cancelled
                           </Badge>
                         ) : equipment.status === "confirmed" || equipment.status === "active" ? (
                           <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200">
@@ -929,10 +1143,14 @@ export default function BookingDetailsPage() {
                   <span className="text-sm font-medium">
                     {booking.paymentStatus === 'failed' && booking.status === 'cancelled'
                       ? 'Original Quote'
-                      : 'Total'}
+                      : isRefunded
+                        ? 'Amount Charged'
+                        : isPartiallyRefunded
+                          ? 'Amount Charged'
+                          : 'Total'}
                   </span>
                   <span className={`text-lg font-semibold font-mono ${
-                    booking.paymentStatus === 'failed' && booking.status === 'cancelled'
+                    (booking.paymentStatus === 'failed' && booking.status === 'cancelled') || isRefunded
                       ? 'text-muted-foreground line-through'
                       : ''
                   }`}>
@@ -976,6 +1194,47 @@ export default function BookingDetailsPage() {
                 </div>
               )}
 
+              {/* REFUND INFO: Show when a refund has been processed (full or partial) */}
+              {hasRefund && refundAmount > 0 && (
+                <div className="mt-4 p-3 bg-amber-50/50 border border-amber-200 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <Receipt className="h-3.5 w-3.5 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-amber-800">
+                      <p className="font-medium mb-0.5">
+                        {isRefunded ? 'Fully Refunded' : 'Partial Refund Issued'}
+                      </p>
+                      <p className="text-amber-700">
+                        {isManagerView
+                          ? `${formatCurrency(refundAmount)} was refunded to the chef.${booking.paymentTransaction?.refundReason ? ` Reason: ${booking.paymentTransaction.refundReason}` : ''}`
+                          : `You received a refund of ${formatCurrency(refundAmount)}.`}
+                      </p>
+                      {booking.paymentTransaction?.refundedAt && (
+                        <p className="text-amber-600 mt-0.5">
+                          Refunded on {formatShortDate(booking.paymentTransaction.refundedAt)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CANCELLED WITHOUT REFUND: Show when booking is cancelled but no refund yet */}
+              {booking.status === 'cancelled' && booking.paymentStatus === 'paid' && (
+                <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-muted-foreground">
+                      <p className="font-medium mb-0.5">Booking Cancelled</p>
+                      <p>
+                        {isManagerView
+                          ? "This booking was cancelled. Use 'Issue Refund' from the bookings panel to process a refund if needed."
+                          : "This booking has been cancelled. Contact the kitchen manager regarding any refund."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Chef View - Payment Breakdown (without Stripe fee) */}
               {/* VOIDED AUTH: Skip breakdown entirely — no money was captured */}
               {!isManagerView && booking.paymentTransaction && !(booking.paymentStatus === 'failed' && booking.status === 'cancelled') && (
@@ -1002,12 +1261,27 @@ export default function BookingDetailsPage() {
                     <Separator className="my-2" />
                     <div className="flex justify-between text-sm font-medium">
                       <span>
-                        {booking.paymentStatus === 'authorized' ? 'Amount Authorized' : 'Amount Paid'}
+                        {booking.paymentStatus === 'authorized' ? 'Amount Authorized' : 'Amount Charged'}
                       </span>
                       <span className="font-mono">
                         {formatCurrency(booking.paymentTransaction.amount)}
                       </span>
                     </div>
+                    {refundAmount > 0 && (
+                      <>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-amber-600">Refunded</span>
+                          <span className="font-mono text-amber-600">−{formatCurrency(refundAmount)}</span>
+                        </div>
+                        <Separator className="my-2" />
+                        <div className="flex justify-between text-sm font-medium">
+                          <span>Net Charged</span>
+                          <span className="font-mono">
+                            {formatCurrency(booking.paymentTransaction.amount - refundAmount)}
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </>
               )}
@@ -1035,6 +1309,7 @@ export default function BookingDetailsPage() {
                       const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
                       const netRevenue = amount - taxAmount - stripeFee;
                       const isAuthorized = booking.paymentStatus === 'authorized';
+                      const ptRefundAmount = booking.paymentTransaction.refundAmount || 0;
                       
                       return (
                         <>
@@ -1052,13 +1327,19 @@ export default function BookingDetailsPage() {
                               <span className="font-mono text-muted-foreground">−{formatCurrency(stripeFee)}</span>
                             </div>
                           )}
+                          {!isAuthorized && ptRefundAmount > 0 && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-amber-600">Refunded</span>
+                              <span className="font-mono text-amber-600">−{formatCurrency(ptRefundAmount)}</span>
+                            </div>
+                          )}
                           <Separator className="my-2" />
                           <div className="flex justify-between text-sm font-medium">
                             <span>
                               {isAuthorized ? 'Est. Net Revenue' : 'Net Revenue'}
                             </span>
                             <span className="font-mono">
-                              {formatCurrency(isAuthorized ? amount - taxAmount : netRevenue)}
+                              {formatCurrency(isAuthorized ? amount - taxAmount : netRevenue - ptRefundAmount)}
                             </span>
                           </div>
                         </>
@@ -1068,7 +1349,7 @@ export default function BookingDetailsPage() {
                 </>
               )}
 
-              {(booking.paymentStatus === "paid" || booking.paymentStatus === "partially_refunded") && (
+              {(booking.paymentStatus === "paid" || booking.paymentStatus === "partially_refunded" || booking.paymentStatus === "refunded") && (
                 <Button
                   onClick={handleDownloadInvoice}
                   disabled={isDownloading}
@@ -1128,6 +1409,15 @@ export default function BookingDetailsPage() {
           booking={bookingForAction}
           isLoading={isUpdatingStatus}
           onSubmit={handleApprovalSubmit}
+        />
+        <BookingManagementSheet
+          open={managementSheetOpen}
+          onOpenChange={(open) => {
+            setManagementSheetOpen(open);
+          }}
+          booking={bookingForManagement}
+          isProcessing={isManagementProcessing}
+          onSubmit={handleManagementSubmit}
         />
       </ManagerBookingLayout>
     );

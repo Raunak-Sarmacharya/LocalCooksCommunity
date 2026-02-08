@@ -5,6 +5,12 @@ import DamageClaimReview from "@/components/admin/DamageClaimReview";
 import DamageClaimSettings from "@/components/admin/DamageClaimSettings";
 import OverstayPenaltySettings from "@/components/admin/OverstayPenaltySettings";
 import EscalatedPenalties from "@/components/admin/EscalatedPenalties";
+import { AdminLayout } from "@/components/admin/layout/AdminLayout";
+import type { AdminSection } from "@/components/admin/layout/AdminSidebar";
+import { KitchenLicenseApprovalSection } from "@/components/admin/sections/KitchenLicenseApprovalSection";
+import { PlatformSettingsSection } from "@/components/admin/sections/PlatformSettingsSection";
+import { ManagerRevenuesSection } from "@/components/admin/sections/ManagerRevenuesSection";
+import { PlatformOverviewSection } from "@/components/admin/sections/PlatformOverviewSection";
 import {
   formatApplicationStatus,
   formatCertificationStatus,
@@ -58,8 +64,6 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode, fallbac
   }
 }
 
-import Footer from "@/components/layout/Footer";
-import Header from "@/components/layout/Header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -71,9 +75,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
-import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
-import FadeInSection from "@/components/ui/FadeInSection";
 import ResponsiveTable from "@/components/ui/responsive-table";
+import { AdminOverviewSection } from "@/components/admin/sections/AdminOverviewSection";
 import {
   AlertCircle,
   AlertTriangle,
@@ -84,12 +87,8 @@ import {
   ChevronRight,
   Clock,
   ExternalLink,
-  Gift,
-  Mail,
-  Phone,
   RefreshCw,
   Search,
-  Settings,
   Shield,
   User as UserIcon,
   XCircle,
@@ -100,11 +99,7 @@ import {
   X,
   Users,
   Building2,
-  Menu,
-  TrendingUp,
-  BarChart3,
-  Loader2,
-  Eye
+  Loader2
 } from "lucide-react";
 
 function AdminDashboard() {
@@ -114,13 +109,49 @@ function AdminDashboard() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
+  // Read section from URL query params (same pattern as manager dashboard ?view=)
+  const validSections: AdminSection[] = [
+    "applications", "kitchen-licenses", "damage-claims", "escalated-penalties",
+    "chef-kitchen-access", "kitchen-management", "promos", "manager-revenues",
+    "platform-overview", "platform-settings", "overstay-settings",
+    "damage-claim-settings", "account-settings", "overview",
+  ];
+  const [activeSection, setActiveSection] = useState<AdminSection>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const section = params.get('section');
+    if (section && validSections.includes(section as AdminSection)) {
+      return section as AdminSection;
+    }
+    return "overview";
+  });
+
+  // Sync URL when section changes
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const currentSection = params.get('section');
+    if (currentSection !== activeSection) {
+      window.history.replaceState({}, '', `/admin?section=${activeSection}`);
+    }
+  }, [activeSection]);
+
+  // Handle browser back/forward
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const section = params.get('section');
+      if (section && validSections.includes(section as AdminSection)) {
+        setActiveSection(section as AdminSection);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const [quickFilters, setQuickFilters] = useState({
     needsDocumentReview: false,
     recentApplications: false,
     hasDocuments: false
   });
-  const [activeCategory, setActiveCategory] = useState<string>("applications");
-  const [activeTab, setActiveTab] = useState<string>("applications");
   const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
   const [loadingUrls, setLoadingUrls] = useState<Set<string>>(new Set());
 
@@ -184,23 +215,8 @@ function AdminDashboard() {
     }
   };
 
-  // Update active tab when category changes
-  useEffect(() => {
-    if (activeCategory === "applications" && activeTab !== "applications" && activeTab !== "kitchen-licenses" && activeTab !== "damage-claims" && activeTab !== "escalated-penalties") {
-      setActiveTab("applications");
-    } else if (activeCategory === "management" && activeTab !== "chef-kitchen-access" && activeTab !== "kitchen-management") {
-      setActiveTab("chef-kitchen-access");
-    } else if (activeCategory === "communications" && activeTab !== "promos") {
-      setActiveTab("promos");
-    } else if (activeCategory === "revenue" && activeTab !== "manager-revenues" && activeTab !== "platform-overview") {
-      setActiveTab("manager-revenues");
-    } else if (activeCategory === "settings" && activeTab !== "platform-settings" && activeTab !== "account-settings" && activeTab !== "damage-claim-settings" && activeTab !== "overstay-settings") {
-      setActiveTab("platform-settings");
-    }
-  }, [activeCategory, activeTab]);
-
   // Admin uses Firebase auth (session auth removed)
-  const { user: firebaseUser } = useFirebaseAuth();
+  const { user: firebaseUser, logout } = useFirebaseAuth();
 
   // Helper function to get Firebase token for API calls
   const getFirebaseToken = async (): Promise<string> => {
@@ -652,26 +668,6 @@ function AdminDashboard() {
   };
 
 
-  // Handle logout - session-based logout
-  const handleLogout = async () => {
-    try {
-      // Call session logout API
-      await fetch('/api/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
-
-      // Clear query cache
-      queryClient.clear();
-
-      // Redirect to login
-      navigate('/admin/login');
-    } catch (error) {
-      console.error('Logout error:', error);
-      // Force redirect even if logout fails
-      navigate('/admin/login');
-    }
-  };
 
   // Helper function to toggle card expansion
   const toggleCardExpansion = (appId: number) => {
@@ -848,521 +844,299 @@ function AdminDashboard() {
     }
   };
 
-  return (
-    <ErrorBoundary fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center p-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Admin Dashboard Error</h2>
-          <p className="text-gray-600 mb-4">Something went wrong. Please refresh the page.</p>
-          <Button onClick={() => window.location.reload()}>Refresh Page</Button>
-        </div>
-      </div>
-    }>
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20 relative">
-        <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
-        {/* Subtle background pattern */}
-        <div className="fixed inset-0 opacity-[0.02] pointer-events-none">
-          <div
-            className="w-full h-full"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-              backgroundSize: '60px 60px'
-            }}
+  // Handle logout - Firebase-based
+  const handleLogoutAction = async () => {
+    try {
+      await logout();
+      queryClient.clear();
+      navigate('/admin');
+    } catch (error) {
+      console.error('Logout error:', error);
+      navigate('/admin');
+    }
+  };
+
+  // Render the active section content
+  const renderSectionContent = () => {
+    switch (activeSection) {
+      case "overview":
+        return (
+          <AdminOverviewSection
+            onNavigate={setActiveSection}
+            pendingReviewCount={statusCounts.inReview}
+            pendingLicensesCount={0}
           />
-        </div>
+        );
 
-        <Header />
-        <main className="flex-grow pt-16 sm:pt-20 pb-8 sm:pb-16 relative">
-          <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8">
+      case "applications":
+        return (
+          <div className="space-y-6">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-100">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Approved</p>
+                      <p className="text-xl font-bold">{statusCounts.approved}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-yellow-100">
+                      <Clock className="h-4 w-4 text-yellow-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">In Review</p>
+                      <p className="text-xl font-bold">{statusCounts.inReview}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100">
+                      <XCircle className="h-4 w-4 text-red-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Rejected</p>
+                      <p className="text-xl font-bold">{statusCounts.rejected}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100">
+                      <Shield className="h-4 w-4 text-purple-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Doc Review</p>
+                      <p className="text-xl font-bold">
+                        {applications.filter(app =>
+                          app.status === "approved" && (
+                            app.foodSafetyLicenseStatus === "pending" ||
+                            app.foodEstablishmentCertStatus === "pending"
+                          )
+                        ).length}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100">
+                      <UserIcon className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Total</p>
+                      <p className="text-xl font-bold">{statusCounts.total}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
 
-            {/* Welcome Header Section */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-6 sm:mb-8 mt-2 sm:mt-4"
-            >
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
-                <div className="flex items-center gap-3 sm:gap-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-base sm:text-lg shadow-lg">
-                    <Shield className="h-5 w-5 sm:h-6 sm:w-6" />
-                  </div>
-                  <div>
-                    <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-                    <p className="text-sm sm:text-base text-gray-500 hidden sm:block">Manage applications and review documents</p>
-                    <p className="text-xs text-gray-500 sm:hidden">Manage applications</p>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
+            {/* Search Bar */}
+            <div className="relative w-full sm:max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search by name, email, phone, or ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
 
-            {/* Enhanced Stats Cards */}
-            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6 sm:mb-8">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
-              >
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
-                    <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs sm:text-sm text-gray-500 truncate">Approved</p>
-                    <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.approved}</p>
-                  </div>
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
-              >
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-yellow-100 flex items-center justify-center flex-shrink-0">
-                    <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs sm:text-sm text-gray-500 truncate">In Review</p>
-                    <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.inReview}</p>
-                  </div>
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
-              >
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
-                    <XCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs sm:text-sm text-gray-500 truncate">Rejected</p>
-                    <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.rejected}</p>
-                  </div>
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
-              >
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
-                    <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs sm:text-sm text-gray-500 truncate">Doc Review</p>
-                    <p className="text-lg sm:text-2xl font-bold text-gray-900">
+            {/* Quick Filter Buttons */}
+            <div>
+              <h4 className="text-sm font-medium mb-2">Quick Filters</h4>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant={quickFilters.needsDocumentReview ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setQuickFilters(prev => ({ ...prev, needsDocumentReview: !prev.needsDocumentReview }))}
+                >
+                  <Shield className="h-3.5 w-3.5 mr-1.5" />
+                  Doc Review
+                  {applications.filter(app =>
+                    app.status === "approved" && (
+                      app.foodSafetyLicenseStatus === "pending" ||
+                      app.foodEstablishmentCertStatus === "pending"
+                    )
+                  ).length > 0 && (
+                    <Badge variant="destructive" className="ml-1.5 h-5 min-w-5 rounded-full px-1 text-[10px]">
                       {applications.filter(app =>
                         app.status === "approved" && (
                           app.foodSafetyLicenseStatus === "pending" ||
                           app.foodEstablishmentCertStatus === "pending"
                         )
                       ).length}
-                    </p>
-                  </div>
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
-                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
-              >
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <UserIcon className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs sm:text-sm text-gray-500 truncate">Total</p>
-                    <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.total}</p>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-
-            {/* Enhanced Search and Filter Section */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 }}
-              className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 mb-4 sm:mb-6 backdrop-blur-sm"
-            >
-              {/* Main Admin Navigation - Grouped Categories */}
-              <div className="mb-6">
-                {/* Category Navigation */}
-                <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 rounded-lg border border-gray-200">
-                  <Button
-                    variant={activeCategory === "applications" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      setActiveCategory("applications");
-                      setActiveTab("applications");
-                    }}
-                    className="flex items-center gap-2 relative"
-                  >
-                    <Shield className="h-4 w-4" />
-                    Applications
-                    {(statusCounts.inReview > 0 || pendingLicensesCount > 0) && (
-                      <span className="ml-1 bg-yellow-500 text-white text-xs font-semibold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                        {statusCounts.inReview + pendingLicensesCount}
-                      </span>
-                    )}
-                  </Button>
-                  <Button
-                    variant={activeCategory === "management" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      setActiveCategory("management");
-                      setActiveTab("chef-kitchen-access");
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <Users className="h-4 w-4" />
-                    Management
-                  </Button>
-                  <Button
-                    variant={activeCategory === "communications" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      setActiveCategory("communications");
-                      setActiveTab("promos");
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <Gift className="h-4 w-4" />
-                    Communications
-                  </Button>
-                  <Button
-                    variant={activeCategory === "revenue" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      setActiveCategory("revenue");
-                      setActiveTab("manager-revenues");
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <DollarSign className="h-4 w-4" />
-                    Revenue
-                  </Button>
-                  <Button
-                    variant={activeCategory === "settings" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      setActiveCategory("settings");
-                      setActiveTab("platform-settings");
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <Settings className="h-4 w-4" />
-                    Settings
-                  </Button>
-                </div>
-
-                {/* Sub-tabs within category */}
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                  {activeCategory === "applications" && (
-                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
-                      <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
-                        <Shield className="h-4 w-4" />
-                        Chef Applications
-                      </TabsTrigger>
-                      <TabsTrigger value="kitchen-licenses" className="flex items-center gap-2 rounded-lg">
-                        <FileText className="h-4 w-4" />
-                        Kitchen Licenses
-                      </TabsTrigger>
-                      <TabsTrigger value="damage-claims" className="flex items-center gap-2 rounded-lg">
-                        <AlertTriangle className="h-4 w-4" />
-                        Damage Claims
-                      </TabsTrigger>
-                      <TabsTrigger value="escalated-penalties" className="flex items-center gap-2 rounded-lg">
-                        <AlertTriangle className="h-4 w-4" />
-                        Escalated
-                      </TabsTrigger>
-                    </TabsList>
+                    </Badge>
                   )}
-
-                  {activeCategory === "management" && (
-                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
-                      <TabsTrigger value="chef-kitchen-access" className="flex items-center gap-2 rounded-lg">
-                        <UserIcon className="h-4 w-4" />
-                        Chef Kitchen Access
-                      </TabsTrigger>
-                      <TabsTrigger value="kitchen-management" className="flex items-center gap-2 rounded-lg">
-                        <Building2 className="h-4 w-4" />
-                        Manage Kitchens
-                      </TabsTrigger>
-                    </TabsList>
-                  )}
-
-                  {activeCategory === "communications" && (
-                    <TabsList className="grid w-full grid-cols-1 rounded-xl bg-gray-100 p-1 mb-6">
-                      <TabsTrigger value="promos" className="flex items-center gap-2 rounded-lg">
-                        <Gift className="h-4 w-4" />
-                        Send Promo Codes
-                      </TabsTrigger>
-                    </TabsList>
-                  )}
-
-                  {activeCategory === "revenue" && (
-                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
-                      <TabsTrigger value="manager-revenues" className="flex items-center gap-2 rounded-lg">
-                        <Users className="h-4 w-4" />
-                        Manager Revenues
-                      </TabsTrigger>
-                      <TabsTrigger value="platform-overview" className="flex items-center gap-2 rounded-lg">
-                        <DollarSign className="h-4 w-4" />
-                        Platform Overview
-                      </TabsTrigger>
-                    </TabsList>
-                  )}
-
-                  {activeCategory === "settings" && (
-                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
-                      <TabsTrigger value="platform-settings" className="flex items-center gap-2 rounded-lg">
-                        <Settings className="h-4 w-4" />
-                        Platform Settings
-                      </TabsTrigger>
-                      <TabsTrigger value="overstay-settings" className="flex items-center gap-2 rounded-lg">
-                        <Clock className="h-4 w-4" />
-                        Storage & Overstay
-                      </TabsTrigger>
-                      <TabsTrigger value="damage-claim-settings" className="flex items-center gap-2 rounded-lg">
-                        <AlertTriangle className="h-4 w-4" />
-                        Damage Claims
-                      </TabsTrigger>
-                      <TabsTrigger value="account-settings" className="flex items-center gap-2 rounded-lg">
-                        <Shield className="h-4 w-4" />
-                        Account Settings
-                      </TabsTrigger>
-                    </TabsList>
-                  )}
-
-                  {/* Applications Tab Content */}
-                  <TabsContent value="applications" className="mt-0">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
-                        <Search className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                      </div>
-                      <div className="min-w-0">
-                        <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Search & Filter Applications</h3>
-                        <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">Find and manage applications efficiently</p>
-                      </div>
-                    </div>
-
-                    {/* Search Bar */}
-                    <div className="mb-4 sm:mb-6">
-                      <div className="relative w-full sm:max-w-md">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                        <Input
-                          type="text"
-                          placeholder="Search by name, email, phone, or ID..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-lg sm:rounded-xl border-gray-200 focus:border-indigo-300 focus:ring-indigo-200 text-sm sm:text-base"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Quick Filter Buttons */}
-                    <div className="mb-4 sm:mb-6">
-                      <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-3">Quick Filters</h4>
-                      <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                        <Button
-                          variant={quickFilters.needsDocumentReview ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setQuickFilters(prev => ({ ...prev, needsDocumentReview: !prev.needsDocumentReview }))}
-                          className="rounded-lg sm:rounded-xl text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 h-auto"
-                        >
-                          <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                          <span className="hidden xs:inline">Needs </span>Doc Review
-                          {applications.filter(app =>
-                            app.status === "approved" && (
-                              app.foodSafetyLicenseStatus === "pending" ||
-                              app.foodEstablishmentCertStatus === "pending"
-                            )
-                          ).length > 0 && (
-                              <span className="ml-2 bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
-                                {applications.filter(app =>
-                                  app.status === "approved" && (
-                                    app.foodSafetyLicenseStatus === "pending" ||
-                                    app.foodEstablishmentCertStatus === "pending"
-                                  )
-                                ).length}
-                              </span>
-                            )}
-                        </Button>
-
-                        <Button
-                          variant={quickFilters.recentApplications ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setQuickFilters(prev => ({ ...prev, recentApplications: !prev.recentApplications }))}
-                          className="rounded-xl"
-                        >
-                          <CalendarDays className="h-4 w-4 mr-2" />
-                          Recent (3 days)
-                        </Button>
-
-                        <Button
-                          variant={quickFilters.hasDocuments ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setQuickFilters(prev => ({ ...prev, hasDocuments: !prev.hasDocuments }))}
-                          className="rounded-xl"
-                        >
-                          <UserIcon className="h-4 w-4 mr-2" />
-                          Has Documents
-                        </Button>
-
-                        {(quickFilters.needsDocumentReview || quickFilters.recentApplications || quickFilters.hasDocuments) && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setQuickFilters({ needsDocumentReview: false, recentApplications: false, hasDocuments: false })}
-                            className="rounded-xl text-gray-500 hover:text-gray-700"
-                          >
-                            Clear All
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Status Tabs - Mobile Optimized */}
-                    <Tabs defaultValue="all" className="w-full">
-                      <TabsList className="rounded-xl bg-gray-100 p-1 grid w-full grid-cols-2 sm:grid-cols-4 gap-1">
-                        <TabsTrigger value="all" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
-                          <UserIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
-                          <span className="hidden xs:inline">All </span>({statusCounts.total})
-                        </TabsTrigger>
-                        <TabsTrigger value="inReview" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
-                          <Clock className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-yellow-500 flex-shrink-0" />
-                          <span className="hidden xs:inline">Review </span>({statusCounts.inReview})
-                        </TabsTrigger>
-                        <TabsTrigger value="approved" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
-                          <CheckCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-green-500 flex-shrink-0" />
-                          <span className="hidden xs:inline">Approved </span>({statusCounts.approved})
-                        </TabsTrigger>
-                        <TabsTrigger value="rejected" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
-                          <XCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-red-500 flex-shrink-0" />
-                          <span className="hidden xs:inline">Rejected </span>({statusCounts.rejected})
-                        </TabsTrigger>
-                      </TabsList>
-
-                      <TabsContent value="all" className="mt-6">
-                        {renderApplicationList(filteredApplications)}
-                      </TabsContent>
-                      <TabsContent value="inReview" className="mt-6">
-                        {renderApplicationList(applications.filter(app => app.status === "inReview"))}
-                      </TabsContent>
-                      <TabsContent value="approved" className="mt-6">
-                        {renderApplicationList(applications.filter(app => app.status === "approved"))}
-                      </TabsContent>
-                      <TabsContent value="rejected" className="mt-6">
-                        {renderApplicationList(applications.filter(app => app.status === "rejected"))}
-                      </TabsContent>
-                    </Tabs>
-                  </TabsContent>
-
-
-                  {/* Promo Codes Tab Content */}
-                  <TabsContent value="kitchen-licenses" className="mt-0">
-                    <KitchenLicenseApprovalView />
-                  </TabsContent>
-
-                  {/* Damage Claims Tab Content */}
-                  <TabsContent value="damage-claims" className="mt-0">
-                    <DamageClaimReview />
-                  </TabsContent>
-
-                  <TabsContent value="promos" className="mt-0">
-                    <PromoCodeSender />
-                  </TabsContent>
-
-                  <TabsContent value="chef-kitchen-access" className="mt-0">
-                    <ChefKitchenAccessManager />
-                  </TabsContent>
-
-                  <TabsContent value="kitchen-management" className="mt-0">
-                    <div className="text-center py-12">
-                      <h3 className="text-xl font-semibold text-gray-900 mb-4">Kitchen Management</h3>
-                      <p className="text-gray-600 mb-6">Create and manage commercial kitchen locations and facilities</p>
-                      <Button
-                        onClick={() => navigate("/admin/manage-locations")}
-                        className="bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700 text-white font-bold py-3 px-8 rounded-2xl shadow-lg transform transition hover:-translate-y-1"
-                      >
-                        Open Kitchen Management →
-                      </Button>
-                    </div>
-                  </TabsContent>
-
-                  {/* Escalated Penalties Tab Content */}
-                  <TabsContent value="escalated-penalties" className="mt-0">
-                    <ErrorBoundary>
-                      <EscalatedPenalties />
-                    </ErrorBoundary>
-                  </TabsContent>
-
-                  {/* Platform Settings Tab Content */}
-                  <TabsContent value="platform-settings" className="mt-0">
-                    <PlatformSettingsView />
-                  </TabsContent>
-
-                  {/* Overstay & Storage Settings Tab Content */}
-                  <TabsContent value="overstay-settings" className="mt-0">
-                    <ErrorBoundary>
-                      <OverstayPenaltySettings />
-                    </ErrorBoundary>
-                  </TabsContent>
-
-                  {/* Damage Claim Settings Tab Content */}
-                  <TabsContent value="damage-claim-settings" className="mt-0">
-                    <DamageClaimSettings />
-                  </TabsContent>
-
-                  {/* Account Settings Tab Content */}
-                  <TabsContent value="account-settings" className="mt-0">
-                    <div className="max-w-2xl">
-                      <div className="mb-6">
-                        <h3 className="text-xl font-semibold text-gray-900 mb-2">Account Settings</h3>
-                        <p className="text-gray-600">Manage your admin account password</p>
-                      </div>
-                      <ChangePassword role="admin" />
-                    </div>
-                  </TabsContent>
-
-                  {/* Manager Revenues Tab Content */}
-                  <TabsContent value="manager-revenues" className="mt-0">
-                    <AdminManagerRevenuesView getFirebaseToken={getFirebaseToken} />
-                  </TabsContent>
-
-                  {/* Platform Overview Tab Content */}
-                  <TabsContent value="platform-overview" className="mt-0">
-                    <AdminPlatformRevenueView getFirebaseToken={getFirebaseToken} />
-                  </TabsContent>
-                </Tabs>
+                </Button>
+                <Button
+                  variant={quickFilters.recentApplications ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setQuickFilters(prev => ({ ...prev, recentApplications: !prev.recentApplications }))}
+                >
+                  <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
+                  Recent (3 days)
+                </Button>
+                <Button
+                  variant={quickFilters.hasDocuments ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setQuickFilters(prev => ({ ...prev, hasDocuments: !prev.hasDocuments }))}
+                >
+                  <UserIcon className="h-3.5 w-3.5 mr-1.5" />
+                  Has Documents
+                </Button>
+                {(quickFilters.needsDocumentReview || quickFilters.recentApplications || quickFilters.hasDocuments) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setQuickFilters({ needsDocumentReview: false, recentApplications: false, hasDocuments: false })}
+                  >
+                    Clear All
+                  </Button>
+                )}
               </div>
-            </motion.div>
-
-            <div className="text-center">
-              <Button
-                onClick={() => navigate("/")}
-                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-3 px-8 rounded-2xl shadow-lg transform transition hover:-translate-y-1"
-              >
-                Return to Website
-              </Button>
             </div>
+
+            {/* Status Tabs */}
+            <Tabs defaultValue="all" className="w-full">
+              <TabsList>
+                <TabsTrigger value="all">All ({statusCounts.total})</TabsTrigger>
+                <TabsTrigger value="inReview">Review ({statusCounts.inReview})</TabsTrigger>
+                <TabsTrigger value="approved">Approved ({statusCounts.approved})</TabsTrigger>
+                <TabsTrigger value="rejected">Rejected ({statusCounts.rejected})</TabsTrigger>
+              </TabsList>
+              <TabsContent value="all" className="mt-4">
+                {renderApplicationList(filteredApplications)}
+              </TabsContent>
+              <TabsContent value="inReview" className="mt-4">
+                {renderApplicationList(applications.filter(app => app.status === "inReview"))}
+              </TabsContent>
+              <TabsContent value="approved" className="mt-4">
+                {renderApplicationList(applications.filter(app => app.status === "approved"))}
+              </TabsContent>
+              <TabsContent value="rejected" className="mt-4">
+                {renderApplicationList(applications.filter(app => app.status === "rejected"))}
+              </TabsContent>
+            </Tabs>
           </div>
-        </main>
-        <Footer />
+        );
+
+      case "kitchen-licenses":
+        return <KitchenLicenseApprovalSection />;
+
+      case "damage-claims":
+        return (
+          <ErrorBoundary>
+            <DamageClaimReview />
+          </ErrorBoundary>
+        );
+
+      case "escalated-penalties":
+        return (
+          <ErrorBoundary>
+            <EscalatedPenalties />
+          </ErrorBoundary>
+        );
+
+      case "chef-kitchen-access":
+        return <ChefKitchenAccessManager />;
+
+      case "kitchen-management":
+        return (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-xl font-semibold mb-2">Kitchen Management</h3>
+              <p className="text-muted-foreground mb-6">Create and manage commercial kitchen locations and facilities</p>
+              <Button onClick={() => navigate("/admin/manage-locations")}>
+                Open Kitchen Management
+              </Button>
+            </CardContent>
+          </Card>
+        );
+
+      case "promos":
+        return <PromoCodeSender />;
+
+      case "manager-revenues":
+        return <ManagerRevenuesSection getFirebaseToken={getFirebaseToken} />;
+
+      case "platform-overview":
+        return <PlatformOverviewSection getFirebaseToken={getFirebaseToken} />;
+
+      case "platform-settings":
+        return <PlatformSettingsSection />;
+
+      case "overstay-settings":
+        return (
+          <ErrorBoundary>
+            <OverstayPenaltySettings />
+          </ErrorBoundary>
+        );
+
+      case "damage-claim-settings":
+        return <DamageClaimSettings />;
+
+      case "account-settings":
+        return (
+          <div className="max-w-2xl">
+            <div className="mb-6">
+              <h3 className="text-xl font-semibold mb-2">Account Settings</h3>
+              <p className="text-muted-foreground">Manage your admin account password</p>
+            </div>
+            <ChangePassword role="admin" />
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <ErrorBoundary fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center p-8">
+          <h2 className="text-xl font-semibold mb-2">Admin Dashboard Error</h2>
+          <p className="text-muted-foreground mb-4">Something went wrong. Please refresh the page.</p>
+          <Button onClick={() => window.location.reload()}>Refresh Page</Button>
+        </div>
       </div>
+    }>
+      <AdminLayout
+        activeSection={activeSection}
+        onSectionChange={(section) => {
+          if (section === 'kitchen-management') {
+            navigate('/admin/manage-locations');
+            return;
+          }
+          setActiveSection(section);
+        }}
+        onLogout={handleLogoutAction}
+        onRefresh={forceAdminRefresh}
+        isRefreshing={isLoading}
+        pendingReviewCount={statusCounts.inReview}
+        pendingLicensesCount={pendingLicensesCount}
+      >
+        {renderSectionContent()}
+      </AdminLayout>
     </ErrorBoundary>
   );
 
@@ -2072,1391 +1846,8 @@ function AdminDashboard() {
 
 }
 
-// Kitchen License Approval Component
-function KitchenLicenseApprovalView() {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [feedback, setFeedback] = useState<Record<number, string>>({});
-  const [expandedLicense, setExpandedLicense] = useState<number | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>("pending");
-
-  // Fetch licenses based on filter
-  const { data: licenses = [], isLoading, refetch } = useQuery({
-    queryKey: ['/api/admin/locations/licenses', filterStatus],
-    queryFn: async () => {
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
-      }
-      const token = await currentFirebaseUser.getIdToken();
-      // Pass 'all' if filter is 'all', otherwise pass specific status
-      const statusParam = filterStatus === 'all' ? '' : `status=${filterStatus}`;
-      const response = await fetch(`/api/admin/locations/licenses?${statusParam}`, {
-        credentials: 'include',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!response.ok) {
-        throw new Error('Failed to fetch licenses');
-      }
-      return response.json();
-    },
-    refetchInterval: 30000, // Refetch every 30 seconds
-  });
-
-  // Approve/Reject license mutation
-  const approveLicenseMutation = useMutation({
-    mutationFn: async ({ locationId, status, feedbackText }: { locationId: number; status: 'approved' | 'rejected'; feedbackText?: string }) => {
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
-      }
-      const token = await currentFirebaseUser.getIdToken();
-      const response = await fetch(`/api/admin/locations/${locationId}/kitchen-license`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          status,
-          feedback: feedbackText || null,
-        }),
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Failed to update license status' }));
-        throw new Error(error.error || 'Failed to update license status');
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/locations/licenses'] });
-      // Also invalidate pending count if we processed a pending license
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/locations/pending-licenses-count'] });
-      refetch();
-      toast({
-        title: "License Status Updated",
-        description: "The license status has been updated successfully.",
-      });
-      setFeedback({});
-      setExpandedLicense(null);
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update license status",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleApprove = (locationId: number) => {
-    const feedbackText = feedback[locationId]?.trim();
-    approveLicenseMutation.mutate({ locationId, status: 'approved', feedbackText });
-  };
-
-  const handleReject = (locationId: number) => {
-    const feedbackText = feedback[locationId]?.trim();
-    if (!feedbackText) {
-      toast({
-        title: "Feedback Required",
-        description: "Please provide feedback when rejecting a license.",
-        variant: "destructive",
-      });
-      return;
-    }
-    approveLicenseMutation.mutate({ locationId, status: 'rejected', feedbackText });
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">Pending Review</Badge>;
-      case 'approved':
-        return <Badge className="bg-green-100 text-green-800 border-green-300">Approved</Badge>;
-      case 'rejected':
-        return <Badge className="bg-red-100 text-red-800 border-red-300">Rejected</Badge>;
-      default:
-        return <Badge variant="outline">Unknown</Badge>;
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">Kitchen Licenses</h3>
-            <p className="text-sm text-gray-500">
-              Manage and review kitchen license documents
-            </p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Tabs value={filterStatus} onValueChange={setFilterStatus} className="w-full sm:w-auto">
-              <TabsList>
-                <TabsTrigger value="pending">Pending</TabsTrigger>
-                <TabsTrigger value="approved">Approved</TabsTrigger>
-                <TabsTrigger value="rejected">Rejected</TabsTrigger>
-                <TabsTrigger value="all">All</TabsTrigger>
-              </TabsList>
-            </Tabs>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetch()}
-              disabled={isLoading}
-              className="ml-auto sm:ml-0"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          </div>
-        </div>
-
-        {isLoading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading licenses...</p>
-          </div>
-        ) : licenses.length === 0 ? (
-          <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-            <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No Licenses Found</h3>
-            <p className="text-gray-500">
-              No kitchen licenses found with status "{filterStatus}".
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {licenses.map((license: any) => (
-              <Card key={license.id} className={`border-2 ${license.kitchenLicenseStatus === 'pending' ? 'border-yellow-200' :
-                license.kitchenLicenseStatus === 'rejected' ? 'border-red-200' : 'border-gray-200'
-                }`}>
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${license.kitchenLicenseStatus === 'pending' ? 'bg-yellow-100 text-yellow-600' :
-                          license.kitchenLicenseStatus === 'approved' ? 'bg-green-100 text-green-600' :
-                            license.kitchenLicenseStatus === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
-                          }`}>
-                          <FileText className="h-6 w-6" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-semibold text-gray-900 text-lg">{license.name}</h4>
-                            {getStatusBadge(license.kitchenLicenseStatus)}
-                          </div>
-                          <p className="text-sm text-gray-600">{license.address}</p>
-                          {license.managerUsername && (
-                            <p className="text-xs text-gray-500 mt-1">
-                              Manager: {license.managerUsername}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* License Document Details */}
-                      <div className="mb-4 space-y-2">
-                        <div className="flex flex-wrap gap-3">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={async () => {
-                              if (!license.kitchenLicenseUrl) {
-                                toast({
-                                  title: "No License",
-                                  description: "No license document has been uploaded for this location.",
-                                  variant: "destructive",
-                                });
-                                return;
-                              }
-
-                              try {
-                                const token = await auth.currentUser?.getIdToken();
-                                let viewUrl = license.kitchenLicenseUrl;
-                                
-                                // For local/protected files, append auth token
-                                if (viewUrl.includes('/api/files/documents/')) {
-                                   if (viewUrl.includes('?')) {
-                                     viewUrl += `&token=${token}`;
-                                   } else {
-                                     viewUrl += `?token=${token}`;
-                                   }
-                                } 
-                                // If it's an R2 URL that needs presigned URL (documents require auth)
-                                else if (viewUrl.includes('r2.cloudflarestorage.com') || viewUrl.includes('files.localcooks.ca')) {
-                                  // Fetch presigned URL with authentication
-                                  const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(viewUrl)}`, {
-                                    method: 'GET',
-                                    headers: { 'Authorization': `Bearer ${token}` },
-                                    credentials: 'include',
-                                  });
-                                  if (response.ok) {
-                                    const data = await response.json();
-                                    viewUrl = data.url;
-                                  }
-                                }
-                                
-                                window.open(viewUrl, '_blank');
-                              } catch (error) {
-                                console.error("Error opening license:", error);
-                                toast({
-                                  title: "Error",
-                                  description: "Failed to open license document. Please try again.",
-                                  variant: "destructive"
-                                });
-                              }
-                            }}
-                            className="inline-flex items-center gap-2"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                            View License
-                          </Button>
-
-                          {/* Kitchen Terms & Policies Button */}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={async () => {
-                              if (!license.kitchenTermsUrl) {
-                                toast({
-                                  title: "No Terms Document",
-                                  description: "No kitchen terms & policies document has been uploaded for this location.",
-                                  variant: "destructive",
-                                });
-                                return;
-                              }
-
-                              try {
-                                const token = await auth.currentUser?.getIdToken();
-                                let viewUrl = license.kitchenTermsUrl;
-                                
-                                // For local/protected files, append auth token
-                                if (viewUrl.includes('/api/files/documents/')) {
-                                   if (viewUrl.includes('?')) {
-                                     viewUrl += `&token=${token}`;
-                                   } else {
-                                     viewUrl += `?token=${token}`;
-                                   }
-                                } 
-                                // If it's an R2 URL that needs presigned URL (documents require auth)
-                                else if (viewUrl.includes('r2.cloudflarestorage.com') || viewUrl.includes('files.localcooks.ca')) {
-                                  // Fetch presigned URL with authentication
-                                  const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(viewUrl)}`, {
-                                    method: 'GET',
-                                    headers: { 'Authorization': `Bearer ${token}` },
-                                    credentials: 'include',
-                                  });
-                                  if (response.ok) {
-                                    const data = await response.json();
-                                    viewUrl = data.url;
-                                  }
-                                }
-                                
-                                window.open(viewUrl, '_blank');
-                              } catch (error) {
-                                console.error("Error opening terms:", error);
-                                toast({
-                                  title: "Error",
-                                  description: "Failed to open terms document. Please try again.",
-                                  variant: "destructive"
-                                });
-                              }
-                            }}
-                            className={`inline-flex items-center gap-2 ${license.kitchenTermsUrl ? '' : 'opacity-50'}`}
-                            disabled={!license.kitchenTermsUrl}
-                          >
-                            <FileText className="h-4 w-4" />
-                            {license.kitchenTermsUrl ? 'View Terms' : 'No Terms'}
-                          </Button>
-
-                          {license.kitchenLicenseExpiry && (
-                            <div className="flex items-center gap-2 text-sm px-3 py-1.5 bg-gray-50 rounded-md border border-gray-200">
-                              <Calendar className="h-4 w-4 text-gray-500" />
-                              <span className="text-gray-600">Expires:</span>
-                              <span className={new Date(license.kitchenLicenseExpiry) < new Date() ? "text-red-600 font-semibold" : "font-medium"}>
-                                {new Date(license.kitchenLicenseExpiry).toLocaleDateString()}
-                                {new Date(license.kitchenLicenseExpiry) < new Date() && " (Expired)"}
-                              </span>
-                            </div>
-                          )}
-
-                          {license.kitchenTermsUploadedAt && (
-                            <div className="flex items-center gap-2 text-sm px-3 py-1.5 bg-blue-50 rounded-md border border-blue-200">
-                              <Clock className="h-4 w-4 text-blue-500" />
-                              <span className="text-blue-600">Terms:</span>
-                              <span className="font-medium text-blue-700">{new Date(license.kitchenTermsUploadedAt).toLocaleDateString()}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Status details */}
-                        {license.kitchenLicenseStatus === 'approved' && license.kitchenLicenseApprovedAt && (
-                          <div className="mt-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-md border border-green-100 inline-block">
-                            <CheckCircle className="h-3 w-3 inline mr-1 mb-0.5" />
-                            Approved on {new Date(license.kitchenLicenseApprovedAt).toLocaleDateString()}
-                          </div>
-                        )}
-
-                        {license.kitchenLicenseStatus === 'rejected' && (
-                          <div className="mt-2 text-sm text-red-700 bg-red-50 px-3 py-2 rounded-md border border-red-100">
-                            <p className="font-semibold flex items-center gap-1">
-                              <XCircle className="h-3 w-3" />
-                              Rejection Reason:
-                            </p>
-                            <p className="mt-1">{license.kitchenLicenseFeedback || "No feedback provided."}</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Expandable Action/Feedback Section (Only for pending or if changing status) */}
-                      {(license.kitchenLicenseStatus === 'pending' || expandedLicense === license.id) && (
-                        <>
-                          {expandedLicense === license.id && (
-                            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 animated fadeIn">
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Feedback {license.kitchenLicenseStatus !== 'rejected' && '(Optional for approval, Required for rejection)'}
-                              </label>
-                              <textarea
-                                value={feedback[license.id] || ''}
-                                onChange={(e) => setFeedback({ ...feedback, [license.id]: e.target.value })}
-                                placeholder="Add feedback or notes about this license..."
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                rows={3}
-                              />
-                            </div>
-                          )}
-
-                          <div className="flex flex-wrap gap-3 mt-4">
-                            {!expandedLicense && license.kitchenLicenseStatus === 'pending' && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setExpandedLicense(license.id)}
-                              >
-                                Add Feedback
-                              </Button>
-                            )}
-
-                            {expandedLicense === license.id && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setExpandedLicense(null)}
-                              >
-                                Cancel
-                              </Button>
-                            )}
-
-                            {license.kitchenLicenseStatus !== 'approved' && (
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => handleApprove(license.id)}
-                                disabled={approveLicenseMutation.isPending}
-                                className="bg-green-600 hover:bg-green-700 text-white"
-                              >
-                                <Check className="h-4 w-4 mr-2" />
-                                {approveLicenseMutation.isPending && expandedLicense === license.id ? 'Approving...' : 'Approve'}
-                              </Button>
-                            )}
-
-                            {license.kitchenLicenseStatus !== 'rejected' && (
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => {
-                                  if (!expandedLicense) {
-                                    setExpandedLicense(license.id);
-                                    toast({
-                                      title: "Feedback Required",
-                                      description: "Please add feedback before rejecting.",
-                                    });
-                                  } else {
-                                    handleReject(license.id);
-                                  }
-                                }}
-                                disabled={approveLicenseMutation.isPending}
-                              >
-                                <X className="h-4 w-4 mr-2" />
-                                {approveLicenseMutation.isPending && expandedLicense === license.id ? 'Rejecting...' : 'Reject'}
-                              </Button>
-                            )}
-                          </div>
-                        </>
-                      )}
-
-                      {/* Allow Admin to edit result even if already processed */}
-                      {license.kitchenLicenseStatus !== 'pending' && expandedLicense !== license.id && (
-                        <div className="mt-4">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setExpandedLicense(license.id)}
-                            className="text-gray-500 border-gray-200 hover:text-gray-700"
-                          >
-                            Change Status / Edit Feedback
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Platform Settings Component - Stripe Fee Configuration
-function PlatformSettingsView() {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [isSaving, setIsSaving] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [simulationAmount, setSimulationAmount] = useState<string>('100');
-  const [simulationResult, setSimulationResult] = useState<any>(null);
-  
-  // Fee configuration state
-  const [feeConfig, setFeeConfig] = useState({
-    stripePercentageFee: '2.9',
-    stripeFlatFeeCents: '30',
-    platformCommissionRate: '0',
-    minimumApplicationFeeCents: '0',
-    useStripePlatformPricing: false,
-  });
-
-  // Fetch current fee configuration
-  const { data: currentConfig, isLoading, error, refetch } = useQuery<{
-    success: boolean;
-    config: {
-      stripePercentageFee: number;
-      stripePercentageFeeDisplay: string;
-      stripeFlatFeeCents: number;
-      stripeFlatFeeDisplay: string;
-      platformCommissionRate: number;
-      platformCommissionRateDisplay: string;
-      minimumApplicationFeeCents: number;
-      minimumApplicationFeeDisplay: string;
-      useStripePlatformPricing: boolean;
-    };
-  }>({
-    queryKey: ['/api/admin/fees/config'],
-    queryFn: async () => {
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
-      }
-      const token = await currentFirebaseUser.getIdToken();
-      const response = await fetch('/api/admin/fees/config', {
-        credentials: 'include',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!response.ok) {
-        throw new Error('Failed to fetch fee configuration');
-      }
-      return response.json();
-    },
-  });
-
-  // Update local state when data is fetched
-  useEffect(() => {
-    if (currentConfig?.config) {
-      setFeeConfig({
-        stripePercentageFee: (currentConfig.config.stripePercentageFee * 100).toFixed(1),
-        stripeFlatFeeCents: currentConfig.config.stripeFlatFeeCents.toString(),
-        platformCommissionRate: (currentConfig.config.platformCommissionRate * 100).toFixed(1),
-        minimumApplicationFeeCents: currentConfig.config.minimumApplicationFeeCents.toString(),
-        useStripePlatformPricing: currentConfig.config.useStripePlatformPricing,
-      });
-    }
-  }, [currentConfig]);
-
-  // Update mutation
-  const updateMutation = useMutation({
-    mutationFn: async (config: {
-      stripePercentageFee?: number;
-      stripeFlatFeeCents?: number;
-      platformCommissionRate?: number;
-      minimumApplicationFeeCents?: number;
-      useStripePlatformPricing?: boolean;
-    }) => {
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
-      }
-      const token = await currentFirebaseUser.getIdToken();
-      const response = await fetch('/api/admin/fees/config', {
-        method: 'PUT',
-        credentials: 'include',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(config),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to update fee configuration');
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/fees/config'] });
-      toast({
-        title: "Success",
-        description: "Fee configuration updated successfully",
-      });
-      setIsSaving(false);
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update fee configuration",
-        variant: "destructive",
-      });
-      setIsSaving(false);
-    },
-  });
-
-  const handleSave = () => {
-    setIsSaving(true);
-    updateMutation.mutate({
-      stripePercentageFee: parseFloat(feeConfig.stripePercentageFee) / 100,
-      stripeFlatFeeCents: parseInt(feeConfig.stripeFlatFeeCents, 10),
-      platformCommissionRate: parseFloat(feeConfig.platformCommissionRate) / 100,
-      minimumApplicationFeeCents: parseInt(feeConfig.minimumApplicationFeeCents, 10),
-      useStripePlatformPricing: feeConfig.useStripePlatformPricing,
-    });
-  };
-
-  const handleSimulate = async () => {
-    setIsSimulating(true);
-    try {
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
-      }
-      const token = await currentFirebaseUser.getIdToken();
-      const amountCents = Math.round(parseFloat(simulationAmount) * 100);
-      const response = await fetch('/api/admin/fees/simulate', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ bookingAmountCents: amountCents }),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to simulate fees');
-      }
-      const result = await response.json();
-      setSimulationResult(result);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to simulate fees",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSimulating(false);
-    }
-  };
-
-  const handleReset = () => {
-    if (currentConfig?.config) {
-      setFeeConfig({
-        stripePercentageFee: (currentConfig.config.stripePercentageFee * 100).toFixed(1),
-        stripeFlatFeeCents: currentConfig.config.stripeFlatFeeCents.toString(),
-        platformCommissionRate: (currentConfig.config.platformCommissionRate * 100).toFixed(1),
-        minimumApplicationFeeCents: currentConfig.config.minimumApplicationFeeCents.toString(),
-        useStripePlatformPricing: currentConfig.config.useStripePlatformPricing,
-      });
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <RefreshCw className="h-6 w-6 animate-spin text-gray-400" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <p className="text-red-600">Failed to load fee configuration. Please refresh the page.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-4xl space-y-6">
-      <div className="mb-6">
-        <h3 className="text-xl font-semibold text-gray-900 mb-2 flex items-center gap-2">
-          <Settings className="h-5 w-5 text-indigo-600" />
-          Platform Fee Configuration
-        </h3>
-        <p className="text-gray-600">Configure Stripe processing fees and platform commission for bookings</p>
-      </div>
-
-      {/* Stripe Processing Fees Card */}
-      <Card className="border-2 border-gray-200">
-        <CardContent className="p-6">
-          <div className="space-y-6">
-            <div className="flex items-start gap-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-purple-100 to-purple-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                <DollarSign className="h-6 w-6 text-purple-600" />
-              </div>
-              <div className="flex-1">
-                <h4 className="text-lg font-semibold text-gray-900 mb-1">Stripe Processing Fees</h4>
-                <p className="text-sm text-gray-600 mb-4">
-                  These fees match Stripe&apos;s Canada pricing (2.9% + $0.30 CAD). Adjust only if your Stripe account has custom pricing.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Stripe Percentage Fee (%)
-                </label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    max="10"
-                    step="0.1"
-                    value={feeConfig.stripePercentageFee}
-                    onChange={(e) => setFeeConfig({ ...feeConfig, stripePercentageFee: e.target.value })}
-                    className="max-w-32"
-                  />
-                  <span className="text-sm text-gray-500">%</span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">Standard: 2.9%</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Stripe Flat Fee (cents)
-                </label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={feeConfig.stripeFlatFeeCents}
-                    onChange={(e) => setFeeConfig({ ...feeConfig, stripeFlatFeeCents: e.target.value })}
-                    className="max-w-32"
-                  />
-                  <span className="text-sm text-gray-500">¢ (${(parseInt(feeConfig.stripeFlatFeeCents) / 100 || 0).toFixed(2)})</span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">Standard: 30¢ ($0.30)</p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Platform Commission Card */}
-      <Card className="border-2 border-gray-200">
-        <CardContent className="p-6">
-          <div className="space-y-6">
-            <div className="flex items-start gap-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-green-100 to-green-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                <TrendingUp className="h-6 w-6 text-green-600" />
-              </div>
-              <div className="flex-1">
-                <h4 className="text-lg font-semibold text-gray-900 mb-1">Platform Commission</h4>
-                <p className="text-sm text-gray-600 mb-4">
-                  Your platform&apos;s commission on each booking. Set to 0% for break-even mode (only cover Stripe fees).
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Platform Commission Rate (%)
-                </label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    max="50"
-                    step="0.1"
-                    value={feeConfig.platformCommissionRate}
-                    onChange={(e) => setFeeConfig({ ...feeConfig, platformCommissionRate: e.target.value })}
-                    className="max-w-32"
-                  />
-                  <span className="text-sm text-gray-500">%</span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">Current: {feeConfig.platformCommissionRate}% (0% = break-even)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Minimum Application Fee (cents)
-                </label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    max="1000"
-                    step="1"
-                    value={feeConfig.minimumApplicationFeeCents}
-                    onChange={(e) => setFeeConfig({ ...feeConfig, minimumApplicationFeeCents: e.target.value })}
-                    className="max-w-32"
-                  />
-                  <span className="text-sm text-gray-500">¢ (${(parseInt(feeConfig.minimumApplicationFeeCents) / 100 || 0).toFixed(2)})</span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">Set to 0 for no minimum</p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Current Configuration Summary */}
-      {currentConfig?.config && (
-        <Card className="border border-indigo-200 bg-indigo-50">
-          <CardContent className="p-4">
-            <h5 className="font-semibold text-indigo-900 mb-3">Current Configuration</h5>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div>
-                <p className="text-indigo-600">Stripe %</p>
-                <p className="font-bold text-indigo-900">{currentConfig.config.stripePercentageFeeDisplay}</p>
-              </div>
-              <div>
-                <p className="text-indigo-600">Stripe Flat</p>
-                <p className="font-bold text-indigo-900">{currentConfig.config.stripeFlatFeeDisplay}</p>
-              </div>
-              <div>
-                <p className="text-indigo-600">Platform %</p>
-                <p className="font-bold text-indigo-900">{currentConfig.config.platformCommissionRateDisplay}</p>
-              </div>
-              <div>
-                <p className="text-indigo-600">Min Fee</p>
-                <p className="font-bold text-indigo-900">{currentConfig.config.minimumApplicationFeeDisplay}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Fee Simulator */}
-      <Card className="border-2 border-gray-200">
-        <CardContent className="p-6">
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-orange-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                <BarChart3 className="h-6 w-6 text-orange-600" />
-              </div>
-              <div className="flex-1">
-                <h4 className="text-lg font-semibold text-gray-900 mb-1">Fee Simulator</h4>
-                <p className="text-sm text-gray-600 mb-4">
-                  Test how fees will be calculated for a booking amount
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-end gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Booking Amount ($)
-                </label>
-                <Input
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  value={simulationAmount}
-                  onChange={(e) => setSimulationAmount(e.target.value)}
-                  className="max-w-32"
-                  placeholder="100.00"
-                />
-              </div>
-              <Button
-                onClick={handleSimulate}
-                disabled={isSimulating}
-                variant="outline"
-                className="border-orange-300 text-orange-700 hover:bg-orange-50"
-              >
-                {isSimulating ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Simulating...
-                  </>
-                ) : (
-                  'Simulate'
-                )}
-              </Button>
-            </div>
-
-            {simulationResult && (
-              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 mt-4">
-                <h5 className="font-semibold text-gray-900 mb-3">Simulation Result</h5>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <p className="text-gray-600">Booking Amount</p>
-                    <p className="font-bold text-gray-900">${(simulationResult.calculation?.bookingPriceInCents / 100).toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Stripe Fee</p>
-                    <p className="font-bold text-red-600">${(simulationResult.calculation?.stripeProcessingFeeInCents / 100).toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Platform Commission</p>
-                    <p className="font-bold text-green-600">${(simulationResult.calculation?.platformCommissionInCents / 100).toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Total Application Fee</p>
-                    <p className="font-bold text-indigo-600">${(simulationResult.calculation?.totalPlatformFeeInCents / 100).toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Manager Receives</p>
-                    <p className="font-bold text-blue-600">${(simulationResult.calculation?.managerReceivesInCents / 100).toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Platform Net</p>
-                    <p className="font-bold text-purple-600">
-                      ${((simulationResult.calculation?.totalPlatformFeeInCents - simulationResult.calculation?.stripeProcessingFeeInCents) / 100).toFixed(2)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Action Buttons */}
-      <div className="flex gap-3 pt-2">
-        <Button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white"
-        >
-          {isSaving ? (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4 mr-2" />
-              Save Changes
-            </>
-          )}
-        </Button>
-        <Button
-          onClick={handleReset}
-          disabled={isSaving}
-          variant="outline"
-        >
-          Reset
-        </Button>
-        <Button
-          onClick={() => refetch()}
-          disabled={isSaving}
-          variant="outline"
-        >
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
-      </div>
-
-      {/* Info Card */}
-      <Card className="border border-blue-200 bg-blue-50">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-blue-800">
-              <p className="font-semibold mb-1">How Fees Work:</p>
-              <ul className="list-disc list-inside space-y-1 text-blue-700">
-                <li><strong>Stripe Fee:</strong> Covers Stripe&apos;s processing cost (2.9% + $0.30 for Canada)</li>
-                <li><strong>Platform Commission:</strong> Your profit margin (set to 0% for break-even)</li>
-                <li><strong>Application Fee:</strong> Stripe Fee + Platform Commission (sent to your Stripe account)</li>
-                <li><strong>Manager Receives:</strong> Booking Amount - Application Fee</li>
-                <li>Changes apply to all new bookings immediately</li>
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// Admin Manager Revenues View Component
-function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () => Promise<string> }) {
-  const [dateRange, setDateRange] = useState<'week' | 'month' | 'all'>('month');
-  const [selectedManager, setSelectedManager] = useState<number | 'all'>('all');
-
-  // Calculate date range
-  const dateRangeParams = useMemo(() => {
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    let startDate: Date;
-
-    switch (dateRange) {
-      case 'week':
-        startDate = new Date(today);
-        startDate.setDate(today.getDate() - 7);
-        break;
-      case 'month':
-        startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-        break;
-      default:
-        startDate = new Date(0); // All time
-    }
-
-    return {
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: today.toISOString().split('T')[0],
-    };
-  }, [dateRange]);
-
-  // Fetch all managers revenue
-  const { data: managersRevenue, isLoading, error } = useQuery({
-    queryKey: ['/api/admin/revenue/all-managers', dateRangeParams.startDate, dateRangeParams.endDate],
-    queryFn: async () => {
-      const token = await getFirebaseToken();
-      const params = new URLSearchParams({
-        startDate: dateRangeParams.startDate,
-        endDate: dateRangeParams.endDate,
-      });
-
-      const response = await fetch(`/api/admin/revenue/all-managers?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to fetch managers revenue');
-      }
-      return response.json();
-    },
-  });
-
-  // Fetch specific manager details if selected
-  const { data: managerDetails } = useQuery({
-    queryKey: ['/api/admin/revenue/manager', selectedManager, dateRangeParams.startDate, dateRangeParams.endDate],
-    queryFn: async () => {
-      if (selectedManager === 'all') return null;
-      const token = await getFirebaseToken();
-      const params = new URLSearchParams({
-        startDate: dateRangeParams.startDate,
-        endDate: dateRangeParams.endDate,
-      });
-
-      const response = await fetch(`/api/admin/revenue/manager/${selectedManager}?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch manager revenue details');
-      }
-      return response.json();
-    },
-    enabled: selectedManager !== 'all',
-  });
-
-  const formatCurrency = (amountInCents: number) => {
-    return new Intl.NumberFormat('en-CA', {
-      style: 'currency',
-      currency: 'CAD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amountInCents / 100);
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 sm:gap-4">
-        <div>
-          <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-1 sm:mb-2">Manager Revenues</h3>
-          <p className="text-sm sm:text-base text-gray-600">View revenue metrics for all managers</p>
-        </div>
-        <Select value={dateRange} onValueChange={(value) => setDateRange(value as 'week' | 'month' | 'all')}>
-          <SelectTrigger className="w-full sm:w-[140px] min-h-[44px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="week">This Week</SelectItem>
-            <SelectItem value="month">This Month</SelectItem>
-            <SelectItem value="all">All Time</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
-        </div>
-      ) : error ? (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <AlertCircle className="h-12 w-12 text-red-300 mx-auto mb-3" />
-            <p className="text-red-600 font-medium">Error loading revenue data</p>
-            <p className="text-sm text-gray-500 mt-2">{error instanceof Error ? error.message : 'Unknown error'}</p>
-          </CardContent>
-        </Card>
-      ) : managersRevenue && managersRevenue.managers ? (
-        <>
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-            <Card>
-              <CardContent className="p-4 sm:p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs sm:text-sm text-gray-500">Total Managers</p>
-                    <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">
-                      {managersRevenue.managers.length}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-indigo-100 rounded-lg">
-                    <Users className="h-6 w-6 text-indigo-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs sm:text-sm text-gray-500">Total Revenue</p>
-                    <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">
-                      {formatCurrency(
-                        managersRevenue.managers.reduce((sum: number, m: any) => sum + (m.totalRevenue || 0), 0)
-                      )}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-emerald-100 rounded-lg">
-                    <DollarSign className="h-6 w-6 text-emerald-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs sm:text-sm text-gray-500">Platform Fees</p>
-                    <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">
-                      {formatCurrency(
-                        managersRevenue.managers.reduce((sum: number, m: any) => sum + (m.platformFee || 0), 0)
-                      )}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-violet-100 rounded-lg">
-                    <TrendingUp className="h-6 w-6 text-violet-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Managers Table */}
-          <Card>
-            <CardContent className="p-4 sm:p-6">
-              <ResponsiveTable
-                columns={[
-                  {
-                    key: 'manager',
-                    label: 'Manager',
-                    render: (_, row: any) => (
-                      <div>
-                        <p className="font-medium text-gray-900 text-sm sm:text-base">{row.managerName || `Manager #${row.managerId}`}</p>
-                        <p className="text-xs sm:text-sm text-gray-500">{row.managerEmail}</p>
-                      </div>
-                    ),
-                  },
-                  {
-                    key: 'totalRevenue',
-                    label: 'Total Revenue',
-                    className: 'text-right',
-                    render: (_, row: any) => (
-                      <span className="font-medium text-gray-900 text-sm sm:text-base">{formatCurrency(row.totalRevenue || 0)}</span>
-                    ),
-                  },
-                  {
-                    key: 'platformFee',
-                    label: 'Platform Fee',
-                    className: 'text-right',
-                    render: (_, row: any) => (
-                      <span className="text-gray-600 text-sm sm:text-base">{formatCurrency(row.platformFee || 0)}</span>
-                    ),
-                  },
-                  {
-                    key: 'managerRevenue',
-                    label: 'Manager Earnings',
-                    className: 'text-right',
-                    render: (_, row: any) => (
-                      <span className="font-semibold text-emerald-600 text-sm sm:text-base">{formatCurrency(row.managerRevenue || 0)}</span>
-                    ),
-                  },
-                  {
-                    key: 'bookingCount',
-                    label: 'Bookings',
-                    className: 'text-center',
-                    render: (_, row: any) => (
-                      <span className="text-gray-600 text-sm sm:text-base">{row.bookingCount || 0}</span>
-                    ),
-                  },
-                  {
-                    key: 'actions',
-                    label: 'Actions',
-                    className: 'text-center',
-                    render: (_, row: any) => (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSelectedManager(selectedManager === row.managerId ? 'all' : row.managerId)}
-                        className="min-h-[36px] sm:min-h-[40px] text-xs sm:text-sm"
-                      >
-                        <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                        {selectedManager === row.managerId ? 'Hide' : 'View'}
-                      </Button>
-                    ),
-                  },
-                ]}
-                data={managersRevenue.managers.map((m: any) => ({ ...m, id: m.managerId }))}
-                keyField="managerId"
-                mobileBreakpoint="md"
-              />
-            </CardContent>
-          </Card>
-
-          {/* Manager Details */}
-          {selectedManager !== 'all' && managerDetails && (
-            <Card>
-              <CardContent className="p-6">
-                <h4 className="text-lg font-semibold text-gray-900 mb-4">Location Breakdown</h4>
-                <div className="space-y-3">
-                  {managerDetails.locations && managerDetails.locations.length > 0 ? (
-                    managerDetails.locations.map((loc: any) => (
-                      <div key={loc.locationId} className="p-4 rounded-lg bg-gray-50 border border-gray-200">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium text-gray-900">{loc.locationName}</p>
-                            <p className="text-sm text-gray-500">{loc.bookingCount} bookings</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold text-gray-900">{formatCurrency(loc.totalRevenue || 0)}</p>
-                            <p className="text-sm text-emerald-600">Earnings: {formatCurrency(loc.managerRevenue || 0)}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-gray-500 text-center py-4">No location data available</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </>
-      ) : (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <BarChart3 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">No revenue data available</p>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-// Admin Platform Revenue Overview Component
-function AdminPlatformRevenueView({ getFirebaseToken }: { getFirebaseToken: () => Promise<string> }) {
-  const [dateRange, setDateRange] = useState<'week' | 'month' | 'all'>('month');
-
-  const dateRangeParams = useMemo(() => {
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    let startDate: Date;
-
-    switch (dateRange) {
-      case 'week':
-        startDate = new Date(today);
-        startDate.setDate(today.getDate() - 7);
-        break;
-      case 'month':
-        startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-        break;
-      default:
-        startDate = new Date(0);
-    }
-
-    return {
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: today.toISOString().split('T')[0],
-    };
-  }, [dateRange]);
-
-  const { data: platformOverview, isLoading, error } = useQuery({
-    queryKey: ['/api/admin/revenue/platform-overview', dateRangeParams.startDate, dateRangeParams.endDate],
-    queryFn: async () => {
-      const token = await getFirebaseToken();
-      const params = new URLSearchParams({
-        startDate: dateRangeParams.startDate,
-        endDate: dateRangeParams.endDate,
-      });
-
-      const response = await fetch(`/api/admin/revenue/platform-overview?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to fetch platform overview');
-      }
-      return response.json();
-    },
-  });
-
-  const formatCurrency = (amountInCents: number) => {
-    return new Intl.NumberFormat('en-CA', {
-      style: 'currency',
-      currency: 'CAD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amountInCents / 100);
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Platform Revenue Overview</h3>
-          <p className="text-gray-600">Platform-wide revenue statistics</p>
-        </div>
-        <Select value={dateRange} onValueChange={(value) => setDateRange(value as 'week' | 'month' | 'all')}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="week">This Week</SelectItem>
-            <SelectItem value="month">This Month</SelectItem>
-            <SelectItem value="all">All Time</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
-        </div>
-      ) : error ? (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <AlertCircle className="h-12 w-12 text-red-300 mx-auto mb-3" />
-            <p className="text-red-600 font-medium">Error loading platform data</p>
-            <p className="text-sm text-gray-500 mt-2">{error instanceof Error ? error.message : 'Unknown error'}</p>
-          </CardContent>
-        </Card>
-      ) : platformOverview ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Total Platform Revenue</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">
-                    {formatCurrency(platformOverview.totalPlatformRevenue || 0)}
-                  </p>
-                </div>
-                <div className="p-3 bg-blue-100 rounded-lg">
-                  <DollarSign className="h-6 w-6 text-blue-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Total Platform Fees</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">
-                    {formatCurrency(platformOverview.totalPlatformFees || 0)}
-                  </p>
-                </div>
-                <div className="p-3 bg-violet-100 rounded-lg">
-                  <TrendingUp className="h-6 w-6 text-violet-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Total Bookings</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">
-                    {platformOverview.totalBookings || 0}
-                  </p>
-                </div>
-                <div className="p-3 bg-emerald-100 rounded-lg">
-                  <BarChart3 className="h-6 w-6 text-emerald-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Active Managers</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">
-                    {platformOverview.activeManagers || 0}
-                  </p>
-                </div>
-                <div className="p-3 bg-indigo-100 rounded-lg">
-                  <Users className="h-6 w-6 text-indigo-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      ) : (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <BarChart3 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">No platform data available</p>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
+// Inline components removed — now imported from @/components/admin/sections/
+// KitchenLicenseApprovalSection, PlatformSettingsSection, ManagerRevenuesSection, PlatformOverviewSection
 
 export default function Admin() {
   return (
@@ -3465,3 +1856,4 @@ export default function Admin() {
     </AdminProtectedRoute>
   );
 }
+

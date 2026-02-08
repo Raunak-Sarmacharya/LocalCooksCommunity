@@ -674,6 +674,9 @@ export class BookingService {
         const booking = await this.repo.getStorageBookingById(id);
         if (!booking) throw new Error(`Storage booking with id ${id} not found`);
 
+        if (booking.status === 'cancelled') throw new Error('Cannot extend a cancelled booking');
+        if (booking.status === 'completed') throw new Error('Cannot extend a completed booking. Storage has already been cleared.');
+
         const currentEndDate = new Date(booking.endDate);
         if (newEndDate <= currentEndDate) throw new Error('New end date must be after the current end date');
 

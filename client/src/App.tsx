@@ -274,8 +274,8 @@ function Router() {
             </div>
           </div>
         </Route>
-        <SubdomainRoute path="/dashboard" component={ApplicantDashboard} subdomain={subdomain} />
-        <SubdomainRoute path="/chef-setup" component={ChefSetupPage} subdomain={subdomain} />
+        <ProtectedRoute path="/dashboard" component={ApplicantDashboard} />
+        <ProtectedRoute path="/chef-setup" component={ChefSetupPage} />
         <ProtectedRoute path="/document-verification" component={DocumentVerification} />
         <ProtectedRoute path="/microlearning/overview" component={MicrolearningOverview} />
         <ProtectedRoute path="/microlearning/player" component={MicrolearningPlayer} />

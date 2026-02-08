@@ -4,10 +4,16 @@ import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle } fr
 import { useToast } from "@/hooks/use-toast";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import { StorageExtensionApprovals } from "@/components/manager/StorageExtensionApprovals";
+import { PendingCancellationRequests } from "@/components/manager/PendingCancellationRequests";
 import {
   BookingActionSheet,
   type BookingForAction,
 } from "@/components/manager/bookings/BookingActionSheet";
+import {
+  BookingManagementSheet,
+  type BookingForManagement,
+  type ManagementSubmitParams,
+} from "@/components/manager/bookings/BookingManagementSheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,40 +24,23 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast, createBookingDateTime, getNowInTimezone } from "@/utils/timezone-utils";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { DataTable } from "@/components/ui/data-table";
-import { getBookingColumns } from "@/components/manager/bookings/columns";
+import { getBookingColumns, Booking } from "@/components/manager/bookings/columns";
 import { auth } from "@/lib/firebase";
 
-interface Booking {
-  id: number;
-  kitchenId: number;
-  chefId: number;
-  bookingDate: string;
-  startTime: string;
-  endTime: string;
-  selectedSlots?: Array<{ startTime: string; endTime: string }>; // Array of discrete 1-hour time slots
-  status: string;
-  specialNotes?: string;
-  createdAt: string;
-  kitchenName?: string;
-  chefName?: string;
-  locationName?: string;
-  locationTimezone?: string;
-  // Payment and refund fields
-  totalPrice?: number;
-  transactionAmount?: number;
-  transactionId?: number;
-  refundAmount?: number;
-  // SIMPLE REFUND MODEL: Manager's balance is the cap
-  // Stripe fee is a sunk cost — manager enters $X, customer gets $X, manager debited $X
-  refundableAmount?: number; // Max refundable = manager's remaining balance
-  stripeProcessingFee?: number; // Total Stripe processing fee (display only)
-  managerRemainingBalance?: number; // Manager's remaining balance from this transaction
-  managerRevenue?: number; // What manager originally received
-  paymentStatus?: string; // 'authorized' | 'paid' | 'pending' | etc.
-}
+// Booking type imported from columns.tsx
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   // Use Firebase auth to get fresh token (same as KitchenDashboardOverview)
@@ -95,9 +84,15 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [bookingToRefund, setBookingToRefund] = useState<Booking | null>(null);
   const [refundAmount, setRefundAmount] = useState<string>('');
+  const [cancelAndRefundDialogOpen, setCancelAndRefundDialogOpen] = useState(false);
+  const [bookingToCancelAndRefund, setBookingToCancelAndRefund] = useState<Booking | null>(null);
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
   const [bookingForAction, setBookingForAction] = useState<BookingForAction | null>(null);
   const [isLoadingActionDetails, setIsLoadingActionDetails] = useState(false);
+  // Management sheet state (for confirmed/paid bookings)
+  const [managementSheetOpen, setManagementSheetOpen] = useState(false);
+  const [bookingForManagement, setBookingForManagement] = useState<BookingForManagement | null>(null);
+  const [isManagementProcessing, setIsManagementProcessing] = useState(false);
 
   // Check if any location has approved license
   const hasApprovedLicense = locations.some((loc: any) => loc.kitchenLicenseStatus === 'approved');
@@ -192,13 +187,13 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
 
   // Update booking status mutation
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ bookingId, status, storageActions, equipmentActions }: { bookingId: number; status: string; storageActions?: Array<{ storageBookingId: number; action: string }>; equipmentActions?: Array<{ equipmentBookingId: number; action: string }> }) => {
+    mutationFn: async ({ bookingId, status, storageActions, equipmentActions, refundOnCancel }: { bookingId: number; status: string; storageActions?: Array<{ storageBookingId: number; action: string }>; equipmentActions?: Array<{ equipmentBookingId: number; action: string }>; refundOnCancel?: boolean }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/bookings/${bookingId}/status`, {
         method: 'PUT',
         headers,
         credentials: "include",
-        body: JSON.stringify({ status, storageActions, equipmentActions }),
+        body: JSON.stringify({ status, storageActions, equipmentActions, refundOnCancel }),
       });
       if (!response.ok) {
         let errorMessage = 'Failed to update booking status';
@@ -233,8 +228,14 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           description: "Use 'Issue Refund' from the actions menu to process the refund.",
           variant: "default",
         });
+      } else if (data?.refund && status === 'cancelled') {
+        // Cancel & Refund — booking cancelled with auto-refund
+        toast({
+          title: "Booking Cancelled & Refunded",
+          description: `Refund of $${(data.refund.amount / 100).toFixed(2)} processed successfully.`,
+        });
       } else if (data?.refund) {
-        // Rejection with auto-refund
+        // Rejection with auto-refund (from pending)
         toast({
           title: "Booking Rejected & Refunded",
           description: `Refund of $${(data.refund.amount / 100).toFixed(2)} processed (customer absorbs Stripe fee).`,
@@ -370,6 +371,30 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     }
   };
 
+  const handleCancelAndRefundClick = (booking: Booking) => {
+    setBookingToCancelAndRefund(booking);
+    setCancelAndRefundDialogOpen(true);
+  };
+
+  const handleCancelAndRefundConfirm = () => {
+    if (bookingToCancelAndRefund) {
+      updateStatusMutation.mutate(
+        { bookingId: bookingToCancelAndRefund.id, status: 'cancelled', refundOnCancel: true },
+        {
+          onSettled: () => {
+            setCancelAndRefundDialogOpen(false);
+            setBookingToCancelAndRefund(null);
+          },
+        }
+      );
+    }
+  };
+
+  const handleCancelAndRefundDialogClose = () => {
+    setCancelAndRefundDialogOpen(false);
+    setBookingToCancelAndRefund(null);
+  };
+
   const handleCancelDialogClose = () => {
     setCancelDialogOpen(false);
     setBookingToCancel(null);
@@ -439,6 +464,285 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     setRefundDialogOpen(false);
     setBookingToRefund(null);
     setRefundAmount('');
+  };
+
+  // ── Cancellation Request: Accept / Decline ──────────────────────────────
+  const cancellationRequestMutation = useMutation({
+    mutationFn: async ({ bookingId, action }: { bookingId: number; action: 'accept' | 'decline' }) => {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/manager/bookings/${bookingId}/cancellation-request`, {
+        method: 'PUT',
+        headers,
+        credentials: "include",
+        body: JSON.stringify({ action }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to process cancellation request');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
+      if (data?.action === 'accepted') {
+        toast({
+          title: "Cancellation Accepted",
+          description: 'Booking cancelled. Use "Issue Refund" from the actions menu to process the refund.',
+        });
+      } else {
+        toast({
+          title: "Cancellation Declined",
+          description: "The booking remains confirmed.",
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAcceptCancellation = (booking: Booking) => {
+    cancellationRequestMutation.mutate({ bookingId: booking.id, action: 'accept' });
+  };
+
+  const handleDeclineCancellation = (booking: Booking) => {
+    cancellationRequestMutation.mutate({ bookingId: booking.id, action: 'decline' });
+  };
+
+  // Direct-call versions for PendingCancellationRequests component (has its own confirm dialog)
+  const handleAcceptKitchenCancellationById = (bookingId: number) => {
+    cancellationRequestMutation.mutate({ bookingId, action: 'accept' });
+  };
+  const handleDeclineKitchenCancellationById = (bookingId: number) => {
+    cancellationRequestMutation.mutate({ bookingId, action: 'decline' });
+  };
+
+  // ── Storage Cancellation Request: Accept / Decline ─────────────────────
+  const storageCancellationMutation = useMutation({
+    mutationFn: async ({ storageBookingId, action }: { storageBookingId: number; action: 'accept' | 'decline' }) => {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/manager/storage-bookings/${storageBookingId}/cancellation-request`, {
+        method: 'PUT',
+        headers,
+        credentials: "include",
+        body: JSON.stringify({ action }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to process storage cancellation request');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
+      if (data?.action === 'accepted') {
+        toast({
+          title: "Storage Cancellation Accepted",
+          description: 'Storage booking cancelled. Use "Issue Refund" to process the refund.',
+        });
+      } else {
+        toast({
+          title: "Storage Cancellation Declined",
+          description: "The storage booking remains confirmed.",
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAcceptStorageCancellation = (storageBookingId: number) => {
+    storageCancellationMutation.mutate({ storageBookingId, action: 'accept' });
+  };
+
+  const handleDeclineStorageCancellation = (storageBookingId: number) => {
+    storageCancellationMutation.mutate({ storageBookingId, action: 'decline' });
+  };
+
+  // ── Management Sheet: Fetch details & open ─────────────────────────────
+  const handleManageBooking = async (booking: Booking) => {
+    setManagementSheetOpen(true);
+    setBookingForManagement(null); // Show loading state
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/manager/bookings/${booking.id}/details`, {
+        headers,
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error(`Failed to fetch booking details: ${response.status}`);
+      const details = await response.json();
+
+      const mgmt: BookingForManagement = {
+        id: details.id,
+        kitchenName: details.kitchen?.name,
+        chefName: details.chef?.fullName || details.chef?.username,
+        locationName: details.location?.name,
+        bookingDate: details.bookingDate,
+        startTime: details.startTime,
+        endTime: details.endTime,
+        totalPrice: details.totalPrice,
+        status: details.status,
+        paymentStatus: details.paymentStatus,
+        transactionId: booking.transactionId, // from list data
+        transactionAmount: details.paymentTransaction?.amount,
+        stripeProcessingFee: details.paymentTransaction?.stripeProcessingFee,
+        managerRevenue: details.paymentTransaction?.managerRevenue,
+        taxRatePercent: details.kitchen?.taxRatePercent ? Number(details.kitchen.taxRatePercent) : undefined,
+        refundableAmount: details.paymentTransaction?.managerRevenue || booking.refundableAmount,
+        refundAmount: details.paymentTransaction?.refundAmount || booking.refundAmount || 0,
+        cancellationRequested: !!details.cancellationRequestedAt,
+        cancellationReason: details.cancellationRequestReason,
+        storageItems: details.storageBookings?.map((s: any) => ({
+          id: s.id,
+          storageBookingId: s.id,
+          name: s.storageListing?.name || `Storage #${s.storageListingId}`,
+          storageType: s.storageListing?.storageType || 'Storage',
+          totalPrice: s.totalPrice,
+          startDate: s.startDate,
+          endDate: s.endDate,
+          status: s.status,
+          cancellationRequested: !!s.cancellationRequestedAt,
+          cancellationReason: s.cancellationRequestReason,
+        })),
+        equipmentItems: details.equipmentBookings?.map((e: any) => ({
+          id: e.id,
+          equipmentBookingId: e.id,
+          name: e.equipmentListing?.equipmentType || `Equipment #${e.equipmentListingId}`,
+          totalPrice: e.totalPrice,
+          status: e.status,
+        })),
+      };
+      setBookingForManagement(mgmt);
+    } catch (error: any) {
+      console.error('Error fetching management details:', error);
+      toast({ title: "Error", description: "Failed to load booking details.", variant: "destructive" });
+      setManagementSheetOpen(false);
+    }
+  };
+
+  // ── Management Sheet: Submit handler (orchestrates API calls) ──────────
+  const handleManagementSubmit = async (params: ManagementSubmitParams) => {
+    setIsManagementProcessing(true);
+    try {
+      const headers = await getAuthHeaders();
+
+      switch (params.action) {
+        case "cancel-booking": {
+          // Cancel entire booking, no refund
+          const res = await fetch(`/api/manager/bookings/${params.bookingId}/status`, {
+            method: 'PUT', headers, credentials: "include",
+            body: JSON.stringify({ status: 'cancelled', storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel booking'); }
+          toast({ title: "Booking Cancelled", description: 'Use "Issue Refund" or the management sheet to process a refund.' });
+          break;
+        }
+        case "cancel-booking-refund": {
+          // Cancel entire booking + auto-refund
+          const res = await fetch(`/api/manager/bookings/${params.bookingId}/status`, {
+            method: 'PUT', headers, credentials: "include",
+            body: JSON.stringify({ status: 'cancelled', refundOnCancel: true, storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel booking'); }
+          const data = await res.json().catch(() => ({}));
+          toast({
+            title: "Booking Cancelled & Refunded",
+            description: data?.refund ? `Refund of $${(data.refund.amount / 100).toFixed(2)} processed.` : "Booking cancelled with refund.",
+          });
+          break;
+        }
+        case "partial-cancel":
+        case "partial-cancel-refund": {
+          // Cancel only addons (keep kitchen confirmed)
+          const statusRes = await fetch(`/api/manager/bookings/${params.bookingId}/status`, {
+            method: 'PUT', headers, credentials: "include",
+            body: JSON.stringify({ status: 'confirmed', storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
+          });
+          if (!statusRes.ok) { const d = await statusRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to update booking'); }
+
+          // If refund requested, issue it separately
+          if (params.action === "partial-cancel-refund" && params.refundAmountCents && params.refundAmountCents > 0 && bookingForManagement?.transactionId) {
+            const refundRes = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/refund`, {
+              method: 'POST', headers, credentials: "include",
+              body: JSON.stringify({ amount: params.refundAmountCents, reason: 'Partial cancellation refund' }),
+            });
+            if (!refundRes.ok) { const d = await refundRes.json().catch(() => ({})); throw new Error(d.error || 'Items cancelled but refund failed'); }
+            toast({ title: "Items Cancelled & Refunded", description: `Refund of $${(params.refundAmountCents / 100).toFixed(2)} processed.` });
+          } else {
+            toast({ title: "Items Cancelled", description: "Selected items have been cancelled." });
+          }
+          break;
+        }
+        case "refund-only": {
+          if (!bookingForManagement?.transactionId || !params.refundAmountCents) {
+            throw new Error("No transaction found for refund");
+          }
+          const res = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/refund`, {
+            method: 'POST', headers, credentials: "include",
+            body: JSON.stringify({ amount: params.refundAmountCents, reason: 'Refund issued by manager' }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to process refund'); }
+          toast({ title: "Refund Processed", description: `$${(params.refundAmountCents / 100).toFixed(2)} refunded to chef.` });
+          break;
+        }
+        case "accept-cancellation": {
+          const res = await fetch(`/api/manager/bookings/${params.bookingId}/cancellation-request`, {
+            method: 'PUT', headers, credentials: "include",
+            body: JSON.stringify({ action: 'accept' }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to accept cancellation'); }
+          toast({ title: "Cancellation Accepted", description: "Booking cancelled per chef's request." });
+          break;
+        }
+        case "decline-cancellation": {
+          const res = await fetch(`/api/manager/bookings/${params.bookingId}/cancellation-request`, {
+            method: 'PUT', headers, credentials: "include",
+            body: JSON.stringify({ action: 'decline' }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to decline cancellation'); }
+          toast({ title: "Cancellation Declined", description: "Booking remains confirmed." });
+          break;
+        }
+        case "accept-storage-cancel": {
+          if (!params.storageCancellationId) throw new Error("No storage booking ID");
+          const res = await fetch(`/api/manager/storage-bookings/${params.storageCancellationId}/cancellation-request`, {
+            method: 'PUT', headers, credentials: "include",
+            body: JSON.stringify({ action: 'accept' }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to accept storage cancellation'); }
+          toast({ title: "Storage Cancellation Accepted", description: "Storage booking cancelled." });
+          break;
+        }
+        case "decline-storage-cancel": {
+          if (!params.storageCancellationId) throw new Error("No storage booking ID");
+          const res = await fetch(`/api/manager/storage-bookings/${params.storageCancellationId}/cancellation-request`, {
+            method: 'PUT', headers, credentials: "include",
+            body: JSON.stringify({ action: 'decline' }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to decline storage cancellation'); }
+          toast({ title: "Storage Cancellation Declined", description: "Storage booking remains active." });
+          break;
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/transactions'] });
+      setManagementSheetOpen(false);
+      setBookingForManagement(null);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Something went wrong.", variant: "destructive" });
+    } finally {
+      setIsManagementProcessing(false);
+    }
   };
 
   // Categorize bookings by timezone-aware timeline (Upcoming, Past)
@@ -593,11 +897,6 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           <p className="text-gray-600 mt-2">Review and manage chef booking requests</p>
         </div>
 
-        {/* Storage Extension Approvals */}
-        <div className="mb-8">
-          <StorageExtensionApprovals />
-        </div>
-
         {/* Location Filter (shown only when multiple locations exist) */}
         {locations.length > 1 && (
           <div className="flex items-center gap-3 mb-4">
@@ -673,6 +972,11 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                 onReject: handleCancelClick,
                 onCancel: handleCancelClick,
                 onRefund: handleRefundClick,
+                onCancelAndRefund: handleCancelAndRefundClick,
+                onAcceptCancellation: handleAcceptCancellation,
+                onDeclineCancellation: handleDeclineCancellation,
+                onAcceptStorageCancellation: handleAcceptStorageCancellation,
+                onDeclineStorageCancellation: handleDeclineStorageCancellation,
                 onTakeAction: (booking) => {
                   if (!hasApprovedLicense) {
                     toast({
@@ -684,6 +988,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                   }
                   handleTakeAction(booking as any);
                 },
+                onManageBooking: (booking) => handleManageBooking(booking as any),
                 hasApprovedLicense
               })}
               data={filteredBookings}
@@ -691,9 +996,23 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               filterPlaceholder="Filter by chef..."
               defaultSorting={[{ id: 'createdAt', desc: true }]}
               initialColumnVisibility={{ createdAt: false }}
+              pageSize={15}
             />
           </div>
         )}
+
+        {/* Cancellation Requests + Storage Extensions — side-by-side below bookings */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+          <PendingCancellationRequests
+            bookings={bookings as any}
+            onAcceptKitchenCancellation={handleAcceptKitchenCancellationById}
+            onDeclineKitchenCancellation={handleDeclineKitchenCancellationById}
+            onAcceptStorageCancellation={handleAcceptStorageCancellation}
+            onDeclineStorageCancellation={handleDeclineStorageCancellation}
+            isProcessing={cancellationRequestMutation.isPending || storageCancellationMutation.isPending}
+          />
+          <StorageExtensionApprovals />
+        </div>
       </div>
 
       {/* Cancellation Confirmation Dialog */}
@@ -790,7 +1109,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Unified Booking Action Sheet */}
+      {/* Unified Booking Action Sheet (for pending/authorized bookings) */}
       <BookingActionSheet
         open={actionSheetOpen}
         onOpenChange={(open) => {
@@ -800,6 +1119,18 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         booking={bookingForAction}
         isLoading={updateStatusMutation.isPending}
         onSubmit={handleActionSubmit}
+      />
+
+      {/* Booking Management Sheet (for confirmed/paid bookings) */}
+      <BookingManagementSheet
+        open={managementSheetOpen}
+        onOpenChange={(open) => {
+          setManagementSheetOpen(open);
+          if (!open) setBookingForManagement(null);
+        }}
+        booking={bookingForManagement}
+        isProcessing={isManagementProcessing}
+        onSubmit={handleManagementSubmit}
       />
 
       {/* Refund Dialog */}
@@ -908,6 +1239,103 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Cancel & Refund Sheet */}
+      <Sheet open={cancelAndRefundDialogOpen} onOpenChange={setCancelAndRefundDialogOpen}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Cancel &amp; Refund Booking
+            </SheetTitle>
+            <SheetDescription>
+              Cancel this booking and refund the chef up to your available balance.
+            </SheetDescription>
+          </SheetHeader>
+
+          {bookingToCancelAndRefund && (
+            <div className="space-y-4 py-4">
+              {/* Booking Details */}
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Chef</span>
+                  <span className="font-medium">{bookingToCancelAndRefund.chefName || `Chef #${bookingToCancelAndRefund.chefId}`}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Kitchen</span>
+                  <span className="font-medium">{bookingToCancelAndRefund.kitchenName || 'Kitchen'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Date</span>
+                  <span className="font-medium">{formatDate(bookingToCancelAndRefund.bookingDate)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Time</span>
+                  <span className="font-medium">
+                    {formatTime(bookingToCancelAndRefund.startTime)} - {formatTime(bookingToCancelAndRefund.endTime)}
+                  </span>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Refund Breakdown — capped at manager's available balance */}
+              <div className="space-y-2 text-sm">
+                <p className="font-medium text-sm">Refund Breakdown</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Total Charged to Chef</span>
+                  <span>${((bookingToCancelAndRefund.transactionAmount || bookingToCancelAndRefund.totalPrice || 0) / 100).toFixed(2)}</span>
+                </div>
+                {(bookingToCancelAndRefund.managerRevenue || 0) > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Your Revenue (after fees)</span>
+                    <span>${((bookingToCancelAndRefund.managerRevenue || 0) / 100).toFixed(2)}</span>
+                  </div>
+                )}
+                {(bookingToCancelAndRefund.refundAmount || 0) > 0 && (
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>Already Refunded</span>
+                    <span>-${((bookingToCancelAndRefund.refundAmount || 0) / 100).toFixed(2)}</span>
+                  </div>
+                )}
+                <Separator />
+                <div className="flex items-center justify-between font-semibold text-green-700 bg-green-50 p-2 rounded-md">
+                  <span>Max Refund (your available balance)</span>
+                  <span>${((bookingToCancelAndRefund.refundableAmount || bookingToCancelAndRefund.managerRemainingBalance || 0) / 100).toFixed(2)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  You can only refund up to what you received. Stripe processing fees are a sunk cost and are not refunded.
+                </p>
+              </div>
+
+              <Separator />
+
+              <p className="text-xs text-muted-foreground">
+                The chef will be notified via email. Refunds typically arrive within 5-10 business days.
+              </p>
+            </div>
+          )}
+
+          <SheetFooter className="flex flex-row gap-2 pt-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={handleCancelAndRefundDialogClose}
+              disabled={updateStatusMutation.isPending}
+            >
+              Keep Booking
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              onClick={handleCancelAndRefundConfirm}
+              disabled={updateStatusMutation.isPending}
+            >
+              {updateStatusMutation.isPending ? 'Processing...' : 'Cancel & Refund'}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </main>
   );
 

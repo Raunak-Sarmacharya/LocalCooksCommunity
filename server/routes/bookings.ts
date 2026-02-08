@@ -9,7 +9,7 @@ import {
     equipmentListings,
     paymentTransactions,
 } from "@shared/schema";
-import { eq, and, or, desc } from "drizzle-orm";
+import { eq, and, or, desc, inArray } from "drizzle-orm";
 import { logger } from "../logger";
 import { requireChef, requireNoUnpaidPenalties } from "./middleware";
 import { createPaymentIntent } from "../services/stripe-service";
@@ -221,6 +221,247 @@ router.get("/chef/storage-bookings/:id", requireChef, async (req: Request, res: 
     }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CHEF STORAGE CANCELLATION — TIERED APPROACH (mirrors kitchen booking pattern)
+// ═══════════════════════════════════════════════════════════════════════════
+// Tier 1: pending/authorized → immediate cancel (void auth if applicable)
+// Tier 2: confirmed/paid → cancellation REQUEST sent to manager for review
+// ═══════════════════════════════════════════════════════════════════════════
+router.put("/chef/storage-bookings/:id/cancel", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        const { reason } = req.body || {};
+
+        if (isNaN(id) || id <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        const { storageBookings } = await import("@shared/schema");
+
+        // Fetch storage booking with location info for manager notification
+        const rows = await db
+            .select({
+                id: storageBookings.id,
+                status: storageBookings.status,
+                chefId: storageBookings.chefId,
+                storageListingId: storageBookings.storageListingId,
+                paymentStatus: storageBookings.paymentStatus,
+                paymentIntentId: storageBookings.paymentIntentId,
+                startDate: storageBookings.startDate,
+                endDate: storageBookings.endDate,
+                locationId: locations.id,
+                locationName: locations.name,
+                managerId: locations.managerId,
+                notificationEmail: locations.notificationEmail,
+                storageName: storageListings.name,
+            })
+            .from(storageBookings)
+            .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .where(
+                and(
+                    eq(storageBookings.id, id),
+                    eq(storageBookings.chefId, req.neonUser!.id)
+                )
+            )
+            .limit(1);
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: "Storage booking not found" });
+        }
+
+        const booking = rows[0];
+
+        if (booking.status === 'cancelled') {
+            return res.status(400).json({ error: "Storage booking is already cancelled" });
+        }
+        if (booking.status === 'cancellation_requested') {
+            return res.status(400).json({ error: "A cancellation request is already pending for this storage booking" });
+        }
+        if (booking.status === 'completed') {
+            return res.status(400).json({ error: "Cannot cancel a completed storage booking" });
+        }
+
+        // ── TIER 1: Pending or Authorized → Immediate cancel ──────────────────
+        if (booking.status === 'pending' || booking.paymentStatus === 'authorized') {
+            if (booking.paymentIntentId && booking.paymentStatus === 'authorized') {
+                try {
+                    const { cancelPaymentIntent } = await import('../services/stripe-service');
+                    await cancelPaymentIntent(booking.paymentIntentId);
+                    logger.info(`[Cancel Storage] Voided authorization for storage booking ${id} (PI: ${booking.paymentIntentId})`);
+                    await db.update(storageBookings)
+                        .set({ paymentStatus: 'failed', updatedAt: new Date() })
+                        .where(eq(storageBookings.id, id));
+                } catch (voidError) {
+                    logger.error(`[Cancel Storage] Error voiding auth for storage booking ${id}:`, voidError);
+                }
+            }
+
+            await db.update(storageBookings)
+                .set({ status: 'cancelled', updatedAt: new Date() })
+                .where(eq(storageBookings.id, id));
+
+            // Notify manager (fire-and-forget)
+            sendStorageCancellationNotification(booking, id, 'cancelled').catch(err =>
+                logger.error(`[Cancel Storage] Notification error for storage booking ${id}:`, err)
+            );
+
+            return res.json({ success: true, action: 'cancelled', message: 'Storage booking cancelled successfully.' });
+        }
+
+        // ── TIER 2: Confirmed + Paid → Cancellation Request to Manager ────────
+        if (booking.status === 'confirmed' && (booking.paymentStatus === 'paid' || booking.paymentStatus === 'partially_refunded')) {
+            await db.update(storageBookings)
+                .set({
+                    status: 'cancellation_requested',
+                    cancellationRequestedAt: new Date(),
+                    cancellationRequestReason: reason || null,
+                    updatedAt: new Date(),
+                })
+                .where(eq(storageBookings.id, id));
+
+            // Sync JSONB on parent kitchen booking so manager table reflects status
+            syncStorageItemStatusInKitchenBooking(id, 'cancellation_requested').catch(err =>
+                logger.error(`[Cancel Storage] JSONB sync error for storage booking ${id}:`, err)
+            );
+
+            sendStorageCancellationNotification(booking, id, 'cancellation_requested').catch(err =>
+                logger.error(`[Cancel Storage] Notification error for storage booking ${id}:`, err)
+            );
+
+            return res.json({
+                success: true,
+                action: 'cancellation_requested',
+                message: 'Your cancellation request has been submitted to the kitchen manager for review.',
+            });
+        }
+
+        // Fallback
+        await db.update(storageBookings)
+            .set({ status: 'cancelled', updatedAt: new Date() })
+            .where(eq(storageBookings.id, id));
+
+        sendStorageCancellationNotification(booking, id, 'cancelled').catch(err =>
+            logger.error(`[Cancel Storage] Notification error for storage booking ${id}:`, err)
+        );
+
+        res.json({ success: true, action: 'cancelled', message: 'Storage booking cancelled.' });
+    } catch (error) {
+        console.error("Error cancelling storage booking:", error);
+        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel storage booking" });
+    }
+});
+
+// ── Notification helper for storage cancellation flows ────────────────────
+async function sendStorageCancellationNotification(
+    booking: {
+        chefId: number | null; storageName: string | null; locationName: string | null;
+        managerId: number | null; notificationEmail: string | null;
+        startDate: Date; endDate: Date;
+    },
+    bookingId: number,
+    action: 'cancelled' | 'cancellation_requested',
+) {
+    try {
+        const chef = booking.chefId ? await userService.getUser(booking.chefId) : null;
+        if (!chef) return;
+
+        const isCancellationRequest = action === 'cancellation_requested';
+        const storageName = booking.storageName || 'Storage';
+
+        // In-app notification for manager
+        if (booking.managerId) {
+            const title = isCancellationRequest ? 'Storage Cancellation Request' : 'Storage Booking Cancelled';
+            const message = isCancellationRequest
+                ? `${chef.username || 'A chef'} has requested to cancel their storage booking for ${storageName}.`
+                : `${chef.username || 'A chef'} has cancelled their storage booking for ${storageName}.`;
+
+            await notificationService.create({
+                userId: booking.managerId,
+                target: 'manager',
+                type: isCancellationRequest ? 'booking_cancellation_request' : 'booking_cancelled',
+                title,
+                message,
+                metadata: { storageBookingId: bookingId, chefId: booking.chefId },
+            });
+        }
+
+        // In-app notification for chef
+        if (booking.chefId) {
+            const title = isCancellationRequest ? 'Cancellation Request Submitted' : 'Storage Booking Cancelled';
+            const message = isCancellationRequest
+                ? `Your cancellation request for ${storageName} has been sent to the kitchen manager for review.`
+                : `Your storage booking for ${storageName} has been cancelled.`;
+
+            await notificationService.create({
+                userId: booking.chefId,
+                target: 'chef',
+                type: isCancellationRequest ? 'booking_cancellation_request' : 'booking_cancelled',
+                title,
+                message,
+                metadata: { storageBookingId: bookingId },
+            });
+        }
+    } catch (error) {
+        logger.error(`[sendStorageCancellationNotification] Error for storage booking ${bookingId}:`, error);
+    }
+}
+
+// ── Sync storage item status in parent kitchen_bookings JSONB ──────────────
+// When a storage booking's status changes (cancellation_requested, cancelled, confirmed),
+// update the JSONB snapshot on the parent kitchen booking so the manager's table view reflects it.
+export async function syncStorageItemStatusInKitchenBooking(
+    storageBookingId: number,
+    newStatus: string,
+) {
+    try {
+        const { storageBookings: sbTable, kitchenBookings: kbTable } = await import("@shared/schema");
+        // Find the parent kitchen booking
+        const [sb] = await db
+            .select({ kitchenBookingId: sbTable.kitchenBookingId })
+            .from(sbTable)
+            .where(eq(sbTable.id, storageBookingId))
+            .limit(1);
+
+        if (!sb?.kitchenBookingId) return;
+
+        const [kb] = await db
+            .select({ storageItems: kbTable.storageItems })
+            .from(kbTable)
+            .where(eq(kbTable.id, sb.kitchenBookingId))
+            .limit(1);
+
+        if (!kb) return;
+
+        const items: any[] = Array.isArray(kb.storageItems) ? [...kb.storageItems] : [];
+        let updated = false;
+        for (const item of items) {
+            // Match by storageBookingId or id (both patterns exist in JSONB)
+            const itemId = item.storageBookingId || item.id;
+            if (itemId === storageBookingId) {
+                item.cancellationRequested = newStatus === 'cancellation_requested';
+                item.status = newStatus;
+                // Mark as rejected when cancelled so Rentals column shows strikethrough
+                if (newStatus === 'cancelled') {
+                    item.rejected = true;
+                }
+                updated = true;
+                break;
+            }
+        }
+
+        if (updated) {
+            await db.update(kbTable)
+                .set({ storageItems: items, updatedAt: new Date() })
+                .where(eq(kbTable.id, sb.kitchenBookingId));
+            logger.info(`[syncStorageItemStatus] Updated JSONB for storage ${storageBookingId} → ${newStatus} on kb ${sb.kitchenBookingId}`);
+        }
+    } catch (err) {
+        logger.error(`[syncStorageItemStatus] Error syncing storage ${storageBookingId}:`, err);
+    }
+}
+
 // ============================================================================
 // DAILY SCHEDULED TASKS ENDPOINT (Cron Sweep — Safety Net)
 // ============================================================================
@@ -242,6 +483,164 @@ router.get("/chef/storage-bookings/:id", requireChef, async (req: Request, res: 
 import { overstayPenaltyService } from "../services/overstay-penalty-service";
 import { damageClaimService } from "../services/damage-claim-service";
 import { processExpiredAuthorizations } from "../services/auth-expiry-service";
+import { platformSettings } from "@shared/schema";
+
+/**
+ * Auto-accept cancellation requests that have exceeded the configured window.
+ * When auto-accepted, booking status → 'cancelled'. Manager can still Issue Refund afterwards.
+ */
+async function processExpiredCancellationRequests(): Promise<{ processed: number; accepted: number; errors: number }> {
+    const results = { processed: 0, accepted: 0, errors: 0 };
+    try {
+        // Read configurable auto-accept window from platform_settings
+        const [setting] = await db
+            .select({ value: platformSettings.value })
+            .from(platformSettings)
+            .where(eq(platformSettings.key, 'cancellation_request_auto_accept_hours'))
+            .limit(1);
+
+        const autoAcceptHours = setting ? parseInt(setting.value || '24', 10) : 24;
+        if (autoAcceptHours <= 0) {
+            logger.info("[Cron] Cancellation request auto-accept is disabled (hours=0)");
+            return results;
+        }
+
+        const cutoffDate = new Date(Date.now() - autoAcceptHours * 60 * 60 * 1000);
+
+        // Find all cancellation_requested bookings older than the window
+        const { lte, isNotNull } = await import("drizzle-orm");
+        const expiredRequests = await db
+            .select({ id: kitchenBookings.id, chefId: kitchenBookings.chefId })
+            .from(kitchenBookings)
+            .where(
+                and(
+                    eq(kitchenBookings.status, 'cancellation_requested'),
+                    isNotNull(kitchenBookings.cancellationRequestedAt),
+                    lte(kitchenBookings.cancellationRequestedAt, cutoffDate),
+                )
+            );
+
+        results.processed = expiredRequests.length;
+
+        for (const booking of expiredRequests) {
+            try {
+                await db.update(kitchenBookings)
+                    .set({ status: 'cancelled', updatedAt: new Date() })
+                    .where(eq(kitchenBookings.id, booking.id));
+
+                // ── CASCADE: Cancel associated storage & equipment bookings ──
+                try {
+                    const { storageBookings: sbT, equipmentBookings: ebT } = await import("@shared/schema");
+                    const { ne: neOp } = await import("drizzle-orm");
+                    await db.update(sbT)
+                        .set({ status: "cancelled", updatedAt: new Date() })
+                        .where(and(eq(sbT.kitchenBookingId, booking.id), neOp(sbT.status, "cancelled")));
+                    await db.update(ebT)
+                        .set({ status: "cancelled", updatedAt: new Date() })
+                        .where(and(eq(ebT.kitchenBookingId, booking.id), neOp(ebT.status, "cancelled")));
+                } catch (cascadeErr: any) {
+                    logger.warn(`[Cron] Cascade cancel failed for auto-accepted booking ${booking.id}:`, cascadeErr);
+                }
+
+                // ── JSONB SYNC: Mark all items as rejected ──
+                try {
+                    const [currentKb] = await db
+                        .select({ storageItems: kitchenBookings.storageItems, equipmentItems: kitchenBookings.equipmentItems })
+                        .from(kitchenBookings)
+                        .where(eq(kitchenBookings.id, booking.id));
+                    if (currentKb) {
+                        const updatedStorage = (Array.isArray(currentKb.storageItems) ? currentKb.storageItems : [])
+                            .map((item: any) => ({ ...item, rejected: true, status: 'cancelled', cancellationRequested: false }));
+                        const updatedEquip = (Array.isArray(currentKb.equipmentItems) ? currentKb.equipmentItems : [])
+                            .map((item: any) => ({ ...item, rejected: true }));
+                        await db.update(kitchenBookings)
+                            .set({ storageItems: updatedStorage, equipmentItems: updatedEquip, updatedAt: new Date() })
+                            .where(eq(kitchenBookings.id, booking.id));
+                    }
+                } catch (jsonbErr: any) {
+                    logger.warn(`[Cron] JSONB sync failed for auto-accepted booking ${booking.id}:`, jsonbErr);
+                }
+
+                // Notify chef
+                if (booking.chefId) {
+                    try {
+                        await notificationService.create({
+                            userId: booking.chefId,
+                            target: 'chef',
+                            type: 'booking_cancellation_accepted',
+                            title: 'Cancellation Auto-Accepted',
+                            message: 'Your cancellation request was automatically accepted. A refund may be processed by the kitchen manager.',
+                            metadata: { bookingId: booking.id },
+                        });
+                    } catch (notifErr) {
+                        logger.error(`[Cron] Notification error for auto-accepted booking ${booking.id}:`, notifErr);
+                    }
+                }
+
+                results.accepted++;
+                logger.info(`[Cron] Auto-accepted cancellation request for kitchen booking ${booking.id}`);
+            } catch (err) {
+                results.errors++;
+                logger.error(`[Cron] Error auto-accepting cancellation for kitchen booking ${booking.id}:`, err);
+            }
+        }
+
+        // ── Storage bookings with expired cancellation requests ──────────────
+        const { storageBookings: storageBookingsTable } = await import("@shared/schema");
+        const expiredStorageRequests = await db
+            .select({ id: storageBookingsTable.id, chefId: storageBookingsTable.chefId })
+            .from(storageBookingsTable)
+            .where(
+                and(
+                    eq(storageBookingsTable.status, 'cancellation_requested'),
+                    isNotNull(storageBookingsTable.cancellationRequestedAt),
+                    lte(storageBookingsTable.cancellationRequestedAt, cutoffDate),
+                )
+            );
+
+        results.processed += expiredStorageRequests.length;
+
+        for (const sb of expiredStorageRequests) {
+            try {
+                await db.update(storageBookingsTable)
+                    .set({ status: 'cancelled', updatedAt: new Date() })
+                    .where(eq(storageBookingsTable.id, sb.id));
+
+                // Sync JSONB on parent kitchen booking
+                try {
+                    await syncStorageItemStatusInKitchenBooking(sb.id, 'cancelled');
+                } catch (syncErr: any) {
+                    logger.warn(`[Cron] JSONB sync failed for auto-accepted storage booking ${sb.id}:`, syncErr);
+                }
+
+                if (sb.chefId) {
+                    try {
+                        await notificationService.create({
+                            userId: sb.chefId,
+                            target: 'chef',
+                            type: 'booking_cancellation_accepted',
+                            title: 'Storage Cancellation Auto-Accepted',
+                            message: 'Your storage cancellation request was automatically accepted. A refund may be processed by the kitchen manager.',
+                            metadata: { storageBookingId: sb.id },
+                        });
+                    } catch (notifErr) {
+                        logger.error(`[Cron] Notification error for auto-accepted storage booking ${sb.id}:`, notifErr);
+                    }
+                }
+
+                results.accepted++;
+                logger.info(`[Cron] Auto-accepted cancellation request for storage booking ${sb.id}`);
+            } catch (err) {
+                results.errors++;
+                logger.error(`[Cron] Error auto-accepting cancellation for storage booking ${sb.id}:`, err);
+            }
+        }
+    } catch (err) {
+        logger.error("[Cron] Error in processExpiredCancellationRequests:", err);
+        results.errors++;
+    }
+    return results;
+}
 
 /**
  * POST /api/detect-overstays
@@ -324,11 +723,16 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
         };
         console.log("[Cron] Storage checkout auto-clear complete:", checkoutAutoClearSummary);
 
+        // Task 5: Auto-accept expired chef cancellation requests
+        console.log("[Cron] Task 5: Auto-accepting expired cancellation requests...");
+        const cancellationAutoAcceptResults = await processExpiredCancellationRequests();
+        console.log("[Cron] Cancellation request auto-accept complete:", cancellationAutoAcceptResults);
+
         console.log("[Cron] All daily scheduled tasks complete");
 
         res.json({
             success: true,
-            message: `Daily tasks complete: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed, ${authExpiryResults.length} expired authorizations cancelled, ${checkoutAutoClearResults.cleared} checkout reviews auto-cleared`,
+            message: `Daily tasks complete: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed, ${authExpiryResults.length} expired authorizations cancelled, ${checkoutAutoClearResults.cleared} checkout reviews auto-cleared, ${cancellationAutoAcceptResults.accepted} cancellation requests auto-accepted`,
             overstays: {
                 summary: overstaySummary,
                 results: overstayResults.map(r => ({
@@ -356,6 +760,9 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
             },
             checkoutAutoClear: {
                 summary: checkoutAutoClearSummary,
+            },
+            cancellationAutoAccept: {
+                summary: cancellationAutoAcceptResults,
             },
         });
     } catch (error: unknown) {
@@ -388,7 +795,7 @@ router.post("/admin/storage-bookings/process-overstayer-penalties", async (req: 
 });
 
 // Calculate storage extension pricing (preview before checkout)
-router.post("/chef/storage-bookings/:id/extension-preview", requireChef, async (req: Request, res: Response) => {
+router.post("/chef/storage-bookings/:id/extension-preview", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
     try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -412,6 +819,33 @@ router.post("/chef/storage-bookings/:id/extension-preview", requireChef, async (
 
         if (booking.status === 'cancelled') {
             return res.status(400).json({ error: "Cannot extend a cancelled booking" });
+        }
+
+        // INDUSTRY STANDARD: Block extensions on completed bookings (checkout cleared)
+        if (booking.status === 'completed') {
+            return res.status(400).json({ error: "Cannot extend a completed booking. Storage has already been cleared." });
+        }
+
+        // INDUSTRY STANDARD: Block extensions on bookings with active overstay penalties
+        // Self-storage law: tenant must settle outstanding balance before renewing/extending
+        {
+            const { storageOverstayRecords } = await import("@shared/schema");
+            const [activeOverstay] = await db
+                .select({ id: storageOverstayRecords.id, status: storageOverstayRecords.status })
+                .from(storageOverstayRecords)
+                .where(and(
+                    eq(storageOverstayRecords.storageBookingId, id),
+                    inArray(storageOverstayRecords.status, ['detected', 'grace_period', 'pending_review', 'penalty_approved', 'charge_pending', 'charge_failed', 'escalated'])
+                ))
+                .limit(1);
+
+            if (activeOverstay) {
+                return res.status(400).json({
+                    error: "Cannot extend this booking. There is an active overstay penalty that must be resolved first.",
+                    code: "ACTIVE_OVERSTAY",
+                    overstayStatus: activeOverstay.status,
+                });
+            }
         }
 
         const newEndDateObj = new Date(newEndDate);
@@ -500,6 +934,33 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, requir
 
         if (booking.status === 'cancelled') {
             return res.status(400).json({ error: "Cannot extend a cancelled booking" });
+        }
+
+        // INDUSTRY STANDARD: Block extensions on completed bookings (checkout cleared)
+        if (booking.status === 'completed') {
+            return res.status(400).json({ error: "Cannot extend a completed booking. Storage has already been cleared." });
+        }
+
+        // INDUSTRY STANDARD: Block extensions on bookings with active overstay penalties
+        // Self-storage law: tenant must settle outstanding balance before renewing/extending
+        {
+            const { storageOverstayRecords } = await import("@shared/schema");
+            const [activeOverstay] = await db
+                .select({ id: storageOverstayRecords.id, status: storageOverstayRecords.status })
+                .from(storageOverstayRecords)
+                .where(and(
+                    eq(storageOverstayRecords.storageBookingId, id),
+                    inArray(storageOverstayRecords.status, ['detected', 'grace_period', 'pending_review', 'penalty_approved', 'charge_pending', 'charge_failed', 'escalated'])
+                ))
+                .limit(1);
+
+            if (activeOverstay) {
+                return res.status(400).json({
+                    error: "Cannot extend this booking. There is an active overstay penalty that must be resolved first.",
+                    code: "ACTIVE_OVERSTAY",
+                    overstayStatus: activeOverstay.status,
+                });
+            }
         }
 
         const newEndDateObj = new Date(newEndDate);
@@ -1183,6 +1644,10 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                     status: paymentTransactions.status,
                     stripeProcessingFee: paymentTransactions.stripeProcessingFee,
                     paidAt: paymentTransactions.paidAt,
+                    refundAmount: paymentTransactions.refundAmount,
+                    netAmount: paymentTransactions.netAmount,
+                    refundedAt: paymentTransactions.refundedAt,
+                    refundReason: paymentTransactions.refundReason,
                 })
                 .from(paymentTransactions)
                 .where(
@@ -1202,6 +1667,10 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                     serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
                     managerRevenue: txn.managerRevenue ? parseFloat(txn.managerRevenue) : null,
                     stripeProcessingFee: txn.stripeProcessingFee ? parseFloat(txn.stripeProcessingFee) : null,
+                    refundAmount: txn.refundAmount ? parseFloat(txn.refundAmount) : 0,
+                    netAmount: txn.netAmount ? parseFloat(txn.netAmount) : null,
+                    refundedAt: txn.refundedAt || null,
+                    refundReason: txn.refundReason || null,
                 };
             }
         } catch (err) {
@@ -1497,10 +1966,17 @@ router.get("/chef/invoices/storage/:id", requireChef, async (req: Request, res: 
     }
 });
 
-// Cancel a booking
+// ═══════════════════════════════════════════════════════════════════════════
+// CHEF CANCELLATION — TIERED APPROACH
+// ═══════════════════════════════════════════════════════════════════════════
+// Tier 1: pending/authorized → immediate cancel (void auth if applicable, $0 loss)
+// Tier 2: confirmed/paid → cancellation REQUEST sent to manager for review
+//         Manager uses the existing Issue Refund flow with editable amount
+// ═══════════════════════════════════════════════════════════════════════════
 router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: Response) => {
     try {
         const id = parseInt(req.params.id);
+        const { reason } = req.body || {};
 
         if (!pool) {
             return res.status(500).json({ error: "Database not available" });
@@ -1513,12 +1989,17 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                 bookingDate: kitchenBookings.bookingDate,
                 startTime: kitchenBookings.startTime,
                 endTime: kitchenBookings.endTime,
+                status: kitchenBookings.status,
                 kitchenId: kitchenBookings.kitchenId,
                 chefId: kitchenBookings.chefId,
                 paymentIntentId: kitchenBookings.paymentIntentId,
                 paymentStatus: kitchenBookings.paymentStatus,
                 cancellationPolicyHours: locations.cancellationPolicyHours,
-                cancellationPolicyMessage: locations.cancellationPolicyMessage
+                cancellationPolicyMessage: locations.cancellationPolicyMessage,
+                locationId: locations.id,
+                locationName: locations.name,
+                managerId: locations.managerId,
+                notificationEmail: locations.notificationEmail,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
@@ -1537,179 +2018,217 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
 
         const booking = rows[0];
 
-        // Check if booking is within cancellation period
+        // Block cancellation for already-cancelled or cancellation-requested bookings
+        if (booking.status === 'cancelled') {
+            return res.status(400).json({ error: "Booking is already cancelled" });
+        }
+        if (booking.status === 'cancellation_requested') {
+            return res.status(400).json({ error: "A cancellation request is already pending for this booking" });
+        }
+        if (booking.status === 'completed') {
+            return res.status(400).json({ error: "Cannot cancel a completed booking" });
+        }
+
+        // Check cancellation policy window
         const bookingDateTime = new Date(`${booking.bookingDate?.toISOString().split('T')[0]}T${booking.startTime}`);
         const now = new Date();
         const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
         const cancellationHours = booking.cancellationPolicyHours || 24;
 
-        // If cancelled within cancellation period and payment was already captured, create refund
-        if (booking.paymentIntentId && hoursUntilBooking >= cancellationHours && booking.paymentStatus === 'paid') {
-            try {
-                const { createRefund, getPaymentIntent } = await import('../services/stripe-service');
+        if (hoursUntilBooking < cancellationHours) {
+            const policyMessage = (booking.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.")
+                .replace('{hours}', String(cancellationHours));
+            return res.status(400).json({ error: policyMessage });
+        }
 
-                // Check if payment intent was successfully captured
-                const paymentIntent = await getPaymentIntent(booking.paymentIntentId);
-                if (paymentIntent && (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing')) {
-                    // Create refund for the captured payment
-                    const refund = await createRefund(booking.paymentIntentId as string, undefined, 'requested_by_customer');
-                    logger.info(`[Cancel Booking] Created refund for booking ${id} (PaymentIntent: ${booking.paymentIntentId}, Refund: ${refund.id})`);
-
-                    // Update payment status to refunded
+        // ── TIER 1: Pending or Authorized → Immediate cancel ──────────────────
+        // No money captured yet. Void auth if applicable, cancel booking directly.
+        if (booking.status === 'pending' || booking.paymentStatus === 'authorized') {
+            // Void authorization if payment is held
+            if (booking.paymentIntentId && booking.paymentStatus === 'authorized') {
+                try {
+                    const { cancelPaymentIntent } = await import('../services/stripe-service');
+                    await cancelPaymentIntent(booking.paymentIntentId);
+                    logger.info(`[Cancel Booking] Voided authorization for booking ${id} (PI: ${booking.paymentIntentId})`);
                     await db.update(kitchenBookings)
-                        .set({ paymentStatus: 'refunded' })
+                        .set({ paymentStatus: 'failed', updatedAt: new Date() })
                         .where(eq(kitchenBookings.id, id));
-                }
-            } catch (error) {
-                console.error(`[Cancel Booking] Error creating refund for booking ${id}:`, error);
-                // Continue with booking cancellation even if refund fails
-            }
-        }
-
-        // Cancel the booking
-        // Using cancelBooking from BookingService which handles logic
-        await bookingService.cancelBooking(id, req.neonUser!.id, true);
-
-        // Send email notifications to chef and manager
-        try {
-            // Get kitchen details
-            const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
-            if (!kitchen) {
-                console.warn(`⚠️ Kitchen ${booking.kitchenId} not found for email notification`);
-            } else {
-                // Get location details (DIRECT DATABASE QUERY - emails are in Neon database)
-                const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
-                if (!kitchenLocationId) {
-                    console.warn(`⚠️ Kitchen ${booking.kitchenId} has no locationId`);
-                } else if (!pool) {
-                    console.warn(`⚠️ Database pool not available for email notification`);
-                } else {
-                    // DIRECT DATABASE QUERY - emails are stored in Neon database
-                    const [location] = await db
-                        .select({ id: locations.id, name: locations.name, managerId: locations.managerId, notificationEmail: locations.notificationEmail })
-                        .from(locations)
-                        .where(eq(locations.id, kitchenLocationId));
-
-                    if (!location) {
-                        logger.warn(`⚠️ Location ${kitchenLocationId} not found for email notification`);
-                    } else {
-
-                        // Get chef details
-                        const chef = await userService.getUser(booking.chefId as number);
-                        if (!chef) {
-                            console.warn(`⚠️ Chef ${booking.chefId} not found for email notification`);
-                        } else {
-                            // Get manager details if manager_id is set (DIRECT DATABASE QUERY)
-                            const managerId = location.managerId;
-                            let manager = null;
-                            if (managerId) {
-                                const [managerResult] = await db
-                                    .select({ id: users.id, username: users.username })
-                                    .from(users)
-                                    .where(eq(users.id, managerId));
-
-                                if (managerResult) {
-                                    manager = managerResult;
-                                }
-                            }
-
-                            // Get chef phone using utility function (from applications table)
-                            const chefPhone = await getChefPhone(booking.chefId as number, pool);
-
-                            // Import email functions
-                            const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('../email');
-
-                            // Send email to chef
-                            try {
-                                const chefEmail = generateBookingCancellationEmail({
-                                    chefEmail: chef.username || '',
-                                    chefName: chef.username || 'Chef',
-                                    kitchenName: kitchen.name || 'Kitchen',
-                                    bookingDate: booking.bookingDate?.toISOString() || '',
-                                    startTime: booking.startTime,
-                                    endTime: booking.endTime,
-                                    cancellationReason: 'You cancelled this booking'
-                                });
-                                await sendEmail(chefEmail);
-                                logger.info(`✅ Booking cancellation email sent to chef: ${chef.username}`);
-                            } catch (emailError) {
-                                logger.error("Error sending chef cancellation email:", emailError);
-                            }
-
-                            // Send SMS to chef
-                            if (chefPhone) {
-                                try {
-                                    const smsMessage = generateChefSelfCancellationSMS({
-                                        kitchenName: kitchen.name || 'Kitchen',
-                                        bookingDate: booking.bookingDate?.toISOString() || '',
-                                        startTime: booking.startTime,
-                                        endTime: booking.endTime || ''
-                                    });
-                                    await sendSMS(chefPhone, smsMessage, { trackingId: `booking_${id}_chef_self_cancelled` });
-                                    console.log(`✅ Booking cancellation SMS sent to chef: ${chefPhone}`);
-                                } catch (smsError) {
-                                    console.error("Error sending chef cancellation SMS:", smsError);
-                                }
-                            }
-
-                            // Send email to manager (use notificationEmail from direct database query)
-                            const notificationEmailAddress = location.notificationEmail || (manager ? (manager.username || null) : null);
-
-                            if (notificationEmailAddress) {
-                                try {
-                                    const managerEmail = generateBookingCancellationNotificationEmail({
-                                        managerEmail: notificationEmailAddress,
-                                        chefName: chef.username || 'Chef',
-                                        kitchenName: kitchen.name || 'Kitchen',
-                                        bookingDate: booking.bookingDate?.toISOString() || '',
-                                        startTime: booking.startTime,
-                                        endTime: booking.endTime,
-                                        cancellationReason: 'Cancelled by chef'
-                                    });
-                                    await sendEmail(managerEmail);
-                                    console.log(`✅ Booking cancellation notification email sent to manager: ${notificationEmailAddress}`);
-                                } catch (emailError) {
-                                    console.error("Error sending manager cancellation email:", emailError);
-                                    console.error("Manager email error details:", emailError instanceof Error ? emailError.message : emailError);
-                                }
-                            } else {
-                                console.warn(`⚠️ No notification email found for location ${kitchenLocationId}`);
-                            }
-
-                            // Send SMS to manager
-                            try {
-                                // Get manager phone number using utility function (with fallback to applications table)
-                                const managerPhone = await getManagerPhone(location as any, managerId as number, pool);
-
-                                if (managerPhone) {
-                                    const smsMessage = generateManagerBookingCancellationSMS({
-                                        chefName: chef.username || 'Chef',
-                                        kitchenName: kitchen.name || 'Kitchen',
-                                        bookingDate: booking.bookingDate?.toISOString() || '',
-                                        startTime: booking.startTime,
-                                        endTime: booking.endTime
-                                    });
-                                    await sendSMS(managerPhone, smsMessage, { trackingId: `booking_${id}_manager_cancelled` });
-                                    console.log(`✅ Booking cancellation SMS sent to manager: ${managerPhone}`);
-                                }
-                            } catch (smsError) {
-                                console.error("Error sending manager cancellation SMS:", smsError);
-                            }
-                        }
-                    }
+                } catch (voidError) {
+                    logger.error(`[Cancel Booking] Error voiding auth for booking ${id}:`, voidError);
                 }
             }
-        } catch (emailError) {
-            console.error("Error sending booking cancellation emails:", emailError);
-            // Don't fail the cancellation if emails fail
+
+            // Immediate cancel — no manager approval needed
+            await db.update(kitchenBookings)
+                .set({ status: 'cancelled', updatedAt: new Date() })
+                .where(eq(kitchenBookings.id, id));
+
+            // Send notifications (fire-and-forget)
+            sendCancellationNotifications(booking, id, 'cancelled').catch(err =>
+                logger.error(`[Cancel Booking] Notification error for booking ${id}:`, err)
+            );
+
+            return res.json({ success: true, action: 'cancelled', message: 'Booking cancelled successfully.' });
         }
 
-        res.json({ success: true });
+        // ── TIER 2: Confirmed + Paid → Cancellation Request to Manager ────────
+        // Money is captured. Chef cannot self-refund. Manager reviews and uses
+        // the existing Issue Refund flow with editable amount.
+        if (booking.status === 'confirmed' && (booking.paymentStatus === 'paid' || booking.paymentStatus === 'partially_refunded')) {
+            await db.update(kitchenBookings)
+                .set({
+                    status: 'cancellation_requested',
+                    cancellationRequestedAt: new Date(),
+                    cancellationRequestReason: reason || null,
+                    updatedAt: new Date(),
+                })
+                .where(eq(kitchenBookings.id, id));
+
+            // Notify manager about the cancellation request (fire-and-forget)
+            sendCancellationNotifications(booking, id, 'cancellation_requested').catch(err =>
+                logger.error(`[Cancel Booking] Notification error for booking ${id}:`, err)
+            );
+
+            return res.json({
+                success: true,
+                action: 'cancellation_requested',
+                message: 'Your cancellation request has been submitted to the kitchen manager for review.',
+            });
+        }
+
+        // Fallback: For any other state, attempt direct cancel
+        await db.update(kitchenBookings)
+            .set({ status: 'cancelled', updatedAt: new Date() })
+            .where(eq(kitchenBookings.id, id));
+
+        sendCancellationNotifications(booking, id, 'cancelled').catch(err =>
+            logger.error(`[Cancel Booking] Notification error for booking ${id}:`, err)
+        );
+
+        res.json({ success: true, action: 'cancelled', message: 'Booking cancelled.' });
     } catch (error) {
         console.error("Error cancelling booking:", error);
         res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel booking" });
     }
 });
+
+// ── Shared notification helper for chef cancellation flows ────────────────
+async function sendCancellationNotifications(
+    booking: {
+        kitchenId: number; chefId: number | null; bookingDate: Date | null;
+        startTime: string; endTime: string; locationId: number;
+        locationName: string | null; managerId: number | null; notificationEmail: string | null;
+    },
+    bookingId: number,
+    action: 'cancelled' | 'cancellation_requested',
+) {
+    try {
+        const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
+        if (!kitchen) return;
+
+        const chef = booking.chefId ? await userService.getUser(booking.chefId) : null;
+        if (!chef) return;
+
+        let manager = null;
+        if (booking.managerId) {
+            const [managerResult] = await db
+                .select({ id: users.id, username: users.username })
+                .from(users)
+                .where(eq(users.id, booking.managerId));
+            if (managerResult) manager = managerResult;
+        }
+
+        const chefPhone = booking.chefId ? await getChefPhone(booking.chefId, pool!) : null;
+        const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('../email');
+
+        const isCancellationRequest = action === 'cancellation_requested';
+        const cancellationReason = isCancellationRequest
+            ? 'You submitted a cancellation request. The kitchen manager will review it shortly.'
+            : 'You cancelled this booking';
+        const managerReason = isCancellationRequest
+            ? 'Chef requested cancellation — please review and process refund'
+            : 'Cancelled by chef';
+
+        // Email to chef
+        try {
+            const chefEmail = generateBookingCancellationEmail({
+                chefEmail: chef.username || '',
+                chefName: chef.username || 'Chef',
+                kitchenName: kitchen.name || 'Kitchen',
+                bookingDate: booking.bookingDate?.toISOString() || '',
+                startTime: booking.startTime,
+                endTime: booking.endTime,
+                cancellationReason,
+            });
+            await sendEmail(chefEmail);
+            logger.info(`✅ Booking ${action} email sent to chef: ${chef.username}`);
+        } catch (e) { logger.error("Error sending chef cancellation email:", e); }
+
+        // SMS to chef
+        if (chefPhone) {
+            try {
+                const smsMessage = generateChefSelfCancellationSMS({
+                    kitchenName: kitchen.name || 'Kitchen',
+                    bookingDate: booking.bookingDate?.toISOString() || '',
+                    startTime: booking.startTime,
+                    endTime: booking.endTime || '',
+                });
+                await sendSMS(chefPhone, smsMessage, { trackingId: `booking_${bookingId}_chef_${action}` });
+            } catch (e) { logger.error("Error sending chef cancellation SMS:", e); }
+        }
+
+        // Email to manager
+        const notificationEmailAddress = booking.notificationEmail || (manager ? (manager.username || null) : null);
+        if (notificationEmailAddress) {
+            try {
+                const managerEmail = generateBookingCancellationNotificationEmail({
+                    managerEmail: notificationEmailAddress,
+                    chefName: chef.username || 'Chef',
+                    kitchenName: kitchen.name || 'Kitchen',
+                    bookingDate: booking.bookingDate?.toISOString() || '',
+                    startTime: booking.startTime,
+                    endTime: booking.endTime,
+                    cancellationReason: managerReason,
+                });
+                await sendEmail(managerEmail);
+                logger.info(`✅ Booking ${action} notification email sent to manager: ${notificationEmailAddress}`);
+            } catch (e) { logger.error("Error sending manager cancellation email:", e); }
+        }
+
+        // SMS to manager
+        if (booking.managerId) {
+            try {
+                const managerPhone = await getManagerPhone({ managerId: booking.managerId, managerPhone: null } as any, booking.managerId, pool!);
+                if (managerPhone) {
+                    const smsMessage = generateManagerBookingCancellationSMS({
+                        chefName: chef.username || 'Chef',
+                        kitchenName: kitchen.name || 'Kitchen',
+                        bookingDate: booking.bookingDate?.toISOString() || '',
+                        startTime: booking.startTime,
+                        endTime: booking.endTime,
+                    });
+                    await sendSMS(managerPhone, smsMessage, { trackingId: `booking_${bookingId}_manager_${action}` });
+                }
+            } catch (e) { logger.error("Error sending manager cancellation SMS:", e); }
+        }
+
+        // In-app notification for manager (cancellation requests need attention)
+        if (isCancellationRequest && booking.managerId) {
+            try {
+                await notificationService.create({
+                    userId: booking.managerId,
+                    target: 'manager',
+                    type: 'booking_cancellation_request',
+                    title: 'Cancellation Request',
+                    message: `${chef.username || 'A chef'} has requested to cancel their booking at ${kitchen.name || 'your kitchen'}.`,
+                    metadata: { bookingId, chefId: booking.chefId },
+                });
+            } catch (e) { logger.error("Error creating in-app notification:", e); }
+        }
+    } catch (error) {
+        logger.error(`[sendCancellationNotifications] Error for booking ${bookingId}:`, error);
+    }
+}
 
 
 

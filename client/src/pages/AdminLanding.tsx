@@ -4,12 +4,54 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import GradientHero from "@/components/ui/GradientHero";
 import FadeInSection from "@/components/ui/FadeInSection";
-import { Shield, Users, FileCheck, Settings, BarChart3, Lock } from "lucide-react";
+import { Shield, Users, FileCheck, Settings, BarChart3, Lock, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
 
 export default function AdminLanding() {
   const [, setLocation] = useLocation();
+  const { user: firebaseUser, loading: firebaseLoading } = useFirebaseAuth();
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  // If Firebase user exists, redirect to /admin (AdminProtectedRoute handles role check)
+  useEffect(() => {
+    if (firebaseLoading) return;
+
+    if (firebaseUser) {
+      // Verify they're actually an admin before redirecting
+      const checkAdmin = async () => {
+        try {
+          const currentFirebaseUser = auth.currentUser;
+          if (!currentFirebaseUser) {
+            setIsCheckingAuth(false);
+            return;
+          }
+          const token = await currentFirebaseUser.getIdToken();
+          const response = await fetch("/api/user/profile", {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          if (response.ok) {
+            const profile = await response.json();
+            if (profile?.role === 'admin') {
+              setLocation('/admin');
+              return;
+            }
+          }
+        } catch (e) {
+          console.error('Admin check failed:', e);
+        }
+        setIsCheckingAuth(false);
+      };
+      checkAdmin();
+    } else {
+      setIsCheckingAuth(false);
+    }
+  }, [firebaseUser, firebaseLoading, setLocation]);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -27,6 +69,18 @@ export default function AdminLanding() {
     }
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
+
+  // Show loading while checking auth
+  if (isCheckingAuth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-2" />
+          <p className="text-sm text-gray-600">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">

@@ -45,9 +45,9 @@ export default function ManagerBookingLayout({
         return name.slice(0, 2).toUpperCase()
     }
 
-    // Handle view change - navigate back to dashboard
-    const handleViewChange = (_view: string) => {
-        navigate("/manager/dashboard")
+    // Handle view change - navigate to dashboard with correct view
+    const handleViewChange = (view: string) => {
+        navigate(`/manager/dashboard?view=${view}`)
     }
 
     return (

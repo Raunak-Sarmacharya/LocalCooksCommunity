@@ -648,6 +648,20 @@ export async function processManagerDecision(decision: ManagerPenaltyDecision): 
     finalPenaltyCents: updateData.finalPenaltyCents,
   });
 
+  // ENTERPRISE STANDARD: Auto-complete the storage booking when penalty is waived.
+  // The booking has expired and the manager has waived the penalty — it should no longer show as "Active".
+  if (action === 'waive') {
+    try {
+      await db
+        .update(storageBookings)
+        .set({ status: 'completed', updatedAt: new Date() })
+        .where(eq(storageBookings.id, record.storageBookingId));
+      logger.info(`[OverstayService] Auto-completed storage booking ${record.storageBookingId} after penalty waived`);
+    } catch (completeError) {
+      logger.error(`[OverstayService] Failed to auto-complete booking ${record.storageBookingId}:`, completeError as object);
+    }
+  }
+
   return { success: true };
 }
 
@@ -1065,6 +1079,20 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
         logger.error(`[OverstayService] Error sending in-app notifications for charge:`, notifError);
       }
 
+      // ENTERPRISE STANDARD: Auto-complete the storage booking after penalty is settled.
+      // The booking has expired and the overstay penalty is paid — it should no longer show as "Active".
+      // Industry standard: once overstay is settled, the unit is marked vacated/completed.
+      try {
+        await db
+          .update(storageBookings)
+          .set({ status: 'completed', updatedAt: new Date() })
+          .where(eq(storageBookings.id, record.storageBookingId));
+        logger.info(`[OverstayService] Auto-completed storage booking ${record.storageBookingId} after penalty charge succeeded`);
+      } catch (completeError) {
+        logger.error(`[OverstayService] Failed to auto-complete booking ${record.storageBookingId}:`, completeError as object);
+        // Non-blocking — penalty charge succeeded, booking completion is best-effort
+      }
+
       return { 
         success: true, 
         paymentIntentId: paymentIntent.id,
@@ -1366,6 +1394,21 @@ export async function resolveOverstay(
     { resolutionType, resolutionNotes },
     resolvedBy
   );
+
+  // ENTERPRISE STANDARD: Auto-complete the storage booking when overstay is resolved via 'removed'.
+  // 'removed' means the chef has vacated the unit — booking should no longer show as "Active".
+  // 'extended' keeps the booking active (new end date was applied by the extension flow).
+  if (resolutionType === 'removed') {
+    try {
+      await db
+        .update(storageBookings)
+        .set({ status: 'completed', updatedAt: new Date() })
+        .where(eq(storageBookings.id, record.storageBookingId));
+      logger.info(`[OverstayService] Auto-completed storage booking ${record.storageBookingId} after overstay resolved (items removed)`);
+    } catch (completeError) {
+      logger.error(`[OverstayService] Failed to auto-complete booking ${record.storageBookingId}:`, completeError as object);
+    }
+  }
 
   return { success: true };
 }

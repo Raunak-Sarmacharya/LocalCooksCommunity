@@ -246,14 +246,21 @@ export default function ApplicantDashboard() {
     });
   }, [bookings, kitchens]);
 
-  // Handle cancel booking
-  const handleCancelBooking = (bookingId: number) => {
-    cancelBookingMutation.mutate(bookingId, {
-      onSuccess: () => {
-        toast({
-          title: "Booking Cancelled",
-          description: "Your booking has been cancelled successfully.",
-        });
+  // Handle cancel booking (or request cancellation for confirmed+paid)
+  const handleCancelBooking = (bookingId: number, reason?: string) => {
+    cancelBookingMutation.mutate({ bookingId, reason }, {
+      onSuccess: (data: any) => {
+        if (data?.action === 'cancellation_requested') {
+          toast({
+            title: "Cancellation Request Submitted",
+            description: "Your cancellation request has been sent to the kitchen manager for review.",
+          });
+        } else {
+          toast({
+            title: "Booking Cancelled",
+            description: "Your booking has been cancelled successfully.",
+          });
+        }
       },
       onError: (error: any) => {
         toast({

@@ -947,6 +947,367 @@ router.get(
   },
 );
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CHEF CANCELLATION REQUEST — MANAGER ACCEPT / DECLINE
+// ═══════════════════════════════════════════════════════════════════════════
+// When a chef requests cancellation of a confirmed+paid booking, the manager
+// reviews and either accepts (cancels the booking — refund via Issue Refund)
+// or declines (reverts booking to confirmed).
+// ═══════════════════════════════════════════════════════════════════════════
+router.put(
+  "/bookings/:id/cancellation-request",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const bookingId = parseInt(req.params.id);
+      const { action } = req.body || {}; // 'accept' or 'decline'
+
+      if (isNaN(bookingId) || bookingId <= 0) {
+        return res.status(400).json({ error: "Invalid booking ID" });
+      }
+
+      if (!action || !["accept", "decline"].includes(action)) {
+        return res
+          .status(400)
+          .json({ error: 'Action must be "accept" or "decline"' });
+      }
+
+      const { kitchenBookings } = await import("@shared/schema");
+
+      // Fetch booking and verify it belongs to this manager's location
+      const [booking] = await db
+        .select({
+          id: kitchenBookings.id,
+          status: kitchenBookings.status,
+          kitchenId: kitchenBookings.kitchenId,
+          chefId: kitchenBookings.chefId,
+          paymentStatus: kitchenBookings.paymentStatus,
+          cancellationRequestReason: kitchenBookings.cancellationRequestReason,
+        })
+        .from(kitchenBookings)
+        .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .where(
+          and(
+            eq(kitchenBookings.id, bookingId),
+            eq(locations.managerId, managerId),
+          ),
+        )
+        .limit(1);
+
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+
+      if (booking.status !== "cancellation_requested") {
+        return res.status(400).json({
+          error: `Booking is not in cancellation_requested status. Current: ${booking.status}`,
+        });
+      }
+
+      if (action === "accept") {
+        // Accept: Cancel the booking + cascade to all associated storage/equipment.
+        // Manager then uses the existing "Issue Refund" action to process the refund.
+        await db
+          .update(kitchenBookings)
+          .set({ status: "cancelled", updatedAt: new Date() })
+          .where(eq(kitchenBookings.id, bookingId));
+
+        // ── CASCADE: Cancel associated storage & equipment bookings ──────────
+        // When the entire kitchen booking is cancelled, all bundled items must follow.
+        try {
+          const { storageBookings: sbTable, equipmentBookings: ebTable } = await import("@shared/schema");
+          await db.update(sbTable)
+            .set({ status: "cancelled", updatedAt: new Date() })
+            .where(and(eq(sbTable.kitchenBookingId, bookingId), ne(sbTable.status, "cancelled")));
+          await db.update(ebTable)
+            .set({ status: "cancelled", updatedAt: new Date() })
+            .where(and(eq(ebTable.kitchenBookingId, bookingId), ne(ebTable.status, "cancelled")));
+        } catch (cascadeErr: any) {
+          logger.warn(`[Cancellation Request] Cascade cancel failed for booking ${bookingId}:`, cascadeErr);
+        }
+
+        // ── JSONB SYNC: Mark all items as rejected in JSONB for table display ──
+        try {
+          const [currentKb] = await db
+            .select({ storageItems: kitchenBookings.storageItems, equipmentItems: kitchenBookings.equipmentItems })
+            .from(kitchenBookings)
+            .where(eq(kitchenBookings.id, bookingId));
+          if (currentKb) {
+            const updatedStorage = (Array.isArray(currentKb.storageItems) ? currentKb.storageItems : [])
+              .map((item: any) => ({ ...item, rejected: true, status: 'cancelled', cancellationRequested: false }));
+            const updatedEquip = (Array.isArray(currentKb.equipmentItems) ? currentKb.equipmentItems : [])
+              .map((item: any) => ({ ...item, rejected: true }));
+            await db.update(kitchenBookings)
+              .set({ storageItems: updatedStorage, equipmentItems: updatedEquip, updatedAt: new Date() })
+              .where(eq(kitchenBookings.id, bookingId));
+          }
+        } catch (jsonbErr: any) {
+          logger.warn(`[Cancellation Request] JSONB sync failed for booking ${bookingId}:`, jsonbErr);
+        }
+
+        // Notify chef that cancellation was accepted
+        try {
+          const chef = booking.chefId
+            ? await userService.getUser(booking.chefId)
+            : null;
+          if (chef) {
+            const { notificationService } = await import(
+              "../services/notification.service"
+            );
+            await notificationService.create({
+              userId: booking.chefId!,
+              target: 'chef',
+              type: "booking_cancellation_accepted",
+              title: "Cancellation Accepted",
+              message:
+                "Your booking cancellation request has been accepted. A refund will be processed shortly.",
+              metadata: { bookingId },
+            });
+          }
+        } catch (notifError) {
+          console.error(
+            "[Cancellation Request] Notification error:",
+            notifError,
+          );
+        }
+
+        return res.json({
+          success: true,
+          action: "accepted",
+          message:
+            'Cancellation accepted. Use "Issue Refund" to process the refund.',
+          requiresRefund: true,
+        });
+      }
+
+      if (action === "decline") {
+        // Decline: Revert booking back to confirmed
+        await db
+          .update(kitchenBookings)
+          .set({
+            status: "confirmed",
+            cancellationRequestDeclinedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(kitchenBookings.id, bookingId));
+
+        // Notify chef that cancellation was declined
+        try {
+          if (booking.chefId) {
+            const { notificationService } = await import(
+              "../services/notification.service"
+            );
+            await notificationService.create({
+              userId: booking.chefId,
+              target: 'chef',
+              type: "booking_cancellation_declined",
+              title: "Cancellation Declined",
+              message:
+                "Your booking cancellation request was declined by the kitchen manager. Your booking remains confirmed.",
+              metadata: { bookingId },
+            });
+          }
+        } catch (notifError) {
+          console.error(
+            "[Cancellation Request] Notification error:",
+            notifError,
+          );
+        }
+
+        return res.json({
+          success: true,
+          action: "declined",
+          message: "Cancellation request declined. Booking remains confirmed.",
+        });
+      }
+    } catch (error) {
+      console.error("[Cancellation Request] Error:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MANAGER: Accept / Decline STORAGE Cancellation Request
+// ═══════════════════════════════════════════════════════════════════════════
+// Mirrors the kitchen booking cancellation request pattern.
+// Accept → status = 'cancelled', manager then uses Issue Refund to process refund.
+// Decline → status reverted to 'confirmed'.
+// ═══════════════════════════════════════════════════════════════════════════
+router.put(
+  "/storage-bookings/:id/cancellation-request",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const storageBookingId = parseInt(req.params.id);
+      const { action } = req.body;
+
+      if (isNaN(storageBookingId) || storageBookingId <= 0) {
+        return res.status(400).json({ error: "Invalid storage booking ID" });
+      }
+      if (!action || !["accept", "decline"].includes(action)) {
+        return res
+          .status(400)
+          .json({ error: 'Invalid action. Must be "accept" or "decline".' });
+      }
+
+      const {
+        storageBookings: storageBookingsTable,
+        storageListings,
+      } = await import("@shared/schema");
+
+      // Fetch storage booking with location verification
+      // Join path: storageBookings → storageListings → kitchens → locations
+      const rows = await db
+        .select({
+          id: storageBookingsTable.id,
+          status: storageBookingsTable.status,
+          chefId: storageBookingsTable.chefId,
+          kitchenBookingId: storageBookingsTable.kitchenBookingId,
+          cancellationRequestReason:
+            storageBookingsTable.cancellationRequestReason,
+          locationId: locations.id,
+          managerId: locations.managerId,
+        })
+        .from(storageBookingsTable)
+        .innerJoin(
+          storageListings,
+          eq(storageBookingsTable.storageListingId, storageListings.id),
+        )
+        .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .where(eq(storageBookingsTable.id, storageBookingId))
+        .limit(1);
+
+      if (rows.length === 0) {
+        return res
+          .status(404)
+          .json({ error: "Storage booking not found" });
+      }
+
+      const booking = rows[0];
+
+      // Verify this manager owns the location
+      if (booking.managerId !== req.neonUser!.id) {
+        return res
+          .status(403)
+          .json({ error: "You don't have permission to manage this storage booking" });
+      }
+
+      if (booking.status !== "cancellation_requested") {
+        return res.status(400).json({
+          error: `Cannot process cancellation request — booking status is "${booking.status}", not "cancellation_requested".`,
+        });
+      }
+
+      if (action === "accept") {
+        await db
+          .update(storageBookingsTable)
+          .set({
+            status: "cancelled",
+            updatedAt: new Date(),
+          })
+          .where(eq(storageBookingsTable.id, storageBookingId));
+
+        // Sync JSONB on parent kitchen booking
+        try {
+          const { syncStorageItemStatusInKitchenBooking } = await import("./bookings");
+          await syncStorageItemStatusInKitchenBooking(storageBookingId, "cancelled");
+        } catch (syncErr) {
+          console.error("[Storage Cancellation] JSONB sync error:", syncErr);
+        }
+
+        // Notify chef
+        try {
+          if (booking.chefId) {
+            const { notificationService } = await import(
+              "../services/notification.service"
+            );
+            await notificationService.create({
+              userId: booking.chefId,
+              target: "chef",
+              type: "booking_cancellation_accepted",
+              title: "Storage Cancellation Accepted",
+              message:
+                "Your storage cancellation request has been accepted. A refund will be processed shortly.",
+              metadata: { storageBookingId },
+            });
+          }
+        } catch (notifError) {
+          console.error(
+            "[Storage Cancellation Request] Notification error:",
+            notifError,
+          );
+        }
+
+        return res.json({
+          success: true,
+          action: "accepted",
+          message:
+            'Storage cancellation accepted. Use "Issue Refund" to process the refund.',
+          requiresRefund: true,
+        });
+      }
+
+      if (action === "decline") {
+        await db
+          .update(storageBookingsTable)
+          .set({
+            status: "confirmed",
+            cancellationRequestDeclinedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(storageBookingsTable.id, storageBookingId));
+
+        // Sync JSONB on parent kitchen booking
+        try {
+          const { syncStorageItemStatusInKitchenBooking } = await import("./bookings");
+          await syncStorageItemStatusInKitchenBooking(storageBookingId, "confirmed");
+        } catch (syncErr) {
+          console.error("[Storage Cancellation] JSONB sync error:", syncErr);
+        }
+
+        // Notify chef
+        try {
+          if (booking.chefId) {
+            const { notificationService } = await import(
+              "../services/notification.service"
+            );
+            await notificationService.create({
+              userId: booking.chefId,
+              target: "chef",
+              type: "booking_cancellation_declined",
+              title: "Storage Cancellation Declined",
+              message:
+                "Your storage cancellation request was declined by the kitchen manager. Your storage booking remains confirmed.",
+              metadata: { storageBookingId },
+            });
+          }
+        } catch (notifError) {
+          console.error(
+            "[Storage Cancellation Request] Notification error:",
+            notifError,
+          );
+        }
+
+        return res.json({
+          success: true,
+          action: "declined",
+          message:
+            "Storage cancellation request declined. Booking remains confirmed.",
+        });
+      }
+    } catch (error) {
+      console.error("[Storage Cancellation Request] Error:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
 /**
  * ENTERPRISE-GRADE REFUND ENDPOINT
  *
@@ -3065,6 +3426,10 @@ router.get(
             status: paymentTransactions.status,
             stripeProcessingFee: paymentTransactions.stripeProcessingFee,
             paidAt: paymentTransactions.paidAt,
+            refundAmount: paymentTransactions.refundAmount,
+            netAmount: paymentTransactions.netAmount,
+            refundedAt: paymentTransactions.refundedAt,
+            refundReason: paymentTransactions.refundReason,
           })
           .from(paymentTransactions)
           .where(
@@ -3090,6 +3455,10 @@ router.get(
             stripeProcessingFee: txn.stripeProcessingFee
               ? parseFloat(txn.stripeProcessingFee)
               : null,
+            refundAmount: txn.refundAmount ? parseFloat(txn.refundAmount) : 0,
+            netAmount: txn.netAmount ? parseFloat(txn.netAmount) : null,
+            refundedAt: txn.refundedAt || null,
+            refundReason: txn.refundReason || null,
           };
         }
       } catch (err) {
@@ -3147,10 +3516,11 @@ router.put(
     try {
       const user = req.neonUser!;
       const id = parseInt(req.params.id);
-      const { status, storageActions, equipmentActions } = req.body;
+      const { status, storageActions, equipmentActions, refundOnCancel } = req.body;
       // storageActions is an optional array of { storageBookingId: number, action: 'confirmed' | 'cancelled' }
       // equipmentActions is an optional array of { equipmentBookingId: number, action: 'confirmed' | 'cancelled' }
       // When provided, each booking is handled individually instead of inheriting the kitchen booking status
+      // refundOnCancel: boolean — when true + cancellation of confirmed booking, triggers auto-refund via the unified refund engine
 
       if (!["confirmed", "cancelled", "pending"].includes(status)) {
         return res
@@ -3675,10 +4045,13 @@ router.put(
         }
       }
 
-      // Only auto-refund for transitions FROM pending with CAPTURED payments (rejections/partial approvals)
-      // Cancellations of confirmed bookings require manual "Issue Refund" from Revenue Dashboard
+      // Auto-refund for:
+      //   1. Transitions FROM pending with CAPTURED payments (rejections/partial approvals)
+      //   2. Cancellations of confirmed bookings when refundOnCancel=true (Cancel & Refund action)
       // NOTE: Authorized payments are handled above via cancelPaymentIntent (no refund needed)
-      if (isFromPending && hasValidPayment && !isCancellation) {
+      const shouldAutoRefund = (isFromPending && hasValidPayment && !isCancellation) ||
+        (isCancellation && refundOnCancel && hasValidPayment);
+      if (shouldAutoRefund) {
         try {
           const { reverseTransferAndRefund } = await import(
             "../services/stripe-service"
@@ -3966,6 +4339,51 @@ router.put(
         }
       }
 
+      // ═══════════════════════════════════════════════════════════════════════════
+      // JSONB SYNC: Ensure cancelled items are marked in JSONB for table view
+      // ═══════════════════════════════════════════════════════════════════════════
+      // The Partial Capture Engine and Unified Refund Engine handle their own JSONB
+      // updates, but cancel-without-refund and partial-cancel paths skip those blocks.
+      // This universal sync ensures JSONB is ALWAYS accurate for the bookings table.
+      // ═══════════════════════════════════════════════════════════════════════════
+      const cancelledStorageIdsFromActions = new Set(
+        storageActionResults.filter(r => r.action === 'cancelled').map(r => r.storageBookingId)
+      );
+      const cancelledEquipmentIdsFromActions = new Set(
+        equipmentActionResults.filter(r => r.action === 'cancelled').map(r => r.equipmentBookingId)
+      );
+      if (cancelledStorageIdsFromActions.size > 0 || cancelledEquipmentIdsFromActions.size > 0) {
+        try {
+          // Re-read current JSONB from DB (may have been updated by auto-refund or capture engine)
+          const [currentBookingJsonb] = await db
+            .select({ storageItems: kitchenBookings.storageItems, equipmentItems: kitchenBookings.equipmentItems })
+            .from(kitchenBookings)
+            .where(eq(kitchenBookings.id, id));
+          if (currentBookingJsonb) {
+            const curStorage: any[] = Array.isArray(currentBookingJsonb.storageItems) ? currentBookingJsonb.storageItems : [];
+            const curEquip: any[] = Array.isArray(currentBookingJsonb.equipmentItems) ? currentBookingJsonb.equipmentItems : [];
+            const needsStorageUpdate = curStorage.some((item: any) => cancelledStorageIdsFromActions.has(item.id) && !item.rejected);
+            const needsEquipmentUpdate = curEquip.some((item: any) => cancelledEquipmentIdsFromActions.has(item.id) && !item.rejected);
+            if (needsStorageUpdate || needsEquipmentUpdate) {
+              const updatedStorage = curStorage.map((item: any) =>
+                cancelledStorageIdsFromActions.has(item.id) ? { ...item, rejected: true } : item
+              );
+              const updatedEquip = curEquip.map((item: any) =>
+                cancelledEquipmentIdsFromActions.has(item.id) ? { ...item, rejected: true } : item
+              );
+              await db
+                .update(kitchenBookings)
+                .set({ storageItems: updatedStorage, equipmentItems: updatedEquip, updatedAt: new Date() })
+                .where(eq(kitchenBookings.id, id));
+              logger.info(`[Manager] JSONB sync: marked ${cancelledStorageIdsFromActions.size} storage + ${cancelledEquipmentIdsFromActions.size} equipment as rejected in JSONB for booking ${id}`);
+            }
+          }
+        } catch (jsonbSyncErr: any) {
+          logger.warn(`[Manager] JSONB sync failed for booking ${id}:`, jsonbSyncErr);
+          // Non-fatal — table view may show stale data but relational data is correct
+        }
+      }
+
       // Send email notifications based on status change
       try {
         // Get chef details
@@ -4159,11 +4577,16 @@ router.put(
         responseData.authorizationVoided = true;
         responseData.message =
           "Booking rejected — payment hold released. No charge was made.";
-      } else if (isCancellation) {
-        // Cancellation of confirmed booking - no auto-refund
+      } else if (isCancellation && !refundOnCancel) {
+        // Cancellation of confirmed booking without refund - manual refund needed
         responseData.requiresManualRefund = true;
         responseData.message =
           "Booking cancelled. Use 'Issue Refund' to process refund manually.";
+      } else if (isCancellation && refundOnCancel && !refundResult) {
+        // Cancel & Refund was requested but refund failed or wasn't processed
+        responseData.requiresManualRefund = true;
+        responseData.message =
+          "Booking cancelled but refund could not be processed automatically. Use 'Issue Refund' to process manually.";
       }
 
       res.json(responseData);
@@ -5660,6 +6083,42 @@ router.post(
           extensionDays: extension.extensionDays,
         },
       );
+
+      // INDUSTRY STANDARD: Auto-resolve any active overstay records for this booking
+      // When a storage extension is approved, the endDate moves forward, resolving the overstay.
+      // Without this, stale overstay records linger and block the chef via requireNoUnpaidPenalties.
+      try {
+        const { storageOverstayRecords } = await import("@shared/schema");
+        const activeOverstays = await db
+          .select({ id: storageOverstayRecords.id })
+          .from(storageOverstayRecords)
+          .where(
+            and(
+              eq(storageOverstayRecords.storageBookingId, extension.storageBookingId),
+              inArray(storageOverstayRecords.status, ['detected', 'grace_period', 'pending_review'])
+            )
+          );
+
+        if (activeOverstays.length > 0) {
+          for (const overstay of activeOverstays) {
+            await overstayPenaltyService.resolveOverstay(
+              overstay.id,
+              'extended',
+              `Auto-resolved: storage extension ${extensionId} approved by manager ${managerId}. New end date: ${extension.newEndDate.toISOString()}`,
+              managerId,
+            );
+          }
+          logger.info(
+            `[Manager] Auto-resolved ${activeOverstays.length} overstay record(s) for storage booking ${extension.storageBookingId} after extension approval`,
+          );
+        }
+      } catch (overstayError) {
+        // Non-blocking: extension is approved regardless
+        logger.warn(
+          `[Manager] Failed to auto-resolve overstay records after extension approval:`,
+          overstayError as object,
+        );
+      }
 
       // Send notification to chef about approval
       try {

@@ -67,12 +67,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { DEFAULT_TIMEZONE, isBookingPast } from "@/utils/timezone-utils"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { StorageExtensionDialog } from "./StorageExtensionDialog"
 import { StorageCheckoutDialog } from "./StorageCheckoutDialog"
 import { CheckoutStatusTracker } from "./CheckoutStatusTracker"
 import { ExpiringStorageNotification } from "./ExpiringStorageNotification"
 import { PendingOverstayPenalties } from "../chef/PendingOverstayPenalties"
+import { CancellationRequestSheet, type CancellationTarget } from "./CancellationRequestSheet"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
 import { format, differenceInDays } from "date-fns"
@@ -87,7 +88,7 @@ interface Booking {
   startTime: string
   endTime: string
   selectedSlots?: Array<string | { startTime: string; endTime: string }>
-  status: "pending" | "confirmed" | "cancelled" | "completed"
+  status: "pending" | "confirmed" | "cancelled" | "completed" | "cancellation_requested"
   specialNotes?: string
   createdAt: string
   updatedAt: string
@@ -106,6 +107,8 @@ interface Booking {
   isVoidedAuthorization?: boolean  // true when PT canceled before capture — $0 charged
   isAuthorizedHold?: boolean       // true when payment held but not yet captured
   originalAuthorizedAmount?: number // Original auth amount for voided display context (cents)
+  refundAmount?: number            // Actual refund amount in cents (from PT)
+  cancellationRequestedAt?: string
 }
 
 interface StorageBooking {
@@ -119,9 +122,11 @@ interface StorageBooking {
   startDate: string
   endDate: string
   status: string
+  paymentStatus?: string
   checkoutStatus?: string
   checkoutRequestedAt?: string
   checkoutApprovedAt?: string
+  cancellationRequestedAt?: string
   totalPrice?: number
   serviceFee?: number
   basePrice?: number
@@ -143,11 +148,11 @@ interface EquipmentBooking {
 interface ChefBookingsViewProps {
   bookings: Booking[]
   isLoading: boolean
-  onCancelBooking: (bookingId: number) => void
+  onCancelBooking: (bookingId: number, reason?: string) => void
   kitchens?: Array<{ id: number; name: string; locationName?: string }>
 }
 
-type FilterType = "all" | "pending" | "confirmed" | "cancelled" | "completed"
+type FilterType = "all" | "pending" | "confirmed" | "cancelled" | "completed" | "cancellation_requested"
 type ViewType = "upcoming" | "past" | "all"
 
 // Helper functions
@@ -239,7 +244,7 @@ const getTimeUntilBooking = (bookingDateTime: Date, now: Date) => {
 }
 
 const canCancelBooking = (booking: Booking, now: Date): boolean => {
-  if (booking.status === 'cancelled' || booking.status === 'completed') return false
+  if (booking.status === 'cancelled' || booking.status === 'completed' || booking.status === 'cancellation_requested') return false
 
   try {
     const dateStr = booking.bookingDate?.split('T')[0] || booking.bookingDate
@@ -305,18 +310,49 @@ const getChefBookingColumns = ({
       let variant: "default" | "secondary" | "destructive" | "outline" = "outline"
       let icon = null
       let className = ""
+      let label = status as string
 
       if (status === 'confirmed') {
         variant = "default"
         icon = <CheckCircle className="h-3 w-3 mr-1" />
         className = "bg-green-600 hover:bg-green-700"
+        label = "Confirmed"
       } else if (status === 'cancelled') {
-        variant = "destructive"
-        icon = <XCircle className="h-3 w-3 mr-1" />
+        // Industry standard: distinguish by cause
+        if (booking.paymentStatus === 'failed' || booking.isVoidedAuthorization) {
+          // Payment auth expired or voided — never charged
+          variant = "outline"
+          icon = <Clock className="h-3 w-3 mr-1" />
+          className = "bg-gray-100 text-gray-600 border-gray-300"
+          label = "Expired"
+        } else if (booking.cancellationRequestedAt) {
+          // Chef requested cancellation, manager accepted
+          variant = "outline"
+          icon = <XCircle className="h-3 w-3 mr-1" />
+          className = "bg-gray-100 text-gray-600 border-gray-300"
+          label = "Cancelled"
+        } else if (booking.paymentStatus === 'refunded') {
+          // Cancelled and fully refunded
+          variant = "outline"
+          icon = <XCircle className="h-3 w-3 mr-1" />
+          className = "bg-gray-100 text-gray-600 border-gray-300"
+          label = "Refunded"
+        } else {
+          // Manager declined the booking
+          variant = "destructive"
+          icon = <XCircle className="h-3 w-3 mr-1" />
+          label = "Declined"
+        }
+      } else if (status === 'cancellation_requested') {
+        variant = "secondary"
+        icon = <Clock className="h-3 w-3 mr-1" />
+        className = "bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200"
+        label = "Cancellation Pending"
       } else {
         variant = "secondary"
         icon = <Clock className="h-3 w-3 mr-1" />
         className = "bg-yellow-100 text-yellow-800 border-yellow-300 hover:bg-yellow-200"
+        label = "Pending Approval"
       }
 
       let timeBadge = null
@@ -356,9 +392,9 @@ const getChefBookingColumns = ({
       return (
         <div className="flex flex-col gap-1">
           <div className="flex items-center">
-            <Badge variant={variant} className={cn("capitalize items-center flex w-fit text-xs", className)}>
+            <Badge variant={variant} className={cn("items-center flex w-fit text-xs", className)}>
               {icon}
-              {status}
+              {label}
             </Badge>
             {timeBadge}
           </div>
@@ -380,19 +416,25 @@ const getChefBookingColumns = ({
           {!isVoided && rejectedStorageCount > 0 && (
             <div className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded w-fit">
               <Package className="h-2.5 w-2.5" />
-              {rejectedStorageCount} storage rejected
+              {rejectedStorageCount} storage declined
             </div>
           )}
           {!isVoided && rejectedEquipmentCount > 0 && (
             <div className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded w-fit">
               <Package className="h-2.5 w-2.5" />
-              {rejectedEquipmentCount} equipment rejected
+              {rejectedEquipmentCount} equipment declined
             </div>
           )}
           {pendingStorageCount > 0 && status === 'confirmed' && (
             <div className="flex items-center gap-1 text-[10px] text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded w-fit">
               <Package className="h-2.5 w-2.5" />
               {pendingStorageCount} storage pending
+            </div>
+          )}
+          {status === 'cancelled' && booking.paymentStatus === 'partially_refunded' && (
+            <div className="flex items-center gap-1 text-[10px] text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200 w-fit">
+              <AlertTriangle className="h-2.5 w-2.5" />
+              Partial refund
             </div>
           )}
         </div>
@@ -547,6 +589,70 @@ const getChefBookingColumns = ({
       }
 
       // ── CAPTURED / DEFAULT ─────────────────────────────────────────────
+      const refundAmount = row.original.refundAmount ?? 0
+      const hasRefund = refundAmount > 0
+      const isCancelled = row.original.status === 'cancelled'
+      const isRefunded = paymentStatus === 'refunded'
+
+      // Cancelled + refunded: show original charge struck through + refund amount
+      if (isCancelled && hasRefund) {
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-right cursor-help">
+                  <div className="font-medium text-sm text-muted-foreground line-through">{formatPrice(totalPrice)}</div>
+                  <div className="text-xs text-orange-600">Refunded: {formatPrice(refundAmount)}</div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium text-orange-700">{isRefunded ? 'Fully Refunded' : 'Partially Refunded'}</p>
+                  <div className="flex justify-between gap-4 text-muted-foreground">
+                    <span>Original Charge:</span>
+                    <span className="font-mono line-through">{formatPrice(totalPrice)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4 font-semibold text-green-600">
+                    <span>Refunded to You:</span>
+                    <span>{formatPrice(refundAmount)}</span>
+                  </div>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )
+      }
+
+      // Active booking + partial refund (e.g., some addons cancelled)
+      if (!isCancelled && hasRefund) {
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-right cursor-help">
+                  <div className="font-medium text-sm">{formatPrice(totalPrice)}</div>
+                  <div className="text-xs text-amber-600">Refund: {formatPrice(refundAmount)}</div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium text-amber-700">Partial Refund Issued</p>
+                  <div className="flex justify-between gap-4">
+                    <span>Total Charged:</span>
+                    <span className="font-medium font-mono">{formatPrice(totalPrice)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4 text-green-600">
+                    <span>Refunded to You:</span>
+                    <span>{formatPrice(refundAmount)}</span>
+                  </div>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )
+      }
+
+      // Default: no refund
       const statusLabel = paymentStatus === 'paid' ? 'Paid'
         : paymentStatus === 'refunded' ? 'Refunded'
         : paymentStatus === 'partially_refunded' ? 'Partial Refund'
@@ -625,18 +731,22 @@ const getChefBookingColumns = ({
               </DropdownMenuItem>
             )}
 
-            {showCancel && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => onCancelBooking(booking.id)}
-                  className="text-destructive focus:text-destructive"
-                >
-                  <Ban className="h-4 w-4 mr-2" />
-                  Cancel Booking
-                </DropdownMenuItem>
-              </>
-            )}
+            {showCancel && (() => {
+              const isConfirmedPaid = booking.status === 'confirmed' &&
+                (booking.paymentStatus === 'paid' || booking.paymentStatus === 'partially_refunded')
+              return (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => onCancelBooking(booking.id)}
+                    className={isConfirmedPaid ? "text-amber-600 focus:text-amber-700" : "text-destructive focus:text-destructive"}
+                  >
+                    <Ban className="h-4 w-4 mr-2" />
+                    {isConfirmedPaid ? "Request Cancellation" : "Cancel Booking"}
+                  </DropdownMenuItem>
+                </>
+              )
+            })()}
           </DropdownMenuContent>
         </DropdownMenu>
       )
@@ -650,6 +760,7 @@ interface StorageBookingColumnsProps {
   onDownloadInvoice: (storageBookingId: number) => void | Promise<void>
   onCheckout: (storageBookingId: number) => void
   onViewCheckoutStatus: (storageBookingId: number) => void
+  onCancelStorage: (storageBookingId: number) => void
   downloadingInvoiceId: number | null
   now: Date
 }
@@ -659,6 +770,7 @@ const getStorageBookingColumns = ({
   onDownloadInvoice,
   onCheckout,
   onViewCheckoutStatus,
+  onCancelStorage,
   downloadingInvoiceId,
   now,
 }: StorageBookingColumnsProps): ColumnDef<StorageBooking>[] => [
@@ -766,12 +878,45 @@ const getStorageBookingColumns = ({
             Cleared
           </Badge>
         )
-      // Cancelled bookings — genuinely rejected by manager
+      // Cancelled bookings — distinguish by cause for intuitive labels
+      // Industry standard: Expired (payment failed), Cancelled (chef-initiated), Declined (manager rejected)
+      } else if (status === 'cancelled' && storageBooking.paymentStatus === 'failed') {
+        // Payment auth expired or failed — never charged
+        return (
+          <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300">
+            <Clock className="h-3 w-3 mr-1" />
+            Expired
+          </Badge>
+        )
+      } else if (status === 'cancelled' && storageBooking.cancellationRequestedAt) {
+        // Chef requested cancellation, manager accepted
+        return (
+          <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300">
+            <XCircle className="h-3 w-3 mr-1" />
+            Cancelled
+          </Badge>
+        )
+      } else if (status === 'cancelled' && storageBooking.paymentStatus === 'refunded') {
+        // Cancelled and fully refunded
+        return (
+          <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300">
+            <XCircle className="h-3 w-3 mr-1" />
+            Refunded
+          </Badge>
+        )
       } else if (status === 'cancelled') {
+        // Manager declined the booking (no chef cancellation request, payment was paid)
         return (
           <Badge variant="destructive" className="bg-red-100 text-red-800 border-red-300">
             <XCircle className="h-3 w-3 mr-1" />
-            Rejected
+            Declined
+          </Badge>
+        )
+      } else if (status === 'cancellation_requested') {
+        return (
+          <Badge variant="secondary" className="bg-orange-100 text-orange-800 border-orange-300">
+            <Clock className="h-3 w-3 mr-1" />
+            Cancellation Pending
           </Badge>
         )
       } else if (status === 'pending') {
@@ -824,7 +969,16 @@ const getStorageBookingColumns = ({
       const storageBooking = row.original
       const isDownloading = downloadingInvoiceId === storageBooking.id
       const isConfirmed = storageBooking.status === 'confirmed'
+      const isCompleted = storageBooking.status === 'completed'
+      const isCancellationRequested = storageBooking.status === 'cancellation_requested'
+      const canCancel = (isConfirmed || storageBooking.status === 'pending') && !isCancellationRequested
       const canCheckout = storageBooking.checkoutStatus === 'active'
+      const bookingEndDate = new Date(storageBooking.endDate)
+      bookingEndDate.setHours(0, 0, 0, 0)
+      const todayStart = new Date()
+      todayStart.setHours(0, 0, 0, 0)
+      const isExpired = bookingEndDate < todayStart
+      const canExtend = isConfirmed && canCheckout && !isCompleted && !isExpired
 
       return (
         <DropdownMenu>
@@ -834,7 +988,7 @@ const getStorageBookingColumns = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {isConfirmed && canCheckout && (
+            {canExtend && (
               <DropdownMenuItem onClick={() => onExtend(storageBooking.id)}>
                 <CalendarPlus className="h-4 w-4 mr-2" />
                 Extend Storage
@@ -872,6 +1026,23 @@ const getStorageBookingColumns = ({
                 </DropdownMenuItem>
               </>
             )}
+
+            {canCancel && (() => {
+              const isConfirmedPaid = storageBooking.status === 'confirmed' &&
+                (storageBooking.paymentStatus === 'paid' || storageBooking.paymentStatus === 'partially_refunded')
+              return (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => onCancelStorage(storageBooking.id)}
+                    className={isConfirmedPaid ? "text-amber-600 focus:text-amber-700 focus:bg-amber-50" : "text-red-600 focus:text-red-700 focus:bg-red-50"}
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    {isConfirmedPaid ? "Request Cancellation" : "Cancel Storage"}
+                  </DropdownMenuItem>
+                </>
+              )
+            })()}
           </DropdownMenuContent>
         </DropdownMenu>
       )
@@ -894,6 +1065,7 @@ export default function ChefBookingsView({
   const [extendDialogOpen, setExtendDialogOpen] = useState<number | null>(null)
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState<number | null>(null)
   const [checkoutStatusBookingId, setCheckoutStatusBookingId] = useState<number | null>(null)
+  const [cancellationTarget, setCancellationTarget] = useState<CancellationTarget | null>(null)
 
   // TanStack Table state
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }])
@@ -954,11 +1126,6 @@ export default function ChefBookingsView({
 
     bookings.forEach((booking) => {
       if (!booking || !booking.bookingDate || !booking.startTime || !booking.endTime) return
-
-      if (booking.status === 'cancelled') {
-        past.push(booking)
-        return
-      }
 
       try {
         const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
@@ -1033,7 +1200,7 @@ export default function ChefBookingsView({
 
   // Status counts for current view
   const statusCounts = useMemo(() => {
-    const counts = { all: 0, pending: 0, confirmed: 0, cancelled: 0, completed: 0 }
+    const counts = { all: 0, pending: 0, confirmed: 0, cancelled: 0, completed: 0, cancellation_requested: 0 }
     currentViewData.forEach((b) => {
       counts.all++
       if (b.status in counts) counts[b.status as keyof typeof counts]++
@@ -1144,7 +1311,58 @@ export default function ChefBookingsView({
     }
   }
 
+  // ── Cancel Storage Booking mutation ─────────────────────────────────────
+  const queryClient = useQueryClient()
+  const cancelStorageMutation = useMutation({
+    mutationFn: async ({ storageBookingId, reason }: { storageBookingId: number; reason?: string }) => {
+      const headers = await getAuthHeaders()
+      const response = await fetch(`/api/chef/storage-bookings/${storageBookingId}/cancel`, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ reason }),
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to cancel storage booking')
+      }
+      return response.json()
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/chef/storage-bookings'] })
+      if (data?.action === 'cancellation_requested') {
+        toast.success('Cancellation request sent to the kitchen manager for review.')
+      } else {
+        toast.success('Storage booking cancelled successfully.')
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
+  const handleCancelStorage = (storageBookingId: number) => {
+    const sb = (storageBookings as StorageBooking[]).find(s => s.id === storageBookingId)
+    if (!sb) return
+
+    const isConfirmedPaid = sb.status === 'confirmed' &&
+      (sb.paymentStatus === 'paid' || sb.paymentStatus === 'partially_refunded')
+
+    setCancellationTarget({
+      type: "storage",
+      id: storageBookingId,
+      name: sb.storageName || sb.storageType || `Storage #${storageBookingId}`,
+      date: sb.startDate && sb.endDate
+        ? `${format(new Date(sb.startDate), 'MMM d')} – ${format(new Date(sb.endDate), 'MMM d, yyyy')}`
+        : undefined,
+      location: sb.locationName || sb.kitchenName || undefined,
+      tier: isConfirmedPaid ? "request" : "immediate",
+    })
+  }
+
   // Handle cancel with policy check
+  // Tier 1: pending/authorized → immediate cancel prompt
+  // Tier 2: confirmed+paid → cancellation request prompt with reason
   const handleCancel = (bookingId: number) => {
     const booking = bookings.find(b => b.id === bookingId)
     if (!booking) return
@@ -1174,9 +1392,21 @@ export default function ChefBookingsView({
       return
     }
 
-    if (window.confirm("Are you sure you want to cancel this booking? This action cannot be undone.")) {
-      onCancelBooking(bookingId)
-    }
+    // Tier 2: Confirmed + paid bookings → cancellation request with reason
+    const isConfirmedPaid = booking.status === 'confirmed' &&
+      (booking.paymentStatus === 'paid' || booking.paymentStatus === 'partially_refunded')
+
+    const kitchen = kitchens.find(k => k.id === booking.kitchenId)
+    const dateStr2 = booking.bookingDate.split('T')[0]
+
+    setCancellationTarget({
+      type: "kitchen",
+      id: bookingId,
+      name: kitchen?.name || `Kitchen Booking #${bookingId}`,
+      date: format(new Date(dateStr2), 'EEEE, MMM d, yyyy'),
+      location: booking.location?.name || undefined,
+      tier: isConfirmedPaid ? "request" : "immediate",
+    })
   }
 
   // Table columns
@@ -1191,7 +1421,7 @@ export default function ChefBookingsView({
       storageBookings: storageBookings as StorageBooking[],
       equipmentBookings: equipmentBookings as EquipmentBooking[],
     }),
-    [downloadingInvoiceId, now, kitchens, navigate, storageBookings, equipmentBookings]
+    [downloadingInvoiceId, now, kitchens, navigate, storageBookings, equipmentBookings, bookings]
   )
 
   // Storage table columns
@@ -1201,10 +1431,11 @@ export default function ChefBookingsView({
       onDownloadInvoice: handleDownloadStorageInvoice,
       onCheckout: (id) => setCheckoutDialogOpen(id),
       onViewCheckoutStatus: (id) => setCheckoutStatusBookingId(id),
+      onCancelStorage: handleCancelStorage,
       downloadingInvoiceId,
       now,
     }),
-    [downloadingInvoiceId, now]
+    [downloadingInvoiceId, now, storageBookings]
   )
 
   // TanStack Table instance for kitchen bookings
@@ -1246,6 +1477,7 @@ export default function ChefBookingsView({
     confirmed: { variant: "default" as const, className: "bg-green-600 hover:bg-green-700" },
     cancelled: { variant: "destructive" as const, className: "" },
     completed: { variant: "outline" as const, className: "bg-green-50 text-green-700 border-green-200 hover:bg-green-100" },
+    cancellation_requested: { variant: "secondary" as const, className: "bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200" },
   }
 
   return (
@@ -1576,6 +1808,26 @@ export default function ChefBookingsView({
           checkoutStatus={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkoutStatusBookingId)?.checkoutStatus}
         />
       )}
+
+      {/* Cancellation Request / Confirm Sheet */}
+      <CancellationRequestSheet
+        open={cancellationTarget !== null}
+        onOpenChange={(open) => { if (!open) setCancellationTarget(null) }}
+        target={cancellationTarget}
+        isPending={cancelStorageMutation.isPending}
+        onConfirm={(id, reason) => {
+          if (!cancellationTarget) return
+          if (cancellationTarget.type === "storage") {
+            cancelStorageMutation.mutate(
+              { storageBookingId: id, reason },
+              { onSettled: () => setCancellationTarget(null) },
+            )
+          } else {
+            onCancelBooking(id, reason)
+            setCancellationTarget(null)
+          }
+        }}
+      />
     </div>
   )
 }

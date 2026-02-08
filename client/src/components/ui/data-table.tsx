@@ -32,23 +32,25 @@ import {
     TableRow,
 } from "@/components/ui/table"
 
-interface DataTableProps<TData, TValue> {
-    columns: ColumnDef<TData, TValue>[]
+interface DataTableProps<TData> {
+    columns: ColumnDef<TData>[]
     data: TData[]
     filterColumn?: string
     filterPlaceholder?: string
     defaultSorting?: SortingState
     initialColumnVisibility?: VisibilityState
+    pageSize?: number
 }
 
-export function DataTable<TData, TValue>({
+export function DataTable<TData>({
     columns,
     data,
     filterColumn = "name",
     filterPlaceholder = "Filter...",
     defaultSorting = [],
     initialColumnVisibility = {},
-}: DataTableProps<TData, TValue>) {
+    pageSize = 10,
+}: DataTableProps<TData>) {
     const [sorting, setSorting] = React.useState<SortingState>(defaultSorting)
     const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
     const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(initialColumnVisibility)
@@ -70,6 +72,9 @@ export function DataTable<TData, TValue>({
             columnFilters,
             columnVisibility,
             rowSelection,
+        },
+        initialState: {
+            pagination: { pageSize },
         },
     })
 

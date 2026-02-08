@@ -1,12 +1,48 @@
-import { Building, Plus, Settings, Users, Edit, Trash2, X } from "lucide-react";
+import { Plus, Users, Edit, Trash2, Loader2, MapPin, ChefHat, Building2, Mail, MoreHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import { toast } from "@/hooks/use-toast";
-import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { queryClient } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AdminLayout } from "@/components/admin/layout/AdminLayout";
+import type { AdminSection } from "@/components/admin/layout/AdminSidebar";
 import { auth } from "@/lib/firebase";
 
+
 export default function AdminManageLocations() {
+  const [, navigate] = useLocation();
+  const { logout } = useFirebaseAuth();
+
+  const handleSectionChange = (section: AdminSection) => {
+    if (section === "kitchen-management") return;
+    navigate(`/admin?section=${section}`);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      queryClient.clear();
+      navigate('/admin');
+    } catch (error) {
+      console.error('Logout error:', error);
+      navigate('/admin');
+    }
+  };
+
   const [showLocationForm, setShowLocationForm] = useState(false);
   const [showKitchenForm, setShowKitchenForm] = useState(false);
   const [showManagerForm, setShowManagerForm] = useState(false);
@@ -250,12 +286,12 @@ export default function AdminManageLocations() {
     }
   };
 
-  const loadKitchens = async (locationId: number) => {
-    if (!locationId) return;
+  const loadKitchens = async (locationId?: number | null) => {
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`/api/admin/kitchens/${locationId}`, {
+      const url = locationId ? `/api/admin/kitchens/${locationId}` : '/api/admin/kitchens';
+      const response = await fetch(url, {
         credentials: "include",
         headers,
       });
@@ -690,688 +726,660 @@ export default function AdminManageLocations() {
   useEffect(() => {
     loadLocations();
     loadManagers();
+    loadKitchens(); // Load all kitchens by default
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header />
-      <main className="flex-1 pt-20 sm:pt-24 pb-6 sm:pb-8">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Manage Locations & Kitchens</h1>
-            <p className="text-gray-600 mt-2">Create, edit, and manage commercial kitchen locations, kitchens, and managers</p>
-          </div>
+    <AdminLayout
+      activeSection="kitchen-management"
+      onSectionChange={handleSectionChange}
+      onLogout={handleLogout}
+    >
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Locations</p>
+                <p className="text-2xl font-bold mt-1">{locations.length}</p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                <MapPin className="h-5 w-5 text-primary" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Kitchens</p>
+                <p className="text-2xl font-bold mt-1">{kitchens.length}</p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
+                <ChefHat className="h-5 w-5 text-amber-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Managers</p>
+                <p className="text-2xl font-bold mt-1">{managers.length}</p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
+                <Users className="h-5 w-5 text-emerald-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
-            {/* Locations Section */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">Locations</h2>
-                <button
+      {/* Tabbed Content */}
+      <Tabs defaultValue="locations" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="locations">
+            <MapPin className="h-4 w-4 mr-1.5" />
+            Locations ({locations.length})
+          </TabsTrigger>
+          <TabsTrigger value="kitchens">
+            <ChefHat className="h-4 w-4 mr-1.5" />
+            Kitchens
+          </TabsTrigger>
+          <TabsTrigger value="managers">
+            <Users className="h-4 w-4 mr-1.5" />
+            Managers ({managers.length})
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ── LOCATIONS TAB ── */}
+        <TabsContent value="locations">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>All Locations</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">Commercial kitchen locations and their assigned managers</p>
+                </div>
+                <Button
+                  size="sm"
                   onClick={() => {
                     setEditingLocation(null);
                     setLocationForm({ name: "", address: "", managerId: "" });
                     setShowLocationForm(true);
                   }}
-                  className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 min-h-[44px] text-sm sm:text-base mobile-touch-target"
                 >
-                  <Plus className="h-4 w-4" />
+                  <Plus className="h-4 w-4 mr-1.5" />
                   Add Location
-                </button>
+                </Button>
               </div>
+            </CardHeader>
+            <CardContent>
               {loading ? (
-                <p className="text-gray-500">Loading...</p>
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
               ) : locations.length === 0 ? (
-                <p className="text-gray-500">No locations yet</p>
+                <div className="text-center py-12">
+                  <MapPin className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-muted-foreground font-medium">No locations yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">Create your first location to get started</p>
+                </div>
               ) : (
-                <div className="space-y-2">
-                  {locations.map((location) => {
-                    const manager = managers.find(m => m.id === location.managerId || m.id === location.manager_id);
-                    return (
-                      <div key={location.id} className="p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <h3 className="font-medium text-gray-900">{location.name}</h3>
-                            <p className="text-sm text-gray-600 mt-1">{location.address}</p>
-                            {manager && (
-                              <p className="text-xs text-gray-500 mt-1">Manager: {manager.username}</p>
-                            )}
-                            {(location.notificationEmail || location.notification_email) && (
-                              <p className="text-xs text-gray-500 mt-1">Email: {location.notificationEmail || location.notification_email}</p>
-                            )}
-                          </div>
-                          <div className="flex gap-2 ml-2">
-                            <button
-                              onClick={() => handleEditLocation(location)}
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                              title="Edit location"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => setDeletingItem({ type: 'location', id: location.id, name: location.name })}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                              title="Delete location"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Location</TableHead>
+                        <TableHead>Address</TableHead>
+                        <TableHead>Manager</TableHead>
+                        <TableHead>Notification Email</TableHead>
+                        <TableHead className="w-[80px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {locations.map((location) => {
+                        const manager = managers.find(m => m.id === location.managerId || m.id === location.manager_id);
+                        return (
+                          <TableRow key={location.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 flex-shrink-0">
+                                  <Building2 className="h-4 w-4 text-primary" />
+                                </div>
+                                <span className="font-medium text-sm">{location.name}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                              {location.address}
+                            </TableCell>
+                            <TableCell>
+                              {manager ? (
+                                <div>
+                                  <p className="text-sm font-medium">{manager.displayName || manager.username}</p>
+                                  {manager.displayName && manager.displayName !== manager.username && (
+                                    <p className="text-xs text-muted-foreground">{manager.username}</p>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground italic">Unassigned</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {(location.notificationEmail || location.notification_email) ? (
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Mail className="h-3 w-3" />
+                                  {location.notificationEmail || location.notification_email}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground italic">Not set</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => handleEditLocation(location)}>
+                                    <Edit className="h-4 w-4 mr-2" /> Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem className="text-destructive" onClick={() => setDeletingItem({ type: 'location', id: location.id, name: location.name })}>
+                                    <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
-            </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-            {/* Kitchens Section */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">Kitchens</h2>
-                <button
-                  onClick={() => {
-                    setEditingKitchen(null);
-                    setKitchenForm({ locationId: selectedLocationId?.toString() || "", name: "", description: "", isActive: true, taxRatePercent: "" });
-                    setShowKitchenForm(true);
-                  }}
-                  className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 min-h-[44px] text-sm sm:text-base mobile-touch-target"
-                  disabled={locations.length === 0}
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Kitchen
-                </button>
-              </div>
-              {locations.length > 0 && (
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Location
-                  </label>
-                  <select
-                    value={selectedLocationId || ""}
-                    onChange={(e) => {
-                      const locationId = e.target.value ? parseInt(e.target.value) : null;
-                      setSelectedLocationId(locationId);
-                      if (locationId) {
+        {/* ── KITCHENS TAB ── */}
+        <TabsContent value="kitchens">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <CardTitle>Kitchens</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">Kitchen facilities within each location</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {locations.length > 0 && (
+                    <Select
+                      value={selectedLocationId?.toString() || "all"}
+                      onValueChange={(value) => {
+                        const locationId = value === "all" ? null : parseInt(value);
+                        setSelectedLocationId(locationId);
                         loadKitchens(locationId);
-                      } else {
-                        setKitchens([]);
-                      }
+                      }}
+                    >
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Select Location" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Locations</SelectItem>
+                        {locations.map((location) => (
+                          <SelectItem key={location.id} value={location.id.toString()}>
+                            {location.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setEditingKitchen(null);
+                      setKitchenForm({ locationId: selectedLocationId?.toString() || "", name: "", description: "", isActive: true, taxRatePercent: "" });
+                      setShowKitchenForm(true);
                     }}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    disabled={locations.length === 0}
                   >
-                    <option value="">All Locations</option>
-                    {locations.map((location) => (
-                      <option key={location.id} value={location.id}>
-                        {location.name}
-                      </option>
-                    ))}
-                  </select>
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Add Kitchen
+                  </Button>
                 </div>
-              )}
+              </div>
+            </CardHeader>
+            <CardContent>
               {loading ? (
-                <p className="text-gray-500">Loading...</p>
-              ) : !selectedLocationId ? (
-                <p className="text-gray-500">Select a location to view kitchens</p>
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
               ) : kitchens.length === 0 ? (
-                <p className="text-gray-500">No kitchens found for this location</p>
+                <div className="text-center py-12">
+                  <ChefHat className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-muted-foreground font-medium">No kitchens found</p>
+                  <p className="text-sm text-muted-foreground mt-1">Add a kitchen to this location</p>
+                </div>
               ) : (
-                <div className="space-y-2">
-                  {kitchens.map((kitchen) => (
-                    <div key={kitchen.id} className="p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-medium text-gray-900">{kitchen.name}</h3>
-                          {kitchen.description && (
-                            <p className="text-sm text-gray-600 mt-1">{kitchen.description}</p>
-                          )}
-                          <p className={`text-xs mt-1 ${(kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active) ? 'text-green-600' : 'text-red-600'}`}>
-                            Status: {(kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active) ? "Active" : "Inactive"}
-                          </p>
-                        </div>
-                        <div className="flex gap-2 ml-2">
-                          <button
-                            onClick={() => handleEditKitchen(kitchen)}
-                            className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors"
-                            title="Edit kitchen"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => setDeletingItem({ type: 'kitchen', id: kitchen.id, name: kitchen.name })}
-                            className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="Delete kitchen"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Kitchen Name</TableHead>
+                        <TableHead>Location</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Tax Rate</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="w-[80px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {kitchens.map((kitchen) => {
+                        const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
+                        const taxRate = kitchen.taxRatePercent ?? kitchen.tax_rate_percent;
+                        const locationName = kitchen.locationName || kitchen.location_name || locations.find(l => l.id === (kitchen.locationId || kitchen.location_id))?.name;
+                        return (
+                          <TableRow key={kitchen.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-amber-100 flex-shrink-0">
+                                  <ChefHat className="h-4 w-4 text-amber-600" />
+                                </div>
+                                <span className="font-medium text-sm">{kitchen.name}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {locationName ? (
+                                <Badge variant="outline" className="text-xs">
+                                  <MapPin className="h-3 w-3 mr-1" />
+                                  {locationName}
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground italic">Unknown</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                              {kitchen.description || <span className="italic">No description</span>}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {taxRate ? `${taxRate}%` : <span className="text-muted-foreground italic">Not set</span>}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={isActive ? "default" : "destructive"}>
+                                {isActive ? "Active" : "Inactive"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => handleEditKitchen(kitchen)}>
+                                    <Edit className="h-4 w-4 mr-2" /> Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem className="text-destructive" onClick={() => setDeletingItem({ type: 'kitchen', id: kitchen.id, name: kitchen.name })}>
+                                    <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
-            </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-            {/* Managers Section */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">Managers</h2>
-                <button
+        {/* ── MANAGERS TAB ── */}
+        <TabsContent value="managers">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>All Managers</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">Manager accounts and their location assignments</p>
+                </div>
+                <Button
+                  size="sm"
                   onClick={() => {
                     setEditingManager(null);
                     setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
                     setShowManagerForm(true);
                   }}
-                  className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 min-h-[44px] text-sm sm:text-base mobile-touch-target"
                 >
-                  <Plus className="h-4 w-4" />
+                  <Plus className="h-4 w-4 mr-1.5" />
                   Add Manager
-                </button>
+                </Button>
               </div>
+            </CardHeader>
+            <CardContent>
               {loading ? (
-                <p className="text-gray-500">Loading...</p>
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
               ) : managers.length === 0 ? (
-                <p className="text-gray-500">No managers available</p>
+                <div className="text-center py-12">
+                  <Users className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-muted-foreground font-medium">No managers yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">Create a manager account to assign to locations</p>
+                </div>
               ) : (
-                <div className="space-y-2">
-                  {managers.map((manager: any) => {
-                    const managerLocations = manager.locations || [];
-
-                    return (
-                      <div key={manager.id} className="p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <h3 className="font-medium text-gray-900">{manager.username}</h3>
-                            <p className="text-xs text-gray-500 mt-1">ID: {manager.id}</p>
-                            {managerLocations.length > 0 && (
-                              <div className="mt-2 space-y-1">
-                                <p className="text-xs text-gray-500">
-                                  Manages {managerLocations.length} location{managerLocations.length !== 1 ? 's' : ''}:
-                                </p>
-                                {managerLocations.map((loc: any) => (
-                                  <div key={loc.locationId} className="text-xs pl-2 border-l-2 border-purple-200">
-                                    <span className="font-medium">{loc.locationName || 'Unnamed Location'}</span>
-                                    {loc.notificationEmail ? (
-                                      <p className="text-purple-600 mt-0.5">📧 {loc.notificationEmail}</p>
-                                    ) : (
-                                      <p className="text-gray-400 mt-0.5 italic">No notification email set</p>
-                                    )}
-                                  </div>
-                                ))}
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Manager</TableHead>
+                        <TableHead>Locations</TableHead>
+                        <TableHead>Notification Emails</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead className="w-[80px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {managers.map((manager: any) => {
+                        const managerLocations = manager.locations || [];
+                        return (
+                          <TableRow key={manager.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 flex-shrink-0">
+                                  <Users className="h-4 w-4 text-emerald-600" />
+                                </div>
+                                <div>
+                                  <p className="font-medium text-sm">{manager.displayName || manager.username}</p>
+                                  {manager.displayName && manager.displayName !== manager.username && (
+                                    <p className="text-xs text-muted-foreground">{manager.username}</p>
+                                  )}
+                                  {(!manager.displayName || manager.displayName === manager.username) && (
+                                    <p className="text-xs text-muted-foreground">ID: {manager.id}</p>
+                                  )}
+                                </div>
                               </div>
-                            )}
-                            {manager.primaryNotificationEmail && (
-                              <p className="text-xs text-purple-600 mt-2 font-medium">
-                                Primary: {manager.primaryNotificationEmail}
-                              </p>
-                            )}
-                            <span className="inline-block mt-2 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">
-                              {manager.role || 'manager'}
-                            </span>
-                          </div>
-                          <div className="flex gap-2 ml-2">
-                            <button
-                              onClick={() => handleEditManager(manager)}
-                              className="p-1.5 text-purple-600 hover:bg-purple-50 rounded transition-colors"
-                              title="Edit manager"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => setDeletingItem({ type: 'manager', id: manager.id, name: manager.username })}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                              title="Delete manager"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                            </TableCell>
+                            <TableCell>
+                              {managerLocations.length > 0 ? (
+                                <div className="space-y-1">
+                                  {managerLocations.map((loc: any) => (
+                                    <Badge key={loc.locationId} variant="outline" className="text-xs mr-1">
+                                      {loc.locationName || 'Unnamed'}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground italic">No locations</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {managerLocations.length > 0 ? (
+                                <div className="space-y-1">
+                                  {managerLocations.map((loc: any) => (
+                                    <div key={loc.locationId} className="text-xs text-muted-foreground">
+                                      {loc.notificationEmail ? (
+                                        <div className="flex items-center gap-1">
+                                          <Mail className="h-3 w-3" />
+                                          {loc.notificationEmail}
+                                        </div>
+                                      ) : (
+                                        <span className="italic">Not set</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground italic">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="text-xs capitalize">
+                                {manager.role || 'manager'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => handleEditManager(manager)}>
+                                    <Edit className="h-4 w-4 mr-2" /> Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem className="text-destructive" onClick={() => setDeletingItem({ type: 'manager', id: manager.id, name: manager.username })}>
+                                    <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
-            </div>
-          </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
-          {/* Location Form Modal */}
-          {showLocationForm && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 sm:p-6">
-              <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto mobile-momentum-scroll">
-                <div className="flex items-center justify-between mb-3 sm:mb-4">
-                  <h2 className="text-xl sm:text-2xl font-bold">
-                    {editingLocation ? "Edit Location" : "Create New Location"}
-                  </h2>
-                  <button
-                    onClick={() => {
-                      setShowLocationForm(false);
-                      setEditingLocation(null);
-                      setLocationForm({ name: "", address: "", managerId: "" });
-                    }}
-                    className="text-gray-400 hover:text-gray-600 mobile-touch-target p-1"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-                <form onSubmit={editingLocation ? handleUpdateLocation : handleCreateLocation} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Location Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={locationForm.name}
-                      onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Address *
-                    </label>
-                    <input
-                      type="text"
-                      value={locationForm.address}
-                      onChange={(e) => setLocationForm({ ...locationForm, address: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Manager (Optional)
-                    </label>
-                    <select
-                      value={locationForm.managerId || ""}
-                      onChange={(e) => setLocationForm({ ...locationForm, managerId: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
-                    >
-                      <option value="">No Manager</option>
-                      {managers.map((manager) => (
-                        <option key={manager.id} value={manager.id}>
-                          {manager.username} (ID: {manager.id})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="flex-1 px-4 py-2.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 min-h-[44px] text-sm sm:text-base"
-                    >
-                      {loading ? "Saving..." : editingLocation ? "Update Location" : "Create Location"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowLocationForm(false);
-                        setEditingLocation(null);
-                        setLocationForm({ name: "", address: "", managerId: "" });
-                      }}
-                      className="flex-1 px-4 py-2.5 sm:py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 min-h-[44px] text-sm sm:text-base"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
+      {/* Location Form Dialog */}
+      <Dialog open={showLocationForm} onOpenChange={(open) => { if (!open) { setShowLocationForm(false); setEditingLocation(null); setLocationForm({ name: "", address: "", managerId: "" }); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingLocation ? "Edit Location" : "Create New Location"}</DialogTitle>
+            <DialogDescription>Fill in the details below.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={editingLocation ? handleUpdateLocation : handleCreateLocation} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Location Name *</Label>
+              <Input value={locationForm.name} onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label>Address *</Label>
+              <Input value={locationForm.address} onChange={(e) => setLocationForm({ ...locationForm, address: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label>Manager (Optional)</Label>
+              <Select value={locationForm.managerId || "none"} onValueChange={(value) => setLocationForm({ ...locationForm, managerId: value === "none" ? "" : value })}>
+                <SelectTrigger><SelectValue placeholder="No Manager" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No Manager</SelectItem>
+                  {managers.map((manager) => (
+                    <SelectItem key={manager.id} value={manager.id.toString()}>
+                      {manager.username} (ID: {manager.id})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => { setShowLocationForm(false); setEditingLocation(null); setLocationForm({ name: "", address: "", managerId: "" }); }}>Cancel</Button>
+              <Button type="submit" disabled={loading}>{loading ? "Saving..." : editingLocation ? "Update" : "Create"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Kitchen Form Dialog */}
+      <Dialog open={showKitchenForm} onOpenChange={(open) => { if (!open) { setShowKitchenForm(false); setEditingKitchen(null); setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" }); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingKitchen ? "Edit Kitchen" : "Create New Kitchen"}</DialogTitle>
+            <DialogDescription>Fill in the details below.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={editingKitchen ? handleUpdateKitchen : handleCreateKitchen} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Location *</Label>
+              <Select value={kitchenForm.locationId || ""} onValueChange={(value) => setKitchenForm({ ...kitchenForm, locationId: value })}>
+                <SelectTrigger><SelectValue placeholder="Select a location" /></SelectTrigger>
+                <SelectContent>
+                  {locations.map((location) => (
+                    <SelectItem key={location.id} value={location.id.toString()}>{location.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Kitchen Name *</Label>
+              <Input value={kitchenForm.name} onChange={(e) => setKitchenForm({ ...kitchenForm, name: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea value={kitchenForm.description} onChange={(e) => setKitchenForm({ ...kitchenForm, description: e.target.value })} rows={3} />
+            </div>
+            <div className="space-y-2">
+              <Label>Tax Rate (%)</Label>
+              <Input type="number" step="0.01" min="0" max="100" value={kitchenForm.taxRatePercent} onChange={(e) => setKitchenForm({ ...kitchenForm, taxRatePercent: e.target.value })} placeholder="e.g. 13" />
+            </div>
+            {editingKitchen && (
+              <div className="flex items-center gap-3">
+                <Switch checked={kitchenForm.isActive} onCheckedChange={(checked) => setKitchenForm({ ...kitchenForm, isActive: checked })} />
+                <Label>Active</Label>
               </div>
-            </div>
-          )}
+            )}
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => { setShowKitchenForm(false); setEditingKitchen(null); setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" }); }}>Cancel</Button>
+              <Button type="submit" disabled={loading}>{loading ? "Saving..." : editingKitchen ? "Update" : "Create"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-          {/* Kitchen Form Modal */}
-          {showKitchenForm && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 sm:p-6">
-              <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto mobile-momentum-scroll">
-                <div className="flex items-center justify-between mb-3 sm:mb-4">
-                  <h2 className="text-xl sm:text-2xl font-bold">
-                    {editingKitchen ? "Edit Kitchen" : "Create New Kitchen"}
-                  </h2>
-                  <button
-                    onClick={() => {
-                      setShowKitchenForm(false);
-                      setEditingKitchen(null);
-                      setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" });
-                    }}
-                    className="text-gray-400 hover:text-gray-600 mobile-touch-target p-1"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
+      {/* Manager Form Dialog */}
+      <Dialog open={showManagerForm} onOpenChange={(open) => { if (!open) { setShowManagerForm(false); setEditingManager(null); setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] }); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingManager ? "Edit Manager" : "Create Manager Account"}</DialogTitle>
+            <DialogDescription>{editingManager ? "Update manager details." : "Fill in the details to create a new manager."}</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={editingManager ? handleUpdateManager : handleCreateManager} className="space-y-4">
+            {!editingManager && (
+              <>
+                <div className="space-y-2">
+                  <Label>Full Name *</Label>
+                  <Input value={managerForm.name} onChange={(e) => setManagerForm({ ...managerForm, name: e.target.value })} required={!editingManager} />
                 </div>
-                <form onSubmit={editingKitchen ? handleUpdateKitchen : handleCreateKitchen} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Location *
-                    </label>
-                    <select
-                      value={kitchenForm.locationId}
-                      onChange={(e) => {
-                        setKitchenForm({ ...kitchenForm, locationId: e.target.value });
-                      }}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
-                      required
-                    >
-                      <option value="">Select a location</option>
-                      {locations.map((location) => (
-                        <option key={location.id} value={location.id}>
-                          {location.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Kitchen Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={kitchenForm.name}
-                      onChange={(e) => setKitchenForm({ ...kitchenForm, name: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Description
-                    </label>
-                    <textarea
-                      value={kitchenForm.description}
-                      onChange={(e) => setKitchenForm({ ...kitchenForm, description: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
-                      rows={3}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Tax Rate (%)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      value={kitchenForm.taxRatePercent}
-                      onChange={(e) => setKitchenForm({ ...kitchenForm, taxRatePercent: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
-                      placeholder="e.g. 13"
-                    />
-                  </div>
-                  {editingKitchen && (
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <Switch
-                          checked={kitchenForm.isActive}
-                          onCheckedChange={(checked) => setKitchenForm({ ...kitchenForm, isActive: checked })}
-                        />
-                        <span className="text-sm font-medium text-gray-700">Active</span>
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="flex-1 px-4 py-2.5 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 min-h-[44px] text-sm sm:text-base"
-                    >
-                      {loading ? "Saving..." : editingKitchen ? "Update Kitchen" : "Create Kitchen"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowKitchenForm(false);
-                        setEditingKitchen(null);
-                        setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" });
-                      }}
-                      className="flex-1 px-4 py-2.5 sm:py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 min-h-[44px] text-sm sm:text-base"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              </div>
+                <div className="space-y-2">
+                  <Label>Email *</Label>
+                  <Input type="email" value={managerForm.email} onChange={(e) => setManagerForm({ ...managerForm, email: e.target.value })} required={!editingManager} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Password *</Label>
+                  <Input type="password" value={managerForm.password} onChange={(e) => setManagerForm({ ...managerForm, password: e.target.value })} required={!editingManager} />
+                </div>
+              </>
+            )}
+            <div className="space-y-2">
+              <Label>Username *</Label>
+              <Input value={managerForm.username} onChange={(e) => setManagerForm({ ...managerForm, username: e.target.value })} required />
             </div>
-          )}
-
-          {/* Manager Form Modal */}
-          {showManagerForm && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 sm:p-6">
-              <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto mobile-momentum-scroll">
-                <div className="flex items-center justify-between mb-3 sm:mb-4">
-                  <h2 className="text-xl sm:text-2xl font-bold">
-                    {editingManager ? "Edit Manager" : "Create Manager Account"}
-                  </h2>
-                  <button
-                    onClick={() => {
-                      setShowManagerForm(false);
-                      setEditingManager(null);
-                      setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
-                    }}
-                    className="text-gray-400 hover:text-gray-600 mobile-touch-target p-1"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-                <form onSubmit={editingManager ? handleUpdateManager : handleCreateManager} className="space-y-4">
-                  {!editingManager && (
-                    <>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Full Name *
-                        </label>
-                        <input
-                          type="text"
-                          value={managerForm.name}
-                          onChange={(e) => setManagerForm({ ...managerForm, name: e.target.value })}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
-                          required={!editingManager}
-                        />
+            {editingManager && (
+              <div className="space-y-3 pt-2">
+                <Separator />
+                <Label>Notification Emails by Location</Label>
+                {(() => {
+                  const locationsArray = Array.isArray(editingManager.locations) ? editingManager.locations : [];
+                  if (locationsArray.length === 0) {
+                    return (
+                      <div className="p-3 bg-muted rounded-lg">
+                        <p className="text-sm text-muted-foreground">No locations assigned to this manager.</p>
+                        <p className="text-xs text-muted-foreground mt-1">Assign a location first, then set notification emails.</p>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Email *
-                        </label>
-                        <input
+                    );
+                  }
+                  return locationsArray.map((loc: any) => {
+                    const locId = loc.locationId || loc.id;
+                    if (!locId || locId === 0) return null;
+                    const emailEntry = managerForm.locationNotificationEmails.find(
+                      (e: any) => e.locationId === locId || e.locationId?.toString() === locId?.toString()
+                    );
+                    const currentEmail = emailEntry?.notificationEmail || "";
+                    const locationName = loc.locationName || loc.name || `Location ${locId}`;
+                    return (
+                      <div key={locId} className="space-y-1.5">
+                        <Label className="text-xs">{locationName}</Label>
+                        <Input
                           type="email"
-                          value={managerForm.email}
-                          onChange={(e) => setManagerForm({ ...managerForm, email: e.target.value })}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
-                          required={!editingManager}
+                          value={currentEmail}
+                          onChange={(e) => {
+                            const newEmails = [...managerForm.locationNotificationEmails];
+                            const newEmailValue = e.target.value;
+                            const existingIndex = newEmails.findIndex(
+                              (entry: any) => entry.locationId === locId || entry.locationId?.toString() === locId?.toString()
+                            );
+                            if (existingIndex >= 0) {
+                              newEmails[existingIndex].notificationEmail = newEmailValue;
+                            } else {
+                              newEmails.push({ locationId: locId, notificationEmail: newEmailValue });
+                            }
+                            setManagerForm({ ...managerForm, locationNotificationEmails: newEmails });
+                          }}
+                          placeholder="notification@example.com"
+                          className="text-sm"
                         />
+                        <p className="text-xs text-muted-foreground">{currentEmail ? `Current: ${currentEmail}` : "No notification email set"}</p>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Password *
-                        </label>
-                        <input
-                          type="password"
-                          value={managerForm.password}
-                          onChange={(e) => setManagerForm({ ...managerForm, password: e.target.value })}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
-                          required={!editingManager}
-                        />
-                      </div>
-                    </>
-                  )}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Username *
-                    </label>
-                    <input
-                      type="text"
-                      value={managerForm.username}
-                      onChange={(e) => setManagerForm({ ...managerForm, username: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
-                      required
-                    />
-                  </div>
-                  {editingManager && (
-                    <div className="space-y-3 pt-2 border-t">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Notification Emails by Location
-                      </label>
-                      {(() => {
-                        // Use locations from editingManager which are fetched fresh from API
-                        const locationsArray = Array.isArray(editingManager.locations) ? editingManager.locations : [];
-
-                        console.log('🔍 Modal render - editingManager.locations:', locationsArray);
-                        console.log('🔍 Modal render - managerForm.locationNotificationEmails:', managerForm.locationNotificationEmails);
-
-                        // If no locations found, show message
-                        if (locationsArray.length === 0) {
-                          return (
-                            <div className="space-y-1 p-3 bg-gray-50 rounded-lg">
-                              <p className="text-sm text-gray-600">
-                                This manager currently has no locations assigned.
-                              </p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                Assign a location to this manager first, then you can set notification emails.
-                              </p>
-                            </div>
-                          );
-                        }
-
-                        // Map through locations and show input for each
-                        // Use managerForm.locationNotificationEmails as the source of truth for email values
-                        return locationsArray.map((loc: any) => {
-                          const locId = loc.locationId || loc.id;
-                          if (!locId || locId === 0) {
-                            console.warn('⚠️ Location missing valid ID:', loc);
-                            return null;
-                          }
-
-                          // Find corresponding email in form state - this is populated from database
-                          const emailEntry = managerForm.locationNotificationEmails.find(
-                            (e: any) => e.locationId === locId || e.locationId?.toString() === locId?.toString()
-                          );
-
-                          // Use email from form state (which we populated from database), or empty string
-                          const currentEmail = emailEntry?.notificationEmail || "";
-
-                          const locationName = loc.locationName || loc.name || `Location ${locId}`;
-
-                          console.log(`📍 Rendering location ${locId} (${locationName}): email = "${currentEmail}"`);
-
-                          return (
-                            <div key={locId} className="space-y-1">
-                              <label className="text-xs font-medium text-gray-600">
-                                {locationName}
-                              </label>
-                              <input
-                                type="email"
-                                value={currentEmail}
-                                onChange={(e) => {
-                                  const newEmails = [...managerForm.locationNotificationEmails];
-                                  const newEmailValue = e.target.value;
-                                  const existingIndex = newEmails.findIndex(
-                                    (e: any) => e.locationId === locId || e.locationId?.toString() === locId?.toString()
-                                  );
-
-                                  if (existingIndex >= 0) {
-                                    // Update existing entry
-                                    newEmails[existingIndex].notificationEmail = newEmailValue;
-                                  } else {
-                                    // Add new entry
-                                    newEmails.push({
-                                      locationId: locId,
-                                      notificationEmail: newEmailValue,
-                                    });
-                                  }
-                                  setManagerForm({ ...managerForm, locationNotificationEmails: newEmails });
-                                }}
-                                placeholder="notification@example.com"
-                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                              />
-                              {currentEmail && (
-                                <p className="text-xs text-gray-500 mt-1">Current: {currentEmail}</p>
-                              )}
-                              {!currentEmail && (
-                                <p className="text-xs text-gray-400 mt-1">No notification email set</p>
-                              )}
-                            </div>
-                          );
-                        }).filter(Boolean); // Remove any null entries
-                      })()}
-                    </div>
-                  )}
-                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="flex-1 px-4 py-2.5 sm:py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 min-h-[44px] text-sm sm:text-base"
-                    >
-                      {loading ? "Saving..." : editingManager ? "Update Manager" : "Create Manager"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowManagerForm(false);
-                        setEditingManager(null);
-                        setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
-                      }}
-                      className="flex-1 px-4 py-2.5 sm:py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 min-h-[44px] text-sm sm:text-base"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
+                    );
+                  }).filter(Boolean);
+                })()}
               </div>
-            </div>
-          )}
+            )}
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => { setShowManagerForm(false); setEditingManager(null); setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] }); }}>Cancel</Button>
+              <Button type="submit" disabled={loading}>{loading ? "Saving..." : editingManager ? "Update" : "Create"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-          {/* Delete Confirmation Modal */}
-          {deletingItem && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 sm:p-6">
-              <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-md w-full">
-                <h2 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-red-600">Confirm Delete</h2>
-                <p className="text-sm sm:text-base text-gray-700 mb-4 sm:mb-6">
-                  Are you sure you want to delete <strong>{deletingItem.name}</strong>? This action cannot be undone.
-                </p>
-                {deletingItem.type === 'location' && (
-                  <p className="text-xs sm:text-sm text-yellow-600 mb-3 sm:mb-4">
-                    ⚠️ Warning: This location must not have any kitchens assigned to it. Please delete or reassign all kitchens first.
-                  </p>
-                )}
-                {deletingItem.type === 'kitchen' && (
-                  <p className="text-xs sm:text-sm text-yellow-600 mb-3 sm:mb-4">
-                    ⚠️ Warning: This kitchen must not have any bookings. Please cancel all bookings first.
-                  </p>
-                )}
-                {deletingItem.type === 'manager' && (
-                  <p className="text-xs sm:text-sm text-yellow-600 mb-3 sm:mb-4">
-                    ⚠️ Warning: All locations managed by this manager will have their manager assignment removed.
-                  </p>
-                )}
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                  <button
-                    onClick={() => {
-                      if (deletingItem.type === 'location') {
-                        handleDeleteLocation();
-                      } else if (deletingItem.type === 'kitchen') {
-                        handleDeleteKitchen();
-                      } else {
-                        handleDeleteManager();
-                      }
-                    }}
-                    disabled={loading}
-                    className="flex-1 px-4 py-2.5 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 min-h-[44px] text-sm sm:text-base"
-                  >
-                    {loading ? "Deleting..." : "Delete"}
-                  </button>
-                  <button
-                    onClick={() => setDeletingItem(null)}
-                    disabled={loading}
-                    className="flex-1 px-4 py-2.5 sm:py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 min-h-[44px] text-sm sm:text-base"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
-      <Footer />
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deletingItem} onOpenChange={(open) => { if (!open) setDeletingItem(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Delete</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{deletingItem?.name}</strong>? This action cannot be undone.
+              {deletingItem?.type === 'location' && (
+                <span className="block mt-2 text-amber-600">Warning: This location must not have any kitchens assigned to it.</span>
+              )}
+              {deletingItem?.type === 'kitchen' && (
+                <span className="block mt-2 text-amber-600">Warning: This kitchen must not have any bookings.</span>
+              )}
+              {deletingItem?.type === 'manager' && (
+                <span className="block mt-2 text-amber-600">Warning: All locations managed by this manager will have their manager assignment removed.</span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={loading}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deletingItem?.type === 'location') handleDeleteLocation();
+                else if (deletingItem?.type === 'kitchen') handleDeleteKitchen();
+                else handleDeleteManager();
+              }}
+            >
+              {loading ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+    </AdminLayout>
   );
 }

@@ -16,24 +16,7 @@
 <body>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
-  <!-- Tidio Live Chat Widget - Hidden by default, controlled by TidioController -->
-  <script>
-    // Hide Tidio widget by default when it loads
-    // Widget visibility is controlled by TidioController component based on current page
-    (function() {
-      function hideTidioOnReady() {
-        if (window.tidioChatApi) {
-          window.tidioChatApi.hide();
-        }
-      }
-      if (window.tidioChatApi) {
-        window.tidioChatApi.on('ready', hideTidioOnReady);
-      } else {
-        document.addEventListener('tidioChat-ready', hideTidioOnReady);
-      }
-    })();
-  </script>
-  <script src="//code.tidio.co/xttrfsraxgqfnetg9kbnxl2mppgex2fi.js" async></script>
+  <!-- Tidio Live Chat: Script loaded dynamically by TidioController only for authenticated chef users -->
   <!-- Google Places API is now proxied through the server for security - no client-side script needed -->
   <!-- This is a replit script which adds a banner on the top of the page when opened in development mode outside the replit environment
   <script type="text/javascript" src="https://replit.com/public/js/replit-dev-banner.js"></script> -->

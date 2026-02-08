@@ -339,7 +339,7 @@ var init_schema = __esm({
     userRoleEnum = pgEnum("user_role", ["admin", "chef", "manager"]);
     documentVerificationStatusEnum = pgEnum("document_verification_status", ["pending", "approved", "rejected", "expired"]);
     applicationTypeEnum = pgEnum("application_type", ["chef"]);
-    bookingStatusEnum = pgEnum("booking_status", ["pending", "confirmed", "cancelled", "completed"]);
+    bookingStatusEnum = pgEnum("booking_status", ["pending", "confirmed", "cancelled", "completed", "cancellation_requested"]);
     storageTypeEnum = pgEnum("storage_type", ["dry", "cold", "freezer"]);
     checkoutStatusEnum = pgEnum("checkout_status", ["active", "checkout_requested", "checkout_approved", "completed", "checkout_claim_filed"]);
     storagePricingModelEnum = pgEnum("storage_pricing_model", ["monthly-flat", "per-cubic-foot", "hourly", "daily"]);
@@ -728,6 +728,10 @@ var init_schema = __esm({
       // Platform commission (in cents)
       currency: text("currency").default("CAD").notNull(),
       // Currency code
+      // Chef cancellation request tracking
+      cancellationRequestedAt: timestamp("cancellation_requested_at"),
+      cancellationRequestReason: text("cancellation_request_reason"),
+      cancellationRequestDeclinedAt: timestamp("cancellation_request_declined_at"),
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
@@ -962,7 +966,7 @@ var init_schema = __esm({
     });
     updateKitchenBookingSchema = z2.object({
       id: z2.number(),
-      status: z2.enum(["pending", "confirmed", "cancelled", "completed"]).optional(),
+      status: z2.enum(["pending", "confirmed", "cancelled", "completed", "cancellation_requested"]).optional(),
       specialNotes: z2.string().optional()
     });
     insertChefLocationAccessSchema = createInsertSchema(chefLocationAccess, {
@@ -1278,6 +1282,10 @@ var init_schema = __esm({
       checkoutDeniedAt: timestamp("checkout_denied_at"),
       checkoutDeniedBy: integer("checkout_denied_by").references(() => users.id, { onDelete: "set null" }),
       checkoutDenialReason: text("checkout_denial_reason"),
+      // Chef cancellation request tracking (mirrors kitchen_bookings pattern)
+      cancellationRequestedAt: timestamp("cancellation_requested_at"),
+      cancellationRequestReason: text("cancellation_request_reason"),
+      cancellationRequestDeclinedAt: timestamp("cancellation_request_declined_at"),
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
@@ -1288,7 +1296,7 @@ var init_schema = __esm({
       chefId: z2.number().optional(),
       startDate: z2.string().or(z2.date()),
       endDate: z2.string().or(z2.date()),
-      status: z2.enum(["pending", "confirmed", "cancelled", "completed"]).optional(),
+      status: z2.enum(["pending", "confirmed", "cancelled", "completed", "cancellation_requested"]).optional(),
       totalPrice: z2.number().int().positive("Total price must be positive"),
       pricingModel: z2.enum(["monthly-flat", "per-cubic-foot", "hourly", "daily"]),
       paymentStatus: z2.enum(["pending", "authorized", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
@@ -1303,7 +1311,7 @@ var init_schema = __esm({
     });
     updateStorageBookingSchema = z2.object({
       id: z2.number(),
-      status: z2.enum(["pending", "confirmed", "cancelled", "completed"]).optional(),
+      status: z2.enum(["pending", "confirmed", "cancelled", "completed", "cancellation_requested"]).optional(),
       paymentStatus: z2.enum(["pending", "authorized", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
       paymentIntentId: z2.string().optional(),
       serviceFee: z2.number().int().min(0).optional(),
@@ -1314,7 +1322,7 @@ var init_schema = __esm({
     });
     updateStorageBookingStatusSchema = z2.object({
       id: z2.number(),
-      status: z2.enum(["pending", "confirmed", "cancelled", "completed"])
+      status: z2.enum(["pending", "confirmed", "cancelled", "completed", "cancellation_requested"])
     });
     storageCheckoutRequestSchema = z2.object({
       storageBookingId: z2.number(),
@@ -2751,7 +2759,7 @@ async function notifyChefOverstayDetected(data) {
     type: "overstay_detected",
     priority: "urgent",
     title: "\u26A0\uFE0F Storage Overstay Detected",
-    message: `Your storage "${data.storageName}" at ${data.kitchenName} is ${data.daysOverdue} day(s) overdue. Potential penalty: $${formattedAmount}. Please extend or remove your items to avoid charges.`,
+    message: `Your storage "${data.storageName}" at ${data.kitchenName} is ${data.daysOverdue} day(s) overdue. Potential penalty: $${formattedAmount}. Please remove your items or resolve this overstay to avoid further charges.`,
     metadata: {
       overstayId: data.overstayId,
       storageName: data.storageName,
@@ -7714,6 +7722,14 @@ async function processManagerDecision(decision) {
     action,
     finalPenaltyCents: updateData.finalPenaltyCents
   });
+  if (action === "waive") {
+    try {
+      await db.update(storageBookings).set({ status: "completed", updatedAt: /* @__PURE__ */ new Date() }).where(eq3(storageBookings.id, record.storageBookingId));
+      logger.info(`[OverstayService] Auto-completed storage booking ${record.storageBookingId} after penalty waived`);
+    } catch (completeError) {
+      logger.error(`[OverstayService] Failed to auto-complete booking ${record.storageBookingId}:`, completeError);
+    }
+  }
   return { success: true };
 }
 async function chargeApprovedPenalty(overstayRecordId) {
@@ -7976,6 +7992,12 @@ async function chargeApprovedPenalty(overstayRecordId) {
       } catch (notifError) {
         logger.error(`[OverstayService] Error sending in-app notifications for charge:`, notifError);
       }
+      try {
+        await db.update(storageBookings).set({ status: "completed", updatedAt: /* @__PURE__ */ new Date() }).where(eq3(storageBookings.id, record.storageBookingId));
+        logger.info(`[OverstayService] Auto-completed storage booking ${record.storageBookingId} after penalty charge succeeded`);
+      } catch (completeError) {
+        logger.error(`[OverstayService] Failed to auto-complete booking ${record.storageBookingId}:`, completeError);
+      }
       return {
         success: true,
         paymentIntentId: paymentIntent.id,
@@ -8175,6 +8197,14 @@ async function resolveOverstay(overstayRecordId, resolutionType, resolutionNotes
     { resolutionType, resolutionNotes },
     resolvedBy
   );
+  if (resolutionType === "removed") {
+    try {
+      await db.update(storageBookings).set({ status: "completed", updatedAt: /* @__PURE__ */ new Date() }).where(eq3(storageBookings.id, record.storageBookingId));
+      logger.info(`[OverstayService] Auto-completed storage booking ${record.storageBookingId} after overstay resolved (items removed)`);
+    } catch (completeError) {
+      logger.error(`[OverstayService] Failed to auto-complete booking ${record.storageBookingId}:`, completeError);
+    }
+  }
   return { success: true };
 }
 async function createOverstayHistoryEntry(overstayRecordId, previousStatus, newStatus, eventType, eventSource, description, metadata, createdBy) {
@@ -15684,7 +15714,8 @@ function getKitchenBookingSelection() {
     hourlyRate: kitchenBookings.hourlyRate,
     durationHours: kitchenBookings.durationHours,
     paymentStatus: kitchenBookings.paymentStatus,
-    createdAt: kitchenBookings.createdAt
+    createdAt: kitchenBookings.createdAt,
+    cancellationRequestedAt: kitchenBookings.cancellationRequestedAt
   };
 }
 function getStorageBookingSelection() {
@@ -15711,7 +15742,8 @@ function getStorageBookingSelection() {
     checkoutDeniedAt: storageBookings.checkoutDeniedAt,
     checkoutDenialReason: storageBookings.checkoutDenialReason,
     checkoutNotes: storageBookings.checkoutNotes,
-    checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
+    checkoutPhotoUrls: storageBookings.checkoutPhotoUrls,
+    cancellationRequestedAt: storageBookings.cancellationRequestedAt
   };
 }
 var BookingRepository;
@@ -15777,9 +15809,11 @@ var init_booking_repository = __esm({
           location: locations,
           // Payment transaction data for accurate payment state display
           transactionStatus: paymentTransactions.status,
-          transactionAmount: paymentTransactions.amount
+          transactionAmount: paymentTransactions.amount,
+          transactionRefundAmount: paymentTransactions.refundAmount
         }).from(kitchenBookings).innerJoin(kitchens, eq17(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq17(kitchens.locationId, locations.id)).leftJoin(paymentTransactions, and11(
           eq17(paymentTransactions.bookingId, kitchenBookings.id),
+          eq17(paymentTransactions.paymentIntentId, kitchenBookings.paymentIntentId),
           or2(
             eq17(paymentTransactions.bookingType, "kitchen"),
             eq17(paymentTransactions.bookingType, "bundle")
@@ -15792,6 +15826,7 @@ var init_booking_repository = __esm({
           const isAuthorizedHold = mappedBooking.paymentStatus === "authorized";
           const rawTransactionAmount = row.transactionAmount ? parseFloat(row.transactionAmount) : null;
           const originalAuthorizedAmount = isVoidedAuthorization ? rawTransactionAmount ?? mappedBooking.totalPrice : null;
+          const refundAmount = isVoidedAuthorization ? 0 : row.transactionRefundAmount ? parseFloat(row.transactionRefundAmount) : 0;
           return {
             ...mappedBooking,
             kitchen: row.kitchen,
@@ -15804,8 +15839,10 @@ var init_booking_repository = __esm({
             // true when PT was canceled before capture — $0 charged
             isAuthorizedHold,
             // true when payment is held but not yet captured
-            originalAuthorizedAmount
+            originalAuthorizedAmount,
             // Original auth amount for voided display context
+            refundAmount
+            // Actual refund amount in cents (for display)
           };
         });
       }
@@ -15832,6 +15869,7 @@ var init_booking_repository = __esm({
           eq17(chefKitchenApplications.locationId, locations.id)
         )).leftJoin(paymentTransactions, and11(
           eq17(paymentTransactions.bookingId, kitchenBookings.id),
+          eq17(paymentTransactions.paymentIntentId, kitchenBookings.paymentIntentId),
           // Include both 'kitchen' and 'bundle' booking types for accurate payment data
           or2(
             eq17(paymentTransactions.bookingType, "kitchen"),
@@ -15874,17 +15912,11 @@ var init_booking_repository = __esm({
             locationName: row.location.name,
             locationTimezone: row.location.timezone,
             // Include storage and equipment items from JSONB fields
-            // DEFENSIVE: After partial capture, JSONB is updated to remove rejected items (Fix #2).
-            // This filter is belt-and-suspenders for any legacy data where JSONB wasn't cleaned up.
-            // Items with id matching a failed/cancelled relational booking should not appear.
-            storageItems: (Array.isArray(row.booking.storageItems) ? row.booking.storageItems : []).filter((item) => {
-              if (item.status === "failed" || item.status === "cancelled") return false;
-              return true;
-            }),
-            equipmentItems: (Array.isArray(row.booking.equipmentItems) ? row.booking.equipmentItems : []).filter((item) => {
-              if (item.status === "failed" || item.status === "cancelled") return false;
-              return true;
-            }),
+            // ENTERPRISE STANDARD: Keep cancelled items visible (with rejected=true for strikethrough)
+            // but filter out 'failed' items (abandoned at checkout, never part of the booking).
+            // Cancelled items must remain visible so the Rentals column shows the full audit trail.
+            storageItems: (Array.isArray(row.booking.storageItems) ? row.booking.storageItems : []).filter((item) => item.status !== "failed").map((item) => item.status === "cancelled" && !item.rejected ? { ...item, rejected: true } : item),
+            equipmentItems: (Array.isArray(row.booking.equipmentItems) ? row.booking.equipmentItems : []).filter((item) => item.status !== "failed").map((item) => item.status === "cancelled" && !item.rejected ? { ...item, rejected: true } : item),
             // Kitchen's tax rate for revenue calculations (consistent with transaction history)
             taxRatePercent,
             // Use actual Stripe transaction data for accurate payment display
@@ -16954,6 +16986,8 @@ var init_booking_service = __esm({
       async extendStorageBooking(id, newEndDate) {
         const booking = await this.repo.getStorageBookingById(id);
         if (!booking) throw new Error(`Storage booking with id ${id} not found`);
+        if (booking.status === "cancelled") throw new Error("Cannot extend a cancelled booking");
+        if (booking.status === "completed") throw new Error("Cannot extend a completed booking. Storage has already been cleared.");
         const currentEndDate = new Date(booking.endDate);
         if (newEndDate <= currentEndDate) throw new Error("New end date must be after the current end date");
         const extensionDays = Math.ceil((newEndDate.getTime() - currentEndDate.getTime()) / (1e3 * 60 * 60 * 24));
@@ -18588,7 +18622,12 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       if (status === "canceled") return "canceled";
       return status;
     };
-    const kitchenWhereConditions = [sql10`l.manager_id = ${managerId}`, sql10`kb.status != 'cancelled'`];
+    const kitchenWhereConditions = [
+      sql10`l.manager_id = ${managerId}`,
+      // Show all non-cancelled bookings, PLUS cancelled bookings that have a payment transaction
+      // (i.e., they were paid/refunded and should appear in transaction history)
+      sql10`(kb.status != 'cancelled' OR pt.id IS NOT NULL)`
+    ];
     if (start) {
       kitchenWhereConditions.push(sql10`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
     }
@@ -20116,7279 +20155,8 @@ var init_invoice_service = __esm({
   }
 });
 
-// server/services/payment-transactions-backfill.ts
-var payment_transactions_backfill_exports = {};
-__export(payment_transactions_backfill_exports, {
-  backfillPaymentTransactionsFromBookings: () => backfillPaymentTransactionsFromBookings
-});
-import { sql as sql11 } from "drizzle-orm";
-async function backfillPaymentTransactionsFromBookings(managerId, db2, options) {
-  const limit = options?.limit || 100;
-  const result = {
-    created: 0,
-    skipped: 0,
-    errors: []
-  };
-  try {
-    const kitchenBookingsResult = await db2.execute(sql11`
-      SELECT 
-        kb.id,
-        kb.chef_id,
-        kb.total_price,
-        kb.service_fee,
-        kb.payment_intent_id,
-        kb.payment_status,
-        kb.currency,
-        l.manager_id,
-        k.tax_rate_percent
-      FROM kitchen_bookings kb
-      JOIN kitchens k ON kb.kitchen_id = k.id
-      JOIN locations l ON k.location_id = l.id
-      LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id AND pt.booking_type = 'kitchen'
-      WHERE l.manager_id = ${managerId}
-        AND kb.payment_status IN ('paid', 'processing')
-        AND kb.payment_intent_id IS NOT NULL
-        AND pt.id IS NULL
-      ORDER BY kb.created_at DESC
-      LIMIT ${limit}
-    `);
-    console.log(`[Backfill] Found ${kitchenBookingsResult.rows.length} kitchen bookings to backfill`);
-    for (const booking of kitchenBookingsResult.rows) {
-      try {
-        const totalPrice = parseInt(booking.total_price || "0");
-        const serviceFee = parseInt(booking.service_fee || "0");
-        const baseAmount = totalPrice - serviceFee;
-        const managerRevenue = baseAmount;
-        await createPaymentTransaction({
-          bookingId: booking.id,
-          bookingType: "kitchen",
-          chefId: booking.chef_id,
-          managerId: booking.manager_id,
-          amount: totalPrice,
-          baseAmount,
-          serviceFee,
-          managerRevenue,
-          currency: booking.currency || "CAD",
-          paymentIntentId: booking.payment_intent_id,
-          status: booking.payment_status === "paid" ? "succeeded" : "processing",
-          metadata: {
-            backfilled: true,
-            backfilledAt: (/* @__PURE__ */ new Date()).toISOString(),
-            taxRatePercent: booking.tax_rate_percent
-          }
-        }, db2);
-        result.created++;
-      } catch (error) {
-        console.error(`[Backfill] Error creating payment_transaction for kitchen booking ${booking.id}:`, error);
-        result.errors.push({
-          bookingId: booking.id,
-          bookingType: "kitchen",
-          error: error.message || "Unknown error"
-        });
-      }
-    }
-    const storageBookingsResult = await db2.execute(sql11`
-      SELECT 
-        sb.id,
-        sb.chef_id,
-        sb.total_price,
-        sb.service_fee,
-        sb.payment_intent_id,
-        sb.payment_status,
-        sb.currency,
-        l.manager_id
-      FROM storage_bookings sb
-      JOIN storage_listings sl ON sb.storage_listing_id = sl.id
-      JOIN kitchens k ON sl.kitchen_id = k.id
-      JOIN locations l ON k.location_id = l.id
-      LEFT JOIN payment_transactions pt ON pt.booking_id = sb.id AND pt.booking_type = 'storage'
-      WHERE l.manager_id = ${managerId}
-        AND sb.payment_status IN ('paid', 'processing')
-        AND sb.payment_intent_id IS NOT NULL
-        AND pt.id IS NULL
-      ORDER BY sb.created_at DESC
-      LIMIT ${limit}
-    `);
-    console.log(`[Backfill] Found ${storageBookingsResult.rows.length} storage bookings to backfill`);
-    for (const booking of storageBookingsResult.rows) {
-      try {
-        const totalPrice = parseInt(booking.total_price || "0");
-        const serviceFee = parseInt(booking.service_fee || "0");
-        const baseAmount = totalPrice - serviceFee;
-        const managerRevenue = baseAmount;
-        await createPaymentTransaction({
-          bookingId: booking.id,
-          bookingType: "storage",
-          chefId: booking.chef_id,
-          managerId: booking.manager_id,
-          amount: totalPrice,
-          baseAmount,
-          serviceFee,
-          managerRevenue,
-          currency: booking.currency || "CAD",
-          paymentIntentId: booking.payment_intent_id,
-          status: booking.payment_status === "paid" ? "succeeded" : "processing",
-          metadata: {
-            backfilled: true,
-            backfilledAt: (/* @__PURE__ */ new Date()).toISOString()
-          }
-        }, db2);
-        result.created++;
-      } catch (error) {
-        console.error(`[Backfill] Error creating payment_transaction for storage booking ${booking.id}:`, error);
-        result.errors.push({
-          bookingId: booking.id,
-          bookingType: "storage",
-          error: error.message || "Unknown error"
-        });
-      }
-    }
-    const equipmentBookingsResult = await db2.execute(sql11`
-      SELECT 
-        eb.id,
-        eb.chef_id,
-        eb.total_price,
-        eb.service_fee,
-        eb.payment_intent_id,
-        eb.payment_status,
-        eb.currency,
-        l.manager_id
-      FROM equipment_bookings eb
-      JOIN equipment_listings el ON eb.equipment_listing_id = el.id
-      JOIN kitchens k ON el.kitchen_id = k.id
-      JOIN locations l ON k.location_id = l.id
-      LEFT JOIN payment_transactions pt ON pt.booking_id = eb.id AND pt.booking_type = 'equipment'
-      WHERE l.manager_id = ${managerId}
-        AND eb.payment_status IN ('paid', 'processing')
-        AND eb.payment_intent_id IS NOT NULL
-        AND pt.id IS NULL
-      ORDER BY eb.created_at DESC
-      LIMIT ${limit}
-    `);
-    console.log(`[Backfill] Found ${equipmentBookingsResult.rows.length} equipment bookings to backfill`);
-    for (const booking of equipmentBookingsResult.rows) {
-      try {
-        const totalPrice = parseInt(booking.total_price || "0");
-        const serviceFee = parseInt(booking.service_fee || "0");
-        const baseAmount = totalPrice - serviceFee;
-        const managerRevenue = baseAmount;
-        await createPaymentTransaction({
-          bookingId: booking.id,
-          bookingType: "equipment",
-          chefId: booking.chef_id,
-          managerId: booking.manager_id,
-          amount: totalPrice,
-          baseAmount,
-          serviceFee,
-          managerRevenue,
-          currency: booking.currency || "CAD",
-          paymentIntentId: booking.payment_intent_id,
-          status: booking.payment_status === "paid" ? "succeeded" : "processing",
-          metadata: {
-            backfilled: true,
-            backfilledAt: (/* @__PURE__ */ new Date()).toISOString()
-          }
-        }, db2);
-        result.created++;
-      } catch (error) {
-        console.error(`[Backfill] Error creating payment_transaction for equipment booking ${booking.id}:`, error);
-        result.errors.push({
-          bookingId: booking.id,
-          bookingType: "equipment",
-          error: error.message || "Unknown error"
-        });
-      }
-    }
-    console.log(`[Backfill] Complete: ${result.created} created, ${result.errors.length} errors`);
-    return result;
-  } catch (error) {
-    console.error("[Backfill] Error backfilling payment transactions:", error);
-    throw error;
-  }
-}
-var init_payment_transactions_backfill = __esm({
-  "server/services/payment-transactions-backfill.ts"() {
-    "use strict";
-    init_payment_transactions_service();
-  }
-});
-
-// server/services/payout-statement-service.ts
-var payout_statement_service_exports = {};
-__export(payout_statement_service_exports, {
-  generatePayoutStatementPDF: () => generatePayoutStatementPDF
-});
-import PDFDocument2 from "pdfkit";
-async function generatePayoutStatementPDF(managerId, managerName, managerEmail, payout, balanceTransactions, bookings) {
-  let totalEarnings = 0;
-  let totalPlatformFees = 0;
-  const totalBookings = bookings.length;
-  let serviceFeeRate = 0.05;
-  try {
-    const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
-    serviceFeeRate = await getServiceFeeRate2();
-  } catch (error) {
-    console.error("Error getting service fee rate for payout statement:", error);
-  }
-  bookings.forEach((booking) => {
-    const totalPrice = (booking.totalPrice || booking.total_price || 0) / 100;
-    const serviceFee = (booking.serviceFee || booking.service_fee || 0) / 100;
-    const managerRevenue = totalPrice * (1 - serviceFeeRate);
-    totalEarnings += managerRevenue;
-    totalPlatformFees += serviceFee;
-  });
-  const payoutAmount = payout.amount / 100;
-  const payoutDate = new Date(payout.created * 1e3);
-  const payoutStatus = payout.status;
-  const periodStart = bookings.length > 0 ? new Date(Math.min(...bookings.map((b) => new Date(b.booking_date || b.created_at).getTime()))) : payoutDate;
-  const periodEnd = payoutDate;
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument2({
-        margin: 50,
-        size: "LETTER"
-      });
-      const buffers = [];
-      doc.on("data", buffers.push.bind(buffers));
-      doc.on("end", () => {
-        const pdfBuffer = Buffer.concat(buffers);
-        resolve(pdfBuffer);
-      });
-      doc.on("error", reject);
-      doc.fontSize(28).font("Helvetica-Bold").text("PAYOUT STATEMENT", 50, 50);
-      doc.fontSize(10).font("Helvetica");
-      const statementDate = (/* @__PURE__ */ new Date()).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric"
-      });
-      const statementNumber = `PS-${payout.id.substring(3)}-${payoutDate.getFullYear()}`;
-      const pageWidth = doc.page.width;
-      const rightMargin = pageWidth - 50;
-      const labelWidth = 100;
-      const valueStartX = rightMargin - 200;
-      let rightY = 50;
-      doc.fontSize(10).font("Helvetica-Bold");
-      doc.text("Statement #:", valueStartX, rightY, { width: labelWidth, align: "right" });
-      doc.font("Helvetica");
-      doc.text(statementNumber, valueStartX + labelWidth + 5, rightY);
-      rightY += 15;
-      doc.font("Helvetica-Bold");
-      doc.text("Date:", valueStartX, rightY, { width: labelWidth, align: "right" });
-      doc.font("Helvetica");
-      doc.text(statementDate, valueStartX + labelWidth + 5, rightY);
-      rightY += 15;
-      doc.font("Helvetica-Bold");
-      doc.text("Payout ID:", valueStartX, rightY, { width: labelWidth, align: "right" });
-      doc.font("Helvetica");
-      const payoutIdDisplay = payout.id.length > 20 ? payout.id.substring(0, 20) + "..." : payout.id;
-      doc.text(payoutIdDisplay, valueStartX + labelWidth + 5, rightY);
-      rightY += 15;
-      doc.font("Helvetica-Bold");
-      doc.text("Status:", valueStartX, rightY, { width: labelWidth, align: "right" });
-      doc.font("Helvetica");
-      doc.text(payoutStatus.charAt(0).toUpperCase() + payoutStatus.slice(1), valueStartX + labelWidth + 5, rightY);
-      rightY += 15;
-      doc.font("Helvetica-Bold");
-      doc.text("Payout Date:", valueStartX, rightY, { width: labelWidth, align: "right" });
-      doc.font("Helvetica");
-      doc.text(payoutDate.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric"
-      }), valueStartX + labelWidth + 5, rightY);
-      let leftY = 120;
-      doc.fontSize(14).font("Helvetica-Bold").text("Local Cooks Community", 50, leftY);
-      leftY += 18;
-      doc.fontSize(10).font("Helvetica").text("support@localcooks.ca", 50, leftY);
-      leftY += 30;
-      doc.fontSize(12).font("Helvetica-Bold").text("Pay To:", 50, leftY);
-      leftY += 18;
-      doc.fontSize(10).font("Helvetica");
-      doc.text(managerName || "Manager", 50, leftY);
-      leftY += 15;
-      if (managerEmail) {
-        doc.text(managerEmail, 50, leftY);
-        leftY += 15;
-      }
-      leftY += 20;
-      doc.fontSize(12).font("Helvetica-Bold").text("Period:", 50, leftY);
-      leftY += 18;
-      doc.fontSize(10).font("Helvetica");
-      doc.text(
-        `${periodStart.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} - ${periodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`,
-        50,
-        leftY
-      );
-      leftY += 40;
-      doc.fontSize(14).font("Helvetica-Bold").text("Summary", 50, leftY);
-      leftY += 25;
-      const summaryItems = [
-        { label: "Total Bookings", value: totalBookings.toString() },
-        { label: "Total Revenue", value: `$${totalEarnings.toFixed(2)}` },
-        { label: "Platform Fees", value: `-$${totalPlatformFees.toFixed(2)}` },
-        { label: "Net Earnings", value: `$${totalEarnings.toFixed(2)}` },
-        { label: "Payout Amount", value: `$${payoutAmount.toFixed(2)}` }
-      ];
-      summaryItems.forEach((item) => {
-        doc.fontSize(10).font("Helvetica");
-        doc.text(item.label + ":", 50, leftY, { width: 200 });
-        doc.font("Helvetica-Bold");
-        doc.text(item.value, 250, leftY);
-        leftY += 20;
-      });
-      if (bookings.length > 0) {
-        leftY += 20;
-        doc.fontSize(14).font("Helvetica-Bold").text("Booking Details", 50, leftY);
-        leftY += 25;
-        doc.fontSize(9).font("Helvetica-Bold");
-        doc.text("Date", 50, leftY);
-        doc.text("Kitchen", 120, leftY);
-        doc.text("Chef", 250, leftY);
-        doc.text("Amount", 350, leftY, { width: 100, align: "right" });
-        leftY += 15;
-        doc.moveTo(50, leftY).lineTo(550, leftY).stroke();
-        leftY += 10;
-        doc.fontSize(8).font("Helvetica");
-        bookings.slice(0, 30).forEach((booking) => {
-          if (leftY > 700) {
-            doc.addPage();
-            leftY = 50;
-          }
-          const bookingDateRaw = booking.bookingDate || booking.booking_date || booking.createdAt || booking.created_at;
-          const bookingDate = new Date(bookingDateRaw);
-          const dateStr = bookingDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-          const kitchenName = (booking.kitchenName || booking.kitchen_name || "Kitchen").substring(0, 20);
-          const chefName = (booking.chefName || booking.chef_name || "Guest").substring(0, 20);
-          const amount = (booking.totalPrice || booking.total_price || 0) / 100 * (1 - serviceFeeRate);
-          doc.text(dateStr, 50, leftY);
-          doc.text(kitchenName, 120, leftY, { width: 120 });
-          doc.text(chefName, 250, leftY, { width: 90 });
-          doc.text(`$${amount.toFixed(2)}`, 350, leftY, { width: 100, align: "right" });
-          leftY += 15;
-        });
-        if (bookings.length > 30) {
-          leftY += 5;
-          doc.fontSize(8).font("Helvetica").text(`... and ${bookings.length - 30} more bookings`, 50, leftY);
-        }
-      }
-      const footerY = doc.page.height - 100;
-      doc.fontSize(8).font("Helvetica");
-      doc.text(
-        "This is an automated payout statement from Local Cooks Community.",
-        50,
-        footerY,
-        { align: "center", width: doc.page.width - 100 }
-      );
-      doc.text(
-        "For questions, contact support@localcooks.ca",
-        50,
-        footerY + 15,
-        { align: "center", width: doc.page.width - 100 }
-      );
-      doc.end();
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-var init_payout_statement_service = __esm({
-  "server/services/payout-statement-service.ts"() {
-    "use strict";
-  }
-});
-
-// server/services/auth-expiry-service.ts
-var auth_expiry_service_exports = {};
-__export(auth_expiry_service_exports, {
-  lazyExpireKitchenBookingAuth: () => lazyExpireKitchenBookingAuth,
-  lazyExpireStorageExtensionAuth: () => lazyExpireStorageExtensionAuth,
-  processExpiredAuthorizations: () => processExpiredAuthorizations
-});
-import { eq as eq26, and as and15, lt as lt3, sql as sql12 } from "drizzle-orm";
-async function lazyExpireKitchenBookingAuth(booking) {
-  if (booking.paymentStatus !== "authorized" || booking.status !== "pending") return false;
-  if (!booking.paymentIntentId || !booking.createdAt) return false;
-  const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1e3);
-  if (new Date(booking.createdAt) >= cutoffTime) return false;
-  try {
-    logger.info(`[AuthExpiry] Lazy-expiring kitchen booking ${booking.id} \u2014 authorization older than ${AUTH_EXPIRY_HOURS}h`);
-    const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-    await cancelPaymentIntent2(booking.paymentIntentId);
-    await db.update(kitchenBookings).set({
-      status: "cancelled",
-      paymentStatus: "failed",
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(
-      and15(
-        eq26(kitchenBookings.id, booking.id),
-        eq26(kitchenBookings.paymentStatus, "authorized")
-        // Atomic guard
-      )
-    );
-    await db.update(storageBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(
-      and15(
-        eq26(storageBookings.kitchenBookingId, booking.id),
-        eq26(storageBookings.paymentStatus, "authorized")
-      )
-    );
-    await db.update(equipmentBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(
-      and15(
-        eq26(equipmentBookings.kitchenBookingId, booking.id),
-        eq26(equipmentBookings.paymentStatus, "authorized")
-      )
-    );
-    try {
-      const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-      const pt = await findPaymentTransactionByIntentId2(booking.paymentIntentId, db);
-      if (pt) {
-        await updatePaymentTransaction2(pt.id, {
-          status: "canceled",
-          stripeStatus: "canceled"
-        }, db);
-      }
-    } catch (ptErr) {
-      logger.warn(`[AuthExpiry] Lazy: Could not update PT for booking ${booking.id}:`, ptErr);
-    }
-    try {
-      await sendAuthExpiryNotification(booking.chefId, booking.id, "kitchen_booking", booking.kitchenId);
-    } catch (notifErr) {
-      logger.warn(`[AuthExpiry] Lazy: Could not send notification for booking ${booking.id}:`, notifErr);
-    }
-    logger.info(`[AuthExpiry] Lazy-expired kitchen booking ${booking.id} successfully`);
-    return true;
-  } catch (err) {
-    logger.error(`[AuthExpiry] Lazy: Error expiring booking ${booking.id}:`, err);
-    return false;
-  }
-}
-async function lazyExpireStorageExtensionAuth(extension) {
-  if (extension.status !== "authorized") return false;
-  if (!extension.stripePaymentIntentId || !extension.createdAt) return false;
-  const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1e3);
-  if (new Date(extension.createdAt) >= cutoffTime) return false;
-  try {
-    logger.info(`[AuthExpiry] Lazy-expiring storage extension ${extension.id} \u2014 authorization older than ${AUTH_EXPIRY_HOURS}h`);
-    const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-    await cancelPaymentIntent2(extension.stripePaymentIntentId);
-    await db.update(pendingStorageExtensions).set({
-      status: "expired",
-      rejectionReason: "Payment authorization expired \u2014 manager did not respond within 24 hours",
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(
-      and15(
-        eq26(pendingStorageExtensions.id, extension.id),
-        eq26(pendingStorageExtensions.status, "authorized")
-        // Atomic guard
-      )
-    );
-    try {
-      const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-      const pt = await findPaymentTransactionByIntentId2(extension.stripePaymentIntentId, db);
-      if (pt) {
-        await updatePaymentTransaction2(pt.id, {
-          status: "canceled",
-          stripeStatus: "canceled"
-        }, db);
-      }
-    } catch (ptErr) {
-      logger.warn(`[AuthExpiry] Lazy: Could not update PT for extension ${extension.id}:`, ptErr);
-    }
-    try {
-      const [sb] = await db.select({ chefId: storageBookings.chefId }).from(storageBookings).where(eq26(storageBookings.id, extension.storageBookingId)).limit(1);
-      if (sb?.chefId) {
-        await sendAuthExpiryNotification(sb.chefId, extension.id, "storage_extension");
-      }
-    } catch (notifErr) {
-      logger.warn(`[AuthExpiry] Lazy: Could not send notification for extension ${extension.id}:`, notifErr);
-    }
-    logger.info(`[AuthExpiry] Lazy-expired storage extension ${extension.id} successfully`);
-    return true;
-  } catch (err) {
-    logger.error(`[AuthExpiry] Lazy: Error expiring extension ${extension.id}:`, err);
-    return false;
-  }
-}
-async function processExpiredAuthorizations() {
-  const results = [];
-  const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1e3);
-  logger.info(`[AuthExpiry] Processing expired authorizations (cutoff: ${cutoffTime.toISOString()})`);
-  try {
-    const expiredBookings = await db.select({
-      id: kitchenBookings.id,
-      paymentIntentId: kitchenBookings.paymentIntentId,
-      chefId: kitchenBookings.chefId,
-      kitchenId: kitchenBookings.kitchenId,
-      createdAt: kitchenBookings.createdAt
-    }).from(kitchenBookings).where(
-      and15(
-        eq26(kitchenBookings.paymentStatus, "authorized"),
-        eq26(kitchenBookings.status, "pending"),
-        lt3(kitchenBookings.createdAt, cutoffTime)
-      )
-    );
-    logger.info(`[AuthExpiry] Found ${expiredBookings.length} expired kitchen booking authorizations`);
-    for (const booking of expiredBookings) {
-      if (!booking.paymentIntentId) continue;
-      try {
-        const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-        await cancelPaymentIntent2(booking.paymentIntentId);
-        await db.update(kitchenBookings).set({
-          status: "cancelled",
-          paymentStatus: "failed",
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq26(kitchenBookings.id, booking.id));
-        await db.update(storageBookings).set({
-          paymentStatus: "failed",
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(
-          and15(
-            eq26(storageBookings.kitchenBookingId, booking.id),
-            eq26(storageBookings.paymentStatus, "authorized")
-          )
-        );
-        await db.update(equipmentBookings).set({
-          paymentStatus: "failed",
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(
-          and15(
-            eq26(equipmentBookings.kitchenBookingId, booking.id),
-            eq26(equipmentBookings.paymentStatus, "authorized")
-          )
-        );
-        try {
-          const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-          const pt = await findPaymentTransactionByIntentId2(booking.paymentIntentId, db);
-          if (pt) {
-            await updatePaymentTransaction2(pt.id, {
-              status: "canceled",
-              stripeStatus: "canceled"
-            }, db);
-          }
-        } catch (ptErr) {
-          logger.warn(`[AuthExpiry] Could not update PT for booking ${booking.id}:`, ptErr);
-        }
-        try {
-          await sendAuthExpiryNotification(booking.chefId, booking.id, "kitchen_booking", booking.kitchenId);
-        } catch (notifErr) {
-          logger.warn(`[AuthExpiry] Could not send notification for booking ${booking.id}:`, notifErr);
-        }
-        results.push({
-          type: "kitchen_booking",
-          id: booking.id,
-          paymentIntentId: booking.paymentIntentId,
-          chefId: booking.chefId,
-          action: "canceled"
-        });
-        logger.info(`[AuthExpiry] Cancelled authorization for kitchen booking ${booking.id}`);
-      } catch (err) {
-        logger.error(`[AuthExpiry] Error cancelling auth for booking ${booking.id}:`, err);
-        results.push({
-          type: "kitchen_booking",
-          id: booking.id,
-          paymentIntentId: booking.paymentIntentId,
-          chefId: booking.chefId,
-          action: "error",
-          error: err.message
-        });
-      }
-    }
-  } catch (queryErr) {
-    logger.error(`[AuthExpiry] Error querying expired kitchen bookings:`, queryErr);
-  }
-  try {
-    const expiredExtensions = await db.select({
-      id: pendingStorageExtensions.id,
-      stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
-      storageBookingId: pendingStorageExtensions.storageBookingId,
-      createdAt: pendingStorageExtensions.createdAt,
-      chefId: sql12`(
-          SELECT sb.chef_id FROM storage_bookings sb 
-          WHERE sb.id = ${pendingStorageExtensions.storageBookingId}
-        )`.as("chefId")
-    }).from(pendingStorageExtensions).where(
-      and15(
-        eq26(pendingStorageExtensions.status, "authorized"),
-        lt3(pendingStorageExtensions.createdAt, cutoffTime)
-      )
-    );
-    logger.info(`[AuthExpiry] Found ${expiredExtensions.length} expired storage extension authorizations`);
-    for (const ext of expiredExtensions) {
-      if (!ext.stripePaymentIntentId) continue;
-      try {
-        const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-        await cancelPaymentIntent2(ext.stripePaymentIntentId);
-        await db.update(pendingStorageExtensions).set({
-          status: "expired",
-          rejectionReason: "Payment authorization expired \u2014 manager did not respond within 24 hours",
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq26(pendingStorageExtensions.id, ext.id));
-        try {
-          const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-          const pt = await findPaymentTransactionByIntentId2(ext.stripePaymentIntentId, db);
-          if (pt) {
-            await updatePaymentTransaction2(pt.id, {
-              status: "canceled",
-              stripeStatus: "canceled"
-            }, db);
-          }
-        } catch (ptErr) {
-          logger.warn(`[AuthExpiry] Could not update PT for extension ${ext.id}:`, ptErr);
-        }
-        try {
-          await sendAuthExpiryNotification(ext.chefId, ext.id, "storage_extension");
-        } catch (notifErr) {
-          logger.warn(`[AuthExpiry] Could not send notification for extension ${ext.id}:`, notifErr);
-        }
-        results.push({
-          type: "storage_extension",
-          id: ext.id,
-          paymentIntentId: ext.stripePaymentIntentId,
-          chefId: ext.chefId,
-          action: "canceled"
-        });
-        logger.info(`[AuthExpiry] Cancelled authorization for storage extension ${ext.id}`);
-      } catch (err) {
-        logger.error(`[AuthExpiry] Error cancelling auth for extension ${ext.id}:`, err);
-        results.push({
-          type: "storage_extension",
-          id: ext.id,
-          paymentIntentId: ext.stripePaymentIntentId,
-          chefId: ext.chefId,
-          action: "error",
-          error: err.message
-        });
-      }
-    }
-  } catch (queryErr) {
-    logger.error(`[AuthExpiry] Error querying expired storage extensions:`, queryErr);
-  }
-  logger.info(`[AuthExpiry] Processed ${results.length} expired authorizations (${results.filter((r) => r.action === "canceled").length} canceled, ${results.filter((r) => r.action === "error").length} errors)`);
-  return results;
-}
-async function sendAuthExpiryNotification(chefId, recordId, type, kitchenId) {
-  if (!chefId) return;
-  try {
-    const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
-    const [chef] = await db.select({ username: users.username }).from(users).where(eq26(users.id, chefId)).limit(1);
-    if (!chef?.username) return;
-    let kitchenName = "Kitchen";
-    if (kitchenId) {
-      const [kitchen] = await db.select({ name: kitchens.name }).from(kitchens).where(eq26(kitchens.id, kitchenId)).limit(1);
-      if (kitchen) kitchenName = kitchen.name;
-    }
-    try {
-      await notificationService2.createForChef({
-        chefId,
-        type: "booking_cancelled",
-        title: "Booking Authorization Expired",
-        message: type === "kitchen_booking" ? `Your kitchen booking #${recordId} at ${kitchenName} was automatically cancelled because the manager did not respond within 24 hours. Your card has not been charged.` : `Your storage extension request #${recordId} was automatically cancelled because the manager did not respond within 24 hours. Your card has not been charged.`,
-        metadata: { type, recordId: String(recordId) }
-      });
-    } catch {
-    }
-  } catch (err) {
-    logger.warn(`[AuthExpiry] Error sending notification to chef ${chefId}:`, err);
-  }
-}
-var AUTH_EXPIRY_HOURS;
-var init_auth_expiry_service = __esm({
-  "server/services/auth-expiry-service.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    init_logger();
-    AUTH_EXPIRY_HOURS = 24;
-  }
-});
-
-// server/services/storage-checkout-service.ts
-var storage_checkout_service_exports = {};
-__export(storage_checkout_service_exports, {
-  addCheckoutPhotos: () => addCheckoutPhotos,
-  autoCleanExpiredCheckout: () => autoCleanExpiredCheckout,
-  getCheckoutHistory: () => getCheckoutHistory,
-  getCheckoutStatus: () => getCheckoutStatus,
-  getPendingCheckoutReviews: () => getPendingCheckoutReviews,
-  isCheckoutInProgress: () => isCheckoutInProgress,
-  processCheckoutApproval: () => processCheckoutApproval,
-  processExpiredCheckoutReviews: () => processExpiredCheckoutReviews,
-  requestStorageCheckout: () => requestStorageCheckout
-});
-import { eq as eq27, desc as desc12, and as and16, or as or3, inArray as inArray6, lt as lt4 } from "drizzle-orm";
-async function requestStorageCheckout(storageBookingId, chefId, checkoutNotes, checkoutPhotoUrls) {
-  try {
-    if (!storageBookingId || storageBookingId <= 0) {
-      return { success: false, error: "Invalid storage booking ID" };
-    }
-    if (!chefId || chefId <= 0) {
-      return { success: false, error: "Invalid chef ID" };
-    }
-    const [booking] = await db.select().from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
-    if (!booking) {
-      return { success: false, error: "Storage booking not found" };
-    }
-    if (booking.chefId !== chefId) {
-      return { success: false, error: "You do not have permission to checkout this storage booking" };
-    }
-    if (booking.status === "cancelled") {
-      return { success: false, error: "Cannot checkout a cancelled booking" };
-    }
-    if (booking.status === "completed") {
-      return { success: false, error: "This booking has already been checked out" };
-    }
-    if (booking.status === "pending") {
-      return { success: false, error: "Cannot checkout a pending booking. The booking must be confirmed first." };
-    }
-    const now = /* @__PURE__ */ new Date();
-    const startDate = new Date(booking.startDate);
-    if (startDate > now) {
-      return { success: false, error: "Cannot checkout before the booking start date. Please wait until your booking period begins." };
-    }
-    const currentCheckoutStatus = booking.checkoutStatus;
-    if (currentCheckoutStatus === "checkout_requested") {
-      return { success: false, error: "Checkout has already been requested for this booking" };
-    }
-    if (currentCheckoutStatus === "checkout_approved") {
-      return { success: false, error: "Checkout has already been approved for this booking" };
-    }
-    if (currentCheckoutStatus === "completed") {
-      return { success: false, error: "This booking has already been completed" };
-    }
-    await db.update(storageBookings).set({
-      checkoutStatus: "checkout_requested",
-      checkoutRequestedAt: /* @__PURE__ */ new Date(),
-      checkoutNotes: checkoutNotes || null,
-      checkoutPhotoUrls: checkoutPhotoUrls || [],
-      // Clear any previous denial
-      checkoutDeniedAt: null,
-      checkoutDeniedBy: null,
-      checkoutDenialReason: null,
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq27(storageBookings.id, storageBookingId));
-    logger.info(`[StorageCheckout] Chef ${chefId} requested checkout for storage booking ${storageBookingId}`, {
-      hasPhotos: (checkoutPhotoUrls?.length || 0) > 0,
-      photoCount: checkoutPhotoUrls?.length || 0
-    });
-    try {
-      await sendCheckoutRequestNotification(storageBookingId, chefId);
-    } catch (notifyError) {
-      logger.error(`[StorageCheckout] Error sending checkout notification:`, notifyError);
-    }
-    return {
-      success: true,
-      storageBookingId,
-      checkoutStatus: "checkout_requested"
-    };
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error requesting checkout:`, error);
-    return { success: false, error: "Failed to request checkout" };
-  }
-}
-async function addCheckoutPhotos(storageBookingId, chefId, newPhotoUrls) {
-  try {
-    const [booking] = await db.select().from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
-    if (!booking) {
-      return { success: false, error: "Storage booking not found" };
-    }
-    if (booking.chefId !== chefId) {
-      return { success: false, error: "You do not have permission to modify this booking" };
-    }
-    const currentCheckoutStatus = booking.checkoutStatus;
-    if (currentCheckoutStatus !== "checkout_requested") {
-      return { success: false, error: "Can only add photos to pending checkout requests" };
-    }
-    const existingPhotos = booking.checkoutPhotoUrls || [];
-    const allPhotos = [...existingPhotos, ...newPhotoUrls];
-    if (allPhotos.length > 10) {
-      return { success: false, error: "Maximum 10 checkout photos allowed" };
-    }
-    await db.update(storageBookings).set({
-      checkoutPhotoUrls: allPhotos,
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq27(storageBookings.id, storageBookingId));
-    logger.info(`[StorageCheckout] Added ${newPhotoUrls.length} photos to checkout request for booking ${storageBookingId}`);
-    return {
-      success: true,
-      storageBookingId,
-      checkoutStatus: "checkout_requested"
-    };
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error adding checkout photos:`, error);
-    return { success: false, error: "Failed to add checkout photos" };
-  }
-}
-async function verifyManagerPermission(storageBookingId, managerId) {
-  try {
-    const [result] = await db.select({ managerId: locations.managerId }).from(storageBookings).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).where(eq27(storageBookings.id, storageBookingId)).limit(1);
-    return result?.managerId === managerId;
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error verifying manager permission:`, error);
-    return false;
-  }
-}
-async function sendCheckoutRequestNotification(storageBookingId, chefId) {
-  try {
-    const [booking] = await db.select({
-      storageName: storageListings.name,
-      kitchenName: kitchens.name,
-      locationName: locations.name,
-      managerId: locations.managerId,
-      notificationEmail: locations.notificationEmail,
-      endDate: storageBookings.endDate
-    }).from(storageBookings).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).where(eq27(storageBookings.id, storageBookingId)).limit(1);
-    if (!booking || !booking.managerId) {
-      return;
-    }
-    let chefEmail = "Unknown Chef";
-    if (chefId) {
-      const [chef] = await db.select({ username: users.username }).from(users).where(eq27(users.id, chefId)).limit(1);
-      chefEmail = chef?.username || "Unknown Chef";
-    }
-    let managerEmail = booking.notificationEmail;
-    if (!managerEmail) {
-      const [manager] = await db.select({ username: users.username }).from(users).where(eq27(users.id, booking.managerId)).limit(1);
-      managerEmail = manager?.username;
-    }
-    if (!managerEmail) {
-      return;
-    }
-    const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-    const emailContent = {
-      to: managerEmail,
-      subject: `Storage Checkout Request - ${booking.storageName}`,
-      html: `
-        <h2>Storage Checkout Request</h2>
-        <p>A chef has requested checkout for their storage booking.</p>
-        <table style="border-collapse: collapse; margin: 20px 0;">
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Chef:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${chefEmail}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.storageName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Kitchen:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.kitchenName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>End Date:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${new Date(booking.endDate).toLocaleDateString()}</td></tr>
-        </table>
-        <p>Please review the checkout request and verify the storage unit is empty before approving.</p>
-        <p><a href="${process.env.VITE_APP_URL || "https://localcooks.ca"}/manager/dashboard?tab=checkouts" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Review Checkout Request</a></p>
-      `,
-      text: `Storage Checkout Request
-
-A chef has requested checkout for their storage booking.
-
-Chef: ${chefEmail}
-Storage: ${booking.storageName}
-Kitchen: ${booking.kitchenName}
-End Date: ${new Date(booking.endDate).toLocaleDateString()}
-
-Please review the checkout request in your dashboard.`
-    };
-    await sendEmail2(emailContent);
-    logger.info(`[StorageCheckout] Sent checkout request notification to manager ${managerEmail}`);
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error sending checkout request notification:`, error);
-  }
-}
-async function sendCheckoutClearedNotification(storageBookingId, chefId, isAutoClear = false) {
-  try {
-    if (!chefId) return;
-    const [chef] = await db.select({ username: users.username }).from(users).where(eq27(users.id, chefId)).limit(1);
-    if (!chef?.username) return;
-    const [booking] = await db.select({
-      storageName: storageListings.name,
-      kitchenName: kitchens.name
-    }).from(storageBookings).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).where(eq27(storageBookings.id, storageBookingId)).limit(1);
-    if (!booking) return;
-    const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-    const clearedBy = isAutoClear ? "automatically (review window expired with no issues reported)" : "by the kitchen manager";
-    const emailContent = {
-      to: chef.username,
-      subject: `Storage Cleared \u2014 No Issues - ${booking.storageName}`,
-      html: `
-        <h2>Storage Checkout Complete</h2>
-        <p>Your storage checkout has been cleared ${clearedBy}.</p>
-        <table style="border-collapse: collapse; margin: 20px 0;">
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.storageName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Kitchen:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.kitchenName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Status:</strong></td><td style="padding: 8px; border: 1px solid #ddd; color: #16a34a; font-weight: 600;">Storage Cleared \u2014 No Issues</td></tr>
-        </table>
-        <p>Your storage booking has been successfully completed. Thank you for using Local Cooks!</p>
-      `,
-      text: `Storage Checkout Complete
-
-Your storage checkout has been cleared ${clearedBy}.
-
-Storage: ${booking.storageName}
-Kitchen: ${booking.kitchenName}
-Status: Storage Cleared \u2014 No Issues
-
-Thank you for using Local Cooks!`
-    };
-    await sendEmail2(emailContent);
-    logger.info(`[StorageCheckout] Sent cleared notification to chef ${chef.username} (autoClear: ${isAutoClear})`);
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error sending cleared notification:`, error);
-  }
-}
-async function sendCheckoutClaimNotification(storageBookingId, chefId, claimId, claimTitle) {
-  try {
-    if (!chefId) return;
-    const [chef] = await db.select({ username: users.username }).from(users).where(eq27(users.id, chefId)).limit(1);
-    if (!chef?.username) return;
-    const [booking] = await db.select({
-      storageName: storageListings.name,
-      kitchenName: kitchens.name
-    }).from(storageBookings).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).where(eq27(storageBookings.id, storageBookingId)).limit(1);
-    if (!booking) return;
-    const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-    const emailContent = {
-      to: chef.username,
-      subject: `Storage Checkout \u2014 Claim Filed - ${booking.storageName}`,
-      html: `
-        <h2>Storage Checkout Complete \u2014 Claim Filed</h2>
-        <p>Your storage checkout has been processed. The kitchen has filed a damage/cleaning claim that requires your attention.</p>
-        <table style="border-collapse: collapse; margin: 20px 0;">
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.storageName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Kitchen:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.kitchenName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Claim:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${claimTitle}</td></tr>
-        </table>
-        <p>You will receive a separate notification with the full claim details. You can accept or dispute the claim from your dashboard.</p>
-        <p><a href="${process.env.VITE_APP_URL || "https://localcooks.ca"}/dashboard?view=damage-claims" style="background-color: #f59e0b; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Claim Details</a></p>
-      `,
-      text: `Storage Checkout Complete \u2014 Claim Filed
-
-Your storage checkout has been processed. The kitchen has filed a damage/cleaning claim "${claimTitle}".
-
-Storage: ${booking.storageName}
-Kitchen: ${booking.kitchenName}
-
-Please review the claim in your dashboard.`
-    };
-    await sendEmail2(emailContent);
-    logger.info(`[StorageCheckout] Sent claim notification to chef ${chef.username} for claim #${claimId}`);
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error sending claim notification:`, error);
-  }
-}
-async function processCheckoutApproval(storageBookingId, managerId, action, managerNotes, denialReasonOrClaimData) {
-  try {
-    if (!storageBookingId || storageBookingId <= 0) {
-      return { success: false, error: "Invalid storage booking ID" };
-    }
-    if (!managerId || managerId <= 0) {
-      return { success: false, error: "Invalid manager ID" };
-    }
-    const normalizedAction = action === "approve" ? "clear" : action;
-    if (normalizedAction === "deny") {
-      logger.warn(`[StorageCheckout] Legacy 'deny' action called for booking ${storageBookingId}. Deny is deprecated \u2014 treating as clear.`);
-      return processCheckoutClear(storageBookingId, managerId, managerNotes);
-    }
-    if (normalizedAction === "start_claim") {
-      if (!denialReasonOrClaimData || typeof denialReasonOrClaimData === "string") {
-        return { success: false, error: "Claim data is required when starting a damage/cleaning claim" };
-      }
-      return processCheckoutStartClaim(storageBookingId, managerId, denialReasonOrClaimData, managerNotes);
-    }
-    return processCheckoutClear(storageBookingId, managerId, managerNotes);
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error processing checkout review:`, error);
-    return { success: false, error: "Failed to process checkout review" };
-  }
-}
-async function processCheckoutClear(storageBookingId, managerId, managerNotes) {
-  const [booking] = await db.select({
-    id: storageBookings.id,
-    chefId: storageBookings.chefId,
-    checkoutStatus: storageBookings.checkoutStatus
-  }).from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
-  if (!booking) {
-    return { success: false, error: "Storage booking not found" };
-  }
-  const hasPermission = await verifyManagerPermission(storageBookingId, managerId);
-  if (!hasPermission) {
-    return { success: false, error: "You do not have permission to review this checkout" };
-  }
-  const currentCheckoutStatus = booking.checkoutStatus;
-  if (currentCheckoutStatus !== "checkout_requested") {
-    return { success: false, error: `Cannot process checkout in status: ${currentCheckoutStatus || "active"}` };
-  }
-  await db.update(storageBookings).set({
-    checkoutStatus: "completed",
-    checkoutApprovedAt: /* @__PURE__ */ new Date(),
-    checkoutApprovedBy: managerId,
-    checkoutNotes: managerNotes ? `Manager: ${managerNotes}` : "Storage cleared \u2014 no issues found",
-    status: "completed",
-    updatedAt: /* @__PURE__ */ new Date()
-  }).where(eq27(storageBookings.id, storageBookingId));
-  logger.info(`[StorageCheckout] Manager ${managerId} cleared storage for booking ${storageBookingId} \u2014 no issues`);
-  try {
-    await sendCheckoutClearedNotification(storageBookingId, booking.chefId);
-  } catch (notifyError) {
-    logger.error(`[StorageCheckout] Error sending cleared notification:`, notifyError);
-  }
-  return {
-    success: true,
-    storageBookingId,
-    checkoutStatus: "completed",
-    bookingCompleted: true
-  };
-}
-async function processCheckoutStartClaim(storageBookingId, managerId, claimData, managerNotes) {
-  const [booking] = await db.select({
-    id: storageBookings.id,
-    chefId: storageBookings.chefId,
-    checkoutStatus: storageBookings.checkoutStatus,
-    checkoutRequestedAt: storageBookings.checkoutRequestedAt
-  }).from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
-  if (!booking) {
-    return { success: false, error: "Storage booking not found" };
-  }
-  const hasPermission = await verifyManagerPermission(storageBookingId, managerId);
-  if (!hasPermission) {
-    return { success: false, error: "You do not have permission to review this checkout" };
-  }
-  const currentCheckoutStatus = booking.checkoutStatus;
-  if (currentCheckoutStatus !== "checkout_requested" && currentCheckoutStatus !== "completed") {
-    return { success: false, error: `Cannot start claim from checkout status: ${currentCheckoutStatus || "active"}` };
-  }
-  if (currentCheckoutStatus === "completed") {
-    const { getStorageCheckoutSettings: getStorageCheckoutSettings2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
-    const settings = await getStorageCheckoutSettings2();
-    const checkoutTime = booking.checkoutRequestedAt;
-    if (checkoutTime) {
-      const extendedDeadline = new Date(checkoutTime.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1e3);
-      if (/* @__PURE__ */ new Date() > extendedDeadline) {
-        return {
-          success: false,
-          error: `Extended claim window has expired. Claims must be filed within ${settings.extendedClaimWindowHours} hours of checkout.`
-        };
-      }
-    }
-  }
-  if (!claimData.claimTitle || claimData.claimTitle.trim().length < 5) {
-    return { success: false, error: "Claim title must be at least 5 characters" };
-  }
-  if (!claimData.claimDescription || claimData.claimDescription.trim().length < 50) {
-    return { success: false, error: "Claim description must be at least 50 characters" };
-  }
-  if (!claimData.claimedAmountCents || claimData.claimedAmountCents <= 0) {
-    return { success: false, error: "Claimed amount must be greater than zero" };
-  }
-  const { createDamageClaim: createDamageClaim2 } = await Promise.resolve().then(() => (init_damage_claim_service(), damage_claim_service_exports));
-  const claimResult = await createDamageClaim2({
-    bookingType: "storage",
-    storageBookingId,
-    managerId,
-    claimTitle: claimData.claimTitle.trim(),
-    claimDescription: claimData.claimDescription.trim(),
-    claimedAmountCents: claimData.claimedAmountCents,
-    damageDate: claimData.damageDate || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
-    submitImmediately: true
-  });
-  if (!claimResult.success || !claimResult.claim) {
-    return {
-      success: false,
-      error: claimResult.error || "Failed to create damage claim"
-    };
-  }
-  const claimId = claimResult.claim.id;
-  try {
-    const [bookingWithPhotos] = await db.select({ checkoutPhotoUrls: storageBookings.checkoutPhotoUrls }).from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
-    const photoUrls = bookingWithPhotos?.checkoutPhotoUrls;
-    if (photoUrls && photoUrls.length > 0) {
-      const { damageEvidence: damageEvidence2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      for (let i = 0; i < photoUrls.length; i++) {
-        await db.insert(damageEvidence2).values({
-          damageClaimId: claimId,
-          evidenceType: "photo_after",
-          fileUrl: photoUrls[i],
-          fileName: `checkout-photo-${i + 1}.jpg`,
-          description: `Chef checkout photo ${i + 1} of ${photoUrls.length} (auto-attached from checkout)`,
-          uploadedBy: managerId
-        });
-      }
-      logger.info(`[StorageCheckout] Auto-attached ${photoUrls.length} checkout photos as evidence for claim #${claimId}`);
-    }
-  } catch (evidenceError) {
-    logger.error(`[StorageCheckout] Error auto-attaching checkout photos to claim #${claimId}:`, evidenceError);
-  }
-  await db.update(storageBookings).set({
-    checkoutStatus: "checkout_claim_filed",
-    checkoutApprovedAt: /* @__PURE__ */ new Date(),
-    checkoutApprovedBy: managerId,
-    checkoutNotes: managerNotes ? `Manager: ${managerNotes} | Claim #${claimId} filed` : `Damage/cleaning claim #${claimId} filed during checkout review`,
-    // Mark booking as completed — storage is released, but claim is tracked separately
-    status: "completed",
-    updatedAt: /* @__PURE__ */ new Date()
-  }).where(eq27(storageBookings.id, storageBookingId));
-  logger.info(`[StorageCheckout] Manager ${managerId} started claim #${claimId} for storage booking ${storageBookingId}`);
-  try {
-    await sendCheckoutClaimNotification(storageBookingId, booking.chefId, claimId, claimData.claimTitle);
-  } catch (notifyError) {
-    logger.error(`[StorageCheckout] Error sending claim notification:`, notifyError);
-  }
-  return {
-    success: true,
-    storageBookingId,
-    checkoutStatus: "checkout_claim_filed",
-    bookingCompleted: true,
-    damageClaimId: claimId
-  };
-}
-async function autoCleanExpiredCheckout(bookingId, chefId, checkoutRequestedAt, reviewWindowHours) {
-  if (!checkoutRequestedAt) return false;
-  const reviewWindowMs = reviewWindowHours * 60 * 60 * 1e3;
-  const deadline = new Date(checkoutRequestedAt.getTime() + reviewWindowMs);
-  if (/* @__PURE__ */ new Date() <= deadline) return false;
-  try {
-    await db.update(storageBookings).set({
-      checkoutStatus: "completed",
-      checkoutApprovedAt: /* @__PURE__ */ new Date(),
-      checkoutNotes: `Auto-cleared by system \u2014 review window (${reviewWindowHours}h) expired with no issues reported`,
-      status: "completed",
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(
-      and16(
-        eq27(storageBookings.id, bookingId),
-        eq27(storageBookings.checkoutStatus, "checkout_requested")
-      )
-    );
-    logger.info(`[StorageCheckout] Lazy auto-cleared booking ${bookingId} \u2014 review window expired`);
-    try {
-      await sendCheckoutClearedNotification(bookingId, chefId, true);
-    } catch (notifyError) {
-      logger.error(`[StorageCheckout] Error sending auto-clear notification for booking ${bookingId}:`, notifyError);
-    }
-    return true;
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error lazy auto-clearing booking ${bookingId}:`, error);
-    return false;
-  }
-}
-async function processExpiredCheckoutReviews() {
-  const result = { processed: 0, cleared: 0, errors: 0 };
-  try {
-    const { getStorageCheckoutSettings: getStorageCheckoutSettings2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
-    const settings = await getStorageCheckoutSettings2();
-    const reviewWindowMs = settings.reviewWindowHours * 60 * 60 * 1e3;
-    const cutoffTime = new Date(Date.now() - reviewWindowMs);
-    const expiredCheckouts = await db.select({
-      id: storageBookings.id,
-      chefId: storageBookings.chefId,
-      checkoutRequestedAt: storageBookings.checkoutRequestedAt
-    }).from(storageBookings).where(
-      and16(
-        eq27(storageBookings.checkoutStatus, "checkout_requested"),
-        lt4(storageBookings.checkoutRequestedAt, cutoffTime)
-      )
-    );
-    result.processed = expiredCheckouts.length;
-    if (expiredCheckouts.length === 0) {
-      logger.info(`[StorageCheckout] No expired checkout reviews to process`);
-      return result;
-    }
-    logger.info(`[StorageCheckout] Processing ${expiredCheckouts.length} expired checkout reviews (window: ${settings.reviewWindowHours}h)`);
-    for (const checkout of expiredCheckouts) {
-      try {
-        await db.update(storageBookings).set({
-          checkoutStatus: "completed",
-          checkoutApprovedAt: /* @__PURE__ */ new Date(),
-          checkoutNotes: `Auto-cleared by system \u2014 review window (${settings.reviewWindowHours}h) expired with no issues reported`,
-          status: "completed",
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq27(storageBookings.id, checkout.id));
-        result.cleared++;
-        logger.info(`[StorageCheckout] Auto-cleared booking ${checkout.id} \u2014 review window expired`);
-        try {
-          await sendCheckoutClearedNotification(checkout.id, checkout.chefId, true);
-        } catch (notifyError) {
-          logger.error(`[StorageCheckout] Error sending auto-clear notification for booking ${checkout.id}:`, notifyError);
-        }
-      } catch (bookingError) {
-        result.errors++;
-        logger.error(`[StorageCheckout] Error auto-clearing booking ${checkout.id}:`, bookingError);
-      }
-    }
-    logger.info(`[StorageCheckout] Auto-clear results: ${result.cleared} cleared, ${result.errors} errors out of ${result.processed} processed`);
-    return result;
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error processing expired checkout reviews:`, error);
-    return result;
-  }
-}
-async function getPendingCheckoutReviews(locationId) {
-  try {
-    const today = /* @__PURE__ */ new Date();
-    today.setHours(0, 0, 0, 0);
-    const { getStorageCheckoutSettings: getStorageCheckoutSettings2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
-    const settings = await getStorageCheckoutSettings2();
-    const reviewWindowMs = settings.reviewWindowHours * 60 * 60 * 1e3;
-    const query = db.select({
-      storageBookingId: storageBookings.id,
-      storageListingId: storageBookings.storageListingId,
-      storageName: storageListings.name,
-      storageType: storageListings.storageType,
-      kitchenId: kitchens.id,
-      kitchenName: kitchens.name,
-      locationId: locations.id,
-      locationName: locations.name,
-      chefId: storageBookings.chefId,
-      chefEmail: users.username,
-      startDate: storageBookings.startDate,
-      endDate: storageBookings.endDate,
-      totalPrice: storageBookings.totalPrice,
-      checkoutStatus: storageBookings.checkoutStatus,
-      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
-      checkoutNotes: storageBookings.checkoutNotes,
-      checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
-    }).from(storageBookings).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).leftJoin(users, eq27(storageBookings.chefId, users.id)).where(eq27(storageBookings.checkoutStatus, "checkout_requested")).orderBy(desc12(storageBookings.checkoutRequestedAt));
-    const results = await query;
-    const filtered = locationId ? results.filter((r) => r.locationId === locationId) : results;
-    const now = /* @__PURE__ */ new Date();
-    const stillPending = [];
-    for (const r of filtered) {
-      const reviewDeadline = r.checkoutRequestedAt ? new Date(r.checkoutRequestedAt.getTime() + reviewWindowMs) : null;
-      const isExpired = reviewDeadline ? now > reviewDeadline : false;
-      if (isExpired) {
-        const wasCleared = await autoCleanExpiredCheckout(
-          r.storageBookingId,
-          r.chefId,
-          r.checkoutRequestedAt,
-          settings.reviewWindowHours
-        );
-        if (wasCleared) {
-          logger.info(`[StorageCheckout] Lazy-cleared booking ${r.storageBookingId} during getPendingCheckoutReviews`);
-          continue;
-        }
-      }
-      stillPending.push(r);
-    }
-    return stillPending.map((r) => {
-      const endDate = new Date(r.endDate);
-      const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1e3 * 60 * 60 * 24));
-      const reviewDeadline = r.checkoutRequestedAt ? new Date(r.checkoutRequestedAt.getTime() + reviewWindowMs) : null;
-      const isReviewExpired = reviewDeadline ? now > reviewDeadline : false;
-      return {
-        storageBookingId: r.storageBookingId,
-        storageListingId: r.storageListingId,
-        storageName: r.storageName || "Storage",
-        storageType: r.storageType || "dry",
-        kitchenId: r.kitchenId,
-        kitchenName: r.kitchenName || "Kitchen",
-        locationId: r.locationId,
-        locationName: r.locationName || "Location",
-        chefId: r.chefId,
-        chefEmail: r.chefEmail,
-        chefName: r.chefEmail,
-        // Using email as name for now
-        startDate: r.startDate,
-        endDate: r.endDate,
-        totalPrice: r.totalPrice,
-        checkoutStatus: r.checkoutStatus,
-        checkoutRequestedAt: r.checkoutRequestedAt,
-        checkoutNotes: r.checkoutNotes,
-        checkoutPhotoUrls: r.checkoutPhotoUrls || [],
-        daysUntilEnd,
-        isOverdue: daysUntilEnd < 0,
-        reviewDeadline,
-        isReviewExpired
-      };
-    });
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error getting pending checkout reviews:`, error);
-    return [];
-  }
-}
-async function getCheckoutHistory(locationIds, limit = 20) {
-  try {
-    const today = /* @__PURE__ */ new Date();
-    today.setHours(0, 0, 0, 0);
-    const results = await db.select({
-      storageBookingId: storageBookings.id,
-      storageListingId: storageBookings.storageListingId,
-      storageName: storageListings.name,
-      storageType: storageListings.storageType,
-      kitchenId: kitchens.id,
-      kitchenName: kitchens.name,
-      locationId: locations.id,
-      locationName: locations.name,
-      chefId: storageBookings.chefId,
-      chefEmail: users.username,
-      startDate: storageBookings.startDate,
-      endDate: storageBookings.endDate,
-      totalPrice: storageBookings.totalPrice,
-      checkoutStatus: storageBookings.checkoutStatus,
-      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
-      checkoutApprovedAt: storageBookings.checkoutApprovedAt,
-      checkoutNotes: storageBookings.checkoutNotes,
-      checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
-    }).from(storageBookings).innerJoin(storageListings, eq27(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq27(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq27(kitchens.locationId, locations.id)).leftJoin(users, eq27(storageBookings.chefId, users.id)).where(
-      and16(
-        inArray6(locations.id, locationIds),
-        or3(
-          eq27(storageBookings.checkoutStatus, "completed"),
-          eq27(storageBookings.checkoutStatus, "checkout_claim_filed")
-        )
-      )
-    ).orderBy(desc12(storageBookings.checkoutApprovedAt)).limit(limit);
-    return results.map((r) => {
-      const endDate = new Date(r.endDate);
-      const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1e3 * 60 * 60 * 24));
-      return {
-        storageBookingId: r.storageBookingId,
-        storageListingId: r.storageListingId,
-        storageName: r.storageName || "Storage",
-        storageType: r.storageType || "dry",
-        kitchenId: r.kitchenId,
-        kitchenName: r.kitchenName || "Kitchen",
-        locationId: r.locationId,
-        locationName: r.locationName || "Location",
-        chefId: r.chefId,
-        chefEmail: r.chefEmail,
-        chefName: r.chefEmail,
-        startDate: r.startDate,
-        endDate: r.endDate,
-        totalPrice: r.totalPrice,
-        checkoutStatus: r.checkoutStatus,
-        checkoutRequestedAt: r.checkoutRequestedAt,
-        checkoutApprovedAt: r.checkoutApprovedAt,
-        checkoutNotes: r.checkoutNotes,
-        checkoutPhotoUrls: r.checkoutPhotoUrls || [],
-        daysUntilEnd,
-        isOverdue: daysUntilEnd < 0,
-        reviewDeadline: null,
-        isReviewExpired: false
-      };
-    });
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error getting checkout history:`, error);
-    return [];
-  }
-}
-async function getCheckoutStatus(storageBookingId) {
-  try {
-    const [booking] = await db.select({
-      checkoutStatus: storageBookings.checkoutStatus,
-      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
-      checkoutApprovedAt: storageBookings.checkoutApprovedAt,
-      checkoutPhotoUrls: storageBookings.checkoutPhotoUrls,
-      checkoutNotes: storageBookings.checkoutNotes
-    }).from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
-    if (!booking) {
-      return null;
-    }
-    const { getStorageCheckoutSettings: getStorageCheckoutSettings2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
-    const settings = await getStorageCheckoutSettings2();
-    const now = /* @__PURE__ */ new Date();
-    const reviewDeadline = booking.checkoutRequestedAt ? new Date(booking.checkoutRequestedAt.getTime() + settings.reviewWindowHours * 60 * 60 * 1e3) : null;
-    const isReviewExpired = reviewDeadline ? now > reviewDeadline : false;
-    if (isReviewExpired && booking.checkoutStatus === "checkout_requested") {
-      const [bookingFull] = await db.select({ chefId: storageBookings.chefId }).from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
-      const wasCleared = await autoCleanExpiredCheckout(
-        storageBookingId,
-        bookingFull?.chefId ?? null,
-        booking.checkoutRequestedAt,
-        settings.reviewWindowHours
-      );
-      if (wasCleared) {
-        logger.info(`[StorageCheckout] Lazy-cleared booking ${storageBookingId} during getCheckoutStatus`);
-        return {
-          checkoutStatus: "completed",
-          checkoutRequestedAt: booking.checkoutRequestedAt,
-          checkoutApprovedAt: /* @__PURE__ */ new Date(),
-          checkoutPhotoUrls: booking.checkoutPhotoUrls || [],
-          checkoutNotes: `Auto-cleared by system \u2014 review window (${settings.reviewWindowHours}h) expired with no issues reported`,
-          reviewDeadline,
-          isReviewExpired: true,
-          extendedClaimDeadline: booking.checkoutRequestedAt ? new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1e3) : null,
-          canFileExtendedClaim: booking.checkoutRequestedAt ? now <= new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1e3) : false
-        };
-      }
-    }
-    const extendedClaimDeadline = booking.checkoutRequestedAt ? new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1e3) : null;
-    const canFileExtendedClaim = extendedClaimDeadline ? now <= extendedClaimDeadline : false;
-    return {
-      checkoutStatus: booking.checkoutStatus,
-      checkoutRequestedAt: booking.checkoutRequestedAt,
-      checkoutApprovedAt: booking.checkoutApprovedAt,
-      checkoutPhotoUrls: booking.checkoutPhotoUrls || [],
-      checkoutNotes: booking.checkoutNotes,
-      reviewDeadline,
-      isReviewExpired,
-      extendedClaimDeadline,
-      canFileExtendedClaim
-    };
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error getting checkout status:`, error);
-    return null;
-  }
-}
-async function isCheckoutInProgress(storageBookingId) {
-  try {
-    const [booking] = await db.select({ checkoutStatus: storageBookings.checkoutStatus }).from(storageBookings).where(eq27(storageBookings.id, storageBookingId)).limit(1);
-    if (!booking) {
-      return false;
-    }
-    const status = booking.checkoutStatus;
-    return status === "checkout_requested" || status === "checkout_approved" || status === "completed" || status === "checkout_claim_filed";
-  } catch (error) {
-    logger.error(`[StorageCheckout] Error checking checkout status:`, error);
-    return false;
-  }
-}
-var init_storage_checkout_service = __esm({
-  "server/services/storage-checkout-service.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    init_logger();
-  }
-});
-
-// server/routes/manager.ts
-var manager_exports = {};
-__export(manager_exports, {
-  default: () => manager_default
-});
-import { Router as Router14 } from "express";
-import {
-  eq as eq28,
-  inArray as inArray7,
-  and as and17,
-  desc as desc13,
-  sql as sql13,
-  or as or4,
-  gte as gte3,
-  lte as lte3
-} from "drizzle-orm";
-import { format as format4 } from "date-fns";
-async function getManagerIdForBooking(bookingId, bookingType, db2) {
-  if (bookingType === "kitchen" || bookingType === "bundle") {
-    const [row] = await db2.select({ managerId: locations.managerId }).from(kitchenBookings).innerJoin(kitchens, eq28(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(kitchenBookings.id, bookingId)).limit(1);
-    return row?.managerId ?? null;
-  }
-  if (bookingType === "storage") {
-    const [row] = await db2.select({ managerId: locations.managerId }).from(storageBookings).innerJoin(
-      storageListings,
-      eq28(storageBookings.storageListingId, storageListings.id)
-    ).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(storageBookings.id, bookingId)).limit(1);
-    return row?.managerId ?? null;
-  }
-  if (bookingType === "equipment") {
-    const [row] = await db2.select({ managerId: locations.managerId }).from(equipmentBookings).innerJoin(
-      equipmentListings,
-      eq28(equipmentBookings.equipmentListingId, equipmentListings.id)
-    ).innerJoin(kitchens, eq28(equipmentListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(equipmentBookings.id, bookingId)).limit(1);
-    return row?.managerId ?? null;
-  }
-  return null;
-}
-var router14, manager_default;
-var init_manager = __esm({
-  "server/routes/manager.ts"() {
-    "use strict";
-    init_db();
-    init_firebase_auth_middleware();
-    init_schema();
-    init_user_service();
-    init_email();
-    init_sms();
-    init_phone_utils();
-    init_timezone_utils();
-    init_logger();
-    init_api_response();
-    init_notification_service();
-    init_config();
-    init_schema();
-    init_booking_service();
-    init_kitchen_service();
-    init_location_service();
-    init_chef_service();
-    init_manager_service();
-    init_schema();
-    init_overstay_penalty_service();
-    init_damage_claim_service();
-    init_damage_claim_limits_service();
-    router14 = Router14();
-    router14.get(
-      "/revenue/overview",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const { startDate, endDate, locationId } = req.query;
-          const metrics = await managerService.getRevenueOverview(managerId, {
-            startDate,
-            endDate,
-            locationId: locationId ? parseInt(locationId) : void 0
-          });
-          res.json(metrics);
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/revenue/invoices",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const result = await managerService.getInvoices(
-            managerId,
-            req.query
-          );
-          res.json(result);
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/revenue/invoices/:bookingId",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const bookingId = parseInt(req.params.bookingId);
-          if (isNaN(bookingId) || bookingId <= 0) {
-            return res.status(400).json({ error: "Invalid booking ID" });
-          }
-          const [booking] = await db.select({
-            id: kitchenBookings.id,
-            chefId: kitchenBookings.chefId,
-            kitchenId: kitchenBookings.kitchenId,
-            bookingDate: kitchenBookings.bookingDate,
-            startTime: kitchenBookings.startTime,
-            endTime: kitchenBookings.endTime,
-            status: kitchenBookings.status,
-            totalPrice: kitchenBookings.totalPrice,
-            hourlyRate: kitchenBookings.hourlyRate,
-            durationHours: kitchenBookings.durationHours,
-            serviceFee: kitchenBookings.serviceFee,
-            paymentStatus: kitchenBookings.paymentStatus,
-            paymentIntentId: kitchenBookings.paymentIntentId,
-            currency: kitchenBookings.currency,
-            createdAt: kitchenBookings.createdAt,
-            updatedAt: kitchenBookings.updatedAt,
-            kitchenName: kitchens.name,
-            kitchenTaxRatePercent: kitchens.taxRatePercent,
-            locationName: locations.name,
-            managerId: locations.managerId
-          }).from(kitchenBookings).innerJoin(kitchens, eq28(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(kitchenBookings.id, bookingId)).limit(1);
-          if (!booking) {
-            return res.status(404).json({ error: "Booking not found" });
-          }
-          if (booking.managerId !== managerId) {
-            return res.status(403).json({ error: "Access denied to this booking" });
-          }
-          if (booking.paymentStatus === "authorized" || booking.paymentStatus === "pending") {
-            return res.status(400).json({
-              error: "Invoice not available yet. Payment must be captured before an invoice can be generated."
-            });
-          }
-          if (booking.status === "cancelled" && !booking.paymentIntentId && !booking.totalPrice) {
-            return res.status(400).json({
-              error: "Invoice cannot be downloaded for cancelled bookings without payment information"
-            });
-          }
-          let chef = null;
-          if (booking.chefId) {
-            const chefResult = await db.execute(sql13`
-                SELECT u.id, u.username, cka.full_name
-                FROM users u
-                LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
-                WHERE u.id = ${booking.chefId}
-                LIMIT 1
-            `);
-            const chefRows = chefResult.rows || chefResult;
-            if (Array.isArray(chefRows) && chefRows.length > 0) {
-              chef = chefRows[0];
-            }
-          }
-          const allStorageRows = await db.select({
-            id: storageBookings.id,
-            kitchenBookingId: storageBookings.kitchenBookingId,
-            storageListingId: storageBookings.storageListingId,
-            startDate: storageBookings.startDate,
-            endDate: storageBookings.endDate,
-            status: storageBookings.status,
-            paymentStatus: storageBookings.paymentStatus,
-            totalPrice: storageBookings.totalPrice,
-            storageName: storageListings.name,
-            storageType: storageListings.storageType,
-            listingBasePrice: storageListings.basePrice
-            // Daily rate in cents
-          }).from(storageBookings).innerJoin(
-            storageListings,
-            eq28(storageBookings.storageListingId, storageListings.id)
-          ).where(eq28(storageBookings.kitchenBookingId, bookingId));
-          const storageRows = allStorageRows.filter((sr) => sr.paymentStatus !== "failed" && sr.status !== "cancelled");
-          const allEquipmentRows = await db.select({
-            id: equipmentBookings.id,
-            kitchenBookingId: equipmentBookings.kitchenBookingId,
-            equipmentListingId: equipmentBookings.equipmentListingId,
-            status: equipmentBookings.status,
-            paymentStatus: equipmentBookings.paymentStatus,
-            totalPrice: equipmentBookings.totalPrice,
-            equipmentType: equipmentListings.equipmentType,
-            brand: equipmentListings.brand
-          }).from(equipmentBookings).innerJoin(
-            equipmentListings,
-            eq28(equipmentBookings.equipmentListingId, equipmentListings.id)
-          ).where(eq28(equipmentBookings.kitchenBookingId, bookingId));
-          const equipmentRows = allEquipmentRows.filter((er) => er.paymentStatus !== "failed" && er.status !== "cancelled");
-          const originalStorageDates = {};
-          if (booking.paymentIntentId) {
-            try {
-              const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-              const kitchenTransaction = await findPaymentTransactionByIntentId2(
-                booking.paymentIntentId,
-                db
-              );
-              if (kitchenTransaction?.metadata) {
-                const metadata = typeof kitchenTransaction.metadata === "string" ? JSON.parse(kitchenTransaction.metadata) : kitchenTransaction.metadata;
-                if (metadata?.storage_items) {
-                  const storageItems = Array.isArray(metadata.storage_items) ? metadata.storage_items : JSON.parse(metadata.storage_items);
-                  for (const item of storageItems) {
-                    if (item.storageListingId || item.id) {
-                      const storageId = item.storageBookingId || item.id;
-                      const startDate = new Date(item.startDate);
-                      const endDate = new Date(item.endDate);
-                      const days = Math.max(
-                        1,
-                        Math.ceil(
-                          (endDate.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24)
-                        )
-                      );
-                      originalStorageDates[storageId] = {
-                        startDate,
-                        endDate,
-                        days
-                      };
-                    }
-                  }
-                }
-              }
-            } catch {
-              console.log(
-                "[Invoice] Could not fetch original storage dates from transaction, using current dates"
-              );
-            }
-          }
-          const storageRowsForInvoice = storageRows.map((sr) => {
-            const originalDates = originalStorageDates[sr.id];
-            if (originalDates) {
-              return {
-                ...sr,
-                startDate: originalDates.startDate,
-                endDate: originalDates.endDate,
-                // Calculate base price from original days × daily rate
-                totalPrice: (sr.listingBasePrice || 0) * originalDates.days,
-                _originalDays: originalDates.days
-              };
-            } else {
-              console.warn(
-                `[Invoice] No original storage dates found in payment metadata for storage booking ${sr.id}, using current dates (may include extensions)`
-              );
-            }
-            return sr;
-          });
-          const { generateInvoicePDF: generateInvoicePDF2 } = await Promise.resolve().then(() => (init_invoice_service(), invoice_service_exports));
-          const pdfBuffer = await generateInvoicePDF2(
-            booking,
-            chef,
-            {
-              name: booking.kitchenName,
-              taxRatePercent: booking.kitchenTaxRatePercent
-            },
-            { name: booking.locationName },
-            storageRowsForInvoice,
-            equipmentRows,
-            booking.paymentIntentId,
-            { viewer: "manager" }
-          );
-          res.setHeader("Content-Type", "application/pdf");
-          res.setHeader(
-            "Content-Disposition",
-            `attachment; filename="invoice-${bookingId}.pdf"`
-          );
-          res.send(pdfBuffer);
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/revenue/invoices/storage/:storageBookingId",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const storageBookingId = parseInt(req.params.storageBookingId);
-          if (isNaN(storageBookingId) || storageBookingId <= 0) {
-            return res.status(400).json({ error: "Invalid storage booking ID" });
-          }
-          const [storageBooking] = await db.select({
-            id: storageBookings.id,
-            kitchenBookingId: storageBookings.kitchenBookingId,
-            storageListingId: storageBookings.storageListingId,
-            startDate: storageBookings.startDate,
-            endDate: storageBookings.endDate,
-            status: storageBookings.status,
-            totalPrice: storageBookings.totalPrice,
-            paymentStatus: storageBookings.paymentStatus,
-            paymentIntentId: storageBookings.paymentIntentId,
-            chefId: storageBookings.chefId,
-            storageName: storageListings.name,
-            storageType: storageListings.storageType,
-            kitchenId: storageListings.kitchenId,
-            kitchenName: kitchens.name,
-            locationName: locations.name,
-            locationId: locations.id,
-            taxRatePercent: kitchens.taxRatePercent
-          }).from(storageBookings).innerJoin(
-            storageListings,
-            eq28(storageBookings.storageListingId, storageListings.id)
-          ).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(storageBookings.id, storageBookingId)).limit(1);
-          if (!storageBooking) {
-            return res.status(404).json({ error: "Storage booking not found" });
-          }
-          const managerOwnsLocation = await db.select({ id: locations.id }).from(locations).where(
-            and17(
-              eq28(locations.id, storageBooking.locationId),
-              eq28(locations.managerId, managerId)
-            )
-          ).limit(1);
-          if (managerOwnsLocation.length === 0) {
-            return res.status(403).json({ error: "Access denied to this storage booking" });
-          }
-          const [transaction] = await db.select({
-            id: paymentTransactions.id,
-            amount: paymentTransactions.amount,
-            baseAmount: paymentTransactions.baseAmount,
-            paymentIntentId: paymentTransactions.paymentIntentId,
-            paidAt: paymentTransactions.paidAt,
-            createdAt: paymentTransactions.createdAt,
-            metadata: paymentTransactions.metadata,
-            stripeProcessingFee: paymentTransactions.stripeProcessingFee,
-            managerRevenue: paymentTransactions.managerRevenue
-          }).from(paymentTransactions).where(
-            and17(
-              eq28(paymentTransactions.bookingId, storageBookingId),
-              eq28(paymentTransactions.bookingType, "storage"),
-              eq28(paymentTransactions.status, "succeeded")
-            )
-          ).orderBy(desc13(paymentTransactions.createdAt)).limit(1);
-          let extensionDetails = null;
-          const metadata = transaction?.metadata;
-          if (metadata?.storage_extension_id) {
-            const extensionId = parseInt(String(metadata.storage_extension_id));
-            if (!isNaN(extensionId)) {
-              const extensionResult = await db.execute(sql13`
-                    SELECT 
-                        pse.id,
-                        pse.extension_days,
-                        pse.extension_base_price_cents,
-                        pse.extension_total_price_cents,
-                        pse.new_end_date,
-                        sl.name as storage_name,
-                        sl.base_price as daily_rate_cents,
-                        sl.storage_type::text as storage_type
-                    FROM pending_storage_extensions pse
-                    JOIN storage_bookings sb ON pse.storage_booking_id = sb.id
-                    JOIN storage_listings sl ON sb.storage_listing_id = sl.id
-                    WHERE pse.id = ${extensionId}
-                    LIMIT 1
-                `);
-              const extensionRows = extensionResult.rows || extensionResult;
-              if (Array.isArray(extensionRows) && extensionRows.length > 0) {
-                extensionDetails = extensionRows[0];
-              }
-            }
-          }
-          let chef = null;
-          if (storageBooking.chefId) {
-            const chefResult = await db.execute(sql13`
-                SELECT u.id, u.username, cka.full_name
-                FROM users u
-                LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
-                WHERE u.id = ${storageBooking.chefId}
-                LIMIT 1
-            `);
-            const chefRows = chefResult.rows || chefResult;
-            if (Array.isArray(chefRows) && chefRows.length > 0) {
-              chef = chefRows[0];
-            }
-          }
-          const { generateStorageInvoicePDF: generateStorageInvoicePDF2 } = await Promise.resolve().then(() => (init_invoice_service(), invoice_service_exports));
-          const pdfBuffer = await generateStorageInvoicePDF2(
-            transaction || {
-              amount: storageBooking.totalPrice,
-              baseAmount: storageBooking.totalPrice
-            },
-            storageBooking,
-            chef,
-            extensionDetails,
-            { viewer: "manager" }
-          );
-          res.setHeader("Content-Type", "application/pdf");
-          res.setHeader(
-            "Content-Disposition",
-            `attachment; filename="storage-invoice-${storageBookingId}.pdf"`
-          );
-          res.send(pdfBuffer);
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/revenue/invoices/overstay/:overstayRecordId",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const overstayRecordId = parseInt(req.params.overstayRecordId);
-          if (isNaN(overstayRecordId) || overstayRecordId <= 0) {
-            return res.status(400).json({ error: "Invalid overstay record ID" });
-          }
-          const {
-            storageOverstayRecords: storageOverstayRecords2,
-            storageBookings: storageBookings2,
-            storageListings: storageListings3,
-            kitchens: kitchens3,
-            locations: locations5
-          } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-          const [overstayRecord] = await db.select({
-            id: storageOverstayRecords2.id,
-            storageBookingId: storageOverstayRecords2.storageBookingId,
-            finalPenaltyCents: storageOverstayRecords2.finalPenaltyCents,
-            calculatedPenaltyCents: storageOverstayRecords2.calculatedPenaltyCents,
-            daysOverdue: storageOverstayRecords2.daysOverdue,
-            chargeSucceededAt: storageOverstayRecords2.chargeSucceededAt,
-            stripePaymentIntentId: storageOverstayRecords2.stripePaymentIntentId,
-            stripeChargeId: storageOverstayRecords2.stripeChargeId
-          }).from(storageOverstayRecords2).where(eq28(storageOverstayRecords2.id, overstayRecordId)).limit(1);
-          if (!overstayRecord) {
-            return res.status(404).json({ error: "Overstay record not found" });
-          }
-          const [storageBooking] = await db.select({
-            id: storageBookings2.id,
-            chefId: storageBookings2.chefId,
-            startDate: storageBookings2.startDate,
-            endDate: storageBookings2.endDate,
-            storageListingId: storageBookings2.storageListingId
-          }).from(storageBookings2).where(eq28(storageBookings2.id, overstayRecord.storageBookingId)).limit(1);
-          if (!storageBooking) {
-            return res.status(404).json({ error: "Storage booking not found" });
-          }
-          const [listing] = await db.select({
-            id: storageListings3.id,
-            name: storageListings3.name,
-            storageType: storageListings3.storageType,
-            kitchenId: storageListings3.kitchenId
-          }).from(storageListings3).where(eq28(storageListings3.id, storageBooking.storageListingId)).limit(1);
-          if (!listing) {
-            return res.status(404).json({ error: "Storage listing not found" });
-          }
-          const [kitchen] = await db.select({
-            id: kitchens3.id,
-            name: kitchens3.name,
-            locationId: kitchens3.locationId,
-            taxRatePercent: kitchens3.taxRatePercent
-          }).from(kitchens3).where(eq28(kitchens3.id, listing.kitchenId)).limit(1);
-          if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-          }
-          const [location] = await db.select({
-            id: locations5.id,
-            managerId: locations5.managerId,
-            name: locations5.name
-          }).from(locations5).where(
-            and17(
-              eq28(locations5.id, kitchen.locationId),
-              eq28(locations5.managerId, managerId)
-            )
-          ).limit(1);
-          if (!location) {
-            return res.status(403).json({ error: "Access denied to this overstay record" });
-          }
-          const [transaction] = await db.select({
-            id: paymentTransactions.id,
-            amount: paymentTransactions.amount,
-            baseAmount: paymentTransactions.baseAmount,
-            paymentIntentId: paymentTransactions.paymentIntentId,
-            paidAt: paymentTransactions.paidAt,
-            createdAt: paymentTransactions.createdAt,
-            metadata: paymentTransactions.metadata,
-            stripeProcessingFee: paymentTransactions.stripeProcessingFee,
-            managerRevenue: paymentTransactions.managerRevenue
-          }).from(paymentTransactions).where(
-            and17(
-              eq28(paymentTransactions.bookingId, overstayRecord.storageBookingId),
-              eq28(paymentTransactions.bookingType, "storage"),
-              eq28(paymentTransactions.status, "succeeded")
-            )
-          ).orderBy(desc13(paymentTransactions.createdAt)).limit(1);
-          const metadata = transaction?.metadata;
-          if (!metadata || metadata.type !== "overstay_penalty") {
-            return res.status(404).json({
-              error: "No payment transaction found for this overstay penalty"
-            });
-          }
-          let chef = null;
-          if (storageBooking.chefId) {
-            const chefResult = await db.execute(sql13`
-                SELECT u.id, u.username, cka.full_name
-                FROM users u
-                LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
-                WHERE u.id = ${storageBooking.chefId}
-                LIMIT 1
-            `);
-            const chefRows = chefResult.rows || chefResult;
-            if (Array.isArray(chefRows) && chefRows.length > 0) {
-              chef = chefRows[0];
-            }
-          }
-          const taxRatePercent = parseFloat(String(metadata.tax_rate_percent || "0")) || 0;
-          const penaltyBaseCents = parseInt(String(metadata.penalty_base_cents || "0")) || 0;
-          const penaltyTaxCents = parseInt(String(metadata.penalty_tax_cents || "0")) || 0;
-          const baseAmount = penaltyBaseCents || parseInt(String(transaction?.baseAmount || "0"));
-          const totalAmount = parseInt(String(transaction?.amount || "0"));
-          const displayTaxAmount = penaltyTaxCents || totalAmount - baseAmount;
-          const { generateStorageInvoicePDF: generateStorageInvoicePDF2 } = await Promise.resolve().then(() => (init_invoice_service(), invoice_service_exports));
-          const overstayDetails = {
-            is_overstay_penalty: true,
-            days_overdue: overstayRecord.daysOverdue,
-            penalty_base_cents: baseAmount,
-            penalty_total_cents: totalAmount,
-            penalty_tax_cents: displayTaxAmount,
-            tax_rate_percent: taxRatePercent
-          };
-          const pdfBuffer = await generateStorageInvoicePDF2(
-            transaction || {
-              amount: totalAmount || overstayRecord.finalPenaltyCents,
-              baseAmount,
-              paidAt: overstayRecord.chargeSucceededAt
-            },
-            {
-              id: storageBooking.id,
-              kitchenName: kitchen.name,
-              locationName: location.name,
-              storageName: listing.name,
-              taxRatePercent
-            },
-            chef,
-            overstayDetails,
-            { viewer: "manager" }
-          );
-          res.setHeader("Content-Type", "application/pdf");
-          res.setHeader(
-            "Content-Disposition",
-            `attachment; filename="overstay-invoice-${overstayRecordId}.pdf"`
-          );
-          res.send(pdfBuffer);
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/revenue/by-location",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const { startDate, endDate } = req.query;
-          const { getRevenueByLocation: getRevenueByLocation2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
-          const result = await getRevenueByLocation2(
-            managerId,
-            db,
-            startDate,
-            endDate
-          );
-          res.json(result);
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/revenue/charts",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const { startDate, endDate, period } = req.query;
-          console.log("[Revenue Charts] Request params:", {
-            managerId,
-            startDate,
-            endDate,
-            period
-          });
-          let data;
-          try {
-            const { getRevenueByDateFromTransactions: getRevenueByDateFromTransactions2 } = await Promise.resolve().then(() => (init_revenue_service_v2(), revenue_service_v2_exports));
-            data = await getRevenueByDateFromTransactions2(
-              managerId,
-              db,
-              startDate,
-              endDate
-            );
-            if (!data || data.length === 0) {
-              console.log(
-                "[Revenue Charts] payment_transactions empty, falling back to booking tables"
-              );
-              const { getRevenueByDate: getRevenueByDate2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
-              data = await getRevenueByDate2(
-                managerId,
-                db,
-                startDate,
-                endDate
-              );
-            } else {
-              console.log(
-                "[Revenue Charts] Using payment_transactions data (Stripe source)"
-              );
-            }
-          } catch (v2Error) {
-            console.warn(
-              "[Revenue Charts] Falling back to booking tables:",
-              v2Error
-            );
-            const { getRevenueByDate: getRevenueByDate2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
-            data = await getRevenueByDate2(
-              managerId,
-              db,
-              startDate,
-              endDate
-            );
-          }
-          console.log("[Revenue Charts] Returning data:", {
-            count: data?.length || 0,
-            data
-          });
-          res.json({ data, period: period || "daily" });
-        } catch (error) {
-          console.error("[Revenue Charts] Error:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/revenue/transactions",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const {
-            startDate,
-            endDate,
-            locationId,
-            paymentStatus,
-            limit = "50",
-            offset = "0"
-          } = req.query;
-          const { getTransactionHistory: getTransactionHistory2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
-          const { transactions, total } = await getTransactionHistory2(
-            managerId,
-            db,
-            startDate,
-            endDate,
-            locationId ? parseInt(locationId) : void 0,
-            parseInt(limit),
-            parseInt(offset),
-            paymentStatus
-          );
-          res.json({ transactions, total });
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/revenue/transactions/:transactionId/refund",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const transactionId = parseInt(req.params.transactionId);
-          const { amount, reason } = req.body || {};
-          const refundReason = typeof reason === "string" ? reason.trim() : void 0;
-          if (isNaN(transactionId) || transactionId <= 0) {
-            return res.status(400).json({ error: "Invalid transaction ID" });
-          }
-          const amountCents = Math.round(Number(amount));
-          if (!Number.isFinite(amountCents) || amountCents <= 0) {
-            return res.status(400).json({ error: "Refund amount must be a positive number of cents" });
-          }
-          const { findPaymentTransactionById: findPaymentTransactionById2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-          const transaction = await findPaymentTransactionById2(transactionId, db);
-          if (!transaction) {
-            return res.status(404).json({ error: "Transaction not found" });
-          }
-          const transactionManagerId = transaction.manager_id ?? await getManagerIdForBooking(
-            transaction.booking_id,
-            transaction.booking_type,
-            db
-          );
-          if (!transactionManagerId || transactionManagerId !== managerId) {
-            return res.status(403).json({ error: "Access denied to this transaction" });
-          }
-          if (!transaction.payment_intent_id) {
-            return res.status(400).json({ error: "No payment intent linked to this transaction" });
-          }
-          if (!["succeeded", "partially_refunded"].includes(transaction.status)) {
-            return res.status(400).json({
-              error: `Refunds are only allowed for paid transactions. Current status: ${transaction.status}`
-            });
-          }
-          const totalAmount = parseInt(String(transaction.amount || "0")) || 0;
-          const currentRefundAmount = parseInt(String(transaction.refund_amount || "0")) || 0;
-          const managerRevenue = parseInt(String(transaction.manager_revenue || "0")) || 0;
-          const stripeProcessingFee = parseInt(String(transaction.stripe_processing_fee || "0")) || 0;
-          const { calculateRefundBreakdown: calculateRefundBreakdown2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-          const refundBreakdown = calculateRefundBreakdown2(
-            totalAmount,
-            managerRevenue,
-            currentRefundAmount,
-            stripeProcessingFee
-          );
-          if (amountCents > refundBreakdown.maxRefundableToCustomer) {
-            return res.status(400).json({
-              error: `Refund amount exceeds maximum. Max refundable: $${(refundBreakdown.maxRefundableToCustomer / 100).toFixed(2)}`,
-              maxRefundable: refundBreakdown.maxRefundableToCustomer,
-              managerBalance: refundBreakdown.remainingManagerBalance,
-              explanation: refundBreakdown.explanation
-            });
-          }
-          const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq28(users.id, managerId)).limit(1);
-          if (!manager?.stripeConnectAccountId) {
-            return res.status(400).json({ error: "Manager Stripe Connect account not found" });
-          }
-          const refundToCustomer = amountCents;
-          const deductFromManager = amountCents;
-          const { reverseTransferAndRefund: reverseTransferAndRefund2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-          const allowedStripeReasons = [
-            "duplicate",
-            "fraudulent",
-            "requested_by_customer"
-          ];
-          const stripeReason = refundReason && allowedStripeReasons.includes(refundReason) ? refundReason : "requested_by_customer";
-          const refund = await reverseTransferAndRefund2(
-            transaction.payment_intent_id,
-            refundToCustomer,
-            // Customer receives this amount
-            stripeReason,
-            {
-              reverseTransferAmount: deductFromManager,
-              // Manager is debited this exact same amount
-              refundApplicationFee: false,
-              metadata: {
-                transaction_id: String(transaction.id),
-                booking_id: String(transaction.booking_id),
-                booking_type: String(transaction.booking_type),
-                manager_id: String(managerId),
-                refund_reason: refundReason ? String(refundReason) : "",
-                refund_model: "unified",
-                // Track that we used unified model
-                customer_receives: String(refundToCustomer),
-                manager_debited: String(deductFromManager)
-              },
-              transferMetadata: {
-                transaction_id: String(transaction.id),
-                booking_id: String(transaction.booking_id),
-                booking_type: String(transaction.booking_type),
-                manager_id: String(managerId),
-                refund_reason: refundReason ? String(refundReason) : ""
-              }
-            }
-          );
-          const newRefundTotal = currentRefundAmount + amountCents;
-          const newStatus = newRefundTotal >= managerRevenue ? "refunded" : "partially_refunded";
-          let currentMetadata = {};
-          if (transaction.metadata) {
-            if (typeof transaction.metadata === "string") {
-              try {
-                currentMetadata = JSON.parse(transaction.metadata);
-              } catch {
-                currentMetadata = {};
-              }
-            } else {
-              currentMetadata = transaction.metadata;
-            }
-          }
-          const existingRefunds = Array.isArray(currentMetadata.refunds) ? currentMetadata.refunds : [];
-          const updatedMetadata = {
-            ...currentMetadata,
-            refunds: [
-              ...existingRefunds,
-              {
-                id: refund.refundId,
-                customerReceived: refundToCustomer,
-                managerDebited: deductFromManager,
-                reason: refundReason || null,
-                createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-                createdBy: managerId,
-                transferReversalId: refund.transferReversalId,
-                model: "unified"
-              }
-            ],
-            lastRefund: {
-              id: refund.refundId,
-              customerReceived: refundToCustomer,
-              managerDebited: deductFromManager,
-              reason: refundReason || null,
-              createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-              createdBy: managerId,
-              transferReversalId: refund.transferReversalId
-            }
-          };
-          await updatePaymentTransaction2(
-            transaction.id,
-            {
-              status: newStatus,
-              stripeStatus: newStatus,
-              refundAmount: newRefundTotal,
-              refundId: refund.refundId,
-              refundReason,
-              refundedAt: /* @__PURE__ */ new Date(),
-              lastSyncedAt: /* @__PURE__ */ new Date(),
-              metadata: updatedMetadata
-            },
-            db
-          );
-          const paymentStatus = newStatus === "refunded" ? "refunded" : "partially_refunded";
-          if (transaction.booking_type === "kitchen" || transaction.booking_type === "bundle") {
-            await db.update(kitchenBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq28(kitchenBookings.id, transaction.booking_id));
-          } else if (transaction.booking_type === "storage") {
-            await db.update(storageBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq28(storageBookings.id, transaction.booking_id));
-          } else if (transaction.booking_type === "equipment") {
-            await db.update(equipmentBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq28(equipmentBookings.id, transaction.booking_id));
-          }
-          const newBreakdown = calculateRefundBreakdown2(
-            totalAmount,
-            managerRevenue,
-            newRefundTotal,
-            stripeProcessingFee
-          );
-          res.json({
-            success: true,
-            refundId: refund.refundId,
-            status: newStatus,
-            // UNIFIED: Both values are the same - no discrepancy!
-            customerReceived: refundToCustomer,
-            managerDebited: deductFromManager,
-            // Total refunded so far
-            totalRefunded: newRefundTotal,
-            // Remaining amounts (using unified model)
-            remainingCharged: totalAmount - newRefundTotal,
-            maxRefundable: newBreakdown.maxRefundableToCustomer,
-            managerRemainingBalance: newBreakdown.remainingManagerBalance,
-            // Fee info for transparency
-            originalStripeFee: stripeProcessingFee,
-            transferReversalId: refund.transferReversalId
-          });
-        } catch (error) {
-          console.error("[Refund] Error processing refund:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/stripe-connect/create",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        console.log(
-          "[Stripe Connect] Create request received for manager:",
-          req.neonUser?.id
-        );
-        try {
-          const managerId = req.neonUser.id;
-          const fromSetup = req.body?.from === "setup" || req.query.from === "setup";
-          const userResult = await db.execute(sql13`
-            SELECT id, username as email, stripe_connect_account_id 
-            FROM users 
-            WHERE id = ${managerId} 
-            LIMIT 1
-        `);
-          const userRow = userResult.rows ? userResult.rows[0] : userResult[0];
-          if (!userRow) {
-            console.error("[Stripe Connect] User not found for ID:", managerId);
-            return res.status(404).json({ error: "User not found" });
-          }
-          const user = {
-            id: userRow.id,
-            email: userRow.email,
-            stripeConnectAccountId: userRow.stripe_connect_account_id
-          };
-          const {
-            createConnectAccount: createConnectAccount2,
-            createAccountLink: createAccountLink2,
-            isAccountReady: isAccountReady2,
-            createDashboardLoginLink: createDashboardLoginLink2
-          } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-          const baseUrl = getAppBaseUrl("kitchen");
-          const fromParam = fromSetup ? "&from=setup" : "";
-          const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromParam}`;
-          const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromParam}`;
-          if (user.stripeConnectAccountId) {
-            const isReady = await isAccountReady2(user.stripeConnectAccountId);
-            if (isReady) {
-              return res.json({
-                alreadyExists: true,
-                accountId: user.stripeConnectAccountId
-              });
-            } else {
-              const link2 = await createAccountLink2(
-                user.stripeConnectAccountId,
-                refreshUrl,
-                returnUrl
-              );
-              return res.json({ url: link2.url });
-            }
-          }
-          console.log(
-            "[Stripe Connect] Creating new account for email:",
-            user.email
-          );
-          const { accountId } = await createConnectAccount2({
-            managerId,
-            email: user.email,
-            country: "CA"
-          });
-          await userService.updateUser(managerId, {
-            stripeConnectAccountId: accountId
-          });
-          const link = await createAccountLink2(accountId, refreshUrl, returnUrl);
-          return res.json({ url: link.url });
-        } catch (error) {
-          console.error("[Stripe Connect] Error in create route:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/stripe-connect/onboarding-link",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const userResult = await db.execute(sql13`
-            SELECT stripe_connect_account_id 
-            FROM users 
-            WHERE id = ${managerId} 
-            LIMIT 1
-        `);
-          const userRow = userResult.rows ? userResult.rows[0] : userResult[0];
-          if (!userRow?.stripe_connect_account_id) {
-            return res.status(400).json({ error: "No Stripe Connect account found" });
-          }
-          const { createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-          const baseUrl = getAppBaseUrl("kitchen");
-          const fromSetup = req.query.from === "setup" ? "&from=setup" : "";
-          const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromSetup}`;
-          const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromSetup}`;
-          const link = await createAccountLink2(
-            userRow.stripe_connect_account_id,
-            refreshUrl,
-            returnUrl
-          );
-          return res.json({ url: link.url });
-        } catch (error) {
-          console.error("[Stripe Connect] Error in onboarding-link route:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/stripe-connect/dashboard-link",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const userResult = await db.execute(sql13`
-            SELECT stripe_connect_account_id 
-            FROM users 
-            WHERE id = ${managerId} 
-            LIMIT 1
-        `);
-          const userRow = userResult.rows ? userResult.rows[0] : userResult[0];
-          if (!userRow?.stripe_connect_account_id) {
-            return res.status(400).json({ error: "No Stripe Connect account found" });
-          }
-          const { createDashboardLoginLink: createDashboardLoginLink2, isAccountReady: isAccountReady2, createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-          const isReady = await isAccountReady2(userRow.stripe_connect_account_id);
-          if (isReady) {
-            const link = await createDashboardLoginLink2(
-              userRow.stripe_connect_account_id
-            );
-            return res.json({ url: link.url });
-          } else {
-            const baseUrl = getAppBaseUrl("kitchen");
-            const fromSetup = req.query.from === "setup" ? "&from=setup" : "";
-            const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromSetup}`;
-            const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromSetup}`;
-            const link = await createAccountLink2(
-              userRow.stripe_connect_account_id,
-              refreshUrl,
-              returnUrl
-            );
-            return res.json({ url: link.url, requiresOnboarding: true });
-          }
-        } catch (error) {
-          console.error("[Stripe Connect] Error in dashboard-link route:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/stripe-connect/status",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const [manager] = await db.select({
-            stripeConnectAccountId: users.stripeConnectAccountId,
-            stripeConnectOnboardingStatus: users.stripeConnectOnboardingStatus
-          }).from(users).where(eq28(users.id, managerId)).limit(1);
-          if (!manager?.stripeConnectAccountId) {
-            return res.json({
-              connected: false,
-              hasAccount: false,
-              accountId: null,
-              payoutsEnabled: false,
-              chargesEnabled: false,
-              detailsSubmitted: false,
-              status: "not_started"
-            });
-          }
-          try {
-            const { getAccountStatus: getAccountStatus2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-            const stripeStatus = await getAccountStatus2(
-              manager.stripeConnectAccountId
-            );
-            let status = "incomplete";
-            if (stripeStatus.chargesEnabled && stripeStatus.payoutsEnabled) {
-              status = "complete";
-            } else if (stripeStatus.detailsSubmitted) {
-              status = "pending";
-            }
-            const reqs = stripeStatus.requirements;
-            let verificationStage = "incomplete";
-            if (stripeStatus.chargesEnabled && stripeStatus.payoutsEnabled) {
-              verificationStage = "complete";
-            } else if (reqs.disabledReason?.includes("rejected")) {
-              verificationStage = "rejected";
-            } else if (reqs.pastDue.length > 0) {
-              verificationStage = "past_due";
-            } else if (reqs.pendingVerification.length > 0 && stripeStatus.detailsSubmitted) {
-              verificationStage = "pending_verification";
-            } else if (stripeStatus.detailsSubmitted && reqs.currentlyDue.length > 0) {
-              verificationStage = "requires_additional_info";
-            } else if (stripeStatus.chargesEnabled && !stripeStatus.payoutsEnabled) {
-              verificationStage = "payouts_disabled";
-            } else if (!stripeStatus.chargesEnabled && stripeStatus.payoutsEnabled) {
-              verificationStage = "charges_disabled";
-            } else if (!stripeStatus.detailsSubmitted && reqs.currentlyDue.length > 0) {
-              verificationStage = "details_needed";
-            } else if (stripeStatus.detailsSubmitted) {
-              verificationStage = "pending_verification";
-            }
-            const dbStatus = manager.stripeConnectOnboardingStatus;
-            if (status === "complete" && dbStatus !== "complete" || status !== "complete" && dbStatus === "complete") {
-              await db.update(users).set({
-                stripeConnectOnboardingStatus: status === "complete" ? "complete" : "in_progress"
-              }).where(eq28(users.id, managerId));
-            }
-            res.json({
-              connected: true,
-              hasAccount: true,
-              accountId: manager.stripeConnectAccountId,
-              payoutsEnabled: stripeStatus.payoutsEnabled,
-              chargesEnabled: stripeStatus.chargesEnabled,
-              detailsSubmitted: stripeStatus.detailsSubmitted,
-              status,
-              verificationStage,
-              requirements: {
-                currentlyDue: reqs.currentlyDue,
-                pastDue: reqs.pastDue,
-                pendingVerification: reqs.pendingVerification,
-                currentDeadline: reqs.currentDeadline
-              }
-            });
-          } catch (stripeError) {
-            console.error("Error fetching Stripe account status:", stripeError);
-            res.json({
-              connected: true,
-              hasAccount: true,
-              accountId: manager.stripeConnectAccountId,
-              payoutsEnabled: manager.stripeConnectOnboardingStatus === "complete",
-              chargesEnabled: manager.stripeConnectOnboardingStatus === "complete",
-              detailsSubmitted: manager.stripeConnectOnboardingStatus === "complete",
-              status: manager.stripeConnectOnboardingStatus === "complete" ? "complete" : "incomplete"
-            });
-          }
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/stripe-connect/sync",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const [manager] = await db.select().from(users).where(eq28(users.id, managerId)).limit(1);
-          if (!manager?.stripeConnectAccountId) {
-            return res.status(400).json({ error: "No Stripe account connected" });
-          }
-          const { getAccountStatus: getAccountStatus2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-          const status = await getAccountStatus2(manager.stripeConnectAccountId);
-          const onboardingStatus = status.detailsSubmitted ? "complete" : "in_progress";
-          await db.update(users).set({
-            stripeConnectOnboardingStatus: onboardingStatus
-            // If they are fully ready, ensure manager onboarding is arguably complete for payments part
-            // keeping it simple for now, just updating stripe status
-          }).where(eq28(users.id, managerId));
-          res.json({
-            connected: true,
-            accountId: manager.stripeConnectAccountId,
-            status: onboardingStatus,
-            details: status
-          });
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/revenue/sync-stripe",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const { limit = 100, onlyUnsynced = true } = req.body;
-          console.log(`[Stripe Sync] Starting sync for manager ${managerId}...`);
-          const { backfillPaymentTransactionsFromBookings: backfillPaymentTransactionsFromBookings2 } = await Promise.resolve().then(() => (init_payment_transactions_backfill(), payment_transactions_backfill_exports));
-          const backfillResult = await backfillPaymentTransactionsFromBookings2(
-            managerId,
-            db,
-            { limit }
-          );
-          console.log(`[Stripe Sync] Backfill complete:`, backfillResult);
-          const { syncExistingPaymentTransactionsFromStripe: syncExistingPaymentTransactionsFromStripe2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-          const syncResult = await syncExistingPaymentTransactionsFromStripe2(
-            managerId,
-            db,
-            {
-              limit,
-              onlyUnsynced
-            }
-          );
-          console.log(`[Stripe Sync] Stripe sync complete:`, syncResult);
-          res.json({
-            success: true,
-            backfill: backfillResult,
-            stripeSync: syncResult,
-            message: `Backfilled ${backfillResult.created} transactions, synced ${syncResult.synced} with Stripe`
-          });
-        } catch (error) {
-          console.error("[Stripe Sync] Error:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/revenue/stripe-balance",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const [userResult] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq28(users.id, managerId)).limit(1);
-          if (!userResult?.stripeConnectAccountId) {
-            return res.json({
-              available: 0,
-              pending: 0,
-              inTransit: 0,
-              currency: "cad",
-              hasStripeAccount: false
-            });
-          }
-          const accountId = userResult.stripeConnectAccountId;
-          const { getAccountBalance: getAccountBalance2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-          const balance = await getAccountBalance2(accountId);
-          const availableBalance = balance.available?.reduce((sum, b) => sum + b.amount, 0) || 0;
-          const pendingBalance = balance.pending?.reduce((sum, b) => sum + b.amount, 0) || 0;
-          const connectReserved = balance.connect_reserved?.reduce(
-            (sum, b) => sum + b.amount,
-            0
-          ) || 0;
-          const currency = balance.available?.[0]?.currency || "cad";
-          res.json({
-            available: availableBalance,
-            pending: pendingBalance,
-            inTransit: connectReserved,
-            currency,
-            hasStripeAccount: true,
-            // Include raw balance for debugging if needed
-            _raw: process.env.NODE_ENV === "development" ? balance : void 0
-          });
-        } catch (error) {
-          console.error("[Stripe Balance] Error fetching balance:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/revenue/payouts",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const { limit = "50" } = req.query;
-          const result = await managerService.getPayouts(
-            managerId,
-            parseInt(limit)
-          );
-          res.json(result);
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/revenue/payouts/:payoutId",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const payoutId = req.params.payoutId;
-          const [userResult] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq28(users.id, managerId)).limit(1);
-          if (!userResult?.stripeConnectAccountId) {
-            return res.status(404).json({ error: "No Stripe Connect account linked" });
-          }
-          const accountId = userResult.stripeConnectAccountId;
-          const { getPayout: getPayout2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-          const payout = await getPayout2(accountId, payoutId);
-          if (!payout) {
-            return res.status(404).json({ error: "Payout not found" });
-          }
-          const payoutDate = new Date(payout.created * 1e3);
-          const periodStart = new Date(payoutDate);
-          periodStart.setDate(periodStart.getDate() - 7);
-          const { getBalanceTransactions: getBalanceTransactions2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-          const transactions = await getBalanceTransactions2(
-            accountId,
-            periodStart,
-            payoutDate,
-            100
-          );
-          const bookingRows = await db.select({
-            id: kitchenBookings.id,
-            bookingDate: kitchenBookings.bookingDate,
-            startTime: kitchenBookings.startTime,
-            endTime: kitchenBookings.endTime,
-            totalPrice: kitchenBookings.totalPrice,
-            serviceFee: kitchenBookings.serviceFee,
-            paymentStatus: kitchenBookings.paymentStatus,
-            paymentIntentId: kitchenBookings.paymentIntentId,
-            kitchenName: kitchens.name,
-            locationName: locations.name,
-            chefName: users.username,
-            chefEmail: users.username
-          }).from(kitchenBookings).innerJoin(kitchens, eq28(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).leftJoin(users, eq28(kitchenBookings.chefId, users.id)).where(
-            and17(
-              eq28(locations.managerId, managerId),
-              eq28(kitchenBookings.paymentStatus, "paid"),
-              sql13`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
-              sql13`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
-            )
-          ).orderBy(desc13(kitchenBookings.bookingDate));
-          res.json({
-            payout: {
-              id: payout.id,
-              amount: payout.amount / 100,
-              currency: payout.currency,
-              status: payout.status,
-              arrivalDate: new Date(payout.arrival_date * 1e3).toISOString(),
-              created: new Date(payout.created * 1e3).toISOString(),
-              description: payout.description,
-              method: payout.method,
-              type: payout.type
-            },
-            transactions: transactions.map((t) => ({
-              id: t.id,
-              amount: t.amount / 100,
-              currency: t.currency,
-              description: t.description,
-              fee: t.fee / 100,
-              net: t.net / 100,
-              status: t.status,
-              type: t.type,
-              created: new Date(t.created * 1e3).toISOString()
-            })),
-            bookings: bookingRows.map((row) => ({
-              id: row.id,
-              bookingDate: row.bookingDate,
-              startTime: row.startTime,
-              endTime: row.endTime,
-              totalPrice: (parseInt(String(row.totalPrice)) || 0) / 100,
-              serviceFee: (parseInt(String(row.serviceFee)) || 0) / 100,
-              paymentStatus: row.paymentStatus,
-              paymentIntentId: row.paymentIntentId,
-              kitchenName: row.kitchenName,
-              locationName: row.locationName,
-              chefName: row.chefName || "Guest",
-              chefEmail: row.chefEmail
-            }))
-          });
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/revenue/payouts/:payoutId/statement",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const payoutId = req.params.payoutId;
-          const [manager] = await db.select({
-            id: users.id,
-            username: users.username,
-            stripeConnectAccountId: users.stripeConnectAccountId
-          }).from(users).where(eq28(users.id, managerId)).limit(1);
-          if (!manager?.stripeConnectAccountId) {
-            return res.status(404).json({ error: "No Stripe Connect account linked" });
-          }
-          const accountId = manager.stripeConnectAccountId;
-          const { getPayout: getPayout2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-          const payout = await getPayout2(accountId, payoutId);
-          if (!payout) {
-            return res.status(404).json({ error: "Payout not found" });
-          }
-          const payoutDate = new Date(payout.created * 1e3);
-          const periodStart = new Date(payoutDate);
-          periodStart.setDate(periodStart.getDate() - 7);
-          const bookingRows = await db.select({
-            id: kitchenBookings.id,
-            bookingDate: kitchenBookings.bookingDate,
-            startTime: kitchenBookings.startTime,
-            endTime: kitchenBookings.endTime,
-            totalPrice: kitchenBookings.totalPrice,
-            serviceFee: kitchenBookings.serviceFee,
-            paymentStatus: kitchenBookings.paymentStatus,
-            paymentIntentId: kitchenBookings.paymentIntentId,
-            kitchenName: kitchens.name,
-            locationName: locations.name,
-            chefName: users.username,
-            chefEmail: users.username
-          }).from(kitchenBookings).innerJoin(kitchens, eq28(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).leftJoin(users, eq28(kitchenBookings.chefId, users.id)).where(
-            and17(
-              eq28(locations.managerId, managerId),
-              eq28(kitchenBookings.paymentStatus, "paid"),
-              sql13`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
-              sql13`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
-            )
-          ).orderBy(desc13(kitchenBookings.bookingDate));
-          const { getBalanceTransactions: getBalanceTransactions2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-          const transactions = await getBalanceTransactions2(
-            accountId,
-            periodStart,
-            payoutDate,
-            100
-          );
-          const { generatePayoutStatementPDF: generatePayoutStatementPDF2 } = await Promise.resolve().then(() => (init_payout_statement_service(), payout_statement_service_exports));
-          const pdfBuffer = await generatePayoutStatementPDF2(
-            managerId,
-            manager.username || "Manager",
-            manager.username || "",
-            payout,
-            transactions,
-            bookingRows
-          );
-          res.setHeader("Content-Type", "application/pdf");
-          res.setHeader(
-            "Content-Disposition",
-            `attachment; filename="payout-statement-${payoutId.substring(3)}.pdf"`
-          );
-          res.send(pdfBuffer);
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/kitchens/:locationId",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const locationId = parseInt(req.params.locationId);
-          const location = await locationService.getLocationById(locationId);
-          if (!location) {
-            return res.status(404).json({ error: "Location not found" });
-          }
-          if (location.managerId !== user.id) {
-            return res.status(403).json({ error: "Access denied to this location" });
-          }
-          const kitchens3 = await kitchenService.getKitchensByLocationId(locationId);
-          res.json(kitchens3);
-        } catch (error) {
-          console.error("Error fetching kitchen settings:", error);
-          res.status(500).json({ error: error.message || "Failed to fetch kitchen settings" });
-        }
-      }
-    );
-    router14.post(
-      "/kitchens",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const { locationId, name, description, features, imageUrl } = req.body;
-          const location = await locationService.getLocationById(locationId);
-          if (!location) {
-            return res.status(404).json({ error: "Location not found" });
-          }
-          if (location.managerId !== user.id) {
-            return res.status(403).json({ error: "Access denied to this location" });
-          }
-          const created = await kitchenService.createKitchen({
-            locationId,
-            name,
-            description,
-            imageUrl,
-            amenities: features || [],
-            isActive: true,
-            // Auto-activate
-            hourlyRate: void 0,
-            // Manager sets pricing later
-            minimumBookingHours: 1,
-            pricingModel: "hourly"
-          });
-          res.status(201).json(created);
-        } catch (error) {
-          console.error("Error creating kitchen:", error);
-          res.status(500).json({ error: error.message || "Failed to create kitchen" });
-        }
-      }
-    );
-    router14.put(
-      "/kitchens/:kitchenId/image",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const kitchenId = parseInt(req.params.kitchenId);
-          const { imageUrl } = req.body;
-          const kitchen = await kitchenService.getKitchenById(kitchenId);
-          if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-          }
-          const location = await locationService.getLocationById(
-            kitchen.locationId
-          );
-          if (!location || location.managerId !== user.id) {
-            return res.status(403).json({ error: "Access denied" });
-          }
-          if (imageUrl && kitchen.imageUrl) {
-            const { deleteFromR2: deleteFromR22 } = await Promise.resolve().then(() => (init_r2_storage(), r2_storage_exports));
-            try {
-              if (kitchen.imageUrl !== imageUrl) {
-                await deleteFromR22(kitchen.imageUrl);
-              }
-            } catch (e) {
-              console.error("Failed to delete old image:", e);
-            }
-          }
-          const updated = await kitchenService.updateKitchenImage(
-            kitchenId,
-            imageUrl
-          );
-          res.json(updated);
-        } catch (error) {
-          console.error("Error updating kitchen image:", error);
-          res.status(500).json({ error: error.message || "Failed to update kitchen image" });
-        }
-      }
-    );
-    router14.put(
-      "/kitchens/:kitchenId/gallery",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const kitchenId = parseInt(req.params.kitchenId);
-          const { method, imageUrl, index } = req.body;
-          const kitchen = await kitchenService.getKitchenById(kitchenId);
-          if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-          }
-          const location = await locationService.getLocationById(
-            kitchen.locationId
-          );
-          if (!location || location.managerId !== user.id) {
-            return res.status(403).json({ error: "Access denied" });
-          }
-          let updatedImages = [...kitchen.galleryImages || []];
-          const { deleteFromR2: deleteFromR22 } = await Promise.resolve().then(() => (init_r2_storage(), r2_storage_exports));
-          if (method === "add") {
-            if (imageUrl) updatedImages.push(imageUrl);
-          } else if (method === "remove" && typeof index === "number") {
-            if (index >= 0 && index < updatedImages.length) {
-              const removedUrl = updatedImages[index];
-              updatedImages.splice(index, 1);
-              try {
-                await deleteFromR22(removedUrl);
-              } catch (e) {
-                console.error("Failed to delete removed gallery image:", e);
-              }
-            }
-          } else if (method === "reorder" && Array.isArray(imageUrl)) {
-            updatedImages = imageUrl;
-          }
-          await kitchenService.updateKitchenGallery(kitchenId, updatedImages);
-          const updated = await kitchenService.getKitchenById(kitchenId);
-          res.json(updated);
-        } catch (error) {
-          console.error("Error updating gallery:", error);
-          res.status(500).json({ error: error.message || "Failed to update gallery" });
-        }
-      }
-    );
-    router14.put(
-      "/kitchens/:kitchenId/details",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const kitchenId = parseInt(req.params.kitchenId);
-          const { name, description, features } = req.body;
-          const kitchen = await kitchenService.getKitchenById(kitchenId);
-          if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-          }
-          const location = await locationService.getLocationById(
-            kitchen.locationId
-          );
-          if (!location || location.managerId !== user.id) {
-            return res.status(403).json({ error: "Access denied" });
-          }
-          const updated = await kitchenService.updateKitchen({
-            id: kitchenId,
-            name,
-            description,
-            amenities: features
-          });
-          res.json(updated);
-        } catch (error) {
-          console.error("Error updating kitchen details:", error);
-          res.status(500).json({ error: error.message || "Failed to update kitchen details" });
-        }
-      }
-    );
-    router14.delete(
-      "/kitchens/:kitchenId",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const kitchenId = parseInt(req.params.kitchenId);
-          const kitchen = await kitchenService.getKitchenById(kitchenId);
-          if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-          }
-          const location = await locationService.getLocationById(
-            kitchen.locationId
-          );
-          if (!location || location.managerId !== user.id) {
-            return res.status(403).json({ error: "Access denied" });
-          }
-          const imageUrl = kitchen.imageUrl;
-          const galleryImages = kitchen.galleryImages || [];
-          await kitchenService.deleteKitchen(kitchenId);
-          const { deleteFromR2: deleteFromR22 } = await Promise.resolve().then(() => (init_r2_storage(), r2_storage_exports));
-          if (imageUrl) {
-            try {
-              await deleteFromR22(imageUrl);
-            } catch (e) {
-              console.error(`Failed to delete kitchen image ${imageUrl}:`, e);
-            }
-          }
-          if (galleryImages.length > 0) {
-            await Promise.all(
-              galleryImages.map(async (img) => {
-                try {
-                  await deleteFromR22(img);
-                } catch (e) {
-                  console.error(`Failed to delete gallery image ${img}:`, e);
-                }
-              })
-            );
-          }
-          res.json({ success: true });
-        } catch (error) {
-          console.error("Error deleting kitchen:", error);
-          res.status(500).json({ error: error.message || "Failed to delete kitchen" });
-        }
-      }
-    );
-    router14.get(
-      "/kitchens/:kitchenId/pricing",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const kitchenId = parseInt(req.params.kitchenId);
-          const kitchen = await kitchenService.getKitchenById(kitchenId);
-          if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-          }
-          const location = await locationService.getLocationById(
-            kitchen.locationId
-          );
-          if (!location || location.managerId !== user.id) {
-            return res.status(403).json({ error: "Access denied" });
-          }
-          res.json({
-            hourlyRate: kitchen.hourlyRate,
-            // In dollars if getKitchenById handled it, or cents?
-            // routes.ts typically converted it?
-            // Wait, updateKitchenPricing converts dollars to cents.
-            // getKitchenById likely returns cents?
-            // Let's check updateKitchenPricing in storage-firebase.ts if needed.
-            // But for now, returning raw db value or whatever getKitchenById returns.
-            // Typically frontend expects dollars if input was dollars?
-            // routes.ts 4350 just sends `res.json(pricing)`.
-            // Let's assume getKitchenById returns it as is.
-            currency: kitchen.currency,
-            minimumBookingHours: kitchen.minimumBookingHours,
-            pricingModel: kitchen.pricingModel,
-            taxRatePercent: kitchen.taxRatePercent !== void 0 && kitchen.taxRatePercent !== null ? Number(kitchen.taxRatePercent) : null
-          });
-        } catch (error) {
-          console.error("Error getting kitchen pricing:", error);
-          res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
-        }
-      }
-    );
-    router14.put(
-      "/kitchens/:kitchenId/pricing",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const kitchenId = parseInt(req.params.kitchenId);
-          if (isNaN(kitchenId) || kitchenId <= 0) {
-            return res.status(400).json({ error: "Invalid kitchen ID" });
-          }
-          const kitchen = await kitchenService.getKitchenById(kitchenId);
-          if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-          }
-          const locations5 = await locationService.getLocationsByManagerId(user.id);
-          const hasAccess = locations5.some((loc) => loc.id === kitchen.locationId);
-          if (!hasAccess) {
-            return res.status(403).json({ error: "Access denied to this kitchen" });
-          }
-          const {
-            hourlyRate,
-            currency,
-            minimumBookingHours,
-            pricingModel,
-            taxRatePercent
-          } = req.body;
-          if (hourlyRate !== void 0 && hourlyRate !== null && (typeof hourlyRate !== "number" || hourlyRate < 0)) {
-            return res.status(400).json({ error: "Hourly rate must be a positive number or null" });
-          }
-          if (currency !== void 0 && typeof currency !== "string") {
-            return res.status(400).json({ error: "Currency must be a string" });
-          }
-          if (minimumBookingHours !== void 0 && (typeof minimumBookingHours !== "number" || minimumBookingHours < 1)) {
-            return res.status(400).json({ error: "Minimum booking hours must be at least 1" });
-          }
-          if (pricingModel !== void 0 && !["hourly", "daily", "weekly"].includes(pricingModel)) {
-            return res.status(400).json({
-              error: "Pricing model must be 'hourly', 'daily', or 'weekly'"
-            });
-          }
-          const pricing = {};
-          if (hourlyRate !== void 0) {
-            pricing.hourlyRate = hourlyRate === null ? null : hourlyRate;
-          }
-          if (currency !== void 0) pricing.currency = currency;
-          if (minimumBookingHours !== void 0)
-            pricing.minimumBookingHours = minimumBookingHours;
-          if (minimumBookingHours !== void 0)
-            pricing.minimumBookingHours = minimumBookingHours;
-          if (pricingModel !== void 0) pricing.pricingModel = pricingModel;
-          if (taxRatePercent !== void 0) {
-            pricing.taxRatePercent = taxRatePercent ? parseFloat(taxRatePercent) : null;
-          }
-          const updated = await kitchenService.updateKitchen({
-            id: kitchenId,
-            ...pricing
-          });
-          console.log(
-            `\u2705 Kitchen ${kitchenId} pricing updated by manager ${user.id}`
-          );
-          res.json(updated);
-        } catch (error) {
-          console.error("Error updating kitchen pricing:", error);
-          res.status(500).json({ error: error.message || "Failed to update kitchen pricing" });
-        }
-      }
-    );
-    router14.put(
-      "/kitchens/:kitchenId/availability",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const kitchenId = parseInt(req.params.kitchenId);
-          const { isAvailable, reason } = req.body;
-          const kitchen = await kitchenService.getKitchenById(kitchenId);
-          if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-          }
-          const locations5 = await locationService.getLocationsByManagerId(user.id);
-          const hasAccess = locations5.some((loc) => loc.id === kitchen.locationId);
-          if (!hasAccess) {
-            return res.status(403).json({ error: "Access denied" });
-          }
-          if (isAvailable === false) {
-          }
-          const updated = await kitchenService.updateKitchen({
-            id: kitchenId,
-            isActive: isAvailable
-          });
-          res.json(updated);
-        } catch (error) {
-          console.error("Error setting availability:", error);
-          res.status(500).json({ error: error.message || "Failed to set availability" });
-        }
-      }
-    );
-    router14.get(
-      "/bookings",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const bookings = await bookingService.getBookingsByManager(user.id);
-          const { lazyExpireKitchenBookingAuth: lazyExpireKitchenBookingAuth2 } = await Promise.resolve().then(() => (init_auth_expiry_service(), auth_expiry_service_exports));
-          for (const b of bookings) {
-            if (b.paymentStatus === "authorized" && b.status === "pending") {
-              const wasExpired = await lazyExpireKitchenBookingAuth2({
-                id: b.id,
-                paymentStatus: b.paymentStatus,
-                paymentIntentId: b.paymentIntentId ?? null,
-                chefId: b.chefId ?? null,
-                kitchenId: b.kitchenId,
-                createdAt: b.createdAt ? new Date(b.createdAt) : null,
-                status: b.status
-              });
-              if (wasExpired) {
-                b.status = "cancelled";
-                b.paymentStatus = "failed";
-              }
-            }
-          }
-          res.json(bookings);
-        } catch (error) {
-          console.error("Error fetching bookings:", error);
-          res.status(500).json({ error: error.message || "Failed to fetch bookings" });
-        }
-      }
-    );
-    router14.get(
-      "/profile",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const userResults = await db.select().from(users).where(eq28(users.id, managerId)).limit(1);
-          const userData = userResults[0];
-          if (!userData) {
-            return res.status(404).json({ error: "Manager profile not found" });
-          }
-          const managerLocations = await db.select().from(locations).where(eq28(locations.managerId, managerId));
-          let profile = {};
-          try {
-            const profileData = userData.managerProfileData;
-            if (profileData && typeof profileData === "object" && !Array.isArray(profileData)) {
-              profile = profileData;
-            }
-          } catch {
-          }
-          const stripeStatus = userData.stripeConnectOnboardingStatus || "not_started";
-          res.json({
-            profileImageUrl: profile.profileImageUrl || null,
-            phone: profile.phone || null,
-            displayName: profile.displayName || null,
-            stripeConnectStatus: stripeStatus,
-            locations: managerLocations.map((loc) => ({
-              id: loc.id,
-              name: loc.name,
-              address: loc.address,
-              timezone: loc.timezone,
-              logoUrl: loc.logoUrl,
-              // Primary contact fields
-              contactEmail: loc.contactEmail,
-              contactPhone: loc.contactPhone,
-              preferredContactMethod: loc.preferredContactMethod || "email",
-              // Notification fields
-              notificationEmail: loc.notificationEmail,
-              notificationPhone: loc.notificationPhone
-            }))
-          });
-        } catch (error) {
-          console.error(`[Manager Profile v2] Error:`, error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.put(
-      "/profile",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const { username, displayName, phone, profileImageUrl } = req.body;
-          const profileUpdates = {};
-          if (displayName !== void 0) profileUpdates.displayName = displayName;
-          if (phone !== void 0) {
-            if (phone && phone.trim() !== "") {
-              const normalized = normalizePhoneForStorage(phone);
-              if (!normalized)
-                return res.status(400).json({ error: "Invalid phone" });
-              profileUpdates.phone = normalized;
-            } else {
-              profileUpdates.phone = null;
-            }
-          }
-          if (profileImageUrl !== void 0)
-            profileUpdates.profileImageUrl = profileImageUrl;
-          if (username !== void 0 && username !== user.username) {
-            const existingUser = await userService.getUserByUsername(username);
-            if (existingUser && existingUser.id !== user.id) {
-              return res.status(400).json({ error: "Username already exists" });
-            }
-            await userService.updateUser(user.id, { username });
-          }
-          if (Object.keys(profileUpdates).length > 0) {
-            const [currentUser] = await db.select({ managerProfileData: users.managerProfileData }).from(users).where(eq28(users.id, user.id)).limit(1);
-            const currentData = currentUser?.managerProfileData || {};
-            const newData = { ...currentData, ...profileUpdates };
-            await db.update(users).set({ managerProfileData: newData }).where(eq28(users.id, user.id));
-          }
-          const [updatedUser] = await db.select({ managerProfileData: users.managerProfileData }).from(users).where(eq28(users.id, user.id)).limit(1);
-          const finalProfile = updatedUser?.managerProfileData || {};
-          res.json({
-            profileImageUrl: finalProfile.profileImageUrl || null,
-            phone: finalProfile.phone || null,
-            displayName: finalProfile.displayName || null
-          });
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/chef-profiles",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const profiles = await chefService.getChefProfilesForManager(user.id);
-          res.json(profiles);
-        } catch (error) {
-          res.status(500).json({ error: error.message || "Failed to get profiles" });
-        }
-      }
-    );
-    router14.get(
-      "/portal-applications",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const { users: users5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-          const managedLocations = await db.select().from(locations).where(eq28(locations.managerId, user.id));
-          if (managedLocations.length === 0) return res.json([]);
-          const locationIds = managedLocations.map((loc) => loc.id);
-          const applications4 = await db.select({
-            application: portalUserApplications,
-            location: locations,
-            user: users5
-          }).from(portalUserApplications).innerJoin(
-            locations,
-            eq28(portalUserApplications.locationId, locations.id)
-          ).innerJoin(users5, eq28(portalUserApplications.userId, users5.id)).where(inArray7(portalUserApplications.locationId, locationIds));
-          const formatted = applications4.map((app2) => ({
-            ...app2.application,
-            location: {
-              id: app2.location.id,
-              name: app2.location.name,
-              address: app2.location.address
-            },
-            user: { id: app2.user.id, username: app2.user.username },
-            // fields mapped from joins
-            id: app2.application.id
-            // Ensure ID is correct
-          }));
-          const accessRecords = await db.select().from(portalUserLocationAccess).where(inArray7(portalUserLocationAccess.locationId, locationIds));
-          res.json({ applications: formatted, accessCount: accessRecords.length });
-        } catch (error) {
-          console.error("Error getting apps:", error);
-          res.status(500).json({ error: error.message });
-        }
-      }
-    );
-    router14.put(
-      "/portal-applications/:id/status",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        res.status(501).json({ error: "Not fully implemented in refactor yet" });
-      }
-    );
-    router14.put(
-      "/chef-profiles/:id/status",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const profileId = parseInt(req.params.id);
-          const { status, reviewFeedback } = req.body;
-          if (!["approved", "rejected"].includes(status))
-            return res.status(400).json({ error: "Invalid status" });
-          const updated = await chefService.updateProfileStatus(
-            profileId,
-            status,
-            user.id,
-            reviewFeedback
-          );
-          if (status === "approved") {
-          }
-          res.json(updated);
-        } catch (e) {
-          res.status(500).json({ error: e.message });
-        }
-      }
-    );
-    router14.delete(
-      "/chef-location-access",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const { chefId, locationId } = req.body;
-          await chefService.revokeLocationAccess(chefId, locationId);
-          res.json({ success: true });
-        } catch (e) {
-          res.status(500).json({ error: e.message });
-        }
-      }
-    );
-    router14.get(
-      "/kitchens/:kitchenId/bookings",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const kitchenId = parseInt(req.params.kitchenId);
-          const bookings = await bookingService.getBookingsByKitchen(kitchenId);
-          res.json(bookings);
-        } catch (e) {
-          res.status(500).json({ error: e.message });
-        }
-      }
-    );
-    router14.get(
-      "/bookings/:id",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const id = parseInt(req.params.id);
-          const booking = await bookingService.getBookingById(id);
-          if (!booking) return res.status(404).json({ error: "Booking not found" });
-          const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
-          if (!kitchen) return res.status(404).json({ error: "Kitchen not found" });
-          const location = await locationService.getLocationById(
-            kitchen.locationId
-          );
-          if (!location || location.managerId !== user.id)
-            return res.status(403).json({ error: "Access denied" });
-          res.json({ ...booking, kitchen, location });
-        } catch (e) {
-          res.status(500).json({ error: e.message });
-        }
-      }
-    );
-    router14.get(
-      "/bookings/:id/details",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const id = parseInt(req.params.id);
-          if (isNaN(id) || id <= 0) {
-            return res.status(400).json({ error: "Invalid booking ID" });
-          }
-          const booking = await bookingService.getBookingById(id);
-          if (!booking) {
-            return res.status(404).json({ error: "Booking not found" });
-          }
-          const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
-          if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-          }
-          const location = await locationService.getLocationById(
-            kitchen.locationId
-          );
-          if (!location || location.managerId !== user.id) {
-            return res.status(403).json({ error: "Access denied" });
-          }
-          let chef = null;
-          if (booking.chefId) {
-            const chefUser = await userService.getUser(booking.chefId);
-            if (chefUser) {
-              const [chefApp] = await db.select({
-                fullName: chefKitchenApplications.fullName,
-                phone: chefKitchenApplications.phone
-              }).from(chefKitchenApplications).where(
-                and17(
-                  eq28(chefKitchenApplications.chefId, booking.chefId),
-                  eq28(chefKitchenApplications.locationId, location.id)
-                )
-              ).limit(1);
-              chef = {
-                id: chefUser.id,
-                username: chefUser.username,
-                fullName: chefApp?.fullName || chefUser.username,
-                phone: chefApp?.phone || null
-              };
-            }
-          }
-          const storageBookingsRaw = await bookingService.getStorageBookingsByKitchenBooking(id);
-          let originalStorageIds = /* @__PURE__ */ new Set();
-          const originalStorageDates = {};
-          try {
-            const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-            const kitchenTransaction = await findPaymentTransactionByIntentId2(booking.paymentIntentId || "", db);
-            if (kitchenTransaction?.metadata) {
-              const metadata = typeof kitchenTransaction.metadata === "string" ? JSON.parse(kitchenTransaction.metadata) : kitchenTransaction.metadata;
-              if (metadata?.storage_items && Array.isArray(metadata.storage_items)) {
-                for (const item of metadata.storage_items) {
-                  if (item.storageBookingId || item.id) {
-                    const storageId = item.storageBookingId || item.id;
-                    originalStorageIds.add(storageId);
-                    const startDate = new Date(item.startDate);
-                    const endDate = new Date(item.endDate);
-                    const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24)));
-                    originalStorageDates[storageId] = { startDate, endDate, days };
-                  }
-                }
-              }
-            }
-          } catch {
-            originalStorageIds = new Set(storageBookingsRaw.map((sb) => sb.id));
-          }
-          const originalStorageBookings = storageBookingsRaw.filter((sb) => originalStorageIds.has(sb.id));
-          const storageBookingsWithDetails = await Promise.all(
-            originalStorageBookings.map(async (sb) => {
-              const [listing] = await db.select({
-                name: storageListings.name,
-                storageType: storageListings.storageType,
-                photos: storageListings.photos,
-                basePrice: storageListings.basePrice
-              }).from(storageListings).where(eq28(storageListings.id, sb.storageListingId)).limit(1);
-              const originalDates = originalStorageDates[sb.id];
-              let originalPrice = sb.totalPrice;
-              let displayStartDate = sb.startDate;
-              let displayEndDate = sb.endDate;
-              if (originalDates && listing?.basePrice) {
-                const dailyRate = parseFloat(listing.basePrice.toString());
-                originalPrice = dailyRate * originalDates.days;
-                displayStartDate = originalDates.startDate.toISOString();
-                displayEndDate = originalDates.endDate.toISOString();
-              }
-              return {
-                ...sb,
-                totalPrice: originalPrice,
-                startDate: displayStartDate,
-                endDate: displayEndDate,
-                storageListing: listing || null
-              };
-            })
-          );
-          const equipmentBookingsRaw = await bookingService.getEquipmentBookingsByKitchenBooking(id);
-          const equipmentBookingsWithDetails = await Promise.all(
-            equipmentBookingsRaw.map(async (eb) => {
-              const [listing] = await db.select({
-                equipmentType: equipmentListings.equipmentType,
-                brand: equipmentListings.brand
-              }).from(equipmentListings).where(eq28(equipmentListings.id, eb.equipmentListingId)).limit(1);
-              return {
-                ...eb,
-                equipmentListing: listing || null
-              };
-            })
-          );
-          let paymentTransaction = null;
-          try {
-            const [txn] = await db.select({
-              amount: paymentTransactions.amount,
-              baseAmount: paymentTransactions.baseAmount,
-              // Base amount before tax
-              serviceFee: paymentTransactions.serviceFee,
-              managerRevenue: paymentTransactions.managerRevenue,
-              status: paymentTransactions.status,
-              stripeProcessingFee: paymentTransactions.stripeProcessingFee,
-              paidAt: paymentTransactions.paidAt
-            }).from(paymentTransactions).where(
-              and17(
-                eq28(paymentTransactions.bookingId, id),
-                // Include both 'kitchen' and 'bundle' booking types for accurate payment data
-                or4(
-                  eq28(paymentTransactions.bookingType, "kitchen"),
-                  eq28(paymentTransactions.bookingType, "bundle")
-                )
-              )
-            ).limit(1);
-            if (txn) {
-              paymentTransaction = {
-                ...txn,
-                amount: txn.amount ? parseFloat(txn.amount) : null,
-                baseAmount: txn.baseAmount ? parseFloat(txn.baseAmount) : null,
-                // Base before tax
-                serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
-                managerRevenue: txn.managerRevenue ? parseFloat(txn.managerRevenue) : null,
-                stripeProcessingFee: txn.stripeProcessingFee ? parseFloat(txn.stripeProcessingFee) : null
-              };
-            }
-          } catch (err) {
-            console.error("Error fetching payment transaction:", err);
-          }
-          const hourlyRate = booking.hourlyRate ? parseFloat(booking.hourlyRate.toString()) : 0;
-          const durationHours = booking.durationHours ? parseFloat(booking.durationHours.toString()) : 0;
-          const calculatedKitchenPrice = Math.round(hourlyRate * durationHours);
-          const kitchenOnlyPrice = calculatedKitchenPrice > 0 ? calculatedKitchenPrice : booking.totalPrice || 0;
-          res.json({
-            ...booking,
-            totalPrice: kitchenOnlyPrice,
-            // Override with calculated kitchen-only price
-            kitchen: {
-              id: kitchen.id,
-              name: kitchen.name,
-              description: kitchen.description,
-              photos: kitchen.galleryImages || (kitchen.imageUrl ? [kitchen.imageUrl] : []),
-              locationId: kitchen.locationId,
-              taxRatePercent: kitchen.taxRatePercent || 0
-              // Include tax rate for revenue calculation
-            },
-            location: {
-              id: location.id,
-              name: location.name,
-              address: location.address,
-              timezone: location.timezone
-            },
-            chef,
-            storageBookings: storageBookingsWithDetails,
-            equipmentBookings: equipmentBookingsWithDetails,
-            paymentTransaction
-          });
-        } catch (e) {
-          console.error("Error fetching booking details:", e);
-          res.status(500).json({ error: e.message || "Failed to fetch booking details" });
-        }
-      }
-    );
-    router14.put(
-      "/bookings/:id/status",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const id = parseInt(req.params.id);
-          const { status, storageActions, equipmentActions } = req.body;
-          if (!["confirmed", "cancelled", "pending"].includes(status)) {
-            return res.status(400).json({
-              error: "Invalid status. Must be 'confirmed', 'cancelled', or 'pending'"
-            });
-          }
-          const booking = await bookingService.getBookingById(id);
-          if (!booking) {
-            return res.status(404).json({ error: "Booking not found" });
-          }
-          const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
-          if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-          }
-          const location = await locationService.getLocationById(
-            kitchen.locationId
-          );
-          if (!location || location.managerId !== user.id) {
-            return res.status(403).json({ error: "Access denied to this booking" });
-          }
-          if (status === "confirmed") {
-            const paymentStatus = booking.paymentStatus;
-            if (paymentStatus === "pending") {
-              return res.status(400).json({
-                error: "Cannot confirm booking - payment has not been completed. The chef may have abandoned checkout.",
-                paymentStatus
-              });
-            }
-          }
-          await bookingService.updateBookingStatus(id, status);
-          const storageActionResults = [];
-          try {
-            const associatedStorageBookings = await bookingService.getStorageBookingsByKitchenBooking(id);
-            if (associatedStorageBookings && associatedStorageBookings.length > 0) {
-              if (Array.isArray(storageActions) && storageActions.length > 0) {
-                const actionMap = /* @__PURE__ */ new Map();
-                for (const sa of storageActions) {
-                  if (sa.storageBookingId && ["confirmed", "cancelled"].includes(sa.action)) {
-                    actionMap.set(sa.storageBookingId, sa.action);
-                  }
-                }
-                for (const storageBooking of associatedStorageBookings) {
-                  const action = actionMap.get(storageBooking.id) || status;
-                  await bookingService.updateStorageBooking(storageBooking.id, {
-                    status: action
-                  });
-                  storageActionResults.push({ storageBookingId: storageBooking.id, action, success: true });
-                  logger.info(
-                    `[Manager] Modular approval: storage booking ${storageBooking.id} \u2192 ${action} for kitchen booking ${id}`
-                  );
-                }
-              } else {
-                for (const storageBooking of associatedStorageBookings) {
-                  await bookingService.updateStorageBooking(storageBooking.id, {
-                    status
-                  });
-                  storageActionResults.push({ storageBookingId: storageBooking.id, action: status, success: true });
-                  logger.info(
-                    `[Manager] Updated storage booking ${storageBooking.id} to ${status} for kitchen booking ${id}`
-                  );
-                }
-              }
-            }
-          } catch (storageUpdateError) {
-            logger.error(
-              `[Manager] Error updating storage bookings for kitchen booking ${id}:`,
-              storageUpdateError
-            );
-          }
-          const equipmentActionResults = [];
-          try {
-            const associatedEquipmentBookings = await bookingService.getEquipmentBookingsByKitchenBooking(id);
-            if (associatedEquipmentBookings && associatedEquipmentBookings.length > 0) {
-              if (Array.isArray(equipmentActions) && equipmentActions.length > 0) {
-                const actionMap = /* @__PURE__ */ new Map();
-                for (const ea of equipmentActions) {
-                  if (ea.equipmentBookingId && ["confirmed", "cancelled"].includes(ea.action)) {
-                    actionMap.set(ea.equipmentBookingId, ea.action);
-                  }
-                }
-                for (const equipmentBooking of associatedEquipmentBookings) {
-                  const action = actionMap.get(equipmentBooking.id) || status;
-                  await bookingService.updateEquipmentBooking(equipmentBooking.id, {
-                    status: action
-                  });
-                  equipmentActionResults.push({ equipmentBookingId: equipmentBooking.id, action, success: true });
-                  logger.info(
-                    `[Manager] Modular approval: equipment booking ${equipmentBooking.id} \u2192 ${action} for kitchen booking ${id}`
-                  );
-                }
-              } else {
-                for (const equipmentBooking of associatedEquipmentBookings) {
-                  await bookingService.updateEquipmentBooking(equipmentBooking.id, {
-                    status
-                  });
-                  equipmentActionResults.push({ equipmentBookingId: equipmentBooking.id, action: status, success: true });
-                  logger.info(
-                    `[Manager] Updated equipment booking ${equipmentBooking.id} to ${status} for kitchen booking ${id}`
-                  );
-                }
-              }
-            }
-          } catch (equipmentUpdateError) {
-            logger.error(
-              `[Manager] Error updating equipment bookings for kitchen booking ${id}:`,
-              equipmentUpdateError
-            );
-          }
-          const previousStatus = booking.status;
-          const isCancellation = previousStatus === "confirmed" && status === "cancelled";
-          const isFromPending = previousStatus === "pending";
-          const bookingPaymentIntentId = booking.paymentIntentId;
-          const bookingPaymentStatus = booking.paymentStatus;
-          const hasValidPayment = bookingPaymentIntentId && (bookingPaymentStatus === "paid" || bookingPaymentStatus === "processing");
-          const isAuthorizedPayment = bookingPaymentIntentId && bookingPaymentStatus === "authorized";
-          if (isFromPending && isAuthorizedPayment && status === "confirmed") {
-            try {
-              const { capturePaymentIntent: capturePaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-              const { calculateCheckoutFeesAsync: calculateCheckoutFeesAsync2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
-              const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-              const bookingHourlyRate = parseFloat(String(booking.hourlyRate || "0"));
-              const bookingDurationHours = parseFloat(String(booking.durationHours || "1"));
-              const kitchenOnlyPriceCents = Math.round(bookingHourlyRate * bookingDurationHours);
-              const approvedStorageIds = /* @__PURE__ */ new Set();
-              const rejectedStorageIds = /* @__PURE__ */ new Set();
-              for (const r of storageActionResults) {
-                if (r.action === "confirmed") approvedStorageIds.add(r.storageBookingId);
-                else if (r.action === "cancelled") rejectedStorageIds.add(r.storageBookingId);
-              }
-              const approvedEquipmentIds = /* @__PURE__ */ new Set();
-              const rejectedEquipmentIds = /* @__PURE__ */ new Set();
-              for (const r of equipmentActionResults) {
-                if (r.action === "confirmed") approvedEquipmentIds.add(r.equipmentBookingId);
-                else if (r.action === "cancelled") rejectedEquipmentIds.add(r.equipmentBookingId);
-              }
-              let approvedStorageCents = 0;
-              let approvedEquipmentCents = 0;
-              const assocStorage = await bookingService.getStorageBookingsByKitchenBooking(id);
-              for (const sb of assocStorage || []) {
-                const price = Math.round(parseFloat(String(sb.totalPrice || "0")));
-                if (rejectedStorageIds.has(sb.id)) {
-                } else {
-                  approvedStorageCents += price;
-                  approvedStorageIds.add(sb.id);
-                }
-              }
-              const assocEquip = await bookingService.getEquipmentBookingsByKitchenBooking(id);
-              for (const eb of assocEquip || []) {
-                const price = Math.round(parseFloat(String(eb.totalPrice || "0")));
-                if (rejectedEquipmentIds.has(eb.id)) {
-                } else {
-                  approvedEquipmentCents += price;
-                  approvedEquipmentIds.add(eb.id);
-                }
-              }
-              const approvedSubtotalCents = kitchenOnlyPriceCents + approvedStorageCents + approvedEquipmentCents;
-              const taxRatePercent = kitchen?.taxRatePercent ? parseFloat(String(kitchen.taxRatePercent)) : 0;
-              const approvedTaxCents = Math.round(approvedSubtotalCents * taxRatePercent / 100);
-              const captureAmountCents = approvedSubtotalCents + approvedTaxCents;
-              const feeCalc = await calculateCheckoutFeesAsync2(captureAmountCents);
-              const newApplicationFeeCents = feeCalc.totalPlatformFeeInCents;
-              const originalTotalPriceCents = Math.round(parseFloat(String(booking.totalPrice || "0")));
-              const originalTaxCents = Math.round(originalTotalPriceCents * taxRatePercent / 100);
-              const originalAuthorizedAmount = originalTotalPriceCents + originalTaxCents;
-              const isPartialCapture = captureAmountCents < originalAuthorizedAmount;
-              logger.info(`[Manager] PARTIAL CAPTURE ENGINE for booking ${id}:`, {
-                kitchenOnlyPriceCents,
-                approvedStorageCents,
-                approvedEquipmentCents,
-                approvedSubtotalCents,
-                taxRatePercent,
-                approvedTaxCents,
-                captureAmountCents,
-                originalAuthorizedAmount,
-                isPartialCapture,
-                newApplicationFeeCents,
-                rejectedStorageIds: Array.from(rejectedStorageIds),
-                rejectedEquipmentIds: Array.from(rejectedEquipmentIds)
-              });
-              if (isPartialCapture) {
-                try {
-                  const ptRecordPreCapture = await findPaymentTransactionByIntentId2(bookingPaymentIntentId, db);
-                  if (ptRecordPreCapture) {
-                    const existingMeta = ptRecordPreCapture.metadata ? typeof ptRecordPreCapture.metadata === "string" ? JSON.parse(ptRecordPreCapture.metadata) : ptRecordPreCapture.metadata : {};
-                    await updatePaymentTransaction2(ptRecordPreCapture.id, {
-                      metadata: {
-                        ...existingMeta,
-                        partialCapture: true,
-                        approvedSubtotal: approvedSubtotalCents,
-                        approvedTax: approvedTaxCents,
-                        taxRatePercent
-                      }
-                    }, db);
-                    logger.info(`[Manager] Pre-set partialCapture metadata on PT ${ptRecordPreCapture.id} BEFORE stripe.capture()`);
-                  }
-                } catch (preCapErr) {
-                  logger.warn(`[Manager] Could not pre-set PT metadata (non-fatal, will retry in Step 9):`, preCapErr);
-                }
-              }
-              const captureResult = isPartialCapture ? await capturePaymentIntent2(bookingPaymentIntentId, captureAmountCents, newApplicationFeeCents) : await capturePaymentIntent2(bookingPaymentIntentId);
-              logger.info(`[Manager] AUTH-THEN-CAPTURE: ${isPartialCapture ? "Partial" : "Full"} capture for booking ${id}`, {
-                paymentIntentId: bookingPaymentIntentId,
-                capturedAmount: captureResult.amount,
-                status: captureResult.status
-              });
-              const currentStorageItems = booking.storageItems || [];
-              const currentEquipmentItems = booking.equipmentItems || [];
-              const updatedStorageItems = currentStorageItems.map(
-                (item) => rejectedStorageIds.has(item.id) ? { ...item, rejected: true } : item
-              );
-              const updatedEquipmentItems = currentEquipmentItems.map(
-                (item) => rejectedEquipmentIds.has(item.id) ? { ...item, rejected: true } : item
-              );
-              await db.update(kitchenBookings).set({
-                paymentStatus: "paid",
-                totalPrice: approvedSubtotalCents.toString(),
-                storageItems: updatedStorageItems,
-                equipmentItems: updatedEquipmentItems,
-                updatedAt: /* @__PURE__ */ new Date()
-              }).where(eq28(kitchenBookings.id, id));
-              logger.info(`[Manager] Updated kb: total_price=${approvedSubtotalCents} (approved subtotal), marked ${rejectedStorageIds.size} rejected storage + ${rejectedEquipmentIds.size} rejected equipment in JSONB`);
-              for (const sb of assocStorage || []) {
-                if (rejectedStorageIds.has(sb.id)) {
-                  await db.update(storageBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(storageBookings.id, sb.id));
-                } else {
-                  await db.update(storageBookings).set({ paymentStatus: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(storageBookings.id, sb.id));
-                }
-              }
-              for (const eb of assocEquip || []) {
-                if (rejectedEquipmentIds.has(eb.id)) {
-                  await db.update(equipmentBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(equipmentBookings.id, eb.id));
-                } else {
-                  await db.update(equipmentBookings).set({ paymentStatus: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(equipmentBookings.id, eb.id));
-                }
-              }
-              try {
-                const ptRecord = await findPaymentTransactionByIntentId2(bookingPaymentIntentId, db);
-                if (ptRecord) {
-                  const capturedBaseAmount = captureAmountCents - newApplicationFeeCents;
-                  const capturedManagerRevenue = capturedBaseAmount;
-                  const existingMetadata = ptRecord.metadata ? typeof ptRecord.metadata === "string" ? JSON.parse(ptRecord.metadata) : ptRecord.metadata : {};
-                  const captureMetadata = {
-                    ...existingMetadata,
-                    partialCapture: isPartialCapture,
-                    capturedAmount: captureAmountCents,
-                    originalAuthorizedAmount,
-                    approvedSubtotal: approvedSubtotalCents,
-                    approvedTax: approvedTaxCents,
-                    taxRatePercent,
-                    applicationFee: newApplicationFeeCents,
-                    approvedStorageIds: Array.from(approvedStorageIds),
-                    approvedEquipmentIds: Array.from(approvedEquipmentIds),
-                    rejectedStorageIds: Array.from(rejectedStorageIds),
-                    rejectedEquipmentIds: Array.from(rejectedEquipmentIds),
-                    capturedAt: (/* @__PURE__ */ new Date()).toISOString()
-                  };
-                  await updatePaymentTransaction2(ptRecord.id, {
-                    status: "succeeded",
-                    stripeStatus: "succeeded",
-                    paidAt: /* @__PURE__ */ new Date(),
-                    amount: captureAmountCents,
-                    metadata: captureMetadata
-                  }, db);
-                  await db.execute(sql13`
-                UPDATE payment_transactions
-                SET base_amount = ${capturedBaseAmount.toString()},
-                    service_fee = ${newApplicationFeeCents.toString()},
-                    manager_revenue = ${capturedManagerRevenue.toString()},
-                    net_amount = ${captureAmountCents.toString()}
-                WHERE id = ${ptRecord.id}
-              `);
-                  logger.info(`[Manager] Updated payment_transactions ${ptRecord.id}: amount=${captureAmountCents}, base=${capturedBaseAmount}, fee=${newApplicationFeeCents}, revenue=${capturedManagerRevenue}`);
-                }
-              } catch (ptErr) {
-                logger.warn(`[Manager] Could not update payment_transactions after capture:`, ptErr);
-              }
-            } catch (captureError) {
-              logger.error(`[Manager] PARTIAL CAPTURE ENGINE: Failed for booking ${id}:`, captureError);
-              return res.status(500).json({
-                error: "Failed to capture payment. The authorization may have expired. Please contact the chef to re-book.",
-                details: captureError.message
-              });
-            }
-          }
-          let refundResult = null;
-          if (isFromPending && isAuthorizedPayment && status === "cancelled") {
-            try {
-              const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-              const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-              const cancelResult = await cancelPaymentIntent2(bookingPaymentIntentId);
-              logger.info(`[Manager] AUTH-THEN-CAPTURE: Cancelled authorization for booking ${id}`, {
-                paymentIntentId: bookingPaymentIntentId,
-                status: cancelResult.status
-              });
-              await db.update(kitchenBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(kitchenBookings.id, id));
-              try {
-                const assocStorage = await bookingService.getStorageBookingsByKitchenBooking(id);
-                for (const sb of assocStorage || []) {
-                  if (sb.paymentStatus === "authorized") {
-                    await db.update(storageBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(storageBookings.id, sb.id));
-                  }
-                }
-                const assocEquip = await bookingService.getEquipmentBookingsByKitchenBooking(id);
-                for (const eb of assocEquip || []) {
-                  if (eb.paymentStatus === "authorized") {
-                    await db.update(equipmentBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(equipmentBookings.id, eb.id));
-                  }
-                }
-              } catch (subBookErr) {
-                logger.warn(`[Manager] Could not update sub-booking paymentStatus after auth cancel:`, subBookErr);
-              }
-              try {
-                const ptRecord = await findPaymentTransactionByIntentId2(bookingPaymentIntentId, db);
-                if (ptRecord) {
-                  await updatePaymentTransaction2(ptRecord.id, {
-                    status: "canceled",
-                    stripeStatus: "canceled"
-                  }, db);
-                  logger.info(`[Manager] Updated payment_transactions ${ptRecord.id} to canceled after auth cancel`);
-                }
-              } catch (ptErr) {
-                logger.warn(`[Manager] Could not update payment_transactions after auth cancel:`, ptErr);
-              }
-            } catch (cancelError) {
-              logger.error(`[Manager] AUTH-THEN-CAPTURE: Failed to cancel authorization for booking ${id}:`, cancelError);
-            }
-          }
-          if (isFromPending && hasValidPayment && !isCancellation) {
-            try {
-              const { reverseTransferAndRefund: reverseTransferAndRefund2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-              const {
-                findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2,
-                updatePaymentTransaction: updatePaymentTransaction2
-              } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-              const kitchenWasRejected = status === "cancelled";
-              let rejectedStorageIds = [];
-              if (Array.isArray(storageActions) && storageActions.length > 0) {
-                rejectedStorageIds = storageActions.filter((sa) => sa.action === "cancelled").map((sa) => sa.storageBookingId);
-              } else if (kitchenWasRejected) {
-                rejectedStorageIds = storageActionResults.filter((r) => r.action === "cancelled").map((r) => r.storageBookingId);
-              }
-              let rejectedEquipmentIds = [];
-              if (Array.isArray(equipmentActions) && equipmentActions.length > 0) {
-                rejectedEquipmentIds = equipmentActions.filter((ea) => ea.action === "cancelled").map((ea) => ea.equipmentBookingId);
-              } else if (kitchenWasRejected) {
-                rejectedEquipmentIds = equipmentActionResults.filter((r) => r.action === "cancelled").map((r) => r.equipmentBookingId);
-              }
-              let rejectedKitchenCents = 0;
-              if (kitchenWasRejected) {
-                rejectedKitchenCents = parseInt(String(booking.totalPrice || "0")) || 0;
-              }
-              let rejectedStorageTotalCents = 0;
-              if (rejectedStorageIds.length > 0) {
-                const rejectedRows = await db.select({
-                  id: storageBookings.id,
-                  totalPrice: storageBookings.totalPrice
-                }).from(storageBookings).where(
-                  sql13`${storageBookings.id} IN (${sql13.join(
-                    rejectedStorageIds.map((rid) => sql13`${rid}`),
-                    sql13`, `
-                  )})`
-                );
-                for (const row of rejectedRows) {
-                  rejectedStorageTotalCents += parseInt(String(row.totalPrice || "0")) || 0;
-                }
-              }
-              let rejectedEquipmentTotalCents = 0;
-              if (rejectedEquipmentIds.length > 0) {
-                const rejectedEqRows = await db.select({
-                  id: equipmentBookings.id,
-                  totalPrice: equipmentBookings.totalPrice
-                }).from(equipmentBookings).where(
-                  sql13`${equipmentBookings.id} IN (${sql13.join(
-                    rejectedEquipmentIds.map((rid) => sql13`${rid}`),
-                    sql13`, `
-                  )})`
-                );
-                for (const row of rejectedEqRows) {
-                  rejectedEquipmentTotalCents += parseInt(String(row.totalPrice || "0")) || 0;
-                }
-              }
-              const totalRejectedSubtotalCents = rejectedKitchenCents + rejectedStorageTotalCents + rejectedEquipmentTotalCents;
-              if (totalRejectedSubtotalCents > 0) {
-                const paymentTransaction = await findPaymentTransactionByIntentId2(
-                  bookingPaymentIntentId,
-                  db
-                );
-                const transactionAmount = paymentTransaction ? parseInt(String(paymentTransaction.amount || "0")) || 0 : 0;
-                const baseAmount = paymentTransaction ? parseInt(String(paymentTransaction.base_amount || "0")) || 0 : 0;
-                const stripeProcessingFee = paymentTransaction ? parseInt(String(paymentTransaction.stripe_processing_fee || "0")) || 0 : 0;
-                const managerRevenue = paymentTransaction ? parseInt(String(paymentTransaction.manager_revenue || "0")) || 0 : transactionAmount;
-                const currentRefundAmount = paymentTransaction ? parseInt(String(paymentTransaction.refund_amount || "0")) || 0 : 0;
-                const taxRatePercent = kitchen.taxRatePercent ? parseFloat(String(kitchen.taxRatePercent)) : 0;
-                const proportionalTaxCents = Math.round(
-                  totalRejectedSubtotalCents * taxRatePercent / 100
-                );
-                const grossRefundCents = totalRejectedSubtotalCents + proportionalTaxCents;
-                const proportionalStripeFee = transactionAmount > 0 ? Math.round(stripeProcessingFee * (grossRefundCents / transactionAmount)) : 0;
-                const netRefundCents = Math.max(0, grossRefundCents - proportionalStripeFee);
-                const managerRemainingBalance = Math.max(0, managerRevenue - currentRefundAmount);
-                const cappedRefundAmount = Math.min(netRefundCents, managerRemainingBalance);
-                const rejectedItems = [];
-                if (kitchenWasRejected) rejectedItems.push("kitchen_booking");
-                if (rejectedStorageIds.length > 0) rejectedItems.push(...rejectedStorageIds.map((sid) => `storage_${sid}`));
-                if (rejectedEquipmentIds.length > 0) rejectedItems.push(...rejectedEquipmentIds.map((eid) => `equipment_${eid}`));
-                const isFullRefund = cappedRefundAmount >= managerRemainingBalance;
-                const refundType = kitchenWasRejected ? rejectedStorageIds.length > 0 || rejectedEquipmentIds.length > 0 ? "kitchen_and_items" : "kitchen_only" : "items_only";
-                if (cappedRefundAmount > 0) {
-                  const stripeResult = await reverseTransferAndRefund2(
-                    bookingPaymentIntentId,
-                    cappedRefundAmount,
-                    "requested_by_customer",
-                    {
-                      reverseTransferAmount: cappedRefundAmount,
-                      refundApplicationFee: false,
-                      metadata: {
-                        booking_id: String(id),
-                        booking_type: refundType,
-                        cancellation_reason: kitchenWasRejected ? "Booking rejected by manager" : "Item(s) rejected by manager (partial approval)",
-                        manager_id: String(user.id),
-                        refund_model: "tax_inclusive_proportional_stripe_deducted",
-                        rejected_kitchen: String(kitchenWasRejected),
-                        rejected_kitchen_cents: String(rejectedKitchenCents),
-                        rejected_storage_ids: JSON.stringify(rejectedStorageIds),
-                        rejected_storage_cents: String(rejectedStorageTotalCents),
-                        rejected_equipment_ids: JSON.stringify(rejectedEquipmentIds),
-                        rejected_equipment_cents: String(rejectedEquipmentTotalCents),
-                        total_rejected_subtotal_cents: String(totalRejectedSubtotalCents),
-                        proportional_tax_cents: String(proportionalTaxCents),
-                        tax_rate_percent: String(taxRatePercent),
-                        gross_refund_cents: String(grossRefundCents),
-                        proportional_stripe_fee_cents: String(proportionalStripeFee),
-                        total_stripe_fee: String(stripeProcessingFee),
-                        net_refund_cents: String(netRefundCents),
-                        transaction_amount: String(transactionAmount),
-                        base_amount: String(baseAmount),
-                        manager_revenue: String(managerRevenue),
-                        customer_receives: String(cappedRefundAmount),
-                        manager_debited: String(cappedRefundAmount)
-                      }
-                    }
-                  );
-                  refundResult = {
-                    refundId: stripeResult.refundId,
-                    refundAmount: stripeResult.refundAmount,
-                    transferReversalId: stripeResult.transferReversalId,
-                    rejectedItems
-                  };
-                  logger.info(`[Manager] Unified refund processed for booking ${id}`, {
-                    refundId: refundResult.refundId,
-                    refundAmount: refundResult.refundAmount,
-                    refundType,
-                    kitchenRejected: kitchenWasRejected,
-                    rejectedKitchenCents,
-                    rejectedStorageIds,
-                    rejectedStorageTotalCents,
-                    rejectedEquipmentIds,
-                    rejectedEquipmentTotalCents,
-                    totalRejectedSubtotalCents,
-                    proportionalTaxCents,
-                    grossRefundCents,
-                    proportionalStripeFee,
-                    totalStripeFee: stripeProcessingFee,
-                    netRefundCents,
-                    cappedRefundAmount,
-                    isFullRefund
-                  });
-                  if (paymentTransaction) {
-                    const newTotalRefunded = currentRefundAmount + refundResult.refundAmount;
-                    const newStatus = newTotalRefunded >= managerRevenue ? "refunded" : "partially_refunded";
-                    await updatePaymentTransaction2(
-                      paymentTransaction.id,
-                      {
-                        status: newStatus,
-                        refundAmount: newTotalRefunded,
-                        refundId: refundResult.refundId,
-                        refundReason: kitchenWasRejected ? `Booking rejected by manager (${refundType})` : `Partial refund: rejected ${rejectedStorageIds.length} storage + ${rejectedEquipmentIds.length} equipment`,
-                        refundedAt: /* @__PURE__ */ new Date()
-                      },
-                      db
-                    );
-                  }
-                  if (kitchenWasRejected) {
-                    await db.update(kitchenBookings).set({ paymentStatus: isFullRefund ? "refunded" : "partially_refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(kitchenBookings.id, id));
-                  } else if (totalRejectedSubtotalCents > 0) {
-                    await db.update(kitchenBookings).set({ paymentStatus: "partially_refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(kitchenBookings.id, id));
-                  }
-                  for (const rejectedId of rejectedStorageIds) {
-                    await db.update(storageBookings).set({ paymentStatus: "refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(storageBookings.id, rejectedId));
-                  }
-                  for (const rejectedId of rejectedEquipmentIds) {
-                    await db.update(equipmentBookings).set({ paymentStatus: "refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq28(equipmentBookings.id, rejectedId));
-                  }
-                  if (rejectedStorageIds.length > 0 || rejectedEquipmentIds.length > 0) {
-                    const rejStorageSet = new Set(rejectedStorageIds);
-                    const rejEquipSet = new Set(rejectedEquipmentIds);
-                    const curStorage = booking.storageItems || [];
-                    const curEquip = booking.equipmentItems || [];
-                    const markedStorage = curStorage.map((item) => rejStorageSet.has(item.id) ? { ...item, rejected: true } : item);
-                    const markedEquip = curEquip.map((item) => rejEquipSet.has(item.id) ? { ...item, rejected: true } : item);
-                    await db.update(kitchenBookings).set({ storageItems: markedStorage, equipmentItems: markedEquip, updatedAt: /* @__PURE__ */ new Date() }).where(eq28(kitchenBookings.id, id));
-                  }
-                }
-              }
-            } catch (refundError) {
-              logger.error(
-                `[Manager] Failed to process refund for booking ${id}:`,
-                refundError
-              );
-            }
-          }
-          try {
-            let chef = null;
-            if (booking.chefId) {
-              chef = await userService.getUser(booking.chefId);
-            }
-            const timezone = location.timezone || "America/St_Johns";
-            const locationName = location.name;
-            if (chef) {
-              if (status === "confirmed") {
-                const chefConfirmationEmail = generateBookingConfirmationEmail({
-                  chefEmail: chef.username,
-                  chefName: chef.username,
-                  kitchenName: kitchen.name,
-                  bookingDate: booking.bookingDate,
-                  startTime: booking.startTime,
-                  endTime: booking.endTime,
-                  timezone,
-                  locationName
-                });
-                const emailSent = await sendEmail(chefConfirmationEmail);
-                if (emailSent) {
-                  logger.info(
-                    `[Manager] \u2705 Sent booking confirmation email to chef: ${chef.username}`
-                  );
-                } else {
-                  logger.error(
-                    `[Manager] \u274C Failed to send booking confirmation email to chef: ${chef.username}`
-                  );
-                }
-                try {
-                  const chefPhone = await getChefPhone(booking.chefId);
-                  if (chefPhone) {
-                    const smsContent = generateChefBookingConfirmationSMS({
-                      kitchenName: kitchen.name,
-                      bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString() : String(booking.bookingDate),
-                      startTime: booking.startTime,
-                      endTime: booking.endTime
-                    });
-                    await sendSMS(chefPhone, smsContent);
-                  }
-                } catch (smsError) {
-                  console.error(
-                    "Error sending confirmation SMS to chef:",
-                    smsError
-                  );
-                }
-                logger.info(
-                  `[Manager] Booking ${id} confirmed by manager ${user.id}`
-                );
-                try {
-                  await notificationService.notifyBookingConfirmed({
-                    managerId: user.id,
-                    locationId: location.id,
-                    bookingId: id,
-                    chefName: chef.username || "Chef",
-                    kitchenName: kitchen.name,
-                    bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString().split("T")[0] : String(booking.bookingDate).split("T")[0],
-                    startTime: booking.startTime,
-                    endTime: booking.endTime
-                  });
-                } catch (notifError) {
-                  console.error(
-                    "Error creating confirmation notification:",
-                    notifError
-                  );
-                }
-              } else if (status === "cancelled") {
-                const chefCancellationEmail = generateBookingCancellationEmail({
-                  chefEmail: chef.username,
-                  chefName: chef.username,
-                  kitchenName: kitchen.name,
-                  bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString() : String(booking.bookingDate),
-                  startTime: booking.startTime,
-                  endTime: booking.endTime,
-                  cancellationReason: "Booking was declined by the kitchen manager"
-                });
-                const cancelEmailSent = await sendEmail(chefCancellationEmail);
-                if (cancelEmailSent) {
-                  logger.info(
-                    `[Manager] \u2705 Sent booking cancellation email to chef: ${chef.username}`
-                  );
-                } else {
-                  logger.error(
-                    `[Manager] \u274C Failed to send booking cancellation email to chef: ${chef.username}`
-                  );
-                }
-                try {
-                  const chefPhone = await getChefPhone(booking.chefId);
-                  if (chefPhone) {
-                    const smsContent = generateChefBookingCancellationSMS({
-                      kitchenName: kitchen.name,
-                      bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString() : String(booking.bookingDate),
-                      startTime: booking.startTime,
-                      endTime: booking.endTime,
-                      reason: "Booking was declined by the kitchen manager"
-                    });
-                    await sendSMS(chefPhone, smsContent);
-                  }
-                } catch (smsError) {
-                  console.error(
-                    "Error sending cancellation SMS to chef:",
-                    smsError
-                  );
-                }
-                logger.info(
-                  `[Manager] Booking ${id} cancelled/declined by manager ${user.id}`
-                );
-                try {
-                  await notificationService.notifyBookingCancelled({
-                    managerId: user.id,
-                    locationId: location.id,
-                    bookingId: id,
-                    chefName: chef.username || "Chef",
-                    kitchenName: kitchen.name,
-                    bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString().split("T")[0] : String(booking.bookingDate).split("T")[0],
-                    startTime: booking.startTime,
-                    endTime: booking.endTime,
-                    cancelledBy: "manager"
-                  });
-                } catch (notifError) {
-                  console.error(
-                    "Error creating cancellation notification:",
-                    notifError
-                  );
-                }
-              }
-            }
-          } catch (emailError) {
-            console.error(
-              "Error sending booking status change emails:",
-              emailError
-            );
-          }
-          const responseData = {
-            success: true,
-            message: `Booking ${status === "confirmed" ? "approved" : status}`,
-            storageActions: storageActionResults.length > 0 ? storageActionResults : void 0,
-            equipmentActions: equipmentActionResults.length > 0 ? equipmentActionResults : void 0
-          };
-          if (refundResult) {
-            const isFullRejection = status === "cancelled";
-            responseData.refund = {
-              refundId: refundResult.refundId,
-              amount: refundResult.refundAmount,
-              rejectedItems: refundResult.rejectedItems,
-              message: isFullRejection ? "Refund processed for rejected items (customer absorbs proportional Stripe fee)" : "Partial refund processed for rejected items (customer absorbs proportional Stripe fee)"
-            };
-            responseData.message = isFullRejection ? "Booking rejected and refund processed" : "Booking approved with partial rejection. Refund processed for rejected items.";
-          } else if (isFromPending && isAuthorizedPayment && status === "cancelled") {
-            responseData.authorizationVoided = true;
-            responseData.message = "Booking rejected \u2014 payment hold released. No charge was made.";
-          } else if (isCancellation) {
-            responseData.requiresManualRefund = true;
-            responseData.message = "Booking cancelled. Use 'Issue Refund' to process refund manually.";
-          }
-          res.json(responseData);
-        } catch (e) {
-          console.error("Error updating booking status:", e);
-          res.status(500).json({ error: e.message || "Failed to update booking status" });
-        }
-      }
-    );
-    router14.get(
-      "/kitchens/:kitchenId/date-overrides",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const kitchenId = parseInt(req.params.kitchenId);
-          const { startDate, endDate } = req.query;
-          const start = startDate ? new Date(startDate) : /* @__PURE__ */ new Date();
-          const end = endDate ? new Date(endDate) : new Date((/* @__PURE__ */ new Date()).setFullYear((/* @__PURE__ */ new Date()).getFullYear() + 1));
-          const overrides = await kitchenService.getKitchenDateOverrides(
-            kitchenId,
-            start,
-            end
-          );
-          res.json(overrides);
-        } catch (e) {
-          res.status(500).json({ error: e.message });
-        }
-      }
-    );
-    router14.post(
-      "/kitchens/:kitchenId/date-overrides",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const kitchenId = parseInt(req.params.kitchenId);
-          const { specificDate, startTime, endTime, isAvailable, reason } = req.body;
-          const parseDateString = (dateStr) => {
-            const [year, month, day] = dateStr.split("-").map(Number);
-            return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-          };
-          const parsedDate = parseDateString(specificDate);
-          const override = await kitchenService.createKitchenDateOverride({
-            kitchenId,
-            specificDate: parsedDate,
-            startTime,
-            endTime,
-            isAvailable: isAvailable !== void 0 ? isAvailable : false,
-            reason
-          });
-          res.json(override);
-        } catch (e) {
-          res.status(500).json({ error: e.message });
-        }
-      }
-    );
-    router14.put(
-      "/date-overrides/:id",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const id = parseInt(req.params.id);
-          const { startTime, endTime, isAvailable, reason } = req.body;
-          await kitchenService.updateKitchenDateOverride(id, {
-            id,
-            startTime,
-            endTime,
-            isAvailable,
-            reason
-          });
-          res.json({ success: true });
-        } catch (e) {
-          res.status(500).json({ error: e.message });
-        }
-      }
-    );
-    router14.delete(
-      "/date-overrides/:id",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const id = parseInt(req.params.id);
-          await kitchenService.deleteKitchenDateOverride(id);
-          res.json({ success: true });
-        } catch (e) {
-          res.status(500).json({ error: e.message });
-        }
-      }
-    );
-    router14.put(
-      "/locations/:locationId/cancellation-policy",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        console.log(
-          "[PUT] /api/manager/locations/:locationId/cancellation-policy hit",
-          {
-            locationId: req.params.locationId,
-            body: req.body
-          }
-        );
-        try {
-          const user = req.neonUser;
-          const { locationId } = req.params;
-          const locationIdNum = parseInt(locationId);
-          if (isNaN(locationIdNum) || locationIdNum <= 0) {
-            console.error("[PUT] Invalid locationId:", locationId);
-            return res.status(400).json({ error: "Invalid location ID" });
-          }
-          const {
-            cancellationPolicyHours,
-            cancellationPolicyMessage,
-            defaultDailyBookingLimit,
-            minimumBookingWindowHours,
-            notificationEmail,
-            notificationPhone,
-            logoUrl,
-            brandImageUrl,
-            timezone,
-            description,
-            customOnboardingLink
-          } = req.body;
-          console.log("[PUT] Request body:", {
-            cancellationPolicyHours,
-            cancellationPolicyMessage,
-            defaultDailyBookingLimit,
-            minimumBookingWindowHours,
-            notificationEmail,
-            logoUrl,
-            brandImageUrl,
-            timezone,
-            locationId: locationIdNum
-          });
-          if (cancellationPolicyHours !== void 0 && (typeof cancellationPolicyHours !== "number" || cancellationPolicyHours < 0)) {
-            return res.status(400).json({
-              error: "Cancellation policy hours must be a non-negative number"
-            });
-          }
-          if (defaultDailyBookingLimit !== void 0 && (typeof defaultDailyBookingLimit !== "number" || defaultDailyBookingLimit < 1 || defaultDailyBookingLimit > 24)) {
-            return res.status(400).json({
-              error: "Daily booking limit must be between 1 and 24 hours"
-            });
-          }
-          if (minimumBookingWindowHours !== void 0 && (typeof minimumBookingWindowHours !== "number" || minimumBookingWindowHours < 0 || minimumBookingWindowHours > 168)) {
-            return res.status(400).json({
-              error: "Minimum booking window hours must be between 0 and 168 hours"
-            });
-          }
-          const locationResults = await db.select().from(locations).where(
-            and17(
-              eq28(locations.id, locationIdNum),
-              eq28(locations.managerId, user.id)
-            )
-          );
-          const location = locationResults[0];
-          if (!location) {
-            console.error("[PUT] Location not found or access denied:", {
-              locationId: locationIdNum,
-              managerId: user.id,
-              userRole: user.role
-            });
-            return res.status(404).json({ error: "Location not found or access denied" });
-          }
-          console.log("[PUT] Location verified:", {
-            locationId: location.id,
-            locationName: location.name,
-            managerId: location.managerId
-          });
-          const oldNotificationEmail = location.notificationEmail || location.notification_email || null;
-          const updates = {
-            updatedAt: /* @__PURE__ */ new Date()
-          };
-          if (cancellationPolicyHours !== void 0) {
-            updates.cancellationPolicyHours = cancellationPolicyHours;
-          }
-          if (cancellationPolicyMessage !== void 0) {
-            updates.cancellationPolicyMessage = cancellationPolicyMessage;
-          }
-          if (defaultDailyBookingLimit !== void 0) {
-            updates.defaultDailyBookingLimit = defaultDailyBookingLimit;
-          }
-          if (minimumBookingWindowHours !== void 0) {
-            updates.minimumBookingWindowHours = minimumBookingWindowHours;
-          }
-          if (notificationEmail !== void 0) {
-            if (notificationEmail && notificationEmail.trim() !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
-              return res.status(400).json({ error: "Invalid email format" });
-            }
-            updates.notificationEmail = notificationEmail && notificationEmail.trim() !== "" ? notificationEmail.trim() : null;
-            console.log("[PUT] Setting notificationEmail:", {
-              raw: notificationEmail,
-              processed: updates.notificationEmail,
-              oldEmail: oldNotificationEmail
-            });
-          }
-          if (notificationPhone !== void 0) {
-            if (notificationPhone && notificationPhone.trim() !== "") {
-              const normalized = normalizePhoneForStorage(notificationPhone);
-              if (!normalized) {
-                return res.status(400).json({
-                  error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
-                });
-              }
-              updates.notificationPhone = normalized;
-              console.log("[PUT] Setting notificationPhone:", {
-                raw: notificationPhone,
-                normalized
-              });
-            } else {
-              updates.notificationPhone = null;
-            }
-          }
-          const { contactEmail, contactPhone, preferredContactMethod } = req.body;
-          if (contactEmail !== void 0) {
-            if (contactEmail && contactEmail.trim() !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
-              return res.status(400).json({ error: "Invalid contact email format" });
-            }
-            updates.contactEmail = contactEmail && contactEmail.trim() !== "" ? contactEmail.trim() : null;
-          }
-          if (contactPhone !== void 0) {
-            if (contactPhone && contactPhone.trim() !== "") {
-              const normalized = normalizePhoneForStorage(contactPhone);
-              if (!normalized) {
-                return res.status(400).json({
-                  error: "Invalid contact phone number format. Please enter a valid phone number"
-                });
-              }
-              updates.contactPhone = normalized;
-            } else {
-              updates.contactPhone = null;
-            }
-          }
-          if (preferredContactMethod !== void 0) {
-            if (!["email", "phone", "both"].includes(preferredContactMethod)) {
-              return res.status(400).json({
-                error: "Invalid preferred contact method. Must be 'email', 'phone', or 'both'"
-              });
-            }
-            updates.preferredContactMethod = preferredContactMethod;
-          }
-          if (logoUrl !== void 0) {
-            const processedLogoUrl = logoUrl && logoUrl.trim() !== "" ? logoUrl.trim() : null;
-            updates.logoUrl = processedLogoUrl;
-            updates.logo_url = processedLogoUrl;
-            console.log("[PUT] Setting logoUrl:", {
-              raw: logoUrl,
-              processed: processedLogoUrl,
-              type: typeof processedLogoUrl,
-              inUpdates: updates.logoUrl,
-              alsoSetAsLogo_url: updates.logo_url
-            });
-          }
-          if (brandImageUrl !== void 0) {
-            const processedBrandImageUrl = brandImageUrl && brandImageUrl.trim() !== "" ? brandImageUrl.trim() : null;
-            updates.brandImageUrl = processedBrandImageUrl;
-            updates.brand_image_url = processedBrandImageUrl;
-            console.log("[PUT] Setting brandImageUrl:", {
-              raw: brandImageUrl,
-              processed: processedBrandImageUrl
-            });
-          }
-          if (timezone !== void 0) {
-            updates.timezone = DEFAULT_TIMEZONE;
-            console.log("[PUT] Setting timezone (locked to Newfoundland):", {
-              raw: timezone,
-              processed: DEFAULT_TIMEZONE,
-              note: "Timezone is locked and cannot be changed"
-            });
-          }
-          if (description !== void 0) {
-            updates.description = description && description.trim() !== "" ? description.trim() : null;
-            console.log("[PUT] Setting description:", {
-              raw: description,
-              processed: updates.description
-            });
-          }
-          if (customOnboardingLink !== void 0) {
-            updates.customOnboardingLink = customOnboardingLink && customOnboardingLink.trim() !== "" ? customOnboardingLink.trim() : null;
-            console.log("[PUT] Setting customOnboardingLink:", {
-              raw: customOnboardingLink,
-              processed: updates.customOnboardingLink
-            });
-          }
-          console.log(
-            "[PUT] Final updates object before DB update:",
-            JSON.stringify(updates, null, 2)
-          );
-          console.log("[PUT] Updates keys:", Object.keys(updates));
-          console.log("[PUT] Updates object has logoUrl?", "logoUrl" in updates);
-          console.log(
-            "[PUT] Updates object logoUrl value:",
-            updates.logoUrl
-          );
-          console.log("[PUT] Updates object has logo_url?", "logo_url" in updates);
-          console.log(
-            "[PUT] Updates object logo_url value:",
-            updates.logo_url
-          );
-          const updatedResults = await db.update(locations).set(updates).where(eq28(locations.id, locationIdNum)).returning();
-          console.log(
-            "[PUT] Updated location from DB (full object):",
-            JSON.stringify(updatedResults[0], null, 2)
-          );
-          console.log(
-            "[PUT] Updated location logoUrl (camelCase):",
-            updatedResults[0].logoUrl
-          );
-          console.log(
-            "[PUT] Updated location logo_url (snake_case):",
-            updatedResults[0].logo_url
-          );
-          console.log(
-            "[PUT] Updated location all keys:",
-            Object.keys(updatedResults[0] || {})
-          );
-          if (!updatedResults || updatedResults.length === 0) {
-            console.error(
-              "[PUT] Cancellation policy update failed: No location returned from DB",
-              {
-                locationId: locationIdNum,
-                updates
-              }
-            );
-            return res.status(500).json({
-              error: "Failed to update location settings - no rows updated"
-            });
-          }
-          const updated = updatedResults[0];
-          console.log("[PUT] Location settings updated successfully:", {
-            locationId: updated.id,
-            cancellationPolicyHours: updated.cancellationPolicyHours,
-            defaultDailyBookingLimit: updated.defaultDailyBookingLimit,
-            defaultDailyBookingLimitRaw: updated.default_daily_booking_limit,
-            notificationEmail: updated.notificationEmail || updated.notification_email || "not set",
-            logoUrl: updated.logoUrl || updated.logo_url || "NOT SET"
-          });
-          if (defaultDailyBookingLimit !== void 0) {
-            const savedValue = updated.defaultDailyBookingLimit ?? updated.default_daily_booking_limit;
-            console.log("[PUT] \u2705 Verified defaultDailyBookingLimit save:", {
-              requested: defaultDailyBookingLimit,
-              saved: savedValue,
-              match: savedValue === defaultDailyBookingLimit
-            });
-            if (savedValue !== defaultDailyBookingLimit) {
-              console.error(
-                "[PUT] \u274C WARNING: defaultDailyBookingLimit mismatch!",
-                {
-                  requested: defaultDailyBookingLimit,
-                  saved: savedValue
-                }
-              );
-            }
-          }
-          const response = {
-            ...updated,
-            logoUrl: updated.logoUrl || updated.logo_url || null,
-            notificationEmail: updated.notificationEmail || updated.notification_email || null,
-            notificationPhone: updated.notificationPhone || updated.notification_phone || null,
-            cancellationPolicyHours: updated.cancellationPolicyHours || updated.cancellation_policy_hours,
-            cancellationPolicyMessage: updated.cancellationPolicyMessage || updated.cancellation_policy_message,
-            defaultDailyBookingLimit: updated.defaultDailyBookingLimit || updated.default_daily_booking_limit,
-            minimumBookingWindowHours: updated.minimumBookingWindowHours || updated.minimum_booking_window_hours || 1,
-            timezone: updated.timezone || DEFAULT_TIMEZONE,
-            description: updated.description || null,
-            customOnboardingLink: updated.customOnboardingLink || updated.custom_onboarding_link || null
-          };
-          if (notificationEmail !== void 0 && response.notificationEmail && response.notificationEmail !== oldNotificationEmail) {
-            try {
-              const emailContent = generateLocationEmailChangedEmail({
-                email: response.notificationEmail,
-                locationName: location.name || "Location",
-                locationId: locationIdNum
-              });
-              await sendEmail(emailContent);
-              console.log(
-                `\u2705 Location notification email change notification sent to: ${response.notificationEmail}`
-              );
-            } catch (emailError) {
-              console.error(
-                "Error sending location email change notification:",
-                emailError
-              );
-            }
-          }
-          console.log(
-            "[PUT] Sending response with notificationEmail:",
-            response.notificationEmail
-          );
-          res.status(200).json(response);
-        } catch (error) {
-          console.error("Error updating cancellation policy:", error);
-          res.status(500).json({
-            error: error.message || "Failed to update cancellation policy"
-          });
-        }
-      }
-    );
-    router14.get(
-      "/locations",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const locations5 = await locationService.getLocationsByManagerId(user.id);
-          console.log(
-            "[GET] /api/manager/locations - Raw locations from DB:",
-            locations5.map((loc) => ({
-              id: loc.id,
-              name: loc.name,
-              logoUrl: loc.logoUrl,
-              logo_url: loc.logo_url,
-              allKeys: Object.keys(loc)
-            }))
-          );
-          const mappedLocations = locations5.map((loc) => ({
-            ...loc,
-            notificationEmail: loc.notificationEmail || loc.notification_email || null,
-            notificationPhone: loc.notificationPhone || loc.notification_phone || null,
-            // Primary contact fields
-            contactEmail: loc.contactEmail || loc.contact_email || null,
-            contactPhone: loc.contactPhone || loc.contact_phone || null,
-            preferredContactMethod: loc.preferredContactMethod || loc.preferred_contact_method || "email",
-            cancellationPolicyHours: loc.cancellationPolicyHours || loc.cancellation_policy_hours,
-            cancellationPolicyMessage: loc.cancellationPolicyMessage || loc.cancellation_policy_message,
-            defaultDailyBookingLimit: loc.defaultDailyBookingLimit || loc.default_daily_booking_limit,
-            minimumBookingWindowHours: loc.minimumBookingWindowHours || loc.minimum_booking_window_hours || 1,
-            logoUrl: loc.logoUrl || loc.logo_url || null,
-            timezone: loc.timezone || DEFAULT_TIMEZONE,
-            description: loc.description || null,
-            customOnboardingLink: loc.customOnboardingLink || loc.custom_onboarding_link || null,
-            // Kitchen license status fields
-            kitchenLicenseUrl: loc.kitchenLicenseUrl || loc.kitchen_license_url || null,
-            kitchenLicenseStatus: loc.kitchenLicenseStatus || loc.kitchen_license_status || "pending",
-            kitchenLicenseApprovedBy: loc.kitchenLicenseApprovedBy || loc.kitchen_license_approved_by || null,
-            kitchenLicenseApprovedAt: loc.kitchenLicenseApprovedAt || loc.kitchen_license_approved_at || null,
-            kitchenLicenseFeedback: loc.kitchenLicenseFeedback || loc.kitchen_license_feedback || null,
-            kitchenLicenseExpiry: loc.kitchenLicenseExpiry || loc.kitchen_license_expiry || null,
-            // Kitchen terms and policies fields
-            kitchenTermsUrl: loc.kitchenTermsUrl || loc.kitchen_terms_url || null,
-            kitchenTermsUploadedAt: loc.kitchenTermsUploadedAt || loc.kitchen_terms_uploaded_at || null
-          }));
-          console.log(
-            "[GET] /api/manager/locations - Mapped locations:",
-            mappedLocations.map((loc) => ({
-              id: loc.id,
-              name: loc.name,
-              logoUrl: loc.logoUrl,
-              notificationEmail: loc.notificationEmail || "not set"
-            }))
-          );
-          res.json(mappedLocations);
-        } catch (error) {
-          console.error("Error fetching locations:", error);
-          res.status(500).json({ error: error.message || "Failed to fetch locations" });
-        }
-      }
-    );
-    router14.post(
-      "/locations",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const {
-            name,
-            address,
-            notificationEmail,
-            notificationPhone,
-            contactEmail,
-            contactPhone,
-            preferredContactMethod,
-            kitchenLicenseUrl,
-            kitchenLicenseStatus,
-            kitchenLicenseExpiry,
-            kitchenTermsUrl
-          } = req.body;
-          console.log(
-            "[POST /locations] Request body:",
-            JSON.stringify(req.body, null, 2)
-          );
-          console.log("[POST /locations] kitchenTermsUrl:", kitchenTermsUrl);
-          if (!name || !address) {
-            return res.status(400).json({ error: "Name and address are required" });
-          }
-          let normalizedNotificationPhone = void 0;
-          if (notificationPhone && notificationPhone.trim() !== "") {
-            const normalized = normalizePhoneForStorage(notificationPhone);
-            if (!normalized) {
-              return res.status(400).json({
-                error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
-              });
-            }
-            normalizedNotificationPhone = normalized;
-          }
-          let normalizedContactPhone = void 0;
-          if (contactPhone && contactPhone.trim() !== "") {
-            const normalized = normalizePhoneForStorage(contactPhone);
-            if (!normalized) {
-              return res.status(400).json({
-                error: "Invalid contact phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
-              });
-            }
-            normalizedContactPhone = normalized;
-          }
-          console.log("Creating location for manager:", {
-            managerId: user.id,
-            name,
-            address,
-            notificationPhone: normalizedNotificationPhone,
-            contactPhone: normalizedContactPhone,
-            kitchenLicenseUrl: kitchenLicenseUrl ? "Provided" : "Not provided"
-          });
-          const location = await locationService.createLocation({
-            name,
-            address,
-            managerId: user.id,
-            notificationEmail: notificationEmail || void 0,
-            notificationPhone: normalizedNotificationPhone,
-            contactEmail: contactEmail || void 0,
-            contactPhone: normalizedContactPhone,
-            preferredContactMethod: preferredContactMethod || "email",
-            kitchenLicenseUrl: kitchenLicenseUrl || void 0,
-            kitchenLicenseStatus: kitchenLicenseStatus || "pending",
-            kitchenLicenseExpiry: kitchenLicenseExpiry || void 0,
-            kitchenTermsUrl: kitchenTermsUrl || void 0
-          });
-          const mappedLocation = {
-            ...location,
-            managerId: location.managerId || location.manager_id || null,
-            notificationEmail: location.notificationEmail || location.notification_email || null,
-            notificationPhone: location.notificationPhone || location.notification_phone || null,
-            cancellationPolicyHours: location.cancellationPolicyHours || location.cancellation_policy_hours || 24,
-            cancellationPolicyMessage: location.cancellationPolicyMessage || location.cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
-            defaultDailyBookingLimit: location.defaultDailyBookingLimit || location.default_daily_booking_limit || 2,
-            createdAt: location.createdAt || location.created_at,
-            updatedAt: location.updatedAt || location.updated_at
-          };
-          res.status(201).json(mappedLocation);
-        } catch (error) {
-          console.error("Error creating location:", error);
-          console.error("Error details:", error.message, error.stack);
-          res.status(500).json({ error: error.message || "Failed to create location" });
-        }
-      }
-    );
-    router14.put(
-      "/locations/:locationId",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const locationId = parseInt(req.params.locationId);
-          if (isNaN(locationId) || locationId <= 0) {
-            return res.status(400).json({ error: "Invalid location ID" });
-          }
-          const locations5 = await locationService.getLocationsByManagerId(user.id);
-          const hasAccess = locations5.some((loc) => loc.id === locationId);
-          if (!hasAccess) {
-            return res.status(403).json({ error: "Access denied to this location" });
-          }
-          const {
-            name,
-            address,
-            notificationEmail,
-            notificationPhone,
-            contactEmail,
-            contactPhone,
-            preferredContactMethod,
-            kitchenLicenseUrl,
-            kitchenLicenseStatus,
-            kitchenLicenseExpiry,
-            kitchenTermsUrl
-          } = req.body;
-          const updates = {};
-          if (name !== void 0) updates.name = name;
-          if (address !== void 0) updates.address = address;
-          if (notificationEmail !== void 0)
-            updates.notificationEmail = notificationEmail || null;
-          if (notificationPhone !== void 0) {
-            if (notificationPhone && notificationPhone.trim() !== "") {
-              const normalized = normalizePhoneForStorage(notificationPhone);
-              if (!normalized) {
-                return res.status(400).json({
-                  error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
-                });
-              }
-              updates.notificationPhone = normalized;
-            } else {
-              updates.notificationPhone = null;
-            }
-          }
-          if (contactEmail !== void 0) {
-            if (contactEmail && contactEmail.trim() !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
-              return res.status(400).json({ error: "Invalid contact email format" });
-            }
-            updates.contactEmail = contactEmail && contactEmail.trim() !== "" ? contactEmail.trim() : null;
-          }
-          if (contactPhone !== void 0) {
-            if (contactPhone && contactPhone.trim() !== "") {
-              const normalized = normalizePhoneForStorage(contactPhone);
-              if (!normalized) {
-                return res.status(400).json({
-                  error: "Invalid contact phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
-                });
-              }
-              updates.contactPhone = normalized;
-            } else {
-              updates.contactPhone = null;
-            }
-          }
-          if (preferredContactMethod !== void 0) {
-            if (!["email", "phone", "both"].includes(preferredContactMethod)) {
-              return res.status(400).json({
-                error: "Invalid preferred contact method. Must be 'email', 'phone', or 'both'"
-              });
-            }
-            updates.preferredContactMethod = preferredContactMethod;
-          }
-          if (kitchenLicenseUrl !== void 0) {
-            updates.kitchenLicenseUrl = kitchenLicenseUrl || null;
-            if (kitchenLicenseUrl) {
-              updates.kitchenLicenseUploadedAt = /* @__PURE__ */ new Date();
-              if (kitchenLicenseStatus === void 0) {
-                updates.kitchenLicenseStatus = "pending";
-              }
-            }
-          }
-          if (kitchenLicenseStatus !== void 0) {
-            if (kitchenLicenseStatus && !["pending", "approved", "rejected"].includes(kitchenLicenseStatus)) {
-              return res.status(400).json({
-                error: "Invalid kitchenLicenseStatus. Must be 'pending', 'approved', or 'rejected'"
-              });
-            }
-            updates.kitchenLicenseStatus = kitchenLicenseStatus || null;
-          }
-          if (kitchenLicenseExpiry !== void 0) {
-            updates.kitchenLicenseExpiry = kitchenLicenseExpiry || null;
-          }
-          if (kitchenTermsUrl !== void 0) {
-            updates.kitchenTermsUrl = kitchenTermsUrl || null;
-            if (kitchenTermsUrl) {
-              updates.kitchenTermsUploadedAt = /* @__PURE__ */ new Date();
-            }
-          }
-          console.log(`\u{1F4BE} Updating location ${locationId} with:`, updates);
-          const updated = await locationService.updateLocation({
-            id: locationId,
-            ...updates
-          });
-          if (!updated) {
-            console.error(`\u274C Location ${locationId} not found in database`);
-            return res.status(404).json({ error: "Location not found" });
-          }
-          console.log(`\u2705 Location ${locationId} updated successfully`);
-          if (kitchenLicenseUrl && updates.kitchenLicenseStatus === "pending") {
-            try {
-              const { generateKitchenLicenseSubmittedAdminEmail: generateKitchenLicenseSubmittedAdminEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-              const admins = await db.select({ username: users.username }).from(users).where(eq28(users.role, "admin"));
-              for (const admin2 of admins) {
-                if (admin2.username) {
-                  const adminEmail = generateKitchenLicenseSubmittedAdminEmail2({
-                    adminEmail: admin2.username,
-                    managerName: user.username,
-                    managerEmail: user.username,
-                    locationName: updated.name || "Kitchen Location",
-                    locationId,
-                    submittedAt: /* @__PURE__ */ new Date()
-                  });
-                  await sendEmail(adminEmail, {
-                    trackingId: `kitchen_license_submitted_${locationId}_${Date.now()}`
-                  });
-                }
-              }
-              logger.info(
-                `[Manager] Sent kitchen license submission notification to admins for location ${locationId}`
-              );
-            } catch (emailError) {
-              logger.error(
-                "Error sending kitchen license submission email to admin:",
-                emailError
-              );
-            }
-          }
-          const mappedLocation = {
-            ...updated,
-            managerId: updated.managerId || updated.manager_id || null,
-            notificationEmail: updated.notificationEmail || updated.notification_email || null,
-            notificationPhone: updated.notificationPhone || updated.notification_phone || null,
-            cancellationPolicyHours: updated.cancellationPolicyHours || updated.cancellation_policy_hours || 24,
-            cancellationPolicyMessage: updated.cancellationPolicyMessage || updated.cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
-            defaultDailyBookingLimit: updated.defaultDailyBookingLimit || updated.default_daily_booking_limit || 2,
-            createdAt: updated.createdAt || updated.created_at,
-            updatedAt: updated.updatedAt || updated.updated_at
-          };
-          return res.json(mappedLocation);
-        } catch (error) {
-          console.error("\u274C Error updating location:", error);
-          console.error("Error stack:", error.stack);
-          res.status(500).json({ error: error.message || "Failed to update location" });
-        }
-      }
-    );
-    router14.post(
-      "/complete-onboarding",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const { skipped } = req.body;
-          console.log(
-            `[POST] /api/manager/complete-onboarding - User: ${user.id}, skipped: ${skipped}`
-          );
-          const updatedUser = await managerService.updateOnboarding(user.id, {
-            completed: true,
-            skipped: !!skipped
-          });
-          if (!updatedUser) {
-            return res.status(500).json({ error: "Failed to update onboarding status" });
-          }
-          res.json({ success: true, user: updatedUser });
-        } catch (error) {
-          console.error("Error completing manager onboarding:", error);
-          res.status(500).json({ error: error.message || "Failed to complete onboarding" });
-        }
-      }
-    );
-    router14.post(
-      "/onboarding/step",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const { stepId, locationId } = req.body;
-          if (stepId === void 0) {
-            return res.status(400).json({ error: "stepId is required" });
-          }
-          console.log(
-            `[POST] /api/manager/onboarding/step - User: ${user.id}, stepId: ${stepId}, locationId: ${locationId}`
-          );
-          const currentSteps = user.managerOnboardingStepsCompleted || {};
-          const stepKey = locationId ? `${stepId}_location_${locationId}` : `${stepId}`;
-          const newSteps = {
-            ...currentSteps,
-            [stepKey]: true
-          };
-          const updatedUser = await managerService.updateOnboarding(user.id, {
-            steps: newSteps
-          });
-          if (!updatedUser) {
-            return res.status(500).json({ error: "Failed to update onboarding step" });
-          }
-          res.json({
-            success: true,
-            stepsCompleted: updatedUser.managerOnboardingStepsCompleted
-          });
-        } catch (error) {
-          console.error("Error tracking onboarding step:", error);
-          res.status(500).json({ error: error.message || "Failed to track onboarding step" });
-        }
-      }
-    );
-    router14.get(
-      "/availability/:kitchenId",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const kitchenId = parseInt(req.params.kitchenId);
-          if (isNaN(kitchenId) || kitchenId <= 0) {
-            return res.status(400).json({ error: "Invalid kitchen ID" });
-          }
-          const kitchen = await kitchenService.getKitchenById(kitchenId);
-          if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-          }
-          const managerLocations = await locationService.getLocationsByManagerId(
-            user.id
-          );
-          const hasAccess = managerLocations.some(
-            (loc) => loc.id === kitchen.locationId
-          );
-          if (!hasAccess) {
-            return res.status(403).json({ error: "Access denied to this kitchen" });
-          }
-          const availability = await kitchenService.getKitchenAvailability(kitchenId);
-          res.json(availability);
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/availability",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const user = req.neonUser;
-          const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
-          if (!kitchenId || dayOfWeek === void 0 || dayOfWeek < 0 || dayOfWeek > 6) {
-            return res.status(400).json({ error: "kitchenId and valid dayOfWeek (0-6) are required" });
-          }
-          const kitchen = await kitchenService.getKitchenById(kitchenId);
-          if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-          }
-          const managerLocations = await locationService.getLocationsByManagerId(
-            user.id
-          );
-          const hasAccess = managerLocations.some(
-            (loc) => loc.id === kitchen.locationId
-          );
-          if (!hasAccess) {
-            return res.status(403).json({ error: "Access denied to this kitchen" });
-          }
-          const { kitchenAvailability: kitchenAvailability2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-          const [existing] = await db.select().from(kitchenAvailability2).where(
-            and17(
-              eq28(kitchenAvailability2.kitchenId, kitchenId),
-              eq28(kitchenAvailability2.dayOfWeek, dayOfWeek)
-            )
-          ).limit(1);
-          let result;
-          if (existing) {
-            [result] = await db.update(kitchenAvailability2).set({
-              startTime: startTime || "00:00",
-              endTime: endTime || "00:00",
-              isAvailable: isAvailable ?? false
-            }).where(eq28(kitchenAvailability2.id, existing.id)).returning();
-          } else {
-            [result] = await db.insert(kitchenAvailability2).values({
-              kitchenId,
-              dayOfWeek,
-              startTime: startTime || "00:00",
-              endTime: endTime || "00:00",
-              isAvailable: isAvailable ?? false
-            }).returning();
-          }
-          res.json(result);
-        } catch (error) {
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/storage-extensions/pending",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const pendingExtensions = await db.select({
-            id: pendingStorageExtensions.id,
-            storageBookingId: pendingStorageExtensions.storageBookingId,
-            newEndDate: pendingStorageExtensions.newEndDate,
-            extensionDays: pendingStorageExtensions.extensionDays,
-            extensionBasePriceCents: pendingStorageExtensions.extensionBasePriceCents,
-            extensionServiceFeeCents: pendingStorageExtensions.extensionServiceFeeCents,
-            extensionTotalPriceCents: pendingStorageExtensions.extensionTotalPriceCents,
-            status: pendingStorageExtensions.status,
-            createdAt: pendingStorageExtensions.createdAt,
-            stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
-            // Storage booking details
-            currentEndDate: storageBookings.endDate,
-            storageName: storageListings.name,
-            storageType: storageListings.storageType,
-            // Chef details
-            chefId: storageBookings.chefId,
-            chefEmail: users.username,
-            // Kitchen/Location details
-            kitchenName: kitchens.name,
-            locationId: locations.id
-          }).from(pendingStorageExtensions).innerJoin(
-            storageBookings,
-            eq28(
-              pendingStorageExtensions.storageBookingId,
-              storageBookings.id
-            )
-          ).innerJoin(
-            storageListings,
-            eq28(storageBookings.storageListingId, storageListings.id)
-          ).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).innerJoin(users, eq28(storageBookings.chefId, users.id)).where(
-            and17(
-              eq28(locations.managerId, managerId),
-              or4(
-                eq28(pendingStorageExtensions.status, "paid"),
-                eq28(pendingStorageExtensions.status, "authorized")
-              )
-              // Show paid and authorized extensions awaiting manager approval
-            )
-          ).orderBy(desc13(pendingStorageExtensions.createdAt));
-          const { lazyExpireStorageExtensionAuth: lazyExpireStorageExtensionAuth2 } = await Promise.resolve().then(() => (init_auth_expiry_service(), auth_expiry_service_exports));
-          const stillPending = [];
-          for (const ext of pendingExtensions) {
-            if (ext.status === "authorized") {
-              const wasExpired = await lazyExpireStorageExtensionAuth2({
-                id: ext.id,
-                status: ext.status,
-                stripePaymentIntentId: ext.stripePaymentIntentId,
-                createdAt: ext.createdAt ? new Date(ext.createdAt) : null,
-                storageBookingId: ext.storageBookingId
-              });
-              if (wasExpired) continue;
-            }
-            stillPending.push(ext);
-          }
-          res.json(stillPending);
-        } catch (error) {
-          logger.error("Error fetching pending storage extensions:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/storage-extensions/:id/approve",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const extensionId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          if (isNaN(extensionId) || extensionId <= 0) {
-            return res.status(400).json({ error: "Invalid extension ID" });
-          }
-          const [extension] = await db.select({
-            id: pendingStorageExtensions.id,
-            storageBookingId: pendingStorageExtensions.storageBookingId,
-            newEndDate: pendingStorageExtensions.newEndDate,
-            extensionDays: pendingStorageExtensions.extensionDays,
-            status: pendingStorageExtensions.status,
-            locationManagerId: locations.managerId,
-            chefId: storageBookings.chefId,
-            chefEmail: users.username,
-            storageName: storageListings.name
-          }).from(pendingStorageExtensions).innerJoin(
-            storageBookings,
-            eq28(
-              pendingStorageExtensions.storageBookingId,
-              storageBookings.id
-            )
-          ).innerJoin(
-            storageListings,
-            eq28(storageBookings.storageListingId, storageListings.id)
-          ).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).innerJoin(users, eq28(storageBookings.chefId, users.id)).where(eq28(pendingStorageExtensions.id, extensionId)).limit(1);
-          if (!extension) {
-            return res.status(404).json({ error: "Extension request not found" });
-          }
-          if (extension.locationManagerId !== managerId) {
-            return res.status(403).json({ error: "Not authorized to approve this extension" });
-          }
-          if (extension.status !== "paid" && extension.status !== "authorized") {
-            return res.status(400).json({
-              error: `Cannot approve extension with status '${extension.status}'`
-            });
-          }
-          if (extension.status === "authorized") {
-            try {
-              const [extDetails] = await db.select({ stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId }).from(pendingStorageExtensions).where(eq28(pendingStorageExtensions.id, extensionId)).limit(1);
-              if (extDetails?.stripePaymentIntentId) {
-                const { capturePaymentIntent: capturePaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-                const captureResult = await capturePaymentIntent2(extDetails.stripePaymentIntentId);
-                logger.info(`[Manager] AUTH-THEN-CAPTURE: Captured storage extension payment ${extensionId}`, {
-                  paymentIntentId: extDetails.stripePaymentIntentId,
-                  capturedAmount: captureResult.amount,
-                  status: captureResult.status
-                });
-                try {
-                  const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-                  const ptRecord = await findPaymentTransactionByIntentId2(extDetails.stripePaymentIntentId, db);
-                  if (ptRecord) {
-                    await updatePaymentTransaction2(ptRecord.id, {
-                      status: "succeeded",
-                      stripeStatus: "succeeded",
-                      paidAt: /* @__PURE__ */ new Date()
-                    }, db);
-                  }
-                } catch (ptErr) {
-                  logger.warn(`[Manager] Could not update PT after storage extension capture:`, ptErr);
-                }
-              }
-            } catch (captureError) {
-              logger.error(`[Manager] AUTH-THEN-CAPTURE: Failed to capture storage extension payment ${extensionId}:`, captureError);
-              return res.status(500).json({
-                error: "Failed to capture payment for storage extension. The authorization may have expired.",
-                details: captureError.message
-              });
-            }
-          }
-          await db.update(pendingStorageExtensions).set({
-            status: "approved",
-            managerId,
-            approvedAt: /* @__PURE__ */ new Date(),
-            updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq28(pendingStorageExtensions.id, extensionId));
-          await bookingService.extendStorageBooking(
-            extension.storageBookingId,
-            extension.newEndDate
-          );
-          await db.update(pendingStorageExtensions).set({
-            status: "completed",
-            completedAt: /* @__PURE__ */ new Date(),
-            updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq28(pendingStorageExtensions.id, extensionId));
-          logger.info(
-            `[Manager] Storage extension ${extensionId} approved by manager ${managerId}`,
-            {
-              storageBookingId: extension.storageBookingId,
-              newEndDate: extension.newEndDate,
-              extensionDays: extension.extensionDays
-            }
-          );
-          try {
-            const approvalEmail = generateStorageExtensionApprovedEmail({
-              chefEmail: extension.chefEmail,
-              chefName: extension.chefEmail,
-              storageName: extension.storageName,
-              extensionDays: extension.extensionDays,
-              newEndDate: extension.newEndDate
-            });
-            await sendEmail(approvalEmail);
-            logger.info(
-              `[Manager] Sent storage extension approval email to chef: ${extension.chefEmail}`
-            );
-          } catch (emailError) {
-            logger.error(
-              "Error sending storage extension approval email:",
-              emailError
-            );
-          }
-          try {
-            if (extension.chefId) {
-              await notificationService.notifyChefStorageExtensionApproved({
-                chefId: extension.chefId,
-                storageBookingId: extension.storageBookingId,
-                storageName: extension.storageName,
-                extensionDays: extension.extensionDays,
-                newEndDate: extension.newEndDate.toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric"
-                })
-              });
-            }
-          } catch (notifError) {
-            logger.error(
-              "Error sending storage extension approval in-app notification:",
-              notifError
-            );
-          }
-          res.json({
-            success: true,
-            message: "Storage extension approved successfully",
-            extension: {
-              id: extensionId,
-              storageBookingId: extension.storageBookingId,
-              newEndDate: extension.newEndDate,
-              status: "completed"
-            }
-          });
-        } catch (error) {
-          logger.error("Error approving storage extension:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/storage-extensions/:id/reject",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const extensionId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          const { reason } = req.body;
-          if (isNaN(extensionId) || extensionId <= 0) {
-            return res.status(400).json({ error: "Invalid extension ID" });
-          }
-          const [extension] = await db.select({
-            id: pendingStorageExtensions.id,
-            storageBookingId: pendingStorageExtensions.storageBookingId,
-            status: pendingStorageExtensions.status,
-            stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
-            extensionTotalPriceCents: pendingStorageExtensions.extensionTotalPriceCents,
-            locationManagerId: locations.managerId,
-            chefId: storageBookings.chefId,
-            chefEmail: users.username
-          }).from(pendingStorageExtensions).innerJoin(
-            storageBookings,
-            eq28(
-              pendingStorageExtensions.storageBookingId,
-              storageBookings.id
-            )
-          ).innerJoin(
-            storageListings,
-            eq28(storageBookings.storageListingId, storageListings.id)
-          ).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).innerJoin(users, eq28(storageBookings.chefId, users.id)).where(eq28(pendingStorageExtensions.id, extensionId)).limit(1);
-          if (!extension) {
-            return res.status(404).json({ error: "Extension request not found" });
-          }
-          if (extension.locationManagerId !== managerId) {
-            return res.status(403).json({ error: "Not authorized to reject this extension" });
-          }
-          if (extension.status !== "paid" && extension.status !== "authorized") {
-            return res.status(400).json({
-              error: `Cannot reject extension with status '${extension.status}'`
-            });
-          }
-          const wasAuthorizedExtension = extension.status === "authorized";
-          await db.update(pendingStorageExtensions).set({
-            status: "rejected",
-            managerId,
-            rejectedAt: /* @__PURE__ */ new Date(),
-            rejectionReason: reason || "Extension request declined by manager",
-            updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq28(pendingStorageExtensions.id, extensionId));
-          logger.info(
-            `[Manager] Storage extension ${extensionId} rejected by manager ${managerId}`,
-            {
-              storageBookingId: extension.storageBookingId,
-              reason: reason || "No reason provided"
-            }
-          );
-          let refundResult = null;
-          if (extension.stripePaymentIntentId) {
-            if (wasAuthorizedExtension) {
-              try {
-                const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-                const { findPaymentTransactionByMetadata: findPaymentTransactionByMetadata2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-                await cancelPaymentIntent2(extension.stripePaymentIntentId);
-                logger.info(`[Manager] AUTH-THEN-CAPTURE: Cancelled authorization for storage extension ${extensionId}`);
-                const ptRecord = await findPaymentTransactionByMetadata2(
-                  "storage_extension_id",
-                  String(extensionId),
-                  db
-                );
-                if (ptRecord) {
-                  await updatePaymentTransaction2(ptRecord.id, {
-                    status: "canceled",
-                    stripeStatus: "canceled"
-                  }, db);
-                }
-              } catch (cancelError) {
-                logger.error(`[Manager] Failed to cancel auth for storage extension ${extensionId}:`, cancelError);
-              }
-            } else {
-              try {
-                const { reverseTransferAndRefund: reverseTransferAndRefund2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-                const { findPaymentTransactionByMetadata: findPaymentTransactionByMetadata2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-                const paymentTransaction = await findPaymentTransactionByMetadata2(
-                  "storage_extension_id",
-                  String(extensionId),
-                  db
-                );
-                const extensionTotalPrice = extension.extensionTotalPriceCents || 0;
-                const transactionAmount = paymentTransaction ? parseInt(String(paymentTransaction.amount || "0")) || extensionTotalPrice : extensionTotalPrice;
-                if (transactionAmount > 0) {
-                  const { calculateRefundBreakdown: calculateRefundBreakdown2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-                  const stripeProcessingFee = paymentTransaction ? parseInt(
-                    String(paymentTransaction.stripe_processing_fee || "0")
-                  ) || 0 : 0;
-                  const currentRefundAmount = paymentTransaction ? parseInt(String(paymentTransaction.refund_amount || "0")) || 0 : 0;
-                  const managerRevenue = paymentTransaction ? parseInt(String(paymentTransaction.manager_revenue || "0")) || transactionAmount : transactionAmount;
-                  const refundBreakdown = calculateRefundBreakdown2(
-                    transactionAmount,
-                    managerRevenue,
-                    currentRefundAmount,
-                    stripeProcessingFee
-                  );
-                  const refundToCustomer = refundBreakdown.maxRefundableToCustomer;
-                  const deductFromManager = refundBreakdown.maxDeductibleFromManager;
-                  refundResult = await reverseTransferAndRefund2(
-                    extension.stripePaymentIntentId,
-                    refundToCustomer,
-                    // Customer receives this amount
-                    "requested_by_customer",
-                    {
-                      reverseTransferAmount: deductFromManager,
-                      // Manager debited same amount
-                      refundApplicationFee: false,
-                      metadata: {
-                        storage_extension_id: String(extensionId),
-                        storage_booking_id: String(extension.storageBookingId),
-                        rejection_reason: reason || "Extension declined by manager",
-                        manager_id: String(managerId),
-                        refund_model: "unified",
-                        customer_receives: String(refundToCustomer),
-                        manager_debited: String(deductFromManager)
-                      }
-                    }
-                  );
-                  logger.info(
-                    `[Manager] Refund processed for storage extension ${extensionId}`,
-                    {
-                      refundId: refundResult.refundId,
-                      refundAmount: refundResult.refundAmount,
-                      transferReversalId: refundResult.transferReversalId
-                    }
-                  );
-                  await db.update(pendingStorageExtensions).set({
-                    status: "refunded",
-                    updatedAt: /* @__PURE__ */ new Date()
-                  }).where(eq28(pendingStorageExtensions.id, extensionId));
-                  if (paymentTransaction) {
-                    await updatePaymentTransaction2(
-                      paymentTransaction.id,
-                      {
-                        status: "refunded",
-                        refundAmount: refundResult.refundAmount,
-                        refundId: refundResult.refundId,
-                        refundedAt: /* @__PURE__ */ new Date()
-                      },
-                      db
-                    );
-                  }
-                }
-              } catch (refundError) {
-                logger.error(
-                  `[Manager] Failed to process refund for extension ${extensionId}:`,
-                  refundError
-                );
-              }
-            }
-          }
-          try {
-            const rejectionEmail = generateStorageExtensionRejectedEmail({
-              chefEmail: extension.chefEmail,
-              chefName: extension.chefEmail,
-              storageName: extension.storageName || "Storage",
-              extensionDays: extension.extensionDays || 0,
-              rejectionReason: reason || "Extension request declined by manager",
-              refundAmount: refundResult?.refundAmount
-            });
-            await sendEmail(rejectionEmail);
-            logger.info(
-              `[Manager] Sent storage extension rejection email to chef: ${extension.chefEmail}`
-            );
-          } catch (emailError) {
-            logger.error(
-              "Error sending storage extension rejection email:",
-              emailError
-            );
-          }
-          try {
-            if (extension.chefId) {
-              await notificationService.notifyChefStorageExtensionRejected({
-                chefId: extension.chefId,
-                storageBookingId: extension.storageBookingId,
-                storageName: extension.storageName || "Storage",
-                extensionDays: extension.extensionDays || 0,
-                newEndDate: "",
-                reason: reason || "Extension request declined by manager"
-              });
-            }
-          } catch (notifError) {
-            logger.error(
-              "Error sending storage extension rejection in-app notification:",
-              notifError
-            );
-          }
-          res.json({
-            success: true,
-            message: refundResult ? "Storage extension rejected and refund processed successfully." : "Storage extension rejected. Refund will be processed.",
-            extension: {
-              id: extensionId,
-              storageBookingId: extension.storageBookingId,
-              status: refundResult ? "refunded" : "rejected"
-            },
-            refund: refundResult ? {
-              refundId: refundResult.refundId,
-              amount: refundResult.refundAmount
-            } : null
-          });
-        } catch (error) {
-          logger.error("Error rejecting storage extension:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/overstays",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const includeAll = req.query.includeAll === "true";
-          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq28(locations.managerId, managerId));
-          const locationIds = managerLocations.map((l) => l.id);
-          if (locationIds.length === 0) {
-            return res.json({ overstays: [], pastOverstays: [], stats: null });
-          }
-          const pendingOverstays = await overstayPenaltyService.getPendingOverstayReviews();
-          const filteredPending = pendingOverstays.filter(
-            (o) => locationIds.includes(o.locationId)
-          );
-          let pastOverstays = [];
-          if (includeAll) {
-            const allOverstays = await overstayPenaltyService.getAllOverstayRecords();
-            const filteredAll = allOverstays.filter(
-              (o) => locationIds.includes(o.locationId)
-            );
-            const pendingStatuses = [
-              "detected",
-              "grace_period",
-              "pending_review",
-              "penalty_approved",
-              "charge_pending",
-              "charge_failed",
-              "escalated"
-            ];
-            pastOverstays = filteredAll.filter(
-              (o) => !pendingStatuses.includes(o.status)
-            );
-          }
-          const stats = await overstayPenaltyService.getOverstayStats();
-          res.json({
-            overstays: filteredPending,
-            pastOverstays,
-            stats
-          });
-        } catch (error) {
-          logger.error("Error fetching overstays:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/overstays/:id",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const overstayId = parseInt(req.params.id);
-          if (isNaN(overstayId)) {
-            return res.status(400).json({ error: "Invalid overstay ID" });
-          }
-          const record = await overstayPenaltyService.getOverstayRecord(overstayId);
-          if (!record) {
-            return res.status(404).json({ error: "Overstay record not found" });
-          }
-          const history = await overstayPenaltyService.getOverstayHistory(overstayId);
-          res.json({
-            overstay: record,
-            history
-          });
-        } catch (error) {
-          logger.error("Error fetching overstay record:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/overstays/:id/approve",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const overstayId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          const { finalPenaltyCents, managerNotes } = req.body;
-          if (isNaN(overstayId)) {
-            return res.status(400).json({ error: "Invalid overstay ID" });
-          }
-          if (finalPenaltyCents !== void 0) {
-            if (typeof finalPenaltyCents !== "number" || finalPenaltyCents < 0) {
-              return res.status(400).json({ error: "Invalid penalty amount" });
-            }
-          }
-          const decision = {
-            overstayRecordId: overstayId,
-            managerId,
-            action: finalPenaltyCents !== void 0 ? "adjust" : "approve",
-            finalPenaltyCents,
-            managerNotes
-          };
-          const result = await overstayPenaltyService.processManagerDecision(decision);
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-          logger.info(
-            `[Manager] Auto-charging overstay penalty ${overstayId} after manager approval`
-          );
-          const chargeResult = await overstayPenaltyService.chargeApprovedPenalty(overstayId);
-          if (!chargeResult.success) {
-            logger.warn(
-              `[Manager] Auto-charge failed for overstay ${overstayId}: ${chargeResult.error}`
-            );
-          }
-          res.json({
-            success: true,
-            message: chargeResult.success ? "Penalty approved and charged successfully" : `Penalty approved but charge failed: ${chargeResult.error || "Unknown error"}`,
-            chargeResult,
-            autoCharged: true
-          });
-        } catch (error) {
-          logger.error("Error approving penalty:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/overstays/:id/waive",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const overstayId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          const { waiveReason, managerNotes } = req.body;
-          if (isNaN(overstayId)) {
-            return res.status(400).json({ error: "Invalid overstay ID" });
-          }
-          if (!waiveReason || typeof waiveReason !== "string" || waiveReason.trim().length === 0) {
-            return res.status(400).json({ error: "Waive reason is required" });
-          }
-          const decision = {
-            overstayRecordId: overstayId,
-            managerId,
-            action: "waive",
-            waiveReason: waiveReason.trim(),
-            managerNotes
-          };
-          const result = await overstayPenaltyService.processManagerDecision(decision);
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-          res.json({
-            success: true,
-            message: "Penalty waived successfully"
-          });
-        } catch (error) {
-          logger.error("Error waiving penalty:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/overstays/:id/charge",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const overstayId = parseInt(req.params.id);
-          if (isNaN(overstayId)) {
-            return res.status(400).json({ error: "Invalid overstay ID" });
-          }
-          const result = await overstayPenaltyService.chargeApprovedPenalty(overstayId);
-          if (!result.success) {
-            return res.status(400).json({
-              error: result.error,
-              message: "Failed to charge penalty. The chef may need to update their payment method."
-            });
-          }
-          res.json({
-            success: true,
-            message: "Penalty charged successfully",
-            paymentIntentId: result.paymentIntentId,
-            chargeId: result.chargeId
-          });
-        } catch (error) {
-          logger.error("Error charging penalty:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/overstays/:id/resolve",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const overstayId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          const { resolutionType, resolutionNotes } = req.body;
-          if (isNaN(overstayId)) {
-            return res.status(400).json({ error: "Invalid overstay ID" });
-          }
-          const validTypes = ["extended", "removed", "escalated"];
-          if (!resolutionType || !validTypes.includes(resolutionType)) {
-            return res.status(400).json({
-              error: "Invalid resolution type. Must be: extended, removed, or escalated"
-            });
-          }
-          const result = await overstayPenaltyService.resolveOverstay(
-            overstayId,
-            resolutionType,
-            resolutionNotes,
-            managerId
-          );
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-          res.json({
-            success: true,
-            message: `Overstay marked as ${resolutionType}`
-          });
-        } catch (error) {
-          logger.error("Error resolving overstay:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/overstays-stats",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq28(locations.managerId, managerId));
-          const locationIds = managerLocations.map((l) => l.id);
-          if (locationIds.length === 0) {
-            return res.json({ stats: null });
-          }
-          const stats = await overstayPenaltyService.getOverstayStats();
-          res.json({ stats });
-        } catch (error) {
-          logger.error("Error fetching overstay stats:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/storage-checkouts/pending",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq28(locations.managerId, managerId));
-          const locationIds = managerLocations.map((l) => l.id);
-          if (locationIds.length === 0) {
-            return res.json({ pendingCheckouts: [] });
-          }
-          const { getPendingCheckoutReviews: getPendingCheckoutReviews2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
-          const allPending = await getPendingCheckoutReviews2();
-          logger.info(
-            `[StorageCheckouts] Manager ${managerId} locations: ${locationIds.join(", ")}`
-          );
-          logger.info(
-            `[StorageCheckouts] All pending checkouts: ${allPending.length}`
-          );
-          const pendingCheckouts = allPending.filter(
-            (c) => locationIds.includes(c.locationId)
-          );
-          logger.info(
-            `[StorageCheckouts] Filtered pending checkouts for manager: ${pendingCheckouts.length}`
-          );
-          res.json({ pendingCheckouts });
-        } catch (error) {
-          logger.error("Error fetching pending checkouts:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/storage-checkouts/history",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const limit = parseInt(req.query.limit) || 20;
-          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq28(locations.managerId, managerId));
-          const locationIds = managerLocations.map((l) => l.id);
-          if (locationIds.length === 0) {
-            return res.json({ checkoutHistory: [] });
-          }
-          const { getCheckoutHistory: getCheckoutHistory2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
-          const checkoutHistory = await getCheckoutHistory2(locationIds, limit);
-          res.json({ checkoutHistory });
-        } catch (error) {
-          logger.error("Error fetching checkout history:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/storage-bookings/:id/approve-checkout",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const storageBookingId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          const { managerNotes } = req.body;
-          if (isNaN(storageBookingId)) {
-            return res.status(400).json({ error: "Invalid storage booking ID" });
-          }
-          const { processCheckoutApproval: processCheckoutApproval2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
-          const result = await processCheckoutApproval2(
-            storageBookingId,
-            managerId,
-            "clear",
-            managerNotes
-          );
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-          res.json({
-            success: true,
-            message: "Storage cleared \u2014 no issues found. Booking completed.",
-            storageBookingId: result.storageBookingId,
-            checkoutStatus: result.checkoutStatus
-          });
-        } catch (error) {
-          logger.error("Error clearing checkout:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/storage-bookings/:id/clear-checkout",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const storageBookingId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          const { managerNotes } = req.body;
-          if (isNaN(storageBookingId)) {
-            return res.status(400).json({ error: "Invalid storage booking ID" });
-          }
-          const { processCheckoutApproval: processCheckoutApproval2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
-          const result = await processCheckoutApproval2(
-            storageBookingId,
-            managerId,
-            "clear",
-            managerNotes
-          );
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-          res.json({
-            success: true,
-            message: "Storage cleared \u2014 no issues found. Booking completed.",
-            storageBookingId: result.storageBookingId,
-            checkoutStatus: result.checkoutStatus
-          });
-        } catch (error) {
-          logger.error("Error clearing checkout:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/storage-bookings/:id/start-claim",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const storageBookingId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          const { claimTitle, claimDescription, claimedAmountCents, damageDate, managerNotes } = req.body;
-          if (isNaN(storageBookingId)) {
-            return res.status(400).json({ error: "Invalid storage booking ID" });
-          }
-          if (!claimTitle || typeof claimTitle !== "string" || claimTitle.trim().length < 5) {
-            return res.status(400).json({ error: "Claim title must be at least 5 characters" });
-          }
-          if (!claimDescription || typeof claimDescription !== "string" || claimDescription.trim().length < 50) {
-            return res.status(400).json({ error: "Claim description must be at least 50 characters" });
-          }
-          if (!claimedAmountCents || typeof claimedAmountCents !== "number" || claimedAmountCents <= 0) {
-            return res.status(400).json({ error: "Claimed amount must be a positive number (in cents)" });
-          }
-          const { processCheckoutApproval: processCheckoutApproval2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
-          const result = await processCheckoutApproval2(
-            storageBookingId,
-            managerId,
-            "start_claim",
-            managerNotes,
-            {
-              claimTitle: claimTitle.trim(),
-              claimDescription: claimDescription.trim(),
-              claimedAmountCents,
-              damageDate
-            }
-          );
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-          res.json({
-            success: true,
-            message: "Damage/cleaning claim started. The chef will be notified.",
-            storageBookingId: result.storageBookingId,
-            checkoutStatus: result.checkoutStatus,
-            damageClaimId: result.damageClaimId
-          });
-        } catch (error) {
-          logger.error("Error starting checkout claim:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/storage-bookings/:id/deny-checkout",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const storageBookingId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          const { managerNotes } = req.body;
-          if (isNaN(storageBookingId)) {
-            return res.status(400).json({ error: "Invalid storage booking ID" });
-          }
-          logger.warn(`[StorageCheckout] Deprecated deny-checkout called for booking ${storageBookingId}. Use clear-checkout or start-claim instead.`);
-          const { processCheckoutApproval: processCheckoutApproval2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
-          const result = await processCheckoutApproval2(
-            storageBookingId,
-            managerId,
-            "deny",
-            managerNotes
-          );
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-          res.json({
-            success: true,
-            message: "DEPRECATED: Deny is no longer supported. Storage has been cleared instead. Use /clear-checkout or /start-claim.",
-            storageBookingId: result.storageBookingId,
-            checkoutStatus: result.checkoutStatus,
-            deprecated: true
-          });
-        } catch (error) {
-          logger.error("Error processing legacy deny-checkout:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.put(
-      "/storage-listings/:id/penalty-config",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const listingId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          const {
-            overstayGracePeriodDays,
-            overstayPenaltyRate,
-            overstayMaxPenaltyDays,
-            overstayPolicyText
-          } = req.body;
-          if (isNaN(listingId)) {
-            return res.status(400).json({ error: "Invalid listing ID" });
-          }
-          const [listing] = await db.select({
-            id: storageListings.id,
-            managerId: locations.managerId
-          }).from(storageListings).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(storageListings.id, listingId)).limit(1);
-          if (!listing) {
-            return res.status(404).json({ error: "Storage listing not found" });
-          }
-          if (listing.managerId !== managerId) {
-            return res.status(403).json({ error: "Not authorized to update this listing" });
-          }
-          const updates = { updatedAt: /* @__PURE__ */ new Date() };
-          if (overstayGracePeriodDays !== void 0) {
-            const days = parseInt(overstayGracePeriodDays);
-            if (isNaN(days) || days < 0 || days > 14) {
-              return res.status(400).json({ error: "Grace period must be between 0 and 14 days" });
-            }
-            updates.overstayGracePeriodDays = days;
-          }
-          if (overstayPenaltyRate !== void 0) {
-            const rate = parseFloat(overstayPenaltyRate);
-            if (isNaN(rate) || rate < 0 || rate > 0.5) {
-              return res.status(400).json({ error: "Penalty rate must be between 0 and 0.50 (50%)" });
-            }
-            updates.overstayPenaltyRate = rate.toString();
-          }
-          if (overstayMaxPenaltyDays !== void 0) {
-            const maxDays = parseInt(overstayMaxPenaltyDays);
-            if (isNaN(maxDays) || maxDays < 1 || maxDays > 90) {
-              return res.status(400).json({ error: "Max penalty days must be between 1 and 90" });
-            }
-            updates.overstayMaxPenaltyDays = maxDays;
-          }
-          if (overstayPolicyText !== void 0) {
-            updates.overstayPolicyText = overstayPolicyText || null;
-          }
-          await db.update(storageListings).set(updates).where(eq28(storageListings.id, listingId));
-          logger.info(
-            `[Manager] Updated penalty config for storage listing ${listingId}`,
-            {
-              managerId,
-              updates
-            }
-          );
-          res.json({
-            success: true,
-            message: "Penalty configuration updated successfully"
-          });
-        } catch (error) {
-          logger.error("Error updating penalty config:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/locations/:id/overstay-penalty-defaults",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const locationId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          if (isNaN(locationId)) {
-            return res.status(400).json({ error: "Invalid location ID" });
-          }
-          const [location] = await db.select({
-            id: locations.id,
-            managerId: locations.managerId,
-            overstayGracePeriodDays: locations.overstayGracePeriodDays,
-            overstayPenaltyRate: locations.overstayPenaltyRate,
-            overstayMaxPenaltyDays: locations.overstayMaxPenaltyDays,
-            overstayPolicyText: locations.overstayPolicyText
-          }).from(locations).where(eq28(locations.id, locationId)).limit(1);
-          if (!location) {
-            return res.status(404).json({ error: "Location not found" });
-          }
-          if (location.managerId !== managerId) {
-            return res.status(403).json({ error: "Not authorized to access this location" });
-          }
-          const { getOverstayPlatformDefaults: getOverstayPlatformDefaults2 } = await Promise.resolve().then(() => (init_overstay_defaults_service(), overstay_defaults_service_exports));
-          const platformDefaults = await getOverstayPlatformDefaults2();
-          res.json({
-            locationDefaults: {
-              gracePeriodDays: location.overstayGracePeriodDays,
-              penaltyRate: location.overstayPenaltyRate ? parseFloat(location.overstayPenaltyRate.toString()) : null,
-              maxPenaltyDays: location.overstayMaxPenaltyDays,
-              policyText: location.overstayPolicyText
-            },
-            platformDefaults,
-            isUsingDefaults: location.overstayGracePeriodDays === null && location.overstayPenaltyRate === null && location.overstayMaxPenaltyDays === null
-          });
-        } catch (error) {
-          logger.error("Error getting location overstay penalty defaults:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.put(
-      "/locations/:id/overstay-penalty-defaults",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const locationId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          const { gracePeriodDays, penaltyRate, maxPenaltyDays, policyText } = req.body;
-          if (isNaN(locationId)) {
-            return res.status(400).json({ error: "Invalid location ID" });
-          }
-          const [location] = await db.select({ id: locations.id, managerId: locations.managerId }).from(locations).where(eq28(locations.id, locationId)).limit(1);
-          if (!location) {
-            return res.status(404).json({ error: "Location not found" });
-          }
-          if (location.managerId !== managerId) {
-            return res.status(403).json({ error: "Not authorized to update this location" });
-          }
-          const updates = { updatedAt: /* @__PURE__ */ new Date() };
-          if (gracePeriodDays !== void 0) {
-            if (gracePeriodDays !== null) {
-              const days = parseInt(gracePeriodDays);
-              if (isNaN(days) || days < 0 || days > 14) {
-                return res.status(400).json({ error: "Grace period must be between 0 and 14 days" });
-              }
-              updates.overstayGracePeriodDays = days;
-            } else {
-              updates.overstayGracePeriodDays = null;
-            }
-          }
-          if (penaltyRate !== void 0) {
-            if (penaltyRate !== null) {
-              const rate = parseFloat(penaltyRate);
-              if (isNaN(rate) || rate < 0 || rate > 0.5) {
-                return res.status(400).json({ error: "Penalty rate must be between 0 and 0.50 (50%)" });
-              }
-              updates.overstayPenaltyRate = rate.toString();
-            } else {
-              updates.overstayPenaltyRate = null;
-            }
-          }
-          if (maxPenaltyDays !== void 0) {
-            if (maxPenaltyDays !== null) {
-              const maxDays = parseInt(maxPenaltyDays);
-              if (isNaN(maxDays) || maxDays < 1 || maxDays > 90) {
-                return res.status(400).json({ error: "Max penalty days must be between 1 and 90" });
-              }
-              updates.overstayMaxPenaltyDays = maxDays;
-            } else {
-              updates.overstayMaxPenaltyDays = null;
-            }
-          }
-          if (policyText !== void 0) {
-            updates.overstayPolicyText = policyText || null;
-          }
-          await db.update(locations).set(updates).where(eq28(locations.id, locationId));
-          logger.info(
-            `[Manager] Updated location ${locationId} overstay penalty defaults`,
-            {
-              managerId,
-              updates
-            }
-          );
-          res.json({
-            success: true,
-            message: "Location overstay penalty defaults updated successfully"
-          });
-        } catch (error) {
-          logger.error("Error updating location overstay penalty defaults:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/damage-claims/recent-bookings",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const limits = await getDamageClaimLimits();
-          const deadlineDays = limits.claimSubmissionDeadlineDays;
-          const cutoffDate = /* @__PURE__ */ new Date();
-          cutoffDate.setDate(cutoffDate.getDate() - deadlineDays);
-          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq28(locations.managerId, managerId));
-          const locationIds = managerLocations.map((l) => l.id);
-          if (locationIds.length === 0) {
-            return res.json({ bookings: [], deadlineDays });
-          }
-          const now = /* @__PURE__ */ new Date();
-          const recentKitchenBookings = await db.select({
-            id: kitchenBookings.id,
-            chefId: kitchenBookings.chefId,
-            kitchenId: kitchenBookings.kitchenId,
-            bookingDate: kitchenBookings.bookingDate,
-            startTime: kitchenBookings.startTime,
-            endTime: kitchenBookings.endTime,
-            status: kitchenBookings.status,
-            chefName: users.username,
-            kitchenName: kitchens.name,
-            locationName: locations.name
-          }).from(kitchenBookings).innerJoin(kitchens, eq28(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).innerJoin(users, eq28(kitchenBookings.chefId, users.id)).where(
-            and17(
-              inArray7(locations.id, locationIds),
-              gte3(kitchenBookings.bookingDate, cutoffDate),
-              // Not older than deadline
-              lte3(kitchenBookings.bookingDate, now),
-              // Must be in the past (booking date <= now)
-              eq28(kitchenBookings.status, "confirmed")
-            )
-          ).orderBy(desc13(kitchenBookings.bookingDate)).limit(50);
-          const recentStorageBookings = await db.select({
-            id: storageBookings.id,
-            chefId: storageBookings.chefId,
-            storageListingId: storageBookings.storageListingId,
-            startDate: storageBookings.startDate,
-            endDate: storageBookings.endDate,
-            status: storageBookings.status,
-            chefName: users.username,
-            locationName: locations.name
-          }).from(storageBookings).innerJoin(
-            storageListings,
-            eq28(storageBookings.storageListingId, storageListings.id)
-          ).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).innerJoin(users, eq28(storageBookings.chefId, users.id)).where(
-            and17(
-              inArray7(locations.id, locationIds),
-              gte3(storageBookings.endDate, cutoffDate),
-              // Not older than deadline
-              lte3(storageBookings.endDate, now),
-              // Must be in the past (end date <= now)
-              eq28(storageBookings.status, "confirmed")
-            )
-          ).orderBy(desc13(storageBookings.endDate)).limit(50);
-          const kitchenBookingIds = recentKitchenBookings.map((b) => b.id);
-          const equipmentMap = /* @__PURE__ */ new Map();
-          if (kitchenBookingIds.length > 0) {
-            const rentedEquipment = await db.select({
-              kitchenBookingId: equipmentBookings.kitchenBookingId,
-              equipmentBookingId: equipmentBookings.id,
-              equipmentListingId: equipmentBookings.equipmentListingId,
-              equipmentType: equipmentListings.equipmentType,
-              brand: equipmentListings.brand,
-              availabilityType: equipmentListings.availabilityType,
-              status: equipmentBookings.status
-            }).from(equipmentBookings).innerJoin(equipmentListings, eq28(equipmentBookings.equipmentListingId, equipmentListings.id)).where(
-              sql13`${equipmentBookings.kitchenBookingId} IN (${sql13.join(kitchenBookingIds.map((id) => sql13`${id}`), sql13`, `)})`
-            );
-            for (const eq_item of rentedEquipment) {
-              const list = equipmentMap.get(eq_item.kitchenBookingId) || [];
-              list.push({
-                equipmentBookingId: eq_item.equipmentBookingId,
-                equipmentListingId: eq_item.equipmentListingId,
-                equipmentType: eq_item.equipmentType,
-                brand: eq_item.brand,
-                availabilityType: eq_item.availabilityType,
-                status: eq_item.status
-              });
-              equipmentMap.set(eq_item.kitchenBookingId, list);
-            }
-            const kitchenIds = Array.from(new Set(recentKitchenBookings.map((b) => b.kitchenId)));
-            if (kitchenIds.length > 0) {
-              const includedEquipment = await db.select({
-                kitchenId: equipmentListings.kitchenId,
-                equipmentListingId: equipmentListings.id,
-                equipmentType: equipmentListings.equipmentType,
-                brand: equipmentListings.brand,
-                availabilityType: equipmentListings.availabilityType
-              }).from(equipmentListings).where(
-                and17(
-                  sql13`${equipmentListings.kitchenId} IN (${sql13.join(kitchenIds.map((id) => sql13`${id}`), sql13`, `)})`,
-                  eq28(equipmentListings.availabilityType, "included"),
-                  eq28(equipmentListings.isActive, true)
-                )
-              );
-              for (const kb of recentKitchenBookings) {
-                const list = equipmentMap.get(kb.id) || [];
-                const kitchenIncluded = includedEquipment.filter((ie) => ie.kitchenId === kb.kitchenId);
-                for (const ie of kitchenIncluded) {
-                  if (!list.some((e) => e.equipmentListingId === ie.equipmentListingId)) {
-                    list.push({
-                      equipmentBookingId: null,
-                      equipmentListingId: ie.equipmentListingId,
-                      equipmentType: ie.equipmentType,
-                      brand: ie.brand,
-                      availabilityType: ie.availabilityType,
-                      status: "confirmed"
-                    });
-                  }
-                }
-                equipmentMap.set(kb.id, list);
-              }
-            }
-          }
-          const bookings = [
-            ...recentKitchenBookings.map((b) => ({
-              id: b.id,
-              type: "kitchen",
-              chefId: b.chefId,
-              chefName: b.chefName,
-              locationName: b.locationName,
-              kitchenName: b.kitchenName,
-              startDate: b.bookingDate,
-              endDate: b.bookingDate,
-              status: b.status,
-              label: `Kitchen #${b.id} - ${b.chefName} @ ${b.kitchenName} (${format4(new Date(b.bookingDate), "MMM d")})`,
-              equipment: equipmentMap.get(b.id) || []
-            })),
-            ...recentStorageBookings.map((b) => ({
-              id: b.id,
-              type: "storage",
-              chefId: b.chefId,
-              chefName: b.chefName,
-              locationName: b.locationName,
-              kitchenName: null,
-              startDate: b.startDate,
-              endDate: b.endDate,
-              status: b.status,
-              label: `Storage #${b.id} - ${b.chefName} @ ${b.locationName} (${format4(new Date(b.endDate), "MMM d")})`,
-              equipment: []
-            }))
-          ].sort(
-            (a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
-          );
-          res.json({ bookings, deadlineDays });
-        } catch (error) {
-          logger.error("Error fetching recent bookings for damage claims:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/damage-claims",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const includeAll = req.query.includeAll === "true";
-          const claims = await damageClaimService.getManagerClaims(
-            managerId,
-            includeAll
-          );
-          res.json({ claims });
-        } catch (error) {
-          logger.error("Error fetching damage claims:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/damage-claims/:id",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const claimId = parseInt(req.params.id);
-          if (isNaN(claimId)) {
-            return res.status(400).json({ error: "Invalid claim ID" });
-          }
-          const claim = await damageClaimService.getClaimById(claimId);
-          if (!claim) {
-            return res.status(404).json({ error: "Claim not found" });
-          }
-          const history = await damageClaimService.getClaimHistory(claimId);
-          res.json({ claim, history });
-        } catch (error) {
-          logger.error("Error fetching damage claim:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/damage-claims",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const {
-            bookingType,
-            kitchenBookingId,
-            storageBookingId,
-            claimTitle,
-            claimDescription,
-            damageDate,
-            claimedAmountCents,
-            damagedItems,
-            submitImmediately
-          } = req.body;
-          if (!bookingType || !["kitchen", "storage"].includes(bookingType)) {
-            return res.status(400).json({ error: "Invalid booking type" });
-          }
-          if (!claimTitle || claimTitle.length < 5) {
-            return res.status(400).json({ error: "Claim title must be at least 5 characters" });
-          }
-          if (!claimDescription || claimDescription.length < 50) {
-            return res.status(400).json({ error: "Claim description must be at least 50 characters" });
-          }
-          if (!damageDate) {
-            return res.status(400).json({ error: "Damage date is required" });
-          }
-          if (!claimedAmountCents || claimedAmountCents < 1e3) {
-            return res.status(400).json({ error: "Claimed amount must be at least $10" });
-          }
-          const result = await damageClaimService.createDamageClaim({
-            bookingType,
-            kitchenBookingId,
-            storageBookingId,
-            managerId,
-            claimTitle,
-            claimDescription,
-            damageDate,
-            claimedAmountCents,
-            damagedItems: Array.isArray(damagedItems) ? damagedItems : void 0,
-            submitImmediately: submitImmediately === true
-          });
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-          res.status(201).json({
-            success: true,
-            claim: result.claim
-          });
-        } catch (error) {
-          logger.error("Error creating damage claim:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.put(
-      "/damage-claims/:id",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const claimId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          if (isNaN(claimId)) {
-            return res.status(400).json({ error: "Invalid claim ID" });
-          }
-          const { claimTitle, claimDescription, claimedAmountCents, damageDate } = req.body;
-          const result = await damageClaimService.updateDraftClaim(
-            claimId,
-            managerId,
-            {
-              claimTitle,
-              claimDescription,
-              claimedAmountCents,
-              damageDate
-            }
-          );
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-          res.json({ success: true });
-        } catch (error) {
-          logger.error("Error updating damage claim:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/damage-claims/:id/submit",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const claimId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          if (isNaN(claimId)) {
-            return res.status(400).json({ error: "Invalid claim ID" });
-          }
-          const result = await damageClaimService.submitClaim(claimId, managerId);
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-          res.json({
-            success: true,
-            message: "Claim submitted to chef for response"
-          });
-        } catch (error) {
-          logger.error("Error submitting damage claim:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/damage-claims/:id/history",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const claimId = parseInt(req.params.id);
-          if (isNaN(claimId)) {
-            return res.status(400).json({ error: "Invalid claim ID" });
-          }
-          const history = await damageClaimService.getClaimHistory(claimId);
-          res.json({ history });
-        } catch (error) {
-          logger.error("Error fetching claim history:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.delete(
-      "/damage-claims/:id",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const claimId = parseInt(req.params.id);
-          const managerId = req.neonUser.id;
-          if (isNaN(claimId)) {
-            return res.status(400).json({ error: "Invalid claim ID" });
-          }
-          const result = await damageClaimService.deleteDraftClaim(
-            claimId,
-            managerId
-          );
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-          res.json({ success: true, message: "Draft claim deleted successfully" });
-        } catch (error) {
-          logger.error("Error deleting claim:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/damage-claims/:id/evidence",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const claimId = parseInt(req.params.id);
-          const userId = req.neonUser.id;
-          if (isNaN(claimId)) {
-            return res.status(400).json({ error: "Invalid claim ID" });
-          }
-          const {
-            evidenceType,
-            fileUrl,
-            fileName,
-            fileSize,
-            mimeType,
-            description,
-            amountCents,
-            vendorName
-          } = req.body;
-          if (!evidenceType || !fileUrl) {
-            return res.status(400).json({ error: "Evidence type and file URL are required" });
-          }
-          const result = await damageClaimService.addEvidence(claimId, userId, {
-            evidenceType,
-            fileUrl,
-            fileName,
-            fileSize,
-            mimeType,
-            description,
-            amountCents,
-            vendorName
-          });
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-          res.status(201).json({
-            success: true,
-            evidence: result.evidence
-          });
-        } catch (error) {
-          logger.error("Error adding evidence:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.delete(
-      "/damage-claims/:id/evidence/:evidenceId",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const evidenceId = parseInt(req.params.evidenceId);
-          const userId = req.neonUser.id;
-          if (isNaN(evidenceId)) {
-            return res.status(400).json({ error: "Invalid evidence ID" });
-          }
-          const result = await damageClaimService.removeEvidence(
-            evidenceId,
-            userId
-          );
-          if (!result.success) {
-            return res.status(400).json({ error: result.error });
-          }
-          res.json({ success: true });
-        } catch (error) {
-          logger.error("Error removing evidence:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.post(
-      "/damage-claims/:id/charge",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const claimId = parseInt(req.params.id);
-          if (isNaN(claimId)) {
-            return res.status(400).json({ error: "Invalid claim ID" });
-          }
-          const result = await damageClaimService.chargeApprovedClaim(claimId);
-          if (!result.success) {
-            return res.status(400).json({
-              error: result.error,
-              message: "Failed to charge damage claim. The chef may need to update their payment method."
-            });
-          }
-          res.json({
-            success: true,
-            message: "Damage claim charged successfully",
-            paymentIntentId: result.paymentIntentId,
-            chargeId: result.chargeId
-          });
-        } catch (error) {
-          logger.error("Error charging damage claim:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    router14.get(
-      "/damage-claims/:id/invoice",
-      requireFirebaseAuthWithUser,
-      requireManager,
-      async (req, res) => {
-        try {
-          const managerId = req.neonUser.id;
-          const claimId = parseInt(req.params.id);
-          if (isNaN(claimId)) {
-            return res.status(400).json({ error: "Invalid claim ID" });
-          }
-          const claim = await damageClaimService.getClaimById(claimId);
-          if (!claim) {
-            return res.status(404).json({ error: "Claim not found" });
-          }
-          if (claim.managerId !== managerId) {
-            return res.status(403).json({ error: "Not authorized to view this claim" });
-          }
-          if (claim.status !== "charge_succeeded") {
-            return res.status(400).json({ error: "Invoice only available for charged claims" });
-          }
-          const { generateDamageClaimInvoicePDF: generateDamageClaimInvoicePDF2 } = await Promise.resolve().then(() => (init_invoice_service(), invoice_service_exports));
-          const pdfBuffer = await generateDamageClaimInvoicePDF2(claim, {
-            viewer: "manager"
-          });
-          res.setHeader("Content-Type", "application/pdf");
-          res.setHeader(
-            "Content-Disposition",
-            `attachment; filename="damage-claim-invoice-${claimId}.pdf"`
-          );
-          res.send(pdfBuffer);
-        } catch (error) {
-          logger.error("Error downloading damage claim invoice:", error);
-          return errorResponse(res, error);
-        }
-      }
-    );
-    manager_default = router14;
-  }
-});
-
-// server/routes/notifications.ts
-var notifications_exports = {};
-__export(notifications_exports, {
-  archiveNotifications: () => archiveNotifications,
-  cleanupOldNotifications: () => cleanupOldNotifications,
-  createNotification: () => createNotification2,
-  default: () => notifications_default,
-  getNotifications: () => getNotifications,
-  getUnreadCount: () => getUnreadCount,
-  markAllAsRead: () => markAllAsRead,
-  markAsRead: () => markAsRead
-});
-import { Router as Router15 } from "express";
-import { sql as sql14 } from "drizzle-orm";
-async function createNotification2(params) {
-  const {
-    managerId,
-    locationId,
-    type,
-    priority = "normal",
-    title,
-    message,
-    metadata = {},
-    actionUrl,
-    actionLabel,
-    expiresAt
-  } = params;
-  const result = await db.execute(sql14`
-    INSERT INTO manager_notifications 
-    (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
-    VALUES (
-      ${managerId}, 
-      ${locationId || null}, 
-      ${type}::notification_type, 
-      ${priority}::notification_priority, 
-      ${title}, 
-      ${message}, 
-      ${JSON.stringify(metadata)}::jsonb, 
-      ${actionUrl || null}, 
-      ${actionLabel || null}, 
-      ${expiresAt ? expiresAt.toISOString() : null}
-    )
-    RETURNING *
-  `);
-  return result.rows[0];
-}
-async function getNotifications(managerId, options = {}) {
-  const {
-    page = 1,
-    limit = 20,
-    filter = "all",
-    type,
-    locationId
-  } = options;
-  const offset = (page - 1) * limit;
-  let filterCondition = "";
-  if (filter === "unread") {
-    filterCondition = "AND is_read = false AND is_archived = false";
-  } else if (filter === "read") {
-    filterCondition = "AND is_read = true AND is_archived = false";
-  } else if (filter === "archived") {
-    filterCondition = "AND is_archived = true";
-  } else {
-    filterCondition = "AND is_archived = false";
-  }
-  const typeCondition = type ? `AND type = '${type}'::notification_type` : "";
-  const locationCondition = locationId ? `AND (location_id = ${locationId} OR location_id IS NULL)` : "";
-  const notificationsResult = await db.execute(sql14.raw(`
-    SELECT 
-      id, manager_id, location_id, type, priority, title, message, 
-      metadata, is_read, read_at, is_archived, archived_at, 
-      action_url, action_label, created_at, expires_at
-    FROM manager_notifications
-    WHERE manager_id = ${managerId}
-      AND (expires_at IS NULL OR expires_at > NOW())
-      ${filterCondition}
-      ${typeCondition}
-      ${locationCondition}
-    ORDER BY 
-      CASE WHEN priority = 'urgent' THEN 0
-           WHEN priority = 'high' THEN 1
-           WHEN priority = 'normal' THEN 2
-           ELSE 3 END,
-      created_at DESC
-    LIMIT ${limit}
-    OFFSET ${offset}
-  `));
-  const countResult = await db.execute(sql14.raw(`
-    SELECT COUNT(*) as total
-    FROM manager_notifications
-    WHERE manager_id = ${managerId}
-      AND (expires_at IS NULL OR expires_at > NOW())
-      ${filterCondition}
-      ${typeCondition}
-      ${locationCondition}
-  `));
-  const total = parseInt(countResult.rows[0]?.total || "0", 10);
-  return {
-    notifications: notificationsResult.rows,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-      hasMore: page * limit < total
-    }
-  };
-}
-async function getUnreadCount(managerId, locationId) {
-  const locationCondition = locationId ? `AND (location_id = ${locationId} OR location_id IS NULL)` : "";
-  const result = await db.execute(sql14.raw(`
-    SELECT COUNT(*) as count
-    FROM manager_notifications
-    WHERE manager_id = ${managerId}
-      AND is_read = false
-      AND is_archived = false
-      AND (expires_at IS NULL OR expires_at > NOW())
-      ${locationCondition}
-  `));
-  return parseInt(result.rows[0]?.count || "0", 10);
-}
-async function markAsRead(managerId, notificationIds) {
-  if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql14`
-    UPDATE manager_notifications
-    SET is_read = true, read_at = NOW()
-    WHERE manager_id = ${managerId}
-      AND id IN (${sql14.join(notificationIds.map((id) => sql14`${id}`), sql14`, `)})
-      AND is_read = false
-  `);
-  return { updated: result.rowCount || 0 };
-}
-async function markAllAsRead(managerId, locationId) {
-  const locationCondition = locationId ? sql14`AND location_id = ${locationId}` : sql14``;
-  const result = await db.execute(sql14`
-    UPDATE manager_notifications
-    SET is_read = true, read_at = NOW()
-    WHERE manager_id = ${managerId}
-      AND is_read = false
-      ${locationCondition}
-  `);
-  return { updated: result.rowCount || 0 };
-}
-async function archiveNotifications(managerId, notificationIds) {
-  if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql14`
-    UPDATE manager_notifications
-    SET is_archived = true, archived_at = NOW()
-    WHERE manager_id = ${managerId}
-      AND id IN (${sql14.join(notificationIds.map((id) => sql14`${id}`), sql14`, `)})
-      AND is_archived = false
-  `);
-  return { updated: result.rowCount || 0 };
-}
-async function unarchiveNotifications(managerId, notificationIds) {
-  if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql14`
-    UPDATE manager_notifications
-    SET is_archived = false, archived_at = NULL
-    WHERE manager_id = ${managerId}
-      AND id IN (${sql14.join(notificationIds.map((id) => sql14`${id}`), sql14`, `)})
-      AND is_archived = true
-  `);
-  return { updated: result.rowCount || 0 };
-}
-async function cleanupOldNotifications(daysOld = 90) {
-  const result = await db.execute(sql14`
-    DELETE FROM manager_notifications
-    WHERE is_archived = true
-      AND archived_at < NOW() - INTERVAL '${sql14.raw(String(daysOld))} days'
-  `);
-  return { deleted: result.rowCount || 0 };
-}
-var router15, notifications_default;
-var init_notifications = __esm({
-  "server/routes/notifications.ts"() {
-    "use strict";
-    init_db();
-    init_firebase_auth_middleware();
-    init_logger();
-    init_api_response();
-    router15 = Router15();
-    router15.get("/", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
-      try {
-        const managerId = req.neonUser.id;
-        const { page, limit, filter, type, locationId } = req.query;
-        const result = await getNotifications(managerId, {
-          page: page ? parseInt(page) : void 0,
-          limit: limit ? parseInt(limit) : void 0,
-          filter,
-          type,
-          locationId: locationId ? parseInt(locationId) : void 0
-        });
-        res.json(result);
-      } catch (error) {
-        logger.error("Error fetching notifications:", error);
-        return errorResponse(res, error);
-      }
-    });
-    router15.get("/unread-count", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
-      try {
-        const managerId = req.neonUser.id;
-        const { locationId } = req.query;
-        const count3 = await getUnreadCount(
-          managerId,
-          locationId ? parseInt(locationId) : void 0
-        );
-        res.json({ count: count3 });
-      } catch (error) {
-        logger.error("Error fetching unread count:", error);
-        return errorResponse(res, error);
-      }
-    });
-    router15.post("/mark-read", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
-      try {
-        const managerId = req.neonUser.id;
-        const { notificationIds } = req.body;
-        if (!Array.isArray(notificationIds)) {
-          return res.status(400).json({ error: "notificationIds must be an array" });
-        }
-        const result = await markAsRead(managerId, notificationIds);
-        res.json(result);
-      } catch (error) {
-        logger.error("Error marking notifications as read:", error);
-        return errorResponse(res, error);
-      }
-    });
-    router15.post("/mark-all-read", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
-      try {
-        const managerId = req.neonUser.id;
-        const { locationId } = req.body;
-        const result = await markAllAsRead(
-          managerId,
-          locationId ? parseInt(locationId) : void 0
-        );
-        res.json(result);
-      } catch (error) {
-        logger.error("Error marking all as read:", error);
-        return errorResponse(res, error);
-      }
-    });
-    router15.post("/archive", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
-      try {
-        const managerId = req.neonUser.id;
-        const { notificationIds } = req.body;
-        if (!Array.isArray(notificationIds)) {
-          return res.status(400).json({ error: "notificationIds must be an array" });
-        }
-        const result = await archiveNotifications(managerId, notificationIds);
-        res.json(result);
-      } catch (error) {
-        logger.error("Error archiving notifications:", error);
-        return errorResponse(res, error);
-      }
-    });
-    router15.post("/unarchive", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
-      try {
-        const managerId = req.neonUser.id;
-        const { notificationIds } = req.body;
-        if (!Array.isArray(notificationIds)) {
-          return res.status(400).json({ error: "notificationIds must be an array" });
-        }
-        const result = await unarchiveNotifications(managerId, notificationIds);
-        res.json(result);
-      } catch (error) {
-        logger.error("Error unarchiving notifications:", error);
-        return errorResponse(res, error);
-      }
-    });
-    router15.post("/message-received", requireFirebaseAuthWithUser, async (req, res) => {
-      try {
-        const { managerId, locationId, senderName, messagePreview, conversationId } = req.body;
-        if (!managerId || !senderName || !conversationId) {
-          return res.status(400).json({ error: "managerId, senderName, and conversationId are required" });
-        }
-        await createNotification2({
-          managerId,
-          locationId,
-          type: "message_received",
-          priority: "normal",
-          title: `Message from ${senderName}`,
-          message: messagePreview?.length > 100 ? `${messagePreview.substring(0, 100)}...` : messagePreview || "You have a new message",
-          metadata: {
-            senderName,
-            conversationId
-          },
-          actionUrl: `/manager/booking/:id`,
-          actionLabel: "View Message"
-        });
-        res.json({ success: true });
-      } catch (error) {
-        logger.error("Error creating message notification:", error);
-        return errorResponse(res, error);
-      }
-    });
-    router15.delete("/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
-      try {
-        const managerId = req.neonUser.id;
-        const notificationId = parseInt(req.params.id);
-        const result = await db.execute(sql14`
-      DELETE FROM manager_notifications
-      WHERE id = ${notificationId}
-        AND manager_id = ${managerId}
-    `);
-        if (result.rowCount === 0) {
-          return res.status(404).json({ error: "Notification not found" });
-        }
-        res.json({ deleted: true });
-      } catch (error) {
-        logger.error("Error deleting notification:", error);
-        return errorResponse(res, error);
-      }
-    });
-    notifications_default = router15;
-  }
-});
-
-// server/routes/chef-notifications.ts
-var chef_notifications_exports = {};
-__export(chef_notifications_exports, {
-  archiveNotifications: () => archiveNotifications2,
-  default: () => chef_notifications_default,
-  getNotifications: () => getNotifications2,
-  getUnreadCount: () => getUnreadCount2,
-  markAllAsRead: () => markAllAsRead2,
-  markAsRead: () => markAsRead2,
-  notificationService: () => notificationService
-});
-import { Router as Router16 } from "express";
-import { sql as sql15 } from "drizzle-orm";
-async function getNotifications2(chefId, options = {}) {
-  const {
-    page = 1,
-    limit = 20,
-    filter = "all",
-    type
-  } = options;
-  const offset = (page - 1) * limit;
-  let filterCondition = "";
-  if (filter === "unread") {
-    filterCondition = "AND is_read = false AND is_archived = false";
-  } else if (filter === "read") {
-    filterCondition = "AND is_read = true AND is_archived = false";
-  } else if (filter === "archived") {
-    filterCondition = "AND is_archived = true";
-  } else {
-    filterCondition = "AND is_archived = false";
-  }
-  const typeCondition = type ? `AND type = '${type}'::chef_notification_type` : "";
-  const notificationsResult = await db.execute(sql15.raw(`
-    SELECT 
-      id, chef_id, type, priority, title, message, 
-      metadata, is_read, read_at, is_archived, archived_at, 
-      action_url, action_label, created_at, expires_at
-    FROM chef_notifications
-    WHERE chef_id = ${chefId}
-      AND (expires_at IS NULL OR expires_at > NOW())
-      ${filterCondition}
-      ${typeCondition}
-    ORDER BY 
-      CASE WHEN priority = 'urgent' THEN 0
-           WHEN priority = 'high' THEN 1
-           WHEN priority = 'normal' THEN 2
-           ELSE 3 END,
-      created_at DESC
-    LIMIT ${limit}
-    OFFSET ${offset}
-  `));
-  const countResult = await db.execute(sql15.raw(`
-    SELECT COUNT(*) as total
-    FROM chef_notifications
-    WHERE chef_id = ${chefId}
-      AND (expires_at IS NULL OR expires_at > NOW())
-      ${filterCondition}
-      ${typeCondition}
-  `));
-  const total = parseInt(countResult.rows[0]?.total || "0", 10);
-  return {
-    notifications: notificationsResult.rows,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-      hasMore: page * limit < total
-    }
-  };
-}
-async function getUnreadCount2(chefId) {
-  const result = await db.execute(sql15.raw(`
-    SELECT COUNT(*) as count
-    FROM chef_notifications
-    WHERE chef_id = ${chefId}
-      AND is_read = false
-      AND is_archived = false
-      AND (expires_at IS NULL OR expires_at > NOW())
-  `));
-  return { count: parseInt(result.rows[0]?.count || "0", 10) };
-}
-async function markAsRead2(chefId, notificationIds) {
-  if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql15`
-    UPDATE chef_notifications
-    SET is_read = true, read_at = NOW()
-    WHERE chef_id = ${chefId}
-      AND id IN (${sql15.join(notificationIds.map((id) => sql15`${id}`), sql15`, `)})
-      AND is_read = false
-  `);
-  return { updated: result.rowCount || 0 };
-}
-async function markAllAsRead2(chefId) {
-  const result = await db.execute(sql15`
-    UPDATE chef_notifications
-    SET is_read = true, read_at = NOW()
-    WHERE chef_id = ${chefId}
-      AND is_read = false
-      AND is_archived = false
-  `);
-  return { updated: result.rowCount || 0 };
-}
-async function archiveNotifications2(chefId, notificationIds) {
-  if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql15`
-    UPDATE chef_notifications
-    SET is_archived = true, archived_at = NOW()
-    WHERE chef_id = ${chefId}
-      AND id IN (${sql15.join(notificationIds.map((id) => sql15`${id}`), sql15`, `)})
-      AND is_archived = false
-  `);
-  return { updated: result.rowCount || 0 };
-}
-var router16, chef_notifications_default;
-var init_chef_notifications = __esm({
-  "server/routes/chef-notifications.ts"() {
-    "use strict";
-    init_db();
-    init_firebase_auth_middleware();
-    init_logger();
-    init_api_response();
-    init_notification_service();
-    router16 = Router16();
-    router16.get("/", requireFirebaseAuthWithUser, async (req, res) => {
-      try {
-        const chefId = req.neonUser.id;
-        const { page, limit, filter, type } = req.query;
-        const result = await getNotifications2(chefId, {
-          page: page ? parseInt(page, 10) : void 0,
-          limit: limit ? parseInt(limit, 10) : void 0,
-          filter,
-          type
-        });
-        res.json(result);
-      } catch (error) {
-        logger.error("Error fetching chef notifications:", error);
-        return errorResponse(res, "Failed to fetch notifications", 500);
-      }
-    });
-    router16.get("/unread-count", requireFirebaseAuthWithUser, async (req, res) => {
-      try {
-        const chefId = req.neonUser.id;
-        const result = await getUnreadCount2(chefId);
-        res.json(result);
-      } catch (error) {
-        logger.error("Error fetching chef unread count:", error);
-        return errorResponse(res, "Failed to fetch unread count", 500);
-      }
-    });
-    router16.post("/mark-read", requireFirebaseAuthWithUser, async (req, res) => {
-      try {
-        const chefId = req.neonUser.id;
-        const { notificationIds } = req.body;
-        if (!Array.isArray(notificationIds)) {
-          return res.status(400).json({ error: "notificationIds must be an array" });
-        }
-        const result = await markAsRead2(chefId, notificationIds);
-        res.json(result);
-      } catch (error) {
-        logger.error("Error marking chef notifications as read:", error);
-        return errorResponse(res, "Failed to mark as read", 500);
-      }
-    });
-    router16.post("/mark-all-read", requireFirebaseAuthWithUser, async (req, res) => {
-      try {
-        const chefId = req.neonUser.id;
-        const result = await markAllAsRead2(chefId);
-        res.json(result);
-      } catch (error) {
-        logger.error("Error marking all chef notifications as read:", error);
-        return errorResponse(res, "Failed to mark all as read", 500);
-      }
-    });
-    router16.post("/archive", requireFirebaseAuthWithUser, async (req, res) => {
-      try {
-        const chefId = req.neonUser.id;
-        const { notificationIds } = req.body;
-        if (!Array.isArray(notificationIds)) {
-          return res.status(400).json({ error: "notificationIds must be an array" });
-        }
-        const result = await archiveNotifications2(chefId, notificationIds);
-        res.json(result);
-      } catch (error) {
-        logger.error("Error archiving chef notifications:", error);
-        return errorResponse(res, "Failed to archive notifications", 500);
-      }
-    });
-    router16.post("/message-received", requireFirebaseAuthWithUser, async (req, res) => {
-      try {
-        const { chefId, senderName, messagePreview, conversationId } = req.body;
-        if (!chefId || !senderName || !conversationId) {
-          return res.status(400).json({ error: "chefId, senderName, and conversationId are required" });
-        }
-        await notificationService.notifyChefMessage({
-          chefId,
-          senderName,
-          messagePreview: messagePreview || "You have a new message",
-          conversationId
-        });
-        res.json({ success: true });
-      } catch (error) {
-        logger.error("Error creating message notification:", error);
-        return errorResponse(res, "Failed to create notification", 500);
-      }
-    });
-    router16.delete("/:id", requireFirebaseAuthWithUser, async (req, res) => {
-      try {
-        const chefId = req.neonUser.id;
-        const notificationId = parseInt(req.params.id);
-        const result = await db.execute(sql15`
-      DELETE FROM chef_notifications
-      WHERE id = ${notificationId}
-        AND chef_id = ${chefId}
-    `);
-        if (result.rowCount === 0) {
-          return res.status(404).json({ error: "Notification not found" });
-        }
-        res.json({ deleted: true });
-      } catch (error) {
-        logger.error("Error deleting chef notification:", error);
-        return errorResponse(res, "Failed to delete notification", 500);
-      }
-    });
-    chef_notifications_default = router16;
-  }
-});
-
 // server/routes/middleware.ts
-import { eq as eq30, desc as desc15 } from "drizzle-orm";
+import { eq as eq26, desc as desc12 } from "drizzle-orm";
 async function getAuthenticatedUser(req) {
   if (req.neonUser) {
     return {
@@ -27506,11 +20274,11 @@ async function requirePortalUser(req, res, next) {
     if (!user) {
       return res.status(401).json({ error: "Authentication required" });
     }
-    const accessRecords = await db.select().from(portalUserLocationAccess).where(eq30(portalUserLocationAccess.portalUserId, user.id)).limit(1);
+    const accessRecords = await db.select().from(portalUserLocationAccess).where(eq26(portalUserLocationAccess.portalUserId, user.id)).limit(1);
     if (accessRecords.length > 0) {
       return next();
     }
-    const applications4 = await db.select().from(portalUserApplications).where(eq30(portalUserApplications.userId, user.id)).orderBy(desc15(portalUserApplications.createdAt)).limit(1);
+    const applications4 = await db.select().from(portalUserApplications).where(eq26(portalUserApplications.userId, user.id)).orderBy(desc12(portalUserApplications.createdAt)).limit(1);
     if (applications4.length > 0) {
       const app2 = applications4[0];
       if (app2.status === "approved") {
@@ -27540,227 +20308,307 @@ var init_middleware = __esm({
   }
 });
 
-// server/routes/kitchens.ts
-var kitchens_exports = {};
-__export(kitchens_exports, {
-  default: () => kitchens_default
+// server/services/auth-expiry-service.ts
+var auth_expiry_service_exports = {};
+__export(auth_expiry_service_exports, {
+  lazyExpireKitchenBookingAuth: () => lazyExpireKitchenBookingAuth,
+  lazyExpireStorageExtensionAuth: () => lazyExpireStorageExtensionAuth,
+  processExpiredAuthorizations: () => processExpiredAuthorizations
 });
-import { Router as Router17 } from "express";
-import { eq as eq31, inArray as inArray8, desc as desc16, and as and19 } from "drizzle-orm";
-var router17, kitchens_default;
-var init_kitchens = __esm({
-  "server/routes/kitchens.ts"() {
+import { eq as eq27, and as and15, lt as lt3, sql as sql11 } from "drizzle-orm";
+async function lazyExpireKitchenBookingAuth(booking) {
+  if (booking.paymentStatus !== "authorized" || booking.status !== "pending") return false;
+  if (!booking.paymentIntentId || !booking.createdAt) return false;
+  const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1e3);
+  if (new Date(booking.createdAt) >= cutoffTime) return false;
+  try {
+    logger.info(`[AuthExpiry] Lazy-expiring kitchen booking ${booking.id} \u2014 authorization older than ${AUTH_EXPIRY_HOURS}h`);
+    const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+    await cancelPaymentIntent2(booking.paymentIntentId);
+    await db.update(kitchenBookings).set({
+      status: "cancelled",
+      paymentStatus: "failed",
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(
+      and15(
+        eq27(kitchenBookings.id, booking.id),
+        eq27(kitchenBookings.paymentStatus, "authorized")
+        // Atomic guard
+      )
+    );
+    await db.update(storageBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(
+      and15(
+        eq27(storageBookings.kitchenBookingId, booking.id),
+        eq27(storageBookings.paymentStatus, "authorized")
+      )
+    );
+    await db.update(equipmentBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(
+      and15(
+        eq27(equipmentBookings.kitchenBookingId, booking.id),
+        eq27(equipmentBookings.paymentStatus, "authorized")
+      )
+    );
+    try {
+      const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+      const pt = await findPaymentTransactionByIntentId2(booking.paymentIntentId, db);
+      if (pt) {
+        await updatePaymentTransaction2(pt.id, {
+          status: "canceled",
+          stripeStatus: "canceled"
+        }, db);
+      }
+    } catch (ptErr) {
+      logger.warn(`[AuthExpiry] Lazy: Could not update PT for booking ${booking.id}:`, ptErr);
+    }
+    try {
+      await sendAuthExpiryNotification(booking.chefId, booking.id, "kitchen_booking", booking.kitchenId);
+    } catch (notifErr) {
+      logger.warn(`[AuthExpiry] Lazy: Could not send notification for booking ${booking.id}:`, notifErr);
+    }
+    logger.info(`[AuthExpiry] Lazy-expired kitchen booking ${booking.id} successfully`);
+    return true;
+  } catch (err) {
+    logger.error(`[AuthExpiry] Lazy: Error expiring booking ${booking.id}:`, err);
+    return false;
+  }
+}
+async function lazyExpireStorageExtensionAuth(extension) {
+  if (extension.status !== "authorized") return false;
+  if (!extension.stripePaymentIntentId || !extension.createdAt) return false;
+  const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1e3);
+  if (new Date(extension.createdAt) >= cutoffTime) return false;
+  try {
+    logger.info(`[AuthExpiry] Lazy-expiring storage extension ${extension.id} \u2014 authorization older than ${AUTH_EXPIRY_HOURS}h`);
+    const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+    await cancelPaymentIntent2(extension.stripePaymentIntentId);
+    await db.update(pendingStorageExtensions).set({
+      status: "expired",
+      rejectionReason: "Payment authorization expired \u2014 manager did not respond within 24 hours",
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(
+      and15(
+        eq27(pendingStorageExtensions.id, extension.id),
+        eq27(pendingStorageExtensions.status, "authorized")
+        // Atomic guard
+      )
+    );
+    try {
+      const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+      const pt = await findPaymentTransactionByIntentId2(extension.stripePaymentIntentId, db);
+      if (pt) {
+        await updatePaymentTransaction2(pt.id, {
+          status: "canceled",
+          stripeStatus: "canceled"
+        }, db);
+      }
+    } catch (ptErr) {
+      logger.warn(`[AuthExpiry] Lazy: Could not update PT for extension ${extension.id}:`, ptErr);
+    }
+    try {
+      const [sb] = await db.select({ chefId: storageBookings.chefId }).from(storageBookings).where(eq27(storageBookings.id, extension.storageBookingId)).limit(1);
+      if (sb?.chefId) {
+        await sendAuthExpiryNotification(sb.chefId, extension.id, "storage_extension");
+      }
+    } catch (notifErr) {
+      logger.warn(`[AuthExpiry] Lazy: Could not send notification for extension ${extension.id}:`, notifErr);
+    }
+    logger.info(`[AuthExpiry] Lazy-expired storage extension ${extension.id} successfully`);
+    return true;
+  } catch (err) {
+    logger.error(`[AuthExpiry] Lazy: Error expiring extension ${extension.id}:`, err);
+    return false;
+  }
+}
+async function processExpiredAuthorizations() {
+  const results = [];
+  const cutoffTime = new Date(Date.now() - AUTH_EXPIRY_HOURS * 60 * 60 * 1e3);
+  logger.info(`[AuthExpiry] Processing expired authorizations (cutoff: ${cutoffTime.toISOString()})`);
+  try {
+    const expiredBookings = await db.select({
+      id: kitchenBookings.id,
+      paymentIntentId: kitchenBookings.paymentIntentId,
+      chefId: kitchenBookings.chefId,
+      kitchenId: kitchenBookings.kitchenId,
+      createdAt: kitchenBookings.createdAt
+    }).from(kitchenBookings).where(
+      and15(
+        eq27(kitchenBookings.paymentStatus, "authorized"),
+        eq27(kitchenBookings.status, "pending"),
+        lt3(kitchenBookings.createdAt, cutoffTime)
+      )
+    );
+    logger.info(`[AuthExpiry] Found ${expiredBookings.length} expired kitchen booking authorizations`);
+    for (const booking of expiredBookings) {
+      if (!booking.paymentIntentId) continue;
+      try {
+        const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+        await cancelPaymentIntent2(booking.paymentIntentId);
+        await db.update(kitchenBookings).set({
+          status: "cancelled",
+          paymentStatus: "failed",
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq27(kitchenBookings.id, booking.id));
+        await db.update(storageBookings).set({
+          paymentStatus: "failed",
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(
+          and15(
+            eq27(storageBookings.kitchenBookingId, booking.id),
+            eq27(storageBookings.paymentStatus, "authorized")
+          )
+        );
+        await db.update(equipmentBookings).set({
+          paymentStatus: "failed",
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(
+          and15(
+            eq27(equipmentBookings.kitchenBookingId, booking.id),
+            eq27(equipmentBookings.paymentStatus, "authorized")
+          )
+        );
+        try {
+          const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+          const pt = await findPaymentTransactionByIntentId2(booking.paymentIntentId, db);
+          if (pt) {
+            await updatePaymentTransaction2(pt.id, {
+              status: "canceled",
+              stripeStatus: "canceled"
+            }, db);
+          }
+        } catch (ptErr) {
+          logger.warn(`[AuthExpiry] Could not update PT for booking ${booking.id}:`, ptErr);
+        }
+        try {
+          await sendAuthExpiryNotification(booking.chefId, booking.id, "kitchen_booking", booking.kitchenId);
+        } catch (notifErr) {
+          logger.warn(`[AuthExpiry] Could not send notification for booking ${booking.id}:`, notifErr);
+        }
+        results.push({
+          type: "kitchen_booking",
+          id: booking.id,
+          paymentIntentId: booking.paymentIntentId,
+          chefId: booking.chefId,
+          action: "canceled"
+        });
+        logger.info(`[AuthExpiry] Cancelled authorization for kitchen booking ${booking.id}`);
+      } catch (err) {
+        logger.error(`[AuthExpiry] Error cancelling auth for booking ${booking.id}:`, err);
+        results.push({
+          type: "kitchen_booking",
+          id: booking.id,
+          paymentIntentId: booking.paymentIntentId,
+          chefId: booking.chefId,
+          action: "error",
+          error: err.message
+        });
+      }
+    }
+  } catch (queryErr) {
+    logger.error(`[AuthExpiry] Error querying expired kitchen bookings:`, queryErr);
+  }
+  try {
+    const expiredExtensions = await db.select({
+      id: pendingStorageExtensions.id,
+      stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
+      storageBookingId: pendingStorageExtensions.storageBookingId,
+      createdAt: pendingStorageExtensions.createdAt,
+      chefId: sql11`(
+          SELECT sb.chef_id FROM storage_bookings sb 
+          WHERE sb.id = ${pendingStorageExtensions.storageBookingId}
+        )`.as("chefId")
+    }).from(pendingStorageExtensions).where(
+      and15(
+        eq27(pendingStorageExtensions.status, "authorized"),
+        lt3(pendingStorageExtensions.createdAt, cutoffTime)
+      )
+    );
+    logger.info(`[AuthExpiry] Found ${expiredExtensions.length} expired storage extension authorizations`);
+    for (const ext of expiredExtensions) {
+      if (!ext.stripePaymentIntentId) continue;
+      try {
+        const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+        await cancelPaymentIntent2(ext.stripePaymentIntentId);
+        await db.update(pendingStorageExtensions).set({
+          status: "expired",
+          rejectionReason: "Payment authorization expired \u2014 manager did not respond within 24 hours",
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq27(pendingStorageExtensions.id, ext.id));
+        try {
+          const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+          const pt = await findPaymentTransactionByIntentId2(ext.stripePaymentIntentId, db);
+          if (pt) {
+            await updatePaymentTransaction2(pt.id, {
+              status: "canceled",
+              stripeStatus: "canceled"
+            }, db);
+          }
+        } catch (ptErr) {
+          logger.warn(`[AuthExpiry] Could not update PT for extension ${ext.id}:`, ptErr);
+        }
+        try {
+          await sendAuthExpiryNotification(ext.chefId, ext.id, "storage_extension");
+        } catch (notifErr) {
+          logger.warn(`[AuthExpiry] Could not send notification for extension ${ext.id}:`, notifErr);
+        }
+        results.push({
+          type: "storage_extension",
+          id: ext.id,
+          paymentIntentId: ext.stripePaymentIntentId,
+          chefId: ext.chefId,
+          action: "canceled"
+        });
+        logger.info(`[AuthExpiry] Cancelled authorization for storage extension ${ext.id}`);
+      } catch (err) {
+        logger.error(`[AuthExpiry] Error cancelling auth for extension ${ext.id}:`, err);
+        results.push({
+          type: "storage_extension",
+          id: ext.id,
+          paymentIntentId: ext.stripePaymentIntentId,
+          chefId: ext.chefId,
+          action: "error",
+          error: err.message
+        });
+      }
+    }
+  } catch (queryErr) {
+    logger.error(`[AuthExpiry] Error querying expired storage extensions:`, queryErr);
+  }
+  logger.info(`[AuthExpiry] Processed ${results.length} expired authorizations (${results.filter((r) => r.action === "canceled").length} canceled, ${results.filter((r) => r.action === "error").length} errors)`);
+  return results;
+}
+async function sendAuthExpiryNotification(chefId, recordId, type, kitchenId) {
+  if (!chefId) return;
+  try {
+    const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+    const [chef] = await db.select({ username: users.username }).from(users).where(eq27(users.id, chefId)).limit(1);
+    if (!chef?.username) return;
+    let kitchenName = "Kitchen";
+    if (kitchenId) {
+      const [kitchen] = await db.select({ name: kitchens.name }).from(kitchens).where(eq27(kitchens.id, kitchenId)).limit(1);
+      if (kitchen) kitchenName = kitchen.name;
+    }
+    try {
+      await notificationService2.createForChef({
+        chefId,
+        type: "booking_cancelled",
+        title: "Booking Authorization Expired",
+        message: type === "kitchen_booking" ? `Your kitchen booking #${recordId} at ${kitchenName} was automatically cancelled because the manager did not respond within 24 hours. Your card has not been charged.` : `Your storage extension request #${recordId} was automatically cancelled because the manager did not respond within 24 hours. Your card has not been charged.`,
+        metadata: { type, recordId: String(recordId) }
+      });
+    } catch {
+    }
+  } catch (err) {
+    logger.warn(`[AuthExpiry] Error sending notification to chef ${chefId}:`, err);
+  }
+}
+var AUTH_EXPIRY_HOURS;
+var init_auth_expiry_service = __esm({
+  "server/services/auth-expiry-service.ts"() {
     "use strict";
     init_db();
-    init_middleware();
-    init_utils();
     init_schema();
-    init_email();
-    init_kitchen_service();
-    init_location_service();
-    init_chef_service();
-    init_booking_service();
-    init_user_service();
-    router17 = Router17();
-    router17.get("/chef/kitchens", requireChef, async (req, res) => {
-      try {
-        const allKitchens = await kitchenService.getAllKitchensWithLocation();
-        const activeKitchens = allKitchens.filter((kitchen) => kitchen.isActive);
-        const normalizedKitchens = activeKitchens.map((kitchen) => {
-          const normalizedImageUrl = normalizeImageUrl(kitchen.imageUrl || null, req);
-          const normalizedGalleryImages = (kitchen.galleryImages || []).map(
-            (img) => normalizeImageUrl(img, req)
-          ).filter((url) => url !== null);
-          const locationBrandImageUrl = kitchen.location?.brandImageUrl || null;
-          const locationLogoUrl = kitchen.location?.logoUrl || null;
-          const normalizedLocationBrandImageUrl = normalizeImageUrl(locationBrandImageUrl, req);
-          const normalizedLocationLogoUrl = normalizeImageUrl(locationLogoUrl, req);
-          return {
-            ...kitchen,
-            imageUrl: normalizedImageUrl,
-            image_url: normalizedImageUrl,
-            // Also set snake_case for compatibility
-            galleryImages: normalizedGalleryImages,
-            gallery_images: normalizedGalleryImages,
-            // Also set snake_case for compatibility
-            locationBrandImageUrl: normalizedLocationBrandImageUrl,
-            location_brand_image_url: normalizedLocationBrandImageUrl,
-            // Also set snake_case for compatibility
-            locationLogoUrl: normalizedLocationLogoUrl,
-            location_logo_url: normalizedLocationLogoUrl
-            // Also set snake_case for compatibility
-          };
-        });
-        console.log(`[API] /api/chef/kitchens - Returning ${normalizedKitchens.length} active kitchens (all locations for marketing)`);
-        res.json(normalizedKitchens);
-      } catch (error) {
-        console.error("Error fetching kitchens:", error);
-        res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
-      }
-    });
-    router17.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req, res) => {
-      try {
-        const kitchenId = parseInt(req.params.kitchenId);
-        if (isNaN(kitchenId) || kitchenId <= 0) {
-          return res.status(400).json({ error: "Invalid kitchen ID" });
-        }
-        const kitchen = await kitchenService.getKitchenById(kitchenId);
-        const pricing = {
-          hourlyRate: kitchen.hourlyRate,
-          currency: kitchen.currency,
-          pricingModel: kitchen.pricingModel,
-          minimumBookingHours: kitchen.minimumBookingHours
-        };
-        res.json(pricing);
-      } catch (error) {
-        if (error.statusCode === 404) {
-          return res.status(404).json({ error: "Kitchen not found" });
-        }
-        console.error("Error getting kitchen pricing:", error);
-        res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
-      }
-    });
-    router17.get("/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) => {
-      try {
-        const kitchenId = parseInt(req.params.kitchenId);
-        if (isNaN(kitchenId) || kitchenId <= 0) {
-          return res.status(400).json({ error: "Invalid kitchen ID" });
-        }
-        const kitchen = await kitchenService.getKitchenById(kitchenId);
-        const locationId = kitchen.locationId;
-        if (!locationId) {
-          return res.status(404).json({ error: "Location not found for this kitchen" });
-        }
-        const location = await locationService.getLocationById(locationId);
-        const maxSlotsPerChef = location.defaultDailyBookingLimit ?? 2;
-        res.json({ maxSlotsPerChef });
-      } catch (error) {
-        if (error.statusCode === 404) {
-          return res.status(404).json({ error: error.message });
-        }
-        console.error("Error getting kitchen policy:", error);
-        res.status(500).json({ error: error.message || "Failed to get kitchen policy" });
-      }
-    });
-    router17.post("/chef/share-profile", requireChef, async (req, res) => {
-      try {
-        const { locationId } = req.body;
-        const chefId = req.user.id;
-        if (!locationId) {
-          return res.status(400).json({ error: "locationId is required" });
-        }
-        const hasLocationAccess = await chefService.hasLocationAccess(chefId, locationId);
-        if (!hasLocationAccess) {
-          return res.status(403).json({ error: "You don't have access to this location. Please contact an administrator." });
-        }
-        const chef = await userService.getUser(chefId);
-        if (!chef) {
-          return res.status(404).json({ error: "Chef not found" });
-        }
-        const location = await locationService.getLocationById(locationId);
-        if (!location) {
-          return res.status(404).json({ error: "Location not found" });
-        }
-        const chefApp = await db.select().from(applications).where(and19(
-          eq31(applications.userId, chefId),
-          eq31(applications.status, "approved")
-        )).orderBy(desc16(applications.createdAt)).limit(1);
-        const profile = await chefService.shareProfileWithLocation(chefId, locationId);
-        if (profile && profile.status === "pending") {
-          try {
-            const managerEmail = location.notificationEmail || location.notification_email;
-            if (managerEmail) {
-              const chefName = chefApp.length > 0 && chefApp[0].fullName ? chefApp[0].fullName : chef.username || "Chef";
-              const chefEmail = chefApp.length > 0 && chefApp[0].email ? chefApp[0].email : chef.email || chef.username || "chef@example.com";
-              const emailContent = generateChefProfileRequestEmail({
-                managerEmail,
-                chefName,
-                chefEmail,
-                locationName: location.name || "Location",
-                locationId
-              });
-              await sendEmail(emailContent);
-              console.log(`\u2705 Chef profile request notification sent to manager: ${managerEmail}`);
-            }
-          } catch (emailError) {
-            console.error("Error sending chef profile request notification:", emailError);
-          }
-        }
-        res.status(201).json(profile);
-      } catch (error) {
-        console.error("Error sharing chef profile:", error);
-        res.status(500).json({ error: error.message || "Failed to share profile" });
-      }
-    });
-    router17.get("/chef/profiles", requireChef, async (req, res) => {
-      try {
-        const chefId = req.neonUser.id;
-        const locationAccessRecords = await db.select().from(chefLocationAccess).where(eq31(chefLocationAccess.chefId, chefId));
-        const locationIds = locationAccessRecords.map((access) => access.locationId);
-        if (locationIds.length === 0) {
-          return res.json([]);
-        }
-        const allLocations = await db.select().from(locations).where(inArray8(locations.id, locationIds));
-        const profiles = await Promise.all(
-          locationIds.map(async (locationId) => {
-            const profile = await chefService.getProfile(chefId, locationId);
-            const location = allLocations.find((l) => l.id === locationId);
-            return { locationId, location, profile };
-          })
-        );
-        res.json(profiles);
-      } catch (error) {
-        console.error("Error getting chef profiles:", error);
-        res.status(500).json({ error: error.message || "Failed to get profiles" });
-      }
-    });
-    router17.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => {
-      try {
-        const kitchenId = parseInt(req.params.kitchenId);
-        const { date: date2 } = req.query;
-        if (!date2) {
-          return res.status(400).json({ error: "Date parameter is required" });
-        }
-        const [year, month, day] = date2.split("-").map(Number);
-        const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-        if (isNaN(bookingDate.getTime())) {
-          return res.status(400).json({ error: "Invalid date format" });
-        }
-        const slotsInfo = await bookingService.getAllTimeSlotsWithBookingInfo(kitchenId, bookingDate);
-        res.json(slotsInfo);
-      } catch (error) {
-        console.error("Error fetching time slots:", error);
-        res.status(500).json({
-          error: "Failed to fetch time slots",
-          message: error.message
-        });
-      }
-    });
-    router17.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
-      try {
-        const kitchenId = parseInt(req.params.kitchenId);
-        const { date: date2 } = req.query;
-        if (!date2) {
-          return res.status(400).json({ error: "Date parameter is required" });
-        }
-        const [year, month, day] = date2.split("-").map(Number);
-        const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-        if (isNaN(bookingDate.getTime())) {
-          return res.status(400).json({ error: "Invalid date format" });
-        }
-        console.log(`\u{1F50D} Fetching available slots for kitchen ${kitchenId} on ${date2}`);
-        const slots = await bookingService.getAvailableTimeSlots(kitchenId, bookingDate);
-        console.log(`\u2705 Returning ${slots.length} available slots`);
-        res.json(slots);
-      } catch (error) {
-        console.error("Error fetching available slots:", error);
-        res.status(500).json({
-          error: "Failed to fetch available slots",
-          message: error.message
-        });
-      }
-    });
-    kitchens_default = router17;
+    init_logger();
+    AUTH_EXPIRY_HOURS = 24;
   }
 });
 
@@ -28076,6 +20924,746 @@ var init_stripe_checkout_service = __esm({
   }
 });
 
+// server/services/storage-checkout-service.ts
+var storage_checkout_service_exports = {};
+__export(storage_checkout_service_exports, {
+  addCheckoutPhotos: () => addCheckoutPhotos,
+  autoCleanExpiredCheckout: () => autoCleanExpiredCheckout,
+  getCheckoutHistory: () => getCheckoutHistory,
+  getCheckoutStatus: () => getCheckoutStatus,
+  getPendingCheckoutReviews: () => getPendingCheckoutReviews,
+  isCheckoutInProgress: () => isCheckoutInProgress,
+  processCheckoutApproval: () => processCheckoutApproval,
+  processExpiredCheckoutReviews: () => processExpiredCheckoutReviews,
+  requestStorageCheckout: () => requestStorageCheckout
+});
+import { eq as eq28, desc as desc13, and as and16, or as or3, inArray as inArray6, lt as lt4 } from "drizzle-orm";
+async function requestStorageCheckout(storageBookingId, chefId, checkoutNotes, checkoutPhotoUrls) {
+  try {
+    if (!storageBookingId || storageBookingId <= 0) {
+      return { success: false, error: "Invalid storage booking ID" };
+    }
+    if (!chefId || chefId <= 0) {
+      return { success: false, error: "Invalid chef ID" };
+    }
+    const [booking] = await db.select().from(storageBookings).where(eq28(storageBookings.id, storageBookingId)).limit(1);
+    if (!booking) {
+      return { success: false, error: "Storage booking not found" };
+    }
+    if (booking.chefId !== chefId) {
+      return { success: false, error: "You do not have permission to checkout this storage booking" };
+    }
+    if (booking.status === "cancelled") {
+      return { success: false, error: "Cannot checkout a cancelled booking" };
+    }
+    if (booking.status === "completed") {
+      return { success: false, error: "This booking has already been checked out" };
+    }
+    if (booking.status === "pending") {
+      return { success: false, error: "Cannot checkout a pending booking. The booking must be confirmed first." };
+    }
+    const now = /* @__PURE__ */ new Date();
+    const startDate = new Date(booking.startDate);
+    if (startDate > now) {
+      return { success: false, error: "Cannot checkout before the booking start date. Please wait until your booking period begins." };
+    }
+    const currentCheckoutStatus = booking.checkoutStatus;
+    if (currentCheckoutStatus === "checkout_requested") {
+      return { success: false, error: "Checkout has already been requested for this booking" };
+    }
+    if (currentCheckoutStatus === "checkout_approved") {
+      return { success: false, error: "Checkout has already been approved for this booking" };
+    }
+    if (currentCheckoutStatus === "completed") {
+      return { success: false, error: "This booking has already been completed" };
+    }
+    await db.update(storageBookings).set({
+      checkoutStatus: "checkout_requested",
+      checkoutRequestedAt: /* @__PURE__ */ new Date(),
+      checkoutNotes: checkoutNotes || null,
+      checkoutPhotoUrls: checkoutPhotoUrls || [],
+      // Clear any previous denial
+      checkoutDeniedAt: null,
+      checkoutDeniedBy: null,
+      checkoutDenialReason: null,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq28(storageBookings.id, storageBookingId));
+    logger.info(`[StorageCheckout] Chef ${chefId} requested checkout for storage booking ${storageBookingId}`, {
+      hasPhotos: (checkoutPhotoUrls?.length || 0) > 0,
+      photoCount: checkoutPhotoUrls?.length || 0
+    });
+    try {
+      await sendCheckoutRequestNotification(storageBookingId, chefId);
+    } catch (notifyError) {
+      logger.error(`[StorageCheckout] Error sending checkout notification:`, notifyError);
+    }
+    return {
+      success: true,
+      storageBookingId,
+      checkoutStatus: "checkout_requested"
+    };
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error requesting checkout:`, error);
+    return { success: false, error: "Failed to request checkout" };
+  }
+}
+async function addCheckoutPhotos(storageBookingId, chefId, newPhotoUrls) {
+  try {
+    const [booking] = await db.select().from(storageBookings).where(eq28(storageBookings.id, storageBookingId)).limit(1);
+    if (!booking) {
+      return { success: false, error: "Storage booking not found" };
+    }
+    if (booking.chefId !== chefId) {
+      return { success: false, error: "You do not have permission to modify this booking" };
+    }
+    const currentCheckoutStatus = booking.checkoutStatus;
+    if (currentCheckoutStatus !== "checkout_requested") {
+      return { success: false, error: "Can only add photos to pending checkout requests" };
+    }
+    const existingPhotos = booking.checkoutPhotoUrls || [];
+    const allPhotos = [...existingPhotos, ...newPhotoUrls];
+    if (allPhotos.length > 10) {
+      return { success: false, error: "Maximum 10 checkout photos allowed" };
+    }
+    await db.update(storageBookings).set({
+      checkoutPhotoUrls: allPhotos,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq28(storageBookings.id, storageBookingId));
+    logger.info(`[StorageCheckout] Added ${newPhotoUrls.length} photos to checkout request for booking ${storageBookingId}`);
+    return {
+      success: true,
+      storageBookingId,
+      checkoutStatus: "checkout_requested"
+    };
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error adding checkout photos:`, error);
+    return { success: false, error: "Failed to add checkout photos" };
+  }
+}
+async function verifyManagerPermission(storageBookingId, managerId) {
+  try {
+    const [result] = await db.select({ managerId: locations.managerId }).from(storageBookings).innerJoin(storageListings, eq28(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(storageBookings.id, storageBookingId)).limit(1);
+    return result?.managerId === managerId;
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error verifying manager permission:`, error);
+    return false;
+  }
+}
+async function sendCheckoutRequestNotification(storageBookingId, chefId) {
+  try {
+    const [booking] = await db.select({
+      storageName: storageListings.name,
+      kitchenName: kitchens.name,
+      locationName: locations.name,
+      managerId: locations.managerId,
+      notificationEmail: locations.notificationEmail,
+      endDate: storageBookings.endDate
+    }).from(storageBookings).innerJoin(storageListings, eq28(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(storageBookings.id, storageBookingId)).limit(1);
+    if (!booking || !booking.managerId) {
+      return;
+    }
+    let chefEmail = "Unknown Chef";
+    if (chefId) {
+      const [chef] = await db.select({ username: users.username }).from(users).where(eq28(users.id, chefId)).limit(1);
+      chefEmail = chef?.username || "Unknown Chef";
+    }
+    let managerEmail = booking.notificationEmail;
+    if (!managerEmail) {
+      const [manager] = await db.select({ username: users.username }).from(users).where(eq28(users.id, booking.managerId)).limit(1);
+      managerEmail = manager?.username;
+    }
+    if (!managerEmail) {
+      return;
+    }
+    const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+    const emailContent = {
+      to: managerEmail,
+      subject: `Storage Checkout Request - ${booking.storageName}`,
+      html: `
+        <h2>Storage Checkout Request</h2>
+        <p>A chef has requested checkout for their storage booking.</p>
+        <table style="border-collapse: collapse; margin: 20px 0;">
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Chef:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${chefEmail}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.storageName}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Kitchen:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.kitchenName}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>End Date:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${new Date(booking.endDate).toLocaleDateString()}</td></tr>
+        </table>
+        <p>Please review the checkout request and verify the storage unit is empty before approving.</p>
+        <p><a href="${process.env.VITE_APP_URL || "https://localcooks.ca"}/manager/dashboard?tab=checkouts" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Review Checkout Request</a></p>
+      `,
+      text: `Storage Checkout Request
+
+A chef has requested checkout for their storage booking.
+
+Chef: ${chefEmail}
+Storage: ${booking.storageName}
+Kitchen: ${booking.kitchenName}
+End Date: ${new Date(booking.endDate).toLocaleDateString()}
+
+Please review the checkout request in your dashboard.`
+    };
+    await sendEmail2(emailContent);
+    logger.info(`[StorageCheckout] Sent checkout request notification to manager ${managerEmail}`);
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error sending checkout request notification:`, error);
+  }
+}
+async function sendCheckoutClearedNotification(storageBookingId, chefId, isAutoClear = false) {
+  try {
+    if (!chefId) return;
+    const [chef] = await db.select({ username: users.username }).from(users).where(eq28(users.id, chefId)).limit(1);
+    if (!chef?.username) return;
+    const [booking] = await db.select({
+      storageName: storageListings.name,
+      kitchenName: kitchens.name
+    }).from(storageBookings).innerJoin(storageListings, eq28(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).where(eq28(storageBookings.id, storageBookingId)).limit(1);
+    if (!booking) return;
+    const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+    const clearedBy = isAutoClear ? "automatically (review window expired with no issues reported)" : "by the kitchen manager";
+    const emailContent = {
+      to: chef.username,
+      subject: `Storage Cleared \u2014 No Issues - ${booking.storageName}`,
+      html: `
+        <h2>Storage Checkout Complete</h2>
+        <p>Your storage checkout has been cleared ${clearedBy}.</p>
+        <table style="border-collapse: collapse; margin: 20px 0;">
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.storageName}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Kitchen:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.kitchenName}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Status:</strong></td><td style="padding: 8px; border: 1px solid #ddd; color: #16a34a; font-weight: 600;">Storage Cleared \u2014 No Issues</td></tr>
+        </table>
+        <p>Your storage booking has been successfully completed. Thank you for using Local Cooks!</p>
+      `,
+      text: `Storage Checkout Complete
+
+Your storage checkout has been cleared ${clearedBy}.
+
+Storage: ${booking.storageName}
+Kitchen: ${booking.kitchenName}
+Status: Storage Cleared \u2014 No Issues
+
+Thank you for using Local Cooks!`
+    };
+    await sendEmail2(emailContent);
+    logger.info(`[StorageCheckout] Sent cleared notification to chef ${chef.username} (autoClear: ${isAutoClear})`);
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error sending cleared notification:`, error);
+  }
+}
+async function sendCheckoutClaimNotification(storageBookingId, chefId, claimId, claimTitle) {
+  try {
+    if (!chefId) return;
+    const [chef] = await db.select({ username: users.username }).from(users).where(eq28(users.id, chefId)).limit(1);
+    if (!chef?.username) return;
+    const [booking] = await db.select({
+      storageName: storageListings.name,
+      kitchenName: kitchens.name
+    }).from(storageBookings).innerJoin(storageListings, eq28(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).where(eq28(storageBookings.id, storageBookingId)).limit(1);
+    if (!booking) return;
+    const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+    const emailContent = {
+      to: chef.username,
+      subject: `Storage Checkout \u2014 Claim Filed - ${booking.storageName}`,
+      html: `
+        <h2>Storage Checkout Complete \u2014 Claim Filed</h2>
+        <p>Your storage checkout has been processed. The kitchen has filed a damage/cleaning claim that requires your attention.</p>
+        <table style="border-collapse: collapse; margin: 20px 0;">
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Storage:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.storageName}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Kitchen:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${booking.kitchenName}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Claim:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${claimTitle}</td></tr>
+        </table>
+        <p>You will receive a separate notification with the full claim details. You can accept or dispute the claim from your dashboard.</p>
+        <p><a href="${process.env.VITE_APP_URL || "https://localcooks.ca"}/dashboard?view=damage-claims" style="background-color: #f59e0b; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Claim Details</a></p>
+      `,
+      text: `Storage Checkout Complete \u2014 Claim Filed
+
+Your storage checkout has been processed. The kitchen has filed a damage/cleaning claim "${claimTitle}".
+
+Storage: ${booking.storageName}
+Kitchen: ${booking.kitchenName}
+
+Please review the claim in your dashboard.`
+    };
+    await sendEmail2(emailContent);
+    logger.info(`[StorageCheckout] Sent claim notification to chef ${chef.username} for claim #${claimId}`);
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error sending claim notification:`, error);
+  }
+}
+async function processCheckoutApproval(storageBookingId, managerId, action, managerNotes, denialReasonOrClaimData) {
+  try {
+    if (!storageBookingId || storageBookingId <= 0) {
+      return { success: false, error: "Invalid storage booking ID" };
+    }
+    if (!managerId || managerId <= 0) {
+      return { success: false, error: "Invalid manager ID" };
+    }
+    const normalizedAction = action === "approve" ? "clear" : action;
+    if (normalizedAction === "deny") {
+      logger.warn(`[StorageCheckout] Legacy 'deny' action called for booking ${storageBookingId}. Deny is deprecated \u2014 treating as clear.`);
+      return processCheckoutClear(storageBookingId, managerId, managerNotes);
+    }
+    if (normalizedAction === "start_claim") {
+      if (!denialReasonOrClaimData || typeof denialReasonOrClaimData === "string") {
+        return { success: false, error: "Claim data is required when starting a damage/cleaning claim" };
+      }
+      return processCheckoutStartClaim(storageBookingId, managerId, denialReasonOrClaimData, managerNotes);
+    }
+    return processCheckoutClear(storageBookingId, managerId, managerNotes);
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error processing checkout review:`, error);
+    return { success: false, error: "Failed to process checkout review" };
+  }
+}
+async function processCheckoutClear(storageBookingId, managerId, managerNotes) {
+  const [booking] = await db.select({
+    id: storageBookings.id,
+    chefId: storageBookings.chefId,
+    checkoutStatus: storageBookings.checkoutStatus
+  }).from(storageBookings).where(eq28(storageBookings.id, storageBookingId)).limit(1);
+  if (!booking) {
+    return { success: false, error: "Storage booking not found" };
+  }
+  const hasPermission = await verifyManagerPermission(storageBookingId, managerId);
+  if (!hasPermission) {
+    return { success: false, error: "You do not have permission to review this checkout" };
+  }
+  const currentCheckoutStatus = booking.checkoutStatus;
+  if (currentCheckoutStatus !== "checkout_requested") {
+    return { success: false, error: `Cannot process checkout in status: ${currentCheckoutStatus || "active"}` };
+  }
+  await db.update(storageBookings).set({
+    checkoutStatus: "completed",
+    checkoutApprovedAt: /* @__PURE__ */ new Date(),
+    checkoutApprovedBy: managerId,
+    checkoutNotes: managerNotes ? `Manager: ${managerNotes}` : "Storage cleared \u2014 no issues found",
+    status: "completed",
+    updatedAt: /* @__PURE__ */ new Date()
+  }).where(eq28(storageBookings.id, storageBookingId));
+  logger.info(`[StorageCheckout] Manager ${managerId} cleared storage for booking ${storageBookingId} \u2014 no issues`);
+  try {
+    await sendCheckoutClearedNotification(storageBookingId, booking.chefId);
+  } catch (notifyError) {
+    logger.error(`[StorageCheckout] Error sending cleared notification:`, notifyError);
+  }
+  return {
+    success: true,
+    storageBookingId,
+    checkoutStatus: "completed",
+    bookingCompleted: true
+  };
+}
+async function processCheckoutStartClaim(storageBookingId, managerId, claimData, managerNotes) {
+  const [booking] = await db.select({
+    id: storageBookings.id,
+    chefId: storageBookings.chefId,
+    checkoutStatus: storageBookings.checkoutStatus,
+    checkoutRequestedAt: storageBookings.checkoutRequestedAt
+  }).from(storageBookings).where(eq28(storageBookings.id, storageBookingId)).limit(1);
+  if (!booking) {
+    return { success: false, error: "Storage booking not found" };
+  }
+  const hasPermission = await verifyManagerPermission(storageBookingId, managerId);
+  if (!hasPermission) {
+    return { success: false, error: "You do not have permission to review this checkout" };
+  }
+  const currentCheckoutStatus = booking.checkoutStatus;
+  if (currentCheckoutStatus !== "checkout_requested" && currentCheckoutStatus !== "completed") {
+    return { success: false, error: `Cannot start claim from checkout status: ${currentCheckoutStatus || "active"}` };
+  }
+  if (currentCheckoutStatus === "completed") {
+    const { getStorageCheckoutSettings: getStorageCheckoutSettings2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
+    const settings = await getStorageCheckoutSettings2();
+    const checkoutTime = booking.checkoutRequestedAt;
+    if (checkoutTime) {
+      const extendedDeadline = new Date(checkoutTime.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1e3);
+      if (/* @__PURE__ */ new Date() > extendedDeadline) {
+        return {
+          success: false,
+          error: `Extended claim window has expired. Claims must be filed within ${settings.extendedClaimWindowHours} hours of checkout.`
+        };
+      }
+    }
+  }
+  if (!claimData.claimTitle || claimData.claimTitle.trim().length < 5) {
+    return { success: false, error: "Claim title must be at least 5 characters" };
+  }
+  if (!claimData.claimDescription || claimData.claimDescription.trim().length < 50) {
+    return { success: false, error: "Claim description must be at least 50 characters" };
+  }
+  if (!claimData.claimedAmountCents || claimData.claimedAmountCents <= 0) {
+    return { success: false, error: "Claimed amount must be greater than zero" };
+  }
+  const { createDamageClaim: createDamageClaim2 } = await Promise.resolve().then(() => (init_damage_claim_service(), damage_claim_service_exports));
+  const claimResult = await createDamageClaim2({
+    bookingType: "storage",
+    storageBookingId,
+    managerId,
+    claimTitle: claimData.claimTitle.trim(),
+    claimDescription: claimData.claimDescription.trim(),
+    claimedAmountCents: claimData.claimedAmountCents,
+    damageDate: claimData.damageDate || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+    submitImmediately: true
+  });
+  if (!claimResult.success || !claimResult.claim) {
+    return {
+      success: false,
+      error: claimResult.error || "Failed to create damage claim"
+    };
+  }
+  const claimId = claimResult.claim.id;
+  try {
+    const [bookingWithPhotos] = await db.select({ checkoutPhotoUrls: storageBookings.checkoutPhotoUrls }).from(storageBookings).where(eq28(storageBookings.id, storageBookingId)).limit(1);
+    const photoUrls = bookingWithPhotos?.checkoutPhotoUrls;
+    if (photoUrls && photoUrls.length > 0) {
+      const { damageEvidence: damageEvidence2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      for (let i = 0; i < photoUrls.length; i++) {
+        await db.insert(damageEvidence2).values({
+          damageClaimId: claimId,
+          evidenceType: "photo_after",
+          fileUrl: photoUrls[i],
+          fileName: `checkout-photo-${i + 1}.jpg`,
+          description: `Chef checkout photo ${i + 1} of ${photoUrls.length} (auto-attached from checkout)`,
+          uploadedBy: managerId
+        });
+      }
+      logger.info(`[StorageCheckout] Auto-attached ${photoUrls.length} checkout photos as evidence for claim #${claimId}`);
+    }
+  } catch (evidenceError) {
+    logger.error(`[StorageCheckout] Error auto-attaching checkout photos to claim #${claimId}:`, evidenceError);
+  }
+  await db.update(storageBookings).set({
+    checkoutStatus: "checkout_claim_filed",
+    checkoutApprovedAt: /* @__PURE__ */ new Date(),
+    checkoutApprovedBy: managerId,
+    checkoutNotes: managerNotes ? `Manager: ${managerNotes} | Claim #${claimId} filed` : `Damage/cleaning claim #${claimId} filed during checkout review`,
+    // Mark booking as completed — storage is released, but claim is tracked separately
+    status: "completed",
+    updatedAt: /* @__PURE__ */ new Date()
+  }).where(eq28(storageBookings.id, storageBookingId));
+  logger.info(`[StorageCheckout] Manager ${managerId} started claim #${claimId} for storage booking ${storageBookingId}`);
+  try {
+    await sendCheckoutClaimNotification(storageBookingId, booking.chefId, claimId, claimData.claimTitle);
+  } catch (notifyError) {
+    logger.error(`[StorageCheckout] Error sending claim notification:`, notifyError);
+  }
+  return {
+    success: true,
+    storageBookingId,
+    checkoutStatus: "checkout_claim_filed",
+    bookingCompleted: true,
+    damageClaimId: claimId
+  };
+}
+async function autoCleanExpiredCheckout(bookingId, chefId, checkoutRequestedAt, reviewWindowHours) {
+  if (!checkoutRequestedAt) return false;
+  const reviewWindowMs = reviewWindowHours * 60 * 60 * 1e3;
+  const deadline = new Date(checkoutRequestedAt.getTime() + reviewWindowMs);
+  if (/* @__PURE__ */ new Date() <= deadline) return false;
+  try {
+    await db.update(storageBookings).set({
+      checkoutStatus: "completed",
+      checkoutApprovedAt: /* @__PURE__ */ new Date(),
+      checkoutNotes: `Auto-cleared by system \u2014 review window (${reviewWindowHours}h) expired with no issues reported`,
+      status: "completed",
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(
+      and16(
+        eq28(storageBookings.id, bookingId),
+        eq28(storageBookings.checkoutStatus, "checkout_requested")
+      )
+    );
+    logger.info(`[StorageCheckout] Lazy auto-cleared booking ${bookingId} \u2014 review window expired`);
+    try {
+      await sendCheckoutClearedNotification(bookingId, chefId, true);
+    } catch (notifyError) {
+      logger.error(`[StorageCheckout] Error sending auto-clear notification for booking ${bookingId}:`, notifyError);
+    }
+    return true;
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error lazy auto-clearing booking ${bookingId}:`, error);
+    return false;
+  }
+}
+async function processExpiredCheckoutReviews() {
+  const result = { processed: 0, cleared: 0, errors: 0 };
+  try {
+    const { getStorageCheckoutSettings: getStorageCheckoutSettings2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
+    const settings = await getStorageCheckoutSettings2();
+    const reviewWindowMs = settings.reviewWindowHours * 60 * 60 * 1e3;
+    const cutoffTime = new Date(Date.now() - reviewWindowMs);
+    const expiredCheckouts = await db.select({
+      id: storageBookings.id,
+      chefId: storageBookings.chefId,
+      checkoutRequestedAt: storageBookings.checkoutRequestedAt
+    }).from(storageBookings).where(
+      and16(
+        eq28(storageBookings.checkoutStatus, "checkout_requested"),
+        lt4(storageBookings.checkoutRequestedAt, cutoffTime)
+      )
+    );
+    result.processed = expiredCheckouts.length;
+    if (expiredCheckouts.length === 0) {
+      logger.info(`[StorageCheckout] No expired checkout reviews to process`);
+      return result;
+    }
+    logger.info(`[StorageCheckout] Processing ${expiredCheckouts.length} expired checkout reviews (window: ${settings.reviewWindowHours}h)`);
+    for (const checkout of expiredCheckouts) {
+      try {
+        await db.update(storageBookings).set({
+          checkoutStatus: "completed",
+          checkoutApprovedAt: /* @__PURE__ */ new Date(),
+          checkoutNotes: `Auto-cleared by system \u2014 review window (${settings.reviewWindowHours}h) expired with no issues reported`,
+          status: "completed",
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq28(storageBookings.id, checkout.id));
+        result.cleared++;
+        logger.info(`[StorageCheckout] Auto-cleared booking ${checkout.id} \u2014 review window expired`);
+        try {
+          await sendCheckoutClearedNotification(checkout.id, checkout.chefId, true);
+        } catch (notifyError) {
+          logger.error(`[StorageCheckout] Error sending auto-clear notification for booking ${checkout.id}:`, notifyError);
+        }
+      } catch (bookingError) {
+        result.errors++;
+        logger.error(`[StorageCheckout] Error auto-clearing booking ${checkout.id}:`, bookingError);
+      }
+    }
+    logger.info(`[StorageCheckout] Auto-clear results: ${result.cleared} cleared, ${result.errors} errors out of ${result.processed} processed`);
+    return result;
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error processing expired checkout reviews:`, error);
+    return result;
+  }
+}
+async function getPendingCheckoutReviews(locationId) {
+  try {
+    const today = /* @__PURE__ */ new Date();
+    today.setHours(0, 0, 0, 0);
+    const { getStorageCheckoutSettings: getStorageCheckoutSettings2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
+    const settings = await getStorageCheckoutSettings2();
+    const reviewWindowMs = settings.reviewWindowHours * 60 * 60 * 1e3;
+    const query = db.select({
+      storageBookingId: storageBookings.id,
+      storageListingId: storageBookings.storageListingId,
+      storageName: storageListings.name,
+      storageType: storageListings.storageType,
+      kitchenId: kitchens.id,
+      kitchenName: kitchens.name,
+      locationId: locations.id,
+      locationName: locations.name,
+      chefId: storageBookings.chefId,
+      chefEmail: users.username,
+      startDate: storageBookings.startDate,
+      endDate: storageBookings.endDate,
+      totalPrice: storageBookings.totalPrice,
+      checkoutStatus: storageBookings.checkoutStatus,
+      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
+      checkoutNotes: storageBookings.checkoutNotes,
+      checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
+    }).from(storageBookings).innerJoin(storageListings, eq28(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).leftJoin(users, eq28(storageBookings.chefId, users.id)).where(eq28(storageBookings.checkoutStatus, "checkout_requested")).orderBy(desc13(storageBookings.checkoutRequestedAt));
+    const results = await query;
+    const filtered = locationId ? results.filter((r) => r.locationId === locationId) : results;
+    const now = /* @__PURE__ */ new Date();
+    const stillPending = [];
+    for (const r of filtered) {
+      const reviewDeadline = r.checkoutRequestedAt ? new Date(r.checkoutRequestedAt.getTime() + reviewWindowMs) : null;
+      const isExpired = reviewDeadline ? now > reviewDeadline : false;
+      if (isExpired) {
+        const wasCleared = await autoCleanExpiredCheckout(
+          r.storageBookingId,
+          r.chefId,
+          r.checkoutRequestedAt,
+          settings.reviewWindowHours
+        );
+        if (wasCleared) {
+          logger.info(`[StorageCheckout] Lazy-cleared booking ${r.storageBookingId} during getPendingCheckoutReviews`);
+          continue;
+        }
+      }
+      stillPending.push(r);
+    }
+    return stillPending.map((r) => {
+      const endDate = new Date(r.endDate);
+      const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1e3 * 60 * 60 * 24));
+      const reviewDeadline = r.checkoutRequestedAt ? new Date(r.checkoutRequestedAt.getTime() + reviewWindowMs) : null;
+      const isReviewExpired = reviewDeadline ? now > reviewDeadline : false;
+      return {
+        storageBookingId: r.storageBookingId,
+        storageListingId: r.storageListingId,
+        storageName: r.storageName || "Storage",
+        storageType: r.storageType || "dry",
+        kitchenId: r.kitchenId,
+        kitchenName: r.kitchenName || "Kitchen",
+        locationId: r.locationId,
+        locationName: r.locationName || "Location",
+        chefId: r.chefId,
+        chefEmail: r.chefEmail,
+        chefName: r.chefEmail,
+        // Using email as name for now
+        startDate: r.startDate,
+        endDate: r.endDate,
+        totalPrice: r.totalPrice,
+        checkoutStatus: r.checkoutStatus,
+        checkoutRequestedAt: r.checkoutRequestedAt,
+        checkoutNotes: r.checkoutNotes,
+        checkoutPhotoUrls: r.checkoutPhotoUrls || [],
+        daysUntilEnd,
+        isOverdue: daysUntilEnd < 0,
+        reviewDeadline,
+        isReviewExpired
+      };
+    });
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error getting pending checkout reviews:`, error);
+    return [];
+  }
+}
+async function getCheckoutHistory(locationIds, limit = 20) {
+  try {
+    const today = /* @__PURE__ */ new Date();
+    today.setHours(0, 0, 0, 0);
+    const results = await db.select({
+      storageBookingId: storageBookings.id,
+      storageListingId: storageBookings.storageListingId,
+      storageName: storageListings.name,
+      storageType: storageListings.storageType,
+      kitchenId: kitchens.id,
+      kitchenName: kitchens.name,
+      locationId: locations.id,
+      locationName: locations.name,
+      chefId: storageBookings.chefId,
+      chefEmail: users.username,
+      startDate: storageBookings.startDate,
+      endDate: storageBookings.endDate,
+      totalPrice: storageBookings.totalPrice,
+      checkoutStatus: storageBookings.checkoutStatus,
+      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
+      checkoutApprovedAt: storageBookings.checkoutApprovedAt,
+      checkoutNotes: storageBookings.checkoutNotes,
+      checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
+    }).from(storageBookings).innerJoin(storageListings, eq28(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).leftJoin(users, eq28(storageBookings.chefId, users.id)).where(
+      and16(
+        inArray6(locations.id, locationIds),
+        or3(
+          eq28(storageBookings.checkoutStatus, "completed"),
+          eq28(storageBookings.checkoutStatus, "checkout_claim_filed")
+        )
+      )
+    ).orderBy(desc13(storageBookings.checkoutApprovedAt)).limit(limit);
+    return results.map((r) => {
+      const endDate = new Date(r.endDate);
+      const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1e3 * 60 * 60 * 24));
+      return {
+        storageBookingId: r.storageBookingId,
+        storageListingId: r.storageListingId,
+        storageName: r.storageName || "Storage",
+        storageType: r.storageType || "dry",
+        kitchenId: r.kitchenId,
+        kitchenName: r.kitchenName || "Kitchen",
+        locationId: r.locationId,
+        locationName: r.locationName || "Location",
+        chefId: r.chefId,
+        chefEmail: r.chefEmail,
+        chefName: r.chefEmail,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        totalPrice: r.totalPrice,
+        checkoutStatus: r.checkoutStatus,
+        checkoutRequestedAt: r.checkoutRequestedAt,
+        checkoutApprovedAt: r.checkoutApprovedAt,
+        checkoutNotes: r.checkoutNotes,
+        checkoutPhotoUrls: r.checkoutPhotoUrls || [],
+        daysUntilEnd,
+        isOverdue: daysUntilEnd < 0,
+        reviewDeadline: null,
+        isReviewExpired: false
+      };
+    });
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error getting checkout history:`, error);
+    return [];
+  }
+}
+async function getCheckoutStatus(storageBookingId) {
+  try {
+    const [booking] = await db.select({
+      checkoutStatus: storageBookings.checkoutStatus,
+      checkoutRequestedAt: storageBookings.checkoutRequestedAt,
+      checkoutApprovedAt: storageBookings.checkoutApprovedAt,
+      checkoutPhotoUrls: storageBookings.checkoutPhotoUrls,
+      checkoutNotes: storageBookings.checkoutNotes
+    }).from(storageBookings).where(eq28(storageBookings.id, storageBookingId)).limit(1);
+    if (!booking) {
+      return null;
+    }
+    const { getStorageCheckoutSettings: getStorageCheckoutSettings2 } = await Promise.resolve().then(() => (init_damage_claim_limits_service(), damage_claim_limits_service_exports));
+    const settings = await getStorageCheckoutSettings2();
+    const now = /* @__PURE__ */ new Date();
+    const reviewDeadline = booking.checkoutRequestedAt ? new Date(booking.checkoutRequestedAt.getTime() + settings.reviewWindowHours * 60 * 60 * 1e3) : null;
+    const isReviewExpired = reviewDeadline ? now > reviewDeadline : false;
+    if (isReviewExpired && booking.checkoutStatus === "checkout_requested") {
+      const [bookingFull] = await db.select({ chefId: storageBookings.chefId }).from(storageBookings).where(eq28(storageBookings.id, storageBookingId)).limit(1);
+      const wasCleared = await autoCleanExpiredCheckout(
+        storageBookingId,
+        bookingFull?.chefId ?? null,
+        booking.checkoutRequestedAt,
+        settings.reviewWindowHours
+      );
+      if (wasCleared) {
+        logger.info(`[StorageCheckout] Lazy-cleared booking ${storageBookingId} during getCheckoutStatus`);
+        return {
+          checkoutStatus: "completed",
+          checkoutRequestedAt: booking.checkoutRequestedAt,
+          checkoutApprovedAt: /* @__PURE__ */ new Date(),
+          checkoutPhotoUrls: booking.checkoutPhotoUrls || [],
+          checkoutNotes: `Auto-cleared by system \u2014 review window (${settings.reviewWindowHours}h) expired with no issues reported`,
+          reviewDeadline,
+          isReviewExpired: true,
+          extendedClaimDeadline: booking.checkoutRequestedAt ? new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1e3) : null,
+          canFileExtendedClaim: booking.checkoutRequestedAt ? now <= new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1e3) : false
+        };
+      }
+    }
+    const extendedClaimDeadline = booking.checkoutRequestedAt ? new Date(booking.checkoutRequestedAt.getTime() + settings.extendedClaimWindowHours * 60 * 60 * 1e3) : null;
+    const canFileExtendedClaim = extendedClaimDeadline ? now <= extendedClaimDeadline : false;
+    return {
+      checkoutStatus: booking.checkoutStatus,
+      checkoutRequestedAt: booking.checkoutRequestedAt,
+      checkoutApprovedAt: booking.checkoutApprovedAt,
+      checkoutPhotoUrls: booking.checkoutPhotoUrls || [],
+      checkoutNotes: booking.checkoutNotes,
+      reviewDeadline,
+      isReviewExpired,
+      extendedClaimDeadline,
+      canFileExtendedClaim
+    };
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error getting checkout status:`, error);
+    return null;
+  }
+}
+async function isCheckoutInProgress(storageBookingId) {
+  try {
+    const [booking] = await db.select({ checkoutStatus: storageBookings.checkoutStatus }).from(storageBookings).where(eq28(storageBookings.id, storageBookingId)).limit(1);
+    if (!booking) {
+      return false;
+    }
+    const status = booking.checkoutStatus;
+    return status === "checkout_requested" || status === "checkout_approved" || status === "completed" || status === "checkout_claim_filed";
+  } catch (error) {
+    logger.error(`[StorageCheckout] Error checking checkout status:`, error);
+    return false;
+  }
+}
+var init_storage_checkout_service = __esm({
+  "server/services/storage-checkout-service.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    init_logger();
+  }
+});
+
 // server/date-utils.ts
 var date_utils_exports = {};
 __export(date_utils_exports, {
@@ -28109,17 +21697,283 @@ var init_date_utils = __esm({
 // server/routes/bookings.ts
 var bookings_exports = {};
 __export(bookings_exports, {
-  default: () => bookings_default
+  default: () => bookings_default,
+  syncStorageItemStatusInKitchenBooking: () => syncStorageItemStatusInKitchenBooking
 });
-import { Router as Router18 } from "express";
-import { eq as eq32, and as and20, or as or6, desc as desc17 } from "drizzle-orm";
+import { Router as Router14 } from "express";
+import { eq as eq29, and as and17, or as or4, desc as desc14, inArray as inArray7 } from "drizzle-orm";
 function getBaseUrl(req) {
   const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5001";
   const isLocalhost = host.includes("localhost") || host.includes("127.0.0.1");
   const protocol = isLocalhost ? "http" : req.get("x-forwarded-proto") || "https";
   return `${protocol}://${host}`;
 }
-var router18, bookings_default;
+async function sendStorageCancellationNotification(booking, bookingId, action) {
+  try {
+    const chef = booking.chefId ? await userService.getUser(booking.chefId) : null;
+    if (!chef) return;
+    const isCancellationRequest = action === "cancellation_requested";
+    const storageName = booking.storageName || "Storage";
+    if (booking.managerId) {
+      const title = isCancellationRequest ? "Storage Cancellation Request" : "Storage Booking Cancelled";
+      const message = isCancellationRequest ? `${chef.username || "A chef"} has requested to cancel their storage booking for ${storageName}.` : `${chef.username || "A chef"} has cancelled their storage booking for ${storageName}.`;
+      await notificationService.create({
+        userId: booking.managerId,
+        target: "manager",
+        type: isCancellationRequest ? "booking_cancellation_request" : "booking_cancelled",
+        title,
+        message,
+        metadata: { storageBookingId: bookingId, chefId: booking.chefId }
+      });
+    }
+    if (booking.chefId) {
+      const title = isCancellationRequest ? "Cancellation Request Submitted" : "Storage Booking Cancelled";
+      const message = isCancellationRequest ? `Your cancellation request for ${storageName} has been sent to the kitchen manager for review.` : `Your storage booking for ${storageName} has been cancelled.`;
+      await notificationService.create({
+        userId: booking.chefId,
+        target: "chef",
+        type: isCancellationRequest ? "booking_cancellation_request" : "booking_cancelled",
+        title,
+        message,
+        metadata: { storageBookingId: bookingId }
+      });
+    }
+  } catch (error) {
+    logger.error(`[sendStorageCancellationNotification] Error for storage booking ${bookingId}:`, error);
+  }
+}
+async function syncStorageItemStatusInKitchenBooking(storageBookingId, newStatus) {
+  try {
+    const { storageBookings: sbTable, kitchenBookings: kbTable } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+    const [sb] = await db.select({ kitchenBookingId: sbTable.kitchenBookingId }).from(sbTable).where(eq29(sbTable.id, storageBookingId)).limit(1);
+    if (!sb?.kitchenBookingId) return;
+    const [kb] = await db.select({ storageItems: kbTable.storageItems }).from(kbTable).where(eq29(kbTable.id, sb.kitchenBookingId)).limit(1);
+    if (!kb) return;
+    const items = Array.isArray(kb.storageItems) ? [...kb.storageItems] : [];
+    let updated = false;
+    for (const item of items) {
+      const itemId = item.storageBookingId || item.id;
+      if (itemId === storageBookingId) {
+        item.cancellationRequested = newStatus === "cancellation_requested";
+        item.status = newStatus;
+        if (newStatus === "cancelled") {
+          item.rejected = true;
+        }
+        updated = true;
+        break;
+      }
+    }
+    if (updated) {
+      await db.update(kbTable).set({ storageItems: items, updatedAt: /* @__PURE__ */ new Date() }).where(eq29(kbTable.id, sb.kitchenBookingId));
+      logger.info(`[syncStorageItemStatus] Updated JSONB for storage ${storageBookingId} \u2192 ${newStatus} on kb ${sb.kitchenBookingId}`);
+    }
+  } catch (err) {
+    logger.error(`[syncStorageItemStatus] Error syncing storage ${storageBookingId}:`, err);
+  }
+}
+async function processExpiredCancellationRequests() {
+  const results = { processed: 0, accepted: 0, errors: 0 };
+  try {
+    const [setting] = await db.select({ value: platformSettings.value }).from(platformSettings).where(eq29(platformSettings.key, "cancellation_request_auto_accept_hours")).limit(1);
+    const autoAcceptHours = setting ? parseInt(setting.value || "24", 10) : 24;
+    if (autoAcceptHours <= 0) {
+      logger.info("[Cron] Cancellation request auto-accept is disabled (hours=0)");
+      return results;
+    }
+    const cutoffDate = new Date(Date.now() - autoAcceptHours * 60 * 60 * 1e3);
+    const { lte: lte5, isNotNull: isNotNull2 } = await import("drizzle-orm");
+    const expiredRequests = await db.select({ id: kitchenBookings.id, chefId: kitchenBookings.chefId }).from(kitchenBookings).where(
+      and17(
+        eq29(kitchenBookings.status, "cancellation_requested"),
+        isNotNull2(kitchenBookings.cancellationRequestedAt),
+        lte5(kitchenBookings.cancellationRequestedAt, cutoffDate)
+      )
+    );
+    results.processed = expiredRequests.length;
+    for (const booking of expiredRequests) {
+      try {
+        await db.update(kitchenBookings).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(eq29(kitchenBookings.id, booking.id));
+        try {
+          const { storageBookings: sbT, equipmentBookings: ebT } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+          const { ne: neOp } = await import("drizzle-orm");
+          await db.update(sbT).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(and17(eq29(sbT.kitchenBookingId, booking.id), neOp(sbT.status, "cancelled")));
+          await db.update(ebT).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(and17(eq29(ebT.kitchenBookingId, booking.id), neOp(ebT.status, "cancelled")));
+        } catch (cascadeErr) {
+          logger.warn(`[Cron] Cascade cancel failed for auto-accepted booking ${booking.id}:`, cascadeErr);
+        }
+        try {
+          const [currentKb] = await db.select({ storageItems: kitchenBookings.storageItems, equipmentItems: kitchenBookings.equipmentItems }).from(kitchenBookings).where(eq29(kitchenBookings.id, booking.id));
+          if (currentKb) {
+            const updatedStorage = (Array.isArray(currentKb.storageItems) ? currentKb.storageItems : []).map((item) => ({ ...item, rejected: true, status: "cancelled", cancellationRequested: false }));
+            const updatedEquip = (Array.isArray(currentKb.equipmentItems) ? currentKb.equipmentItems : []).map((item) => ({ ...item, rejected: true }));
+            await db.update(kitchenBookings).set({ storageItems: updatedStorage, equipmentItems: updatedEquip, updatedAt: /* @__PURE__ */ new Date() }).where(eq29(kitchenBookings.id, booking.id));
+          }
+        } catch (jsonbErr) {
+          logger.warn(`[Cron] JSONB sync failed for auto-accepted booking ${booking.id}:`, jsonbErr);
+        }
+        if (booking.chefId) {
+          try {
+            await notificationService.create({
+              userId: booking.chefId,
+              target: "chef",
+              type: "booking_cancellation_accepted",
+              title: "Cancellation Auto-Accepted",
+              message: "Your cancellation request was automatically accepted. A refund may be processed by the kitchen manager.",
+              metadata: { bookingId: booking.id }
+            });
+          } catch (notifErr) {
+            logger.error(`[Cron] Notification error for auto-accepted booking ${booking.id}:`, notifErr);
+          }
+        }
+        results.accepted++;
+        logger.info(`[Cron] Auto-accepted cancellation request for kitchen booking ${booking.id}`);
+      } catch (err) {
+        results.errors++;
+        logger.error(`[Cron] Error auto-accepting cancellation for kitchen booking ${booking.id}:`, err);
+      }
+    }
+    const { storageBookings: storageBookingsTable } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+    const expiredStorageRequests = await db.select({ id: storageBookingsTable.id, chefId: storageBookingsTable.chefId }).from(storageBookingsTable).where(
+      and17(
+        eq29(storageBookingsTable.status, "cancellation_requested"),
+        isNotNull2(storageBookingsTable.cancellationRequestedAt),
+        lte5(storageBookingsTable.cancellationRequestedAt, cutoffDate)
+      )
+    );
+    results.processed += expiredStorageRequests.length;
+    for (const sb of expiredStorageRequests) {
+      try {
+        await db.update(storageBookingsTable).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(eq29(storageBookingsTable.id, sb.id));
+        try {
+          await syncStorageItemStatusInKitchenBooking(sb.id, "cancelled");
+        } catch (syncErr) {
+          logger.warn(`[Cron] JSONB sync failed for auto-accepted storage booking ${sb.id}:`, syncErr);
+        }
+        if (sb.chefId) {
+          try {
+            await notificationService.create({
+              userId: sb.chefId,
+              target: "chef",
+              type: "booking_cancellation_accepted",
+              title: "Storage Cancellation Auto-Accepted",
+              message: "Your storage cancellation request was automatically accepted. A refund may be processed by the kitchen manager.",
+              metadata: { storageBookingId: sb.id }
+            });
+          } catch (notifErr) {
+            logger.error(`[Cron] Notification error for auto-accepted storage booking ${sb.id}:`, notifErr);
+          }
+        }
+        results.accepted++;
+        logger.info(`[Cron] Auto-accepted cancellation request for storage booking ${sb.id}`);
+      } catch (err) {
+        results.errors++;
+        logger.error(`[Cron] Error auto-accepting cancellation for storage booking ${sb.id}:`, err);
+      }
+    }
+  } catch (err) {
+    logger.error("[Cron] Error in processExpiredCancellationRequests:", err);
+    results.errors++;
+  }
+  return results;
+}
+async function sendCancellationNotifications(booking, bookingId, action) {
+  try {
+    const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
+    if (!kitchen) return;
+    const chef = booking.chefId ? await userService.getUser(booking.chefId) : null;
+    if (!chef) return;
+    let manager = null;
+    if (booking.managerId) {
+      const [managerResult] = await db.select({ id: users.id, username: users.username }).from(users).where(eq29(users.id, booking.managerId));
+      if (managerResult) manager = managerResult;
+    }
+    const chefPhone = booking.chefId ? await getChefPhone(booking.chefId, pool) : null;
+    const { sendEmail: sendEmail2, generateBookingCancellationEmail: generateBookingCancellationEmail3, generateBookingCancellationNotificationEmail: generateBookingCancellationNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
+    const isCancellationRequest = action === "cancellation_requested";
+    const cancellationReason = isCancellationRequest ? "You submitted a cancellation request. The kitchen manager will review it shortly." : "You cancelled this booking";
+    const managerReason = isCancellationRequest ? "Chef requested cancellation \u2014 please review and process refund" : "Cancelled by chef";
+    try {
+      const chefEmail = generateBookingCancellationEmail3({
+        chefEmail: chef.username || "",
+        chefName: chef.username || "Chef",
+        kitchenName: kitchen.name || "Kitchen",
+        bookingDate: booking.bookingDate?.toISOString() || "",
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+        cancellationReason
+      });
+      await sendEmail2(chefEmail);
+      logger.info(`\u2705 Booking ${action} email sent to chef: ${chef.username}`);
+    } catch (e) {
+      logger.error("Error sending chef cancellation email:", e);
+    }
+    if (chefPhone) {
+      try {
+        const smsMessage = generateChefSelfCancellationSMS({
+          kitchenName: kitchen.name || "Kitchen",
+          bookingDate: booking.bookingDate?.toISOString() || "",
+          startTime: booking.startTime,
+          endTime: booking.endTime || ""
+        });
+        await sendSMS(chefPhone, smsMessage, { trackingId: `booking_${bookingId}_chef_${action}` });
+      } catch (e) {
+        logger.error("Error sending chef cancellation SMS:", e);
+      }
+    }
+    const notificationEmailAddress = booking.notificationEmail || (manager ? manager.username || null : null);
+    if (notificationEmailAddress) {
+      try {
+        const managerEmail = generateBookingCancellationNotificationEmail3({
+          managerEmail: notificationEmailAddress,
+          chefName: chef.username || "Chef",
+          kitchenName: kitchen.name || "Kitchen",
+          bookingDate: booking.bookingDate?.toISOString() || "",
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+          cancellationReason: managerReason
+        });
+        await sendEmail2(managerEmail);
+        logger.info(`\u2705 Booking ${action} notification email sent to manager: ${notificationEmailAddress}`);
+      } catch (e) {
+        logger.error("Error sending manager cancellation email:", e);
+      }
+    }
+    if (booking.managerId) {
+      try {
+        const managerPhone = await getManagerPhone({ managerId: booking.managerId, managerPhone: null }, booking.managerId, pool);
+        if (managerPhone) {
+          const smsMessage = generateManagerBookingCancellationSMS({
+            chefName: chef.username || "Chef",
+            kitchenName: kitchen.name || "Kitchen",
+            bookingDate: booking.bookingDate?.toISOString() || "",
+            startTime: booking.startTime,
+            endTime: booking.endTime
+          });
+          await sendSMS(managerPhone, smsMessage, { trackingId: `booking_${bookingId}_manager_${action}` });
+        }
+      } catch (e) {
+        logger.error("Error sending manager cancellation SMS:", e);
+      }
+    }
+    if (isCancellationRequest && booking.managerId) {
+      try {
+        await notificationService.create({
+          userId: booking.managerId,
+          target: "manager",
+          type: "booking_cancellation_request",
+          title: "Cancellation Request",
+          message: `${chef.username || "A chef"} has requested to cancel their booking at ${kitchen.name || "your kitchen"}.`,
+          metadata: { bookingId, chefId: booking.chefId }
+        });
+      } catch (e) {
+        logger.error("Error creating in-app notification:", e);
+      }
+    }
+  } catch (error) {
+    logger.error(`[sendCancellationNotifications] Error for booking ${bookingId}:`, error);
+  }
+}
+var router14, bookings_default;
 var init_bookings = __esm({
   "server/routes/bookings.ts"() {
     "use strict";
@@ -28137,12 +21991,14 @@ var init_bookings = __esm({
     init_chef_service();
     init_phone_utils();
     init_sms();
+    init_notification_service();
     init_invoice_service();
     init_overstay_penalty_service();
     init_damage_claim_service();
     init_auth_expiry_service();
-    router18 = Router18();
-    router18.post("/bookings/checkout", async (req, res) => {
+    init_schema();
+    router14 = Router14();
+    router14.post("/bookings/checkout", async (req, res) => {
       try {
         const { bookingId, managerStripeAccountId, bookingPrice, customerEmail } = req.body;
         if (!bookingId || !managerStripeAccountId || !bookingPrice || !customerEmail) {
@@ -28165,7 +22021,7 @@ var init_bookings = __esm({
         if (!pool) {
           return res.status(500).json({ error: "Database connection not available" });
         }
-        const [booking] = await db.select({ id: kitchenBookings.id, kitchenId: kitchenBookings.kitchenId }).from(kitchenBookings).where(eq32(kitchenBookings.id, bookingId)).limit(1);
+        const [booking] = await db.select({ id: kitchenBookings.id, kitchenId: kitchenBookings.kitchenId }).from(kitchenBookings).where(eq29(kitchenBookings.id, bookingId)).limit(1);
         if (!booking) {
           return res.status(404).json({ error: "Booking not found" });
         }
@@ -28204,7 +22060,7 @@ var init_bookings = __esm({
         });
       }
     });
-    router18.get("/chef/storage-bookings", requireChef, async (req, res) => {
+    router14.get("/chef/storage-bookings", requireChef, async (req, res) => {
       try {
         const storageBookings2 = await bookingService.getStorageBookingsByChef(req.neonUser.id);
         res.json(storageBookings2);
@@ -28213,7 +22069,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch storage bookings" });
       }
     });
-    router18.get("/chef/equipment-bookings", requireChef, async (req, res) => {
+    router14.get("/chef/equipment-bookings", requireChef, async (req, res) => {
       try {
         const equipmentBookings2 = await bookingService.getEquipmentBookingsByChef(req.neonUser.id);
         res.json(equipmentBookings2);
@@ -28222,7 +22078,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch equipment bookings" });
       }
     });
-    router18.get("/chef/storage-bookings/expiring", requireChef, async (req, res) => {
+    router14.get("/chef/storage-bookings/expiring", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const daysAhead = parseInt(req.query.days) || 3;
@@ -28252,7 +22108,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch expiring storage bookings" });
       }
     });
-    router18.get("/chef/storage-bookings/:id", requireChef, async (req, res) => {
+    router14.get("/chef/storage-bookings/:id", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -28271,7 +22127,94 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch storage booking" });
       }
     });
-    router18.post("/detect-overstays", async (req, res) => {
+    router14.put("/chef/storage-bookings/:id/cancel", requireChef, async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const { reason } = req.body || {};
+        if (isNaN(id) || id <= 0) {
+          return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+        const { storageBookings: storageBookings2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const rows = await db.select({
+          id: storageBookings2.id,
+          status: storageBookings2.status,
+          chefId: storageBookings2.chefId,
+          storageListingId: storageBookings2.storageListingId,
+          paymentStatus: storageBookings2.paymentStatus,
+          paymentIntentId: storageBookings2.paymentIntentId,
+          startDate: storageBookings2.startDate,
+          endDate: storageBookings2.endDate,
+          locationId: locations.id,
+          locationName: locations.name,
+          managerId: locations.managerId,
+          notificationEmail: locations.notificationEmail,
+          storageName: storageListings.name
+        }).from(storageBookings2).innerJoin(storageListings, eq29(storageBookings2.storageListingId, storageListings.id)).innerJoin(kitchens, eq29(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq29(kitchens.locationId, locations.id)).where(
+          and17(
+            eq29(storageBookings2.id, id),
+            eq29(storageBookings2.chefId, req.neonUser.id)
+          )
+        ).limit(1);
+        if (rows.length === 0) {
+          return res.status(404).json({ error: "Storage booking not found" });
+        }
+        const booking = rows[0];
+        if (booking.status === "cancelled") {
+          return res.status(400).json({ error: "Storage booking is already cancelled" });
+        }
+        if (booking.status === "cancellation_requested") {
+          return res.status(400).json({ error: "A cancellation request is already pending for this storage booking" });
+        }
+        if (booking.status === "completed") {
+          return res.status(400).json({ error: "Cannot cancel a completed storage booking" });
+        }
+        if (booking.status === "pending" || booking.paymentStatus === "authorized") {
+          if (booking.paymentIntentId && booking.paymentStatus === "authorized") {
+            try {
+              const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+              await cancelPaymentIntent2(booking.paymentIntentId);
+              logger.info(`[Cancel Storage] Voided authorization for storage booking ${id} (PI: ${booking.paymentIntentId})`);
+              await db.update(storageBookings2).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq29(storageBookings2.id, id));
+            } catch (voidError) {
+              logger.error(`[Cancel Storage] Error voiding auth for storage booking ${id}:`, voidError);
+            }
+          }
+          await db.update(storageBookings2).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(eq29(storageBookings2.id, id));
+          sendStorageCancellationNotification(booking, id, "cancelled").catch(
+            (err) => logger.error(`[Cancel Storage] Notification error for storage booking ${id}:`, err)
+          );
+          return res.json({ success: true, action: "cancelled", message: "Storage booking cancelled successfully." });
+        }
+        if (booking.status === "confirmed" && (booking.paymentStatus === "paid" || booking.paymentStatus === "partially_refunded")) {
+          await db.update(storageBookings2).set({
+            status: "cancellation_requested",
+            cancellationRequestedAt: /* @__PURE__ */ new Date(),
+            cancellationRequestReason: reason || null,
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(eq29(storageBookings2.id, id));
+          syncStorageItemStatusInKitchenBooking(id, "cancellation_requested").catch(
+            (err) => logger.error(`[Cancel Storage] JSONB sync error for storage booking ${id}:`, err)
+          );
+          sendStorageCancellationNotification(booking, id, "cancellation_requested").catch(
+            (err) => logger.error(`[Cancel Storage] Notification error for storage booking ${id}:`, err)
+          );
+          return res.json({
+            success: true,
+            action: "cancellation_requested",
+            message: "Your cancellation request has been submitted to the kitchen manager for review."
+          });
+        }
+        await db.update(storageBookings2).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(eq29(storageBookings2.id, id));
+        sendStorageCancellationNotification(booking, id, "cancelled").catch(
+          (err) => logger.error(`[Cancel Storage] Notification error for storage booking ${id}:`, err)
+        );
+        res.json({ success: true, action: "cancelled", message: "Storage booking cancelled." });
+      } catch (error) {
+        console.error("Error cancelling storage booking:", error);
+        res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel storage booking" });
+      }
+    });
+    router14.post("/detect-overstays", async (req, res) => {
       try {
         const cronSecret = process.env.CRON_SECRET;
         const authHeader = req.headers.authorization;
@@ -28315,10 +22258,13 @@ var init_bookings = __esm({
           errors: checkoutAutoClearResults.errors
         };
         console.log("[Cron] Storage checkout auto-clear complete:", checkoutAutoClearSummary);
+        console.log("[Cron] Task 5: Auto-accepting expired cancellation requests...");
+        const cancellationAutoAcceptResults = await processExpiredCancellationRequests();
+        console.log("[Cron] Cancellation request auto-accept complete:", cancellationAutoAcceptResults);
         console.log("[Cron] All daily scheduled tasks complete");
         res.json({
           success: true,
-          message: `Daily tasks complete: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed, ${authExpiryResults.length} expired authorizations cancelled, ${checkoutAutoClearResults.cleared} checkout reviews auto-cleared`,
+          message: `Daily tasks complete: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed, ${authExpiryResults.length} expired authorizations cancelled, ${checkoutAutoClearResults.cleared} checkout reviews auto-cleared, ${cancellationAutoAcceptResults.accepted} cancellation requests auto-accepted`,
           overstays: {
             summary: overstaySummary,
             results: overstayResults.map((r) => ({
@@ -28346,6 +22292,9 @@ var init_bookings = __esm({
           },
           checkoutAutoClear: {
             summary: checkoutAutoClearSummary
+          },
+          cancellationAutoAccept: {
+            summary: cancellationAutoAcceptResults
           }
         });
       } catch (error) {
@@ -28354,7 +22303,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: errorMessage });
       }
     });
-    router18.post("/admin/storage-bookings/process-overstayer-penalties", async (req, res) => {
+    router14.post("/admin/storage-bookings/process-overstayer-penalties", async (req, res) => {
       try {
         console.warn("[DEPRECATED] Old penalty endpoint called - use /detect-overstays instead");
         const results = await overstayPenaltyService.detectOverstays();
@@ -28370,7 +22319,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to process overstayer penalties" });
       }
     });
-    router18.post("/chef/storage-bookings/:id/extension-preview", requireChef, async (req, res) => {
+    router14.post("/chef/storage-bookings/:id/extension-preview", requireChef, requireNoUnpaidPenalties, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -28389,6 +22338,23 @@ var init_bookings = __esm({
         }
         if (booking.status === "cancelled") {
           return res.status(400).json({ error: "Cannot extend a cancelled booking" });
+        }
+        if (booking.status === "completed") {
+          return res.status(400).json({ error: "Cannot extend a completed booking. Storage has already been cleared." });
+        }
+        {
+          const { storageOverstayRecords: storageOverstayRecords2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+          const [activeOverstay] = await db.select({ id: storageOverstayRecords2.id, status: storageOverstayRecords2.status }).from(storageOverstayRecords2).where(and17(
+            eq29(storageOverstayRecords2.storageBookingId, id),
+            inArray7(storageOverstayRecords2.status, ["detected", "grace_period", "pending_review", "penalty_approved", "charge_pending", "charge_failed", "escalated"])
+          )).limit(1);
+          if (activeOverstay) {
+            return res.status(400).json({
+              error: "Cannot extend this booking. There is an active overstay penalty that must be resolved first.",
+              code: "ACTIVE_OVERSTAY",
+              overstayStatus: activeOverstay.status
+            });
+          }
         }
         const newEndDateObj = new Date(newEndDate);
         if (isNaN(newEndDateObj.getTime())) {
@@ -28437,7 +22403,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to calculate extension preview" });
       }
     });
-    router18.post("/chef/storage-bookings/:id/extension-checkout", requireChef, requireNoUnpaidPenalties, async (req, res) => {
+    router14.post("/chef/storage-bookings/:id/extension-checkout", requireChef, requireNoUnpaidPenalties, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -28456,6 +22422,23 @@ var init_bookings = __esm({
         }
         if (booking.status === "cancelled") {
           return res.status(400).json({ error: "Cannot extend a cancelled booking" });
+        }
+        if (booking.status === "completed") {
+          return res.status(400).json({ error: "Cannot extend a completed booking. Storage has already been cleared." });
+        }
+        {
+          const { storageOverstayRecords: storageOverstayRecords2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+          const [activeOverstay] = await db.select({ id: storageOverstayRecords2.id, status: storageOverstayRecords2.status }).from(storageOverstayRecords2).where(and17(
+            eq29(storageOverstayRecords2.storageBookingId, id),
+            inArray7(storageOverstayRecords2.status, ["detected", "grace_period", "pending_review", "penalty_approved", "charge_pending", "charge_failed", "escalated"])
+          )).limit(1);
+          if (activeOverstay) {
+            return res.status(400).json({
+              error: "Cannot extend this booking. There is an active overstay penalty that must be resolved first.",
+              code: "ACTIVE_OVERSTAY",
+              overstayStatus: activeOverstay.status
+            });
+          }
         }
         const newEndDateObj = new Date(newEndDate);
         if (isNaN(newEndDateObj.getTime())) {
@@ -28561,7 +22544,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create storage extension checkout" });
       }
     });
-    router18.get("/chef/storage-extensions/pending", requireChef, async (req, res) => {
+    router14.get("/chef/storage-extensions/pending", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const { pendingStorageExtensions: pendingStorageExtensions2, storageBookings: storageBookings2, storageListings: storageListings3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
@@ -28583,7 +22566,7 @@ var init_bookings = __esm({
           storageName: storageListings3.name,
           storageType: storageListings3.storageType,
           kitchenName: kitchens.name
-        }).from(pendingStorageExtensions2).innerJoin(storageBookings2, eq32(pendingStorageExtensions2.storageBookingId, storageBookings2.id)).innerJoin(storageListings3, eq32(storageBookings2.storageListingId, storageListings3.id)).innerJoin(kitchens, eq32(storageListings3.kitchenId, kitchens.id)).where(eq32(storageBookings2.chefId, chefId)).orderBy(desc17(pendingStorageExtensions2.createdAt));
+        }).from(pendingStorageExtensions2).innerJoin(storageBookings2, eq29(pendingStorageExtensions2.storageBookingId, storageBookings2.id)).innerJoin(storageListings3, eq29(storageBookings2.storageListingId, storageListings3.id)).innerJoin(kitchens, eq29(storageListings3.kitchenId, kitchens.id)).where(eq29(storageBookings2.chefId, chefId)).orderBy(desc14(pendingStorageExtensions2.createdAt));
         const { lazyExpireStorageExtensionAuth: lazyExpireStorageExtensionAuth2 } = await Promise.resolve().then(() => (init_auth_expiry_service(), auth_expiry_service_exports));
         for (const ext of extensions) {
           if (ext.status === "authorized") {
@@ -28605,7 +22588,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch pending extensions" });
       }
     });
-    router18.post("/storage-extensions/:id/sync", requireChef, async (req, res) => {
+    router14.post("/storage-extensions/:id/sync", requireChef, async (req, res) => {
       try {
         const extensionId = parseInt(req.params.id);
         const chefId = req.neonUser.id;
@@ -28619,7 +22602,7 @@ var init_bookings = __esm({
           stripeSessionId: pendingStorageExtensions2.stripeSessionId,
           status: pendingStorageExtensions2.status,
           chefId: storageBookings2.chefId
-        }).from(pendingStorageExtensions2).innerJoin(storageBookings2, eq32(pendingStorageExtensions2.storageBookingId, storageBookings2.id)).where(eq32(pendingStorageExtensions2.id, extensionId)).limit(1);
+        }).from(pendingStorageExtensions2).innerJoin(storageBookings2, eq29(pendingStorageExtensions2.storageBookingId, storageBookings2.id)).where(eq29(pendingStorageExtensions2.id, extensionId)).limit(1);
         if (!extension) {
           return res.status(404).json({ error: "Extension not found" });
         }
@@ -28652,7 +22635,7 @@ var init_bookings = __esm({
             status: "paid",
             stripePaymentIntentId: paymentIntentId,
             updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq32(pendingStorageExtensions2.id, extensionId));
+          }).where(eq29(pendingStorageExtensions2.id, extensionId));
           console.log(`[Storage Extension Sync] Updated extension ${extensionId} to 'paid' status`);
           return res.json({
             success: true,
@@ -28663,7 +22646,7 @@ var init_bookings = __esm({
           await db.update(pendingStorageExtensions2).set({
             status: "expired",
             updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq32(pendingStorageExtensions2.id, extensionId));
+          }).where(eq29(pendingStorageExtensions2.id, extensionId));
           return res.json({
             success: true,
             message: "Session expired",
@@ -28680,7 +22663,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to sync extension" });
       }
     });
-    router18.put("/chef/storage-bookings/:id/extend", requireChef, async (req, res) => {
+    router14.put("/chef/storage-bookings/:id/extend", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -28731,7 +22714,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to extend storage booking" });
       }
     });
-    router18.post("/chef/storage-bookings/:id/request-checkout", requireChef, async (req, res) => {
+    router14.post("/chef/storage-bookings/:id/request-checkout", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -28760,7 +22743,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to request checkout" });
       }
     });
-    router18.post("/chef/storage-bookings/:id/checkout-photos", requireChef, async (req, res) => {
+    router14.post("/chef/storage-bookings/:id/checkout-photos", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -28786,7 +22769,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to add checkout photos" });
       }
     });
-    router18.get("/chef/storage-bookings/:id/checkout-status", requireChef, async (req, res) => {
+    router14.get("/chef/storage-bookings/:id/checkout-status", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -28810,7 +22793,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to get checkout status" });
       }
     });
-    router18.get("/chef/bookings/:id", requireChef, async (req, res) => {
+    router14.get("/chef/bookings/:id", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -28837,7 +22820,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch booking details" });
       }
     });
-    router18.get("/chef/bookings/:id/details", requireChef, async (req, res) => {
+    router14.get("/chef/bookings/:id/details", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -28859,7 +22842,7 @@ var init_bookings = __esm({
             name: locations.name,
             address: locations.address,
             timezone: locations.timezone
-          }).from(locations).where(eq32(locations.id, locationId)).limit(1);
+          }).from(locations).where(eq29(locations.id, locationId)).limit(1);
           if (locationData) {
             location = locationData;
           }
@@ -28914,7 +22897,7 @@ var init_bookings = __esm({
               storageType: storageListings.storageType,
               photos: storageListings.photos,
               basePrice: storageListings.basePrice
-            }).from(storageListings).where(eq32(storageListings.id, sb.storageListingId)).limit(1);
+            }).from(storageListings).where(eq29(storageListings.id, sb.storageListingId)).limit(1);
             const originalDates = originalStorageDates[sb.id];
             let originalPrice = sb.totalPrice;
             let displayStartDate = sb.startDate;
@@ -28940,7 +22923,7 @@ var init_bookings = __esm({
             const [listing] = await db.select({
               equipmentType: equipmentListings.equipmentType,
               brand: equipmentListings.brand
-            }).from(equipmentListings).where(eq32(equipmentListings.id, eb.equipmentListingId)).limit(1);
+            }).from(equipmentListings).where(eq29(equipmentListings.id, eb.equipmentListingId)).limit(1);
             return {
               ...eb,
               equipmentListing: listing || null
@@ -28955,13 +22938,17 @@ var init_bookings = __esm({
             managerRevenue: paymentTransactions.managerRevenue,
             status: paymentTransactions.status,
             stripeProcessingFee: paymentTransactions.stripeProcessingFee,
-            paidAt: paymentTransactions.paidAt
+            paidAt: paymentTransactions.paidAt,
+            refundAmount: paymentTransactions.refundAmount,
+            netAmount: paymentTransactions.netAmount,
+            refundedAt: paymentTransactions.refundedAt,
+            refundReason: paymentTransactions.refundReason
           }).from(paymentTransactions).where(
-            and20(
-              eq32(paymentTransactions.bookingId, id),
-              or6(
-                eq32(paymentTransactions.bookingType, "kitchen"),
-                eq32(paymentTransactions.bookingType, "bundle")
+            and17(
+              eq29(paymentTransactions.bookingId, id),
+              or4(
+                eq29(paymentTransactions.bookingType, "kitchen"),
+                eq29(paymentTransactions.bookingType, "bundle")
               )
             )
           ).limit(1);
@@ -28971,7 +22958,11 @@ var init_bookings = __esm({
               amount: txn.amount ? parseFloat(txn.amount) : null,
               serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
               managerRevenue: txn.managerRevenue ? parseFloat(txn.managerRevenue) : null,
-              stripeProcessingFee: txn.stripeProcessingFee ? parseFloat(txn.stripeProcessingFee) : null
+              stripeProcessingFee: txn.stripeProcessingFee ? parseFloat(txn.stripeProcessingFee) : null,
+              refundAmount: txn.refundAmount ? parseFloat(txn.refundAmount) : 0,
+              netAmount: txn.netAmount ? parseFloat(txn.netAmount) : null,
+              refundedAt: txn.refundedAt || null,
+              refundReason: txn.refundReason || null
             };
           }
         } catch (err) {
@@ -29003,7 +22994,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch booking details" });
       }
     });
-    router18.get("/bookings/:id/invoice", requireChef, async (req, res) => {
+    router14.get("/bookings/:id/invoice", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -29039,7 +23030,7 @@ var init_bookings = __esm({
         let location = null;
         if (kitchen && kitchen.locationId) {
           const locationId = kitchen.locationId || kitchen.location_id;
-          const [locationData] = await db.select({ id: locations.id, name: locations.name, address: locations.address }).from(locations).where(eq32(locations.id, locationId)).limit(1);
+          const [locationData] = await db.select({ id: locations.id, name: locations.name, address: locations.address }).from(locations).where(eq29(locations.id, locationId)).limit(1);
           if (locationData) {
             location = locationData;
           }
@@ -29103,7 +23094,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to generate invoice" });
       }
     });
-    router18.get("/chef/invoices/storage/:id", requireChef, async (req, res) => {
+    router14.get("/chef/invoices/storage/:id", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -29130,7 +23121,7 @@ var init_bookings = __esm({
         let locationName = "";
         let locationAddress = "";
         if (kitchen?.locationId) {
-          const [loc] = await db.select({ name: locations.name, address: locations.address }).from(locations).where(eq32(locations.id, kitchen.locationId)).limit(1);
+          const [loc] = await db.select({ name: locations.name, address: locations.address }).from(locations).where(eq29(locations.id, kitchen.locationId)).limit(1);
           if (loc) {
             locationName = loc.name || "";
             locationAddress = loc.address || "";
@@ -29194,9 +23185,10 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to generate storage invoice" });
       }
     });
-    router18.put("/chef/bookings/:id/cancel", requireChef, async (req, res) => {
+    router14.put("/chef/bookings/:id/cancel", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
+        const { reason } = req.body || {};
         if (!pool) {
           return res.status(500).json({ error: "Database not available" });
         }
@@ -29205,149 +23197,88 @@ var init_bookings = __esm({
           bookingDate: kitchenBookings.bookingDate,
           startTime: kitchenBookings.startTime,
           endTime: kitchenBookings.endTime,
+          status: kitchenBookings.status,
           kitchenId: kitchenBookings.kitchenId,
           chefId: kitchenBookings.chefId,
           paymentIntentId: kitchenBookings.paymentIntentId,
           paymentStatus: kitchenBookings.paymentStatus,
           cancellationPolicyHours: locations.cancellationPolicyHours,
-          cancellationPolicyMessage: locations.cancellationPolicyMessage
-        }).from(kitchenBookings).innerJoin(kitchens, eq32(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq32(kitchens.locationId, locations.id)).where(
-          and20(
-            eq32(kitchenBookings.id, id),
-            eq32(kitchenBookings.chefId, req.neonUser.id)
+          cancellationPolicyMessage: locations.cancellationPolicyMessage,
+          locationId: locations.id,
+          locationName: locations.name,
+          managerId: locations.managerId,
+          notificationEmail: locations.notificationEmail
+        }).from(kitchenBookings).innerJoin(kitchens, eq29(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq29(kitchens.locationId, locations.id)).where(
+          and17(
+            eq29(kitchenBookings.id, id),
+            eq29(kitchenBookings.chefId, req.neonUser.id)
           )
         ).limit(1);
         if (rows.length === 0) {
           return res.status(404).json({ error: "Booking not found" });
         }
         const booking = rows[0];
+        if (booking.status === "cancelled") {
+          return res.status(400).json({ error: "Booking is already cancelled" });
+        }
+        if (booking.status === "cancellation_requested") {
+          return res.status(400).json({ error: "A cancellation request is already pending for this booking" });
+        }
+        if (booking.status === "completed") {
+          return res.status(400).json({ error: "Cannot cancel a completed booking" });
+        }
         const bookingDateTime = /* @__PURE__ */ new Date(`${booking.bookingDate?.toISOString().split("T")[0]}T${booking.startTime}`);
         const now = /* @__PURE__ */ new Date();
         const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1e3 * 60 * 60);
         const cancellationHours = booking.cancellationPolicyHours || 24;
-        if (booking.paymentIntentId && hoursUntilBooking >= cancellationHours && booking.paymentStatus === "paid") {
-          try {
-            const { createRefund: createRefund2, getPaymentIntent: getPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-            const paymentIntent = await getPaymentIntent2(booking.paymentIntentId);
-            if (paymentIntent && (paymentIntent.status === "succeeded" || paymentIntent.status === "processing")) {
-              const refund = await createRefund2(booking.paymentIntentId, void 0, "requested_by_customer");
-              logger.info(`[Cancel Booking] Created refund for booking ${id} (PaymentIntent: ${booking.paymentIntentId}, Refund: ${refund.id})`);
-              await db.update(kitchenBookings).set({ paymentStatus: "refunded" }).where(eq32(kitchenBookings.id, id));
-            }
-          } catch (error) {
-            console.error(`[Cancel Booking] Error creating refund for booking ${id}:`, error);
-          }
+        if (hoursUntilBooking < cancellationHours) {
+          const policyMessage = (booking.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.").replace("{hours}", String(cancellationHours));
+          return res.status(400).json({ error: policyMessage });
         }
-        await bookingService.cancelBooking(id, req.neonUser.id, true);
-        try {
-          const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
-          if (!kitchen) {
-            console.warn(`\u26A0\uFE0F Kitchen ${booking.kitchenId} not found for email notification`);
-          } else {
-            const kitchenLocationId = kitchen.locationId || kitchen.location_id;
-            if (!kitchenLocationId) {
-              console.warn(`\u26A0\uFE0F Kitchen ${booking.kitchenId} has no locationId`);
-            } else if (!pool) {
-              console.warn(`\u26A0\uFE0F Database pool not available for email notification`);
-            } else {
-              const [location] = await db.select({ id: locations.id, name: locations.name, managerId: locations.managerId, notificationEmail: locations.notificationEmail }).from(locations).where(eq32(locations.id, kitchenLocationId));
-              if (!location) {
-                logger.warn(`\u26A0\uFE0F Location ${kitchenLocationId} not found for email notification`);
-              } else {
-                const chef = await userService.getUser(booking.chefId);
-                if (!chef) {
-                  console.warn(`\u26A0\uFE0F Chef ${booking.chefId} not found for email notification`);
-                } else {
-                  const managerId = location.managerId;
-                  let manager = null;
-                  if (managerId) {
-                    const [managerResult] = await db.select({ id: users.id, username: users.username }).from(users).where(eq32(users.id, managerId));
-                    if (managerResult) {
-                      manager = managerResult;
-                    }
-                  }
-                  const chefPhone = await getChefPhone(booking.chefId, pool);
-                  const { sendEmail: sendEmail2, generateBookingCancellationEmail: generateBookingCancellationEmail3, generateBookingCancellationNotificationEmail: generateBookingCancellationNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
-                  try {
-                    const chefEmail = generateBookingCancellationEmail3({
-                      chefEmail: chef.username || "",
-                      chefName: chef.username || "Chef",
-                      kitchenName: kitchen.name || "Kitchen",
-                      bookingDate: booking.bookingDate?.toISOString() || "",
-                      startTime: booking.startTime,
-                      endTime: booking.endTime,
-                      cancellationReason: "You cancelled this booking"
-                    });
-                    await sendEmail2(chefEmail);
-                    logger.info(`\u2705 Booking cancellation email sent to chef: ${chef.username}`);
-                  } catch (emailError) {
-                    logger.error("Error sending chef cancellation email:", emailError);
-                  }
-                  if (chefPhone) {
-                    try {
-                      const smsMessage = generateChefSelfCancellationSMS({
-                        kitchenName: kitchen.name || "Kitchen",
-                        bookingDate: booking.bookingDate?.toISOString() || "",
-                        startTime: booking.startTime,
-                        endTime: booking.endTime || ""
-                      });
-                      await sendSMS(chefPhone, smsMessage, { trackingId: `booking_${id}_chef_self_cancelled` });
-                      console.log(`\u2705 Booking cancellation SMS sent to chef: ${chefPhone}`);
-                    } catch (smsError) {
-                      console.error("Error sending chef cancellation SMS:", smsError);
-                    }
-                  }
-                  const notificationEmailAddress = location.notificationEmail || (manager ? manager.username || null : null);
-                  if (notificationEmailAddress) {
-                    try {
-                      const managerEmail = generateBookingCancellationNotificationEmail3({
-                        managerEmail: notificationEmailAddress,
-                        chefName: chef.username || "Chef",
-                        kitchenName: kitchen.name || "Kitchen",
-                        bookingDate: booking.bookingDate?.toISOString() || "",
-                        startTime: booking.startTime,
-                        endTime: booking.endTime,
-                        cancellationReason: "Cancelled by chef"
-                      });
-                      await sendEmail2(managerEmail);
-                      console.log(`\u2705 Booking cancellation notification email sent to manager: ${notificationEmailAddress}`);
-                    } catch (emailError) {
-                      console.error("Error sending manager cancellation email:", emailError);
-                      console.error("Manager email error details:", emailError instanceof Error ? emailError.message : emailError);
-                    }
-                  } else {
-                    console.warn(`\u26A0\uFE0F No notification email found for location ${kitchenLocationId}`);
-                  }
-                  try {
-                    const managerPhone = await getManagerPhone(location, managerId, pool);
-                    if (managerPhone) {
-                      const smsMessage = generateManagerBookingCancellationSMS({
-                        chefName: chef.username || "Chef",
-                        kitchenName: kitchen.name || "Kitchen",
-                        bookingDate: booking.bookingDate?.toISOString() || "",
-                        startTime: booking.startTime,
-                        endTime: booking.endTime
-                      });
-                      await sendSMS(managerPhone, smsMessage, { trackingId: `booking_${id}_manager_cancelled` });
-                      console.log(`\u2705 Booking cancellation SMS sent to manager: ${managerPhone}`);
-                    }
-                  } catch (smsError) {
-                    console.error("Error sending manager cancellation SMS:", smsError);
-                  }
-                }
-              }
+        if (booking.status === "pending" || booking.paymentStatus === "authorized") {
+          if (booking.paymentIntentId && booking.paymentStatus === "authorized") {
+            try {
+              const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+              await cancelPaymentIntent2(booking.paymentIntentId);
+              logger.info(`[Cancel Booking] Voided authorization for booking ${id} (PI: ${booking.paymentIntentId})`);
+              await db.update(kitchenBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq29(kitchenBookings.id, id));
+            } catch (voidError) {
+              logger.error(`[Cancel Booking] Error voiding auth for booking ${id}:`, voidError);
             }
           }
-        } catch (emailError) {
-          console.error("Error sending booking cancellation emails:", emailError);
+          await db.update(kitchenBookings).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(eq29(kitchenBookings.id, id));
+          sendCancellationNotifications(booking, id, "cancelled").catch(
+            (err) => logger.error(`[Cancel Booking] Notification error for booking ${id}:`, err)
+          );
+          return res.json({ success: true, action: "cancelled", message: "Booking cancelled successfully." });
         }
-        res.json({ success: true });
+        if (booking.status === "confirmed" && (booking.paymentStatus === "paid" || booking.paymentStatus === "partially_refunded")) {
+          await db.update(kitchenBookings).set({
+            status: "cancellation_requested",
+            cancellationRequestedAt: /* @__PURE__ */ new Date(),
+            cancellationRequestReason: reason || null,
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(eq29(kitchenBookings.id, id));
+          sendCancellationNotifications(booking, id, "cancellation_requested").catch(
+            (err) => logger.error(`[Cancel Booking] Notification error for booking ${id}:`, err)
+          );
+          return res.json({
+            success: true,
+            action: "cancellation_requested",
+            message: "Your cancellation request has been submitted to the kitchen manager for review."
+          });
+        }
+        await db.update(kitchenBookings).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(eq29(kitchenBookings.id, id));
+        sendCancellationNotifications(booking, id, "cancelled").catch(
+          (err) => logger.error(`[Cancel Booking] Notification error for booking ${id}:`, err)
+        );
+        res.json({ success: true, action: "cancelled", message: "Booking cancelled." });
       } catch (error) {
         console.error("Error cancelling booking:", error);
         res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel booking" });
       }
     });
-    router18.post("/payments/create-intent", requireChef, async (req, res) => {
+    router14.post("/payments/create-intent", requireChef, async (req, res) => {
       try {
         const { kitchenId, bookingDate, startTime, endTime, selectedStorage, selectedEquipmentIds, expectedAmountCents } = req.body;
         const chefId = req.neonUser.id;
@@ -29404,7 +23335,7 @@ var init_bookings = __esm({
           const rows = await db.select({
             stripeConnectAccountId: users.stripeConnectAccountId,
             taxRatePercent: kitchens.taxRatePercent
-          }).from(kitchens).leftJoin(locations, eq32(kitchens.locationId, locations.id)).leftJoin(users, eq32(locations.managerId, users.id)).where(eq32(kitchens.id, kitchenId)).limit(1);
+          }).from(kitchens).leftJoin(locations, eq29(kitchens.locationId, locations.id)).leftJoin(users, eq29(locations.managerId, users.id)).where(eq29(kitchens.id, kitchenId)).limit(1);
           if (rows.length > 0) {
             if (rows[0].stripeConnectAccountId) {
               managerConnectAccountId = rows[0].stripeConnectAccountId;
@@ -29477,7 +23408,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create payment intent" });
       }
     });
-    router18.post("/payments/confirm", requireChef, async (req, res) => {
+    router14.post("/payments/confirm", requireChef, async (req, res) => {
       try {
         const { paymentIntentId, paymentMethodId } = req.body;
         const chefId = req.neonUser.id;
@@ -29502,7 +23433,7 @@ var init_bookings = __esm({
         });
       }
     });
-    router18.get("/payments/intent/:id/status", requireChef, async (req, res) => {
+    router14.get("/payments/intent/:id/status", requireChef, async (req, res) => {
       try {
         const { id } = req.params;
         const chefId = req.neonUser.id;
@@ -29523,13 +23454,13 @@ var init_bookings = __esm({
         });
       }
     });
-    router18.post("/payments/capture", requireChef, async (req, res) => {
+    router14.post("/payments/capture", requireChef, async (req, res) => {
       res.status(410).json({
         error: "This endpoint is deprecated. Payments are now automatically captured when confirmed.",
         message: "With automatic capture enabled, payments are processed immediately. No manual capture is needed."
       });
     });
-    router18.post("/payments/cancel", requireChef, async (req, res) => {
+    router14.post("/payments/cancel", requireChef, async (req, res) => {
       try {
         const { paymentIntentId } = req.body;
         const chefId = req.neonUser.id;
@@ -29562,7 +23493,7 @@ var init_bookings = __esm({
         });
       }
     });
-    router18.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, async (req, res) => {
+    router14.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, async (req, res) => {
       try {
         const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorage, selectedEquipmentIds } = req.body;
         const chefId = req.neonUser.id;
@@ -29747,7 +23678,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create booking checkout" });
       }
     });
-    router18.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req, res) => {
+    router14.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req, res) => {
       try {
         const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser.id;
@@ -29901,7 +23832,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create booking" });
       }
     });
-    router18.get("/chef/bookings/by-session/:sessionId", requireChef, async (req, res) => {
+    router14.get("/chef/bookings/by-session/:sessionId", requireChef, async (req, res) => {
       try {
         const { sessionId } = req.params;
         const chefId = req.neonUser.id;
@@ -29935,7 +23866,7 @@ var init_bookings = __esm({
           return res.status(404).json({ error: "Payment intent not found for session" });
         }
         console.log(`[by-session] Looking for booking with paymentIntentId=${paymentIntentId}, chefId=${chefId}`);
-        const [bookingByIntent] = await db.select().from(kitchenBookings).where(eq32(kitchenBookings.paymentIntentId, paymentIntentId)).limit(1);
+        const [bookingByIntent] = await db.select().from(kitchenBookings).where(eq29(kitchenBookings.paymentIntentId, paymentIntentId)).limit(1);
         let booking = bookingByIntent;
         if (bookingByIntent) {
           console.log(`[by-session] Found booking ${bookingByIntent.id} with chef_id=${bookingByIntent.chefId}, requested chefId=${chefId}`);
@@ -29943,7 +23874,7 @@ var init_bookings = __esm({
             console.log(`[by-session] Chef mismatch - booking belongs to chef ${bookingByIntent.chefId}, not ${chefId}`);
             return res.status(403).json({ error: "This booking does not belong to you" });
           }
-          const [kitchen2] = await db.select({ name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq32(kitchens.id, bookingByIntent.kitchenId)).limit(1);
+          const [kitchen2] = await db.select({ name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq29(kitchens.id, bookingByIntent.kitchenId)).limit(1);
           const bookingAge = Date.now() - new Date(bookingByIntent.createdAt).getTime();
           const FIVE_MINUTES = 5 * 60 * 1e3;
           if (bookingAge < FIVE_MINUTES && kitchen2?.locationId) {
@@ -29954,13 +23885,13 @@ var init_bookings = __esm({
                 managerId: locations.managerId,
                 notificationEmail: locations.notificationEmail,
                 timezone: locations.timezone
-              }).from(locations).where(eq32(locations.id, kitchen2.locationId)).limit(1);
+              }).from(locations).where(eq29(locations.id, kitchen2.locationId)).limit(1);
               if (location && location.managerId) {
-                const [chef] = await db.select({ username: users.username }).from(users).where(eq32(users.id, chefId)).limit(1);
+                const [chef] = await db.select({ username: users.username }).from(users).where(eq29(users.id, chefId)).limit(1);
                 const chefName = chef?.username || "Chef";
                 let managerEmailAddress = location.notificationEmail;
                 if (!managerEmailAddress) {
-                  const [manager] = await db.select({ username: users.username }).from(users).where(eq32(users.id, location.managerId)).limit(1);
+                  const [manager] = await db.select({ username: users.username }).from(users).where(eq29(users.id, location.managerId)).limit(1);
                   managerEmailAddress = manager?.username;
                 }
                 if (managerEmailAddress) {
@@ -30064,9 +23995,9 @@ var init_bookings = __esm({
           console.log(`[Fallback] Created booking ${newBooking.id} from session ${sessionId}`);
           try {
             const { createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-            const [kitchen2] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq32(kitchens.id, kitchenIdFromMeta)).limit(1);
+            const [kitchen2] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq29(kitchens.id, kitchenIdFromMeta)).limit(1);
             if (kitchen2) {
-              const [location] = await db.select({ managerId: locations.managerId }).from(locations).where(eq32(locations.id, kitchen2.locationId)).limit(1);
+              const [location] = await db.select({ managerId: locations.managerId }).from(locations).where(eq29(locations.id, kitchen2.locationId)).limit(1);
               if (location && location.managerId) {
                 const chargeId = session.payment_intent && typeof session.payment_intent === "object" ? typeof session.payment_intent.latest_charge === "string" ? session.payment_intent.latest_charge : session.payment_intent.latest_charge?.id : void 0;
                 await createPaymentTransaction2({
@@ -30095,20 +24026,20 @@ var init_bookings = __esm({
             console.warn(`[Fallback] Could not create payment_transactions:`, ptError);
           }
           try {
-            const [kitchen2] = await db.select({ name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq32(kitchens.id, kitchenIdFromMeta)).limit(1);
+            const [kitchen2] = await db.select({ name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq29(kitchens.id, kitchenIdFromMeta)).limit(1);
             if (kitchen2) {
               const [location] = await db.select({
                 name: locations.name,
                 managerId: locations.managerId,
                 notificationEmail: locations.notificationEmail,
                 timezone: locations.timezone
-              }).from(locations).where(eq32(locations.id, kitchen2.locationId)).limit(1);
+              }).from(locations).where(eq29(locations.id, kitchen2.locationId)).limit(1);
               if (location && location.managerId) {
-                const [chef] = await db.select({ username: users.username }).from(users).where(eq32(users.id, chefIdFromMeta)).limit(1);
+                const [chef] = await db.select({ username: users.username }).from(users).where(eq29(users.id, chefIdFromMeta)).limit(1);
                 const chefName = chef?.username || "Chef";
                 let managerEmailAddress = location.notificationEmail;
                 if (!managerEmailAddress) {
-                  const [manager] = await db.select({ username: users.username }).from(users).where(eq32(users.id, location.managerId)).limit(1);
+                  const [manager] = await db.select({ username: users.username }).from(users).where(eq29(users.id, location.managerId)).limit(1);
                   managerEmailAddress = manager?.username;
                 }
                 if (managerEmailAddress) {
@@ -30144,7 +24075,7 @@ var init_bookings = __esm({
           } catch (notifyError) {
             console.error(`[Fallback] Error sending notifications:`, notifyError);
           }
-          [booking] = await db.select().from(kitchenBookings).where(eq32(kitchenBookings.id, newBooking.id)).limit(1);
+          [booking] = await db.select().from(kitchenBookings).where(eq29(kitchenBookings.id, newBooking.id)).limit(1);
         }
         if (!booking) {
           console.error(`[by-session] CRITICAL: No booking created for session ${sessionId}`, {
@@ -30162,7 +24093,7 @@ var init_bookings = __esm({
             }
           });
         }
-        const [kitchen] = await db.select({ name: kitchens.name }).from(kitchens).where(eq32(kitchens.id, booking.kitchenId)).limit(1);
+        const [kitchen] = await db.select({ name: kitchens.name }).from(kitchens).where(eq29(kitchens.id, booking.kitchenId)).limit(1);
         res.json({
           ...booking,
           kitchenName: kitchen?.name || "Kitchen"
@@ -30172,7 +24103,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch booking" });
       }
     });
-    router18.get("/chef/bookings", requireChef, async (req, res) => {
+    router14.get("/chef/bookings", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         console.log(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
@@ -30201,7 +24132,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch bookings" });
       }
     });
-    router18.get("/chef/outstanding-dues", requireChef, async (req, res) => {
+    router14.get("/chef/outstanding-dues", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const { getChefUnpaidPenalties: getChefUnpaidPenalties2 } = await Promise.resolve().then(() => (init_overstay_penalty_service(), overstay_penalty_service_exports));
@@ -30243,7 +24174,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch outstanding dues" });
       }
     });
-    router18.get("/chef/overstay-penalties", requireChef, async (req, res) => {
+    router14.get("/chef/overstay-penalties", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const { getChefAllPenalties: getChefAllPenalties2 } = await Promise.resolve().then(() => (init_overstay_penalty_service(), overstay_penalty_service_exports));
@@ -30254,7 +24185,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch overstay penalties" });
       }
     });
-    router18.post("/chef/overstay-penalties/:id/pay", requireChef, async (req, res) => {
+    router14.post("/chef/overstay-penalties/:id/pay", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const overstayRecordId = parseInt(req.params.id);
@@ -30278,7 +24209,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to create payment session" });
       }
     });
-    router18.get("/chef/damage-claims", requireChef, async (req, res) => {
+    router14.get("/chef/damage-claims", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const claims = await damageClaimService.getChefPendingClaims(chefId);
@@ -30288,7 +24219,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch damage claims" });
       }
     });
-    router18.post("/chef/damage-claims/:id/pay", requireChef, async (req, res) => {
+    router14.post("/chef/damage-claims/:id/pay", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const claimId = parseInt(req.params.id);
@@ -30312,7 +24243,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to create payment session" });
       }
     });
-    router18.get("/chef/damage-claims/:id/invoice", requireChef, async (req, res) => {
+    router14.get("/chef/damage-claims/:id/invoice", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const claimId = parseInt(req.params.id);
@@ -30338,7 +24269,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to download invoice" });
       }
     });
-    router18.get("/chef/damage-claims/:id", requireChef, async (req, res) => {
+    router14.get("/chef/damage-claims/:id", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const claimId = parseInt(req.params.id);
@@ -30359,7 +24290,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch damage claim" });
       }
     });
-    router18.post("/chef/damage-claims/:id/respond", requireChef, async (req, res) => {
+    router14.post("/chef/damage-claims/:id/respond", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const claimId = parseInt(req.params.id);
@@ -30389,7 +24320,6765 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to respond to damage claim" });
       }
     });
-    bookings_default = router18;
+    bookings_default = router14;
+  }
+});
+
+// server/services/payment-transactions-backfill.ts
+var payment_transactions_backfill_exports = {};
+__export(payment_transactions_backfill_exports, {
+  backfillPaymentTransactionsFromBookings: () => backfillPaymentTransactionsFromBookings
+});
+import { sql as sql12 } from "drizzle-orm";
+async function backfillPaymentTransactionsFromBookings(managerId, db2, options) {
+  const limit = options?.limit || 100;
+  const result = {
+    created: 0,
+    skipped: 0,
+    errors: []
+  };
+  try {
+    const kitchenBookingsResult = await db2.execute(sql12`
+      SELECT 
+        kb.id,
+        kb.chef_id,
+        kb.total_price,
+        kb.service_fee,
+        kb.payment_intent_id,
+        kb.payment_status,
+        kb.currency,
+        l.manager_id,
+        k.tax_rate_percent
+      FROM kitchen_bookings kb
+      JOIN kitchens k ON kb.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id AND pt.booking_type = 'kitchen'
+      WHERE l.manager_id = ${managerId}
+        AND kb.payment_status IN ('paid', 'processing')
+        AND kb.payment_intent_id IS NOT NULL
+        AND pt.id IS NULL
+      ORDER BY kb.created_at DESC
+      LIMIT ${limit}
+    `);
+    console.log(`[Backfill] Found ${kitchenBookingsResult.rows.length} kitchen bookings to backfill`);
+    for (const booking of kitchenBookingsResult.rows) {
+      try {
+        const totalPrice = parseInt(booking.total_price || "0");
+        const serviceFee = parseInt(booking.service_fee || "0");
+        const baseAmount = totalPrice - serviceFee;
+        const managerRevenue = baseAmount;
+        await createPaymentTransaction({
+          bookingId: booking.id,
+          bookingType: "kitchen",
+          chefId: booking.chef_id,
+          managerId: booking.manager_id,
+          amount: totalPrice,
+          baseAmount,
+          serviceFee,
+          managerRevenue,
+          currency: booking.currency || "CAD",
+          paymentIntentId: booking.payment_intent_id,
+          status: booking.payment_status === "paid" ? "succeeded" : "processing",
+          metadata: {
+            backfilled: true,
+            backfilledAt: (/* @__PURE__ */ new Date()).toISOString(),
+            taxRatePercent: booking.tax_rate_percent
+          }
+        }, db2);
+        result.created++;
+      } catch (error) {
+        console.error(`[Backfill] Error creating payment_transaction for kitchen booking ${booking.id}:`, error);
+        result.errors.push({
+          bookingId: booking.id,
+          bookingType: "kitchen",
+          error: error.message || "Unknown error"
+        });
+      }
+    }
+    const storageBookingsResult = await db2.execute(sql12`
+      SELECT 
+        sb.id,
+        sb.chef_id,
+        sb.total_price,
+        sb.service_fee,
+        sb.payment_intent_id,
+        sb.payment_status,
+        sb.currency,
+        l.manager_id
+      FROM storage_bookings sb
+      JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+      JOIN kitchens k ON sl.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      LEFT JOIN payment_transactions pt ON pt.booking_id = sb.id AND pt.booking_type = 'storage'
+      WHERE l.manager_id = ${managerId}
+        AND sb.payment_status IN ('paid', 'processing')
+        AND sb.payment_intent_id IS NOT NULL
+        AND pt.id IS NULL
+      ORDER BY sb.created_at DESC
+      LIMIT ${limit}
+    `);
+    console.log(`[Backfill] Found ${storageBookingsResult.rows.length} storage bookings to backfill`);
+    for (const booking of storageBookingsResult.rows) {
+      try {
+        const totalPrice = parseInt(booking.total_price || "0");
+        const serviceFee = parseInt(booking.service_fee || "0");
+        const baseAmount = totalPrice - serviceFee;
+        const managerRevenue = baseAmount;
+        await createPaymentTransaction({
+          bookingId: booking.id,
+          bookingType: "storage",
+          chefId: booking.chef_id,
+          managerId: booking.manager_id,
+          amount: totalPrice,
+          baseAmount,
+          serviceFee,
+          managerRevenue,
+          currency: booking.currency || "CAD",
+          paymentIntentId: booking.payment_intent_id,
+          status: booking.payment_status === "paid" ? "succeeded" : "processing",
+          metadata: {
+            backfilled: true,
+            backfilledAt: (/* @__PURE__ */ new Date()).toISOString()
+          }
+        }, db2);
+        result.created++;
+      } catch (error) {
+        console.error(`[Backfill] Error creating payment_transaction for storage booking ${booking.id}:`, error);
+        result.errors.push({
+          bookingId: booking.id,
+          bookingType: "storage",
+          error: error.message || "Unknown error"
+        });
+      }
+    }
+    const equipmentBookingsResult = await db2.execute(sql12`
+      SELECT 
+        eb.id,
+        eb.chef_id,
+        eb.total_price,
+        eb.service_fee,
+        eb.payment_intent_id,
+        eb.payment_status,
+        eb.currency,
+        l.manager_id
+      FROM equipment_bookings eb
+      JOIN equipment_listings el ON eb.equipment_listing_id = el.id
+      JOIN kitchens k ON el.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      LEFT JOIN payment_transactions pt ON pt.booking_id = eb.id AND pt.booking_type = 'equipment'
+      WHERE l.manager_id = ${managerId}
+        AND eb.payment_status IN ('paid', 'processing')
+        AND eb.payment_intent_id IS NOT NULL
+        AND pt.id IS NULL
+      ORDER BY eb.created_at DESC
+      LIMIT ${limit}
+    `);
+    console.log(`[Backfill] Found ${equipmentBookingsResult.rows.length} equipment bookings to backfill`);
+    for (const booking of equipmentBookingsResult.rows) {
+      try {
+        const totalPrice = parseInt(booking.total_price || "0");
+        const serviceFee = parseInt(booking.service_fee || "0");
+        const baseAmount = totalPrice - serviceFee;
+        const managerRevenue = baseAmount;
+        await createPaymentTransaction({
+          bookingId: booking.id,
+          bookingType: "equipment",
+          chefId: booking.chef_id,
+          managerId: booking.manager_id,
+          amount: totalPrice,
+          baseAmount,
+          serviceFee,
+          managerRevenue,
+          currency: booking.currency || "CAD",
+          paymentIntentId: booking.payment_intent_id,
+          status: booking.payment_status === "paid" ? "succeeded" : "processing",
+          metadata: {
+            backfilled: true,
+            backfilledAt: (/* @__PURE__ */ new Date()).toISOString()
+          }
+        }, db2);
+        result.created++;
+      } catch (error) {
+        console.error(`[Backfill] Error creating payment_transaction for equipment booking ${booking.id}:`, error);
+        result.errors.push({
+          bookingId: booking.id,
+          bookingType: "equipment",
+          error: error.message || "Unknown error"
+        });
+      }
+    }
+    console.log(`[Backfill] Complete: ${result.created} created, ${result.errors.length} errors`);
+    return result;
+  } catch (error) {
+    console.error("[Backfill] Error backfilling payment transactions:", error);
+    throw error;
+  }
+}
+var init_payment_transactions_backfill = __esm({
+  "server/services/payment-transactions-backfill.ts"() {
+    "use strict";
+    init_payment_transactions_service();
+  }
+});
+
+// server/services/payout-statement-service.ts
+var payout_statement_service_exports = {};
+__export(payout_statement_service_exports, {
+  generatePayoutStatementPDF: () => generatePayoutStatementPDF
+});
+import PDFDocument2 from "pdfkit";
+async function generatePayoutStatementPDF(managerId, managerName, managerEmail, payout, balanceTransactions, bookings) {
+  let totalEarnings = 0;
+  let totalPlatformFees = 0;
+  const totalBookings = bookings.length;
+  let serviceFeeRate = 0.05;
+  try {
+    const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
+    serviceFeeRate = await getServiceFeeRate2();
+  } catch (error) {
+    console.error("Error getting service fee rate for payout statement:", error);
+  }
+  bookings.forEach((booking) => {
+    const totalPrice = (booking.totalPrice || booking.total_price || 0) / 100;
+    const serviceFee = (booking.serviceFee || booking.service_fee || 0) / 100;
+    const managerRevenue = totalPrice * (1 - serviceFeeRate);
+    totalEarnings += managerRevenue;
+    totalPlatformFees += serviceFee;
+  });
+  const payoutAmount = payout.amount / 100;
+  const payoutDate = new Date(payout.created * 1e3);
+  const payoutStatus = payout.status;
+  const periodStart = bookings.length > 0 ? new Date(Math.min(...bookings.map((b) => new Date(b.booking_date || b.created_at).getTime()))) : payoutDate;
+  const periodEnd = payoutDate;
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument2({
+        margin: 50,
+        size: "LETTER"
+      });
+      const buffers = [];
+      doc.on("data", buffers.push.bind(buffers));
+      doc.on("end", () => {
+        const pdfBuffer = Buffer.concat(buffers);
+        resolve(pdfBuffer);
+      });
+      doc.on("error", reject);
+      doc.fontSize(28).font("Helvetica-Bold").text("PAYOUT STATEMENT", 50, 50);
+      doc.fontSize(10).font("Helvetica");
+      const statementDate = (/* @__PURE__ */ new Date()).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+      });
+      const statementNumber = `PS-${payout.id.substring(3)}-${payoutDate.getFullYear()}`;
+      const pageWidth = doc.page.width;
+      const rightMargin = pageWidth - 50;
+      const labelWidth = 100;
+      const valueStartX = rightMargin - 200;
+      let rightY = 50;
+      doc.fontSize(10).font("Helvetica-Bold");
+      doc.text("Statement #:", valueStartX, rightY, { width: labelWidth, align: "right" });
+      doc.font("Helvetica");
+      doc.text(statementNumber, valueStartX + labelWidth + 5, rightY);
+      rightY += 15;
+      doc.font("Helvetica-Bold");
+      doc.text("Date:", valueStartX, rightY, { width: labelWidth, align: "right" });
+      doc.font("Helvetica");
+      doc.text(statementDate, valueStartX + labelWidth + 5, rightY);
+      rightY += 15;
+      doc.font("Helvetica-Bold");
+      doc.text("Payout ID:", valueStartX, rightY, { width: labelWidth, align: "right" });
+      doc.font("Helvetica");
+      const payoutIdDisplay = payout.id.length > 20 ? payout.id.substring(0, 20) + "..." : payout.id;
+      doc.text(payoutIdDisplay, valueStartX + labelWidth + 5, rightY);
+      rightY += 15;
+      doc.font("Helvetica-Bold");
+      doc.text("Status:", valueStartX, rightY, { width: labelWidth, align: "right" });
+      doc.font("Helvetica");
+      doc.text(payoutStatus.charAt(0).toUpperCase() + payoutStatus.slice(1), valueStartX + labelWidth + 5, rightY);
+      rightY += 15;
+      doc.font("Helvetica-Bold");
+      doc.text("Payout Date:", valueStartX, rightY, { width: labelWidth, align: "right" });
+      doc.font("Helvetica");
+      doc.text(payoutDate.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+      }), valueStartX + labelWidth + 5, rightY);
+      let leftY = 120;
+      doc.fontSize(14).font("Helvetica-Bold").text("Local Cooks Community", 50, leftY);
+      leftY += 18;
+      doc.fontSize(10).font("Helvetica").text("support@localcooks.ca", 50, leftY);
+      leftY += 30;
+      doc.fontSize(12).font("Helvetica-Bold").text("Pay To:", 50, leftY);
+      leftY += 18;
+      doc.fontSize(10).font("Helvetica");
+      doc.text(managerName || "Manager", 50, leftY);
+      leftY += 15;
+      if (managerEmail) {
+        doc.text(managerEmail, 50, leftY);
+        leftY += 15;
+      }
+      leftY += 20;
+      doc.fontSize(12).font("Helvetica-Bold").text("Period:", 50, leftY);
+      leftY += 18;
+      doc.fontSize(10).font("Helvetica");
+      doc.text(
+        `${periodStart.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} - ${periodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`,
+        50,
+        leftY
+      );
+      leftY += 40;
+      doc.fontSize(14).font("Helvetica-Bold").text("Summary", 50, leftY);
+      leftY += 25;
+      const summaryItems = [
+        { label: "Total Bookings", value: totalBookings.toString() },
+        { label: "Total Revenue", value: `$${totalEarnings.toFixed(2)}` },
+        { label: "Platform Fees", value: `-$${totalPlatformFees.toFixed(2)}` },
+        { label: "Net Earnings", value: `$${totalEarnings.toFixed(2)}` },
+        { label: "Payout Amount", value: `$${payoutAmount.toFixed(2)}` }
+      ];
+      summaryItems.forEach((item) => {
+        doc.fontSize(10).font("Helvetica");
+        doc.text(item.label + ":", 50, leftY, { width: 200 });
+        doc.font("Helvetica-Bold");
+        doc.text(item.value, 250, leftY);
+        leftY += 20;
+      });
+      if (bookings.length > 0) {
+        leftY += 20;
+        doc.fontSize(14).font("Helvetica-Bold").text("Booking Details", 50, leftY);
+        leftY += 25;
+        doc.fontSize(9).font("Helvetica-Bold");
+        doc.text("Date", 50, leftY);
+        doc.text("Kitchen", 120, leftY);
+        doc.text("Chef", 250, leftY);
+        doc.text("Amount", 350, leftY, { width: 100, align: "right" });
+        leftY += 15;
+        doc.moveTo(50, leftY).lineTo(550, leftY).stroke();
+        leftY += 10;
+        doc.fontSize(8).font("Helvetica");
+        bookings.slice(0, 30).forEach((booking) => {
+          if (leftY > 700) {
+            doc.addPage();
+            leftY = 50;
+          }
+          const bookingDateRaw = booking.bookingDate || booking.booking_date || booking.createdAt || booking.created_at;
+          const bookingDate = new Date(bookingDateRaw);
+          const dateStr = bookingDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          const kitchenName = (booking.kitchenName || booking.kitchen_name || "Kitchen").substring(0, 20);
+          const chefName = (booking.chefName || booking.chef_name || "Guest").substring(0, 20);
+          const amount = (booking.totalPrice || booking.total_price || 0) / 100 * (1 - serviceFeeRate);
+          doc.text(dateStr, 50, leftY);
+          doc.text(kitchenName, 120, leftY, { width: 120 });
+          doc.text(chefName, 250, leftY, { width: 90 });
+          doc.text(`$${amount.toFixed(2)}`, 350, leftY, { width: 100, align: "right" });
+          leftY += 15;
+        });
+        if (bookings.length > 30) {
+          leftY += 5;
+          doc.fontSize(8).font("Helvetica").text(`... and ${bookings.length - 30} more bookings`, 50, leftY);
+        }
+      }
+      const footerY = doc.page.height - 100;
+      doc.fontSize(8).font("Helvetica");
+      doc.text(
+        "This is an automated payout statement from Local Cooks Community.",
+        50,
+        footerY,
+        { align: "center", width: doc.page.width - 100 }
+      );
+      doc.text(
+        "For questions, contact support@localcooks.ca",
+        50,
+        footerY + 15,
+        { align: "center", width: doc.page.width - 100 }
+      );
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+var init_payout_statement_service = __esm({
+  "server/services/payout-statement-service.ts"() {
+    "use strict";
+  }
+});
+
+// server/routes/manager.ts
+var manager_exports = {};
+__export(manager_exports, {
+  default: () => manager_default
+});
+import { Router as Router15 } from "express";
+import {
+  eq as eq30,
+  inArray as inArray8,
+  and as and18,
+  desc as desc15,
+  ne as ne4,
+  sql as sql13,
+  or as or5,
+  gte as gte3,
+  lte as lte3
+} from "drizzle-orm";
+import { format as format5 } from "date-fns";
+async function getManagerIdForBooking(bookingId, bookingType, db2) {
+  if (bookingType === "kitchen" || bookingType === "bundle") {
+    const [row] = await db2.select({ managerId: locations.managerId }).from(kitchenBookings).innerJoin(kitchens, eq30(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).where(eq30(kitchenBookings.id, bookingId)).limit(1);
+    return row?.managerId ?? null;
+  }
+  if (bookingType === "storage") {
+    const [row] = await db2.select({ managerId: locations.managerId }).from(storageBookings).innerJoin(
+      storageListings,
+      eq30(storageBookings.storageListingId, storageListings.id)
+    ).innerJoin(kitchens, eq30(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).where(eq30(storageBookings.id, bookingId)).limit(1);
+    return row?.managerId ?? null;
+  }
+  if (bookingType === "equipment") {
+    const [row] = await db2.select({ managerId: locations.managerId }).from(equipmentBookings).innerJoin(
+      equipmentListings,
+      eq30(equipmentBookings.equipmentListingId, equipmentListings.id)
+    ).innerJoin(kitchens, eq30(equipmentListings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).where(eq30(equipmentBookings.id, bookingId)).limit(1);
+    return row?.managerId ?? null;
+  }
+  return null;
+}
+var router15, manager_default;
+var init_manager = __esm({
+  "server/routes/manager.ts"() {
+    "use strict";
+    init_db();
+    init_firebase_auth_middleware();
+    init_schema();
+    init_user_service();
+    init_email();
+    init_sms();
+    init_phone_utils();
+    init_timezone_utils();
+    init_logger();
+    init_api_response();
+    init_notification_service();
+    init_config();
+    init_schema();
+    init_booking_service();
+    init_kitchen_service();
+    init_location_service();
+    init_chef_service();
+    init_manager_service();
+    init_schema();
+    init_overstay_penalty_service();
+    init_damage_claim_service();
+    init_damage_claim_limits_service();
+    router15 = Router15();
+    router15.get(
+      "/revenue/overview",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const { startDate, endDate, locationId } = req.query;
+          const metrics = await managerService.getRevenueOverview(managerId, {
+            startDate,
+            endDate,
+            locationId: locationId ? parseInt(locationId) : void 0
+          });
+          res.json(metrics);
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/revenue/invoices",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const result = await managerService.getInvoices(
+            managerId,
+            req.query
+          );
+          res.json(result);
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/revenue/invoices/:bookingId",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const bookingId = parseInt(req.params.bookingId);
+          if (isNaN(bookingId) || bookingId <= 0) {
+            return res.status(400).json({ error: "Invalid booking ID" });
+          }
+          const [booking] = await db.select({
+            id: kitchenBookings.id,
+            chefId: kitchenBookings.chefId,
+            kitchenId: kitchenBookings.kitchenId,
+            bookingDate: kitchenBookings.bookingDate,
+            startTime: kitchenBookings.startTime,
+            endTime: kitchenBookings.endTime,
+            status: kitchenBookings.status,
+            totalPrice: kitchenBookings.totalPrice,
+            hourlyRate: kitchenBookings.hourlyRate,
+            durationHours: kitchenBookings.durationHours,
+            serviceFee: kitchenBookings.serviceFee,
+            paymentStatus: kitchenBookings.paymentStatus,
+            paymentIntentId: kitchenBookings.paymentIntentId,
+            currency: kitchenBookings.currency,
+            createdAt: kitchenBookings.createdAt,
+            updatedAt: kitchenBookings.updatedAt,
+            kitchenName: kitchens.name,
+            kitchenTaxRatePercent: kitchens.taxRatePercent,
+            locationName: locations.name,
+            managerId: locations.managerId
+          }).from(kitchenBookings).innerJoin(kitchens, eq30(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).where(eq30(kitchenBookings.id, bookingId)).limit(1);
+          if (!booking) {
+            return res.status(404).json({ error: "Booking not found" });
+          }
+          if (booking.managerId !== managerId) {
+            return res.status(403).json({ error: "Access denied to this booking" });
+          }
+          if (booking.paymentStatus === "authorized" || booking.paymentStatus === "pending") {
+            return res.status(400).json({
+              error: "Invoice not available yet. Payment must be captured before an invoice can be generated."
+            });
+          }
+          if (booking.status === "cancelled" && !booking.paymentIntentId && !booking.totalPrice) {
+            return res.status(400).json({
+              error: "Invoice cannot be downloaded for cancelled bookings without payment information"
+            });
+          }
+          let chef = null;
+          if (booking.chefId) {
+            const chefResult = await db.execute(sql13`
+                SELECT u.id, u.username, cka.full_name
+                FROM users u
+                LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
+                WHERE u.id = ${booking.chefId}
+                LIMIT 1
+            `);
+            const chefRows = chefResult.rows || chefResult;
+            if (Array.isArray(chefRows) && chefRows.length > 0) {
+              chef = chefRows[0];
+            }
+          }
+          const allStorageRows = await db.select({
+            id: storageBookings.id,
+            kitchenBookingId: storageBookings.kitchenBookingId,
+            storageListingId: storageBookings.storageListingId,
+            startDate: storageBookings.startDate,
+            endDate: storageBookings.endDate,
+            status: storageBookings.status,
+            paymentStatus: storageBookings.paymentStatus,
+            totalPrice: storageBookings.totalPrice,
+            storageName: storageListings.name,
+            storageType: storageListings.storageType,
+            listingBasePrice: storageListings.basePrice
+            // Daily rate in cents
+          }).from(storageBookings).innerJoin(
+            storageListings,
+            eq30(storageBookings.storageListingId, storageListings.id)
+          ).where(eq30(storageBookings.kitchenBookingId, bookingId));
+          const storageRows = allStorageRows.filter((sr) => sr.paymentStatus !== "failed" && sr.status !== "cancelled");
+          const allEquipmentRows = await db.select({
+            id: equipmentBookings.id,
+            kitchenBookingId: equipmentBookings.kitchenBookingId,
+            equipmentListingId: equipmentBookings.equipmentListingId,
+            status: equipmentBookings.status,
+            paymentStatus: equipmentBookings.paymentStatus,
+            totalPrice: equipmentBookings.totalPrice,
+            equipmentType: equipmentListings.equipmentType,
+            brand: equipmentListings.brand
+          }).from(equipmentBookings).innerJoin(
+            equipmentListings,
+            eq30(equipmentBookings.equipmentListingId, equipmentListings.id)
+          ).where(eq30(equipmentBookings.kitchenBookingId, bookingId));
+          const equipmentRows = allEquipmentRows.filter((er) => er.paymentStatus !== "failed" && er.status !== "cancelled");
+          const originalStorageDates = {};
+          if (booking.paymentIntentId) {
+            try {
+              const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+              const kitchenTransaction = await findPaymentTransactionByIntentId2(
+                booking.paymentIntentId,
+                db
+              );
+              if (kitchenTransaction?.metadata) {
+                const metadata = typeof kitchenTransaction.metadata === "string" ? JSON.parse(kitchenTransaction.metadata) : kitchenTransaction.metadata;
+                if (metadata?.storage_items) {
+                  const storageItems = Array.isArray(metadata.storage_items) ? metadata.storage_items : JSON.parse(metadata.storage_items);
+                  for (const item of storageItems) {
+                    if (item.storageListingId || item.id) {
+                      const storageId = item.storageBookingId || item.id;
+                      const startDate = new Date(item.startDate);
+                      const endDate = new Date(item.endDate);
+                      const days = Math.max(
+                        1,
+                        Math.ceil(
+                          (endDate.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24)
+                        )
+                      );
+                      originalStorageDates[storageId] = {
+                        startDate,
+                        endDate,
+                        days
+                      };
+                    }
+                  }
+                }
+              }
+            } catch {
+              console.log(
+                "[Invoice] Could not fetch original storage dates from transaction, using current dates"
+              );
+            }
+          }
+          const storageRowsForInvoice = storageRows.map((sr) => {
+            const originalDates = originalStorageDates[sr.id];
+            if (originalDates) {
+              return {
+                ...sr,
+                startDate: originalDates.startDate,
+                endDate: originalDates.endDate,
+                // Calculate base price from original days × daily rate
+                totalPrice: (sr.listingBasePrice || 0) * originalDates.days,
+                _originalDays: originalDates.days
+              };
+            } else {
+              console.warn(
+                `[Invoice] No original storage dates found in payment metadata for storage booking ${sr.id}, using current dates (may include extensions)`
+              );
+            }
+            return sr;
+          });
+          const { generateInvoicePDF: generateInvoicePDF2 } = await Promise.resolve().then(() => (init_invoice_service(), invoice_service_exports));
+          const pdfBuffer = await generateInvoicePDF2(
+            booking,
+            chef,
+            {
+              name: booking.kitchenName,
+              taxRatePercent: booking.kitchenTaxRatePercent
+            },
+            { name: booking.locationName },
+            storageRowsForInvoice,
+            equipmentRows,
+            booking.paymentIntentId,
+            { viewer: "manager" }
+          );
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="invoice-${bookingId}.pdf"`
+          );
+          res.send(pdfBuffer);
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/revenue/invoices/storage/:storageBookingId",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const storageBookingId = parseInt(req.params.storageBookingId);
+          if (isNaN(storageBookingId) || storageBookingId <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+          }
+          const [storageBooking] = await db.select({
+            id: storageBookings.id,
+            kitchenBookingId: storageBookings.kitchenBookingId,
+            storageListingId: storageBookings.storageListingId,
+            startDate: storageBookings.startDate,
+            endDate: storageBookings.endDate,
+            status: storageBookings.status,
+            totalPrice: storageBookings.totalPrice,
+            paymentStatus: storageBookings.paymentStatus,
+            paymentIntentId: storageBookings.paymentIntentId,
+            chefId: storageBookings.chefId,
+            storageName: storageListings.name,
+            storageType: storageListings.storageType,
+            kitchenId: storageListings.kitchenId,
+            kitchenName: kitchens.name,
+            locationName: locations.name,
+            locationId: locations.id,
+            taxRatePercent: kitchens.taxRatePercent
+          }).from(storageBookings).innerJoin(
+            storageListings,
+            eq30(storageBookings.storageListingId, storageListings.id)
+          ).innerJoin(kitchens, eq30(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).where(eq30(storageBookings.id, storageBookingId)).limit(1);
+          if (!storageBooking) {
+            return res.status(404).json({ error: "Storage booking not found" });
+          }
+          const managerOwnsLocation = await db.select({ id: locations.id }).from(locations).where(
+            and18(
+              eq30(locations.id, storageBooking.locationId),
+              eq30(locations.managerId, managerId)
+            )
+          ).limit(1);
+          if (managerOwnsLocation.length === 0) {
+            return res.status(403).json({ error: "Access denied to this storage booking" });
+          }
+          const [transaction] = await db.select({
+            id: paymentTransactions.id,
+            amount: paymentTransactions.amount,
+            baseAmount: paymentTransactions.baseAmount,
+            paymentIntentId: paymentTransactions.paymentIntentId,
+            paidAt: paymentTransactions.paidAt,
+            createdAt: paymentTransactions.createdAt,
+            metadata: paymentTransactions.metadata,
+            stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+            managerRevenue: paymentTransactions.managerRevenue
+          }).from(paymentTransactions).where(
+            and18(
+              eq30(paymentTransactions.bookingId, storageBookingId),
+              eq30(paymentTransactions.bookingType, "storage"),
+              eq30(paymentTransactions.status, "succeeded")
+            )
+          ).orderBy(desc15(paymentTransactions.createdAt)).limit(1);
+          let extensionDetails = null;
+          const metadata = transaction?.metadata;
+          if (metadata?.storage_extension_id) {
+            const extensionId = parseInt(String(metadata.storage_extension_id));
+            if (!isNaN(extensionId)) {
+              const extensionResult = await db.execute(sql13`
+                    SELECT 
+                        pse.id,
+                        pse.extension_days,
+                        pse.extension_base_price_cents,
+                        pse.extension_total_price_cents,
+                        pse.new_end_date,
+                        sl.name as storage_name,
+                        sl.base_price as daily_rate_cents,
+                        sl.storage_type::text as storage_type
+                    FROM pending_storage_extensions pse
+                    JOIN storage_bookings sb ON pse.storage_booking_id = sb.id
+                    JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+                    WHERE pse.id = ${extensionId}
+                    LIMIT 1
+                `);
+              const extensionRows = extensionResult.rows || extensionResult;
+              if (Array.isArray(extensionRows) && extensionRows.length > 0) {
+                extensionDetails = extensionRows[0];
+              }
+            }
+          }
+          let chef = null;
+          if (storageBooking.chefId) {
+            const chefResult = await db.execute(sql13`
+                SELECT u.id, u.username, cka.full_name
+                FROM users u
+                LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
+                WHERE u.id = ${storageBooking.chefId}
+                LIMIT 1
+            `);
+            const chefRows = chefResult.rows || chefResult;
+            if (Array.isArray(chefRows) && chefRows.length > 0) {
+              chef = chefRows[0];
+            }
+          }
+          const { generateStorageInvoicePDF: generateStorageInvoicePDF2 } = await Promise.resolve().then(() => (init_invoice_service(), invoice_service_exports));
+          const pdfBuffer = await generateStorageInvoicePDF2(
+            transaction || {
+              amount: storageBooking.totalPrice,
+              baseAmount: storageBooking.totalPrice
+            },
+            storageBooking,
+            chef,
+            extensionDetails,
+            { viewer: "manager" }
+          );
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="storage-invoice-${storageBookingId}.pdf"`
+          );
+          res.send(pdfBuffer);
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/revenue/invoices/overstay/:overstayRecordId",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const overstayRecordId = parseInt(req.params.overstayRecordId);
+          if (isNaN(overstayRecordId) || overstayRecordId <= 0) {
+            return res.status(400).json({ error: "Invalid overstay record ID" });
+          }
+          const {
+            storageOverstayRecords: storageOverstayRecords2,
+            storageBookings: storageBookings2,
+            storageListings: storageListings3,
+            kitchens: kitchens3,
+            locations: locations5
+          } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+          const [overstayRecord] = await db.select({
+            id: storageOverstayRecords2.id,
+            storageBookingId: storageOverstayRecords2.storageBookingId,
+            finalPenaltyCents: storageOverstayRecords2.finalPenaltyCents,
+            calculatedPenaltyCents: storageOverstayRecords2.calculatedPenaltyCents,
+            daysOverdue: storageOverstayRecords2.daysOverdue,
+            chargeSucceededAt: storageOverstayRecords2.chargeSucceededAt,
+            stripePaymentIntentId: storageOverstayRecords2.stripePaymentIntentId,
+            stripeChargeId: storageOverstayRecords2.stripeChargeId
+          }).from(storageOverstayRecords2).where(eq30(storageOverstayRecords2.id, overstayRecordId)).limit(1);
+          if (!overstayRecord) {
+            return res.status(404).json({ error: "Overstay record not found" });
+          }
+          const [storageBooking] = await db.select({
+            id: storageBookings2.id,
+            chefId: storageBookings2.chefId,
+            startDate: storageBookings2.startDate,
+            endDate: storageBookings2.endDate,
+            storageListingId: storageBookings2.storageListingId
+          }).from(storageBookings2).where(eq30(storageBookings2.id, overstayRecord.storageBookingId)).limit(1);
+          if (!storageBooking) {
+            return res.status(404).json({ error: "Storage booking not found" });
+          }
+          const [listing] = await db.select({
+            id: storageListings3.id,
+            name: storageListings3.name,
+            storageType: storageListings3.storageType,
+            kitchenId: storageListings3.kitchenId
+          }).from(storageListings3).where(eq30(storageListings3.id, storageBooking.storageListingId)).limit(1);
+          if (!listing) {
+            return res.status(404).json({ error: "Storage listing not found" });
+          }
+          const [kitchen] = await db.select({
+            id: kitchens3.id,
+            name: kitchens3.name,
+            locationId: kitchens3.locationId,
+            taxRatePercent: kitchens3.taxRatePercent
+          }).from(kitchens3).where(eq30(kitchens3.id, listing.kitchenId)).limit(1);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+          }
+          const [location] = await db.select({
+            id: locations5.id,
+            managerId: locations5.managerId,
+            name: locations5.name
+          }).from(locations5).where(
+            and18(
+              eq30(locations5.id, kitchen.locationId),
+              eq30(locations5.managerId, managerId)
+            )
+          ).limit(1);
+          if (!location) {
+            return res.status(403).json({ error: "Access denied to this overstay record" });
+          }
+          const [transaction] = await db.select({
+            id: paymentTransactions.id,
+            amount: paymentTransactions.amount,
+            baseAmount: paymentTransactions.baseAmount,
+            paymentIntentId: paymentTransactions.paymentIntentId,
+            paidAt: paymentTransactions.paidAt,
+            createdAt: paymentTransactions.createdAt,
+            metadata: paymentTransactions.metadata,
+            stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+            managerRevenue: paymentTransactions.managerRevenue
+          }).from(paymentTransactions).where(
+            and18(
+              eq30(paymentTransactions.bookingId, overstayRecord.storageBookingId),
+              eq30(paymentTransactions.bookingType, "storage"),
+              eq30(paymentTransactions.status, "succeeded")
+            )
+          ).orderBy(desc15(paymentTransactions.createdAt)).limit(1);
+          const metadata = transaction?.metadata;
+          if (!metadata || metadata.type !== "overstay_penalty") {
+            return res.status(404).json({
+              error: "No payment transaction found for this overstay penalty"
+            });
+          }
+          let chef = null;
+          if (storageBooking.chefId) {
+            const chefResult = await db.execute(sql13`
+                SELECT u.id, u.username, cka.full_name
+                FROM users u
+                LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
+                WHERE u.id = ${storageBooking.chefId}
+                LIMIT 1
+            `);
+            const chefRows = chefResult.rows || chefResult;
+            if (Array.isArray(chefRows) && chefRows.length > 0) {
+              chef = chefRows[0];
+            }
+          }
+          const taxRatePercent = parseFloat(String(metadata.tax_rate_percent || "0")) || 0;
+          const penaltyBaseCents = parseInt(String(metadata.penalty_base_cents || "0")) || 0;
+          const penaltyTaxCents = parseInt(String(metadata.penalty_tax_cents || "0")) || 0;
+          const baseAmount = penaltyBaseCents || parseInt(String(transaction?.baseAmount || "0"));
+          const totalAmount = parseInt(String(transaction?.amount || "0"));
+          const displayTaxAmount = penaltyTaxCents || totalAmount - baseAmount;
+          const { generateStorageInvoicePDF: generateStorageInvoicePDF2 } = await Promise.resolve().then(() => (init_invoice_service(), invoice_service_exports));
+          const overstayDetails = {
+            is_overstay_penalty: true,
+            days_overdue: overstayRecord.daysOverdue,
+            penalty_base_cents: baseAmount,
+            penalty_total_cents: totalAmount,
+            penalty_tax_cents: displayTaxAmount,
+            tax_rate_percent: taxRatePercent
+          };
+          const pdfBuffer = await generateStorageInvoicePDF2(
+            transaction || {
+              amount: totalAmount || overstayRecord.finalPenaltyCents,
+              baseAmount,
+              paidAt: overstayRecord.chargeSucceededAt
+            },
+            {
+              id: storageBooking.id,
+              kitchenName: kitchen.name,
+              locationName: location.name,
+              storageName: listing.name,
+              taxRatePercent
+            },
+            chef,
+            overstayDetails,
+            { viewer: "manager" }
+          );
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="overstay-invoice-${overstayRecordId}.pdf"`
+          );
+          res.send(pdfBuffer);
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/revenue/by-location",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const { startDate, endDate } = req.query;
+          const { getRevenueByLocation: getRevenueByLocation2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
+          const result = await getRevenueByLocation2(
+            managerId,
+            db,
+            startDate,
+            endDate
+          );
+          res.json(result);
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/revenue/charts",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const { startDate, endDate, period } = req.query;
+          console.log("[Revenue Charts] Request params:", {
+            managerId,
+            startDate,
+            endDate,
+            period
+          });
+          let data;
+          try {
+            const { getRevenueByDateFromTransactions: getRevenueByDateFromTransactions2 } = await Promise.resolve().then(() => (init_revenue_service_v2(), revenue_service_v2_exports));
+            data = await getRevenueByDateFromTransactions2(
+              managerId,
+              db,
+              startDate,
+              endDate
+            );
+            if (!data || data.length === 0) {
+              console.log(
+                "[Revenue Charts] payment_transactions empty, falling back to booking tables"
+              );
+              const { getRevenueByDate: getRevenueByDate2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
+              data = await getRevenueByDate2(
+                managerId,
+                db,
+                startDate,
+                endDate
+              );
+            } else {
+              console.log(
+                "[Revenue Charts] Using payment_transactions data (Stripe source)"
+              );
+            }
+          } catch (v2Error) {
+            console.warn(
+              "[Revenue Charts] Falling back to booking tables:",
+              v2Error
+            );
+            const { getRevenueByDate: getRevenueByDate2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
+            data = await getRevenueByDate2(
+              managerId,
+              db,
+              startDate,
+              endDate
+            );
+          }
+          console.log("[Revenue Charts] Returning data:", {
+            count: data?.length || 0,
+            data
+          });
+          res.json({ data, period: period || "daily" });
+        } catch (error) {
+          console.error("[Revenue Charts] Error:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/revenue/transactions",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const {
+            startDate,
+            endDate,
+            locationId,
+            paymentStatus,
+            limit = "50",
+            offset = "0"
+          } = req.query;
+          const { getTransactionHistory: getTransactionHistory2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
+          const { transactions, total } = await getTransactionHistory2(
+            managerId,
+            db,
+            startDate,
+            endDate,
+            locationId ? parseInt(locationId) : void 0,
+            parseInt(limit),
+            parseInt(offset),
+            paymentStatus
+          );
+          res.json({ transactions, total });
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.put(
+      "/bookings/:id/cancellation-request",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const bookingId = parseInt(req.params.id);
+          const { action } = req.body || {};
+          if (isNaN(bookingId) || bookingId <= 0) {
+            return res.status(400).json({ error: "Invalid booking ID" });
+          }
+          if (!action || !["accept", "decline"].includes(action)) {
+            return res.status(400).json({ error: 'Action must be "accept" or "decline"' });
+          }
+          const { kitchenBookings: kitchenBookings3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+          const [booking] = await db.select({
+            id: kitchenBookings3.id,
+            status: kitchenBookings3.status,
+            kitchenId: kitchenBookings3.kitchenId,
+            chefId: kitchenBookings3.chefId,
+            paymentStatus: kitchenBookings3.paymentStatus,
+            cancellationRequestReason: kitchenBookings3.cancellationRequestReason
+          }).from(kitchenBookings3).innerJoin(kitchens, eq30(kitchenBookings3.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).where(
+            and18(
+              eq30(kitchenBookings3.id, bookingId),
+              eq30(locations.managerId, managerId)
+            )
+          ).limit(1);
+          if (!booking) {
+            return res.status(404).json({ error: "Booking not found" });
+          }
+          if (booking.status !== "cancellation_requested") {
+            return res.status(400).json({
+              error: `Booking is not in cancellation_requested status. Current: ${booking.status}`
+            });
+          }
+          if (action === "accept") {
+            await db.update(kitchenBookings3).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(eq30(kitchenBookings3.id, bookingId));
+            try {
+              const { storageBookings: sbTable, equipmentBookings: ebTable } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+              await db.update(sbTable).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(and18(eq30(sbTable.kitchenBookingId, bookingId), ne4(sbTable.status, "cancelled")));
+              await db.update(ebTable).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(and18(eq30(ebTable.kitchenBookingId, bookingId), ne4(ebTable.status, "cancelled")));
+            } catch (cascadeErr) {
+              logger.warn(`[Cancellation Request] Cascade cancel failed for booking ${bookingId}:`, cascadeErr);
+            }
+            try {
+              const [currentKb] = await db.select({ storageItems: kitchenBookings3.storageItems, equipmentItems: kitchenBookings3.equipmentItems }).from(kitchenBookings3).where(eq30(kitchenBookings3.id, bookingId));
+              if (currentKb) {
+                const updatedStorage = (Array.isArray(currentKb.storageItems) ? currentKb.storageItems : []).map((item) => ({ ...item, rejected: true, status: "cancelled", cancellationRequested: false }));
+                const updatedEquip = (Array.isArray(currentKb.equipmentItems) ? currentKb.equipmentItems : []).map((item) => ({ ...item, rejected: true }));
+                await db.update(kitchenBookings3).set({ storageItems: updatedStorage, equipmentItems: updatedEquip, updatedAt: /* @__PURE__ */ new Date() }).where(eq30(kitchenBookings3.id, bookingId));
+              }
+            } catch (jsonbErr) {
+              logger.warn(`[Cancellation Request] JSONB sync failed for booking ${bookingId}:`, jsonbErr);
+            }
+            try {
+              const chef = booking.chefId ? await userService.getUser(booking.chefId) : null;
+              if (chef) {
+                const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+                await notificationService2.create({
+                  userId: booking.chefId,
+                  target: "chef",
+                  type: "booking_cancellation_accepted",
+                  title: "Cancellation Accepted",
+                  message: "Your booking cancellation request has been accepted. A refund will be processed shortly.",
+                  metadata: { bookingId }
+                });
+              }
+            } catch (notifError) {
+              console.error(
+                "[Cancellation Request] Notification error:",
+                notifError
+              );
+            }
+            return res.json({
+              success: true,
+              action: "accepted",
+              message: 'Cancellation accepted. Use "Issue Refund" to process the refund.',
+              requiresRefund: true
+            });
+          }
+          if (action === "decline") {
+            await db.update(kitchenBookings3).set({
+              status: "confirmed",
+              cancellationRequestDeclinedAt: /* @__PURE__ */ new Date(),
+              updatedAt: /* @__PURE__ */ new Date()
+            }).where(eq30(kitchenBookings3.id, bookingId));
+            try {
+              if (booking.chefId) {
+                const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+                await notificationService2.create({
+                  userId: booking.chefId,
+                  target: "chef",
+                  type: "booking_cancellation_declined",
+                  title: "Cancellation Declined",
+                  message: "Your booking cancellation request was declined by the kitchen manager. Your booking remains confirmed.",
+                  metadata: { bookingId }
+                });
+              }
+            } catch (notifError) {
+              console.error(
+                "[Cancellation Request] Notification error:",
+                notifError
+              );
+            }
+            return res.json({
+              success: true,
+              action: "declined",
+              message: "Cancellation request declined. Booking remains confirmed."
+            });
+          }
+        } catch (error) {
+          console.error("[Cancellation Request] Error:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.put(
+      "/storage-bookings/:id/cancellation-request",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const storageBookingId = parseInt(req.params.id);
+          const { action } = req.body;
+          if (isNaN(storageBookingId) || storageBookingId <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+          }
+          if (!action || !["accept", "decline"].includes(action)) {
+            return res.status(400).json({ error: 'Invalid action. Must be "accept" or "decline".' });
+          }
+          const {
+            storageBookings: storageBookingsTable,
+            storageListings: storageListings3
+          } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+          const rows = await db.select({
+            id: storageBookingsTable.id,
+            status: storageBookingsTable.status,
+            chefId: storageBookingsTable.chefId,
+            kitchenBookingId: storageBookingsTable.kitchenBookingId,
+            cancellationRequestReason: storageBookingsTable.cancellationRequestReason,
+            locationId: locations.id,
+            managerId: locations.managerId
+          }).from(storageBookingsTable).innerJoin(
+            storageListings3,
+            eq30(storageBookingsTable.storageListingId, storageListings3.id)
+          ).innerJoin(kitchens, eq30(storageListings3.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).where(eq30(storageBookingsTable.id, storageBookingId)).limit(1);
+          if (rows.length === 0) {
+            return res.status(404).json({ error: "Storage booking not found" });
+          }
+          const booking = rows[0];
+          if (booking.managerId !== req.neonUser.id) {
+            return res.status(403).json({ error: "You don't have permission to manage this storage booking" });
+          }
+          if (booking.status !== "cancellation_requested") {
+            return res.status(400).json({
+              error: `Cannot process cancellation request \u2014 booking status is "${booking.status}", not "cancellation_requested".`
+            });
+          }
+          if (action === "accept") {
+            await db.update(storageBookingsTable).set({
+              status: "cancelled",
+              updatedAt: /* @__PURE__ */ new Date()
+            }).where(eq30(storageBookingsTable.id, storageBookingId));
+            try {
+              const { syncStorageItemStatusInKitchenBooking: syncStorageItemStatusInKitchenBooking2 } = await Promise.resolve().then(() => (init_bookings(), bookings_exports));
+              await syncStorageItemStatusInKitchenBooking2(storageBookingId, "cancelled");
+            } catch (syncErr) {
+              console.error("[Storage Cancellation] JSONB sync error:", syncErr);
+            }
+            try {
+              if (booking.chefId) {
+                const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+                await notificationService2.create({
+                  userId: booking.chefId,
+                  target: "chef",
+                  type: "booking_cancellation_accepted",
+                  title: "Storage Cancellation Accepted",
+                  message: "Your storage cancellation request has been accepted. A refund will be processed shortly.",
+                  metadata: { storageBookingId }
+                });
+              }
+            } catch (notifError) {
+              console.error(
+                "[Storage Cancellation Request] Notification error:",
+                notifError
+              );
+            }
+            return res.json({
+              success: true,
+              action: "accepted",
+              message: 'Storage cancellation accepted. Use "Issue Refund" to process the refund.',
+              requiresRefund: true
+            });
+          }
+          if (action === "decline") {
+            await db.update(storageBookingsTable).set({
+              status: "confirmed",
+              cancellationRequestDeclinedAt: /* @__PURE__ */ new Date(),
+              updatedAt: /* @__PURE__ */ new Date()
+            }).where(eq30(storageBookingsTable.id, storageBookingId));
+            try {
+              const { syncStorageItemStatusInKitchenBooking: syncStorageItemStatusInKitchenBooking2 } = await Promise.resolve().then(() => (init_bookings(), bookings_exports));
+              await syncStorageItemStatusInKitchenBooking2(storageBookingId, "confirmed");
+            } catch (syncErr) {
+              console.error("[Storage Cancellation] JSONB sync error:", syncErr);
+            }
+            try {
+              if (booking.chefId) {
+                const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+                await notificationService2.create({
+                  userId: booking.chefId,
+                  target: "chef",
+                  type: "booking_cancellation_declined",
+                  title: "Storage Cancellation Declined",
+                  message: "Your storage cancellation request was declined by the kitchen manager. Your storage booking remains confirmed.",
+                  metadata: { storageBookingId }
+                });
+              }
+            } catch (notifError) {
+              console.error(
+                "[Storage Cancellation Request] Notification error:",
+                notifError
+              );
+            }
+            return res.json({
+              success: true,
+              action: "declined",
+              message: "Storage cancellation request declined. Booking remains confirmed."
+            });
+          }
+        } catch (error) {
+          console.error("[Storage Cancellation Request] Error:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/revenue/transactions/:transactionId/refund",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const transactionId = parseInt(req.params.transactionId);
+          const { amount, reason } = req.body || {};
+          const refundReason = typeof reason === "string" ? reason.trim() : void 0;
+          if (isNaN(transactionId) || transactionId <= 0) {
+            return res.status(400).json({ error: "Invalid transaction ID" });
+          }
+          const amountCents = Math.round(Number(amount));
+          if (!Number.isFinite(amountCents) || amountCents <= 0) {
+            return res.status(400).json({ error: "Refund amount must be a positive number of cents" });
+          }
+          const { findPaymentTransactionById: findPaymentTransactionById2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+          const transaction = await findPaymentTransactionById2(transactionId, db);
+          if (!transaction) {
+            return res.status(404).json({ error: "Transaction not found" });
+          }
+          const transactionManagerId = transaction.manager_id ?? await getManagerIdForBooking(
+            transaction.booking_id,
+            transaction.booking_type,
+            db
+          );
+          if (!transactionManagerId || transactionManagerId !== managerId) {
+            return res.status(403).json({ error: "Access denied to this transaction" });
+          }
+          if (!transaction.payment_intent_id) {
+            return res.status(400).json({ error: "No payment intent linked to this transaction" });
+          }
+          if (!["succeeded", "partially_refunded"].includes(transaction.status)) {
+            return res.status(400).json({
+              error: `Refunds are only allowed for paid transactions. Current status: ${transaction.status}`
+            });
+          }
+          const totalAmount = parseInt(String(transaction.amount || "0")) || 0;
+          const currentRefundAmount = parseInt(String(transaction.refund_amount || "0")) || 0;
+          const managerRevenue = parseInt(String(transaction.manager_revenue || "0")) || 0;
+          const stripeProcessingFee = parseInt(String(transaction.stripe_processing_fee || "0")) || 0;
+          const { calculateRefundBreakdown: calculateRefundBreakdown2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+          const refundBreakdown = calculateRefundBreakdown2(
+            totalAmount,
+            managerRevenue,
+            currentRefundAmount,
+            stripeProcessingFee
+          );
+          if (amountCents > refundBreakdown.maxRefundableToCustomer) {
+            return res.status(400).json({
+              error: `Refund amount exceeds maximum. Max refundable: $${(refundBreakdown.maxRefundableToCustomer / 100).toFixed(2)}`,
+              maxRefundable: refundBreakdown.maxRefundableToCustomer,
+              managerBalance: refundBreakdown.remainingManagerBalance,
+              explanation: refundBreakdown.explanation
+            });
+          }
+          const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq30(users.id, managerId)).limit(1);
+          if (!manager?.stripeConnectAccountId) {
+            return res.status(400).json({ error: "Manager Stripe Connect account not found" });
+          }
+          const refundToCustomer = amountCents;
+          const deductFromManager = amountCents;
+          const { reverseTransferAndRefund: reverseTransferAndRefund2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+          const allowedStripeReasons = [
+            "duplicate",
+            "fraudulent",
+            "requested_by_customer"
+          ];
+          const stripeReason = refundReason && allowedStripeReasons.includes(refundReason) ? refundReason : "requested_by_customer";
+          const refund = await reverseTransferAndRefund2(
+            transaction.payment_intent_id,
+            refundToCustomer,
+            // Customer receives this amount
+            stripeReason,
+            {
+              reverseTransferAmount: deductFromManager,
+              // Manager is debited this exact same amount
+              refundApplicationFee: false,
+              metadata: {
+                transaction_id: String(transaction.id),
+                booking_id: String(transaction.booking_id),
+                booking_type: String(transaction.booking_type),
+                manager_id: String(managerId),
+                refund_reason: refundReason ? String(refundReason) : "",
+                refund_model: "unified",
+                // Track that we used unified model
+                customer_receives: String(refundToCustomer),
+                manager_debited: String(deductFromManager)
+              },
+              transferMetadata: {
+                transaction_id: String(transaction.id),
+                booking_id: String(transaction.booking_id),
+                booking_type: String(transaction.booking_type),
+                manager_id: String(managerId),
+                refund_reason: refundReason ? String(refundReason) : ""
+              }
+            }
+          );
+          const newRefundTotal = currentRefundAmount + amountCents;
+          const newStatus = newRefundTotal >= managerRevenue ? "refunded" : "partially_refunded";
+          let currentMetadata = {};
+          if (transaction.metadata) {
+            if (typeof transaction.metadata === "string") {
+              try {
+                currentMetadata = JSON.parse(transaction.metadata);
+              } catch {
+                currentMetadata = {};
+              }
+            } else {
+              currentMetadata = transaction.metadata;
+            }
+          }
+          const existingRefunds = Array.isArray(currentMetadata.refunds) ? currentMetadata.refunds : [];
+          const updatedMetadata = {
+            ...currentMetadata,
+            refunds: [
+              ...existingRefunds,
+              {
+                id: refund.refundId,
+                customerReceived: refundToCustomer,
+                managerDebited: deductFromManager,
+                reason: refundReason || null,
+                createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+                createdBy: managerId,
+                transferReversalId: refund.transferReversalId,
+                model: "unified"
+              }
+            ],
+            lastRefund: {
+              id: refund.refundId,
+              customerReceived: refundToCustomer,
+              managerDebited: deductFromManager,
+              reason: refundReason || null,
+              createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+              createdBy: managerId,
+              transferReversalId: refund.transferReversalId
+            }
+          };
+          await updatePaymentTransaction2(
+            transaction.id,
+            {
+              status: newStatus,
+              stripeStatus: newStatus,
+              refundAmount: newRefundTotal,
+              refundId: refund.refundId,
+              refundReason,
+              refundedAt: /* @__PURE__ */ new Date(),
+              lastSyncedAt: /* @__PURE__ */ new Date(),
+              metadata: updatedMetadata
+            },
+            db
+          );
+          const paymentStatus = newStatus === "refunded" ? "refunded" : "partially_refunded";
+          if (transaction.booking_type === "kitchen" || transaction.booking_type === "bundle") {
+            await db.update(kitchenBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq30(kitchenBookings.id, transaction.booking_id));
+          } else if (transaction.booking_type === "storage") {
+            await db.update(storageBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq30(storageBookings.id, transaction.booking_id));
+          } else if (transaction.booking_type === "equipment") {
+            await db.update(equipmentBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq30(equipmentBookings.id, transaction.booking_id));
+          }
+          const newBreakdown = calculateRefundBreakdown2(
+            totalAmount,
+            managerRevenue,
+            newRefundTotal,
+            stripeProcessingFee
+          );
+          res.json({
+            success: true,
+            refundId: refund.refundId,
+            status: newStatus,
+            // UNIFIED: Both values are the same - no discrepancy!
+            customerReceived: refundToCustomer,
+            managerDebited: deductFromManager,
+            // Total refunded so far
+            totalRefunded: newRefundTotal,
+            // Remaining amounts (using unified model)
+            remainingCharged: totalAmount - newRefundTotal,
+            maxRefundable: newBreakdown.maxRefundableToCustomer,
+            managerRemainingBalance: newBreakdown.remainingManagerBalance,
+            // Fee info for transparency
+            originalStripeFee: stripeProcessingFee,
+            transferReversalId: refund.transferReversalId
+          });
+        } catch (error) {
+          console.error("[Refund] Error processing refund:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/stripe-connect/create",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        console.log(
+          "[Stripe Connect] Create request received for manager:",
+          req.neonUser?.id
+        );
+        try {
+          const managerId = req.neonUser.id;
+          const fromSetup = req.body?.from === "setup" || req.query.from === "setup";
+          const userResult = await db.execute(sql13`
+            SELECT id, username as email, stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${managerId} 
+            LIMIT 1
+        `);
+          const userRow = userResult.rows ? userResult.rows[0] : userResult[0];
+          if (!userRow) {
+            console.error("[Stripe Connect] User not found for ID:", managerId);
+            return res.status(404).json({ error: "User not found" });
+          }
+          const user = {
+            id: userRow.id,
+            email: userRow.email,
+            stripeConnectAccountId: userRow.stripe_connect_account_id
+          };
+          const {
+            createConnectAccount: createConnectAccount2,
+            createAccountLink: createAccountLink2,
+            isAccountReady: isAccountReady2,
+            createDashboardLoginLink: createDashboardLoginLink2
+          } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+          const baseUrl = getAppBaseUrl("kitchen");
+          const fromParam = fromSetup ? "&from=setup" : "";
+          const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromParam}`;
+          const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromParam}`;
+          if (user.stripeConnectAccountId) {
+            const isReady = await isAccountReady2(user.stripeConnectAccountId);
+            if (isReady) {
+              return res.json({
+                alreadyExists: true,
+                accountId: user.stripeConnectAccountId
+              });
+            } else {
+              const link2 = await createAccountLink2(
+                user.stripeConnectAccountId,
+                refreshUrl,
+                returnUrl
+              );
+              return res.json({ url: link2.url });
+            }
+          }
+          console.log(
+            "[Stripe Connect] Creating new account for email:",
+            user.email
+          );
+          const { accountId } = await createConnectAccount2({
+            managerId,
+            email: user.email,
+            country: "CA"
+          });
+          await userService.updateUser(managerId, {
+            stripeConnectAccountId: accountId
+          });
+          const link = await createAccountLink2(accountId, refreshUrl, returnUrl);
+          return res.json({ url: link.url });
+        } catch (error) {
+          console.error("[Stripe Connect] Error in create route:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/stripe-connect/onboarding-link",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const userResult = await db.execute(sql13`
+            SELECT stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${managerId} 
+            LIMIT 1
+        `);
+          const userRow = userResult.rows ? userResult.rows[0] : userResult[0];
+          if (!userRow?.stripe_connect_account_id) {
+            return res.status(400).json({ error: "No Stripe Connect account found" });
+          }
+          const { createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+          const baseUrl = getAppBaseUrl("kitchen");
+          const fromSetup = req.query.from === "setup" ? "&from=setup" : "";
+          const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromSetup}`;
+          const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromSetup}`;
+          const link = await createAccountLink2(
+            userRow.stripe_connect_account_id,
+            refreshUrl,
+            returnUrl
+          );
+          return res.json({ url: link.url });
+        } catch (error) {
+          console.error("[Stripe Connect] Error in onboarding-link route:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/stripe-connect/dashboard-link",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const userResult = await db.execute(sql13`
+            SELECT stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${managerId} 
+            LIMIT 1
+        `);
+          const userRow = userResult.rows ? userResult.rows[0] : userResult[0];
+          if (!userRow?.stripe_connect_account_id) {
+            return res.status(400).json({ error: "No Stripe Connect account found" });
+          }
+          const { createDashboardLoginLink: createDashboardLoginLink2, isAccountReady: isAccountReady2, createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+          const isReady = await isAccountReady2(userRow.stripe_connect_account_id);
+          if (isReady) {
+            const link = await createDashboardLoginLink2(
+              userRow.stripe_connect_account_id
+            );
+            return res.json({ url: link.url });
+          } else {
+            const baseUrl = getAppBaseUrl("kitchen");
+            const fromSetup = req.query.from === "setup" ? "&from=setup" : "";
+            const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromSetup}`;
+            const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromSetup}`;
+            const link = await createAccountLink2(
+              userRow.stripe_connect_account_id,
+              refreshUrl,
+              returnUrl
+            );
+            return res.json({ url: link.url, requiresOnboarding: true });
+          }
+        } catch (error) {
+          console.error("[Stripe Connect] Error in dashboard-link route:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/stripe-connect/status",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const [manager] = await db.select({
+            stripeConnectAccountId: users.stripeConnectAccountId,
+            stripeConnectOnboardingStatus: users.stripeConnectOnboardingStatus
+          }).from(users).where(eq30(users.id, managerId)).limit(1);
+          if (!manager?.stripeConnectAccountId) {
+            return res.json({
+              connected: false,
+              hasAccount: false,
+              accountId: null,
+              payoutsEnabled: false,
+              chargesEnabled: false,
+              detailsSubmitted: false,
+              status: "not_started"
+            });
+          }
+          try {
+            const { getAccountStatus: getAccountStatus2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+            const stripeStatus = await getAccountStatus2(
+              manager.stripeConnectAccountId
+            );
+            let status = "incomplete";
+            if (stripeStatus.chargesEnabled && stripeStatus.payoutsEnabled) {
+              status = "complete";
+            } else if (stripeStatus.detailsSubmitted) {
+              status = "pending";
+            }
+            const reqs = stripeStatus.requirements;
+            let verificationStage = "incomplete";
+            if (stripeStatus.chargesEnabled && stripeStatus.payoutsEnabled) {
+              verificationStage = "complete";
+            } else if (reqs.disabledReason?.includes("rejected")) {
+              verificationStage = "rejected";
+            } else if (reqs.pastDue.length > 0) {
+              verificationStage = "past_due";
+            } else if (reqs.pendingVerification.length > 0 && stripeStatus.detailsSubmitted) {
+              verificationStage = "pending_verification";
+            } else if (stripeStatus.detailsSubmitted && reqs.currentlyDue.length > 0) {
+              verificationStage = "requires_additional_info";
+            } else if (stripeStatus.chargesEnabled && !stripeStatus.payoutsEnabled) {
+              verificationStage = "payouts_disabled";
+            } else if (!stripeStatus.chargesEnabled && stripeStatus.payoutsEnabled) {
+              verificationStage = "charges_disabled";
+            } else if (!stripeStatus.detailsSubmitted && reqs.currentlyDue.length > 0) {
+              verificationStage = "details_needed";
+            } else if (stripeStatus.detailsSubmitted) {
+              verificationStage = "pending_verification";
+            }
+            const dbStatus = manager.stripeConnectOnboardingStatus;
+            if (status === "complete" && dbStatus !== "complete" || status !== "complete" && dbStatus === "complete") {
+              await db.update(users).set({
+                stripeConnectOnboardingStatus: status === "complete" ? "complete" : "in_progress"
+              }).where(eq30(users.id, managerId));
+            }
+            res.json({
+              connected: true,
+              hasAccount: true,
+              accountId: manager.stripeConnectAccountId,
+              payoutsEnabled: stripeStatus.payoutsEnabled,
+              chargesEnabled: stripeStatus.chargesEnabled,
+              detailsSubmitted: stripeStatus.detailsSubmitted,
+              status,
+              verificationStage,
+              requirements: {
+                currentlyDue: reqs.currentlyDue,
+                pastDue: reqs.pastDue,
+                pendingVerification: reqs.pendingVerification,
+                currentDeadline: reqs.currentDeadline
+              }
+            });
+          } catch (stripeError) {
+            console.error("Error fetching Stripe account status:", stripeError);
+            res.json({
+              connected: true,
+              hasAccount: true,
+              accountId: manager.stripeConnectAccountId,
+              payoutsEnabled: manager.stripeConnectOnboardingStatus === "complete",
+              chargesEnabled: manager.stripeConnectOnboardingStatus === "complete",
+              detailsSubmitted: manager.stripeConnectOnboardingStatus === "complete",
+              status: manager.stripeConnectOnboardingStatus === "complete" ? "complete" : "incomplete"
+            });
+          }
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/stripe-connect/sync",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const [manager] = await db.select().from(users).where(eq30(users.id, managerId)).limit(1);
+          if (!manager?.stripeConnectAccountId) {
+            return res.status(400).json({ error: "No Stripe account connected" });
+          }
+          const { getAccountStatus: getAccountStatus2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+          const status = await getAccountStatus2(manager.stripeConnectAccountId);
+          const onboardingStatus = status.detailsSubmitted ? "complete" : "in_progress";
+          await db.update(users).set({
+            stripeConnectOnboardingStatus: onboardingStatus
+            // If they are fully ready, ensure manager onboarding is arguably complete for payments part
+            // keeping it simple for now, just updating stripe status
+          }).where(eq30(users.id, managerId));
+          res.json({
+            connected: true,
+            accountId: manager.stripeConnectAccountId,
+            status: onboardingStatus,
+            details: status
+          });
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/revenue/sync-stripe",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const { limit = 100, onlyUnsynced = true } = req.body;
+          console.log(`[Stripe Sync] Starting sync for manager ${managerId}...`);
+          const { backfillPaymentTransactionsFromBookings: backfillPaymentTransactionsFromBookings2 } = await Promise.resolve().then(() => (init_payment_transactions_backfill(), payment_transactions_backfill_exports));
+          const backfillResult = await backfillPaymentTransactionsFromBookings2(
+            managerId,
+            db,
+            { limit }
+          );
+          console.log(`[Stripe Sync] Backfill complete:`, backfillResult);
+          const { syncExistingPaymentTransactionsFromStripe: syncExistingPaymentTransactionsFromStripe2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+          const syncResult = await syncExistingPaymentTransactionsFromStripe2(
+            managerId,
+            db,
+            {
+              limit,
+              onlyUnsynced
+            }
+          );
+          console.log(`[Stripe Sync] Stripe sync complete:`, syncResult);
+          res.json({
+            success: true,
+            backfill: backfillResult,
+            stripeSync: syncResult,
+            message: `Backfilled ${backfillResult.created} transactions, synced ${syncResult.synced} with Stripe`
+          });
+        } catch (error) {
+          console.error("[Stripe Sync] Error:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/revenue/stripe-balance",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const [userResult] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq30(users.id, managerId)).limit(1);
+          if (!userResult?.stripeConnectAccountId) {
+            return res.json({
+              available: 0,
+              pending: 0,
+              inTransit: 0,
+              currency: "cad",
+              hasStripeAccount: false
+            });
+          }
+          const accountId = userResult.stripeConnectAccountId;
+          const { getAccountBalance: getAccountBalance2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+          const balance = await getAccountBalance2(accountId);
+          const availableBalance = balance.available?.reduce((sum, b) => sum + b.amount, 0) || 0;
+          const pendingBalance = balance.pending?.reduce((sum, b) => sum + b.amount, 0) || 0;
+          const connectReserved = balance.connect_reserved?.reduce(
+            (sum, b) => sum + b.amount,
+            0
+          ) || 0;
+          const currency = balance.available?.[0]?.currency || "cad";
+          res.json({
+            available: availableBalance,
+            pending: pendingBalance,
+            inTransit: connectReserved,
+            currency,
+            hasStripeAccount: true,
+            // Include raw balance for debugging if needed
+            _raw: process.env.NODE_ENV === "development" ? balance : void 0
+          });
+        } catch (error) {
+          console.error("[Stripe Balance] Error fetching balance:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/revenue/payouts",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const { limit = "50" } = req.query;
+          const result = await managerService.getPayouts(
+            managerId,
+            parseInt(limit)
+          );
+          res.json(result);
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/revenue/payouts/:payoutId",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const payoutId = req.params.payoutId;
+          const [userResult] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq30(users.id, managerId)).limit(1);
+          if (!userResult?.stripeConnectAccountId) {
+            return res.status(404).json({ error: "No Stripe Connect account linked" });
+          }
+          const accountId = userResult.stripeConnectAccountId;
+          const { getPayout: getPayout2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+          const payout = await getPayout2(accountId, payoutId);
+          if (!payout) {
+            return res.status(404).json({ error: "Payout not found" });
+          }
+          const payoutDate = new Date(payout.created * 1e3);
+          const periodStart = new Date(payoutDate);
+          periodStart.setDate(periodStart.getDate() - 7);
+          const { getBalanceTransactions: getBalanceTransactions2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+          const transactions = await getBalanceTransactions2(
+            accountId,
+            periodStart,
+            payoutDate,
+            100
+          );
+          const bookingRows = await db.select({
+            id: kitchenBookings.id,
+            bookingDate: kitchenBookings.bookingDate,
+            startTime: kitchenBookings.startTime,
+            endTime: kitchenBookings.endTime,
+            totalPrice: kitchenBookings.totalPrice,
+            serviceFee: kitchenBookings.serviceFee,
+            paymentStatus: kitchenBookings.paymentStatus,
+            paymentIntentId: kitchenBookings.paymentIntentId,
+            kitchenName: kitchens.name,
+            locationName: locations.name,
+            chefName: users.username,
+            chefEmail: users.username
+          }).from(kitchenBookings).innerJoin(kitchens, eq30(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).leftJoin(users, eq30(kitchenBookings.chefId, users.id)).where(
+            and18(
+              eq30(locations.managerId, managerId),
+              eq30(kitchenBookings.paymentStatus, "paid"),
+              sql13`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
+              sql13`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
+            )
+          ).orderBy(desc15(kitchenBookings.bookingDate));
+          res.json({
+            payout: {
+              id: payout.id,
+              amount: payout.amount / 100,
+              currency: payout.currency,
+              status: payout.status,
+              arrivalDate: new Date(payout.arrival_date * 1e3).toISOString(),
+              created: new Date(payout.created * 1e3).toISOString(),
+              description: payout.description,
+              method: payout.method,
+              type: payout.type
+            },
+            transactions: transactions.map((t) => ({
+              id: t.id,
+              amount: t.amount / 100,
+              currency: t.currency,
+              description: t.description,
+              fee: t.fee / 100,
+              net: t.net / 100,
+              status: t.status,
+              type: t.type,
+              created: new Date(t.created * 1e3).toISOString()
+            })),
+            bookings: bookingRows.map((row) => ({
+              id: row.id,
+              bookingDate: row.bookingDate,
+              startTime: row.startTime,
+              endTime: row.endTime,
+              totalPrice: (parseInt(String(row.totalPrice)) || 0) / 100,
+              serviceFee: (parseInt(String(row.serviceFee)) || 0) / 100,
+              paymentStatus: row.paymentStatus,
+              paymentIntentId: row.paymentIntentId,
+              kitchenName: row.kitchenName,
+              locationName: row.locationName,
+              chefName: row.chefName || "Guest",
+              chefEmail: row.chefEmail
+            }))
+          });
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/revenue/payouts/:payoutId/statement",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const payoutId = req.params.payoutId;
+          const [manager] = await db.select({
+            id: users.id,
+            username: users.username,
+            stripeConnectAccountId: users.stripeConnectAccountId
+          }).from(users).where(eq30(users.id, managerId)).limit(1);
+          if (!manager?.stripeConnectAccountId) {
+            return res.status(404).json({ error: "No Stripe Connect account linked" });
+          }
+          const accountId = manager.stripeConnectAccountId;
+          const { getPayout: getPayout2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+          const payout = await getPayout2(accountId, payoutId);
+          if (!payout) {
+            return res.status(404).json({ error: "Payout not found" });
+          }
+          const payoutDate = new Date(payout.created * 1e3);
+          const periodStart = new Date(payoutDate);
+          periodStart.setDate(periodStart.getDate() - 7);
+          const bookingRows = await db.select({
+            id: kitchenBookings.id,
+            bookingDate: kitchenBookings.bookingDate,
+            startTime: kitchenBookings.startTime,
+            endTime: kitchenBookings.endTime,
+            totalPrice: kitchenBookings.totalPrice,
+            serviceFee: kitchenBookings.serviceFee,
+            paymentStatus: kitchenBookings.paymentStatus,
+            paymentIntentId: kitchenBookings.paymentIntentId,
+            kitchenName: kitchens.name,
+            locationName: locations.name,
+            chefName: users.username,
+            chefEmail: users.username
+          }).from(kitchenBookings).innerJoin(kitchens, eq30(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).leftJoin(users, eq30(kitchenBookings.chefId, users.id)).where(
+            and18(
+              eq30(locations.managerId, managerId),
+              eq30(kitchenBookings.paymentStatus, "paid"),
+              sql13`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
+              sql13`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
+            )
+          ).orderBy(desc15(kitchenBookings.bookingDate));
+          const { getBalanceTransactions: getBalanceTransactions2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+          const transactions = await getBalanceTransactions2(
+            accountId,
+            periodStart,
+            payoutDate,
+            100
+          );
+          const { generatePayoutStatementPDF: generatePayoutStatementPDF2 } = await Promise.resolve().then(() => (init_payout_statement_service(), payout_statement_service_exports));
+          const pdfBuffer = await generatePayoutStatementPDF2(
+            managerId,
+            manager.username || "Manager",
+            manager.username || "",
+            payout,
+            transactions,
+            bookingRows
+          );
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="payout-statement-${payoutId.substring(3)}.pdf"`
+          );
+          res.send(pdfBuffer);
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/kitchens/:locationId",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const locationId = parseInt(req.params.locationId);
+          const location = await locationService.getLocationById(locationId);
+          if (!location) {
+            return res.status(404).json({ error: "Location not found" });
+          }
+          if (location.managerId !== user.id) {
+            return res.status(403).json({ error: "Access denied to this location" });
+          }
+          const kitchens3 = await kitchenService.getKitchensByLocationId(locationId);
+          res.json(kitchens3);
+        } catch (error) {
+          console.error("Error fetching kitchen settings:", error);
+          res.status(500).json({ error: error.message || "Failed to fetch kitchen settings" });
+        }
+      }
+    );
+    router15.post(
+      "/kitchens",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const { locationId, name, description, features, imageUrl } = req.body;
+          const location = await locationService.getLocationById(locationId);
+          if (!location) {
+            return res.status(404).json({ error: "Location not found" });
+          }
+          if (location.managerId !== user.id) {
+            return res.status(403).json({ error: "Access denied to this location" });
+          }
+          const created = await kitchenService.createKitchen({
+            locationId,
+            name,
+            description,
+            imageUrl,
+            amenities: features || [],
+            isActive: true,
+            // Auto-activate
+            hourlyRate: void 0,
+            // Manager sets pricing later
+            minimumBookingHours: 1,
+            pricingModel: "hourly"
+          });
+          res.status(201).json(created);
+        } catch (error) {
+          console.error("Error creating kitchen:", error);
+          res.status(500).json({ error: error.message || "Failed to create kitchen" });
+        }
+      }
+    );
+    router15.put(
+      "/kitchens/:kitchenId/image",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const kitchenId = parseInt(req.params.kitchenId);
+          const { imageUrl } = req.body;
+          const kitchen = await kitchenService.getKitchenById(kitchenId);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+          }
+          const location = await locationService.getLocationById(
+            kitchen.locationId
+          );
+          if (!location || location.managerId !== user.id) {
+            return res.status(403).json({ error: "Access denied" });
+          }
+          if (imageUrl && kitchen.imageUrl) {
+            const { deleteFromR2: deleteFromR22 } = await Promise.resolve().then(() => (init_r2_storage(), r2_storage_exports));
+            try {
+              if (kitchen.imageUrl !== imageUrl) {
+                await deleteFromR22(kitchen.imageUrl);
+              }
+            } catch (e) {
+              console.error("Failed to delete old image:", e);
+            }
+          }
+          const updated = await kitchenService.updateKitchenImage(
+            kitchenId,
+            imageUrl
+          );
+          res.json(updated);
+        } catch (error) {
+          console.error("Error updating kitchen image:", error);
+          res.status(500).json({ error: error.message || "Failed to update kitchen image" });
+        }
+      }
+    );
+    router15.put(
+      "/kitchens/:kitchenId/gallery",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const kitchenId = parseInt(req.params.kitchenId);
+          const { method, imageUrl, index } = req.body;
+          const kitchen = await kitchenService.getKitchenById(kitchenId);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+          }
+          const location = await locationService.getLocationById(
+            kitchen.locationId
+          );
+          if (!location || location.managerId !== user.id) {
+            return res.status(403).json({ error: "Access denied" });
+          }
+          let updatedImages = [...kitchen.galleryImages || []];
+          const { deleteFromR2: deleteFromR22 } = await Promise.resolve().then(() => (init_r2_storage(), r2_storage_exports));
+          if (method === "add") {
+            if (imageUrl) updatedImages.push(imageUrl);
+          } else if (method === "remove" && typeof index === "number") {
+            if (index >= 0 && index < updatedImages.length) {
+              const removedUrl = updatedImages[index];
+              updatedImages.splice(index, 1);
+              try {
+                await deleteFromR22(removedUrl);
+              } catch (e) {
+                console.error("Failed to delete removed gallery image:", e);
+              }
+            }
+          } else if (method === "reorder" && Array.isArray(imageUrl)) {
+            updatedImages = imageUrl;
+          }
+          await kitchenService.updateKitchenGallery(kitchenId, updatedImages);
+          const updated = await kitchenService.getKitchenById(kitchenId);
+          res.json(updated);
+        } catch (error) {
+          console.error("Error updating gallery:", error);
+          res.status(500).json({ error: error.message || "Failed to update gallery" });
+        }
+      }
+    );
+    router15.put(
+      "/kitchens/:kitchenId/details",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const kitchenId = parseInt(req.params.kitchenId);
+          const { name, description, features } = req.body;
+          const kitchen = await kitchenService.getKitchenById(kitchenId);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+          }
+          const location = await locationService.getLocationById(
+            kitchen.locationId
+          );
+          if (!location || location.managerId !== user.id) {
+            return res.status(403).json({ error: "Access denied" });
+          }
+          const updated = await kitchenService.updateKitchen({
+            id: kitchenId,
+            name,
+            description,
+            amenities: features
+          });
+          res.json(updated);
+        } catch (error) {
+          console.error("Error updating kitchen details:", error);
+          res.status(500).json({ error: error.message || "Failed to update kitchen details" });
+        }
+      }
+    );
+    router15.delete(
+      "/kitchens/:kitchenId",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const kitchenId = parseInt(req.params.kitchenId);
+          const kitchen = await kitchenService.getKitchenById(kitchenId);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+          }
+          const location = await locationService.getLocationById(
+            kitchen.locationId
+          );
+          if (!location || location.managerId !== user.id) {
+            return res.status(403).json({ error: "Access denied" });
+          }
+          const imageUrl = kitchen.imageUrl;
+          const galleryImages = kitchen.galleryImages || [];
+          await kitchenService.deleteKitchen(kitchenId);
+          const { deleteFromR2: deleteFromR22 } = await Promise.resolve().then(() => (init_r2_storage(), r2_storage_exports));
+          if (imageUrl) {
+            try {
+              await deleteFromR22(imageUrl);
+            } catch (e) {
+              console.error(`Failed to delete kitchen image ${imageUrl}:`, e);
+            }
+          }
+          if (galleryImages.length > 0) {
+            await Promise.all(
+              galleryImages.map(async (img) => {
+                try {
+                  await deleteFromR22(img);
+                } catch (e) {
+                  console.error(`Failed to delete gallery image ${img}:`, e);
+                }
+              })
+            );
+          }
+          res.json({ success: true });
+        } catch (error) {
+          console.error("Error deleting kitchen:", error);
+          res.status(500).json({ error: error.message || "Failed to delete kitchen" });
+        }
+      }
+    );
+    router15.get(
+      "/kitchens/:kitchenId/pricing",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const kitchenId = parseInt(req.params.kitchenId);
+          const kitchen = await kitchenService.getKitchenById(kitchenId);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+          }
+          const location = await locationService.getLocationById(
+            kitchen.locationId
+          );
+          if (!location || location.managerId !== user.id) {
+            return res.status(403).json({ error: "Access denied" });
+          }
+          res.json({
+            hourlyRate: kitchen.hourlyRate,
+            // In dollars if getKitchenById handled it, or cents?
+            // routes.ts typically converted it?
+            // Wait, updateKitchenPricing converts dollars to cents.
+            // getKitchenById likely returns cents?
+            // Let's check updateKitchenPricing in storage-firebase.ts if needed.
+            // But for now, returning raw db value or whatever getKitchenById returns.
+            // Typically frontend expects dollars if input was dollars?
+            // routes.ts 4350 just sends `res.json(pricing)`.
+            // Let's assume getKitchenById returns it as is.
+            currency: kitchen.currency,
+            minimumBookingHours: kitchen.minimumBookingHours,
+            pricingModel: kitchen.pricingModel,
+            taxRatePercent: kitchen.taxRatePercent !== void 0 && kitchen.taxRatePercent !== null ? Number(kitchen.taxRatePercent) : null
+          });
+        } catch (error) {
+          console.error("Error getting kitchen pricing:", error);
+          res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
+        }
+      }
+    );
+    router15.put(
+      "/kitchens/:kitchenId/pricing",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const kitchenId = parseInt(req.params.kitchenId);
+          if (isNaN(kitchenId) || kitchenId <= 0) {
+            return res.status(400).json({ error: "Invalid kitchen ID" });
+          }
+          const kitchen = await kitchenService.getKitchenById(kitchenId);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+          }
+          const locations5 = await locationService.getLocationsByManagerId(user.id);
+          const hasAccess = locations5.some((loc) => loc.id === kitchen.locationId);
+          if (!hasAccess) {
+            return res.status(403).json({ error: "Access denied to this kitchen" });
+          }
+          const {
+            hourlyRate,
+            currency,
+            minimumBookingHours,
+            pricingModel,
+            taxRatePercent
+          } = req.body;
+          if (hourlyRate !== void 0 && hourlyRate !== null && (typeof hourlyRate !== "number" || hourlyRate < 0)) {
+            return res.status(400).json({ error: "Hourly rate must be a positive number or null" });
+          }
+          if (currency !== void 0 && typeof currency !== "string") {
+            return res.status(400).json({ error: "Currency must be a string" });
+          }
+          if (minimumBookingHours !== void 0 && (typeof minimumBookingHours !== "number" || minimumBookingHours < 1)) {
+            return res.status(400).json({ error: "Minimum booking hours must be at least 1" });
+          }
+          if (pricingModel !== void 0 && !["hourly", "daily", "weekly"].includes(pricingModel)) {
+            return res.status(400).json({
+              error: "Pricing model must be 'hourly', 'daily', or 'weekly'"
+            });
+          }
+          const pricing = {};
+          if (hourlyRate !== void 0) {
+            pricing.hourlyRate = hourlyRate === null ? null : hourlyRate;
+          }
+          if (currency !== void 0) pricing.currency = currency;
+          if (minimumBookingHours !== void 0)
+            pricing.minimumBookingHours = minimumBookingHours;
+          if (minimumBookingHours !== void 0)
+            pricing.minimumBookingHours = minimumBookingHours;
+          if (pricingModel !== void 0) pricing.pricingModel = pricingModel;
+          if (taxRatePercent !== void 0) {
+            pricing.taxRatePercent = taxRatePercent ? parseFloat(taxRatePercent) : null;
+          }
+          const updated = await kitchenService.updateKitchen({
+            id: kitchenId,
+            ...pricing
+          });
+          console.log(
+            `\u2705 Kitchen ${kitchenId} pricing updated by manager ${user.id}`
+          );
+          res.json(updated);
+        } catch (error) {
+          console.error("Error updating kitchen pricing:", error);
+          res.status(500).json({ error: error.message || "Failed to update kitchen pricing" });
+        }
+      }
+    );
+    router15.put(
+      "/kitchens/:kitchenId/availability",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const kitchenId = parseInt(req.params.kitchenId);
+          const { isAvailable, reason } = req.body;
+          const kitchen = await kitchenService.getKitchenById(kitchenId);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+          }
+          const locations5 = await locationService.getLocationsByManagerId(user.id);
+          const hasAccess = locations5.some((loc) => loc.id === kitchen.locationId);
+          if (!hasAccess) {
+            return res.status(403).json({ error: "Access denied" });
+          }
+          if (isAvailable === false) {
+          }
+          const updated = await kitchenService.updateKitchen({
+            id: kitchenId,
+            isActive: isAvailable
+          });
+          res.json(updated);
+        } catch (error) {
+          console.error("Error setting availability:", error);
+          res.status(500).json({ error: error.message || "Failed to set availability" });
+        }
+      }
+    );
+    router15.get(
+      "/bookings",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const bookings = await bookingService.getBookingsByManager(user.id);
+          const { lazyExpireKitchenBookingAuth: lazyExpireKitchenBookingAuth2 } = await Promise.resolve().then(() => (init_auth_expiry_service(), auth_expiry_service_exports));
+          for (const b of bookings) {
+            if (b.paymentStatus === "authorized" && b.status === "pending") {
+              const wasExpired = await lazyExpireKitchenBookingAuth2({
+                id: b.id,
+                paymentStatus: b.paymentStatus,
+                paymentIntentId: b.paymentIntentId ?? null,
+                chefId: b.chefId ?? null,
+                kitchenId: b.kitchenId,
+                createdAt: b.createdAt ? new Date(b.createdAt) : null,
+                status: b.status
+              });
+              if (wasExpired) {
+                b.status = "cancelled";
+                b.paymentStatus = "failed";
+              }
+            }
+          }
+          res.json(bookings);
+        } catch (error) {
+          console.error("Error fetching bookings:", error);
+          res.status(500).json({ error: error.message || "Failed to fetch bookings" });
+        }
+      }
+    );
+    router15.get(
+      "/profile",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const userResults = await db.select().from(users).where(eq30(users.id, managerId)).limit(1);
+          const userData = userResults[0];
+          if (!userData) {
+            return res.status(404).json({ error: "Manager profile not found" });
+          }
+          const managerLocations = await db.select().from(locations).where(eq30(locations.managerId, managerId));
+          let profile = {};
+          try {
+            const profileData = userData.managerProfileData;
+            if (profileData && typeof profileData === "object" && !Array.isArray(profileData)) {
+              profile = profileData;
+            }
+          } catch {
+          }
+          const stripeStatus = userData.stripeConnectOnboardingStatus || "not_started";
+          res.json({
+            profileImageUrl: profile.profileImageUrl || null,
+            phone: profile.phone || null,
+            displayName: profile.displayName || null,
+            stripeConnectStatus: stripeStatus,
+            locations: managerLocations.map((loc) => ({
+              id: loc.id,
+              name: loc.name,
+              address: loc.address,
+              timezone: loc.timezone,
+              logoUrl: loc.logoUrl,
+              // Primary contact fields
+              contactEmail: loc.contactEmail,
+              contactPhone: loc.contactPhone,
+              preferredContactMethod: loc.preferredContactMethod || "email",
+              // Notification fields
+              notificationEmail: loc.notificationEmail,
+              notificationPhone: loc.notificationPhone
+            }))
+          });
+        } catch (error) {
+          console.error(`[Manager Profile v2] Error:`, error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.put(
+      "/profile",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const { username, displayName, phone, profileImageUrl } = req.body;
+          const profileUpdates = {};
+          if (displayName !== void 0) profileUpdates.displayName = displayName;
+          if (phone !== void 0) {
+            if (phone && phone.trim() !== "") {
+              const normalized = normalizePhoneForStorage(phone);
+              if (!normalized)
+                return res.status(400).json({ error: "Invalid phone" });
+              profileUpdates.phone = normalized;
+            } else {
+              profileUpdates.phone = null;
+            }
+          }
+          if (profileImageUrl !== void 0)
+            profileUpdates.profileImageUrl = profileImageUrl;
+          if (username !== void 0 && username !== user.username) {
+            const existingUser = await userService.getUserByUsername(username);
+            if (existingUser && existingUser.id !== user.id) {
+              return res.status(400).json({ error: "Username already exists" });
+            }
+            await userService.updateUser(user.id, { username });
+          }
+          if (Object.keys(profileUpdates).length > 0) {
+            const [currentUser] = await db.select({ managerProfileData: users.managerProfileData }).from(users).where(eq30(users.id, user.id)).limit(1);
+            const currentData = currentUser?.managerProfileData || {};
+            const newData = { ...currentData, ...profileUpdates };
+            await db.update(users).set({ managerProfileData: newData }).where(eq30(users.id, user.id));
+          }
+          const [updatedUser] = await db.select({ managerProfileData: users.managerProfileData }).from(users).where(eq30(users.id, user.id)).limit(1);
+          const finalProfile = updatedUser?.managerProfileData || {};
+          res.json({
+            profileImageUrl: finalProfile.profileImageUrl || null,
+            phone: finalProfile.phone || null,
+            displayName: finalProfile.displayName || null
+          });
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/chef-profiles",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const profiles = await chefService.getChefProfilesForManager(user.id);
+          res.json(profiles);
+        } catch (error) {
+          res.status(500).json({ error: error.message || "Failed to get profiles" });
+        }
+      }
+    );
+    router15.get(
+      "/portal-applications",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const { users: users5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+          const managedLocations = await db.select().from(locations).where(eq30(locations.managerId, user.id));
+          if (managedLocations.length === 0) return res.json([]);
+          const locationIds = managedLocations.map((loc) => loc.id);
+          const applications4 = await db.select({
+            application: portalUserApplications,
+            location: locations,
+            user: users5
+          }).from(portalUserApplications).innerJoin(
+            locations,
+            eq30(portalUserApplications.locationId, locations.id)
+          ).innerJoin(users5, eq30(portalUserApplications.userId, users5.id)).where(inArray8(portalUserApplications.locationId, locationIds));
+          const formatted = applications4.map((app2) => ({
+            ...app2.application,
+            location: {
+              id: app2.location.id,
+              name: app2.location.name,
+              address: app2.location.address
+            },
+            user: { id: app2.user.id, username: app2.user.username },
+            // fields mapped from joins
+            id: app2.application.id
+            // Ensure ID is correct
+          }));
+          const accessRecords = await db.select().from(portalUserLocationAccess).where(inArray8(portalUserLocationAccess.locationId, locationIds));
+          res.json({ applications: formatted, accessCount: accessRecords.length });
+        } catch (error) {
+          console.error("Error getting apps:", error);
+          res.status(500).json({ error: error.message });
+        }
+      }
+    );
+    router15.put(
+      "/portal-applications/:id/status",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        res.status(501).json({ error: "Not fully implemented in refactor yet" });
+      }
+    );
+    router15.put(
+      "/chef-profiles/:id/status",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const profileId = parseInt(req.params.id);
+          const { status, reviewFeedback } = req.body;
+          if (!["approved", "rejected"].includes(status))
+            return res.status(400).json({ error: "Invalid status" });
+          const updated = await chefService.updateProfileStatus(
+            profileId,
+            status,
+            user.id,
+            reviewFeedback
+          );
+          if (status === "approved") {
+          }
+          res.json(updated);
+        } catch (e) {
+          res.status(500).json({ error: e.message });
+        }
+      }
+    );
+    router15.delete(
+      "/chef-location-access",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const { chefId, locationId } = req.body;
+          await chefService.revokeLocationAccess(chefId, locationId);
+          res.json({ success: true });
+        } catch (e) {
+          res.status(500).json({ error: e.message });
+        }
+      }
+    );
+    router15.get(
+      "/kitchens/:kitchenId/bookings",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const kitchenId = parseInt(req.params.kitchenId);
+          const bookings = await bookingService.getBookingsByKitchen(kitchenId);
+          res.json(bookings);
+        } catch (e) {
+          res.status(500).json({ error: e.message });
+        }
+      }
+    );
+    router15.get(
+      "/bookings/:id",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const id = parseInt(req.params.id);
+          const booking = await bookingService.getBookingById(id);
+          if (!booking) return res.status(404).json({ error: "Booking not found" });
+          const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
+          if (!kitchen) return res.status(404).json({ error: "Kitchen not found" });
+          const location = await locationService.getLocationById(
+            kitchen.locationId
+          );
+          if (!location || location.managerId !== user.id)
+            return res.status(403).json({ error: "Access denied" });
+          res.json({ ...booking, kitchen, location });
+        } catch (e) {
+          res.status(500).json({ error: e.message });
+        }
+      }
+    );
+    router15.get(
+      "/bookings/:id/details",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const id = parseInt(req.params.id);
+          if (isNaN(id) || id <= 0) {
+            return res.status(400).json({ error: "Invalid booking ID" });
+          }
+          const booking = await bookingService.getBookingById(id);
+          if (!booking) {
+            return res.status(404).json({ error: "Booking not found" });
+          }
+          const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+          }
+          const location = await locationService.getLocationById(
+            kitchen.locationId
+          );
+          if (!location || location.managerId !== user.id) {
+            return res.status(403).json({ error: "Access denied" });
+          }
+          let chef = null;
+          if (booking.chefId) {
+            const chefUser = await userService.getUser(booking.chefId);
+            if (chefUser) {
+              const [chefApp] = await db.select({
+                fullName: chefKitchenApplications.fullName,
+                phone: chefKitchenApplications.phone
+              }).from(chefKitchenApplications).where(
+                and18(
+                  eq30(chefKitchenApplications.chefId, booking.chefId),
+                  eq30(chefKitchenApplications.locationId, location.id)
+                )
+              ).limit(1);
+              chef = {
+                id: chefUser.id,
+                username: chefUser.username,
+                fullName: chefApp?.fullName || chefUser.username,
+                phone: chefApp?.phone || null
+              };
+            }
+          }
+          const storageBookingsRaw = await bookingService.getStorageBookingsByKitchenBooking(id);
+          let originalStorageIds = /* @__PURE__ */ new Set();
+          const originalStorageDates = {};
+          try {
+            const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+            const kitchenTransaction = await findPaymentTransactionByIntentId2(booking.paymentIntentId || "", db);
+            if (kitchenTransaction?.metadata) {
+              const metadata = typeof kitchenTransaction.metadata === "string" ? JSON.parse(kitchenTransaction.metadata) : kitchenTransaction.metadata;
+              if (metadata?.storage_items && Array.isArray(metadata.storage_items)) {
+                for (const item of metadata.storage_items) {
+                  if (item.storageBookingId || item.id) {
+                    const storageId = item.storageBookingId || item.id;
+                    originalStorageIds.add(storageId);
+                    const startDate = new Date(item.startDate);
+                    const endDate = new Date(item.endDate);
+                    const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24)));
+                    originalStorageDates[storageId] = { startDate, endDate, days };
+                  }
+                }
+              }
+            }
+          } catch {
+            originalStorageIds = new Set(storageBookingsRaw.map((sb) => sb.id));
+          }
+          const originalStorageBookings = storageBookingsRaw.filter((sb) => originalStorageIds.has(sb.id));
+          const storageBookingsWithDetails = await Promise.all(
+            originalStorageBookings.map(async (sb) => {
+              const [listing] = await db.select({
+                name: storageListings.name,
+                storageType: storageListings.storageType,
+                photos: storageListings.photos,
+                basePrice: storageListings.basePrice
+              }).from(storageListings).where(eq30(storageListings.id, sb.storageListingId)).limit(1);
+              const originalDates = originalStorageDates[sb.id];
+              let originalPrice = sb.totalPrice;
+              let displayStartDate = sb.startDate;
+              let displayEndDate = sb.endDate;
+              if (originalDates && listing?.basePrice) {
+                const dailyRate = parseFloat(listing.basePrice.toString());
+                originalPrice = dailyRate * originalDates.days;
+                displayStartDate = originalDates.startDate.toISOString();
+                displayEndDate = originalDates.endDate.toISOString();
+              }
+              return {
+                ...sb,
+                totalPrice: originalPrice,
+                startDate: displayStartDate,
+                endDate: displayEndDate,
+                storageListing: listing || null
+              };
+            })
+          );
+          const equipmentBookingsRaw = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+          const equipmentBookingsWithDetails = await Promise.all(
+            equipmentBookingsRaw.map(async (eb) => {
+              const [listing] = await db.select({
+                equipmentType: equipmentListings.equipmentType,
+                brand: equipmentListings.brand
+              }).from(equipmentListings).where(eq30(equipmentListings.id, eb.equipmentListingId)).limit(1);
+              return {
+                ...eb,
+                equipmentListing: listing || null
+              };
+            })
+          );
+          let paymentTransaction = null;
+          try {
+            const [txn] = await db.select({
+              amount: paymentTransactions.amount,
+              baseAmount: paymentTransactions.baseAmount,
+              // Base amount before tax
+              serviceFee: paymentTransactions.serviceFee,
+              managerRevenue: paymentTransactions.managerRevenue,
+              status: paymentTransactions.status,
+              stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+              paidAt: paymentTransactions.paidAt,
+              refundAmount: paymentTransactions.refundAmount,
+              netAmount: paymentTransactions.netAmount,
+              refundedAt: paymentTransactions.refundedAt,
+              refundReason: paymentTransactions.refundReason
+            }).from(paymentTransactions).where(
+              and18(
+                eq30(paymentTransactions.bookingId, id),
+                // Include both 'kitchen' and 'bundle' booking types for accurate payment data
+                or5(
+                  eq30(paymentTransactions.bookingType, "kitchen"),
+                  eq30(paymentTransactions.bookingType, "bundle")
+                )
+              )
+            ).limit(1);
+            if (txn) {
+              paymentTransaction = {
+                ...txn,
+                amount: txn.amount ? parseFloat(txn.amount) : null,
+                baseAmount: txn.baseAmount ? parseFloat(txn.baseAmount) : null,
+                // Base before tax
+                serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
+                managerRevenue: txn.managerRevenue ? parseFloat(txn.managerRevenue) : null,
+                stripeProcessingFee: txn.stripeProcessingFee ? parseFloat(txn.stripeProcessingFee) : null,
+                refundAmount: txn.refundAmount ? parseFloat(txn.refundAmount) : 0,
+                netAmount: txn.netAmount ? parseFloat(txn.netAmount) : null,
+                refundedAt: txn.refundedAt || null,
+                refundReason: txn.refundReason || null
+              };
+            }
+          } catch (err) {
+            console.error("Error fetching payment transaction:", err);
+          }
+          const hourlyRate = booking.hourlyRate ? parseFloat(booking.hourlyRate.toString()) : 0;
+          const durationHours = booking.durationHours ? parseFloat(booking.durationHours.toString()) : 0;
+          const calculatedKitchenPrice = Math.round(hourlyRate * durationHours);
+          const kitchenOnlyPrice = calculatedKitchenPrice > 0 ? calculatedKitchenPrice : booking.totalPrice || 0;
+          res.json({
+            ...booking,
+            totalPrice: kitchenOnlyPrice,
+            // Override with calculated kitchen-only price
+            kitchen: {
+              id: kitchen.id,
+              name: kitchen.name,
+              description: kitchen.description,
+              photos: kitchen.galleryImages || (kitchen.imageUrl ? [kitchen.imageUrl] : []),
+              locationId: kitchen.locationId,
+              taxRatePercent: kitchen.taxRatePercent || 0
+              // Include tax rate for revenue calculation
+            },
+            location: {
+              id: location.id,
+              name: location.name,
+              address: location.address,
+              timezone: location.timezone
+            },
+            chef,
+            storageBookings: storageBookingsWithDetails,
+            equipmentBookings: equipmentBookingsWithDetails,
+            paymentTransaction
+          });
+        } catch (e) {
+          console.error("Error fetching booking details:", e);
+          res.status(500).json({ error: e.message || "Failed to fetch booking details" });
+        }
+      }
+    );
+    router15.put(
+      "/bookings/:id/status",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const id = parseInt(req.params.id);
+          const { status, storageActions, equipmentActions, refundOnCancel } = req.body;
+          if (!["confirmed", "cancelled", "pending"].includes(status)) {
+            return res.status(400).json({
+              error: "Invalid status. Must be 'confirmed', 'cancelled', or 'pending'"
+            });
+          }
+          const booking = await bookingService.getBookingById(id);
+          if (!booking) {
+            return res.status(404).json({ error: "Booking not found" });
+          }
+          const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+          }
+          const location = await locationService.getLocationById(
+            kitchen.locationId
+          );
+          if (!location || location.managerId !== user.id) {
+            return res.status(403).json({ error: "Access denied to this booking" });
+          }
+          if (status === "confirmed") {
+            const paymentStatus = booking.paymentStatus;
+            if (paymentStatus === "pending") {
+              return res.status(400).json({
+                error: "Cannot confirm booking - payment has not been completed. The chef may have abandoned checkout.",
+                paymentStatus
+              });
+            }
+          }
+          await bookingService.updateBookingStatus(id, status);
+          const storageActionResults = [];
+          try {
+            const associatedStorageBookings = await bookingService.getStorageBookingsByKitchenBooking(id);
+            if (associatedStorageBookings && associatedStorageBookings.length > 0) {
+              if (Array.isArray(storageActions) && storageActions.length > 0) {
+                const actionMap = /* @__PURE__ */ new Map();
+                for (const sa of storageActions) {
+                  if (sa.storageBookingId && ["confirmed", "cancelled"].includes(sa.action)) {
+                    actionMap.set(sa.storageBookingId, sa.action);
+                  }
+                }
+                for (const storageBooking of associatedStorageBookings) {
+                  const action = actionMap.get(storageBooking.id) || status;
+                  await bookingService.updateStorageBooking(storageBooking.id, {
+                    status: action
+                  });
+                  storageActionResults.push({ storageBookingId: storageBooking.id, action, success: true });
+                  logger.info(
+                    `[Manager] Modular approval: storage booking ${storageBooking.id} \u2192 ${action} for kitchen booking ${id}`
+                  );
+                }
+              } else {
+                for (const storageBooking of associatedStorageBookings) {
+                  await bookingService.updateStorageBooking(storageBooking.id, {
+                    status
+                  });
+                  storageActionResults.push({ storageBookingId: storageBooking.id, action: status, success: true });
+                  logger.info(
+                    `[Manager] Updated storage booking ${storageBooking.id} to ${status} for kitchen booking ${id}`
+                  );
+                }
+              }
+            }
+          } catch (storageUpdateError) {
+            logger.error(
+              `[Manager] Error updating storage bookings for kitchen booking ${id}:`,
+              storageUpdateError
+            );
+          }
+          const equipmentActionResults = [];
+          try {
+            const associatedEquipmentBookings = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+            if (associatedEquipmentBookings && associatedEquipmentBookings.length > 0) {
+              if (Array.isArray(equipmentActions) && equipmentActions.length > 0) {
+                const actionMap = /* @__PURE__ */ new Map();
+                for (const ea of equipmentActions) {
+                  if (ea.equipmentBookingId && ["confirmed", "cancelled"].includes(ea.action)) {
+                    actionMap.set(ea.equipmentBookingId, ea.action);
+                  }
+                }
+                for (const equipmentBooking of associatedEquipmentBookings) {
+                  const action = actionMap.get(equipmentBooking.id) || status;
+                  await bookingService.updateEquipmentBooking(equipmentBooking.id, {
+                    status: action
+                  });
+                  equipmentActionResults.push({ equipmentBookingId: equipmentBooking.id, action, success: true });
+                  logger.info(
+                    `[Manager] Modular approval: equipment booking ${equipmentBooking.id} \u2192 ${action} for kitchen booking ${id}`
+                  );
+                }
+              } else {
+                for (const equipmentBooking of associatedEquipmentBookings) {
+                  await bookingService.updateEquipmentBooking(equipmentBooking.id, {
+                    status
+                  });
+                  equipmentActionResults.push({ equipmentBookingId: equipmentBooking.id, action: status, success: true });
+                  logger.info(
+                    `[Manager] Updated equipment booking ${equipmentBooking.id} to ${status} for kitchen booking ${id}`
+                  );
+                }
+              }
+            }
+          } catch (equipmentUpdateError) {
+            logger.error(
+              `[Manager] Error updating equipment bookings for kitchen booking ${id}:`,
+              equipmentUpdateError
+            );
+          }
+          const previousStatus = booking.status;
+          const isCancellation = previousStatus === "confirmed" && status === "cancelled";
+          const isFromPending = previousStatus === "pending";
+          const bookingPaymentIntentId = booking.paymentIntentId;
+          const bookingPaymentStatus = booking.paymentStatus;
+          const hasValidPayment = bookingPaymentIntentId && (bookingPaymentStatus === "paid" || bookingPaymentStatus === "processing");
+          const isAuthorizedPayment = bookingPaymentIntentId && bookingPaymentStatus === "authorized";
+          if (isFromPending && isAuthorizedPayment && status === "confirmed") {
+            try {
+              const { capturePaymentIntent: capturePaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+              const { calculateCheckoutFeesAsync: calculateCheckoutFeesAsync2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
+              const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+              const bookingHourlyRate = parseFloat(String(booking.hourlyRate || "0"));
+              const bookingDurationHours = parseFloat(String(booking.durationHours || "1"));
+              const kitchenOnlyPriceCents = Math.round(bookingHourlyRate * bookingDurationHours);
+              const approvedStorageIds = /* @__PURE__ */ new Set();
+              const rejectedStorageIds = /* @__PURE__ */ new Set();
+              for (const r of storageActionResults) {
+                if (r.action === "confirmed") approvedStorageIds.add(r.storageBookingId);
+                else if (r.action === "cancelled") rejectedStorageIds.add(r.storageBookingId);
+              }
+              const approvedEquipmentIds = /* @__PURE__ */ new Set();
+              const rejectedEquipmentIds = /* @__PURE__ */ new Set();
+              for (const r of equipmentActionResults) {
+                if (r.action === "confirmed") approvedEquipmentIds.add(r.equipmentBookingId);
+                else if (r.action === "cancelled") rejectedEquipmentIds.add(r.equipmentBookingId);
+              }
+              let approvedStorageCents = 0;
+              let approvedEquipmentCents = 0;
+              const assocStorage = await bookingService.getStorageBookingsByKitchenBooking(id);
+              for (const sb of assocStorage || []) {
+                const price = Math.round(parseFloat(String(sb.totalPrice || "0")));
+                if (rejectedStorageIds.has(sb.id)) {
+                } else {
+                  approvedStorageCents += price;
+                  approvedStorageIds.add(sb.id);
+                }
+              }
+              const assocEquip = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+              for (const eb of assocEquip || []) {
+                const price = Math.round(parseFloat(String(eb.totalPrice || "0")));
+                if (rejectedEquipmentIds.has(eb.id)) {
+                } else {
+                  approvedEquipmentCents += price;
+                  approvedEquipmentIds.add(eb.id);
+                }
+              }
+              const approvedSubtotalCents = kitchenOnlyPriceCents + approvedStorageCents + approvedEquipmentCents;
+              const taxRatePercent = kitchen?.taxRatePercent ? parseFloat(String(kitchen.taxRatePercent)) : 0;
+              const approvedTaxCents = Math.round(approvedSubtotalCents * taxRatePercent / 100);
+              const captureAmountCents = approvedSubtotalCents + approvedTaxCents;
+              const feeCalc = await calculateCheckoutFeesAsync2(captureAmountCents);
+              const newApplicationFeeCents = feeCalc.totalPlatformFeeInCents;
+              const originalTotalPriceCents = Math.round(parseFloat(String(booking.totalPrice || "0")));
+              const originalTaxCents = Math.round(originalTotalPriceCents * taxRatePercent / 100);
+              const originalAuthorizedAmount = originalTotalPriceCents + originalTaxCents;
+              const isPartialCapture = captureAmountCents < originalAuthorizedAmount;
+              logger.info(`[Manager] PARTIAL CAPTURE ENGINE for booking ${id}:`, {
+                kitchenOnlyPriceCents,
+                approvedStorageCents,
+                approvedEquipmentCents,
+                approvedSubtotalCents,
+                taxRatePercent,
+                approvedTaxCents,
+                captureAmountCents,
+                originalAuthorizedAmount,
+                isPartialCapture,
+                newApplicationFeeCents,
+                rejectedStorageIds: Array.from(rejectedStorageIds),
+                rejectedEquipmentIds: Array.from(rejectedEquipmentIds)
+              });
+              if (isPartialCapture) {
+                try {
+                  const ptRecordPreCapture = await findPaymentTransactionByIntentId2(bookingPaymentIntentId, db);
+                  if (ptRecordPreCapture) {
+                    const existingMeta = ptRecordPreCapture.metadata ? typeof ptRecordPreCapture.metadata === "string" ? JSON.parse(ptRecordPreCapture.metadata) : ptRecordPreCapture.metadata : {};
+                    await updatePaymentTransaction2(ptRecordPreCapture.id, {
+                      metadata: {
+                        ...existingMeta,
+                        partialCapture: true,
+                        approvedSubtotal: approvedSubtotalCents,
+                        approvedTax: approvedTaxCents,
+                        taxRatePercent
+                      }
+                    }, db);
+                    logger.info(`[Manager] Pre-set partialCapture metadata on PT ${ptRecordPreCapture.id} BEFORE stripe.capture()`);
+                  }
+                } catch (preCapErr) {
+                  logger.warn(`[Manager] Could not pre-set PT metadata (non-fatal, will retry in Step 9):`, preCapErr);
+                }
+              }
+              const captureResult = isPartialCapture ? await capturePaymentIntent2(bookingPaymentIntentId, captureAmountCents, newApplicationFeeCents) : await capturePaymentIntent2(bookingPaymentIntentId);
+              logger.info(`[Manager] AUTH-THEN-CAPTURE: ${isPartialCapture ? "Partial" : "Full"} capture for booking ${id}`, {
+                paymentIntentId: bookingPaymentIntentId,
+                capturedAmount: captureResult.amount,
+                status: captureResult.status
+              });
+              const currentStorageItems = booking.storageItems || [];
+              const currentEquipmentItems = booking.equipmentItems || [];
+              const updatedStorageItems = currentStorageItems.map(
+                (item) => rejectedStorageIds.has(item.id) ? { ...item, rejected: true } : item
+              );
+              const updatedEquipmentItems = currentEquipmentItems.map(
+                (item) => rejectedEquipmentIds.has(item.id) ? { ...item, rejected: true } : item
+              );
+              await db.update(kitchenBookings).set({
+                paymentStatus: "paid",
+                totalPrice: approvedSubtotalCents.toString(),
+                storageItems: updatedStorageItems,
+                equipmentItems: updatedEquipmentItems,
+                updatedAt: /* @__PURE__ */ new Date()
+              }).where(eq30(kitchenBookings.id, id));
+              logger.info(`[Manager] Updated kb: total_price=${approvedSubtotalCents} (approved subtotal), marked ${rejectedStorageIds.size} rejected storage + ${rejectedEquipmentIds.size} rejected equipment in JSONB`);
+              for (const sb of assocStorage || []) {
+                if (rejectedStorageIds.has(sb.id)) {
+                  await db.update(storageBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq30(storageBookings.id, sb.id));
+                } else {
+                  await db.update(storageBookings).set({ paymentStatus: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq30(storageBookings.id, sb.id));
+                }
+              }
+              for (const eb of assocEquip || []) {
+                if (rejectedEquipmentIds.has(eb.id)) {
+                  await db.update(equipmentBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq30(equipmentBookings.id, eb.id));
+                } else {
+                  await db.update(equipmentBookings).set({ paymentStatus: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq30(equipmentBookings.id, eb.id));
+                }
+              }
+              try {
+                const ptRecord = await findPaymentTransactionByIntentId2(bookingPaymentIntentId, db);
+                if (ptRecord) {
+                  const capturedBaseAmount = captureAmountCents - newApplicationFeeCents;
+                  const capturedManagerRevenue = capturedBaseAmount;
+                  const existingMetadata = ptRecord.metadata ? typeof ptRecord.metadata === "string" ? JSON.parse(ptRecord.metadata) : ptRecord.metadata : {};
+                  const captureMetadata = {
+                    ...existingMetadata,
+                    partialCapture: isPartialCapture,
+                    capturedAmount: captureAmountCents,
+                    originalAuthorizedAmount,
+                    approvedSubtotal: approvedSubtotalCents,
+                    approvedTax: approvedTaxCents,
+                    taxRatePercent,
+                    applicationFee: newApplicationFeeCents,
+                    approvedStorageIds: Array.from(approvedStorageIds),
+                    approvedEquipmentIds: Array.from(approvedEquipmentIds),
+                    rejectedStorageIds: Array.from(rejectedStorageIds),
+                    rejectedEquipmentIds: Array.from(rejectedEquipmentIds),
+                    capturedAt: (/* @__PURE__ */ new Date()).toISOString()
+                  };
+                  await updatePaymentTransaction2(ptRecord.id, {
+                    status: "succeeded",
+                    stripeStatus: "succeeded",
+                    paidAt: /* @__PURE__ */ new Date(),
+                    amount: captureAmountCents,
+                    metadata: captureMetadata
+                  }, db);
+                  await db.execute(sql13`
+                UPDATE payment_transactions
+                SET base_amount = ${capturedBaseAmount.toString()},
+                    service_fee = ${newApplicationFeeCents.toString()},
+                    manager_revenue = ${capturedManagerRevenue.toString()},
+                    net_amount = ${captureAmountCents.toString()}
+                WHERE id = ${ptRecord.id}
+              `);
+                  logger.info(`[Manager] Updated payment_transactions ${ptRecord.id}: amount=${captureAmountCents}, base=${capturedBaseAmount}, fee=${newApplicationFeeCents}, revenue=${capturedManagerRevenue}`);
+                }
+              } catch (ptErr) {
+                logger.warn(`[Manager] Could not update payment_transactions after capture:`, ptErr);
+              }
+            } catch (captureError) {
+              logger.error(`[Manager] PARTIAL CAPTURE ENGINE: Failed for booking ${id}:`, captureError);
+              return res.status(500).json({
+                error: "Failed to capture payment. The authorization may have expired. Please contact the chef to re-book.",
+                details: captureError.message
+              });
+            }
+          }
+          let refundResult = null;
+          if (isFromPending && isAuthorizedPayment && status === "cancelled") {
+            try {
+              const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+              const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+              const cancelResult = await cancelPaymentIntent2(bookingPaymentIntentId);
+              logger.info(`[Manager] AUTH-THEN-CAPTURE: Cancelled authorization for booking ${id}`, {
+                paymentIntentId: bookingPaymentIntentId,
+                status: cancelResult.status
+              });
+              await db.update(kitchenBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq30(kitchenBookings.id, id));
+              try {
+                const assocStorage = await bookingService.getStorageBookingsByKitchenBooking(id);
+                for (const sb of assocStorage || []) {
+                  if (sb.paymentStatus === "authorized") {
+                    await db.update(storageBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq30(storageBookings.id, sb.id));
+                  }
+                }
+                const assocEquip = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+                for (const eb of assocEquip || []) {
+                  if (eb.paymentStatus === "authorized") {
+                    await db.update(equipmentBookings).set({ paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq30(equipmentBookings.id, eb.id));
+                  }
+                }
+              } catch (subBookErr) {
+                logger.warn(`[Manager] Could not update sub-booking paymentStatus after auth cancel:`, subBookErr);
+              }
+              try {
+                const ptRecord = await findPaymentTransactionByIntentId2(bookingPaymentIntentId, db);
+                if (ptRecord) {
+                  await updatePaymentTransaction2(ptRecord.id, {
+                    status: "canceled",
+                    stripeStatus: "canceled"
+                  }, db);
+                  logger.info(`[Manager] Updated payment_transactions ${ptRecord.id} to canceled after auth cancel`);
+                }
+              } catch (ptErr) {
+                logger.warn(`[Manager] Could not update payment_transactions after auth cancel:`, ptErr);
+              }
+            } catch (cancelError) {
+              logger.error(`[Manager] AUTH-THEN-CAPTURE: Failed to cancel authorization for booking ${id}:`, cancelError);
+            }
+          }
+          const shouldAutoRefund = isFromPending && hasValidPayment && !isCancellation || isCancellation && refundOnCancel && hasValidPayment;
+          if (shouldAutoRefund) {
+            try {
+              const { reverseTransferAndRefund: reverseTransferAndRefund2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+              const {
+                findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2,
+                updatePaymentTransaction: updatePaymentTransaction2
+              } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+              const kitchenWasRejected = status === "cancelled";
+              let rejectedStorageIds = [];
+              if (Array.isArray(storageActions) && storageActions.length > 0) {
+                rejectedStorageIds = storageActions.filter((sa) => sa.action === "cancelled").map((sa) => sa.storageBookingId);
+              } else if (kitchenWasRejected) {
+                rejectedStorageIds = storageActionResults.filter((r) => r.action === "cancelled").map((r) => r.storageBookingId);
+              }
+              let rejectedEquipmentIds = [];
+              if (Array.isArray(equipmentActions) && equipmentActions.length > 0) {
+                rejectedEquipmentIds = equipmentActions.filter((ea) => ea.action === "cancelled").map((ea) => ea.equipmentBookingId);
+              } else if (kitchenWasRejected) {
+                rejectedEquipmentIds = equipmentActionResults.filter((r) => r.action === "cancelled").map((r) => r.equipmentBookingId);
+              }
+              let rejectedKitchenCents = 0;
+              if (kitchenWasRejected) {
+                rejectedKitchenCents = parseInt(String(booking.totalPrice || "0")) || 0;
+              }
+              let rejectedStorageTotalCents = 0;
+              if (rejectedStorageIds.length > 0) {
+                const rejectedRows = await db.select({
+                  id: storageBookings.id,
+                  totalPrice: storageBookings.totalPrice
+                }).from(storageBookings).where(
+                  sql13`${storageBookings.id} IN (${sql13.join(
+                    rejectedStorageIds.map((rid) => sql13`${rid}`),
+                    sql13`, `
+                  )})`
+                );
+                for (const row of rejectedRows) {
+                  rejectedStorageTotalCents += parseInt(String(row.totalPrice || "0")) || 0;
+                }
+              }
+              let rejectedEquipmentTotalCents = 0;
+              if (rejectedEquipmentIds.length > 0) {
+                const rejectedEqRows = await db.select({
+                  id: equipmentBookings.id,
+                  totalPrice: equipmentBookings.totalPrice
+                }).from(equipmentBookings).where(
+                  sql13`${equipmentBookings.id} IN (${sql13.join(
+                    rejectedEquipmentIds.map((rid) => sql13`${rid}`),
+                    sql13`, `
+                  )})`
+                );
+                for (const row of rejectedEqRows) {
+                  rejectedEquipmentTotalCents += parseInt(String(row.totalPrice || "0")) || 0;
+                }
+              }
+              const totalRejectedSubtotalCents = rejectedKitchenCents + rejectedStorageTotalCents + rejectedEquipmentTotalCents;
+              if (totalRejectedSubtotalCents > 0) {
+                const paymentTransaction = await findPaymentTransactionByIntentId2(
+                  bookingPaymentIntentId,
+                  db
+                );
+                const transactionAmount = paymentTransaction ? parseInt(String(paymentTransaction.amount || "0")) || 0 : 0;
+                const baseAmount = paymentTransaction ? parseInt(String(paymentTransaction.base_amount || "0")) || 0 : 0;
+                const stripeProcessingFee = paymentTransaction ? parseInt(String(paymentTransaction.stripe_processing_fee || "0")) || 0 : 0;
+                const managerRevenue = paymentTransaction ? parseInt(String(paymentTransaction.manager_revenue || "0")) || 0 : transactionAmount;
+                const currentRefundAmount = paymentTransaction ? parseInt(String(paymentTransaction.refund_amount || "0")) || 0 : 0;
+                const taxRatePercent = kitchen.taxRatePercent ? parseFloat(String(kitchen.taxRatePercent)) : 0;
+                const proportionalTaxCents = Math.round(
+                  totalRejectedSubtotalCents * taxRatePercent / 100
+                );
+                const grossRefundCents = totalRejectedSubtotalCents + proportionalTaxCents;
+                const proportionalStripeFee = transactionAmount > 0 ? Math.round(stripeProcessingFee * (grossRefundCents / transactionAmount)) : 0;
+                const netRefundCents = Math.max(0, grossRefundCents - proportionalStripeFee);
+                const managerRemainingBalance = Math.max(0, managerRevenue - currentRefundAmount);
+                const cappedRefundAmount = Math.min(netRefundCents, managerRemainingBalance);
+                const rejectedItems = [];
+                if (kitchenWasRejected) rejectedItems.push("kitchen_booking");
+                if (rejectedStorageIds.length > 0) rejectedItems.push(...rejectedStorageIds.map((sid) => `storage_${sid}`));
+                if (rejectedEquipmentIds.length > 0) rejectedItems.push(...rejectedEquipmentIds.map((eid) => `equipment_${eid}`));
+                const isFullRefund = cappedRefundAmount >= managerRemainingBalance;
+                const refundType = kitchenWasRejected ? rejectedStorageIds.length > 0 || rejectedEquipmentIds.length > 0 ? "kitchen_and_items" : "kitchen_only" : "items_only";
+                if (cappedRefundAmount > 0) {
+                  const stripeResult = await reverseTransferAndRefund2(
+                    bookingPaymentIntentId,
+                    cappedRefundAmount,
+                    "requested_by_customer",
+                    {
+                      reverseTransferAmount: cappedRefundAmount,
+                      refundApplicationFee: false,
+                      metadata: {
+                        booking_id: String(id),
+                        booking_type: refundType,
+                        cancellation_reason: kitchenWasRejected ? "Booking rejected by manager" : "Item(s) rejected by manager (partial approval)",
+                        manager_id: String(user.id),
+                        refund_model: "tax_inclusive_proportional_stripe_deducted",
+                        rejected_kitchen: String(kitchenWasRejected),
+                        rejected_kitchen_cents: String(rejectedKitchenCents),
+                        rejected_storage_ids: JSON.stringify(rejectedStorageIds),
+                        rejected_storage_cents: String(rejectedStorageTotalCents),
+                        rejected_equipment_ids: JSON.stringify(rejectedEquipmentIds),
+                        rejected_equipment_cents: String(rejectedEquipmentTotalCents),
+                        total_rejected_subtotal_cents: String(totalRejectedSubtotalCents),
+                        proportional_tax_cents: String(proportionalTaxCents),
+                        tax_rate_percent: String(taxRatePercent),
+                        gross_refund_cents: String(grossRefundCents),
+                        proportional_stripe_fee_cents: String(proportionalStripeFee),
+                        total_stripe_fee: String(stripeProcessingFee),
+                        net_refund_cents: String(netRefundCents),
+                        transaction_amount: String(transactionAmount),
+                        base_amount: String(baseAmount),
+                        manager_revenue: String(managerRevenue),
+                        customer_receives: String(cappedRefundAmount),
+                        manager_debited: String(cappedRefundAmount)
+                      }
+                    }
+                  );
+                  refundResult = {
+                    refundId: stripeResult.refundId,
+                    refundAmount: stripeResult.refundAmount,
+                    transferReversalId: stripeResult.transferReversalId,
+                    rejectedItems
+                  };
+                  logger.info(`[Manager] Unified refund processed for booking ${id}`, {
+                    refundId: refundResult.refundId,
+                    refundAmount: refundResult.refundAmount,
+                    refundType,
+                    kitchenRejected: kitchenWasRejected,
+                    rejectedKitchenCents,
+                    rejectedStorageIds,
+                    rejectedStorageTotalCents,
+                    rejectedEquipmentIds,
+                    rejectedEquipmentTotalCents,
+                    totalRejectedSubtotalCents,
+                    proportionalTaxCents,
+                    grossRefundCents,
+                    proportionalStripeFee,
+                    totalStripeFee: stripeProcessingFee,
+                    netRefundCents,
+                    cappedRefundAmount,
+                    isFullRefund
+                  });
+                  if (paymentTransaction) {
+                    const newTotalRefunded = currentRefundAmount + refundResult.refundAmount;
+                    const newStatus = newTotalRefunded >= managerRevenue ? "refunded" : "partially_refunded";
+                    await updatePaymentTransaction2(
+                      paymentTransaction.id,
+                      {
+                        status: newStatus,
+                        refundAmount: newTotalRefunded,
+                        refundId: refundResult.refundId,
+                        refundReason: kitchenWasRejected ? `Booking rejected by manager (${refundType})` : `Partial refund: rejected ${rejectedStorageIds.length} storage + ${rejectedEquipmentIds.length} equipment`,
+                        refundedAt: /* @__PURE__ */ new Date()
+                      },
+                      db
+                    );
+                  }
+                  if (kitchenWasRejected) {
+                    await db.update(kitchenBookings).set({ paymentStatus: isFullRefund ? "refunded" : "partially_refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq30(kitchenBookings.id, id));
+                  } else if (totalRejectedSubtotalCents > 0) {
+                    await db.update(kitchenBookings).set({ paymentStatus: "partially_refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq30(kitchenBookings.id, id));
+                  }
+                  for (const rejectedId of rejectedStorageIds) {
+                    await db.update(storageBookings).set({ paymentStatus: "refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq30(storageBookings.id, rejectedId));
+                  }
+                  for (const rejectedId of rejectedEquipmentIds) {
+                    await db.update(equipmentBookings).set({ paymentStatus: "refunded", updatedAt: /* @__PURE__ */ new Date() }).where(eq30(equipmentBookings.id, rejectedId));
+                  }
+                  if (rejectedStorageIds.length > 0 || rejectedEquipmentIds.length > 0) {
+                    const rejStorageSet = new Set(rejectedStorageIds);
+                    const rejEquipSet = new Set(rejectedEquipmentIds);
+                    const curStorage = booking.storageItems || [];
+                    const curEquip = booking.equipmentItems || [];
+                    const markedStorage = curStorage.map((item) => rejStorageSet.has(item.id) ? { ...item, rejected: true } : item);
+                    const markedEquip = curEquip.map((item) => rejEquipSet.has(item.id) ? { ...item, rejected: true } : item);
+                    await db.update(kitchenBookings).set({ storageItems: markedStorage, equipmentItems: markedEquip, updatedAt: /* @__PURE__ */ new Date() }).where(eq30(kitchenBookings.id, id));
+                  }
+                }
+              }
+            } catch (refundError) {
+              logger.error(
+                `[Manager] Failed to process refund for booking ${id}:`,
+                refundError
+              );
+            }
+          }
+          const cancelledStorageIdsFromActions = new Set(
+            storageActionResults.filter((r) => r.action === "cancelled").map((r) => r.storageBookingId)
+          );
+          const cancelledEquipmentIdsFromActions = new Set(
+            equipmentActionResults.filter((r) => r.action === "cancelled").map((r) => r.equipmentBookingId)
+          );
+          if (cancelledStorageIdsFromActions.size > 0 || cancelledEquipmentIdsFromActions.size > 0) {
+            try {
+              const [currentBookingJsonb] = await db.select({ storageItems: kitchenBookings.storageItems, equipmentItems: kitchenBookings.equipmentItems }).from(kitchenBookings).where(eq30(kitchenBookings.id, id));
+              if (currentBookingJsonb) {
+                const curStorage = Array.isArray(currentBookingJsonb.storageItems) ? currentBookingJsonb.storageItems : [];
+                const curEquip = Array.isArray(currentBookingJsonb.equipmentItems) ? currentBookingJsonb.equipmentItems : [];
+                const needsStorageUpdate = curStorage.some((item) => cancelledStorageIdsFromActions.has(item.id) && !item.rejected);
+                const needsEquipmentUpdate = curEquip.some((item) => cancelledEquipmentIdsFromActions.has(item.id) && !item.rejected);
+                if (needsStorageUpdate || needsEquipmentUpdate) {
+                  const updatedStorage = curStorage.map(
+                    (item) => cancelledStorageIdsFromActions.has(item.id) ? { ...item, rejected: true } : item
+                  );
+                  const updatedEquip = curEquip.map(
+                    (item) => cancelledEquipmentIdsFromActions.has(item.id) ? { ...item, rejected: true } : item
+                  );
+                  await db.update(kitchenBookings).set({ storageItems: updatedStorage, equipmentItems: updatedEquip, updatedAt: /* @__PURE__ */ new Date() }).where(eq30(kitchenBookings.id, id));
+                  logger.info(`[Manager] JSONB sync: marked ${cancelledStorageIdsFromActions.size} storage + ${cancelledEquipmentIdsFromActions.size} equipment as rejected in JSONB for booking ${id}`);
+                }
+              }
+            } catch (jsonbSyncErr) {
+              logger.warn(`[Manager] JSONB sync failed for booking ${id}:`, jsonbSyncErr);
+            }
+          }
+          try {
+            let chef = null;
+            if (booking.chefId) {
+              chef = await userService.getUser(booking.chefId);
+            }
+            const timezone = location.timezone || "America/St_Johns";
+            const locationName = location.name;
+            if (chef) {
+              if (status === "confirmed") {
+                const chefConfirmationEmail = generateBookingConfirmationEmail({
+                  chefEmail: chef.username,
+                  chefName: chef.username,
+                  kitchenName: kitchen.name,
+                  bookingDate: booking.bookingDate,
+                  startTime: booking.startTime,
+                  endTime: booking.endTime,
+                  timezone,
+                  locationName
+                });
+                const emailSent = await sendEmail(chefConfirmationEmail);
+                if (emailSent) {
+                  logger.info(
+                    `[Manager] \u2705 Sent booking confirmation email to chef: ${chef.username}`
+                  );
+                } else {
+                  logger.error(
+                    `[Manager] \u274C Failed to send booking confirmation email to chef: ${chef.username}`
+                  );
+                }
+                try {
+                  const chefPhone = await getChefPhone(booking.chefId);
+                  if (chefPhone) {
+                    const smsContent = generateChefBookingConfirmationSMS({
+                      kitchenName: kitchen.name,
+                      bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString() : String(booking.bookingDate),
+                      startTime: booking.startTime,
+                      endTime: booking.endTime
+                    });
+                    await sendSMS(chefPhone, smsContent);
+                  }
+                } catch (smsError) {
+                  console.error(
+                    "Error sending confirmation SMS to chef:",
+                    smsError
+                  );
+                }
+                logger.info(
+                  `[Manager] Booking ${id} confirmed by manager ${user.id}`
+                );
+                try {
+                  await notificationService.notifyBookingConfirmed({
+                    managerId: user.id,
+                    locationId: location.id,
+                    bookingId: id,
+                    chefName: chef.username || "Chef",
+                    kitchenName: kitchen.name,
+                    bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString().split("T")[0] : String(booking.bookingDate).split("T")[0],
+                    startTime: booking.startTime,
+                    endTime: booking.endTime
+                  });
+                } catch (notifError) {
+                  console.error(
+                    "Error creating confirmation notification:",
+                    notifError
+                  );
+                }
+              } else if (status === "cancelled") {
+                const chefCancellationEmail = generateBookingCancellationEmail({
+                  chefEmail: chef.username,
+                  chefName: chef.username,
+                  kitchenName: kitchen.name,
+                  bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString() : String(booking.bookingDate),
+                  startTime: booking.startTime,
+                  endTime: booking.endTime,
+                  cancellationReason: "Booking was declined by the kitchen manager"
+                });
+                const cancelEmailSent = await sendEmail(chefCancellationEmail);
+                if (cancelEmailSent) {
+                  logger.info(
+                    `[Manager] \u2705 Sent booking cancellation email to chef: ${chef.username}`
+                  );
+                } else {
+                  logger.error(
+                    `[Manager] \u274C Failed to send booking cancellation email to chef: ${chef.username}`
+                  );
+                }
+                try {
+                  const chefPhone = await getChefPhone(booking.chefId);
+                  if (chefPhone) {
+                    const smsContent = generateChefBookingCancellationSMS({
+                      kitchenName: kitchen.name,
+                      bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString() : String(booking.bookingDate),
+                      startTime: booking.startTime,
+                      endTime: booking.endTime,
+                      reason: "Booking was declined by the kitchen manager"
+                    });
+                    await sendSMS(chefPhone, smsContent);
+                  }
+                } catch (smsError) {
+                  console.error(
+                    "Error sending cancellation SMS to chef:",
+                    smsError
+                  );
+                }
+                logger.info(
+                  `[Manager] Booking ${id} cancelled/declined by manager ${user.id}`
+                );
+                try {
+                  await notificationService.notifyBookingCancelled({
+                    managerId: user.id,
+                    locationId: location.id,
+                    bookingId: id,
+                    chefName: chef.username || "Chef",
+                    kitchenName: kitchen.name,
+                    bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString().split("T")[0] : String(booking.bookingDate).split("T")[0],
+                    startTime: booking.startTime,
+                    endTime: booking.endTime,
+                    cancelledBy: "manager"
+                  });
+                } catch (notifError) {
+                  console.error(
+                    "Error creating cancellation notification:",
+                    notifError
+                  );
+                }
+              }
+            }
+          } catch (emailError) {
+            console.error(
+              "Error sending booking status change emails:",
+              emailError
+            );
+          }
+          const responseData = {
+            success: true,
+            message: `Booking ${status === "confirmed" ? "approved" : status}`,
+            storageActions: storageActionResults.length > 0 ? storageActionResults : void 0,
+            equipmentActions: equipmentActionResults.length > 0 ? equipmentActionResults : void 0
+          };
+          if (refundResult) {
+            const isFullRejection = status === "cancelled";
+            responseData.refund = {
+              refundId: refundResult.refundId,
+              amount: refundResult.refundAmount,
+              rejectedItems: refundResult.rejectedItems,
+              message: isFullRejection ? "Refund processed for rejected items (customer absorbs proportional Stripe fee)" : "Partial refund processed for rejected items (customer absorbs proportional Stripe fee)"
+            };
+            responseData.message = isFullRejection ? "Booking rejected and refund processed" : "Booking approved with partial rejection. Refund processed for rejected items.";
+          } else if (isFromPending && isAuthorizedPayment && status === "cancelled") {
+            responseData.authorizationVoided = true;
+            responseData.message = "Booking rejected \u2014 payment hold released. No charge was made.";
+          } else if (isCancellation && !refundOnCancel) {
+            responseData.requiresManualRefund = true;
+            responseData.message = "Booking cancelled. Use 'Issue Refund' to process refund manually.";
+          } else if (isCancellation && refundOnCancel && !refundResult) {
+            responseData.requiresManualRefund = true;
+            responseData.message = "Booking cancelled but refund could not be processed automatically. Use 'Issue Refund' to process manually.";
+          }
+          res.json(responseData);
+        } catch (e) {
+          console.error("Error updating booking status:", e);
+          res.status(500).json({ error: e.message || "Failed to update booking status" });
+        }
+      }
+    );
+    router15.get(
+      "/kitchens/:kitchenId/date-overrides",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const kitchenId = parseInt(req.params.kitchenId);
+          const { startDate, endDate } = req.query;
+          const start = startDate ? new Date(startDate) : /* @__PURE__ */ new Date();
+          const end = endDate ? new Date(endDate) : new Date((/* @__PURE__ */ new Date()).setFullYear((/* @__PURE__ */ new Date()).getFullYear() + 1));
+          const overrides = await kitchenService.getKitchenDateOverrides(
+            kitchenId,
+            start,
+            end
+          );
+          res.json(overrides);
+        } catch (e) {
+          res.status(500).json({ error: e.message });
+        }
+      }
+    );
+    router15.post(
+      "/kitchens/:kitchenId/date-overrides",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const kitchenId = parseInt(req.params.kitchenId);
+          const { specificDate, startTime, endTime, isAvailable, reason } = req.body;
+          const parseDateString = (dateStr) => {
+            const [year, month, day] = dateStr.split("-").map(Number);
+            return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+          };
+          const parsedDate = parseDateString(specificDate);
+          const override = await kitchenService.createKitchenDateOverride({
+            kitchenId,
+            specificDate: parsedDate,
+            startTime,
+            endTime,
+            isAvailable: isAvailable !== void 0 ? isAvailable : false,
+            reason
+          });
+          res.json(override);
+        } catch (e) {
+          res.status(500).json({ error: e.message });
+        }
+      }
+    );
+    router15.put(
+      "/date-overrides/:id",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const id = parseInt(req.params.id);
+          const { startTime, endTime, isAvailable, reason } = req.body;
+          await kitchenService.updateKitchenDateOverride(id, {
+            id,
+            startTime,
+            endTime,
+            isAvailable,
+            reason
+          });
+          res.json({ success: true });
+        } catch (e) {
+          res.status(500).json({ error: e.message });
+        }
+      }
+    );
+    router15.delete(
+      "/date-overrides/:id",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const id = parseInt(req.params.id);
+          await kitchenService.deleteKitchenDateOverride(id);
+          res.json({ success: true });
+        } catch (e) {
+          res.status(500).json({ error: e.message });
+        }
+      }
+    );
+    router15.put(
+      "/locations/:locationId/cancellation-policy",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        console.log(
+          "[PUT] /api/manager/locations/:locationId/cancellation-policy hit",
+          {
+            locationId: req.params.locationId,
+            body: req.body
+          }
+        );
+        try {
+          const user = req.neonUser;
+          const { locationId } = req.params;
+          const locationIdNum = parseInt(locationId);
+          if (isNaN(locationIdNum) || locationIdNum <= 0) {
+            console.error("[PUT] Invalid locationId:", locationId);
+            return res.status(400).json({ error: "Invalid location ID" });
+          }
+          const {
+            cancellationPolicyHours,
+            cancellationPolicyMessage,
+            defaultDailyBookingLimit,
+            minimumBookingWindowHours,
+            notificationEmail,
+            notificationPhone,
+            logoUrl,
+            brandImageUrl,
+            timezone,
+            description,
+            customOnboardingLink
+          } = req.body;
+          console.log("[PUT] Request body:", {
+            cancellationPolicyHours,
+            cancellationPolicyMessage,
+            defaultDailyBookingLimit,
+            minimumBookingWindowHours,
+            notificationEmail,
+            logoUrl,
+            brandImageUrl,
+            timezone,
+            locationId: locationIdNum
+          });
+          if (cancellationPolicyHours !== void 0 && (typeof cancellationPolicyHours !== "number" || cancellationPolicyHours < 0)) {
+            return res.status(400).json({
+              error: "Cancellation policy hours must be a non-negative number"
+            });
+          }
+          if (defaultDailyBookingLimit !== void 0 && (typeof defaultDailyBookingLimit !== "number" || defaultDailyBookingLimit < 1 || defaultDailyBookingLimit > 24)) {
+            return res.status(400).json({
+              error: "Daily booking limit must be between 1 and 24 hours"
+            });
+          }
+          if (minimumBookingWindowHours !== void 0 && (typeof minimumBookingWindowHours !== "number" || minimumBookingWindowHours < 0 || minimumBookingWindowHours > 168)) {
+            return res.status(400).json({
+              error: "Minimum booking window hours must be between 0 and 168 hours"
+            });
+          }
+          const locationResults = await db.select().from(locations).where(
+            and18(
+              eq30(locations.id, locationIdNum),
+              eq30(locations.managerId, user.id)
+            )
+          );
+          const location = locationResults[0];
+          if (!location) {
+            console.error("[PUT] Location not found or access denied:", {
+              locationId: locationIdNum,
+              managerId: user.id,
+              userRole: user.role
+            });
+            return res.status(404).json({ error: "Location not found or access denied" });
+          }
+          console.log("[PUT] Location verified:", {
+            locationId: location.id,
+            locationName: location.name,
+            managerId: location.managerId
+          });
+          const oldNotificationEmail = location.notificationEmail || location.notification_email || null;
+          const updates = {
+            updatedAt: /* @__PURE__ */ new Date()
+          };
+          if (cancellationPolicyHours !== void 0) {
+            updates.cancellationPolicyHours = cancellationPolicyHours;
+          }
+          if (cancellationPolicyMessage !== void 0) {
+            updates.cancellationPolicyMessage = cancellationPolicyMessage;
+          }
+          if (defaultDailyBookingLimit !== void 0) {
+            updates.defaultDailyBookingLimit = defaultDailyBookingLimit;
+          }
+          if (minimumBookingWindowHours !== void 0) {
+            updates.minimumBookingWindowHours = minimumBookingWindowHours;
+          }
+          if (notificationEmail !== void 0) {
+            if (notificationEmail && notificationEmail.trim() !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
+              return res.status(400).json({ error: "Invalid email format" });
+            }
+            updates.notificationEmail = notificationEmail && notificationEmail.trim() !== "" ? notificationEmail.trim() : null;
+            console.log("[PUT] Setting notificationEmail:", {
+              raw: notificationEmail,
+              processed: updates.notificationEmail,
+              oldEmail: oldNotificationEmail
+            });
+          }
+          if (notificationPhone !== void 0) {
+            if (notificationPhone && notificationPhone.trim() !== "") {
+              const normalized = normalizePhoneForStorage(notificationPhone);
+              if (!normalized) {
+                return res.status(400).json({
+                  error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
+                });
+              }
+              updates.notificationPhone = normalized;
+              console.log("[PUT] Setting notificationPhone:", {
+                raw: notificationPhone,
+                normalized
+              });
+            } else {
+              updates.notificationPhone = null;
+            }
+          }
+          const { contactEmail, contactPhone, preferredContactMethod } = req.body;
+          if (contactEmail !== void 0) {
+            if (contactEmail && contactEmail.trim() !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+              return res.status(400).json({ error: "Invalid contact email format" });
+            }
+            updates.contactEmail = contactEmail && contactEmail.trim() !== "" ? contactEmail.trim() : null;
+          }
+          if (contactPhone !== void 0) {
+            if (contactPhone && contactPhone.trim() !== "") {
+              const normalized = normalizePhoneForStorage(contactPhone);
+              if (!normalized) {
+                return res.status(400).json({
+                  error: "Invalid contact phone number format. Please enter a valid phone number"
+                });
+              }
+              updates.contactPhone = normalized;
+            } else {
+              updates.contactPhone = null;
+            }
+          }
+          if (preferredContactMethod !== void 0) {
+            if (!["email", "phone", "both"].includes(preferredContactMethod)) {
+              return res.status(400).json({
+                error: "Invalid preferred contact method. Must be 'email', 'phone', or 'both'"
+              });
+            }
+            updates.preferredContactMethod = preferredContactMethod;
+          }
+          if (logoUrl !== void 0) {
+            const processedLogoUrl = logoUrl && logoUrl.trim() !== "" ? logoUrl.trim() : null;
+            updates.logoUrl = processedLogoUrl;
+            updates.logo_url = processedLogoUrl;
+            console.log("[PUT] Setting logoUrl:", {
+              raw: logoUrl,
+              processed: processedLogoUrl,
+              type: typeof processedLogoUrl,
+              inUpdates: updates.logoUrl,
+              alsoSetAsLogo_url: updates.logo_url
+            });
+          }
+          if (brandImageUrl !== void 0) {
+            const processedBrandImageUrl = brandImageUrl && brandImageUrl.trim() !== "" ? brandImageUrl.trim() : null;
+            updates.brandImageUrl = processedBrandImageUrl;
+            updates.brand_image_url = processedBrandImageUrl;
+            console.log("[PUT] Setting brandImageUrl:", {
+              raw: brandImageUrl,
+              processed: processedBrandImageUrl
+            });
+          }
+          if (timezone !== void 0) {
+            updates.timezone = DEFAULT_TIMEZONE;
+            console.log("[PUT] Setting timezone (locked to Newfoundland):", {
+              raw: timezone,
+              processed: DEFAULT_TIMEZONE,
+              note: "Timezone is locked and cannot be changed"
+            });
+          }
+          if (description !== void 0) {
+            updates.description = description && description.trim() !== "" ? description.trim() : null;
+            console.log("[PUT] Setting description:", {
+              raw: description,
+              processed: updates.description
+            });
+          }
+          if (customOnboardingLink !== void 0) {
+            updates.customOnboardingLink = customOnboardingLink && customOnboardingLink.trim() !== "" ? customOnboardingLink.trim() : null;
+            console.log("[PUT] Setting customOnboardingLink:", {
+              raw: customOnboardingLink,
+              processed: updates.customOnboardingLink
+            });
+          }
+          console.log(
+            "[PUT] Final updates object before DB update:",
+            JSON.stringify(updates, null, 2)
+          );
+          console.log("[PUT] Updates keys:", Object.keys(updates));
+          console.log("[PUT] Updates object has logoUrl?", "logoUrl" in updates);
+          console.log(
+            "[PUT] Updates object logoUrl value:",
+            updates.logoUrl
+          );
+          console.log("[PUT] Updates object has logo_url?", "logo_url" in updates);
+          console.log(
+            "[PUT] Updates object logo_url value:",
+            updates.logo_url
+          );
+          const updatedResults = await db.update(locations).set(updates).where(eq30(locations.id, locationIdNum)).returning();
+          console.log(
+            "[PUT] Updated location from DB (full object):",
+            JSON.stringify(updatedResults[0], null, 2)
+          );
+          console.log(
+            "[PUT] Updated location logoUrl (camelCase):",
+            updatedResults[0].logoUrl
+          );
+          console.log(
+            "[PUT] Updated location logo_url (snake_case):",
+            updatedResults[0].logo_url
+          );
+          console.log(
+            "[PUT] Updated location all keys:",
+            Object.keys(updatedResults[0] || {})
+          );
+          if (!updatedResults || updatedResults.length === 0) {
+            console.error(
+              "[PUT] Cancellation policy update failed: No location returned from DB",
+              {
+                locationId: locationIdNum,
+                updates
+              }
+            );
+            return res.status(500).json({
+              error: "Failed to update location settings - no rows updated"
+            });
+          }
+          const updated = updatedResults[0];
+          console.log("[PUT] Location settings updated successfully:", {
+            locationId: updated.id,
+            cancellationPolicyHours: updated.cancellationPolicyHours,
+            defaultDailyBookingLimit: updated.defaultDailyBookingLimit,
+            defaultDailyBookingLimitRaw: updated.default_daily_booking_limit,
+            notificationEmail: updated.notificationEmail || updated.notification_email || "not set",
+            logoUrl: updated.logoUrl || updated.logo_url || "NOT SET"
+          });
+          if (defaultDailyBookingLimit !== void 0) {
+            const savedValue = updated.defaultDailyBookingLimit ?? updated.default_daily_booking_limit;
+            console.log("[PUT] \u2705 Verified defaultDailyBookingLimit save:", {
+              requested: defaultDailyBookingLimit,
+              saved: savedValue,
+              match: savedValue === defaultDailyBookingLimit
+            });
+            if (savedValue !== defaultDailyBookingLimit) {
+              console.error(
+                "[PUT] \u274C WARNING: defaultDailyBookingLimit mismatch!",
+                {
+                  requested: defaultDailyBookingLimit,
+                  saved: savedValue
+                }
+              );
+            }
+          }
+          const response = {
+            ...updated,
+            logoUrl: updated.logoUrl || updated.logo_url || null,
+            notificationEmail: updated.notificationEmail || updated.notification_email || null,
+            notificationPhone: updated.notificationPhone || updated.notification_phone || null,
+            cancellationPolicyHours: updated.cancellationPolicyHours || updated.cancellation_policy_hours,
+            cancellationPolicyMessage: updated.cancellationPolicyMessage || updated.cancellation_policy_message,
+            defaultDailyBookingLimit: updated.defaultDailyBookingLimit || updated.default_daily_booking_limit,
+            minimumBookingWindowHours: updated.minimumBookingWindowHours || updated.minimum_booking_window_hours || 1,
+            timezone: updated.timezone || DEFAULT_TIMEZONE,
+            description: updated.description || null,
+            customOnboardingLink: updated.customOnboardingLink || updated.custom_onboarding_link || null
+          };
+          if (notificationEmail !== void 0 && response.notificationEmail && response.notificationEmail !== oldNotificationEmail) {
+            try {
+              const emailContent = generateLocationEmailChangedEmail({
+                email: response.notificationEmail,
+                locationName: location.name || "Location",
+                locationId: locationIdNum
+              });
+              await sendEmail(emailContent);
+              console.log(
+                `\u2705 Location notification email change notification sent to: ${response.notificationEmail}`
+              );
+            } catch (emailError) {
+              console.error(
+                "Error sending location email change notification:",
+                emailError
+              );
+            }
+          }
+          console.log(
+            "[PUT] Sending response with notificationEmail:",
+            response.notificationEmail
+          );
+          res.status(200).json(response);
+        } catch (error) {
+          console.error("Error updating cancellation policy:", error);
+          res.status(500).json({
+            error: error.message || "Failed to update cancellation policy"
+          });
+        }
+      }
+    );
+    router15.get(
+      "/locations",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const locations5 = await locationService.getLocationsByManagerId(user.id);
+          console.log(
+            "[GET] /api/manager/locations - Raw locations from DB:",
+            locations5.map((loc) => ({
+              id: loc.id,
+              name: loc.name,
+              logoUrl: loc.logoUrl,
+              logo_url: loc.logo_url,
+              allKeys: Object.keys(loc)
+            }))
+          );
+          const mappedLocations = locations5.map((loc) => ({
+            ...loc,
+            notificationEmail: loc.notificationEmail || loc.notification_email || null,
+            notificationPhone: loc.notificationPhone || loc.notification_phone || null,
+            // Primary contact fields
+            contactEmail: loc.contactEmail || loc.contact_email || null,
+            contactPhone: loc.contactPhone || loc.contact_phone || null,
+            preferredContactMethod: loc.preferredContactMethod || loc.preferred_contact_method || "email",
+            cancellationPolicyHours: loc.cancellationPolicyHours || loc.cancellation_policy_hours,
+            cancellationPolicyMessage: loc.cancellationPolicyMessage || loc.cancellation_policy_message,
+            defaultDailyBookingLimit: loc.defaultDailyBookingLimit || loc.default_daily_booking_limit,
+            minimumBookingWindowHours: loc.minimumBookingWindowHours || loc.minimum_booking_window_hours || 1,
+            logoUrl: loc.logoUrl || loc.logo_url || null,
+            timezone: loc.timezone || DEFAULT_TIMEZONE,
+            description: loc.description || null,
+            customOnboardingLink: loc.customOnboardingLink || loc.custom_onboarding_link || null,
+            // Kitchen license status fields
+            kitchenLicenseUrl: loc.kitchenLicenseUrl || loc.kitchen_license_url || null,
+            kitchenLicenseStatus: loc.kitchenLicenseStatus || loc.kitchen_license_status || "pending",
+            kitchenLicenseApprovedBy: loc.kitchenLicenseApprovedBy || loc.kitchen_license_approved_by || null,
+            kitchenLicenseApprovedAt: loc.kitchenLicenseApprovedAt || loc.kitchen_license_approved_at || null,
+            kitchenLicenseFeedback: loc.kitchenLicenseFeedback || loc.kitchen_license_feedback || null,
+            kitchenLicenseExpiry: loc.kitchenLicenseExpiry || loc.kitchen_license_expiry || null,
+            // Kitchen terms and policies fields
+            kitchenTermsUrl: loc.kitchenTermsUrl || loc.kitchen_terms_url || null,
+            kitchenTermsUploadedAt: loc.kitchenTermsUploadedAt || loc.kitchen_terms_uploaded_at || null
+          }));
+          console.log(
+            "[GET] /api/manager/locations - Mapped locations:",
+            mappedLocations.map((loc) => ({
+              id: loc.id,
+              name: loc.name,
+              logoUrl: loc.logoUrl,
+              notificationEmail: loc.notificationEmail || "not set"
+            }))
+          );
+          res.json(mappedLocations);
+        } catch (error) {
+          console.error("Error fetching locations:", error);
+          res.status(500).json({ error: error.message || "Failed to fetch locations" });
+        }
+      }
+    );
+    router15.post(
+      "/locations",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const {
+            name,
+            address,
+            notificationEmail,
+            notificationPhone,
+            contactEmail,
+            contactPhone,
+            preferredContactMethod,
+            kitchenLicenseUrl,
+            kitchenLicenseStatus,
+            kitchenLicenseExpiry,
+            kitchenTermsUrl
+          } = req.body;
+          console.log(
+            "[POST /locations] Request body:",
+            JSON.stringify(req.body, null, 2)
+          );
+          console.log("[POST /locations] kitchenTermsUrl:", kitchenTermsUrl);
+          if (!name || !address) {
+            return res.status(400).json({ error: "Name and address are required" });
+          }
+          let normalizedNotificationPhone = void 0;
+          if (notificationPhone && notificationPhone.trim() !== "") {
+            const normalized = normalizePhoneForStorage(notificationPhone);
+            if (!normalized) {
+              return res.status(400).json({
+                error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
+              });
+            }
+            normalizedNotificationPhone = normalized;
+          }
+          let normalizedContactPhone = void 0;
+          if (contactPhone && contactPhone.trim() !== "") {
+            const normalized = normalizePhoneForStorage(contactPhone);
+            if (!normalized) {
+              return res.status(400).json({
+                error: "Invalid contact phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
+              });
+            }
+            normalizedContactPhone = normalized;
+          }
+          console.log("Creating location for manager:", {
+            managerId: user.id,
+            name,
+            address,
+            notificationPhone: normalizedNotificationPhone,
+            contactPhone: normalizedContactPhone,
+            kitchenLicenseUrl: kitchenLicenseUrl ? "Provided" : "Not provided"
+          });
+          const location = await locationService.createLocation({
+            name,
+            address,
+            managerId: user.id,
+            notificationEmail: notificationEmail || void 0,
+            notificationPhone: normalizedNotificationPhone,
+            contactEmail: contactEmail || void 0,
+            contactPhone: normalizedContactPhone,
+            preferredContactMethod: preferredContactMethod || "email",
+            kitchenLicenseUrl: kitchenLicenseUrl || void 0,
+            kitchenLicenseStatus: kitchenLicenseStatus || "pending",
+            kitchenLicenseExpiry: kitchenLicenseExpiry || void 0,
+            kitchenTermsUrl: kitchenTermsUrl || void 0
+          });
+          const mappedLocation = {
+            ...location,
+            managerId: location.managerId || location.manager_id || null,
+            notificationEmail: location.notificationEmail || location.notification_email || null,
+            notificationPhone: location.notificationPhone || location.notification_phone || null,
+            cancellationPolicyHours: location.cancellationPolicyHours || location.cancellation_policy_hours || 24,
+            cancellationPolicyMessage: location.cancellationPolicyMessage || location.cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+            defaultDailyBookingLimit: location.defaultDailyBookingLimit || location.default_daily_booking_limit || 2,
+            createdAt: location.createdAt || location.created_at,
+            updatedAt: location.updatedAt || location.updated_at
+          };
+          res.status(201).json(mappedLocation);
+        } catch (error) {
+          console.error("Error creating location:", error);
+          console.error("Error details:", error.message, error.stack);
+          res.status(500).json({ error: error.message || "Failed to create location" });
+        }
+      }
+    );
+    router15.put(
+      "/locations/:locationId",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const locationId = parseInt(req.params.locationId);
+          if (isNaN(locationId) || locationId <= 0) {
+            return res.status(400).json({ error: "Invalid location ID" });
+          }
+          const locations5 = await locationService.getLocationsByManagerId(user.id);
+          const hasAccess = locations5.some((loc) => loc.id === locationId);
+          if (!hasAccess) {
+            return res.status(403).json({ error: "Access denied to this location" });
+          }
+          const {
+            name,
+            address,
+            notificationEmail,
+            notificationPhone,
+            contactEmail,
+            contactPhone,
+            preferredContactMethod,
+            kitchenLicenseUrl,
+            kitchenLicenseStatus,
+            kitchenLicenseExpiry,
+            kitchenTermsUrl
+          } = req.body;
+          const updates = {};
+          if (name !== void 0) updates.name = name;
+          if (address !== void 0) updates.address = address;
+          if (notificationEmail !== void 0)
+            updates.notificationEmail = notificationEmail || null;
+          if (notificationPhone !== void 0) {
+            if (notificationPhone && notificationPhone.trim() !== "") {
+              const normalized = normalizePhoneForStorage(notificationPhone);
+              if (!normalized) {
+                return res.status(400).json({
+                  error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
+                });
+              }
+              updates.notificationPhone = normalized;
+            } else {
+              updates.notificationPhone = null;
+            }
+          }
+          if (contactEmail !== void 0) {
+            if (contactEmail && contactEmail.trim() !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+              return res.status(400).json({ error: "Invalid contact email format" });
+            }
+            updates.contactEmail = contactEmail && contactEmail.trim() !== "" ? contactEmail.trim() : null;
+          }
+          if (contactPhone !== void 0) {
+            if (contactPhone && contactPhone.trim() !== "") {
+              const normalized = normalizePhoneForStorage(contactPhone);
+              if (!normalized) {
+                return res.status(400).json({
+                  error: "Invalid contact phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
+                });
+              }
+              updates.contactPhone = normalized;
+            } else {
+              updates.contactPhone = null;
+            }
+          }
+          if (preferredContactMethod !== void 0) {
+            if (!["email", "phone", "both"].includes(preferredContactMethod)) {
+              return res.status(400).json({
+                error: "Invalid preferred contact method. Must be 'email', 'phone', or 'both'"
+              });
+            }
+            updates.preferredContactMethod = preferredContactMethod;
+          }
+          if (kitchenLicenseUrl !== void 0) {
+            updates.kitchenLicenseUrl = kitchenLicenseUrl || null;
+            if (kitchenLicenseUrl) {
+              updates.kitchenLicenseUploadedAt = /* @__PURE__ */ new Date();
+              if (kitchenLicenseStatus === void 0) {
+                updates.kitchenLicenseStatus = "pending";
+              }
+            }
+          }
+          if (kitchenLicenseStatus !== void 0) {
+            if (kitchenLicenseStatus && !["pending", "approved", "rejected"].includes(kitchenLicenseStatus)) {
+              return res.status(400).json({
+                error: "Invalid kitchenLicenseStatus. Must be 'pending', 'approved', or 'rejected'"
+              });
+            }
+            updates.kitchenLicenseStatus = kitchenLicenseStatus || null;
+          }
+          if (kitchenLicenseExpiry !== void 0) {
+            updates.kitchenLicenseExpiry = kitchenLicenseExpiry || null;
+          }
+          if (kitchenTermsUrl !== void 0) {
+            updates.kitchenTermsUrl = kitchenTermsUrl || null;
+            if (kitchenTermsUrl) {
+              updates.kitchenTermsUploadedAt = /* @__PURE__ */ new Date();
+            }
+          }
+          console.log(`\u{1F4BE} Updating location ${locationId} with:`, updates);
+          const updated = await locationService.updateLocation({
+            id: locationId,
+            ...updates
+          });
+          if (!updated) {
+            console.error(`\u274C Location ${locationId} not found in database`);
+            return res.status(404).json({ error: "Location not found" });
+          }
+          console.log(`\u2705 Location ${locationId} updated successfully`);
+          if (kitchenLicenseUrl && updates.kitchenLicenseStatus === "pending") {
+            try {
+              const { generateKitchenLicenseSubmittedAdminEmail: generateKitchenLicenseSubmittedAdminEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+              const admins = await db.select({ username: users.username }).from(users).where(eq30(users.role, "admin"));
+              for (const admin2 of admins) {
+                if (admin2.username) {
+                  const adminEmail = generateKitchenLicenseSubmittedAdminEmail2({
+                    adminEmail: admin2.username,
+                    managerName: user.username,
+                    managerEmail: user.username,
+                    locationName: updated.name || "Kitchen Location",
+                    locationId,
+                    submittedAt: /* @__PURE__ */ new Date()
+                  });
+                  await sendEmail(adminEmail, {
+                    trackingId: `kitchen_license_submitted_${locationId}_${Date.now()}`
+                  });
+                }
+              }
+              logger.info(
+                `[Manager] Sent kitchen license submission notification to admins for location ${locationId}`
+              );
+            } catch (emailError) {
+              logger.error(
+                "Error sending kitchen license submission email to admin:",
+                emailError
+              );
+            }
+          }
+          const mappedLocation = {
+            ...updated,
+            managerId: updated.managerId || updated.manager_id || null,
+            notificationEmail: updated.notificationEmail || updated.notification_email || null,
+            notificationPhone: updated.notificationPhone || updated.notification_phone || null,
+            cancellationPolicyHours: updated.cancellationPolicyHours || updated.cancellation_policy_hours || 24,
+            cancellationPolicyMessage: updated.cancellationPolicyMessage || updated.cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+            defaultDailyBookingLimit: updated.defaultDailyBookingLimit || updated.default_daily_booking_limit || 2,
+            createdAt: updated.createdAt || updated.created_at,
+            updatedAt: updated.updatedAt || updated.updated_at
+          };
+          return res.json(mappedLocation);
+        } catch (error) {
+          console.error("\u274C Error updating location:", error);
+          console.error("Error stack:", error.stack);
+          res.status(500).json({ error: error.message || "Failed to update location" });
+        }
+      }
+    );
+    router15.post(
+      "/complete-onboarding",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const { skipped } = req.body;
+          console.log(
+            `[POST] /api/manager/complete-onboarding - User: ${user.id}, skipped: ${skipped}`
+          );
+          const updatedUser = await managerService.updateOnboarding(user.id, {
+            completed: true,
+            skipped: !!skipped
+          });
+          if (!updatedUser) {
+            return res.status(500).json({ error: "Failed to update onboarding status" });
+          }
+          res.json({ success: true, user: updatedUser });
+        } catch (error) {
+          console.error("Error completing manager onboarding:", error);
+          res.status(500).json({ error: error.message || "Failed to complete onboarding" });
+        }
+      }
+    );
+    router15.post(
+      "/onboarding/step",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const { stepId, locationId } = req.body;
+          if (stepId === void 0) {
+            return res.status(400).json({ error: "stepId is required" });
+          }
+          console.log(
+            `[POST] /api/manager/onboarding/step - User: ${user.id}, stepId: ${stepId}, locationId: ${locationId}`
+          );
+          const currentSteps = user.managerOnboardingStepsCompleted || {};
+          const stepKey = locationId ? `${stepId}_location_${locationId}` : `${stepId}`;
+          const newSteps = {
+            ...currentSteps,
+            [stepKey]: true
+          };
+          const updatedUser = await managerService.updateOnboarding(user.id, {
+            steps: newSteps
+          });
+          if (!updatedUser) {
+            return res.status(500).json({ error: "Failed to update onboarding step" });
+          }
+          res.json({
+            success: true,
+            stepsCompleted: updatedUser.managerOnboardingStepsCompleted
+          });
+        } catch (error) {
+          console.error("Error tracking onboarding step:", error);
+          res.status(500).json({ error: error.message || "Failed to track onboarding step" });
+        }
+      }
+    );
+    router15.get(
+      "/availability/:kitchenId",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const kitchenId = parseInt(req.params.kitchenId);
+          if (isNaN(kitchenId) || kitchenId <= 0) {
+            return res.status(400).json({ error: "Invalid kitchen ID" });
+          }
+          const kitchen = await kitchenService.getKitchenById(kitchenId);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+          }
+          const managerLocations = await locationService.getLocationsByManagerId(
+            user.id
+          );
+          const hasAccess = managerLocations.some(
+            (loc) => loc.id === kitchen.locationId
+          );
+          if (!hasAccess) {
+            return res.status(403).json({ error: "Access denied to this kitchen" });
+          }
+          const availability = await kitchenService.getKitchenAvailability(kitchenId);
+          res.json(availability);
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/availability",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const user = req.neonUser;
+          const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
+          if (!kitchenId || dayOfWeek === void 0 || dayOfWeek < 0 || dayOfWeek > 6) {
+            return res.status(400).json({ error: "kitchenId and valid dayOfWeek (0-6) are required" });
+          }
+          const kitchen = await kitchenService.getKitchenById(kitchenId);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+          }
+          const managerLocations = await locationService.getLocationsByManagerId(
+            user.id
+          );
+          const hasAccess = managerLocations.some(
+            (loc) => loc.id === kitchen.locationId
+          );
+          if (!hasAccess) {
+            return res.status(403).json({ error: "Access denied to this kitchen" });
+          }
+          const { kitchenAvailability: kitchenAvailability2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+          const [existing] = await db.select().from(kitchenAvailability2).where(
+            and18(
+              eq30(kitchenAvailability2.kitchenId, kitchenId),
+              eq30(kitchenAvailability2.dayOfWeek, dayOfWeek)
+            )
+          ).limit(1);
+          let result;
+          if (existing) {
+            [result] = await db.update(kitchenAvailability2).set({
+              startTime: startTime || "00:00",
+              endTime: endTime || "00:00",
+              isAvailable: isAvailable ?? false
+            }).where(eq30(kitchenAvailability2.id, existing.id)).returning();
+          } else {
+            [result] = await db.insert(kitchenAvailability2).values({
+              kitchenId,
+              dayOfWeek,
+              startTime: startTime || "00:00",
+              endTime: endTime || "00:00",
+              isAvailable: isAvailable ?? false
+            }).returning();
+          }
+          res.json(result);
+        } catch (error) {
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/storage-extensions/pending",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const pendingExtensions = await db.select({
+            id: pendingStorageExtensions.id,
+            storageBookingId: pendingStorageExtensions.storageBookingId,
+            newEndDate: pendingStorageExtensions.newEndDate,
+            extensionDays: pendingStorageExtensions.extensionDays,
+            extensionBasePriceCents: pendingStorageExtensions.extensionBasePriceCents,
+            extensionServiceFeeCents: pendingStorageExtensions.extensionServiceFeeCents,
+            extensionTotalPriceCents: pendingStorageExtensions.extensionTotalPriceCents,
+            status: pendingStorageExtensions.status,
+            createdAt: pendingStorageExtensions.createdAt,
+            stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
+            // Storage booking details
+            currentEndDate: storageBookings.endDate,
+            storageName: storageListings.name,
+            storageType: storageListings.storageType,
+            // Chef details
+            chefId: storageBookings.chefId,
+            chefEmail: users.username,
+            // Kitchen/Location details
+            kitchenName: kitchens.name,
+            locationId: locations.id
+          }).from(pendingStorageExtensions).innerJoin(
+            storageBookings,
+            eq30(
+              pendingStorageExtensions.storageBookingId,
+              storageBookings.id
+            )
+          ).innerJoin(
+            storageListings,
+            eq30(storageBookings.storageListingId, storageListings.id)
+          ).innerJoin(kitchens, eq30(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).innerJoin(users, eq30(storageBookings.chefId, users.id)).where(
+            and18(
+              eq30(locations.managerId, managerId),
+              or5(
+                eq30(pendingStorageExtensions.status, "paid"),
+                eq30(pendingStorageExtensions.status, "authorized")
+              )
+              // Show paid and authorized extensions awaiting manager approval
+            )
+          ).orderBy(desc15(pendingStorageExtensions.createdAt));
+          const { lazyExpireStorageExtensionAuth: lazyExpireStorageExtensionAuth2 } = await Promise.resolve().then(() => (init_auth_expiry_service(), auth_expiry_service_exports));
+          const stillPending = [];
+          for (const ext of pendingExtensions) {
+            if (ext.status === "authorized") {
+              const wasExpired = await lazyExpireStorageExtensionAuth2({
+                id: ext.id,
+                status: ext.status,
+                stripePaymentIntentId: ext.stripePaymentIntentId,
+                createdAt: ext.createdAt ? new Date(ext.createdAt) : null,
+                storageBookingId: ext.storageBookingId
+              });
+              if (wasExpired) continue;
+            }
+            stillPending.push(ext);
+          }
+          res.json(stillPending);
+        } catch (error) {
+          logger.error("Error fetching pending storage extensions:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/storage-extensions/:id/approve",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const extensionId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          if (isNaN(extensionId) || extensionId <= 0) {
+            return res.status(400).json({ error: "Invalid extension ID" });
+          }
+          const [extension] = await db.select({
+            id: pendingStorageExtensions.id,
+            storageBookingId: pendingStorageExtensions.storageBookingId,
+            newEndDate: pendingStorageExtensions.newEndDate,
+            extensionDays: pendingStorageExtensions.extensionDays,
+            status: pendingStorageExtensions.status,
+            locationManagerId: locations.managerId,
+            chefId: storageBookings.chefId,
+            chefEmail: users.username,
+            storageName: storageListings.name
+          }).from(pendingStorageExtensions).innerJoin(
+            storageBookings,
+            eq30(
+              pendingStorageExtensions.storageBookingId,
+              storageBookings.id
+            )
+          ).innerJoin(
+            storageListings,
+            eq30(storageBookings.storageListingId, storageListings.id)
+          ).innerJoin(kitchens, eq30(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).innerJoin(users, eq30(storageBookings.chefId, users.id)).where(eq30(pendingStorageExtensions.id, extensionId)).limit(1);
+          if (!extension) {
+            return res.status(404).json({ error: "Extension request not found" });
+          }
+          if (extension.locationManagerId !== managerId) {
+            return res.status(403).json({ error: "Not authorized to approve this extension" });
+          }
+          if (extension.status !== "paid" && extension.status !== "authorized") {
+            return res.status(400).json({
+              error: `Cannot approve extension with status '${extension.status}'`
+            });
+          }
+          if (extension.status === "authorized") {
+            try {
+              const [extDetails] = await db.select({ stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId }).from(pendingStorageExtensions).where(eq30(pendingStorageExtensions.id, extensionId)).limit(1);
+              if (extDetails?.stripePaymentIntentId) {
+                const { capturePaymentIntent: capturePaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+                const captureResult = await capturePaymentIntent2(extDetails.stripePaymentIntentId);
+                logger.info(`[Manager] AUTH-THEN-CAPTURE: Captured storage extension payment ${extensionId}`, {
+                  paymentIntentId: extDetails.stripePaymentIntentId,
+                  capturedAmount: captureResult.amount,
+                  status: captureResult.status
+                });
+                try {
+                  const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+                  const ptRecord = await findPaymentTransactionByIntentId2(extDetails.stripePaymentIntentId, db);
+                  if (ptRecord) {
+                    await updatePaymentTransaction2(ptRecord.id, {
+                      status: "succeeded",
+                      stripeStatus: "succeeded",
+                      paidAt: /* @__PURE__ */ new Date()
+                    }, db);
+                  }
+                } catch (ptErr) {
+                  logger.warn(`[Manager] Could not update PT after storage extension capture:`, ptErr);
+                }
+              }
+            } catch (captureError) {
+              logger.error(`[Manager] AUTH-THEN-CAPTURE: Failed to capture storage extension payment ${extensionId}:`, captureError);
+              return res.status(500).json({
+                error: "Failed to capture payment for storage extension. The authorization may have expired.",
+                details: captureError.message
+              });
+            }
+          }
+          await db.update(pendingStorageExtensions).set({
+            status: "approved",
+            managerId,
+            approvedAt: /* @__PURE__ */ new Date(),
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(eq30(pendingStorageExtensions.id, extensionId));
+          await bookingService.extendStorageBooking(
+            extension.storageBookingId,
+            extension.newEndDate
+          );
+          await db.update(pendingStorageExtensions).set({
+            status: "completed",
+            completedAt: /* @__PURE__ */ new Date(),
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(eq30(pendingStorageExtensions.id, extensionId));
+          logger.info(
+            `[Manager] Storage extension ${extensionId} approved by manager ${managerId}`,
+            {
+              storageBookingId: extension.storageBookingId,
+              newEndDate: extension.newEndDate,
+              extensionDays: extension.extensionDays
+            }
+          );
+          try {
+            const { storageOverstayRecords: storageOverstayRecords2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+            const activeOverstays = await db.select({ id: storageOverstayRecords2.id }).from(storageOverstayRecords2).where(
+              and18(
+                eq30(storageOverstayRecords2.storageBookingId, extension.storageBookingId),
+                inArray8(storageOverstayRecords2.status, ["detected", "grace_period", "pending_review"])
+              )
+            );
+            if (activeOverstays.length > 0) {
+              for (const overstay of activeOverstays) {
+                await overstayPenaltyService.resolveOverstay(
+                  overstay.id,
+                  "extended",
+                  `Auto-resolved: storage extension ${extensionId} approved by manager ${managerId}. New end date: ${extension.newEndDate.toISOString()}`,
+                  managerId
+                );
+              }
+              logger.info(
+                `[Manager] Auto-resolved ${activeOverstays.length} overstay record(s) for storage booking ${extension.storageBookingId} after extension approval`
+              );
+            }
+          } catch (overstayError) {
+            logger.warn(
+              `[Manager] Failed to auto-resolve overstay records after extension approval:`,
+              overstayError
+            );
+          }
+          try {
+            const approvalEmail = generateStorageExtensionApprovedEmail({
+              chefEmail: extension.chefEmail,
+              chefName: extension.chefEmail,
+              storageName: extension.storageName,
+              extensionDays: extension.extensionDays,
+              newEndDate: extension.newEndDate
+            });
+            await sendEmail(approvalEmail);
+            logger.info(
+              `[Manager] Sent storage extension approval email to chef: ${extension.chefEmail}`
+            );
+          } catch (emailError) {
+            logger.error(
+              "Error sending storage extension approval email:",
+              emailError
+            );
+          }
+          try {
+            if (extension.chefId) {
+              await notificationService.notifyChefStorageExtensionApproved({
+                chefId: extension.chefId,
+                storageBookingId: extension.storageBookingId,
+                storageName: extension.storageName,
+                extensionDays: extension.extensionDays,
+                newEndDate: extension.newEndDate.toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric"
+                })
+              });
+            }
+          } catch (notifError) {
+            logger.error(
+              "Error sending storage extension approval in-app notification:",
+              notifError
+            );
+          }
+          res.json({
+            success: true,
+            message: "Storage extension approved successfully",
+            extension: {
+              id: extensionId,
+              storageBookingId: extension.storageBookingId,
+              newEndDate: extension.newEndDate,
+              status: "completed"
+            }
+          });
+        } catch (error) {
+          logger.error("Error approving storage extension:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/storage-extensions/:id/reject",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const extensionId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          const { reason } = req.body;
+          if (isNaN(extensionId) || extensionId <= 0) {
+            return res.status(400).json({ error: "Invalid extension ID" });
+          }
+          const [extension] = await db.select({
+            id: pendingStorageExtensions.id,
+            storageBookingId: pendingStorageExtensions.storageBookingId,
+            status: pendingStorageExtensions.status,
+            stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
+            extensionTotalPriceCents: pendingStorageExtensions.extensionTotalPriceCents,
+            locationManagerId: locations.managerId,
+            chefId: storageBookings.chefId,
+            chefEmail: users.username
+          }).from(pendingStorageExtensions).innerJoin(
+            storageBookings,
+            eq30(
+              pendingStorageExtensions.storageBookingId,
+              storageBookings.id
+            )
+          ).innerJoin(
+            storageListings,
+            eq30(storageBookings.storageListingId, storageListings.id)
+          ).innerJoin(kitchens, eq30(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).innerJoin(users, eq30(storageBookings.chefId, users.id)).where(eq30(pendingStorageExtensions.id, extensionId)).limit(1);
+          if (!extension) {
+            return res.status(404).json({ error: "Extension request not found" });
+          }
+          if (extension.locationManagerId !== managerId) {
+            return res.status(403).json({ error: "Not authorized to reject this extension" });
+          }
+          if (extension.status !== "paid" && extension.status !== "authorized") {
+            return res.status(400).json({
+              error: `Cannot reject extension with status '${extension.status}'`
+            });
+          }
+          const wasAuthorizedExtension = extension.status === "authorized";
+          await db.update(pendingStorageExtensions).set({
+            status: "rejected",
+            managerId,
+            rejectedAt: /* @__PURE__ */ new Date(),
+            rejectionReason: reason || "Extension request declined by manager",
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(eq30(pendingStorageExtensions.id, extensionId));
+          logger.info(
+            `[Manager] Storage extension ${extensionId} rejected by manager ${managerId}`,
+            {
+              storageBookingId: extension.storageBookingId,
+              reason: reason || "No reason provided"
+            }
+          );
+          let refundResult = null;
+          if (extension.stripePaymentIntentId) {
+            if (wasAuthorizedExtension) {
+              try {
+                const { cancelPaymentIntent: cancelPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+                const { findPaymentTransactionByMetadata: findPaymentTransactionByMetadata2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+                await cancelPaymentIntent2(extension.stripePaymentIntentId);
+                logger.info(`[Manager] AUTH-THEN-CAPTURE: Cancelled authorization for storage extension ${extensionId}`);
+                const ptRecord = await findPaymentTransactionByMetadata2(
+                  "storage_extension_id",
+                  String(extensionId),
+                  db
+                );
+                if (ptRecord) {
+                  await updatePaymentTransaction2(ptRecord.id, {
+                    status: "canceled",
+                    stripeStatus: "canceled"
+                  }, db);
+                }
+              } catch (cancelError) {
+                logger.error(`[Manager] Failed to cancel auth for storage extension ${extensionId}:`, cancelError);
+              }
+            } else {
+              try {
+                const { reverseTransferAndRefund: reverseTransferAndRefund2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+                const { findPaymentTransactionByMetadata: findPaymentTransactionByMetadata2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+                const paymentTransaction = await findPaymentTransactionByMetadata2(
+                  "storage_extension_id",
+                  String(extensionId),
+                  db
+                );
+                const extensionTotalPrice = extension.extensionTotalPriceCents || 0;
+                const transactionAmount = paymentTransaction ? parseInt(String(paymentTransaction.amount || "0")) || extensionTotalPrice : extensionTotalPrice;
+                if (transactionAmount > 0) {
+                  const { calculateRefundBreakdown: calculateRefundBreakdown2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+                  const stripeProcessingFee = paymentTransaction ? parseInt(
+                    String(paymentTransaction.stripe_processing_fee || "0")
+                  ) || 0 : 0;
+                  const currentRefundAmount = paymentTransaction ? parseInt(String(paymentTransaction.refund_amount || "0")) || 0 : 0;
+                  const managerRevenue = paymentTransaction ? parseInt(String(paymentTransaction.manager_revenue || "0")) || transactionAmount : transactionAmount;
+                  const refundBreakdown = calculateRefundBreakdown2(
+                    transactionAmount,
+                    managerRevenue,
+                    currentRefundAmount,
+                    stripeProcessingFee
+                  );
+                  const refundToCustomer = refundBreakdown.maxRefundableToCustomer;
+                  const deductFromManager = refundBreakdown.maxDeductibleFromManager;
+                  refundResult = await reverseTransferAndRefund2(
+                    extension.stripePaymentIntentId,
+                    refundToCustomer,
+                    // Customer receives this amount
+                    "requested_by_customer",
+                    {
+                      reverseTransferAmount: deductFromManager,
+                      // Manager debited same amount
+                      refundApplicationFee: false,
+                      metadata: {
+                        storage_extension_id: String(extensionId),
+                        storage_booking_id: String(extension.storageBookingId),
+                        rejection_reason: reason || "Extension declined by manager",
+                        manager_id: String(managerId),
+                        refund_model: "unified",
+                        customer_receives: String(refundToCustomer),
+                        manager_debited: String(deductFromManager)
+                      }
+                    }
+                  );
+                  logger.info(
+                    `[Manager] Refund processed for storage extension ${extensionId}`,
+                    {
+                      refundId: refundResult.refundId,
+                      refundAmount: refundResult.refundAmount,
+                      transferReversalId: refundResult.transferReversalId
+                    }
+                  );
+                  await db.update(pendingStorageExtensions).set({
+                    status: "refunded",
+                    updatedAt: /* @__PURE__ */ new Date()
+                  }).where(eq30(pendingStorageExtensions.id, extensionId));
+                  if (paymentTransaction) {
+                    await updatePaymentTransaction2(
+                      paymentTransaction.id,
+                      {
+                        status: "refunded",
+                        refundAmount: refundResult.refundAmount,
+                        refundId: refundResult.refundId,
+                        refundedAt: /* @__PURE__ */ new Date()
+                      },
+                      db
+                    );
+                  }
+                }
+              } catch (refundError) {
+                logger.error(
+                  `[Manager] Failed to process refund for extension ${extensionId}:`,
+                  refundError
+                );
+              }
+            }
+          }
+          try {
+            const rejectionEmail = generateStorageExtensionRejectedEmail({
+              chefEmail: extension.chefEmail,
+              chefName: extension.chefEmail,
+              storageName: extension.storageName || "Storage",
+              extensionDays: extension.extensionDays || 0,
+              rejectionReason: reason || "Extension request declined by manager",
+              refundAmount: refundResult?.refundAmount
+            });
+            await sendEmail(rejectionEmail);
+            logger.info(
+              `[Manager] Sent storage extension rejection email to chef: ${extension.chefEmail}`
+            );
+          } catch (emailError) {
+            logger.error(
+              "Error sending storage extension rejection email:",
+              emailError
+            );
+          }
+          try {
+            if (extension.chefId) {
+              await notificationService.notifyChefStorageExtensionRejected({
+                chefId: extension.chefId,
+                storageBookingId: extension.storageBookingId,
+                storageName: extension.storageName || "Storage",
+                extensionDays: extension.extensionDays || 0,
+                newEndDate: "",
+                reason: reason || "Extension request declined by manager"
+              });
+            }
+          } catch (notifError) {
+            logger.error(
+              "Error sending storage extension rejection in-app notification:",
+              notifError
+            );
+          }
+          res.json({
+            success: true,
+            message: refundResult ? "Storage extension rejected and refund processed successfully." : "Storage extension rejected. Refund will be processed.",
+            extension: {
+              id: extensionId,
+              storageBookingId: extension.storageBookingId,
+              status: refundResult ? "refunded" : "rejected"
+            },
+            refund: refundResult ? {
+              refundId: refundResult.refundId,
+              amount: refundResult.refundAmount
+            } : null
+          });
+        } catch (error) {
+          logger.error("Error rejecting storage extension:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/overstays",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const includeAll = req.query.includeAll === "true";
+          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq30(locations.managerId, managerId));
+          const locationIds = managerLocations.map((l) => l.id);
+          if (locationIds.length === 0) {
+            return res.json({ overstays: [], pastOverstays: [], stats: null });
+          }
+          const pendingOverstays = await overstayPenaltyService.getPendingOverstayReviews();
+          const filteredPending = pendingOverstays.filter(
+            (o) => locationIds.includes(o.locationId)
+          );
+          let pastOverstays = [];
+          if (includeAll) {
+            const allOverstays = await overstayPenaltyService.getAllOverstayRecords();
+            const filteredAll = allOverstays.filter(
+              (o) => locationIds.includes(o.locationId)
+            );
+            const pendingStatuses = [
+              "detected",
+              "grace_period",
+              "pending_review",
+              "penalty_approved",
+              "charge_pending",
+              "charge_failed",
+              "escalated"
+            ];
+            pastOverstays = filteredAll.filter(
+              (o) => !pendingStatuses.includes(o.status)
+            );
+          }
+          const stats = await overstayPenaltyService.getOverstayStats();
+          res.json({
+            overstays: filteredPending,
+            pastOverstays,
+            stats
+          });
+        } catch (error) {
+          logger.error("Error fetching overstays:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/overstays/:id",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const overstayId = parseInt(req.params.id);
+          if (isNaN(overstayId)) {
+            return res.status(400).json({ error: "Invalid overstay ID" });
+          }
+          const record = await overstayPenaltyService.getOverstayRecord(overstayId);
+          if (!record) {
+            return res.status(404).json({ error: "Overstay record not found" });
+          }
+          const history = await overstayPenaltyService.getOverstayHistory(overstayId);
+          res.json({
+            overstay: record,
+            history
+          });
+        } catch (error) {
+          logger.error("Error fetching overstay record:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/overstays/:id/approve",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const overstayId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          const { finalPenaltyCents, managerNotes } = req.body;
+          if (isNaN(overstayId)) {
+            return res.status(400).json({ error: "Invalid overstay ID" });
+          }
+          if (finalPenaltyCents !== void 0) {
+            if (typeof finalPenaltyCents !== "number" || finalPenaltyCents < 0) {
+              return res.status(400).json({ error: "Invalid penalty amount" });
+            }
+          }
+          const decision = {
+            overstayRecordId: overstayId,
+            managerId,
+            action: finalPenaltyCents !== void 0 ? "adjust" : "approve",
+            finalPenaltyCents,
+            managerNotes
+          };
+          const result = await overstayPenaltyService.processManagerDecision(decision);
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          logger.info(
+            `[Manager] Auto-charging overstay penalty ${overstayId} after manager approval`
+          );
+          const chargeResult = await overstayPenaltyService.chargeApprovedPenalty(overstayId);
+          if (!chargeResult.success) {
+            logger.warn(
+              `[Manager] Auto-charge failed for overstay ${overstayId}: ${chargeResult.error}`
+            );
+          }
+          res.json({
+            success: true,
+            message: chargeResult.success ? "Penalty approved and charged successfully" : `Penalty approved but charge failed: ${chargeResult.error || "Unknown error"}`,
+            chargeResult,
+            autoCharged: true
+          });
+        } catch (error) {
+          logger.error("Error approving penalty:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/overstays/:id/waive",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const overstayId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          const { waiveReason, managerNotes } = req.body;
+          if (isNaN(overstayId)) {
+            return res.status(400).json({ error: "Invalid overstay ID" });
+          }
+          if (!waiveReason || typeof waiveReason !== "string" || waiveReason.trim().length === 0) {
+            return res.status(400).json({ error: "Waive reason is required" });
+          }
+          const decision = {
+            overstayRecordId: overstayId,
+            managerId,
+            action: "waive",
+            waiveReason: waiveReason.trim(),
+            managerNotes
+          };
+          const result = await overstayPenaltyService.processManagerDecision(decision);
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.json({
+            success: true,
+            message: "Penalty waived successfully"
+          });
+        } catch (error) {
+          logger.error("Error waiving penalty:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/overstays/:id/charge",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const overstayId = parseInt(req.params.id);
+          if (isNaN(overstayId)) {
+            return res.status(400).json({ error: "Invalid overstay ID" });
+          }
+          const result = await overstayPenaltyService.chargeApprovedPenalty(overstayId);
+          if (!result.success) {
+            return res.status(400).json({
+              error: result.error,
+              message: "Failed to charge penalty. The chef may need to update their payment method."
+            });
+          }
+          res.json({
+            success: true,
+            message: "Penalty charged successfully",
+            paymentIntentId: result.paymentIntentId,
+            chargeId: result.chargeId
+          });
+        } catch (error) {
+          logger.error("Error charging penalty:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/overstays/:id/resolve",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const overstayId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          const { resolutionType, resolutionNotes } = req.body;
+          if (isNaN(overstayId)) {
+            return res.status(400).json({ error: "Invalid overstay ID" });
+          }
+          const validTypes = ["extended", "removed", "escalated"];
+          if (!resolutionType || !validTypes.includes(resolutionType)) {
+            return res.status(400).json({
+              error: "Invalid resolution type. Must be: extended, removed, or escalated"
+            });
+          }
+          const result = await overstayPenaltyService.resolveOverstay(
+            overstayId,
+            resolutionType,
+            resolutionNotes,
+            managerId
+          );
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.json({
+            success: true,
+            message: `Overstay marked as ${resolutionType}`
+          });
+        } catch (error) {
+          logger.error("Error resolving overstay:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/overstays-stats",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq30(locations.managerId, managerId));
+          const locationIds = managerLocations.map((l) => l.id);
+          if (locationIds.length === 0) {
+            return res.json({ stats: null });
+          }
+          const stats = await overstayPenaltyService.getOverstayStats();
+          res.json({ stats });
+        } catch (error) {
+          logger.error("Error fetching overstay stats:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/storage-checkouts/pending",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq30(locations.managerId, managerId));
+          const locationIds = managerLocations.map((l) => l.id);
+          if (locationIds.length === 0) {
+            return res.json({ pendingCheckouts: [] });
+          }
+          const { getPendingCheckoutReviews: getPendingCheckoutReviews2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
+          const allPending = await getPendingCheckoutReviews2();
+          logger.info(
+            `[StorageCheckouts] Manager ${managerId} locations: ${locationIds.join(", ")}`
+          );
+          logger.info(
+            `[StorageCheckouts] All pending checkouts: ${allPending.length}`
+          );
+          const pendingCheckouts = allPending.filter(
+            (c) => locationIds.includes(c.locationId)
+          );
+          logger.info(
+            `[StorageCheckouts] Filtered pending checkouts for manager: ${pendingCheckouts.length}`
+          );
+          res.json({ pendingCheckouts });
+        } catch (error) {
+          logger.error("Error fetching pending checkouts:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/storage-checkouts/history",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const limit = parseInt(req.query.limit) || 20;
+          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq30(locations.managerId, managerId));
+          const locationIds = managerLocations.map((l) => l.id);
+          if (locationIds.length === 0) {
+            return res.json({ checkoutHistory: [] });
+          }
+          const { getCheckoutHistory: getCheckoutHistory2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
+          const checkoutHistory = await getCheckoutHistory2(locationIds, limit);
+          res.json({ checkoutHistory });
+        } catch (error) {
+          logger.error("Error fetching checkout history:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/storage-bookings/:id/approve-checkout",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const storageBookingId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          const { managerNotes } = req.body;
+          if (isNaN(storageBookingId)) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+          }
+          const { processCheckoutApproval: processCheckoutApproval2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
+          const result = await processCheckoutApproval2(
+            storageBookingId,
+            managerId,
+            "clear",
+            managerNotes
+          );
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.json({
+            success: true,
+            message: "Storage cleared \u2014 no issues found. Booking completed.",
+            storageBookingId: result.storageBookingId,
+            checkoutStatus: result.checkoutStatus
+          });
+        } catch (error) {
+          logger.error("Error clearing checkout:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/storage-bookings/:id/clear-checkout",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const storageBookingId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          const { managerNotes } = req.body;
+          if (isNaN(storageBookingId)) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+          }
+          const { processCheckoutApproval: processCheckoutApproval2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
+          const result = await processCheckoutApproval2(
+            storageBookingId,
+            managerId,
+            "clear",
+            managerNotes
+          );
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.json({
+            success: true,
+            message: "Storage cleared \u2014 no issues found. Booking completed.",
+            storageBookingId: result.storageBookingId,
+            checkoutStatus: result.checkoutStatus
+          });
+        } catch (error) {
+          logger.error("Error clearing checkout:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/storage-bookings/:id/start-claim",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const storageBookingId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          const { claimTitle, claimDescription, claimedAmountCents, damageDate, managerNotes } = req.body;
+          if (isNaN(storageBookingId)) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+          }
+          if (!claimTitle || typeof claimTitle !== "string" || claimTitle.trim().length < 5) {
+            return res.status(400).json({ error: "Claim title must be at least 5 characters" });
+          }
+          if (!claimDescription || typeof claimDescription !== "string" || claimDescription.trim().length < 50) {
+            return res.status(400).json({ error: "Claim description must be at least 50 characters" });
+          }
+          if (!claimedAmountCents || typeof claimedAmountCents !== "number" || claimedAmountCents <= 0) {
+            return res.status(400).json({ error: "Claimed amount must be a positive number (in cents)" });
+          }
+          const { processCheckoutApproval: processCheckoutApproval2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
+          const result = await processCheckoutApproval2(
+            storageBookingId,
+            managerId,
+            "start_claim",
+            managerNotes,
+            {
+              claimTitle: claimTitle.trim(),
+              claimDescription: claimDescription.trim(),
+              claimedAmountCents,
+              damageDate
+            }
+          );
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.json({
+            success: true,
+            message: "Damage/cleaning claim started. The chef will be notified.",
+            storageBookingId: result.storageBookingId,
+            checkoutStatus: result.checkoutStatus,
+            damageClaimId: result.damageClaimId
+          });
+        } catch (error) {
+          logger.error("Error starting checkout claim:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/storage-bookings/:id/deny-checkout",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const storageBookingId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          const { managerNotes } = req.body;
+          if (isNaN(storageBookingId)) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+          }
+          logger.warn(`[StorageCheckout] Deprecated deny-checkout called for booking ${storageBookingId}. Use clear-checkout or start-claim instead.`);
+          const { processCheckoutApproval: processCheckoutApproval2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
+          const result = await processCheckoutApproval2(
+            storageBookingId,
+            managerId,
+            "deny",
+            managerNotes
+          );
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.json({
+            success: true,
+            message: "DEPRECATED: Deny is no longer supported. Storage has been cleared instead. Use /clear-checkout or /start-claim.",
+            storageBookingId: result.storageBookingId,
+            checkoutStatus: result.checkoutStatus,
+            deprecated: true
+          });
+        } catch (error) {
+          logger.error("Error processing legacy deny-checkout:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.put(
+      "/storage-listings/:id/penalty-config",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const listingId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          const {
+            overstayGracePeriodDays,
+            overstayPenaltyRate,
+            overstayMaxPenaltyDays,
+            overstayPolicyText
+          } = req.body;
+          if (isNaN(listingId)) {
+            return res.status(400).json({ error: "Invalid listing ID" });
+          }
+          const [listing] = await db.select({
+            id: storageListings.id,
+            managerId: locations.managerId
+          }).from(storageListings).innerJoin(kitchens, eq30(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).where(eq30(storageListings.id, listingId)).limit(1);
+          if (!listing) {
+            return res.status(404).json({ error: "Storage listing not found" });
+          }
+          if (listing.managerId !== managerId) {
+            return res.status(403).json({ error: "Not authorized to update this listing" });
+          }
+          const updates = { updatedAt: /* @__PURE__ */ new Date() };
+          if (overstayGracePeriodDays !== void 0) {
+            const days = parseInt(overstayGracePeriodDays);
+            if (isNaN(days) || days < 0 || days > 14) {
+              return res.status(400).json({ error: "Grace period must be between 0 and 14 days" });
+            }
+            updates.overstayGracePeriodDays = days;
+          }
+          if (overstayPenaltyRate !== void 0) {
+            const rate = parseFloat(overstayPenaltyRate);
+            if (isNaN(rate) || rate < 0 || rate > 0.5) {
+              return res.status(400).json({ error: "Penalty rate must be between 0 and 0.50 (50%)" });
+            }
+            updates.overstayPenaltyRate = rate.toString();
+          }
+          if (overstayMaxPenaltyDays !== void 0) {
+            const maxDays = parseInt(overstayMaxPenaltyDays);
+            if (isNaN(maxDays) || maxDays < 1 || maxDays > 90) {
+              return res.status(400).json({ error: "Max penalty days must be between 1 and 90" });
+            }
+            updates.overstayMaxPenaltyDays = maxDays;
+          }
+          if (overstayPolicyText !== void 0) {
+            updates.overstayPolicyText = overstayPolicyText || null;
+          }
+          await db.update(storageListings).set(updates).where(eq30(storageListings.id, listingId));
+          logger.info(
+            `[Manager] Updated penalty config for storage listing ${listingId}`,
+            {
+              managerId,
+              updates
+            }
+          );
+          res.json({
+            success: true,
+            message: "Penalty configuration updated successfully"
+          });
+        } catch (error) {
+          logger.error("Error updating penalty config:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/locations/:id/overstay-penalty-defaults",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const locationId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          if (isNaN(locationId)) {
+            return res.status(400).json({ error: "Invalid location ID" });
+          }
+          const [location] = await db.select({
+            id: locations.id,
+            managerId: locations.managerId,
+            overstayGracePeriodDays: locations.overstayGracePeriodDays,
+            overstayPenaltyRate: locations.overstayPenaltyRate,
+            overstayMaxPenaltyDays: locations.overstayMaxPenaltyDays,
+            overstayPolicyText: locations.overstayPolicyText
+          }).from(locations).where(eq30(locations.id, locationId)).limit(1);
+          if (!location) {
+            return res.status(404).json({ error: "Location not found" });
+          }
+          if (location.managerId !== managerId) {
+            return res.status(403).json({ error: "Not authorized to access this location" });
+          }
+          const { getOverstayPlatformDefaults: getOverstayPlatformDefaults2 } = await Promise.resolve().then(() => (init_overstay_defaults_service(), overstay_defaults_service_exports));
+          const platformDefaults = await getOverstayPlatformDefaults2();
+          res.json({
+            locationDefaults: {
+              gracePeriodDays: location.overstayGracePeriodDays,
+              penaltyRate: location.overstayPenaltyRate ? parseFloat(location.overstayPenaltyRate.toString()) : null,
+              maxPenaltyDays: location.overstayMaxPenaltyDays,
+              policyText: location.overstayPolicyText
+            },
+            platformDefaults,
+            isUsingDefaults: location.overstayGracePeriodDays === null && location.overstayPenaltyRate === null && location.overstayMaxPenaltyDays === null
+          });
+        } catch (error) {
+          logger.error("Error getting location overstay penalty defaults:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.put(
+      "/locations/:id/overstay-penalty-defaults",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const locationId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          const { gracePeriodDays, penaltyRate, maxPenaltyDays, policyText } = req.body;
+          if (isNaN(locationId)) {
+            return res.status(400).json({ error: "Invalid location ID" });
+          }
+          const [location] = await db.select({ id: locations.id, managerId: locations.managerId }).from(locations).where(eq30(locations.id, locationId)).limit(1);
+          if (!location) {
+            return res.status(404).json({ error: "Location not found" });
+          }
+          if (location.managerId !== managerId) {
+            return res.status(403).json({ error: "Not authorized to update this location" });
+          }
+          const updates = { updatedAt: /* @__PURE__ */ new Date() };
+          if (gracePeriodDays !== void 0) {
+            if (gracePeriodDays !== null) {
+              const days = parseInt(gracePeriodDays);
+              if (isNaN(days) || days < 0 || days > 14) {
+                return res.status(400).json({ error: "Grace period must be between 0 and 14 days" });
+              }
+              updates.overstayGracePeriodDays = days;
+            } else {
+              updates.overstayGracePeriodDays = null;
+            }
+          }
+          if (penaltyRate !== void 0) {
+            if (penaltyRate !== null) {
+              const rate = parseFloat(penaltyRate);
+              if (isNaN(rate) || rate < 0 || rate > 0.5) {
+                return res.status(400).json({ error: "Penalty rate must be between 0 and 0.50 (50%)" });
+              }
+              updates.overstayPenaltyRate = rate.toString();
+            } else {
+              updates.overstayPenaltyRate = null;
+            }
+          }
+          if (maxPenaltyDays !== void 0) {
+            if (maxPenaltyDays !== null) {
+              const maxDays = parseInt(maxPenaltyDays);
+              if (isNaN(maxDays) || maxDays < 1 || maxDays > 90) {
+                return res.status(400).json({ error: "Max penalty days must be between 1 and 90" });
+              }
+              updates.overstayMaxPenaltyDays = maxDays;
+            } else {
+              updates.overstayMaxPenaltyDays = null;
+            }
+          }
+          if (policyText !== void 0) {
+            updates.overstayPolicyText = policyText || null;
+          }
+          await db.update(locations).set(updates).where(eq30(locations.id, locationId));
+          logger.info(
+            `[Manager] Updated location ${locationId} overstay penalty defaults`,
+            {
+              managerId,
+              updates
+            }
+          );
+          res.json({
+            success: true,
+            message: "Location overstay penalty defaults updated successfully"
+          });
+        } catch (error) {
+          logger.error("Error updating location overstay penalty defaults:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/damage-claims/recent-bookings",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const limits = await getDamageClaimLimits();
+          const deadlineDays = limits.claimSubmissionDeadlineDays;
+          const cutoffDate = /* @__PURE__ */ new Date();
+          cutoffDate.setDate(cutoffDate.getDate() - deadlineDays);
+          const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq30(locations.managerId, managerId));
+          const locationIds = managerLocations.map((l) => l.id);
+          if (locationIds.length === 0) {
+            return res.json({ bookings: [], deadlineDays });
+          }
+          const now = /* @__PURE__ */ new Date();
+          const recentKitchenBookings = await db.select({
+            id: kitchenBookings.id,
+            chefId: kitchenBookings.chefId,
+            kitchenId: kitchenBookings.kitchenId,
+            bookingDate: kitchenBookings.bookingDate,
+            startTime: kitchenBookings.startTime,
+            endTime: kitchenBookings.endTime,
+            status: kitchenBookings.status,
+            chefName: users.username,
+            kitchenName: kitchens.name,
+            locationName: locations.name
+          }).from(kitchenBookings).innerJoin(kitchens, eq30(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).innerJoin(users, eq30(kitchenBookings.chefId, users.id)).where(
+            and18(
+              inArray8(locations.id, locationIds),
+              gte3(kitchenBookings.bookingDate, cutoffDate),
+              // Not older than deadline
+              lte3(kitchenBookings.bookingDate, now),
+              // Must be in the past (booking date <= now)
+              eq30(kitchenBookings.status, "confirmed")
+            )
+          ).orderBy(desc15(kitchenBookings.bookingDate)).limit(50);
+          const recentStorageBookings = await db.select({
+            id: storageBookings.id,
+            chefId: storageBookings.chefId,
+            storageListingId: storageBookings.storageListingId,
+            startDate: storageBookings.startDate,
+            endDate: storageBookings.endDate,
+            status: storageBookings.status,
+            chefName: users.username,
+            locationName: locations.name
+          }).from(storageBookings).innerJoin(
+            storageListings,
+            eq30(storageBookings.storageListingId, storageListings.id)
+          ).innerJoin(kitchens, eq30(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).innerJoin(users, eq30(storageBookings.chefId, users.id)).where(
+            and18(
+              inArray8(locations.id, locationIds),
+              gte3(storageBookings.endDate, cutoffDate),
+              // Not older than deadline
+              lte3(storageBookings.endDate, now),
+              // Must be in the past (end date <= now)
+              eq30(storageBookings.status, "confirmed")
+            )
+          ).orderBy(desc15(storageBookings.endDate)).limit(50);
+          const kitchenBookingIds = recentKitchenBookings.map((b) => b.id);
+          const equipmentMap = /* @__PURE__ */ new Map();
+          if (kitchenBookingIds.length > 0) {
+            const rentedEquipment = await db.select({
+              kitchenBookingId: equipmentBookings.kitchenBookingId,
+              equipmentBookingId: equipmentBookings.id,
+              equipmentListingId: equipmentBookings.equipmentListingId,
+              equipmentType: equipmentListings.equipmentType,
+              brand: equipmentListings.brand,
+              availabilityType: equipmentListings.availabilityType,
+              status: equipmentBookings.status
+            }).from(equipmentBookings).innerJoin(equipmentListings, eq30(equipmentBookings.equipmentListingId, equipmentListings.id)).where(
+              sql13`${equipmentBookings.kitchenBookingId} IN (${sql13.join(kitchenBookingIds.map((id) => sql13`${id}`), sql13`, `)})`
+            );
+            for (const eq_item of rentedEquipment) {
+              const list = equipmentMap.get(eq_item.kitchenBookingId) || [];
+              list.push({
+                equipmentBookingId: eq_item.equipmentBookingId,
+                equipmentListingId: eq_item.equipmentListingId,
+                equipmentType: eq_item.equipmentType,
+                brand: eq_item.brand,
+                availabilityType: eq_item.availabilityType,
+                status: eq_item.status
+              });
+              equipmentMap.set(eq_item.kitchenBookingId, list);
+            }
+            const kitchenIds = Array.from(new Set(recentKitchenBookings.map((b) => b.kitchenId)));
+            if (kitchenIds.length > 0) {
+              const includedEquipment = await db.select({
+                kitchenId: equipmentListings.kitchenId,
+                equipmentListingId: equipmentListings.id,
+                equipmentType: equipmentListings.equipmentType,
+                brand: equipmentListings.brand,
+                availabilityType: equipmentListings.availabilityType
+              }).from(equipmentListings).where(
+                and18(
+                  sql13`${equipmentListings.kitchenId} IN (${sql13.join(kitchenIds.map((id) => sql13`${id}`), sql13`, `)})`,
+                  eq30(equipmentListings.availabilityType, "included"),
+                  eq30(equipmentListings.isActive, true)
+                )
+              );
+              for (const kb of recentKitchenBookings) {
+                const list = equipmentMap.get(kb.id) || [];
+                const kitchenIncluded = includedEquipment.filter((ie) => ie.kitchenId === kb.kitchenId);
+                for (const ie of kitchenIncluded) {
+                  if (!list.some((e) => e.equipmentListingId === ie.equipmentListingId)) {
+                    list.push({
+                      equipmentBookingId: null,
+                      equipmentListingId: ie.equipmentListingId,
+                      equipmentType: ie.equipmentType,
+                      brand: ie.brand,
+                      availabilityType: ie.availabilityType,
+                      status: "confirmed"
+                    });
+                  }
+                }
+                equipmentMap.set(kb.id, list);
+              }
+            }
+          }
+          const bookings = [
+            ...recentKitchenBookings.map((b) => ({
+              id: b.id,
+              type: "kitchen",
+              chefId: b.chefId,
+              chefName: b.chefName,
+              locationName: b.locationName,
+              kitchenName: b.kitchenName,
+              startDate: b.bookingDate,
+              endDate: b.bookingDate,
+              status: b.status,
+              label: `Kitchen #${b.id} - ${b.chefName} @ ${b.kitchenName} (${format5(new Date(b.bookingDate), "MMM d")})`,
+              equipment: equipmentMap.get(b.id) || []
+            })),
+            ...recentStorageBookings.map((b) => ({
+              id: b.id,
+              type: "storage",
+              chefId: b.chefId,
+              chefName: b.chefName,
+              locationName: b.locationName,
+              kitchenName: null,
+              startDate: b.startDate,
+              endDate: b.endDate,
+              status: b.status,
+              label: `Storage #${b.id} - ${b.chefName} @ ${b.locationName} (${format5(new Date(b.endDate), "MMM d")})`,
+              equipment: []
+            }))
+          ].sort(
+            (a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
+          );
+          res.json({ bookings, deadlineDays });
+        } catch (error) {
+          logger.error("Error fetching recent bookings for damage claims:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/damage-claims",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const includeAll = req.query.includeAll === "true";
+          const claims = await damageClaimService.getManagerClaims(
+            managerId,
+            includeAll
+          );
+          res.json({ claims });
+        } catch (error) {
+          logger.error("Error fetching damage claims:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/damage-claims/:id",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const claimId = parseInt(req.params.id);
+          if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+          }
+          const claim = await damageClaimService.getClaimById(claimId);
+          if (!claim) {
+            return res.status(404).json({ error: "Claim not found" });
+          }
+          const history = await damageClaimService.getClaimHistory(claimId);
+          res.json({ claim, history });
+        } catch (error) {
+          logger.error("Error fetching damage claim:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/damage-claims",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const {
+            bookingType,
+            kitchenBookingId,
+            storageBookingId,
+            claimTitle,
+            claimDescription,
+            damageDate,
+            claimedAmountCents,
+            damagedItems,
+            submitImmediately
+          } = req.body;
+          if (!bookingType || !["kitchen", "storage"].includes(bookingType)) {
+            return res.status(400).json({ error: "Invalid booking type" });
+          }
+          if (!claimTitle || claimTitle.length < 5) {
+            return res.status(400).json({ error: "Claim title must be at least 5 characters" });
+          }
+          if (!claimDescription || claimDescription.length < 50) {
+            return res.status(400).json({ error: "Claim description must be at least 50 characters" });
+          }
+          if (!damageDate) {
+            return res.status(400).json({ error: "Damage date is required" });
+          }
+          if (!claimedAmountCents || claimedAmountCents < 1e3) {
+            return res.status(400).json({ error: "Claimed amount must be at least $10" });
+          }
+          const result = await damageClaimService.createDamageClaim({
+            bookingType,
+            kitchenBookingId,
+            storageBookingId,
+            managerId,
+            claimTitle,
+            claimDescription,
+            damageDate,
+            claimedAmountCents,
+            damagedItems: Array.isArray(damagedItems) ? damagedItems : void 0,
+            submitImmediately: submitImmediately === true
+          });
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.status(201).json({
+            success: true,
+            claim: result.claim
+          });
+        } catch (error) {
+          logger.error("Error creating damage claim:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.put(
+      "/damage-claims/:id",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const claimId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+          }
+          const { claimTitle, claimDescription, claimedAmountCents, damageDate } = req.body;
+          const result = await damageClaimService.updateDraftClaim(
+            claimId,
+            managerId,
+            {
+              claimTitle,
+              claimDescription,
+              claimedAmountCents,
+              damageDate
+            }
+          );
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.json({ success: true });
+        } catch (error) {
+          logger.error("Error updating damage claim:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/damage-claims/:id/submit",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const claimId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+          }
+          const result = await damageClaimService.submitClaim(claimId, managerId);
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.json({
+            success: true,
+            message: "Claim submitted to chef for response"
+          });
+        } catch (error) {
+          logger.error("Error submitting damage claim:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/damage-claims/:id/history",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const claimId = parseInt(req.params.id);
+          if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+          }
+          const history = await damageClaimService.getClaimHistory(claimId);
+          res.json({ history });
+        } catch (error) {
+          logger.error("Error fetching claim history:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.delete(
+      "/damage-claims/:id",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const claimId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
+          if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+          }
+          const result = await damageClaimService.deleteDraftClaim(
+            claimId,
+            managerId
+          );
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.json({ success: true, message: "Draft claim deleted successfully" });
+        } catch (error) {
+          logger.error("Error deleting claim:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/damage-claims/:id/evidence",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const claimId = parseInt(req.params.id);
+          const userId = req.neonUser.id;
+          if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+          }
+          const {
+            evidenceType,
+            fileUrl,
+            fileName,
+            fileSize,
+            mimeType,
+            description,
+            amountCents,
+            vendorName
+          } = req.body;
+          if (!evidenceType || !fileUrl) {
+            return res.status(400).json({ error: "Evidence type and file URL are required" });
+          }
+          const result = await damageClaimService.addEvidence(claimId, userId, {
+            evidenceType,
+            fileUrl,
+            fileName,
+            fileSize,
+            mimeType,
+            description,
+            amountCents,
+            vendorName
+          });
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.status(201).json({
+            success: true,
+            evidence: result.evidence
+          });
+        } catch (error) {
+          logger.error("Error adding evidence:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.delete(
+      "/damage-claims/:id/evidence/:evidenceId",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const evidenceId = parseInt(req.params.evidenceId);
+          const userId = req.neonUser.id;
+          if (isNaN(evidenceId)) {
+            return res.status(400).json({ error: "Invalid evidence ID" });
+          }
+          const result = await damageClaimService.removeEvidence(
+            evidenceId,
+            userId
+          );
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
+          }
+          res.json({ success: true });
+        } catch (error) {
+          logger.error("Error removing evidence:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.post(
+      "/damage-claims/:id/charge",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const claimId = parseInt(req.params.id);
+          if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+          }
+          const result = await damageClaimService.chargeApprovedClaim(claimId);
+          if (!result.success) {
+            return res.status(400).json({
+              error: result.error,
+              message: "Failed to charge damage claim. The chef may need to update their payment method."
+            });
+          }
+          res.json({
+            success: true,
+            message: "Damage claim charged successfully",
+            paymentIntentId: result.paymentIntentId,
+            chargeId: result.chargeId
+          });
+        } catch (error) {
+          logger.error("Error charging damage claim:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    router15.get(
+      "/damage-claims/:id/invoice",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const claimId = parseInt(req.params.id);
+          if (isNaN(claimId)) {
+            return res.status(400).json({ error: "Invalid claim ID" });
+          }
+          const claim = await damageClaimService.getClaimById(claimId);
+          if (!claim) {
+            return res.status(404).json({ error: "Claim not found" });
+          }
+          if (claim.managerId !== managerId) {
+            return res.status(403).json({ error: "Not authorized to view this claim" });
+          }
+          if (claim.status !== "charge_succeeded") {
+            return res.status(400).json({ error: "Invoice only available for charged claims" });
+          }
+          const { generateDamageClaimInvoicePDF: generateDamageClaimInvoicePDF2 } = await Promise.resolve().then(() => (init_invoice_service(), invoice_service_exports));
+          const pdfBuffer = await generateDamageClaimInvoicePDF2(claim, {
+            viewer: "manager"
+          });
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="damage-claim-invoice-${claimId}.pdf"`
+          );
+          res.send(pdfBuffer);
+        } catch (error) {
+          logger.error("Error downloading damage claim invoice:", error);
+          return errorResponse(res, error);
+        }
+      }
+    );
+    manager_default = router15;
+  }
+});
+
+// server/routes/notifications.ts
+var notifications_exports = {};
+__export(notifications_exports, {
+  archiveNotifications: () => archiveNotifications,
+  cleanupOldNotifications: () => cleanupOldNotifications,
+  createNotification: () => createNotification2,
+  default: () => notifications_default,
+  getNotifications: () => getNotifications,
+  getUnreadCount: () => getUnreadCount,
+  markAllAsRead: () => markAllAsRead,
+  markAsRead: () => markAsRead
+});
+import { Router as Router16 } from "express";
+import { sql as sql14 } from "drizzle-orm";
+async function createNotification2(params) {
+  const {
+    managerId,
+    locationId,
+    type,
+    priority = "normal",
+    title,
+    message,
+    metadata = {},
+    actionUrl,
+    actionLabel,
+    expiresAt
+  } = params;
+  const result = await db.execute(sql14`
+    INSERT INTO manager_notifications 
+    (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
+    VALUES (
+      ${managerId}, 
+      ${locationId || null}, 
+      ${type}::notification_type, 
+      ${priority}::notification_priority, 
+      ${title}, 
+      ${message}, 
+      ${JSON.stringify(metadata)}::jsonb, 
+      ${actionUrl || null}, 
+      ${actionLabel || null}, 
+      ${expiresAt ? expiresAt.toISOString() : null}
+    )
+    RETURNING *
+  `);
+  return result.rows[0];
+}
+async function getNotifications(managerId, options = {}) {
+  const {
+    page = 1,
+    limit = 20,
+    filter = "all",
+    type,
+    locationId
+  } = options;
+  const offset = (page - 1) * limit;
+  let filterCondition = "";
+  if (filter === "unread") {
+    filterCondition = "AND is_read = false AND is_archived = false";
+  } else if (filter === "read") {
+    filterCondition = "AND is_read = true AND is_archived = false";
+  } else if (filter === "archived") {
+    filterCondition = "AND is_archived = true";
+  } else {
+    filterCondition = "AND is_archived = false";
+  }
+  const typeCondition = type ? `AND type = '${type}'::notification_type` : "";
+  const locationCondition = locationId ? `AND (location_id = ${locationId} OR location_id IS NULL)` : "";
+  const notificationsResult = await db.execute(sql14.raw(`
+    SELECT 
+      id, manager_id, location_id, type, priority, title, message, 
+      metadata, is_read, read_at, is_archived, archived_at, 
+      action_url, action_label, created_at, expires_at
+    FROM manager_notifications
+    WHERE manager_id = ${managerId}
+      AND (expires_at IS NULL OR expires_at > NOW())
+      ${filterCondition}
+      ${typeCondition}
+      ${locationCondition}
+    ORDER BY 
+      CASE WHEN priority = 'urgent' THEN 0
+           WHEN priority = 'high' THEN 1
+           WHEN priority = 'normal' THEN 2
+           ELSE 3 END,
+      created_at DESC
+    LIMIT ${limit}
+    OFFSET ${offset}
+  `));
+  const countResult = await db.execute(sql14.raw(`
+    SELECT COUNT(*) as total
+    FROM manager_notifications
+    WHERE manager_id = ${managerId}
+      AND (expires_at IS NULL OR expires_at > NOW())
+      ${filterCondition}
+      ${typeCondition}
+      ${locationCondition}
+  `));
+  const total = parseInt(countResult.rows[0]?.total || "0", 10);
+  return {
+    notifications: notificationsResult.rows,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasMore: page * limit < total
+    }
+  };
+}
+async function getUnreadCount(managerId, locationId) {
+  const locationCondition = locationId ? `AND (location_id = ${locationId} OR location_id IS NULL)` : "";
+  const result = await db.execute(sql14.raw(`
+    SELECT COUNT(*) as count
+    FROM manager_notifications
+    WHERE manager_id = ${managerId}
+      AND is_read = false
+      AND is_archived = false
+      AND (expires_at IS NULL OR expires_at > NOW())
+      ${locationCondition}
+  `));
+  return parseInt(result.rows[0]?.count || "0", 10);
+}
+async function markAsRead(managerId, notificationIds) {
+  if (notificationIds.length === 0) return { updated: 0 };
+  const result = await db.execute(sql14`
+    UPDATE manager_notifications
+    SET is_read = true, read_at = NOW()
+    WHERE manager_id = ${managerId}
+      AND id IN (${sql14.join(notificationIds.map((id) => sql14`${id}`), sql14`, `)})
+      AND is_read = false
+  `);
+  return { updated: result.rowCount || 0 };
+}
+async function markAllAsRead(managerId, locationId) {
+  const locationCondition = locationId ? sql14`AND location_id = ${locationId}` : sql14``;
+  const result = await db.execute(sql14`
+    UPDATE manager_notifications
+    SET is_read = true, read_at = NOW()
+    WHERE manager_id = ${managerId}
+      AND is_read = false
+      ${locationCondition}
+  `);
+  return { updated: result.rowCount || 0 };
+}
+async function archiveNotifications(managerId, notificationIds) {
+  if (notificationIds.length === 0) return { updated: 0 };
+  const result = await db.execute(sql14`
+    UPDATE manager_notifications
+    SET is_archived = true, archived_at = NOW()
+    WHERE manager_id = ${managerId}
+      AND id IN (${sql14.join(notificationIds.map((id) => sql14`${id}`), sql14`, `)})
+      AND is_archived = false
+  `);
+  return { updated: result.rowCount || 0 };
+}
+async function unarchiveNotifications(managerId, notificationIds) {
+  if (notificationIds.length === 0) return { updated: 0 };
+  const result = await db.execute(sql14`
+    UPDATE manager_notifications
+    SET is_archived = false, archived_at = NULL
+    WHERE manager_id = ${managerId}
+      AND id IN (${sql14.join(notificationIds.map((id) => sql14`${id}`), sql14`, `)})
+      AND is_archived = true
+  `);
+  return { updated: result.rowCount || 0 };
+}
+async function cleanupOldNotifications(daysOld = 90) {
+  const result = await db.execute(sql14`
+    DELETE FROM manager_notifications
+    WHERE is_archived = true
+      AND archived_at < NOW() - INTERVAL '${sql14.raw(String(daysOld))} days'
+  `);
+  return { deleted: result.rowCount || 0 };
+}
+var router16, notifications_default;
+var init_notifications = __esm({
+  "server/routes/notifications.ts"() {
+    "use strict";
+    init_db();
+    init_firebase_auth_middleware();
+    init_logger();
+    init_api_response();
+    router16 = Router16();
+    router16.get("/", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const { page, limit, filter, type, locationId } = req.query;
+        const result = await getNotifications(managerId, {
+          page: page ? parseInt(page) : void 0,
+          limit: limit ? parseInt(limit) : void 0,
+          filter,
+          type,
+          locationId: locationId ? parseInt(locationId) : void 0
+        });
+        res.json(result);
+      } catch (error) {
+        logger.error("Error fetching notifications:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router16.get("/unread-count", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const { locationId } = req.query;
+        const count3 = await getUnreadCount(
+          managerId,
+          locationId ? parseInt(locationId) : void 0
+        );
+        res.json({ count: count3 });
+      } catch (error) {
+        logger.error("Error fetching unread count:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router16.post("/mark-read", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const { notificationIds } = req.body;
+        if (!Array.isArray(notificationIds)) {
+          return res.status(400).json({ error: "notificationIds must be an array" });
+        }
+        const result = await markAsRead(managerId, notificationIds);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error marking notifications as read:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router16.post("/mark-all-read", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const { locationId } = req.body;
+        const result = await markAllAsRead(
+          managerId,
+          locationId ? parseInt(locationId) : void 0
+        );
+        res.json(result);
+      } catch (error) {
+        logger.error("Error marking all as read:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router16.post("/archive", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const { notificationIds } = req.body;
+        if (!Array.isArray(notificationIds)) {
+          return res.status(400).json({ error: "notificationIds must be an array" });
+        }
+        const result = await archiveNotifications(managerId, notificationIds);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error archiving notifications:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router16.post("/unarchive", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const { notificationIds } = req.body;
+        if (!Array.isArray(notificationIds)) {
+          return res.status(400).json({ error: "notificationIds must be an array" });
+        }
+        const result = await unarchiveNotifications(managerId, notificationIds);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error unarchiving notifications:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router16.post("/message-received", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const { managerId, locationId, senderName, messagePreview, conversationId } = req.body;
+        if (!managerId || !senderName || !conversationId) {
+          return res.status(400).json({ error: "managerId, senderName, and conversationId are required" });
+        }
+        await createNotification2({
+          managerId,
+          locationId,
+          type: "message_received",
+          priority: "normal",
+          title: `Message from ${senderName}`,
+          message: messagePreview?.length > 100 ? `${messagePreview.substring(0, 100)}...` : messagePreview || "You have a new message",
+          metadata: {
+            senderName,
+            conversationId
+          },
+          actionUrl: `/manager/booking/:id`,
+          actionLabel: "View Message"
+        });
+        res.json({ success: true });
+      } catch (error) {
+        logger.error("Error creating message notification:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router16.delete("/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const notificationId = parseInt(req.params.id);
+        const result = await db.execute(sql14`
+      DELETE FROM manager_notifications
+      WHERE id = ${notificationId}
+        AND manager_id = ${managerId}
+    `);
+        if (result.rowCount === 0) {
+          return res.status(404).json({ error: "Notification not found" });
+        }
+        res.json({ deleted: true });
+      } catch (error) {
+        logger.error("Error deleting notification:", error);
+        return errorResponse(res, error);
+      }
+    });
+    notifications_default = router16;
+  }
+});
+
+// server/routes/chef-notifications.ts
+var chef_notifications_exports = {};
+__export(chef_notifications_exports, {
+  archiveNotifications: () => archiveNotifications2,
+  default: () => chef_notifications_default,
+  getNotifications: () => getNotifications2,
+  getUnreadCount: () => getUnreadCount2,
+  markAllAsRead: () => markAllAsRead2,
+  markAsRead: () => markAsRead2,
+  notificationService: () => notificationService
+});
+import { Router as Router17 } from "express";
+import { sql as sql15 } from "drizzle-orm";
+async function getNotifications2(chefId, options = {}) {
+  const {
+    page = 1,
+    limit = 20,
+    filter = "all",
+    type
+  } = options;
+  const offset = (page - 1) * limit;
+  let filterCondition = "";
+  if (filter === "unread") {
+    filterCondition = "AND is_read = false AND is_archived = false";
+  } else if (filter === "read") {
+    filterCondition = "AND is_read = true AND is_archived = false";
+  } else if (filter === "archived") {
+    filterCondition = "AND is_archived = true";
+  } else {
+    filterCondition = "AND is_archived = false";
+  }
+  const typeCondition = type ? `AND type = '${type}'::chef_notification_type` : "";
+  const notificationsResult = await db.execute(sql15.raw(`
+    SELECT 
+      id, chef_id, type, priority, title, message, 
+      metadata, is_read, read_at, is_archived, archived_at, 
+      action_url, action_label, created_at, expires_at
+    FROM chef_notifications
+    WHERE chef_id = ${chefId}
+      AND (expires_at IS NULL OR expires_at > NOW())
+      ${filterCondition}
+      ${typeCondition}
+    ORDER BY 
+      CASE WHEN priority = 'urgent' THEN 0
+           WHEN priority = 'high' THEN 1
+           WHEN priority = 'normal' THEN 2
+           ELSE 3 END,
+      created_at DESC
+    LIMIT ${limit}
+    OFFSET ${offset}
+  `));
+  const countResult = await db.execute(sql15.raw(`
+    SELECT COUNT(*) as total
+    FROM chef_notifications
+    WHERE chef_id = ${chefId}
+      AND (expires_at IS NULL OR expires_at > NOW())
+      ${filterCondition}
+      ${typeCondition}
+  `));
+  const total = parseInt(countResult.rows[0]?.total || "0", 10);
+  return {
+    notifications: notificationsResult.rows,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasMore: page * limit < total
+    }
+  };
+}
+async function getUnreadCount2(chefId) {
+  const result = await db.execute(sql15.raw(`
+    SELECT COUNT(*) as count
+    FROM chef_notifications
+    WHERE chef_id = ${chefId}
+      AND is_read = false
+      AND is_archived = false
+      AND (expires_at IS NULL OR expires_at > NOW())
+  `));
+  return { count: parseInt(result.rows[0]?.count || "0", 10) };
+}
+async function markAsRead2(chefId, notificationIds) {
+  if (notificationIds.length === 0) return { updated: 0 };
+  const result = await db.execute(sql15`
+    UPDATE chef_notifications
+    SET is_read = true, read_at = NOW()
+    WHERE chef_id = ${chefId}
+      AND id IN (${sql15.join(notificationIds.map((id) => sql15`${id}`), sql15`, `)})
+      AND is_read = false
+  `);
+  return { updated: result.rowCount || 0 };
+}
+async function markAllAsRead2(chefId) {
+  const result = await db.execute(sql15`
+    UPDATE chef_notifications
+    SET is_read = true, read_at = NOW()
+    WHERE chef_id = ${chefId}
+      AND is_read = false
+      AND is_archived = false
+  `);
+  return { updated: result.rowCount || 0 };
+}
+async function archiveNotifications2(chefId, notificationIds) {
+  if (notificationIds.length === 0) return { updated: 0 };
+  const result = await db.execute(sql15`
+    UPDATE chef_notifications
+    SET is_archived = true, archived_at = NOW()
+    WHERE chef_id = ${chefId}
+      AND id IN (${sql15.join(notificationIds.map((id) => sql15`${id}`), sql15`, `)})
+      AND is_archived = false
+  `);
+  return { updated: result.rowCount || 0 };
+}
+var router17, chef_notifications_default;
+var init_chef_notifications = __esm({
+  "server/routes/chef-notifications.ts"() {
+    "use strict";
+    init_db();
+    init_firebase_auth_middleware();
+    init_logger();
+    init_api_response();
+    init_notification_service();
+    router17 = Router17();
+    router17.get("/", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const { page, limit, filter, type } = req.query;
+        const result = await getNotifications2(chefId, {
+          page: page ? parseInt(page, 10) : void 0,
+          limit: limit ? parseInt(limit, 10) : void 0,
+          filter,
+          type
+        });
+        res.json(result);
+      } catch (error) {
+        logger.error("Error fetching chef notifications:", error);
+        return errorResponse(res, "Failed to fetch notifications", 500);
+      }
+    });
+    router17.get("/unread-count", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const result = await getUnreadCount2(chefId);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error fetching chef unread count:", error);
+        return errorResponse(res, "Failed to fetch unread count", 500);
+      }
+    });
+    router17.post("/mark-read", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const { notificationIds } = req.body;
+        if (!Array.isArray(notificationIds)) {
+          return res.status(400).json({ error: "notificationIds must be an array" });
+        }
+        const result = await markAsRead2(chefId, notificationIds);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error marking chef notifications as read:", error);
+        return errorResponse(res, "Failed to mark as read", 500);
+      }
+    });
+    router17.post("/mark-all-read", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const result = await markAllAsRead2(chefId);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error marking all chef notifications as read:", error);
+        return errorResponse(res, "Failed to mark all as read", 500);
+      }
+    });
+    router17.post("/archive", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const { notificationIds } = req.body;
+        if (!Array.isArray(notificationIds)) {
+          return res.status(400).json({ error: "notificationIds must be an array" });
+        }
+        const result = await archiveNotifications2(chefId, notificationIds);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error archiving chef notifications:", error);
+        return errorResponse(res, "Failed to archive notifications", 500);
+      }
+    });
+    router17.post("/message-received", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const { chefId, senderName, messagePreview, conversationId } = req.body;
+        if (!chefId || !senderName || !conversationId) {
+          return res.status(400).json({ error: "chefId, senderName, and conversationId are required" });
+        }
+        await notificationService.notifyChefMessage({
+          chefId,
+          senderName,
+          messagePreview: messagePreview || "You have a new message",
+          conversationId
+        });
+        res.json({ success: true });
+      } catch (error) {
+        logger.error("Error creating message notification:", error);
+        return errorResponse(res, "Failed to create notification", 500);
+      }
+    });
+    router17.delete("/:id", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const notificationId = parseInt(req.params.id);
+        const result = await db.execute(sql15`
+      DELETE FROM chef_notifications
+      WHERE id = ${notificationId}
+        AND chef_id = ${chefId}
+    `);
+        if (result.rowCount === 0) {
+          return res.status(404).json({ error: "Notification not found" });
+        }
+        res.json({ deleted: true });
+      } catch (error) {
+        logger.error("Error deleting chef notification:", error);
+        return errorResponse(res, "Failed to delete notification", 500);
+      }
+    });
+    chef_notifications_default = router17;
+  }
+});
+
+// server/routes/kitchens.ts
+var kitchens_exports = {};
+__export(kitchens_exports, {
+  default: () => kitchens_default
+});
+import { Router as Router18 } from "express";
+import { eq as eq32, inArray as inArray9, desc as desc17, and as and20 } from "drizzle-orm";
+var router18, kitchens_default;
+var init_kitchens = __esm({
+  "server/routes/kitchens.ts"() {
+    "use strict";
+    init_db();
+    init_middleware();
+    init_utils();
+    init_schema();
+    init_email();
+    init_kitchen_service();
+    init_location_service();
+    init_chef_service();
+    init_booking_service();
+    init_user_service();
+    router18 = Router18();
+    router18.get("/chef/kitchens", requireChef, async (req, res) => {
+      try {
+        const allKitchens = await kitchenService.getAllKitchensWithLocation();
+        const activeKitchens = allKitchens.filter((kitchen) => kitchen.isActive);
+        const normalizedKitchens = activeKitchens.map((kitchen) => {
+          const normalizedImageUrl = normalizeImageUrl(kitchen.imageUrl || null, req);
+          const normalizedGalleryImages = (kitchen.galleryImages || []).map(
+            (img) => normalizeImageUrl(img, req)
+          ).filter((url) => url !== null);
+          const locationBrandImageUrl = kitchen.location?.brandImageUrl || null;
+          const locationLogoUrl = kitchen.location?.logoUrl || null;
+          const normalizedLocationBrandImageUrl = normalizeImageUrl(locationBrandImageUrl, req);
+          const normalizedLocationLogoUrl = normalizeImageUrl(locationLogoUrl, req);
+          return {
+            ...kitchen,
+            imageUrl: normalizedImageUrl,
+            image_url: normalizedImageUrl,
+            // Also set snake_case for compatibility
+            galleryImages: normalizedGalleryImages,
+            gallery_images: normalizedGalleryImages,
+            // Also set snake_case for compatibility
+            locationBrandImageUrl: normalizedLocationBrandImageUrl,
+            location_brand_image_url: normalizedLocationBrandImageUrl,
+            // Also set snake_case for compatibility
+            locationLogoUrl: normalizedLocationLogoUrl,
+            location_logo_url: normalizedLocationLogoUrl
+            // Also set snake_case for compatibility
+          };
+        });
+        console.log(`[API] /api/chef/kitchens - Returning ${normalizedKitchens.length} active kitchens (all locations for marketing)`);
+        res.json(normalizedKitchens);
+      } catch (error) {
+        console.error("Error fetching kitchens:", error);
+        res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
+      }
+    });
+    router18.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req, res) => {
+      try {
+        const kitchenId = parseInt(req.params.kitchenId);
+        if (isNaN(kitchenId) || kitchenId <= 0) {
+          return res.status(400).json({ error: "Invalid kitchen ID" });
+        }
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        const pricing = {
+          hourlyRate: kitchen.hourlyRate,
+          currency: kitchen.currency,
+          pricingModel: kitchen.pricingModel,
+          minimumBookingHours: kitchen.minimumBookingHours
+        };
+        res.json(pricing);
+      } catch (error) {
+        if (error.statusCode === 404) {
+          return res.status(404).json({ error: "Kitchen not found" });
+        }
+        console.error("Error getting kitchen pricing:", error);
+        res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
+      }
+    });
+    router18.get("/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) => {
+      try {
+        const kitchenId = parseInt(req.params.kitchenId);
+        if (isNaN(kitchenId) || kitchenId <= 0) {
+          return res.status(400).json({ error: "Invalid kitchen ID" });
+        }
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        const locationId = kitchen.locationId;
+        if (!locationId) {
+          return res.status(404).json({ error: "Location not found for this kitchen" });
+        }
+        const location = await locationService.getLocationById(locationId);
+        const maxSlotsPerChef = location.defaultDailyBookingLimit ?? 2;
+        res.json({ maxSlotsPerChef });
+      } catch (error) {
+        if (error.statusCode === 404) {
+          return res.status(404).json({ error: error.message });
+        }
+        console.error("Error getting kitchen policy:", error);
+        res.status(500).json({ error: error.message || "Failed to get kitchen policy" });
+      }
+    });
+    router18.post("/chef/share-profile", requireChef, async (req, res) => {
+      try {
+        const { locationId } = req.body;
+        const chefId = req.user.id;
+        if (!locationId) {
+          return res.status(400).json({ error: "locationId is required" });
+        }
+        const hasLocationAccess = await chefService.hasLocationAccess(chefId, locationId);
+        if (!hasLocationAccess) {
+          return res.status(403).json({ error: "You don't have access to this location. Please contact an administrator." });
+        }
+        const chef = await userService.getUser(chefId);
+        if (!chef) {
+          return res.status(404).json({ error: "Chef not found" });
+        }
+        const location = await locationService.getLocationById(locationId);
+        if (!location) {
+          return res.status(404).json({ error: "Location not found" });
+        }
+        const chefApp = await db.select().from(applications).where(and20(
+          eq32(applications.userId, chefId),
+          eq32(applications.status, "approved")
+        )).orderBy(desc17(applications.createdAt)).limit(1);
+        const profile = await chefService.shareProfileWithLocation(chefId, locationId);
+        if (profile && profile.status === "pending") {
+          try {
+            const managerEmail = location.notificationEmail || location.notification_email;
+            if (managerEmail) {
+              const chefName = chefApp.length > 0 && chefApp[0].fullName ? chefApp[0].fullName : chef.username || "Chef";
+              const chefEmail = chefApp.length > 0 && chefApp[0].email ? chefApp[0].email : chef.email || chef.username || "chef@example.com";
+              const emailContent = generateChefProfileRequestEmail({
+                managerEmail,
+                chefName,
+                chefEmail,
+                locationName: location.name || "Location",
+                locationId
+              });
+              await sendEmail(emailContent);
+              console.log(`\u2705 Chef profile request notification sent to manager: ${managerEmail}`);
+            }
+          } catch (emailError) {
+            console.error("Error sending chef profile request notification:", emailError);
+          }
+        }
+        res.status(201).json(profile);
+      } catch (error) {
+        console.error("Error sharing chef profile:", error);
+        res.status(500).json({ error: error.message || "Failed to share profile" });
+      }
+    });
+    router18.get("/chef/profiles", requireChef, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const locationAccessRecords = await db.select().from(chefLocationAccess).where(eq32(chefLocationAccess.chefId, chefId));
+        const locationIds = locationAccessRecords.map((access) => access.locationId);
+        if (locationIds.length === 0) {
+          return res.json([]);
+        }
+        const allLocations = await db.select().from(locations).where(inArray9(locations.id, locationIds));
+        const profiles = await Promise.all(
+          locationIds.map(async (locationId) => {
+            const profile = await chefService.getProfile(chefId, locationId);
+            const location = allLocations.find((l) => l.id === locationId);
+            return { locationId, location, profile };
+          })
+        );
+        res.json(profiles);
+      } catch (error) {
+        console.error("Error getting chef profiles:", error);
+        res.status(500).json({ error: error.message || "Failed to get profiles" });
+      }
+    });
+    router18.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => {
+      try {
+        const kitchenId = parseInt(req.params.kitchenId);
+        const { date: date2 } = req.query;
+        if (!date2) {
+          return res.status(400).json({ error: "Date parameter is required" });
+        }
+        const [year, month, day] = date2.split("-").map(Number);
+        const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+        if (isNaN(bookingDate.getTime())) {
+          return res.status(400).json({ error: "Invalid date format" });
+        }
+        const slotsInfo = await bookingService.getAllTimeSlotsWithBookingInfo(kitchenId, bookingDate);
+        res.json(slotsInfo);
+      } catch (error) {
+        console.error("Error fetching time slots:", error);
+        res.status(500).json({
+          error: "Failed to fetch time slots",
+          message: error.message
+        });
+      }
+    });
+    router18.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
+      try {
+        const kitchenId = parseInt(req.params.kitchenId);
+        const { date: date2 } = req.query;
+        if (!date2) {
+          return res.status(400).json({ error: "Date parameter is required" });
+        }
+        const [year, month, day] = date2.split("-").map(Number);
+        const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+        if (isNaN(bookingDate.getTime())) {
+          return res.status(400).json({ error: "Invalid date format" });
+        }
+        console.log(`\u{1F50D} Fetching available slots for kitchen ${kitchenId} on ${date2}`);
+        const slots = await bookingService.getAvailableTimeSlots(kitchenId, bookingDate);
+        console.log(`\u2705 Returning ${slots.length} available slots`);
+        res.json(slots);
+      } catch (error) {
+        console.error("Error fetching available slots:", error);
+        res.status(500).json({
+          error: "Failed to fetch available slots",
+          message: error.message
+        });
+      }
+    });
+    kitchens_default = router18;
   }
 });
 
@@ -30770,7 +31459,36 @@ __export(admin_exports, {
   default: () => admin_default
 });
 import { Router as Router21 } from "express";
-import { eq as eq33, sql as sql16, desc as desc18 } from "drizzle-orm";
+import { eq as eq33, sql as sql16 } from "drizzle-orm";
+import { getFirestore as getFirestore2 } from "firebase-admin/firestore";
+async function getFirestoreDisplayNames(firebaseUids) {
+  const nameMap = {};
+  if (!firebaseUids.length) return nameMap;
+  try {
+    if (!firestoreDb) {
+      const app2 = initializeFirebaseAdmin();
+      if (!app2) return nameMap;
+      firestoreDb = getFirestore2(app2);
+      firestoreDb.settings({ ignoreUndefinedProperties: true });
+    }
+    const refs = firebaseUids.map((uid) => firestoreDb.collection("users").doc(uid));
+    const docs = await firestoreDb.getAll(...refs);
+    docs.forEach((doc) => {
+      if (doc.exists) {
+        const data = doc.data();
+        if (data?.displayName) {
+          nameMap[doc.id] = data.displayName;
+        }
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching Firestore display names:", error);
+  }
+  return nameMap;
+}
+function emailPrefix(email) {
+  return email.includes("@") ? email.split("@")[0] : email;
+}
 async function getAuthenticatedUser2(req) {
   if (req.neonUser) {
     return {
@@ -30781,7 +31499,7 @@ async function getAuthenticatedUser2(req) {
   }
   return null;
 }
-var router21, handleAdminDamageClaimDecision, admin_default;
+var firestoreDb, router21, handleAdminDamageClaimDecision, admin_default;
 var init_admin = __esm({
   "server/routes/admin.ts"() {
     "use strict";
@@ -30792,6 +31510,7 @@ var init_admin = __esm({
     init_email();
     init_phone_utils();
     init_passwordUtils();
+    init_firebase_setup();
     init_location_service();
     init_kitchen_service();
     init_chef_service();
@@ -30799,6 +31518,7 @@ var init_admin = __esm({
     init_stripe_checkout_fee_service();
     init_damage_claim_service();
     init_damage_claim_limits_service();
+    firestoreDb = null;
     router21 = Router21();
     router21.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
@@ -30806,90 +31526,41 @@ var init_admin = __esm({
           return;
         }
         const { startDate, endDate } = req.query;
-        const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
-        const serviceFeeRate = await getServiceFeeRate2();
-        const conditions = [sql16`kb.status != 'cancelled'`];
+        const conditions = [sql16`pt.status = 'succeeded'`];
         if (startDate) {
-          conditions.push(sql16`kb.booking_date >= ${startDate}::date`);
+          conditions.push(sql16`DATE(pt.paid_at) >= ${startDate}::date`);
         }
         if (endDate) {
-          conditions.push(sql16`kb.booking_date <= ${endDate}::date`);
+          conditions.push(sql16`DATE(pt.paid_at) <= ${endDate}::date`);
         }
-        const bookingFilters = sql16.join(conditions, sql16` AND `);
+        const txnFilters = sql16.join(conditions, sql16` AND `);
         const managerRole = "manager";
         const result = await db.execute(sql16`
         SELECT 
           u.id as manager_id,
           u.username as manager_name,
           u.username as manager_email,
-          l.id as location_id,
-          l.name as location_name,
-          COALESCE(SUM(CASE WHEN kb.id IS NOT NULL THEN kb.total_price ELSE 0 END), 0)::bigint as total_revenue,
-          COALESCE(SUM(CASE WHEN kb.id IS NOT NULL THEN kb.service_fee ELSE 0 END), 0)::bigint as platform_fee,
-          COUNT(kb.id)::int as booking_count,
-          COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count
+          COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
+          COALESCE(SUM(pt.service_fee::numeric), 0)::bigint as platform_fee,
+          COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
+          COUNT(pt.id)::int as booking_count,
+          COALESCE(SUM(pt.refund_amount::numeric), 0)::bigint as total_refunds
         FROM users u
-        LEFT JOIN locations l ON l.manager_id = u.id
-        LEFT JOIN kitchens k ON k.location_id = l.id
-        LEFT JOIN kitchen_bookings kb ON kb.kitchen_id = k.id AND ${bookingFilters}
+        LEFT JOIN payment_transactions pt ON pt.manager_id = u.id AND ${txnFilters}
         WHERE u.role = ${managerRole}
-        GROUP BY u.id, u.username, l.id, l.name
-        ORDER BY u.username ASC, total_revenue DESC
+        GROUP BY u.id, u.username
+        ORDER BY total_revenue DESC
       `);
-        const managerMap = /* @__PURE__ */ new Map();
-        result.rows.forEach((row) => {
-          const managerId = parseInt(row.manager_id);
-          const totalRevenue = parseInt(row.total_revenue) || 0;
-          const platformFee = parseInt(row.platform_fee) || 0;
-          const managerRevenue = totalRevenue - platformFee;
-          if (!managerMap.has(managerId)) {
-            managerMap.set(managerId, {
-              managerId,
-              managerName: row.manager_name,
-              managerEmail: row.manager_email,
-              totalRevenue: 0,
-              platformFee: 0,
-              managerRevenue: 0,
-              bookingCount: 0,
-              paidBookingCount: 0,
-              locations: []
-            });
-          }
-          const manager = managerMap.get(managerId);
-          manager.totalRevenue += totalRevenue;
-          manager.platformFee += parseInt(row.platform_fee) || 0;
-          manager.managerRevenue += managerRevenue;
-          manager.bookingCount += parseInt(row.booking_count) || 0;
-          manager.paidBookingCount += parseInt(row.paid_count) || 0;
-          if (row.location_id) {
-            manager.locations.push({
-              locationId: parseInt(row.location_id),
-              locationName: row.location_name || "Unnamed Location",
-              totalRevenue,
-              platformFee: parseInt(row.platform_fee) || 0,
-              managerRevenue,
-              bookingCount: parseInt(row.booking_count) || 0,
-              paidBookingCount: parseInt(row.paid_count) || 0
-            });
-          }
-        });
-        const managers = Array.from(managerMap.values()).map((m) => ({
-          ...m,
-          totalRevenue: m.totalRevenue / 100,
-          platformFee: m.platformFee / 100,
-          managerRevenue: m.managerRevenue / 100,
-          locations: m.locations.map((loc) => ({
-            ...loc,
-            totalRevenue: loc.totalRevenue / 100,
-            platformFee: loc.platformFee / 100,
-            managerRevenue: loc.managerRevenue / 100
-          })),
-          _raw: {
-            totalRevenue: m.totalRevenue,
-            platformFee: m.platformFee,
-            managerRevenue: m.managerRevenue
-          }
-        }));
+        const managers = result.rows.map((row) => ({
+          managerId: parseInt(row.manager_id),
+          managerName: row.manager_name,
+          managerEmail: row.manager_email,
+          totalRevenue: (parseInt(row.total_revenue) || 0) / 100,
+          platformFee: (parseInt(row.platform_fee) || 0) / 100,
+          managerRevenue: (parseInt(row.manager_revenue) || 0) / 100,
+          bookingCount: parseInt(row.booking_count) || 0,
+          totalRefunds: (parseInt(row.total_refunds) || 0) / 100
+        })).filter((m) => m.bookingCount > 0 || m.totalRevenue > 0);
         res.json({ managers, total: managers.length });
       } catch (error) {
         console.error("Error getting all managers revenue:", error);
@@ -31209,6 +31880,7 @@ var init_admin = __esm({
               u.id, 
               u.username, 
               u.role,
+              u.firebase_uid,
               COALESCE(
                 json_agg(
                   json_build_object(
@@ -31222,9 +31894,11 @@ var init_admin = __esm({
             FROM users u
             LEFT JOIN locations l ON l.manager_id = u.id
             WHERE u.role = 'manager'
-            GROUP BY u.id, u.username, u.role
+            GROUP BY u.id, u.username, u.role, u.firebase_uid
             ORDER BY u.username ASC
         `));
+        const firebaseUids = result.rows.map((row) => row.firebase_uid).filter((uid) => !!uid);
+        const firestoreNames = await getFirestoreDisplayNames(firebaseUids);
         const managersWithEmails = result.rows.map((row) => {
           let locations5 = row.locations;
           if (locations5 === null || locations5 === void 0) {
@@ -31248,9 +31922,12 @@ var init_admin = __esm({
               locations5 = [];
             }
           }
+          const firestoreName = row.firebase_uid ? firestoreNames[row.firebase_uid] : null;
+          const displayName = firestoreName || row.username;
           const managerData = {
             id: row.id,
             username: row.username,
+            displayName,
             role: row.role
           };
           managerData.locations = locations5.map((loc) => ({
@@ -31269,6 +31946,7 @@ var init_admin = __esm({
           return {
             id: manager.id,
             username: manager.username,
+            displayName: manager.displayName,
             role: manager.role,
             locations: Array.isArray(manager.locations) ? manager.locations : []
           };
@@ -31496,6 +32174,24 @@ var init_admin = __esm({
       } catch (error) {
         console.error("Error creating location:", error);
         res.status(500).json({ error: error.message || "Failed to create location" });
+      }
+    });
+    router21.get("/kitchens", async (req, res) => {
+      try {
+        const sessionUser = await getAuthenticatedUser2(req);
+        const isFirebaseAuth = req.neonUser;
+        if (!sessionUser && !isFirebaseAuth) {
+          return res.status(401).json({ error: "Not authenticated" });
+        }
+        const user = isFirebaseAuth ? req.neonUser : sessionUser;
+        if (user.role !== "admin") {
+          return res.status(403).json({ error: "Admin access required" });
+        }
+        const allKitchens = await kitchenService.getAllKitchensWithLocation();
+        res.json(allKitchens);
+      } catch (error) {
+        console.error("Error fetching all kitchens:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
       }
     });
     router21.get("/kitchens/:locationId", async (req, res) => {
@@ -32301,6 +32997,62 @@ var init_admin = __esm({
         });
       }
     });
+    router21.get("/cancellation-config", requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
+      try {
+        const [setting] = await db.select({ value: platformSettings.value, updatedAt: platformSettings.updatedAt }).from(platformSettings).where(eq33(platformSettings.key, "cancellation_request_auto_accept_hours")).limit(1);
+        const autoAcceptHours = setting ? parseInt(setting.value || "24", 10) : 24;
+        res.json({
+          success: true,
+          config: {
+            autoAcceptHours,
+            updatedAt: setting?.updatedAt || null
+          }
+        });
+      } catch (error) {
+        console.error("Error fetching cancellation config:", error);
+        res.status(500).json({ error: "Failed to fetch cancellation configuration" });
+      }
+    });
+    router21.put("/cancellation-config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const user = await getAuthenticatedUser2(req);
+        if (!user) {
+          return res.status(401).json({ error: "Unauthorized" });
+        }
+        const { autoAcceptHours } = req.body;
+        if (autoAcceptHours === void 0 || autoAcceptHours === null) {
+          return res.status(400).json({ error: "autoAcceptHours is required" });
+        }
+        const hours = parseInt(autoAcceptHours, 10);
+        if (isNaN(hours) || hours < 0 || hours > 720) {
+          return res.status(400).json({ error: "autoAcceptHours must be between 0 and 720 (0 = disabled, max 30 days)" });
+        }
+        await db.insert(platformSettings).values({
+          key: "cancellation_request_auto_accept_hours",
+          value: hours.toString(),
+          description: "Hours before a cancellation request is auto-accepted (0 = disabled)",
+          updatedBy: user.id,
+          updatedAt: /* @__PURE__ */ new Date()
+        }).onConflictDoUpdate({
+          target: platformSettings.key,
+          set: {
+            value: hours.toString(),
+            description: "Hours before a cancellation request is auto-accepted (0 = disabled)",
+            updatedBy: user.id,
+            updatedAt: /* @__PURE__ */ new Date()
+          }
+        });
+        console.log(`[AUDIT] Cancellation auto-accept hours updated to ${hours} by admin ${user.id} (${user.username})`);
+        res.json({
+          success: true,
+          message: hours === 0 ? "Cancellation auto-accept disabled. Managers must manually respond to all requests." : `Cancellation requests will be auto-accepted after ${hours} hour${hours !== 1 ? "s" : ""} if the manager does not respond.`,
+          config: { autoAcceptHours: hours }
+        });
+      } catch (error) {
+        console.error("Error updating cancellation config:", error);
+        res.status(500).json({ error: "Failed to update cancellation configuration" });
+      }
+    });
     router21.post("/fees/simulate", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const { bookingAmountCents, customConfig } = req.body;
@@ -32542,10 +33294,67 @@ var init_admin = __esm({
     });
     router21.get("/damage-claims", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
-        const claims = await damageClaimService.getDisputedClaims();
+        const statusFilter = req.query.status;
+        const { damageEvidence: damageEvidence2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const statusCondition = statusFilter && statusFilter !== "all" ? sql16`AND dc.status = ${statusFilter}` : sql16``;
+        const claimsQuery = await db.execute(sql16`
+            SELECT 
+                dc.*,
+                chef_user.username as chef_email,
+                COALESCE(cka.full_name, chef_user.username) as chef_name,
+                mgr_user.username as manager_email,
+                mgr_user.firebase_uid as manager_firebase_uid,
+                loc.name as location_name
+            FROM damage_claims dc
+            INNER JOIN users chef_user ON dc.chef_id = chef_user.id
+            INNER JOIN users mgr_user ON dc.manager_id = mgr_user.id
+            INNER JOIN locations loc ON dc.location_id = loc.id
+            LEFT JOIN chef_kitchen_applications cka 
+                ON cka.chef_id = dc.chef_id 
+                AND cka.location_id = dc.location_id
+            WHERE 1=1 ${statusCondition}
+            ORDER BY dc.created_at DESC
+        `);
+        const mgrFirebaseUids = claimsQuery.rows.map((r) => r.manager_firebase_uid).filter((uid) => !!uid);
+        const uniqueMgrUids = Array.from(new Set(mgrFirebaseUids));
+        const mgrFirestoreNames = await getFirestoreDisplayNames(uniqueMgrUids);
+        const claims = [];
+        for (const row of claimsQuery.rows) {
+          const evidence = await db.select().from(damageEvidence2).where(eq33(damageEvidence2.damageClaimId, row.id));
+          const firestoreMgrName = row.manager_firebase_uid ? mgrFirestoreNames[row.manager_firebase_uid] : null;
+          const managerName = firestoreMgrName || emailPrefix(row.manager_email);
+          claims.push({
+            id: row.id,
+            bookingType: row.booking_type,
+            kitchenBookingId: row.kitchen_booking_id,
+            storageBookingId: row.storage_booking_id,
+            chefId: row.chef_id,
+            managerId: row.manager_id,
+            locationId: row.location_id,
+            status: row.status,
+            claimTitle: row.claim_title,
+            claimDescription: row.claim_description,
+            damageDate: row.damage_date,
+            claimedAmountCents: row.claimed_amount_cents,
+            approvedAmountCents: row.approved_amount_cents,
+            finalAmountCents: row.final_amount_cents,
+            chefResponse: row.chef_response,
+            chefRespondedAt: row.chef_responded_at,
+            chefResponseDeadline: row.chef_response_deadline,
+            adminDecisionReason: row.admin_decision_reason,
+            adminNotes: row.admin_notes,
+            createdAt: row.created_at,
+            submittedAt: row.submitted_at,
+            chefEmail: row.chef_email,
+            chefName: row.chef_name,
+            managerName,
+            locationName: row.location_name,
+            evidence
+          });
+        }
         res.json({ claims });
       } catch (error) {
-        console.error("Error fetching disputed damage claims:", error);
+        console.error("Error fetching damage claims:", error);
         res.status(500).json({ error: "Failed to fetch damage claims" });
       }
     });
@@ -32710,46 +33519,73 @@ var init_admin = __esm({
         res.status(500).json({ error: "Failed to update overstay settings" });
       }
     });
-    router21.get("/escalated-penalties", requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
+    router21.get("/escalated-penalties", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
-        const { storageOverstayRecords: storageOverstayRecords2, storageBookings: storageBookings2, storageListings: storageListings3, kitchens: kitchens3, users: users5, damageClaims: damageClaims2, locations: locations5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-        const escalatedOverstays = await db.select({
-          id: storageOverstayRecords2.id,
-          storageBookingId: storageOverstayRecords2.storageBookingId,
-          status: storageOverstayRecords2.status,
-          daysOverdue: storageOverstayRecords2.daysOverdue,
-          calculatedPenaltyCents: storageOverstayRecords2.calculatedPenaltyCents,
-          finalPenaltyCents: storageOverstayRecords2.finalPenaltyCents,
-          chargeFailureReason: storageOverstayRecords2.chargeFailureReason,
-          detectedAt: storageOverstayRecords2.detectedAt,
-          resolvedAt: storageOverstayRecords2.resolvedAt,
-          storageName: storageListings3.name,
-          kitchenName: kitchens3.name,
-          locationName: locations5.name,
-          chefEmail: users5.username
-        }).from(storageOverstayRecords2).innerJoin(storageBookings2, eq33(storageOverstayRecords2.storageBookingId, storageBookings2.id)).innerJoin(storageListings3, eq33(storageBookings2.storageListingId, storageListings3.id)).innerJoin(kitchens3, eq33(storageListings3.kitchenId, kitchens3.id)).innerJoin(locations5, eq33(kitchens3.locationId, locations5.id)).leftJoin(users5, eq33(storageBookings2.chefId, users5.id)).where(eq33(storageOverstayRecords2.status, "escalated")).orderBy(desc18(storageOverstayRecords2.detectedAt));
-        const escalatedClaims = await db.select({
-          id: damageClaims2.id,
-          claimTitle: damageClaims2.claimTitle,
-          status: damageClaims2.status,
-          claimedAmountCents: damageClaims2.claimedAmountCents,
-          finalAmountCents: damageClaims2.finalAmountCents,
-          chargeFailureReason: damageClaims2.chargeFailureReason,
-          bookingType: damageClaims2.bookingType,
-          createdAt: damageClaims2.createdAt,
-          locationName: locations5.name,
-          chefEmail: users5.username
-        }).from(damageClaims2).innerJoin(locations5, eq33(damageClaims2.locationId, locations5.id)).leftJoin(users5, eq33(damageClaims2.chefId, users5.id)).where(eq33(damageClaims2.status, "escalated")).orderBy(desc18(damageClaims2.createdAt));
+        const showAll = req.query.all === "true";
+        const overstayStatusFilter = showAll ? sql16`` : sql16`AND sor.status = 'escalated'`;
+        const overstayResult = await db.execute(sql16`
+            SELECT 
+                sor.id,
+                sor.storage_booking_id as "storageBookingId",
+                sor.status,
+                sor.days_overdue as "daysOverdue",
+                sor.calculated_penalty_cents as "calculatedPenaltyCents",
+                sor.final_penalty_cents as "finalPenaltyCents",
+                sor.charge_failure_reason as "chargeFailureReason",
+                sor.detected_at as "detectedAt",
+                sor.resolved_at as "resolvedAt",
+                sl.name as "storageName",
+                k.name as "kitchenName",
+                loc.name as "locationName",
+                u.username as "chefEmail",
+                COALESCE(cka.full_name, split_part(u.username, '@', 1)) as "chefName"
+            FROM storage_overstay_records sor
+            INNER JOIN storage_bookings sb ON sor.storage_booking_id = sb.id
+            INNER JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+            INNER JOIN kitchens k ON sl.kitchen_id = k.id
+            INNER JOIN locations loc ON k.location_id = loc.id
+            LEFT JOIN users u ON sb.chef_id = u.id
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = sb.chef_id AND cka.location_id = loc.id
+            WHERE 1=1 ${overstayStatusFilter}
+            ORDER BY sor.detected_at DESC
+        `);
+        const allOverstays = overstayResult.rows;
+        const claimStatusFilter = showAll ? sql16`` : sql16`AND dc.status = 'escalated'`;
+        const claimResult = await db.execute(sql16`
+            SELECT 
+                dc.id,
+                dc.claim_title as "claimTitle",
+                dc.status,
+                dc.claimed_amount_cents as "claimedAmountCents",
+                dc.final_amount_cents as "finalAmountCents",
+                dc.charge_failure_reason as "chargeFailureReason",
+                dc.booking_type as "bookingType",
+                dc.created_at as "createdAt",
+                loc.name as "locationName",
+                chef_user.username as "chefEmail",
+                COALESCE(cka.full_name, split_part(chef_user.username, '@', 1)) as "chefName"
+            FROM damage_claims dc
+            INNER JOIN locations loc ON dc.location_id = loc.id
+            LEFT JOIN users chef_user ON dc.chef_id = chef_user.id
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = dc.chef_id AND cka.location_id = dc.location_id
+            WHERE 1=1 ${claimStatusFilter}
+            ORDER BY dc.created_at DESC
+        `);
+        const allClaims = claimResult.rows;
+        const escalatedOverstays = allOverstays.filter((o) => o.status === "escalated");
+        const escalatedClaims = allClaims.filter((c) => c.status === "escalated");
         res.json({
-          overstays: escalatedOverstays,
-          damageClaims: escalatedClaims,
+          overstays: allOverstays,
+          damageClaims: allClaims,
           summary: {
             totalEscalatedOverstays: escalatedOverstays.length,
             totalEscalatedClaims: escalatedClaims.length,
             totalEscalatedAmountCents: [
               ...escalatedOverstays.map((o) => o.finalPenaltyCents || o.calculatedPenaltyCents || 0),
               ...escalatedClaims.map((c) => c.finalAmountCents || c.claimedAmountCents || 0)
-            ].reduce((sum, val) => sum + val, 0)
+            ].reduce((sum, val) => sum + val, 0),
+            totalOverstays: allOverstays.length,
+            totalClaims: allClaims.length
           }
         });
       } catch (error) {
@@ -34514,6 +35350,13 @@ async function handleOverstayPenaltyPaymentCompleted(sessionId, paymentIntentId,
       logger.info(`[Webhook] Created payment_transactions record for overstay penalty ${overstayRecordId}`);
     } catch (ptError) {
       logger.error(`[Webhook] Failed to create payment_transactions for overstay penalty:`, ptError);
+    }
+    try {
+      const bookingIdToComplete = isNaN(storageBookingId) ? overstayRecord.storageBookingId : storageBookingId;
+      await db.update(storageBookings2).set({ status: "completed", updatedAt: /* @__PURE__ */ new Date() }).where(eq34(storageBookings2.id, bookingIdToComplete));
+      logger.info(`[Webhook] Auto-completed storage booking ${bookingIdToComplete} after overstay penalty paid via checkout`);
+    } catch (completeError) {
+      logger.error(`[Webhook] Failed to auto-complete booking after overstay payment:`, completeError);
     }
     logger.info(`[Webhook] \u2705 Overstay penalty payment completed`, {
       overstayRecordId,

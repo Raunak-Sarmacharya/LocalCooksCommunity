@@ -1,7 +1,7 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign, Eye, RotateCcw, ClipboardCheck } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign, Eye, RotateCcw, ClipboardCheck, Settings2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -24,12 +24,15 @@ import {
 export type StorageItem = {
     id: number;
     storageListingId: number;
+    storageBookingId?: number;
     name: string;
     storageType: string;
     totalPrice: number; // in cents
     startDate?: string;
     endDate?: string;
     rejected?: boolean; // true if manager rejected this item
+    cancellationRequested?: boolean; // true if chef requested cancellation
+    status?: string; // synced from storage_bookings table
 }
 
 export type EquipmentItem = {
@@ -88,7 +91,13 @@ interface BookingColumnsProps {
     onReject: (booking: Booking) => void;
     onCancel: (booking: Booking) => void;
     onRefund?: (booking: Booking) => void;
+    onCancelAndRefund?: (booking: Booking) => void;
     onTakeAction?: (booking: Booking) => void;
+    onAcceptCancellation?: (booking: Booking) => void;
+    onDeclineCancellation?: (booking: Booking) => void;
+    onAcceptStorageCancellation?: (storageBookingId: number) => void;
+    onDeclineStorageCancellation?: (storageBookingId: number) => void;
+    onManageBooking?: (booking: Booking) => void;
     hasApprovedLicense: boolean;
 }
 
@@ -110,7 +119,7 @@ const formatTime = (time: string) => {
     return `${displayHour}:${minutes} ${ampm}`;
 };
 
-export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onTakeAction, hasApprovedLicense }: BookingColumnsProps): ColumnDef<Booking>[] => [
+export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onCancelAndRefund, onTakeAction, onAcceptCancellation, onDeclineCancellation, onAcceptStorageCancellation, onDeclineStorageCancellation, onManageBooking, hasApprovedLicense }: BookingColumnsProps): ColumnDef<Booking>[] => [
     {
         accessorKey: "createdAt",
         header: () => null,
@@ -278,7 +287,10 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
                                                     : `${formatStorageDate(startDate)} - ${formatStorageDate(endDate)}`;
                                                 return (
                                                     <div key={idx} className={`flex flex-col ${s.rejected ? 'opacity-60' : ''}`}>
-                                                        <span className={`truncate ${s.rejected ? 'line-through text-red-500' : ''}`}>{s.name} ({s.storageType})</span>
+                                                        <span className={`truncate ${s.rejected ? 'line-through text-red-500' : ''} ${s.cancellationRequested ? 'text-orange-600' : ''}`}>{s.name} ({s.storageType})</span>
+                                                        {s.cancellationRequested && (
+                                                            <span className="text-[10px] text-orange-600 font-medium">Cancel Requested</span>
+                                                        )}
                                                         <span className="text-muted-foreground text-[10px]">{dateRange}</span>
                                                     </div>
                                                 );
@@ -321,7 +333,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
                                                 return (
                                                     <li key={idx} className={`flex flex-col ${item.rejected ? 'opacity-60' : ''}`}>
                                                         <div className="flex justify-between gap-3">
-                                                            <span className={item.rejected ? 'line-through' : ''}>{item.name} ({item.storageType})</span>
+                                                            <span className={`${item.rejected ? 'line-through' : ''} ${item.cancellationRequested ? 'text-orange-500' : ''}`}>{item.name} ({item.storageType}){item.cancellationRequested && ' ⚠ Cancel Requested'}</span>
                                                             <span className={item.rejected ? 'text-red-400 line-through' : 'text-muted-foreground'}>
                                                                 {formatPrice(item.totalPrice)}
                                                                 {item.rejected && ' ✕'}
@@ -462,6 +474,122 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
             // ── CAPTURED PAYMENT: Show actual Stripe data with revenue breakdown ──
             // Show actual Stripe data if we have transaction data, otherwise show pending
             const hasTransactionData = transactionAmount !== null && transactionAmount !== undefined;
+            const bookingStatus = row.original.status;
+            const refundAmount = row.original.refundAmount ?? 0;
+            const paymentStatus = row.original.paymentStatus;
+            const isCancelled = bookingStatus === 'cancelled';
+            const isRefunded = paymentStatus === 'refunded' || paymentStatus === 'partially_refunded';
+            const hasRefund = refundAmount > 0;
+
+            // Cancelled bookings with refunds: show refund info instead of "You receive"
+            if (isCancelled && hasRefund && hasTransactionData) {
+                const isFullRefund = paymentStatus === 'refunded';
+                return (
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="text-right cursor-help">
+                                    <div className="font-medium text-sm text-muted-foreground line-through">{formatPrice(displayAmount)}</div>
+                                    <div className="text-xs text-orange-600">Refunded: {formatPrice(refundAmount)}</div>
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                                <div className="space-y-1 text-sm">
+                                    <p className="font-medium text-orange-700">{isFullRefund ? 'Fully Refunded' : 'Partially Refunded'}</p>
+                                    <div className="flex justify-between gap-4 text-muted-foreground">
+                                        <span>Original Charge:</span>
+                                        <span className="font-mono line-through">{formatPrice(displayAmount)}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-4 font-semibold text-orange-600">
+                                        <span>Refunded to Chef:</span>
+                                        <span>{formatPrice(refundAmount)}</span>
+                                    </div>
+                                    {stripeFee > 0 && (
+                                        <div className="flex justify-between gap-4 text-muted-foreground text-xs">
+                                            <span>Stripe Fee (sunk cost):</span>
+                                            <span>{formatPrice(stripeFee)}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                );
+            }
+
+            // Active bookings with partial refund (e.g., some addons cancelled + refunded, kitchen still confirmed)
+            if (!isCancelled && hasRefund && hasTransactionData) {
+                const adjustedNet = netAmount - refundAmount;
+                return (
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="text-right cursor-help">
+                                    <div className="font-medium text-sm">{formatPrice(displayAmount)}</div>
+                                    <div className="text-xs text-amber-600">Refund: {formatPrice(refundAmount)}</div>
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                                <div className="space-y-1 text-sm">
+                                    <p className="font-medium text-amber-700">Partial Refund Issued</p>
+                                    <div className="flex justify-between gap-4">
+                                        <span>Total Charged:</span>
+                                        <span className="font-medium font-mono">{formatPrice(displayAmount)}</span>
+                                    </div>
+                                    {taxAmount > 0 && (
+                                        <div className="flex justify-between gap-4 text-amber-600">
+                                            <span>Tax ({taxRatePercent}%):</span>
+                                            <span>-{formatPrice(taxAmount)}</span>
+                                        </div>
+                                    )}
+                                    {stripeFee > 0 && (
+                                        <div className="flex justify-between gap-4 text-red-600">
+                                            <span>Stripe Fee:</span>
+                                            <span>-{formatPrice(stripeFee)}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between gap-4 text-orange-600">
+                                        <span>Refunded:</span>
+                                        <span>-{formatPrice(refundAmount)}</span>
+                                    </div>
+                                    <div className="border-t pt-1 flex justify-between gap-4 font-semibold text-green-600">
+                                        <span>Net Revenue:</span>
+                                        <span>{formatPrice(adjustedNet)}</span>
+                                    </div>
+                                </div>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                );
+            }
+
+            // Cancelled bookings awaiting refund: show pending refund state
+            if (isCancelled && !hasRefund && hasTransactionData && !isRefunded) {
+                return (
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="text-right cursor-help">
+                                    <div className="font-medium text-sm">{formatPrice(displayAmount)}</div>
+                                    <div className="text-xs text-muted-foreground">Refund pending</div>
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                                <div className="space-y-1 text-sm">
+                                    <p className="font-medium">Cancelled — Awaiting Refund</p>
+                                    <div className="flex justify-between gap-4">
+                                        <span>Amount Charged:</span>
+                                        <span className="font-medium">{formatPrice(displayAmount)}</span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground pt-1">
+                                        Use &quot;Issue Refund&quot; or &quot;Cancel &amp; Refund&quot; from the actions menu to process.
+                                    </p>
+                                </div>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                );
+            }
 
             return (
                 <TooltipProvider>
@@ -521,26 +649,54 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
 
             let variant: "default" | "secondary" | "destructive" | "outline" = "outline"
             let icon = null;
+            let label = status as string;
+            let extraClassName = "";
 
             if (status === 'confirmed') {
                 variant = "default"
                 icon = <CheckCircle className="h-3 w-3 mr-1" />
+                label = "Confirmed"
             } else if (status === 'cancelled') {
-                variant = "destructive"
-                icon = <XCircle className="h-3 w-3 mr-1" />
+                // Industry standard: distinguish by cause for intuitive manager labels
+                if (paymentStatus === 'failed' || row.original.isVoidedAuthorization) {
+                    // Payment auth expired or voided — never charged
+                    variant = "outline"
+                    icon = <Clock className="h-3 w-3 mr-1" />
+                    extraClassName = "bg-gray-100 text-gray-600 border-gray-300"
+                    label = "Expired"
+                } else if (paymentStatus === 'refunded') {
+                    // Cancelled and fully refunded
+                    variant = "outline"
+                    icon = <XCircle className="h-3 w-3 mr-1" />
+                    extraClassName = "bg-gray-100 text-gray-600 border-gray-300"
+                    label = "Refunded"
+                } else {
+                    // Manager rejected or cancelled the booking
+                    variant = "destructive"
+                    icon = <XCircle className="h-3 w-3 mr-1" />
+                    label = "Cancelled"
+                }
+            } else if (status === 'cancellation_requested') {
+                variant = "secondary"
+                icon = <Clock className="h-3 w-3 mr-1" />
+                extraClassName = "bg-orange-100 text-orange-800 border-orange-300"
+                label = "Cancel Requested"
             } else {
                 variant = "secondary"
                 icon = <Clock className="h-3 w-3 mr-1" />
+                label = "Pending"
             }
 
             const isVoided = row.original.isVoidedAuthorization === true;
             const isAuthHold = row.original.isAuthorizedHold === true;
+            const isRefunded = paymentStatus === 'refunded';
+            const isPartiallyRefunded = paymentStatus === 'partially_refunded';
 
             return (
                 <div className="flex flex-col gap-1">
-                    <Badge variant={variant} className="capitalize items-center flex w-fit">
+                    <Badge variant={variant} className={`items-center flex w-fit ${extraClassName}`}>
                         {icon}
-                        {status}
+                        {label}
                     </Badge>
                     {isVoided && (
                         <Badge variant="outline" className="text-[10px] text-gray-600 border-gray-300 bg-gray-50 w-fit">
@@ -552,6 +708,18 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
                         <Badge variant="outline" className="text-[10px] text-blue-700 border-blue-200 bg-blue-50 w-fit">
                             <DollarSign className="h-2.5 w-2.5 mr-0.5" />
                             Payment Held
+                        </Badge>
+                    )}
+                    {isRefunded && (
+                        <Badge variant="outline" className="text-[10px] text-orange-700 border-orange-200 bg-orange-50 w-fit">
+                            <RotateCcw className="h-2.5 w-2.5 mr-0.5" />
+                            Refunded
+                        </Badge>
+                    )}
+                    {isPartiallyRefunded && (
+                        <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-200 bg-amber-50 w-fit">
+                            <RotateCcw className="h-2.5 w-2.5 mr-0.5" />
+                            Partial Refund
                         </Badge>
                     )}
                 </div>
@@ -591,6 +759,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
             const isPending = booking.status === 'pending';
             const isConfirmed = booking.status === 'confirmed';
             const isCancelled = booking.status === 'cancelled';
+            const isCancellationRequested = booking.status === 'cancellation_requested';
 
             // Check if time has passed for confirmed bookings
             const bookingDateTime = new Date(`${booking.bookingDate.split('T')[0]}T${booking.startTime}`);
@@ -608,9 +777,14 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
                 return null; // No actions for fully refunded cancelled bookings
             }
             
-            if (isConfirmed && isPast) {
-                return null; // No actions for past confirmed bookings
+            const hasStorageCancellationRequest = (booking.storageItems || []).some(s => s.cancellationRequested);
+
+            if (isConfirmed && isPast && !hasStorageCancellationRequest && !hasRefundableAmount) {
+                return null; // No actions for past confirmed bookings (unless storage cancel pending or refundable)
             }
+
+            // Cancellation requested bookings always show actions
+            // (Accept + Issue Refund, or Decline)
 
             return (
                 <DropdownMenu>
@@ -654,6 +828,17 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
                             </>
                         )}
 
+                        {/* Primary action for confirmed/cancellation_requested bookings — unified management sheet */}
+                        {(isConfirmed || isCancellationRequested) && onManageBooking && (
+                            <DropdownMenuItem
+                                onClick={() => onManageBooking(booking)}
+                                className="text-primary focus:text-primary focus:bg-primary/5"
+                            >
+                                <Settings2 className="mr-2 h-4 w-4" />
+                                Manage Booking
+                            </DropdownMenuItem>
+                        )}
+
                         {canCancel && (
                             <DropdownMenuItem
                                 onClick={() => onCancel(booking)}
@@ -663,6 +848,71 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onT
                                 Cancel Booking
                             </DropdownMenuItem>
                         )}
+
+                        {canCancel && onCancelAndRefund && hasRefundableAmount && (
+                            <DropdownMenuItem
+                                onClick={() => onCancelAndRefund(booking)}
+                                className="text-red-600 focus:text-red-700 focus:bg-red-50"
+                            >
+                                <RotateCcw className="mr-2 h-4 w-4" />
+                                Cancel & Refund
+                            </DropdownMenuItem>
+                        )}
+
+                        {/* Cancellation Request actions — Accept (cancel + then Issue Refund) or Decline */}
+                        {isCancellationRequested && onAcceptCancellation && (
+                            <DropdownMenuItem
+                                onClick={() => onAcceptCancellation(booking)}
+                                className="text-green-600 focus:text-green-700 focus:bg-green-50"
+                            >
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Accept Cancellation
+                            </DropdownMenuItem>
+                        )}
+                        {isCancellationRequested && onDeclineCancellation && (
+                            <DropdownMenuItem
+                                onClick={() => onDeclineCancellation(booking)}
+                                className="text-red-600 focus:text-red-700 focus:bg-red-50"
+                            >
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Decline Cancellation
+                            </DropdownMenuItem>
+                        )}
+
+                        {/* Storage cancellation request actions — per-item accept/decline */}
+                        {(() => {
+                            const storageWithCancelRequest = (booking.storageItems || []).filter(s => s.cancellationRequested);
+                            if (storageWithCancelRequest.length === 0) return null;
+                            return storageWithCancelRequest.map((s) => {
+                                const sbId = s.storageBookingId || s.id;
+                                return (
+                                    <div key={sbId}>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuLabel className="text-[11px] text-orange-600 font-medium py-1">
+                                            Storage: {s.name}
+                                        </DropdownMenuLabel>
+                                        {onAcceptStorageCancellation && (
+                                            <DropdownMenuItem
+                                                onClick={() => onAcceptStorageCancellation(sbId)}
+                                                className="text-green-600 focus:text-green-700 focus:bg-green-50"
+                                            >
+                                                <CheckCircle className="mr-2 h-4 w-4" />
+                                                Accept Storage Cancel
+                                            </DropdownMenuItem>
+                                        )}
+                                        {onDeclineStorageCancellation && (
+                                            <DropdownMenuItem
+                                                onClick={() => onDeclineStorageCancellation(sbId)}
+                                                className="text-red-600 focus:text-red-700 focus:bg-red-50"
+                                            >
+                                                <XCircle className="mr-2 h-4 w-4" />
+                                                Decline Storage Cancel
+                                            </DropdownMenuItem>
+                                        )}
+                                    </div>
+                                );
+                            });
+                        })()}
 
                         {/* Refund action - show for paid/partially_refunded bookings with refundable amount
                             This covers both:

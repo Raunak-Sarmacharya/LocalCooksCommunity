@@ -525,10 +525,12 @@ function ClaimCard({
             <Clock className="w-4 h-4 inline mr-1" />
             {submittedAt ? `Submitted ${format(submittedAt, 'MMM d, yyyy')}` : 'Not submitted'}
           </div>
-          <Button onClick={() => onReview(claim)}>
-            <Gavel className="w-4 h-4 mr-2" />
-            Review & Decide
-          </Button>
+          {['under_review', 'chef_disputed'].includes(claim.status) && (
+            <Button onClick={() => onReview(claim)}>
+              <Gavel className="w-4 h-4 mr-2" />
+              Review & Decide
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -539,18 +541,32 @@ function ClaimCard({
 export function DamageClaimReview() {
   const queryClient = useQueryClient();
   const [selectedClaim, setSelectedClaim] = useState<DamageClaim | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("under_review");
 
-  // Fetch disputed claims
+  // Fetch ALL claims (no status filter)
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['/api/admin/damage-claims'],
+    queryKey: ['/api/admin/damage-claims', 'all'],
     queryFn: async () => {
-      const response = await apiRequest('GET', '/api/admin/damage-claims');
+      const response = await apiRequest('GET', '/api/admin/damage-claims?status=all');
       return response.json();
     },
     refetchInterval: 30000,
   });
 
-  const claims: DamageClaim[] = data?.claims || [];
+  const allClaims: DamageClaim[] = data?.claims || [];
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: allClaims.length };
+    allClaims.forEach(c => {
+      counts[c.status] = (counts[c.status] || 0) + 1;
+    });
+    return counts;
+  }, [allClaims]);
+
+  const claims = useMemo(() => {
+    if (activeTab === 'all') return allClaims;
+    return allClaims.filter(c => c.status === activeTab);
+  }, [allClaims, activeTab]);
 
   if (isLoading) {
     return (
@@ -582,7 +598,7 @@ export function DamageClaimReview() {
         <div>
           <h2 className="text-2xl font-bold">Damage Claim Review</h2>
           <p className="text-muted-foreground">
-            Review and make decisions on disputed damage claims
+            Review and make decisions on damage claims
           </p>
         </div>
         <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
@@ -592,24 +608,51 @@ export function DamageClaimReview() {
       </div>
 
       {/* Pending Claims Alert */}
-      {claims.length > 0 && (
+      {(statusCounts['under_review'] || 0) > 0 && (
         <Alert>
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Claims Pending Review</AlertTitle>
           <AlertDescription>
-            You have {claims.length} disputed damage claim{claims.length > 1 ? 's' : ''} awaiting your decision.
+            You have {statusCounts['under_review']} damage claim{statusCounts['under_review'] > 1 ? 's' : ''} awaiting your decision.
           </AlertDescription>
         </Alert>
       )}
+
+      {/* Status Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="flex-wrap h-auto gap-1">
+          <TabsTrigger value="under_review">
+            Under Review {statusCounts['under_review'] ? `(${statusCounts['under_review']})` : ''}
+          </TabsTrigger>
+          <TabsTrigger value="approved">
+            Approved {statusCounts['approved'] ? `(${statusCounts['approved']})` : ''}
+          </TabsTrigger>
+          <TabsTrigger value="partially_approved">
+            Partial {statusCounts['partially_approved'] ? `(${statusCounts['partially_approved']})` : ''}
+          </TabsTrigger>
+          <TabsTrigger value="rejected">
+            Rejected {statusCounts['rejected'] ? `(${statusCounts['rejected']})` : ''}
+          </TabsTrigger>
+          <TabsTrigger value="charge_succeeded">
+            Charged {statusCounts['charge_succeeded'] ? `(${statusCounts['charge_succeeded']})` : ''}
+          </TabsTrigger>
+          <TabsTrigger value="escalated">
+            Escalated {statusCounts['escalated'] ? `(${statusCounts['escalated']})` : ''}
+          </TabsTrigger>
+          <TabsTrigger value="all">
+            All ({statusCounts['all'] || 0})
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {/* No Claims */}
       {claims.length === 0 && (
         <Card>
           <CardContent className="pt-6 text-center">
             <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-medium">No Pending Reviews</h3>
+            <h3 className="text-lg font-medium">No Claims</h3>
             <p className="text-muted-foreground">
-              All disputed damage claims have been reviewed.
+              No damage claims found with this status.
             </p>
           </CardContent>
         </Card>

@@ -168,7 +168,7 @@ export default function KitchenBookingCalendar() {
   // Memoize cancel handler to prevent re-renders
   const handleCancelBooking = useCallback((bookingId: number) => {
     if (window.confirm("Are you sure you want to cancel this booking?")) {
-      cancelBooking.mutate(bookingId, {
+      cancelBooking.mutate({ bookingId }, {
         onSuccess: () => {
           toast({
             title: "Booking Cancelled",

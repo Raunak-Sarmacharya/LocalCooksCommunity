@@ -5,6 +5,7 @@
  * that require manual admin collection action.
  */
 
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
 import {
@@ -32,13 +33,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   AlertTriangle,
   RefreshCw,
   DollarSign,
   Package,
   FileWarning,
   CheckCircle,
-  Mail,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -60,6 +65,7 @@ interface EscalatedOverstay {
   kitchenName: string;
   locationName: string;
   chefEmail: string | null;
+  chefName: string | null;
 }
 
 interface EscalatedClaim {
@@ -73,6 +79,7 @@ interface EscalatedClaim {
   createdAt: string;
   locationName: string;
   chefEmail: string | null;
+  chefName: string | null;
 }
 
 interface EscalatedSummary {
@@ -111,16 +118,63 @@ function formatCurrency(cents: number) {
 // Main Component
 // ============================================================================
 
+function getOverstayStatusBadge(status: string) {
+  const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
+    detected: { variant: "default", label: "Detected" },
+    escalated: { variant: "destructive", label: "Escalated" },
+    charged: { variant: "secondary", label: "Charged" },
+    resolved: { variant: "outline", label: "Resolved" },
+    waived: { variant: "outline", label: "Waived" },
+  };
+  const c = config[status] || { variant: "outline" as const, label: status };
+  return <Badge variant={c.variant}>{c.label}</Badge>;
+}
+
+function getClaimStatusBadge(status: string) {
+  const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
+    escalated: { variant: "destructive", label: "Escalated" },
+    charge_succeeded: { variant: "secondary", label: "Charged" },
+    charge_failed: { variant: "destructive", label: "Charge Failed" },
+    resolved: { variant: "outline", label: "Resolved" },
+  };
+  const c = config[status] || { variant: "outline" as const, label: status };
+  return <Badge variant={c.variant}>{c.label}</Badge>;
+}
+
 export default function EscalatedPenalties() {
+  const [activeTab, setActiveTab] = useState<string>("escalated");
+
   const { data, isLoading, error, refetch } = useQuery<{
     overstays: EscalatedOverstay[];
     damageClaims: EscalatedClaim[];
-    summary: EscalatedSummary;
+    summary: EscalatedSummary & { totalOverstays?: number; totalClaims?: number };
   }>({
-    queryKey: ["/api/admin/escalated-penalties"],
-    queryFn: () => adminFetch("/api/admin/escalated-penalties"),
+    queryKey: ["/api/admin/escalated-penalties", "all"],
+    queryFn: () => adminFetch("/api/admin/escalated-penalties?all=true"),
     refetchInterval: 60000,
   });
+
+  const allOverstays = useMemo(() => data?.overstays || [], [data?.overstays]);
+  const allClaims = useMemo(() => data?.damageClaims || [], [data?.damageClaims]);
+  const summary = data?.summary || { totalEscalatedOverstays: 0, totalEscalatedClaims: 0, totalEscalatedAmountCents: 0 };
+  const totalEscalated = summary.totalEscalatedOverstays + summary.totalEscalatedClaims;
+
+  const overstays = useMemo(() => {
+    if (activeTab === 'all') return allOverstays;
+    return allOverstays.filter(o => o.status === activeTab);
+  }, [allOverstays, activeTab]);
+
+  const claims = useMemo(() => {
+    if (activeTab === 'all') return allClaims;
+    return allClaims.filter(c => c.status === activeTab);
+  }, [allClaims, activeTab]);
+
+  const tabCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: allOverstays.length + allClaims.length };
+    allOverstays.forEach(o => { counts[o.status] = (counts[o.status] || 0) + 1; });
+    allClaims.forEach(c => { counts[c.status] = (counts[c.status] || 0) + 1; });
+    return counts;
+  }, [allOverstays, allClaims]);
 
   if (isLoading) {
     return (
@@ -148,11 +202,6 @@ export default function EscalatedPenalties() {
     );
   }
 
-  const overstays = data?.overstays || [];
-  const claims = data?.damageClaims || [];
-  const summary = data?.summary || { totalEscalatedOverstays: 0, totalEscalatedClaims: 0, totalEscalatedAmountCents: 0 };
-  const totalEscalated = summary.totalEscalatedOverstays + summary.totalEscalatedClaims;
-
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Header */}
@@ -175,6 +224,24 @@ export default function EscalatedPenalties() {
           Refresh
         </Button>
       </div>
+
+      {/* Status Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="flex-wrap h-auto gap-1">
+          <TabsTrigger value="escalated">
+            Escalated {tabCounts['escalated'] ? `(${tabCounts['escalated']})` : ''}
+          </TabsTrigger>
+          <TabsTrigger value="charged">
+            Charged {tabCounts['charged'] ? `(${tabCounts['charged']})` : ''}
+          </TabsTrigger>
+          <TabsTrigger value="resolved">
+            Resolved {tabCounts['resolved'] ? `(${tabCounts['resolved']})` : ''}
+          </TabsTrigger>
+          <TabsTrigger value="all">
+            All ({tabCounts['all'] || 0})
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -253,6 +320,7 @@ export default function EscalatedPenalties() {
                     <TableHead>Chef</TableHead>
                     <TableHead>Days Overdue</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Failure Reason</TableHead>
                     <TableHead>Detected</TableHead>
                   </TableRow>
@@ -269,10 +337,12 @@ export default function EscalatedPenalties() {
                       </TableCell>
                       <TableCell className="text-sm">{o.locationName}</TableCell>
                       <TableCell>
-                        {o.chefEmail ? (
-                          <div className="flex items-center gap-1">
-                            <Mail className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-xs">{o.chefEmail}</span>
+                        {(o.chefName || o.chefEmail) ? (
+                          <div>
+                            <span className="text-sm font-medium">{o.chefName || o.chefEmail}</span>
+                            {o.chefName && o.chefEmail && (
+                              <p className="text-xs text-muted-foreground">{o.chefEmail}</p>
+                            )}
                           </div>
                         ) : (
                           <span className="text-xs text-muted-foreground">Unknown</span>
@@ -284,6 +354,7 @@ export default function EscalatedPenalties() {
                       <TableCell className="text-right font-semibold text-sm">
                         {formatCurrency(o.finalPenaltyCents || o.calculatedPenaltyCents)}
                       </TableCell>
+                      <TableCell>{getOverstayStatusBadge(o.status)}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
                         {o.chargeFailureReason || "Unknown"}
                       </TableCell>
@@ -324,6 +395,7 @@ export default function EscalatedPenalties() {
                       <TableHead>Chef</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Failure Reason</TableHead>
                       <TableHead>Filed</TableHead>
                     </TableRow>
@@ -337,10 +409,12 @@ export default function EscalatedPenalties() {
                         </TableCell>
                         <TableCell className="text-sm">{c.locationName}</TableCell>
                         <TableCell>
-                          {c.chefEmail ? (
-                            <div className="flex items-center gap-1">
-                              <Mail className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-xs">{c.chefEmail}</span>
+                          {(c.chefName || c.chefEmail) ? (
+                            <div>
+                              <span className="text-sm font-medium">{c.chefName || c.chefEmail}</span>
+                              {c.chefName && c.chefEmail && (
+                                <p className="text-xs text-muted-foreground">{c.chefEmail}</p>
+                              )}
                             </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">Unknown</span>
@@ -352,6 +426,7 @@ export default function EscalatedPenalties() {
                         <TableCell className="text-right font-semibold text-sm">
                           {formatCurrency(c.finalAmountCents || c.claimedAmountCents)}
                         </TableCell>
+                        <TableCell>{getClaimStatusBadge(c.status)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
                           {c.chargeFailureReason || "Unknown"}
                         </TableCell>

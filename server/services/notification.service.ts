@@ -66,7 +66,11 @@ type NotificationType =
   | 'message_received'
   // Chef-specific
   | 'welcome'
-  | 'training_reminder';
+  | 'training_reminder'
+  // Cancellation request notifications
+  | 'booking_cancellation_request'
+  | 'booking_cancellation_accepted'
+  | 'booking_cancellation_declined';
 
 type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
 
@@ -832,7 +836,7 @@ async function notifyChefOverstayDetected(data: { chefId: number } & OverstayNot
     type: 'overstay_detected',
     priority: 'urgent',
     title: '⚠️ Storage Overstay Detected',
-    message: `Your storage "${data.storageName}" at ${data.kitchenName} is ${data.daysOverdue} day(s) overdue. Potential penalty: $${formattedAmount}. Please extend or remove your items to avoid charges.`,
+    message: `Your storage "${data.storageName}" at ${data.kitchenName} is ${data.daysOverdue} day(s) overdue. Potential penalty: $${formattedAmount}. Please remove your items or resolve this overstay to avoid further charges.`,
     metadata: {
       overstayId: data.overstayId,
       storageName: data.storageName,

@@ -148,6 +148,8 @@ export function useKitchenBookings() {
         isVoidedAuthorization: booking.isVoidedAuthorization ?? false,
         isAuthorizedHold: booking.isAuthorizedHold ?? false,
         originalAuthorizedAmount: booking.originalAuthorizedAmount ?? null,
+        refundAmount: booking.refundAmount ?? booking.refund_amount ?? 0,
+        cancellationRequestedAt: booking.cancellationRequestedAt ?? booking.cancellation_requested_at ?? null,
       }));
       
       return normalizedBookings;
@@ -330,14 +332,15 @@ export function useKitchenBookings() {
     },
   });
 
-  // Cancel a booking
+  // Cancel a booking (or request cancellation for confirmed+paid bookings)
   const cancelBooking = useMutation({
-    mutationFn: async (bookingId: number) => {
+    mutationFn: async ({ bookingId, reason }: { bookingId: number; reason?: string }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/chef/bookings/${bookingId}/cancel`, {
         method: "PUT",
         credentials: "include",
-        headers,
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
       });
       if (!response.ok) {
         let errorMessage = "Failed to cancel booking";

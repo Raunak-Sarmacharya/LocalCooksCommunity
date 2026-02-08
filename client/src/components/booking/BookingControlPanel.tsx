@@ -123,12 +123,6 @@ export default function BookingControlPanel({
     bookings.forEach((booking) => {
       if (!booking || !booking.bookingDate || !booking.startTime || !booking.endTime) return;
       
-      // Cancelled bookings always go to past
-      if (booking.status === 'cancelled') {
-        past.push(booking);
-        return;
-      }
-      
       try {
         // Get timezone from booking or use default
         const timezone = booking.locationTimezone || DEFAULT_TIMEZONE;

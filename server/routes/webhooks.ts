@@ -2554,6 +2554,20 @@ async function handleOverstayPenaltyPaymentCompleted(
       logger.error(`[Webhook] Failed to create payment_transactions for overstay penalty:`, ptError);
     }
 
+    // ENTERPRISE STANDARD: Auto-complete the storage booking after penalty is paid via self-serve checkout.
+    // The booking has expired and the overstay penalty is settled — it should no longer show as "Active".
+    try {
+      const bookingIdToComplete = isNaN(storageBookingId) ? overstayRecord.storageBookingId : storageBookingId;
+      await db
+        .update(storageBookings)
+        .set({ status: 'completed', updatedAt: new Date() })
+        .where(eq(storageBookings.id, bookingIdToComplete));
+      logger.info(`[Webhook] Auto-completed storage booking ${bookingIdToComplete} after overstay penalty paid via checkout`);
+    } catch (completeError) {
+      logger.error(`[Webhook] Failed to auto-complete booking after overstay payment:`, completeError);
+      // Non-blocking — penalty payment succeeded, booking completion is best-effort
+    }
+
     logger.info(`[Webhook] ✅ Overstay penalty payment completed`, {
       overstayRecordId,
       chefId,

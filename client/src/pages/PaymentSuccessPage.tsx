@@ -1,23 +1,66 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2, Download, ArrowLeft, Loader2, FileText, Eye } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Loader2, AlertCircle } from "lucide-react";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { useToast } from "@/hooks/use-toast";
+
+// ── Inline keyframes for premium draw + progress animations ──
+const successAnimationCSS = `
+@keyframes sc-draw-circle{to{stroke-dashoffset:0}}
+@keyframes sc-draw-check{to{stroke-dashoffset:0}}
+@keyframes sc-fill-bg{to{opacity:1}}
+@keyframes sc-progress{0%{transform:translateX(-100%)}100%{transform:translateX(400%)}}
+@keyframes sc-fade-up{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.sc-circle{stroke-dasharray:175.93;stroke-dashoffset:175.93;animation:sc-draw-circle .6s cubic-bezier(.65,0,.45,1) forwards}
+.sc-fill{opacity:0;animation:sc-fill-bg .3s ease-out .4s forwards}
+.sc-check{stroke-dasharray:30;stroke-dashoffset:30;animation:sc-draw-check .3s cubic-bezier(.65,0,.45,1) .55s forwards}
+.sc-slide{animation:sc-progress 2s cubic-bezier(.4,0,.2,1) infinite}
+.sc-stagger{opacity:0;animation:sc-fade-up .45s ease-out forwards}
+`;
+
+// ── Animated SVG checkmark (Stripe/Notion draw-in pattern) ──
+function AnimatedCheckmark() {
+  return (
+    <svg className="w-16 h-16 mx-auto" viewBox="0 0 64 64" fill="none">
+      <circle cx="32" cy="32" r="28" className="sc-fill" fill="hsl(var(--muted))" />
+      <circle
+        cx="32" cy="32" r="28"
+        className="sc-circle"
+        stroke="hsl(var(--foreground))"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M22 33L29 40L42 25"
+        className="sc-check"
+        stroke="hsl(var(--foreground))"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// ── Indeterminate progress bar ──
+function IndeterminateProgress() {
+  return (
+    <div className="w-full max-w-[140px] h-[2px] bg-border rounded-full overflow-hidden mx-auto">
+      <div className="h-full w-1/4 bg-muted-foreground/50 rounded-full sc-slide" />
+    </div>
+  );
+}
 
 export default function PaymentSuccessPage() {
   const [, navigate] = useLocation();
-  const { user } = useFirebaseAuth();
-  const { toast } = useToast();
+  useFirebaseAuth();
   const [booking, setBooking] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isPolling, setIsPolling] = useState(false);
-  const [pollingAttempt, setPollingAttempt] = useState(0);
+  const [, setIsPolling] = useState(false);
+  const [, setPollingAttempt] = useState(0);
 
   // Get booking ID or session ID from URL
   // Enterprise-grade flow: booking is created in webhook, so we may need to poll
@@ -168,10 +211,14 @@ export default function PaymentSuccessPage() {
       const normalizedBooking = {
         ...bookingData,
         kitchenName: bookingData.kitchen?.name || bookingData.kitchenName || 'Kitchen',
+        locationName: bookingData.location?.name || bookingData.locationName,
+        locationAddress: bookingData.location?.address || bookingData.locationAddress,
         bookingDate: bookingData.bookingDate || bookingData.booking_date,
         startTime: bookingData.startTime || bookingData.start_time,
         endTime: bookingData.endTime || bookingData.end_time,
         selectedSlots: bookingData.selectedSlots || bookingData.selected_slots,
+        totalPrice: bookingData.totalPrice || bookingData.total_price,
+        paymentIntentId: bookingData.paymentIntentId || bookingData.payment_intent_id,
         status: bookingData.status,
       };
       setBooking(normalizedBooking);
@@ -188,380 +235,140 @@ export default function PaymentSuccessPage() {
     fetchBooking();
   }, [navigate]);
 
-  const handleDownloadInvoice = async () => {
-    if (!booking?.id) return;
 
-    setIsDownloading(true);
-    try {
-      const { auth } = await import('@/lib/firebase');
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to download invoice",
-          variant: "destructive",
-        });
-        return;
-      }
+  // ── Full-screen shell (Stripe/Notion immersive pattern) ──
+  const PageShell = ({ children }: { children: React.ReactNode }) => (
+    <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
+      <style>{successAnimationCSS}</style>
+      <div className="w-full max-w-sm mx-auto px-6 text-center">
+        {children}
+      </div>
+    </div>
+  );
 
-      const token = await currentUser.getIdToken();
-      const response = await fetch(`/api/bookings/${booking.id}/invoice`, {
-        credentials: 'include',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to generate invoice');
-      }
-
-      // Handle PDF download
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      
-      // Generate filename with booking ID and date
-      const bookingDate = booking.bookingDate ? new Date(booking.bookingDate).toISOString().split('T')[0] : 'unknown';
-      a.download = `LocalCooks-Invoice-${booking.id}-${bookingDate}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      toast({
-        title: "Invoice Downloaded",
-        description: "Your invoice has been downloaded successfully!",
-      });
-    } catch (err: any) {
-      console.error('Error downloading invoice:', err);
-      toast({
-        title: "Download Failed",
-        description: err.message || "Failed to download invoice. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  const formatTime = (timeStr: string) => {
-    if (!timeStr) return '';
-    const [hours, minutes] = timeStr.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-
-  // Helper to format discrete time slots for display
-  const formatBookingTimeSlots = (): string => {
-    if (!booking) return '';
-    const rawSlots = booking.selectedSlots;
-    
-    // If no slots or empty, fall back to startTime - endTime
-    if (!rawSlots || rawSlots.length === 0) {
-      return `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`;
-    }
-    
-    // Normalize slots to {startTime, endTime} format
-    const normalizeSlot = (slot: string | { startTime: string; endTime: string }) => {
-      if (typeof slot === 'string') {
-        const [h, m] = slot.split(':').map(Number);
-        const endMins = h * 60 + m + 60;
-        const endH = Math.floor(endMins / 60);
-        const endM = endMins % 60;
-        return { startTime: slot, endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}` };
-      }
-      return slot;
-    };
-    
-    const normalized = rawSlots.map(normalizeSlot).filter((s: { startTime: string; endTime: string }) => s.startTime && s.endTime);
-    const sorted = [...normalized].sort((a: { startTime: string }, b: { startTime: string }) => a.startTime.localeCompare(b.startTime));
-    
-    // Check if contiguous
-    let isContiguous = true;
-    for (let i = 1; i < sorted.length; i++) {
-      if (sorted[i - 1].endTime !== sorted[i].startTime) {
-        isContiguous = false;
-        break;
-      }
-    }
-    
-    if (isContiguous) {
-      return `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`;
-    }
-    
-    // Non-contiguous: show each slot
-    return sorted.map((s: { startTime: string; endTime: string }) => `${formatTime(s.startTime)}-${formatTime(s.endTime)}`).join(', ');
-  };
-
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'long',
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    });
-  };
-
+  // ── Loading / Confirming Payment ──
   if (isLoading) {
     return (
-      <div className="min-h-screen flex flex-col bg-gray-50">
-        <Header />
-        <main className="flex-grow pt-20 md:pt-24 pb-12 md:pb-16 flex items-center justify-center">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
-            <p className="text-gray-600">
-              {isPolling 
-                ? `Processing your booking... (${pollingAttempt}/15)`
-                : 'Loading booking details...'}
+      <PageShell>
+        <div className="space-y-4">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/60 mx-auto" />
+          <div className="space-y-1">
+            <p className="text-[15px] font-medium text-foreground tracking-tight">
+              Confirming your payment
+            </p>
+            <p className="text-[13px] text-muted-foreground">
+              This will only take a moment
             </p>
           </div>
-        </main>
-        <Footer />
-      </div>
+        </div>
+      </PageShell>
     );
   }
 
-  // Show error only if there's an explicit error message
+  // ── Error ──
   if (error) {
     return (
-      <div className="min-h-screen flex flex-col bg-gray-50">
-        <Header />
-        <main className="flex-grow pt-20 md:pt-24 pb-12 md:pb-16">
-          <div className="container mx-auto px-4">
-            <Card className="max-w-2xl mx-auto bg-white shadow-md">
-              <CardContent className="p-8 text-center">
-                <div className="text-red-500 mb-4">
-                  <FileText className="h-12 w-12 mx-auto" />
-                </div>
-                <h1 className="text-2xl font-bold mb-4">Booking Not Found</h1>
-                <p className="text-gray-600 mb-6">{error}</p>
-                <Button onClick={() => navigate('/dashboard')} variant="outline">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Go to Dashboard
-                </Button>
-              </CardContent>
-            </Card>
+      <PageShell>
+        <div className="space-y-5">
+          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto">
+            <AlertCircle className="h-5 w-5 text-muted-foreground" />
           </div>
-        </main>
-        <Footer />
-      </div>
+          <div className="space-y-1.5">
+            <p className="text-[15px] font-medium text-foreground tracking-tight">
+              Something went wrong
+            </p>
+            <p className="text-[13px] text-muted-foreground leading-relaxed">
+              {error}
+            </p>
+          </div>
+          <Button
+            onClick={() => navigate('/dashboard')}
+            variant="outline"
+            size="sm"
+            className="text-xs"
+          >
+            Go to Dashboard
+          </Button>
+        </div>
+      </PageShell>
     );
   }
 
-  // Payment succeeded but booking details not yet available (webhook still processing)
+  // ── Payment confirmed, booking still finalizing (webhook processing) ──
   if (!booking) {
     return (
-      <div className="min-h-screen flex flex-col bg-gray-50">
-        <Header />
-        <main className="flex-grow pt-20 md:pt-24 pb-12 md:pb-16">
-          <div className="container mx-auto px-4">
-            <Card className="max-w-3xl mx-auto bg-white shadow-lg">
-              <CardContent className="p-6 md:p-8">
-                <div className="text-center mb-8">
-                  <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <CheckCircle2 className="h-10 w-10 text-green-500" />
-                  </div>
-                  <h1 className="text-3xl font-bold text-gray-900 mb-2">Payment Successful!</h1>
-                  <p className="text-lg text-gray-600">
-                    Your payment has been processed successfully.
-                  </p>
-                </div>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                  <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Finalizing Your Booking
-                  </h3>
-                  <p className="text-sm text-blue-800">
-                    Your booking is being created. This usually takes just a few seconds. 
-                    You can view your booking details in your dashboard.
-                  </p>
-                </div>
-
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                  <h3 className="font-semibold text-green-900 mb-2">What happens next?</h3>
-                  <ul className="text-sm text-green-800 space-y-1">
-                    <li>• Your booking will appear in your dashboard shortly</li>
-                    <li>• The kitchen manager will review and approve your booking</li>
-                    <li>• You&apos;ll receive an email confirmation once approved</li>
-                  </ul>
-                </div>
-
-                <div className="flex justify-center">
-                  <Button
-                    onClick={() => navigate('/dashboard')}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                    size="lg"
-                  >
-                    Go to Dashboard
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+      <PageShell>
+        <div className="space-y-6">
+          <AnimatedCheckmark />
+          <div className="space-y-1.5">
+            <p className="text-[15px] font-medium text-foreground tracking-tight">
+              Payment confirmed
+            </p>
+            <p className="text-[13px] text-muted-foreground leading-relaxed">
+              Your booking is being finalized. You can check your dashboard for details.
+            </p>
           </div>
-        </main>
-        <Footer />
-      </div>
+          <Button
+            onClick={() => navigate('/dashboard')}
+            variant="ghost"
+            size="sm"
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            Go to Dashboard
+          </Button>
+        </div>
+      </PageShell>
     );
   }
 
+  // ── Success: Booking ready — auto-redirects in 3s ──
+  const isAuthHold = booking.paymentStatus === 'authorized';
+
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header />
-      <main className="flex-grow pt-20 md:pt-24 pb-12 md:pb-16">
-        <div className="container mx-auto px-4">
-          <Card className="max-w-3xl mx-auto bg-white shadow-lg">
-            <CardContent className="p-6 md:p-8">
-              {/* Success Header */}
-              <div className="text-center mb-8">
-                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 className="h-10 w-10 text-green-500" />
-                </div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Booking Submitted!</h1>
-                <p className="text-lg text-gray-600">
-                  {booking.paymentStatus === 'authorized'
-                    ? 'Your card has been temporarily held. The charge will only be applied once the manager approves your booking.'
-                    : 'Your payment has been processed successfully. Your booking is now pending manager approval.'}
-                </p>
-                <p className="text-sm text-blue-600 mt-2 flex items-center justify-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Redirecting to booking details...
-                </p>
-              </div>
+    <PageShell>
+      <div className="space-y-0">
+        {/* Animated checkmark */}
+        <AnimatedCheckmark />
 
-              {/* Pending Approval Notice */}
-              {booking.status === 'pending' && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-                  <h3 className="font-semibold text-yellow-900 mb-2 flex items-center gap-2">
-                    <span className="inline-block w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span>
-                    Awaiting Manager Approval
-                  </h3>
-                  <p className="text-sm text-yellow-800">
-                    Your booking request has been submitted and is pending approval from the kitchen manager. 
-                    You will receive an email confirmation once your booking is approved.
-                  </p>
-                </div>
-              )}
-
-              {/* Booking Details */}
-              <div className="bg-gray-50 rounded-lg p-6 mb-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Booking Details</h2>
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Booking ID:</span>
-                    <span className="font-medium text-gray-900">#{booking.id}</span>
-                  </div>
-                  {booking.kitchenName && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Kitchen:</span>
-                      <span className="font-medium text-gray-900">{booking.kitchenName}</span>
-                    </div>
-                  )}
-                  {booking.bookingDate && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Date:</span>
-                      <span className="font-medium text-gray-900">{formatDate(booking.bookingDate)}</span>
-                    </div>
-                  )}
-                  {booking.startTime && booking.endTime && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Time:</span>
-                      <span className="font-medium text-gray-900">
-                        {formatBookingTimeSlots()}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Status:</span>
-                    <span className={`font-medium ${
-                      booking.status === 'confirmed' ? 'text-green-600' : 
-                      booking.status === 'pending' ? 'text-yellow-600' : 
-                      'text-gray-600'
-                    }`}>
-                      {booking.status?.charAt(0).toUpperCase() + booking.status?.slice(1) || 'Pending'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Payment Info */}
-              {booking.paymentStatus === 'authorized' ? (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                  <h3 className="font-semibold text-blue-900 mb-2">Payment Hold</h3>
-                  <p className="text-sm text-blue-800 mb-2">
-                    A temporary hold has been placed on your card. You will only be charged if the manager approves your booking within 24 hours.
-                  </p>
-                  <p className="text-sm text-blue-700">
-                    If the booking is not approved in time, the hold will be automatically released and your card will not be charged.
-                  </p>
-                </div>
-              ) : (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                  <h3 className="font-semibold text-green-900 mb-2">Payment Information</h3>
-                  <p className="text-sm text-green-800 mb-2">
-                    Your payment has been successfully processed. The charge has been applied to your payment method.
-                  </p>
-                  <p className="text-sm text-green-700">
-                    You will receive an email confirmation with your booking details.
-                  </p>
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button
-                  onClick={() => navigate(`/booking/${booking.id}`)}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                  size="lg"
-                >
-                  <Eye className="mr-2 h-4 w-4" />
-                  View Booking Details
-                </Button>
-                {booking.paymentStatus !== 'authorized' && (
-                  <Button
-                    onClick={handleDownloadInvoice}
-                    disabled={isDownloading}
-                    variant="outline"
-                    className="flex-1"
-                    size="lg"
-                  >
-                    {isDownloading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Generating Invoice...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="mr-2 h-4 w-4" />
-                        Download Invoice
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
-              <div className="mt-3">
-                <Button
-                  onClick={() => navigate('/dashboard')}
-                  variant="ghost"
-                  className="w-full text-gray-600"
-                  size="lg"
-                >
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Go to Dashboard
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Heading — staggered */}
+        <div className="mt-6 sc-stagger" style={{ animationDelay: '0.65s' }}>
+          <h1 className="text-[17px] font-semibold text-foreground tracking-tight">
+            {isAuthHold ? 'Booking Submitted' : 'Payment Confirmed'}
+          </h1>
         </div>
-      </main>
-      <Footer />
-    </div>
+
+        {/* Description — staggered */}
+        <div className="mt-2 sc-stagger" style={{ animationDelay: '0.8s' }}>
+          <p className="text-[13px] text-muted-foreground leading-relaxed">
+            {isAuthHold
+              ? "Your card has been held — you'll only be charged once approved."
+              : 'Your booking is pending manager approval.'}
+          </p>
+        </div>
+
+        {/* Status badge — staggered */}
+        <div className="mt-4 sc-stagger" style={{ animationDelay: '0.95s' }}>
+          <Badge
+            variant="outline"
+            className="text-[11px] font-normal text-muted-foreground border-border"
+          >
+            {isAuthHold ? 'Payment held' : 'Pending approval'}
+          </Badge>
+        </div>
+
+        {/* Separator — staggered */}
+        <div className="sc-stagger" style={{ animationDelay: '1.1s' }}>
+          <Separator className="my-6" />
+        </div>
+
+        {/* Fetching status + progress bar — staggered */}
+        <div className="sc-stagger space-y-3" style={{ animationDelay: '1.25s' }}>
+          <p className="text-xs text-muted-foreground">
+            Fetching your booking details
+          </p>
+          <IndeterminateProgress />
+        </div>
+      </div>
+    </PageShell>
   );
 }

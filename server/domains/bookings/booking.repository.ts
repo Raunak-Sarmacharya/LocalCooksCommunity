@@ -100,12 +100,14 @@ export class BookingRepository {
                 // Payment transaction data for accurate payment state display
                 transactionStatus: paymentTransactions.status,
                 transactionAmount: paymentTransactions.amount,
+                transactionRefundAmount: paymentTransactions.refundAmount,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
             .leftJoin(paymentTransactions, and(
                 eq(paymentTransactions.bookingId, kitchenBookings.id),
+                eq(paymentTransactions.paymentIntentId, kitchenBookings.paymentIntentId),
                 or(
                     eq(paymentTransactions.bookingType, 'kitchen'),
                     eq(paymentTransactions.bookingType, 'bundle')
@@ -130,6 +132,11 @@ export class BookingRepository {
                 ? (rawTransactionAmount ?? mappedBooking.totalPrice)
                 : null;
 
+            // Refund amount from PT (for chef-side display of actual refund dollars)
+            const refundAmount = isVoidedAuthorization ? 0 : (row.transactionRefundAmount
+                ? parseFloat(row.transactionRefundAmount as string)
+                : 0);
+
             return {
                 ...mappedBooking,
                 kitchen: row.kitchen,
@@ -141,6 +148,7 @@ export class BookingRepository {
                 isVoidedAuthorization,  // true when PT was canceled before capture — $0 charged
                 isAuthorizedHold,       // true when payment is held but not yet captured
                 originalAuthorizedAmount, // Original auth amount for voided display context
+                refundAmount,           // Actual refund amount in cents (for display)
             };
         });
     }
@@ -175,6 +183,7 @@ export class BookingRepository {
             ))
             .leftJoin(paymentTransactions, and(
                 eq(paymentTransactions.bookingId, kitchenBookings.id),
+                eq(paymentTransactions.paymentIntentId, kitchenBookings.paymentIntentId),
                 // Include both 'kitchen' and 'bundle' booking types for accurate payment data
                 or(
                     eq(paymentTransactions.bookingType, 'kitchen'),
@@ -270,17 +279,15 @@ export class BookingRepository {
                 locationName: row.location.name,
                 locationTimezone: row.location.timezone,
                 // Include storage and equipment items from JSONB fields
-                // DEFENSIVE: After partial capture, JSONB is updated to remove rejected items (Fix #2).
-                // This filter is belt-and-suspenders for any legacy data where JSONB wasn't cleaned up.
-                // Items with id matching a failed/cancelled relational booking should not appear.
-                storageItems: (Array.isArray(row.booking.storageItems) ? row.booking.storageItems : []).filter((item: any) => {
-                    if (item.status === 'failed' || item.status === 'cancelled') return false;
-                    return true;
-                }),
-                equipmentItems: (Array.isArray(row.booking.equipmentItems) ? row.booking.equipmentItems : []).filter((item: any) => {
-                    if (item.status === 'failed' || item.status === 'cancelled') return false;
-                    return true;
-                }),
+                // ENTERPRISE STANDARD: Keep cancelled items visible (with rejected=true for strikethrough)
+                // but filter out 'failed' items (abandoned at checkout, never part of the booking).
+                // Cancelled items must remain visible so the Rentals column shows the full audit trail.
+                storageItems: (Array.isArray(row.booking.storageItems) ? row.booking.storageItems : [])
+                    .filter((item: any) => item.status !== 'failed')
+                    .map((item: any) => item.status === 'cancelled' && !item.rejected ? { ...item, rejected: true } : item),
+                equipmentItems: (Array.isArray(row.booking.equipmentItems) ? row.booking.equipmentItems : [])
+                    .filter((item: any) => item.status !== 'failed')
+                    .map((item: any) => item.status === 'cancelled' && !item.rejected ? { ...item, rejected: true } : item),
                 // Kitchen's tax rate for revenue calculations (consistent with transaction history)
                 taxRatePercent,
                 // Use actual Stripe transaction data for accurate payment display
@@ -714,7 +721,8 @@ function getKitchenBookingSelection() {
         hourlyRate: kitchenBookings.hourlyRate,
         durationHours: kitchenBookings.durationHours,
         paymentStatus: kitchenBookings.paymentStatus,
-        createdAt: kitchenBookings.createdAt
+        createdAt: kitchenBookings.createdAt,
+        cancellationRequestedAt: kitchenBookings.cancellationRequestedAt,
     };
 }
 
@@ -743,5 +751,6 @@ function getStorageBookingSelection() {
         checkoutDenialReason: storageBookings.checkoutDenialReason,
         checkoutNotes: storageBookings.checkoutNotes,
         checkoutPhotoUrls: storageBookings.checkoutPhotoUrls,
+        cancellationRequestedAt: storageBookings.cancellationRequestedAt,
     };
 }

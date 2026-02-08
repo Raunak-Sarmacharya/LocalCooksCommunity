@@ -25,6 +25,50 @@ import {
 } from "../email";
 import { normalizePhoneForStorage } from "../phone-utils";
 import { hashPassword, comparePasswords } from "../passwordUtils";
+import { getFirestore } from 'firebase-admin/firestore';
+import { initializeFirebaseAdmin } from '../firebase-setup';
+
+let firestoreDb: FirebaseFirestore.Firestore | null = null;
+
+/**
+ * Get Firestore display names for a list of Firebase UIDs.
+ * Returns a map of firebaseUid -> displayName.
+ */
+async function getFirestoreDisplayNames(firebaseUids: string[]): Promise<Record<string, string>> {
+    const nameMap: Record<string, string> = {};
+    if (!firebaseUids.length) return nameMap;
+
+    try {
+        if (!firestoreDb) {
+            const app = initializeFirebaseAdmin();
+            if (!app) return nameMap;
+            firestoreDb = getFirestore(app);
+            firestoreDb.settings({ ignoreUndefinedProperties: true });
+        }
+
+        // Firestore getAll supports up to 100 docs at a time
+        const refs = firebaseUids.map(uid => firestoreDb!.collection('users').doc(uid));
+        const docs = await firestoreDb.getAll(...refs);
+
+        docs.forEach((doc) => {
+            if (doc.exists) {
+                const data = doc.data();
+                if (data?.displayName) {
+                    nameMap[doc.id] = data.displayName;
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching Firestore display names:', error);
+    }
+
+    return nameMap;
+}
+
+/** Extract the part before '@' from an email, or return the full string if no '@' */
+function emailPrefix(email: string): string {
+    return email.includes('@') ? email.split('@')[0] : email;
+}
 
 const router = Router();
 
@@ -54,32 +98,27 @@ async function getAuthenticatedUser(req: Request): Promise<{ id: number; usernam
 // ===================================
 
 // Get all managers revenue overview
+// Uses payment_transactions table (source of truth) to match manager dashboard numbers
 router.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-        // Check if response was already sent
         if (res.headersSent) {
             return;
         }
 
         const { startDate, endDate } = req.query;
 
-        // Get service fee rate (for reference, but we use direct subtraction now)
-        const { getServiceFeeRate } = await import('../services/pricing-service');
-        const serviceFeeRate = await getServiceFeeRate();
-
-        // Complex revenue query with dynamic filters - using Drizzle sql template
-        const conditions = [sql`kb.status != 'cancelled'`];
+        // Query payment_transactions grouped by manager - this is the same source
+        // of truth that the manager revenue dashboard uses
+        const conditions = [sql`pt.status = 'succeeded'`];
 
         if (startDate) {
-            conditions.push(sql`kb.booking_date >= ${startDate}::date`);
+            conditions.push(sql`DATE(pt.paid_at) >= ${startDate}::date`);
         }
         if (endDate) {
-            conditions.push(sql`kb.booking_date <= ${endDate}::date`);
+            conditions.push(sql`DATE(pt.paid_at) <= ${endDate}::date`);
         }
-        
-        const bookingFilters = sql.join(conditions, sql` AND `);
 
-        // Define manager role parameter for use in the query
+        const txnFilters = sql.join(conditions, sql` AND `);
         const managerRole = 'manager';
 
         const result = await db.execute(sql`
@@ -87,103 +126,29 @@ router.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, a
           u.id as manager_id,
           u.username as manager_name,
           u.username as manager_email,
-          l.id as location_id,
-          l.name as location_name,
-          COALESCE(SUM(CASE WHEN kb.id IS NOT NULL THEN kb.total_price ELSE 0 END), 0)::bigint as total_revenue,
-          COALESCE(SUM(CASE WHEN kb.id IS NOT NULL THEN kb.service_fee ELSE 0 END), 0)::bigint as platform_fee,
-          COUNT(kb.id)::int as booking_count,
-          COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count
+          COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
+          COALESCE(SUM(pt.service_fee::numeric), 0)::bigint as platform_fee,
+          COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
+          COUNT(pt.id)::int as booking_count,
+          COALESCE(SUM(pt.refund_amount::numeric), 0)::bigint as total_refunds
         FROM users u
-        LEFT JOIN locations l ON l.manager_id = u.id
-        LEFT JOIN kitchens k ON k.location_id = l.id
-        LEFT JOIN kitchen_bookings kb ON kb.kitchen_id = k.id AND ${bookingFilters}
+        LEFT JOIN payment_transactions pt ON pt.manager_id = u.id AND ${txnFilters}
         WHERE u.role = ${managerRole}
-        GROUP BY u.id, u.username, l.id, l.name
-        ORDER BY u.username ASC, total_revenue DESC
+        GROUP BY u.id, u.username
+        ORDER BY total_revenue DESC
       `);
 
-        // Group by manager (managers can have multiple locations)
-        const managerMap = new Map<number, {
-            managerId: number;
-            managerName: string;
-            managerEmail: string;
-            totalRevenue: number;
-            platformFee: number;
-            managerRevenue: number;
-            bookingCount: number;
-            paidBookingCount: number;
-            locations: Array<{
-                locationId: number;
-                locationName: string;
-                totalRevenue: number;
-                platformFee: number;
-                managerRevenue: number;
-                bookingCount: number;
-                paidBookingCount: number;
-            }>;
-        }>();
-
-        result.rows.forEach((row: any) => {
-            const managerId = parseInt(row.manager_id);
-            const totalRevenue = parseInt(row.total_revenue) || 0;
-            const platformFee = parseInt(row.platform_fee) || 0;
-            // Manager revenue = total_price - service_fee (total_price already includes service_fee)
-            const managerRevenue = totalRevenue - platformFee;
-
-            if (!managerMap.has(managerId)) {
-                managerMap.set(managerId, {
-                    managerId,
-                    managerName: row.manager_name,
-                    managerEmail: row.manager_email,
-                    totalRevenue: 0,
-                    platformFee: 0,
-                    managerRevenue: 0,
-                    bookingCount: 0,
-                    paidBookingCount: 0,
-                    locations: [],
-                });
-            }
-
-            const manager = managerMap.get(managerId)!;
-            manager.totalRevenue += totalRevenue;
-            manager.platformFee += parseInt(row.platform_fee) || 0;
-            manager.managerRevenue += managerRevenue;
-            manager.bookingCount += parseInt(row.booking_count) || 0;
-            manager.paidBookingCount += parseInt(row.paid_count) || 0;
-
-            // Only add location if it exists (not NULL)
-            if (row.location_id) {
-                // @ts-ignore
-                manager.locations.push({
-                    locationId: parseInt(row.location_id),
-                    locationName: row.location_name || 'Unnamed Location',
-                    totalRevenue,
-                    platformFee: parseInt(row.platform_fee) || 0,
-                    managerRevenue,
-                    bookingCount: parseInt(row.booking_count) || 0,
-                    paidBookingCount: parseInt(row.paid_count) || 0,
-                });
-            }
-        });
-
-        // Convert to array and format for response
-        const managers = Array.from(managerMap.values()).map(m => ({
-            ...m,
-            totalRevenue: m.totalRevenue / 100,
-            platformFee: m.platformFee / 100,
-            managerRevenue: m.managerRevenue / 100,
-            locations: m.locations.map(loc => ({
-                ...loc,
-                totalRevenue: loc.totalRevenue / 100,
-                platformFee: loc.platformFee / 100,
-                managerRevenue: loc.managerRevenue / 100,
-            })),
-            _raw: {
-                totalRevenue: m.totalRevenue,
-                platformFee: m.platformFee,
-                managerRevenue: m.managerRevenue,
-            }
-        }));
+        // Convert to response format (cents to dollars)
+        const managers = result.rows.map((row: any) => ({
+            managerId: parseInt(row.manager_id),
+            managerName: row.manager_name,
+            managerEmail: row.manager_email,
+            totalRevenue: (parseInt(row.total_revenue) || 0) / 100,
+            platformFee: (parseInt(row.platform_fee) || 0) / 100,
+            managerRevenue: (parseInt(row.manager_revenue) || 0) / 100,
+            bookingCount: parseInt(row.booking_count) || 0,
+            totalRefunds: (parseInt(row.total_refunds) || 0) / 100,
+        })).filter((m: any) => m.bookingCount > 0 || m.totalRevenue > 0);
 
         res.json({ managers, total: managers.length });
     } catch (error: any) {
@@ -603,6 +568,7 @@ router.get("/managers", async (req: Request, res: Response) => {
               u.id, 
               u.username, 
               u.role,
+              u.firebase_uid,
               COALESCE(
                 json_agg(
                   json_build_object(
@@ -616,9 +582,15 @@ router.get("/managers", async (req: Request, res: Response) => {
             FROM users u
             LEFT JOIN locations l ON l.manager_id = u.id
             WHERE u.role = 'manager'
-            GROUP BY u.id, u.username, u.role
+            GROUP BY u.id, u.username, u.role, u.firebase_uid
             ORDER BY u.username ASC
         `));
+
+        // Fetch display names from Firestore for all managers with firebase_uid
+        const firebaseUids = result.rows
+            .map((row: any) => row.firebase_uid)
+            .filter((uid: string | null): uid is string => !!uid);
+        const firestoreNames = await getFirestoreDisplayNames(firebaseUids);
 
         const managersWithEmails = result.rows.map((row: any) => {
             let locations = row.locations;
@@ -648,9 +620,14 @@ router.get("/managers", async (req: Request, res: Response) => {
                 }
             }
 
+            // Resolve display name: Firestore > email prefix
+            const firestoreName = row.firebase_uid ? firestoreNames[row.firebase_uid] : null;
+            const displayName = firestoreName || row.username;
+
             const managerData: any = {
                 id: row.id,
                 username: row.username,
+                displayName,
                 role: row.role,
             };
 
@@ -674,6 +651,7 @@ router.get("/managers", async (req: Request, res: Response) => {
             return {
                 id: manager.id,
                 username: manager.username,
+                displayName: manager.displayName,
                 role: manager.role,
                 locations: Array.isArray(manager.locations) ? manager.locations : []
             };
@@ -989,6 +967,29 @@ router.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req:
     } catch (error: any) {
         console.error("Error creating location:", error);
         res.status(500).json({ error: error.message || "Failed to create location" });
+    }
+});
+
+// Get all kitchens across all locations (admin)
+router.get("/kitchens", async (req: Request, res: Response) => {
+    try {
+        const sessionUser = await getAuthenticatedUser(req);
+        const isFirebaseAuth = req.neonUser;
+
+        if (!sessionUser && !isFirebaseAuth) {
+            return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+        if (user.role !== "admin") {
+            return res.status(403).json({ error: "Admin access required" });
+        }
+
+        const allKitchens = await kitchenService.getAllKitchensWithLocation();
+        res.json(allKitchens);
+    } catch (error: any) {
+        console.error("Error fetching all kitchens:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
     }
 });
 
@@ -1971,6 +1972,95 @@ router.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
     }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Cancellation Policy Configuration
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /admin/cancellation-config
+ * Get the cancellation request auto-accept window (hours).
+ * 0 = disabled (manager must manually respond).
+ */
+router.get("/cancellation-config", requireFirebaseAuthWithUser, requireAdmin, async (_req: Request, res: Response) => {
+    try {
+        const [setting] = await db
+            .select({ value: platformSettings.value, updatedAt: platformSettings.updatedAt })
+            .from(platformSettings)
+            .where(eq(platformSettings.key, 'cancellation_request_auto_accept_hours'))
+            .limit(1);
+
+        const autoAcceptHours = setting ? parseInt(setting.value || '24', 10) : 24;
+
+        res.json({
+            success: true,
+            config: {
+                autoAcceptHours,
+                updatedAt: setting?.updatedAt || null,
+            },
+        });
+    } catch (error) {
+        console.error('Error fetching cancellation config:', error);
+        res.status(500).json({ error: 'Failed to fetch cancellation configuration' });
+    }
+});
+
+/**
+ * PUT /admin/cancellation-config
+ * Update the cancellation request auto-accept window.
+ * Body: { autoAcceptHours: number } — 0 to disable, 1-720 hours (max 30 days).
+ */
+router.put("/cancellation-config", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const user = await getAuthenticatedUser(req);
+        if (!user) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const { autoAcceptHours } = req.body;
+
+        if (autoAcceptHours === undefined || autoAcceptHours === null) {
+            return res.status(400).json({ error: 'autoAcceptHours is required' });
+        }
+
+        const hours = parseInt(autoAcceptHours, 10);
+        if (isNaN(hours) || hours < 0 || hours > 720) {
+            return res.status(400).json({ error: 'autoAcceptHours must be between 0 and 720 (0 = disabled, max 30 days)' });
+        }
+
+        await db
+            .insert(platformSettings)
+            .values({
+                key: 'cancellation_request_auto_accept_hours',
+                value: hours.toString(),
+                description: 'Hours before a cancellation request is auto-accepted (0 = disabled)',
+                updatedBy: user.id,
+                updatedAt: new Date(),
+            })
+            .onConflictDoUpdate({
+                target: platformSettings.key,
+                set: {
+                    value: hours.toString(),
+                    description: 'Hours before a cancellation request is auto-accepted (0 = disabled)',
+                    updatedBy: user.id,
+                    updatedAt: new Date(),
+                },
+            });
+
+        console.log(`[AUDIT] Cancellation auto-accept hours updated to ${hours} by admin ${user.id} (${user.username})`);
+
+        res.json({
+            success: true,
+            message: hours === 0
+                ? 'Cancellation auto-accept disabled. Managers must manually respond to all requests.'
+                : `Cancellation requests will be auto-accepted after ${hours} hour${hours !== 1 ? 's' : ''} if the manager does not respond.`,
+            config: { autoAcceptHours: hours },
+        });
+    } catch (error) {
+        console.error('Error updating cancellation config:', error);
+        res.status(500).json({ error: 'Failed to update cancellation configuration' });
+    }
+});
+
 /**
  * POST /admin/fees/simulate
  * Simulate fee calculation for a given booking amount
@@ -2298,14 +2388,89 @@ router.put("/storage-checkout-settings", requireFirebaseAuthWithUser, requireAdm
 
 /**
  * GET /admin/damage-claims
- * Get all disputed damage claims for admin review
+ * Get all damage claims for admin review. Optionally filter by status.
  */
 router.get("/damage-claims", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-        const claims = await damageClaimService.getDisputedClaims();
+        const statusFilter = req.query.status as string | undefined;
+        const { damageEvidence } = await import('@shared/schema');
+
+        // Use raw SQL to properly resolve chef name (from chef_kitchen_applications)
+        // and manager name (from users.manager_profile_data->displayName)
+        const statusCondition = statusFilter && statusFilter !== 'all'
+            ? sql`AND dc.status = ${statusFilter}`
+            : sql``;
+
+        const claimsQuery = await db.execute(sql`
+            SELECT 
+                dc.*,
+                chef_user.username as chef_email,
+                COALESCE(cka.full_name, chef_user.username) as chef_name,
+                mgr_user.username as manager_email,
+                mgr_user.firebase_uid as manager_firebase_uid,
+                loc.name as location_name
+            FROM damage_claims dc
+            INNER JOIN users chef_user ON dc.chef_id = chef_user.id
+            INNER JOIN users mgr_user ON dc.manager_id = mgr_user.id
+            INNER JOIN locations loc ON dc.location_id = loc.id
+            LEFT JOIN chef_kitchen_applications cka 
+                ON cka.chef_id = dc.chef_id 
+                AND cka.location_id = dc.location_id
+            WHERE 1=1 ${statusCondition}
+            ORDER BY dc.created_at DESC
+        `);
+
+        // Look up manager display names from Firestore
+        const mgrFirebaseUids = (claimsQuery.rows as any[])
+            .map(r => r.manager_firebase_uid)
+            .filter((uid: string | null): uid is string => !!uid);
+        const uniqueMgrUids = Array.from(new Set(mgrFirebaseUids));
+        const mgrFirestoreNames = await getFirestoreDisplayNames(uniqueMgrUids);
+
+        const claims = [];
+        for (const row of claimsQuery.rows as any[]) {
+            const evidence = await db
+                .select()
+                .from(damageEvidence)
+                .where(eq(damageEvidence.damageClaimId, row.id));
+
+            // Resolve manager name: Firestore displayName > email prefix
+            const firestoreMgrName = row.manager_firebase_uid ? mgrFirestoreNames[row.manager_firebase_uid] : null;
+            const managerName = firestoreMgrName || emailPrefix(row.manager_email);
+
+            claims.push({
+                id: row.id,
+                bookingType: row.booking_type,
+                kitchenBookingId: row.kitchen_booking_id,
+                storageBookingId: row.storage_booking_id,
+                chefId: row.chef_id,
+                managerId: row.manager_id,
+                locationId: row.location_id,
+                status: row.status,
+                claimTitle: row.claim_title,
+                claimDescription: row.claim_description,
+                damageDate: row.damage_date,
+                claimedAmountCents: row.claimed_amount_cents,
+                approvedAmountCents: row.approved_amount_cents,
+                finalAmountCents: row.final_amount_cents,
+                chefResponse: row.chef_response,
+                chefRespondedAt: row.chef_responded_at,
+                chefResponseDeadline: row.chef_response_deadline,
+                adminDecisionReason: row.admin_decision_reason,
+                adminNotes: row.admin_notes,
+                createdAt: row.created_at,
+                submittedAt: row.submitted_at,
+                chefEmail: row.chef_email,
+                chefName: row.chef_name,
+                managerName,
+                locationName: row.location_name,
+                evidence,
+            });
+        }
+
         res.json({ claims });
     } catch (error) {
-        console.error("Error fetching disputed damage claims:", error);
+        console.error("Error fetching damage claims:", error);
         res.status(500).json({ error: "Failed to fetch damage claims" });
     }
 });
@@ -2535,59 +2700,70 @@ router.put("/overstay-settings", requireFirebaseAuthWithUser, requireAdmin, asyn
  * GET /admin/escalated-penalties
  * Get all escalated overstay penalties and damage claims across all locations
  */
-router.get("/escalated-penalties", requireFirebaseAuthWithUser, requireAdmin, async (_req: Request, res: Response) => {
+router.get("/escalated-penalties", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { storageOverstayRecords, storageBookings, storageListings, kitchens, users, damageClaims, locations } = await import('@shared/schema');
+        const showAll = req.query.all === 'true';
+        // Use raw SQL to properly resolve chef names from chef_kitchen_applications
+        const overstayStatusFilter = showAll ? sql`` : sql`AND sor.status = 'escalated'`;
+        const overstayResult = await db.execute(sql`
+            SELECT 
+                sor.id,
+                sor.storage_booking_id as "storageBookingId",
+                sor.status,
+                sor.days_overdue as "daysOverdue",
+                sor.calculated_penalty_cents as "calculatedPenaltyCents",
+                sor.final_penalty_cents as "finalPenaltyCents",
+                sor.charge_failure_reason as "chargeFailureReason",
+                sor.detected_at as "detectedAt",
+                sor.resolved_at as "resolvedAt",
+                sl.name as "storageName",
+                k.name as "kitchenName",
+                loc.name as "locationName",
+                u.username as "chefEmail",
+                COALESCE(cka.full_name, split_part(u.username, '@', 1)) as "chefName"
+            FROM storage_overstay_records sor
+            INNER JOIN storage_bookings sb ON sor.storage_booking_id = sb.id
+            INNER JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+            INNER JOIN kitchens k ON sl.kitchen_id = k.id
+            INNER JOIN locations loc ON k.location_id = loc.id
+            LEFT JOIN users u ON sb.chef_id = u.id
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = sb.chef_id AND cka.location_id = loc.id
+            WHERE 1=1 ${overstayStatusFilter}
+            ORDER BY sor.detected_at DESC
+        `);
+        const allOverstays = overstayResult.rows as any[];
 
-        // Escalated overstay penalties
-        const escalatedOverstays = await db
-            .select({
-                id: storageOverstayRecords.id,
-                storageBookingId: storageOverstayRecords.storageBookingId,
-                status: storageOverstayRecords.status,
-                daysOverdue: storageOverstayRecords.daysOverdue,
-                calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
-                finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
-                chargeFailureReason: storageOverstayRecords.chargeFailureReason,
-                detectedAt: storageOverstayRecords.detectedAt,
-                resolvedAt: storageOverstayRecords.resolvedAt,
-                storageName: storageListings.name,
-                kitchenName: kitchens.name,
-                locationName: locations.name,
-                chefEmail: users.username,
-            })
-            .from(storageOverstayRecords)
-            .innerJoin(storageBookings, eq(storageOverstayRecords.storageBookingId, storageBookings.id))
-            .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
-            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
-            .innerJoin(locations, eq(kitchens.locationId, locations.id))
-            .leftJoin(users, eq(storageBookings.chefId, users.id))
-            .where(eq(storageOverstayRecords.status, 'escalated'))
-            .orderBy(desc(storageOverstayRecords.detectedAt));
+        // Escalated damage claims with proper name resolution
+        const claimStatusFilter = showAll ? sql`` : sql`AND dc.status = 'escalated'`;
+        const claimResult = await db.execute(sql`
+            SELECT 
+                dc.id,
+                dc.claim_title as "claimTitle",
+                dc.status,
+                dc.claimed_amount_cents as "claimedAmountCents",
+                dc.final_amount_cents as "finalAmountCents",
+                dc.charge_failure_reason as "chargeFailureReason",
+                dc.booking_type as "bookingType",
+                dc.created_at as "createdAt",
+                loc.name as "locationName",
+                chef_user.username as "chefEmail",
+                COALESCE(cka.full_name, split_part(chef_user.username, '@', 1)) as "chefName"
+            FROM damage_claims dc
+            INNER JOIN locations loc ON dc.location_id = loc.id
+            LEFT JOIN users chef_user ON dc.chef_id = chef_user.id
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = dc.chef_id AND cka.location_id = dc.location_id
+            WHERE 1=1 ${claimStatusFilter}
+            ORDER BY dc.created_at DESC
+        `);
+        const allClaims = claimResult.rows as any[];
 
-        // Escalated damage claims
-        const escalatedClaims = await db
-            .select({
-                id: damageClaims.id,
-                claimTitle: damageClaims.claimTitle,
-                status: damageClaims.status,
-                claimedAmountCents: damageClaims.claimedAmountCents,
-                finalAmountCents: damageClaims.finalAmountCents,
-                chargeFailureReason: damageClaims.chargeFailureReason,
-                bookingType: damageClaims.bookingType,
-                createdAt: damageClaims.createdAt,
-                locationName: locations.name,
-                chefEmail: users.username,
-            })
-            .from(damageClaims)
-            .innerJoin(locations, eq(damageClaims.locationId, locations.id))
-            .leftJoin(users, eq(damageClaims.chefId, users.id))
-            .where(eq(damageClaims.status, 'escalated'))
-            .orderBy(desc(damageClaims.createdAt));
+        // Summary counts only escalated items
+        const escalatedOverstays = allOverstays.filter(o => o.status === 'escalated');
+        const escalatedClaims = allClaims.filter(c => c.status === 'escalated');
 
         res.json({
-            overstays: escalatedOverstays,
-            damageClaims: escalatedClaims,
+            overstays: allOverstays,
+            damageClaims: allClaims,
             summary: {
                 totalEscalatedOverstays: escalatedOverstays.length,
                 totalEscalatedClaims: escalatedClaims.length,
@@ -2595,6 +2771,8 @@ router.get("/escalated-penalties", requireFirebaseAuthWithUser, requireAdmin, as
                     ...escalatedOverstays.map(o => o.finalPenaltyCents || o.calculatedPenaltyCents || 0),
                     ...escalatedClaims.map(c => c.finalAmountCents || c.claimedAmountCents || 0),
                 ].reduce((sum, val) => sum + val, 0),
+                totalOverstays: allOverstays.length,
+                totalClaims: allClaims.length,
             },
         });
     } catch (error) {

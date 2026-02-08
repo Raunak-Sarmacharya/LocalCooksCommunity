@@ -23,7 +23,7 @@ export const applicationTypeEnum = pgEnum('application_type', ['chef']);
 
 
 // Define an enum for booking status
-export const bookingStatusEnum = pgEnum('booking_status', ['pending', 'confirmed', 'cancelled', 'completed']);
+export const bookingStatusEnum = pgEnum('booking_status', ['pending', 'confirmed', 'cancelled', 'completed', 'cancellation_requested']);
 
 // Define enums for storage listings
 export const storageTypeEnum = pgEnum('storage_type', ['dry', 'cold', 'freezer']);
@@ -434,6 +434,10 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   damageDeposit: numeric("damage_deposit").default("0"), // Damage deposit amount (in cents)
   serviceFee: numeric("service_fee").default("0"), // Platform commission (in cents)
   currency: text("currency").default("CAD").notNull(), // Currency code
+  // Chef cancellation request tracking
+  cancellationRequestedAt: timestamp("cancellation_requested_at"),
+  cancellationRequestReason: text("cancellation_request_reason"),
+  cancellationRequestDeclinedAt: timestamp("cancellation_request_declined_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -679,7 +683,7 @@ export const insertKitchenBookingSchema = createInsertSchema(kitchenBookings, {
 
 export const updateKitchenBookingSchema = z.object({
   id: z.number(),
-  status: z.enum(["pending", "confirmed", "cancelled", "completed"]).optional(),
+  status: z.enum(["pending", "confirmed", "cancelled", "completed", "cancellation_requested"]).optional(),
   specialNotes: z.string().optional(),
 });
 
@@ -1071,6 +1075,10 @@ export const storageBookings = pgTable("storage_bookings", {
   checkoutDeniedAt: timestamp("checkout_denied_at"),
   checkoutDeniedBy: integer("checkout_denied_by").references(() => users.id, { onDelete: "set null" }),
   checkoutDenialReason: text("checkout_denial_reason"),
+  // Chef cancellation request tracking (mirrors kitchen_bookings pattern)
+  cancellationRequestedAt: timestamp("cancellation_requested_at"),
+  cancellationRequestReason: text("cancellation_request_reason"),
+  cancellationRequestDeclinedAt: timestamp("cancellation_request_declined_at"),
   
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -1083,7 +1091,7 @@ export const insertStorageBookingSchema = createInsertSchema(storageBookings, {
   chefId: z.number().optional(),
   startDate: z.string().or(z.date()),
   endDate: z.string().or(z.date()),
-  status: z.enum(["pending", "confirmed", "cancelled", "completed"]).optional(),
+  status: z.enum(["pending", "confirmed", "cancelled", "completed", "cancellation_requested"]).optional(),
   totalPrice: z.number().int().positive("Total price must be positive"),
   pricingModel: z.enum(["monthly-flat", "per-cubic-foot", "hourly", "daily"]),
   paymentStatus: z.enum(["pending", "authorized", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
@@ -1098,7 +1106,7 @@ export const insertStorageBookingSchema = createInsertSchema(storageBookings, {
 
 export const updateStorageBookingSchema = z.object({
   id: z.number(),
-  status: z.enum(["pending", "confirmed", "cancelled", "completed"]).optional(),
+  status: z.enum(["pending", "confirmed", "cancelled", "completed", "cancellation_requested"]).optional(),
   paymentStatus: z.enum(["pending", "authorized", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
   paymentIntentId: z.string().optional(),
   serviceFee: z.number().int().min(0).optional(),
@@ -1110,7 +1118,7 @@ export const updateStorageBookingSchema = z.object({
 
 export const updateStorageBookingStatusSchema = z.object({
   id: z.number(),
-  status: z.enum(["pending", "confirmed", "cancelled", "completed"]),
+  status: z.enum(["pending", "confirmed", "cancelled", "completed", "cancellation_requested"]),
 });
 
 // Checkout request schema (chef initiates checkout)

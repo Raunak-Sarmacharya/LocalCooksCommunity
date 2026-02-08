@@ -899,7 +899,12 @@ export async function getTransactionHistory(
       return status;
     };
 
-    const kitchenWhereConditions = [sql`l.manager_id = ${managerId}`, sql`kb.status != 'cancelled'`];
+    const kitchenWhereConditions = [
+      sql`l.manager_id = ${managerId}`,
+      // Show all non-cancelled bookings, PLUS cancelled bookings that have a payment transaction
+      // (i.e., they were paid/refunded and should appear in transaction history)
+      sql`(kb.status != 'cancelled' OR pt.id IS NOT NULL)`,
+    ];
     if (start) {
       kitchenWhereConditions.push(sql`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
     }
