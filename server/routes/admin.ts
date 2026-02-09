@@ -3398,7 +3398,7 @@ router.get("/damage-claims-history/:id/evidence", requireFirebaseAuthWithUser, r
 // SECURITY SETTINGS — Rate Limit Configuration
 // ===================================
 
-router.get("/admin/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+router.get("/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const { getRateLimitConfig, getDefaultRateLimits } = await import('../security');
         const current = await getRateLimitConfig();
@@ -3410,7 +3410,7 @@ router.get("/admin/security/rate-limits", requireFirebaseAuthWithUser, requireAd
     }
 });
 
-router.put("/admin/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+router.put("/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const { invalidateRateLimitCache } = await import('../security');
         const SETTING_MAP: Record<string, string> = {
