@@ -177,9 +177,8 @@ export default function ManagerLogin() {
     },
     enabled: !!user && !loading,
     retry: false,
-    staleTime: 30 * 1000,
+    staleTime: 0,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
   });
 
   // Update userMeta state for backward compatibility
@@ -232,13 +231,17 @@ export default function ManagerLogin() {
   // This prevents the login form from flashing during Google sign-in
   const isAuthenticating = authPhase === 'authenticating' || authPhase === 'syncing';
   
-  if (loading || isInitialLoad || userMetaLoading || isAuthenticating) {
+  // Show loading spinner when auth is in progress OR when login was attempted but profile hasn't loaded yet
+  const isAwaitingProfile = hasAttemptedLogin && !!user && !userMetaData;
+  if (loading || isInitialLoad || userMetaLoading || isAuthenticating || isAwaitingProfile) {
     // Determine the message based on auth phase
     let loadingText = "Loading...";
     if (authPhase === 'authenticating') {
       loadingText = "Signing you in...";
     } else if (authPhase === 'syncing') {
       loadingText = "Setting up your account...";
+    } else if (isAwaitingProfile || userMetaLoading) {
+      loadingText = "Signing you in...";
     }
     
     return (
@@ -349,9 +352,11 @@ export default function ManagerLogin() {
 
               <TabsContent value="login">
                 <EnhancedLoginForm
-                  onSuccess={() => {
+                  onSuccess={async () => {
                     setHasAttemptedLogin(true);
-                    refreshUserData();
+                    // Invalidate stale null profile cache so React Query refetches with the new user
+                    await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+                    await refreshUserData();
                   }}
                   setHasAttemptedLogin={setHasAttemptedLogin}
                 />

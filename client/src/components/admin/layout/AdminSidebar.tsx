@@ -28,6 +28,9 @@ import {
   BarChart3,
   Lock,
   LayoutDashboard,
+  CreditCard,
+  Package,
+  FileWarning,
 } from "lucide-react";
 
 export type AdminSection =
@@ -44,7 +47,10 @@ export type AdminSection =
   | "platform-settings"
   | "overstay-settings"
   | "damage-claim-settings"
-  | "account-settings";
+  | "account-settings"
+  | "transactions"
+  | "overstay-penalties-history"
+  | "damage-claims-history";
 
 interface AdminSidebarProps {
   activeSection: AdminSection;
@@ -86,6 +92,9 @@ const NAV_GROUPS = [
   {
     label: "Revenue",
     items: [
+      { id: "transactions" as AdminSection, label: "Transactions", icon: CreditCard },
+      { id: "overstay-penalties-history" as AdminSection, label: "Overstay Penalties", icon: Package },
+      { id: "damage-claims-history" as AdminSection, label: "Damage Claims History", icon: FileWarning },
       { id: "manager-revenues" as AdminSection, label: "Manager Revenues", icon: DollarSign },
       { id: "platform-overview" as AdminSection, label: "Platform Overview", icon: BarChart3 },
     ],

@@ -1210,3 +1210,215 @@ export async function syncStripeFees(
   
   return { synced, failed, errors };
 }
+
+/**
+ * ADMIN: Get all payment transactions across all locations and kitchens
+ * Enterprise-grade admin transaction history with comprehensive Stripe details
+ * and searchable by booking ID, storage booking ID, equipment ID, payment intent ID,
+ * charge ID, stripe customer ID, location ID, kitchen ID, chef ID, etc.
+ */
+export async function getAdminPaymentTransactions(
+  db: any,
+  filters?: {
+    search?: string;
+    status?: TransactionStatus;
+    bookingType?: BookingType;
+    locationId?: number;
+    kitchenId?: number;
+    chefId?: number;
+    managerId?: number;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<{ transactions: any[]; total: number }> {
+  const whereConditions: any[] = [];
+
+  if (filters?.status) {
+    whereConditions.push(sql`pt.status = ${filters.status}`);
+  }
+
+  if (filters?.bookingType) {
+    whereConditions.push(sql`pt.booking_type = ${filters.bookingType}`);
+  }
+
+  if (filters?.locationId) {
+    whereConditions.push(sql`(
+      (pt.booking_type = 'kitchen' AND k.location_id = ${filters.locationId}) OR
+      (pt.booking_type = 'storage' AND sk.location_id = ${filters.locationId}) OR
+      (pt.booking_type = 'equipment' AND ek.location_id = ${filters.locationId})
+    )`);
+  }
+
+  if (filters?.kitchenId) {
+    whereConditions.push(sql`(
+      (pt.booking_type = 'kitchen' AND kb.kitchen_id = ${filters.kitchenId}) OR
+      (pt.booking_type = 'storage' AND sl.kitchen_id = ${filters.kitchenId}) OR
+      (pt.booking_type = 'equipment' AND el.kitchen_id = ${filters.kitchenId})
+    )`);
+  }
+
+  if (filters?.chefId) {
+    whereConditions.push(sql`pt.chef_id = ${filters.chefId}`);
+  }
+
+  if (filters?.managerId) {
+    whereConditions.push(sql`pt.manager_id = ${filters.managerId}`);
+  }
+
+  if (filters?.startDate) {
+    whereConditions.push(sql`pt.created_at >= ${filters.startDate}`);
+  }
+
+  if (filters?.endDate) {
+    whereConditions.push(sql`pt.created_at <= ${filters.endDate}`);
+  }
+
+  // Free-text search across multiple ID fields
+  if (filters?.search) {
+    const searchTerm = filters.search.trim();
+    const numericSearch = parseInt(searchTerm);
+    const isNumeric = !isNaN(numericSearch);
+
+    whereConditions.push(sql`(
+      pt.payment_intent_id ILIKE ${'%' + searchTerm + '%'}
+      OR pt.charge_id ILIKE ${'%' + searchTerm + '%'}
+      OR pt.refund_id ILIKE ${'%' + searchTerm + '%'}
+      OR pt.payment_method_id ILIKE ${'%' + searchTerm + '%'}
+      OR pt.webhook_event_id ILIKE ${'%' + searchTerm + '%'}
+      OR pt.stripe_status ILIKE ${'%' + searchTerm + '%'}
+      OR pt.refund_reason ILIKE ${'%' + searchTerm + '%'}
+      OR pt.failure_reason ILIKE ${'%' + searchTerm + '%'}
+      OR chef_user.username ILIKE ${'%' + searchTerm + '%'}
+      OR COALESCE(cka.full_name, '') ILIKE ${'%' + searchTerm + '%'}
+      OR l.name ILIKE ${'%' + searchTerm + '%'}
+      OR k.name ILIKE ${'%' + searchTerm + '%'}
+      OR CAST(pt.id AS TEXT) = ${searchTerm}
+      OR CAST(pt.booking_id AS TEXT) = ${searchTerm}
+      ${isNumeric ? sql`OR pt.chef_id = ${numericSearch} OR pt.manager_id = ${numericSearch}` : sql``}
+    )`);
+  }
+
+  const whereClause = whereConditions.length > 0
+    ? sql`WHERE ${sql.join(whereConditions, sql` AND `)}`
+    : sql``;
+
+  // Get total count
+  const countResult = await db.execute(sql`
+    SELECT COUNT(*) as total 
+    FROM payment_transactions pt
+    LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
+    LEFT JOIN kitchens k ON kb.kitchen_id = k.id
+    LEFT JOIN storage_bookings sb ON pt.booking_type = 'storage' AND pt.booking_id = sb.id
+    LEFT JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+    LEFT JOIN kitchens sk ON sl.kitchen_id = sk.id
+    LEFT JOIN equipment_bookings eb ON pt.booking_type = 'equipment' AND pt.booking_id = eb.id
+    LEFT JOIN equipment_listings el ON eb.equipment_listing_id = el.id
+    LEFT JOIN kitchens ek ON el.kitchen_id = ek.id
+    LEFT JOIN locations l ON (
+      (pt.booking_type = 'kitchen' AND k.location_id = l.id) OR
+      (pt.booking_type = 'storage' AND sk.location_id = l.id) OR
+      (pt.booking_type = 'equipment' AND ek.location_id = l.id)
+    )
+    LEFT JOIN users chef_user ON pt.chef_id = chef_user.id
+    LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = pt.chef_id AND cka.location_id = l.id
+    ${whereClause}
+  `);
+  const total = parseInt((countResult.rows[0] as any).total);
+
+  const limit = filters?.limit || 50;
+  const offset = filters?.offset || 0;
+
+  const result = await db.execute(sql`
+    SELECT 
+      pt.id,
+      pt.booking_id,
+      pt.booking_type,
+      pt.chef_id,
+      pt.manager_id,
+      pt.amount,
+      pt.base_amount,
+      pt.service_fee,
+      pt.stripe_processing_fee,
+      pt.manager_revenue,
+      pt.refund_amount,
+      pt.net_amount,
+      pt.currency,
+      pt.payment_intent_id,
+      pt.charge_id,
+      pt.refund_id,
+      pt.payment_method_id,
+      pt.status,
+      pt.stripe_status,
+      pt.metadata,
+      pt.refund_reason,
+      pt.failure_reason,
+      pt.webhook_event_id,
+      pt.last_synced_at,
+      pt.created_at,
+      pt.updated_at,
+      pt.paid_at,
+      pt.refunded_at,
+      chef_user.username as chef_email,
+      COALESCE(cka.full_name, split_part(chef_user.username, ${'@'}, 1)) as chef_name,
+      chef_user.stripe_customer_id as stripe_customer_id,
+      manager_user.username as manager_email,
+      l.id as location_id,
+      l.name as location_name,
+      COALESCE(k.id, sk.id, ek.id) as kitchen_id,
+      COALESCE(k.name, sk.name, ek.name) as kitchen_name,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN kb.start_time::text
+        WHEN pt.booking_type = 'storage' THEN sb.start_date::text
+        ELSE NULL
+      END as booking_start,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN kb.end_time::text
+        WHEN pt.booking_type = 'storage' THEN sb.end_date::text
+        ELSE NULL
+      END as booking_end,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN kb.status::text
+        WHEN pt.booking_type = 'storage' THEN sb.status::text
+        WHEN pt.booking_type = 'equipment' THEN eb.status::text
+        ELSE NULL
+      END as booking_status,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN kb.payment_status::text
+        WHEN pt.booking_type = 'storage' THEN sb.payment_status::text
+        WHEN pt.booking_type = 'equipment' THEN eb.payment_status::text
+        ELSE NULL
+      END as booking_payment_status,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN k.name
+        WHEN pt.booking_type = 'storage' THEN sl.name
+        ELSE NULL
+      END as item_name
+    FROM payment_transactions pt
+    LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
+    LEFT JOIN kitchens k ON kb.kitchen_id = k.id
+    LEFT JOIN storage_bookings sb ON pt.booking_type = 'storage' AND pt.booking_id = sb.id
+    LEFT JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+    LEFT JOIN kitchens sk ON sl.kitchen_id = sk.id
+    LEFT JOIN equipment_bookings eb ON pt.booking_type = 'equipment' AND pt.booking_id = eb.id
+    LEFT JOIN equipment_listings el2 ON eb.equipment_listing_id = el2.id
+    LEFT JOIN kitchens ek ON el2.kitchen_id = ek.id
+    LEFT JOIN locations l ON (
+      (pt.booking_type = 'kitchen' AND k.location_id = l.id) OR
+      (pt.booking_type = 'storage' AND sk.location_id = l.id) OR
+      (pt.booking_type = 'equipment' AND ek.location_id = l.id)
+    )
+    LEFT JOIN users chef_user ON pt.chef_id = chef_user.id
+    LEFT JOIN users manager_user ON pt.manager_id = manager_user.id
+    LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = pt.chef_id AND cka.location_id = l.id
+    ${whereClause}
+    ORDER BY pt.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+
+  return {
+    transactions: result.rows as any[],
+    total,
+  };
+}

@@ -10,7 +10,7 @@ import {
     chefLocationAccess,
     platformSettings,
 } from "@shared/schema";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, sql, desc, ilike } from "drizzle-orm";
 
 // Import Domain Services
 
@@ -27,6 +27,7 @@ import { normalizePhoneForStorage } from "../phone-utils";
 import { hashPassword, comparePasswords } from "../passwordUtils";
 import { getFirestore } from 'firebase-admin/firestore';
 import { initializeFirebaseAdmin } from '../firebase-setup';
+// getAdminPaymentTransactions kept in service file for future use; query is inlined in route handler
 
 let firestoreDb: FirebaseFirestore.Firestore | null = null;
 
@@ -92,6 +93,66 @@ async function getAuthenticatedUser(req: Request): Promise<{ id: number; usernam
 
     return null;
 }
+
+// ===================================
+// ADMIN USERS ENDPOINT
+// ===================================
+
+// Get all users (with optional search)
+router.get("/users", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const search = req.query.search as string | undefined;
+
+        let query = db.select({
+            id: users.id,
+            username: users.username,
+            role: users.role,
+            firebaseUid: users.firebaseUid,
+        }).from(users);
+
+        if (search && search.trim()) {
+            const searchPattern = `%${search.trim()}%`;
+            query = query.where(
+                ilike(users.username, searchPattern)
+            ) as typeof query;
+        }
+
+        const dbUsers = await query.limit(50);
+
+        // Get Firestore display names for users with Firebase UIDs
+        const firebaseUids = dbUsers
+            .map(u => u.firebaseUid)
+            .filter((uid): uid is string => !!uid);
+        const displayNames = await getFirestoreDisplayNames(firebaseUids);
+
+        const mappedUsers = dbUsers.map(u => {
+            const displayName = u.firebaseUid ? displayNames[u.firebaseUid] : null;
+            return {
+                id: u.id,
+                username: u.username,
+                email: u.username,
+                fullName: displayName || u.username,
+                role: u.role || 'user',
+                displayText: displayName ? `${displayName} (${u.username})` : u.username,
+            };
+        });
+
+        // If searching, also filter by display name (Firestore names)
+        let filteredUsers = mappedUsers;
+        if (search && search.trim()) {
+            const lowerSearch = search.trim().toLowerCase();
+            filteredUsers = mappedUsers.filter(u =>
+                u.username.toLowerCase().includes(lowerSearch) ||
+                u.fullName.toLowerCase().includes(lowerSearch)
+            );
+        }
+
+        res.json({ users: filteredUsers });
+    } catch (error) {
+        console.error("Error fetching users:", error);
+        res.status(500).json({ error: "Failed to fetch users" });
+    }
+});
 
 // ===================================
 // ADMIN REVENUE ENDPOINTS
@@ -2778,6 +2839,553 @@ router.get("/escalated-penalties", requireFirebaseAuthWithUser, requireAdmin, as
     } catch (error) {
         console.error("Error fetching escalated penalties:", error);
         res.status(500).json({ error: "Failed to fetch escalated penalties" });
+    }
+});
+
+// ============================================================================
+// ADMIN TRANSACTION HISTORY
+// ============================================================================
+
+/**
+ * GET /admin/transactions/locations
+ * Get all locations for the admin transaction filter dropdown
+ */
+router.get("/transactions/locations", requireFirebaseAuthWithUser, requireAdmin, async (_req: Request, res: Response) => {
+    try {
+        const result = await db.execute(sql`
+            SELECT id, name FROM locations ORDER BY name ASC
+        `);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('[Admin Transactions] Error fetching locations:', error);
+        res.status(500).json({ error: "Failed to fetch locations" });
+    }
+});
+
+/**
+ * GET /admin/transactions
+ * Enterprise-grade transaction history for admins across all locations and kitchens.
+ * Supports search by booking ID, payment intent ID, charge ID, chef email, location name, etc.
+ * Supports filtering by status, booking type, location, kitchen, chef, manager, date range.
+ */
+router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const {
+            search,
+            status,
+            bookingType,
+            locationId,
+            kitchenId,
+            chefId,
+            managerId,
+            startDate,
+            endDate,
+            limit = "100",
+            offset = "0",
+        } = req.query;
+
+        const parsedLimit = Math.min(parseInt(limit as string) || 100, 500);
+        const parsedOffset = parseInt(offset as string) || 0;
+
+        // Build WHERE conditions
+        const conditions: ReturnType<typeof sql>[] = [];
+
+        if (status && ['pending', 'processing', 'succeeded', 'failed', 'canceled', 'refunded', 'partially_refunded'].includes(status as string)) {
+            conditions.push(sql`pt.status = ${status as string}`);
+        }
+        if (bookingType && ['kitchen', 'storage', 'equipment', 'bundle'].includes(bookingType as string)) {
+            conditions.push(sql`pt.booking_type = ${bookingType as string}`);
+        }
+        if (locationId) {
+            const parsed = parseInt(locationId as string);
+            if (!isNaN(parsed)) {
+                conditions.push(sql`(
+                    (pt.booking_type = 'kitchen' AND k.location_id = ${parsed}) OR
+                    (pt.booking_type = 'storage' AND sk.location_id = ${parsed}) OR
+                    (pt.booking_type = 'equipment' AND ek.location_id = ${parsed})
+                )`);
+            }
+        }
+        if (kitchenId) {
+            const parsed = parseInt(kitchenId as string);
+            if (!isNaN(parsed)) {
+                conditions.push(sql`(
+                    (pt.booking_type = 'kitchen' AND kb.kitchen_id = ${parsed}) OR
+                    (pt.booking_type = 'storage' AND sl.kitchen_id = ${parsed}) OR
+                    (pt.booking_type = 'equipment' AND el.kitchen_id = ${parsed})
+                )`);
+            }
+        }
+        if (chefId) {
+            const parsed = parseInt(chefId as string);
+            if (!isNaN(parsed)) conditions.push(sql`pt.chef_id = ${parsed}`);
+        }
+        if (managerId) {
+            const parsed = parseInt(managerId as string);
+            if (!isNaN(parsed)) conditions.push(sql`pt.manager_id = ${parsed}`);
+        }
+        if (startDate) {
+            conditions.push(sql`pt.created_at >= ${new Date(startDate as string)}`);
+        }
+        if (endDate) {
+            conditions.push(sql`pt.created_at <= ${new Date(endDate as string)}`);
+        }
+        if (search && typeof search === 'string' && search.trim()) {
+            const s = search.trim();
+            const like = '%' + s + '%';
+            const numVal = parseInt(s);
+            const isNum = !isNaN(numVal);
+            conditions.push(sql`(
+                pt.payment_intent_id ILIKE ${like}
+                OR pt.charge_id ILIKE ${like}
+                OR pt.refund_id ILIKE ${like}
+                OR pt.payment_method_id ILIKE ${like}
+                OR pt.webhook_event_id ILIKE ${like}
+                OR pt.refund_reason ILIKE ${like}
+                OR pt.failure_reason ILIKE ${like}
+                OR chef_user.username ILIKE ${like}
+                OR COALESCE(cka.full_name, '') ILIKE ${like}
+                OR l.name ILIKE ${like}
+                OR k.name ILIKE ${like}
+                OR CAST(pt.id AS TEXT) = ${s}
+                OR CAST(pt.booking_id AS TEXT) = ${s}
+                ${isNum ? sql`OR pt.chef_id = ${numVal} OR pt.manager_id = ${numVal}` : sql``}
+            )`);
+        }
+
+        const whereClause = conditions.length > 0
+            ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+            : sql``;
+
+        const joinBlock = sql`
+            FROM payment_transactions pt
+            LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
+            LEFT JOIN kitchens k ON kb.kitchen_id = k.id
+            LEFT JOIN storage_bookings sb ON pt.booking_type = 'storage' AND pt.booking_id = sb.id
+            LEFT JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+            LEFT JOIN kitchens sk ON sl.kitchen_id = sk.id
+            LEFT JOIN equipment_bookings eb ON pt.booking_type = 'equipment' AND pt.booking_id = eb.id
+            LEFT JOIN equipment_listings el ON eb.equipment_listing_id = el.id
+            LEFT JOIN kitchens ek ON el.kitchen_id = ek.id
+            LEFT JOIN locations l ON (
+                (pt.booking_type = 'kitchen' AND k.location_id = l.id) OR
+                (pt.booking_type = 'storage' AND sk.location_id = l.id) OR
+                (pt.booking_type = 'equipment' AND ek.location_id = l.id)
+            )
+            LEFT JOIN users chef_user ON pt.chef_id = chef_user.id
+            LEFT JOIN users manager_user ON pt.manager_id = manager_user.id
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = pt.chef_id AND cka.location_id = l.id
+        `;
+
+        const countResult = await db.execute(sql`SELECT COUNT(*) as total ${joinBlock} ${whereClause}`);
+        const total = parseInt((countResult.rows[0] as any).total);
+
+        const atSign = '@';
+        const result = await db.execute(sql`
+            SELECT
+                pt.id, pt.booking_id, pt.booking_type, pt.chef_id, pt.manager_id,
+                pt.amount, pt.base_amount, pt.service_fee, pt.stripe_processing_fee,
+                pt.manager_revenue, pt.refund_amount, pt.net_amount, pt.currency,
+                pt.payment_intent_id, pt.charge_id, pt.refund_id, pt.payment_method_id,
+                pt.status, pt.stripe_status, pt.metadata, pt.refund_reason, pt.failure_reason,
+                pt.webhook_event_id, pt.last_synced_at, pt.created_at, pt.updated_at,
+                pt.paid_at, pt.refunded_at,
+                chef_user.username as chef_email,
+                COALESCE(cka.full_name, split_part(chef_user.username, ${atSign}, 1)) as chef_name,
+                chef_user.stripe_customer_id as stripe_customer_id,
+                manager_user.username as manager_email,
+                l.id as location_id, l.name as location_name,
+                COALESCE(k.id, sk.id, ek.id) as kitchen_id,
+                COALESCE(k.name, sk.name, ek.name) as kitchen_name,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN kb.booking_date::text
+                    WHEN pt.booking_type = 'storage' THEN sb.start_date::text
+                    WHEN pt.booking_type = 'equipment' THEN eb.start_date::text
+                    ELSE NULL
+                END as booking_start,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN NULL
+                    WHEN pt.booking_type = 'storage' THEN sb.end_date::text
+                    WHEN pt.booking_type = 'equipment' THEN eb.end_date::text
+                    ELSE NULL
+                END as booking_end,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN kb.start_time
+                    ELSE NULL
+                END as kitchen_start_time,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN kb.end_time
+                    ELSE NULL
+                END as kitchen_end_time,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN kb.status::text
+                    WHEN pt.booking_type = 'storage' THEN sb.status::text
+                    WHEN pt.booking_type = 'equipment' THEN eb.status::text
+                    ELSE NULL
+                END as booking_status,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN kb.payment_status::text
+                    WHEN pt.booking_type = 'storage' THEN sb.payment_status::text
+                    WHEN pt.booking_type = 'equipment' THEN eb.payment_status::text
+                    ELSE NULL
+                END as booking_payment_status,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN k.name
+                    WHEN pt.booking_type = 'storage' THEN sl.name
+                    ELSE NULL
+                END as item_name
+            ${joinBlock}
+            ${whereClause}
+            ORDER BY pt.created_at DESC
+            LIMIT ${parsedLimit} OFFSET ${parsedOffset}
+        `);
+
+        const formattedTransactions = result.rows.map((tx: any) => ({
+            id: tx.id,
+            bookingId: tx.booking_id,
+            bookingType: tx.booking_type,
+            chefId: tx.chef_id,
+            managerId: tx.manager_id,
+            amount: parseFloat(tx.amount || '0'),
+            baseAmount: parseFloat(tx.base_amount || '0'),
+            serviceFee: parseFloat(tx.service_fee || '0'),
+            stripeProcessingFee: parseFloat(tx.stripe_processing_fee || '0'),
+            managerRevenue: parseFloat(tx.manager_revenue || '0'),
+            refundAmount: parseFloat(tx.refund_amount || '0'),
+            netAmount: parseFloat(tx.net_amount || '0'),
+            currency: tx.currency,
+            paymentIntentId: tx.payment_intent_id,
+            chargeId: tx.charge_id,
+            refundId: tx.refund_id,
+            paymentMethodId: tx.payment_method_id,
+            stripeCustomerId: tx.stripe_customer_id,
+            status: tx.status,
+            stripeStatus: tx.stripe_status,
+            bookingStatus: tx.booking_status,
+            bookingPaymentStatus: tx.booking_payment_status,
+            metadata: tx.metadata,
+            refundReason: tx.refund_reason,
+            failureReason: tx.failure_reason,
+            webhookEventId: tx.webhook_event_id,
+            createdAt: tx.created_at,
+            updatedAt: tx.updated_at,
+            paidAt: tx.paid_at,
+            refundedAt: tx.refunded_at,
+            lastSyncedAt: tx.last_synced_at,
+            chefEmail: tx.chef_email,
+            chefName: tx.chef_name,
+            managerEmail: tx.manager_email,
+            locationId: tx.location_id,
+            locationName: tx.location_name,
+            kitchenId: tx.kitchen_id,
+            kitchenName: tx.kitchen_name,
+            itemName: tx.item_name,
+            bookingStart: tx.booking_start,
+            bookingEnd: tx.booking_end,
+            kitchenStartTime: tx.kitchen_start_time,
+            kitchenEndTime: tx.kitchen_end_time,
+        }));
+
+        res.json({ transactions: formattedTransactions, total });
+    } catch (error: any) {
+        console.error('[Admin Transactions] Error:', error?.message || error);
+        if (error?.stack) console.error('[Admin Transactions] Stack:', error.stack);
+        res.status(500).json({ error: "Failed to fetch transactions", detail: error?.message || String(error) });
+    }
+});
+
+// ============================================================================
+// ADMIN OVERSTAY PENALTIES HISTORY
+// ============================================================================
+
+/**
+ * GET /admin/overstay-penalties
+ * Full history of ALL overstay penalties across all managers/locations.
+ * Includes audit trail (storage_overstay_history), Stripe details, and booking context.
+ */
+router.get("/overstay-penalties", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { status: statusFilter, locationId, limit = "200", offset = "0" } = req.query;
+        const parsedLimit = Math.min(parseInt(limit as string) || 200, 500);
+        const parsedOffset = parseInt(offset as string) || 0;
+
+        const statusClause = statusFilter ? sql`AND sor.status = ${statusFilter as string}` : sql``;
+        const locationClause = locationId ? sql`AND loc.id = ${parseInt(locationId as string)}` : sql``;
+
+        const result = await db.execute(sql`
+            SELECT 
+                sor.id,
+                sor.storage_booking_id as "storageBookingId",
+                sor.status,
+                sor.days_overdue as "daysOverdue",
+                sor.calculated_penalty_cents as "calculatedPenaltyCents",
+                sor.final_penalty_cents as "finalPenaltyCents",
+                sor.daily_rate_cents as "dailyRateCents",
+                sor.penalty_rate as "penaltyRate",
+                sor.penalty_waived as "penaltyWaived",
+                sor.waive_reason as "waiveReason",
+                sor.manager_notes as "managerNotes",
+                sor.detected_at as "detectedAt",
+                sor.end_date as "bookingEndDate",
+                sor.grace_period_ends_at as "gracePeriodEndsAt",
+                sor.penalty_approved_at as "penaltyApprovedAt",
+                sor.penalty_approved_by as "penaltyApprovedBy",
+                sor.charge_attempted_at as "chargeAttemptedAt",
+                sor.charge_succeeded_at as "chargeSucceededAt",
+                sor.charge_failed_at as "chargeFailedAt",
+                sor.charge_failure_reason as "chargeFailureReason",
+                sor.resolved_at as "resolvedAt",
+                sor.resolution_type as "resolutionType",
+                sor.resolution_notes as "resolutionNotes",
+                sor.stripe_payment_intent_id as "stripePaymentIntentId",
+                sor.stripe_charge_id as "stripeChargeId",
+                sor.chef_warning_sent_at as "chefWarningSentAt",
+                sor.chef_penalty_notice_sent_at as "chefPenaltyNoticeSentAt",
+                sor.manager_notified_at as "managerNotifiedAt",
+                sor.created_at as "createdAt",
+                sor.updated_at as "updatedAt",
+                sb.start_date as "bookingStartDate",
+                sb.total_price as "bookingTotalPrice",
+                sb.chef_id as "chefId",
+                sb.stripe_customer_id as "stripeCustomerId",
+                sb.stripe_payment_method_id as "stripePaymentMethodId",
+                sl.name as "storageName",
+                sl.storage_type as "storageType",
+                k.id as "kitchenId",
+                k.name as "kitchenName",
+                loc.id as "locationId",
+                loc.name as "locationName",
+                u.username as "chefEmail",
+                COALESCE(cka.full_name, split_part(u.username, '@', 1)) as "chefName",
+                mgr.username as "managerEmail",
+                COALESCE(mgr_cka.full_name, split_part(mgr.username, '@', 1)) as "managerName",
+                loc.manager_id as "managerId"
+            FROM storage_overstay_records sor
+            INNER JOIN storage_bookings sb ON sor.storage_booking_id = sb.id
+            INNER JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+            INNER JOIN kitchens k ON sl.kitchen_id = k.id
+            INNER JOIN locations loc ON k.location_id = loc.id
+            LEFT JOIN users u ON sb.chef_id = u.id
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = sb.chef_id AND cka.location_id = loc.id
+            LEFT JOIN users mgr ON loc.manager_id = mgr.id
+            LEFT JOIN chef_kitchen_applications mgr_cka ON mgr_cka.chef_id = loc.manager_id AND mgr_cka.location_id = loc.id
+            WHERE 1=1 ${statusClause} ${locationClause}
+            ORDER BY sor.detected_at DESC
+            LIMIT ${parsedLimit} OFFSET ${parsedOffset}
+        `);
+
+        const countResult = await db.execute(sql`
+            SELECT COUNT(*) as total
+            FROM storage_overstay_records sor
+            INNER JOIN storage_bookings sb ON sor.storage_booking_id = sb.id
+            INNER JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+            INNER JOIN kitchens k ON sl.kitchen_id = k.id
+            INNER JOIN locations loc ON k.location_id = loc.id
+            WHERE 1=1 ${statusClause} ${locationClause}
+        `);
+        const total = parseInt((countResult.rows[0] as any)?.total || '0');
+
+        res.json({ overstayPenalties: result.rows, total });
+    } catch (error: any) {
+        console.error('[Admin Overstay Penalties] Error:', error?.message || error);
+        res.status(500).json({ error: "Failed to fetch overstay penalties" });
+    }
+});
+
+/**
+ * GET /admin/overstay-penalties/:id/history
+ * Full audit trail for a single overstay penalty record.
+ */
+router.get("/overstay-penalties/:id/history", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const overstayId = parseInt(req.params.id);
+        if (isNaN(overstayId)) return res.status(400).json({ error: "Invalid ID" });
+
+        const result = await db.execute(sql`
+            SELECT 
+                soh.id,
+                soh.overstay_record_id as "overstayRecordId",
+                soh.previous_status as "previousStatus",
+                soh.new_status as "newStatus",
+                soh.event_type as "eventType",
+                soh.event_source as "eventSource",
+                soh.description,
+                soh.metadata,
+                soh.created_at as "createdAt",
+                soh.created_by as "createdBy",
+                u.username as "createdByEmail"
+            FROM storage_overstay_history soh
+            LEFT JOIN users u ON soh.created_by = u.id
+            WHERE soh.overstay_record_id = ${overstayId}
+            ORDER BY soh.created_at ASC
+        `);
+
+        res.json({ history: result.rows });
+    } catch (error: any) {
+        console.error('[Admin Overstay History] Error:', error?.message || error);
+        res.status(500).json({ error: "Failed to fetch overstay history" });
+    }
+});
+
+// ============================================================================
+// ADMIN DAMAGE CLAIMS HISTORY
+// ============================================================================
+
+/**
+ * GET /admin/damage-claims-history
+ * Full history of ALL damage claims across all managers/locations.
+ * Includes audit trail (damage_claim_history), Stripe details, evidence, and booking context.
+ */
+router.get("/damage-claims-history", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { status: statusFilter, locationId, bookingType, limit = "200", offset = "0" } = req.query;
+        const parsedLimit = Math.min(parseInt(limit as string) || 200, 500);
+        const parsedOffset = parseInt(offset as string) || 0;
+
+        const statusClause = statusFilter ? sql`AND dc.status = ${statusFilter as string}` : sql``;
+        const locationClause = locationId ? sql`AND dc.location_id = ${parseInt(locationId as string)}` : sql``;
+        const bookingTypeClause = bookingType ? sql`AND dc.booking_type = ${bookingType as string}` : sql``;
+
+        const result = await db.execute(sql`
+            SELECT 
+                dc.id,
+                dc.booking_type as "bookingType",
+                dc.kitchen_booking_id as "kitchenBookingId",
+                dc.storage_booking_id as "storageBookingId",
+                dc.chef_id as "chefId",
+                dc.manager_id as "managerId",
+                dc.location_id as "locationId",
+                dc.status,
+                dc.claim_title as "claimTitle",
+                dc.claim_description as "claimDescription",
+                dc.damage_date as "damageDate",
+                dc.claimed_amount_cents as "claimedAmountCents",
+                dc.approved_amount_cents as "approvedAmountCents",
+                dc.final_amount_cents as "finalAmountCents",
+                dc.chef_response as "chefResponse",
+                dc.chef_responded_at as "chefRespondedAt",
+                dc.chef_response_deadline as "chefResponseDeadline",
+                dc.admin_reviewer_id as "adminReviewerId",
+                dc.admin_reviewed_at as "adminReviewedAt",
+                dc.admin_notes as "adminNotes",
+                dc.admin_decision_reason as "adminDecisionReason",
+                dc.stripe_payment_intent_id as "stripePaymentIntentId",
+                dc.stripe_charge_id as "stripeChargeId",
+                dc.charge_attempted_at as "chargeAttemptedAt",
+                dc.charge_succeeded_at as "chargeSucceededAt",
+                dc.charge_failed_at as "chargeFailedAt",
+                dc.charge_failure_reason as "chargeFailureReason",
+                dc.stripe_customer_id as "stripeCustomerId",
+                dc.stripe_payment_method_id as "stripePaymentMethodId",
+                dc.resolved_at as "resolvedAt",
+                dc.resolved_by as "resolvedBy",
+                dc.resolution_type as "resolutionType",
+                dc.resolution_notes as "resolutionNotes",
+                dc.damaged_items as "damagedItems",
+                dc.created_at as "createdAt",
+                dc.updated_at as "updatedAt",
+                dc.submitted_at as "submittedAt",
+                loc.name as "locationName",
+                chef_user.username as "chefEmail",
+                COALESCE(chef_cka.full_name, split_part(chef_user.username, '@', 1)) as "chefName",
+                mgr_user.username as "managerEmail",
+                COALESCE(mgr_cka.full_name, split_part(mgr_user.username, '@', 1)) as "managerName",
+                reviewer.username as "adminReviewerEmail"
+            FROM damage_claims dc
+            INNER JOIN locations loc ON dc.location_id = loc.id
+            LEFT JOIN users chef_user ON dc.chef_id = chef_user.id
+            LEFT JOIN chef_kitchen_applications chef_cka ON chef_cka.chef_id = dc.chef_id AND chef_cka.location_id = dc.location_id
+            LEFT JOIN users mgr_user ON dc.manager_id = mgr_user.id
+            LEFT JOIN chef_kitchen_applications mgr_cka ON mgr_cka.chef_id = dc.manager_id AND mgr_cka.location_id = dc.location_id
+            LEFT JOIN users reviewer ON dc.admin_reviewer_id = reviewer.id
+            WHERE 1=1 ${statusClause} ${locationClause} ${bookingTypeClause}
+            ORDER BY dc.created_at DESC
+            LIMIT ${parsedLimit} OFFSET ${parsedOffset}
+        `);
+
+        const countResult = await db.execute(sql`
+            SELECT COUNT(*) as total
+            FROM damage_claims dc
+            WHERE 1=1 ${statusClause} ${locationClause} ${bookingTypeClause}
+        `);
+        const total = parseInt((countResult.rows[0] as any)?.total || '0');
+
+        res.json({ damageClaims: result.rows, total });
+    } catch (error: any) {
+        console.error('[Admin Damage Claims History] Error:', error?.message || error);
+        res.status(500).json({ error: "Failed to fetch damage claims" });
+    }
+});
+
+/**
+ * GET /admin/damage-claims-history/:id/history
+ * Full audit trail for a single damage claim.
+ */
+router.get("/damage-claims-history/:id/history", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const claimId = parseInt(req.params.id);
+        if (isNaN(claimId)) return res.status(400).json({ error: "Invalid ID" });
+
+        const result = await db.execute(sql`
+            SELECT 
+                dch.id,
+                dch.damage_claim_id as "damageClaimId",
+                dch.previous_status as "previousStatus",
+                dch.new_status as "newStatus",
+                dch.action,
+                dch.action_by as "actionBy",
+                dch.action_by_user_id as "actionByUserId",
+                dch.notes,
+                dch.metadata,
+                dch.created_at as "createdAt",
+                u.username as "actionByEmail"
+            FROM damage_claim_history dch
+            LEFT JOIN users u ON dch.action_by_user_id = u.id
+            WHERE dch.damage_claim_id = ${claimId}
+            ORDER BY dch.created_at ASC
+        `);
+
+        res.json({ history: result.rows });
+    } catch (error: any) {
+        console.error('[Admin Damage Claim History] Error:', error?.message || error);
+        res.status(500).json({ error: "Failed to fetch damage claim history" });
+    }
+});
+
+/**
+ * GET /admin/damage-claims-history/:id/evidence
+ * Get all evidence files for a damage claim.
+ */
+router.get("/damage-claims-history/:id/evidence", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const claimId = parseInt(req.params.id);
+        if (isNaN(claimId)) return res.status(400).json({ error: "Invalid ID" });
+
+        const result = await db.execute(sql`
+            SELECT 
+                de.id,
+                de.damage_claim_id as "damageClaimId",
+                de.evidence_type as "evidenceType",
+                de.file_url as "fileUrl",
+                de.file_name as "fileName",
+                de.file_size as "fileSize",
+                de.mime_type as "mimeType",
+                de.description,
+                de.uploaded_by as "uploadedBy",
+                de.uploaded_at as "uploadedAt",
+                de.amount_cents as "amountCents",
+                de.vendor_name as "vendorName",
+                u.username as "uploadedByEmail"
+            FROM damage_evidence de
+            LEFT JOIN users u ON de.uploaded_by = u.id
+            WHERE de.damage_claim_id = ${claimId}
+            ORDER BY de.uploaded_at ASC
+        `);
+
+        res.json({ evidence: result.rows });
+    } catch (error: any) {
+        console.error('[Admin Damage Evidence] Error:', error?.message || error);
+        res.status(500).json({ error: "Failed to fetch evidence" });
     }
 });
 

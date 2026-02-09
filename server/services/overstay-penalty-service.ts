@@ -1471,8 +1471,8 @@ export async function getOverstayHistory(overstayRecordId: number) {
 /**
  * Get overstay statistics for a location
  */
-export async function getOverstayStats(locationId?: number) {
-  const allRecords = await db
+export async function getOverstayStats(locationIds?: number[]) {
+  const query = db
     .select({
       status: storageOverstayRecords.status,
       calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
@@ -1484,9 +1484,11 @@ export async function getOverstayStats(locationId?: number) {
     .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
     .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id));
 
-  const filtered = locationId 
-    ? allRecords.filter(r => r.locationId === locationId)
-    : allRecords;
+  const allRecords = locationIds && locationIds.length > 0
+    ? await query.where(inArray(kitchens.locationId, locationIds))
+    : await query;
+
+  const filtered = allRecords;
 
   const stats = {
     total: filtered.length,

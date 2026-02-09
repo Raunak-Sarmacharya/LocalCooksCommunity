@@ -1798,30 +1798,7 @@ async function handlePaymentIntentSucceeded(
               kitchenName: kitchen.name,
             });
 
-            // Send email to manager
-            if (location.notificationEmail) {
-              try {
-                const { sendEmail, generateBookingPaymentReceivedEmail } = await import("../email");
-                const paymentEmail = generateBookingPaymentReceivedEmail({
-                  managerEmail: location.notificationEmail,
-                  chefName,
-                  kitchenName: kitchen.name,
-                  bookingDate: booking.bookingDate,
-                  startTime: booking.startTime,
-                  endTime: booking.endTime,
-                  amountCents: paymentIntent.amount,
-                  currency: paymentIntent.currency.toUpperCase(),
-                  bookingId: booking.id,
-                  locationName: location.name,
-                });
-                await sendEmail(paymentEmail, {
-                  trackingId: `booking_payment_received_${booking.id}_${Date.now()}`
-                });
-                logger.info(`[Webhook] Sent payment received email to manager: ${location.notificationEmail}`);
-              } catch (emailError) {
-                logger.error(`[Webhook] Error sending payment received email:`, emailError);
-              }
-            }
+            // Payment received email to manager removed — not needed in current flow
           }
         }
       }

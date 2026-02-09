@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import crypto from 'crypto';
 import { db } from '../db';
-import { sendEmail, generateEmailVerificationEmail, generateWelcomeEmail } from '../email';
+import { sendEmail, generateEmailVerificationEmail, generateWelcomeEmail, getWebsiteUrl } from '../email';
 import { storage } from "../storage";
 import { getAuthenticatedUser } from "./middleware";
 import { emailVerificationTokens, users } from "@shared/schema";
@@ -42,7 +42,7 @@ router.post("/send-verification-email", async (req: Request, res: Response) => {
       });
 
     // Generate verification URL
-    const verificationUrl = `${process.env.BASE_URL || 'http://localhost:5000'}/auth/verify-email?token=${verificationToken}`;
+    const verificationUrl = `${getWebsiteUrl()}/auth/verify-email?token=${verificationToken}`;
 
     // Send verification email
     const emailContent = generateEmailVerificationEmail({
@@ -151,7 +151,7 @@ router.get("/verify-email", async (req: Request, res: Response) => {
     }
 
     // Redirect to success page
-    return res.redirect(`${process.env.BASE_URL || 'http://localhost:5000'}/auth?verified=true`);
+    return res.redirect(`${getWebsiteUrl()}/auth?verified=true`);
 
   } catch (error) {
     console.error("Error in email verification:", error);

@@ -903,7 +903,7 @@ var init_schema = __esm({
       isActive: z2.boolean().optional(),
       hourlyRate: z2.number().int().positive("Hourly rate must be positive").optional(),
       currency: z2.string().min(3).max(3).optional(),
-      minimumBookingHours: z2.number().int().positive("Minimum booking hours must be positive").optional(),
+      minimumBookingHours: z2.number().int().min(0, "Minimum booking hours cannot be negative").max(24, "Minimum booking hours cannot exceed 24").optional(),
       pricingModel: z2.enum(["hourly", "daily", "weekly"]).optional(),
       taxRatePercent: z2.number().min(0).max(100).nullable().optional()
     }).omit({
@@ -918,7 +918,7 @@ var init_schema = __esm({
       isActive: z2.boolean().optional(),
       hourlyRate: z2.number().int().positive("Hourly rate must be positive").optional(),
       currency: z2.string().min(3).max(3).optional(),
-      minimumBookingHours: z2.number().int().positive("Minimum booking hours must be positive").optional(),
+      minimumBookingHours: z2.number().int().min(0, "Minimum booking hours cannot be negative").max(24, "Minimum booking hours cannot exceed 24").optional(),
       pricingModel: z2.enum(["hourly", "daily", "weekly"]).optional(),
       taxRatePercent: z2.number().min(0).max(100).nullable().optional()
     });
@@ -3299,6 +3299,7 @@ __export(payment_transactions_service_exports, {
   findPaymentTransactionById: () => findPaymentTransactionById,
   findPaymentTransactionByIntentId: () => findPaymentTransactionByIntentId,
   findPaymentTransactionByMetadata: () => findPaymentTransactionByMetadata,
+  getAdminPaymentTransactions: () => getAdminPaymentTransactions,
   getChefPaymentTransactions: () => getChefPaymentTransactions,
   getManagerPaymentTransactions: () => getManagerPaymentTransactions,
   getPaymentHistory: () => getPaymentHistory,
@@ -4069,6 +4070,177 @@ async function syncStripeFees(db2, managerId, limit = 100) {
   }
   return { synced, failed, errors };
 }
+async function getAdminPaymentTransactions(db2, filters) {
+  const whereConditions = [];
+  if (filters?.status) {
+    whereConditions.push(sql2`pt.status = ${filters.status}`);
+  }
+  if (filters?.bookingType) {
+    whereConditions.push(sql2`pt.booking_type = ${filters.bookingType}`);
+  }
+  if (filters?.locationId) {
+    whereConditions.push(sql2`(
+      (pt.booking_type = 'kitchen' AND k.location_id = ${filters.locationId}) OR
+      (pt.booking_type = 'storage' AND sk.location_id = ${filters.locationId}) OR
+      (pt.booking_type = 'equipment' AND ek.location_id = ${filters.locationId})
+    )`);
+  }
+  if (filters?.kitchenId) {
+    whereConditions.push(sql2`(
+      (pt.booking_type = 'kitchen' AND kb.kitchen_id = ${filters.kitchenId}) OR
+      (pt.booking_type = 'storage' AND sl.kitchen_id = ${filters.kitchenId}) OR
+      (pt.booking_type = 'equipment' AND el.kitchen_id = ${filters.kitchenId})
+    )`);
+  }
+  if (filters?.chefId) {
+    whereConditions.push(sql2`pt.chef_id = ${filters.chefId}`);
+  }
+  if (filters?.managerId) {
+    whereConditions.push(sql2`pt.manager_id = ${filters.managerId}`);
+  }
+  if (filters?.startDate) {
+    whereConditions.push(sql2`pt.created_at >= ${filters.startDate}`);
+  }
+  if (filters?.endDate) {
+    whereConditions.push(sql2`pt.created_at <= ${filters.endDate}`);
+  }
+  if (filters?.search) {
+    const searchTerm = filters.search.trim();
+    const numericSearch = parseInt(searchTerm);
+    const isNumeric = !isNaN(numericSearch);
+    whereConditions.push(sql2`(
+      pt.payment_intent_id ILIKE ${"%" + searchTerm + "%"}
+      OR pt.charge_id ILIKE ${"%" + searchTerm + "%"}
+      OR pt.refund_id ILIKE ${"%" + searchTerm + "%"}
+      OR pt.payment_method_id ILIKE ${"%" + searchTerm + "%"}
+      OR pt.webhook_event_id ILIKE ${"%" + searchTerm + "%"}
+      OR pt.stripe_status ILIKE ${"%" + searchTerm + "%"}
+      OR pt.refund_reason ILIKE ${"%" + searchTerm + "%"}
+      OR pt.failure_reason ILIKE ${"%" + searchTerm + "%"}
+      OR chef_user.username ILIKE ${"%" + searchTerm + "%"}
+      OR COALESCE(cka.full_name, '') ILIKE ${"%" + searchTerm + "%"}
+      OR l.name ILIKE ${"%" + searchTerm + "%"}
+      OR k.name ILIKE ${"%" + searchTerm + "%"}
+      OR CAST(pt.id AS TEXT) = ${searchTerm}
+      OR CAST(pt.booking_id AS TEXT) = ${searchTerm}
+      ${isNumeric ? sql2`OR pt.chef_id = ${numericSearch} OR pt.manager_id = ${numericSearch}` : sql2``}
+    )`);
+  }
+  const whereClause = whereConditions.length > 0 ? sql2`WHERE ${sql2.join(whereConditions, sql2` AND `)}` : sql2``;
+  const countResult = await db2.execute(sql2`
+    SELECT COUNT(*) as total 
+    FROM payment_transactions pt
+    LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
+    LEFT JOIN kitchens k ON kb.kitchen_id = k.id
+    LEFT JOIN storage_bookings sb ON pt.booking_type = 'storage' AND pt.booking_id = sb.id
+    LEFT JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+    LEFT JOIN kitchens sk ON sl.kitchen_id = sk.id
+    LEFT JOIN equipment_bookings eb ON pt.booking_type = 'equipment' AND pt.booking_id = eb.id
+    LEFT JOIN equipment_listings el ON eb.equipment_listing_id = el.id
+    LEFT JOIN kitchens ek ON el.kitchen_id = ek.id
+    LEFT JOIN locations l ON (
+      (pt.booking_type = 'kitchen' AND k.location_id = l.id) OR
+      (pt.booking_type = 'storage' AND sk.location_id = l.id) OR
+      (pt.booking_type = 'equipment' AND ek.location_id = l.id)
+    )
+    LEFT JOIN users chef_user ON pt.chef_id = chef_user.id
+    LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = pt.chef_id AND cka.location_id = l.id
+    ${whereClause}
+  `);
+  const total = parseInt(countResult.rows[0].total);
+  const limit = filters?.limit || 50;
+  const offset = filters?.offset || 0;
+  const result = await db2.execute(sql2`
+    SELECT 
+      pt.id,
+      pt.booking_id,
+      pt.booking_type,
+      pt.chef_id,
+      pt.manager_id,
+      pt.amount,
+      pt.base_amount,
+      pt.service_fee,
+      pt.stripe_processing_fee,
+      pt.manager_revenue,
+      pt.refund_amount,
+      pt.net_amount,
+      pt.currency,
+      pt.payment_intent_id,
+      pt.charge_id,
+      pt.refund_id,
+      pt.payment_method_id,
+      pt.status,
+      pt.stripe_status,
+      pt.metadata,
+      pt.refund_reason,
+      pt.failure_reason,
+      pt.webhook_event_id,
+      pt.last_synced_at,
+      pt.created_at,
+      pt.updated_at,
+      pt.paid_at,
+      pt.refunded_at,
+      chef_user.username as chef_email,
+      COALESCE(cka.full_name, split_part(chef_user.username, ${"@"}, 1)) as chef_name,
+      chef_user.stripe_customer_id as stripe_customer_id,
+      manager_user.username as manager_email,
+      l.id as location_id,
+      l.name as location_name,
+      COALESCE(k.id, sk.id, ek.id) as kitchen_id,
+      COALESCE(k.name, sk.name, ek.name) as kitchen_name,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN kb.start_time::text
+        WHEN pt.booking_type = 'storage' THEN sb.start_date::text
+        ELSE NULL
+      END as booking_start,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN kb.end_time::text
+        WHEN pt.booking_type = 'storage' THEN sb.end_date::text
+        ELSE NULL
+      END as booking_end,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN kb.status::text
+        WHEN pt.booking_type = 'storage' THEN sb.status::text
+        WHEN pt.booking_type = 'equipment' THEN eb.status::text
+        ELSE NULL
+      END as booking_status,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN kb.payment_status::text
+        WHEN pt.booking_type = 'storage' THEN sb.payment_status::text
+        WHEN pt.booking_type = 'equipment' THEN eb.payment_status::text
+        ELSE NULL
+      END as booking_payment_status,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN k.name
+        WHEN pt.booking_type = 'storage' THEN sl.name
+        ELSE NULL
+      END as item_name
+    FROM payment_transactions pt
+    LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
+    LEFT JOIN kitchens k ON kb.kitchen_id = k.id
+    LEFT JOIN storage_bookings sb ON pt.booking_type = 'storage' AND pt.booking_id = sb.id
+    LEFT JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+    LEFT JOIN kitchens sk ON sl.kitchen_id = sk.id
+    LEFT JOIN equipment_bookings eb ON pt.booking_type = 'equipment' AND pt.booking_id = eb.id
+    LEFT JOIN equipment_listings el2 ON eb.equipment_listing_id = el2.id
+    LEFT JOIN kitchens ek ON el2.kitchen_id = ek.id
+    LEFT JOIN locations l ON (
+      (pt.booking_type = 'kitchen' AND k.location_id = l.id) OR
+      (pt.booking_type = 'storage' AND sk.location_id = l.id) OR
+      (pt.booking_type = 'equipment' AND ek.location_id = l.id)
+    )
+    LEFT JOIN users chef_user ON pt.chef_id = chef_user.id
+    LEFT JOIN users manager_user ON pt.manager_id = manager_user.id
+    LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = pt.chef_id AND cka.location_id = l.id
+    ${whereClause}
+    ORDER BY pt.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+  return {
+    transactions: result.rows,
+    total
+  };
+}
 var init_payment_transactions_service = __esm({
   "server/services/payment-transactions-service.ts"() {
     "use strict";
@@ -4550,6 +4722,7 @@ __export(email_exports, {
   generateFullVerificationEmail: () => generateFullVerificationEmail,
   generateKitchenApplicationApprovedEmail: () => generateKitchenApplicationApprovedEmail,
   generateKitchenApplicationRejectedEmail: () => generateKitchenApplicationRejectedEmail,
+  generateKitchenApplicationSubmittedChefEmail: () => generateKitchenApplicationSubmittedChefEmail,
   generateKitchenAvailabilityChangeEmail: () => generateKitchenAvailabilityChangeEmail,
   generateKitchenLicenseApprovedEmail: () => generateKitchenLicenseApprovedEmail,
   generateKitchenLicenseRejectedEmail: () => generateKitchenLicenseRejectedEmail,
@@ -4572,6 +4745,9 @@ __export(email_exports, {
   generateStorageExtensionPendingApprovalEmail: () => generateStorageExtensionPendingApprovalEmail,
   generateStorageExtensionRejectedEmail: () => generateStorageExtensionRejectedEmail,
   generateWelcomeEmail: () => generateWelcomeEmail,
+  getDashboardUrl: () => getDashboardUrl,
+  getSubdomainUrl: () => getSubdomainUrl,
+  getWebsiteUrl: () => getWebsiteUrl,
   sendApplicationReceivedEmail: () => sendApplicationReceivedEmail,
   sendApplicationRejectedEmail: () => sendApplicationRejectedEmail,
   sendEmail: () => sendEmail
@@ -4736,7 +4912,7 @@ If you have any questions, contact us at ${supportEmail}
     text: textContent
   });
 }
-var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION_WINDOW, createTransporter, getEmailConfig, sendEmail, getDomainFromEmail, getOrganizationName, getUnsubscribeEmail, getSupportEmail, detectEmailProvider, formatDateForCalendar, escapeIcalText, generateEventUid, generateIcsFile, generateCalendarUrl, getUniformEmailStyles, generateStatusChangeEmail, generateVendorCredentials, generateFullVerificationEmail, generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generatePasswordResetEmail, generateEmailVerificationEmail, generateWelcomeEmail, getSubdomainUrl, getWebsiteUrl, getDashboardUrl, getPrivacyUrl, getVendorDashboardUrl, getPromoUrl, generateDocumentUpdateEmail, generatePromoCodeEmail, generateChefAllDocumentsApprovedEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingPaymentReceivedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateLocationEmailChangedEmail, generateStorageExtensionPendingApprovalEmail, generateStorageExtensionPaymentReceivedEmail, generateStorageExtensionApprovedEmail, generateStorageExtensionRejectedEmail, generateStorageExpiringWarningEmail, generateOverstayDetectedEmail, generatePenaltyChargedEmail, generateOverstayManagerNotificationEmail, generateNewKitchenApplicationManagerEmail, generateKitchenApplicationApprovedEmail, generateKitchenApplicationRejectedEmail, generateKitchenLicenseApprovedEmail, generateKitchenLicenseRejectedEmail, generateKitchenLicenseSubmittedAdminEmail, generateDamageClaimFiledEmail, generateDamageClaimResponseEmail, generateDamageClaimDisputedAdminEmail, generateDamageClaimDecisionEmail, generateDamageClaimChargedEmail, generateNewUserRegistrationAdminEmail;
+var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION_WINDOW, createTransporter, getEmailConfig, sendEmail, getDomainFromEmail, getOrganizationName, getUnsubscribeEmail, getSupportEmail, detectEmailProvider, formatDateForCalendar, escapeIcalText, generateEventUid, generateIcsFile, generateCalendarUrl, getUniformEmailStyles, generateStatusChangeEmail, generateVendorCredentials, generateFullVerificationEmail, generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generatePasswordResetEmail, generateEmailVerificationEmail, generateWelcomeEmail, getSubdomainUrl, getWebsiteUrl, getDashboardUrl, getPrivacyUrl, getVendorDashboardUrl, getPromoUrl, generateDocumentUpdateEmail, generatePromoCodeEmail, generateChefAllDocumentsApprovedEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingPaymentReceivedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateLocationEmailChangedEmail, generateStorageExtensionPendingApprovalEmail, generateStorageExtensionPaymentReceivedEmail, generateStorageExtensionApprovedEmail, generateStorageExtensionRejectedEmail, generateStorageExpiringWarningEmail, generateOverstayDetectedEmail, generatePenaltyChargedEmail, generateOverstayManagerNotificationEmail, generateNewKitchenApplicationManagerEmail, generateKitchenApplicationSubmittedChefEmail, generateKitchenApplicationApprovedEmail, generateKitchenApplicationRejectedEmail, generateKitchenLicenseApprovedEmail, generateKitchenLicenseRejectedEmail, generateKitchenLicenseSubmittedAdminEmail, generateDamageClaimFiledEmail, generateDamageClaimResponseEmail, generateDamageClaimDisputedAdminEmail, generateDamageClaimDecisionEmail, generateDamageClaimChargedEmail, generateNewUserRegistrationAdminEmail;
 var init_email = __esm({
   "server/email.ts"() {
     "use strict";
@@ -5734,15 +5910,19 @@ Visit: ${getWebsiteUrl()}
     <div class="content">
       <h2 class="greeting">Hello ${userData.fullName},</h2>
       <p class="message">${message}</p>
-      <div class="status-badge${userData.status === "approved" ? " approved" : userData.status === "rejected" ? " rejected" : ""}">
-        \u{1F4C4} ${docName}: ${userData.status.charAt(0).toUpperCase() + userData.status.slice(1)}
+      <div style="text-align: center;">
+        <div class="status-badge${userData.status === "approved" ? " approved" : userData.status === "rejected" ? " rejected" : ""}">
+          \u{1F4C4} ${docName}: ${userData.status.charAt(0).toUpperCase() + userData.status.slice(1)}
+        </div>
       </div>
       ${userData.adminFeedback ? `
       <div class="info-box">
         <strong>\u{1F4AC} Admin Feedback:</strong><br>
         ${userData.adminFeedback}
       </div>` : ""}
-      ${userData.status === "approved" ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>` : userData.status === "rejected" ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Update Document</a>` : ""}
+      <div style="text-align: center;">
+        ${userData.status === "approved" ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>` : userData.status === "rejected" ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Update Document</a>` : ""}
+      </div>
       <div class="divider"></div>
     </div>
     <div class="footer">
@@ -5862,13 +6042,20 @@ Visit: ${getWebsiteUrl()}
     generateWelcomeEmail = (userData) => {
       const userType = userData.role === "manager" ? "kitchen" : userData.role === "admin" ? "admin" : "chef";
       const dashboardUrl = getDashboardUrl(userType);
+      const firstName = userData.fullName.split(" ")[0];
+      const isManager = userData.role === "manager";
+      const bullet1 = isManager ? "List your kitchen, storage, and equipment availability so qualified chefs and food businesses can book your space." : "Apply to sell your creations through Local Cooks; we handle payments and delivery logistics so you can focus on cooking.";
+      const bullet2 = isManager ? "Turn underutilized hours and assets into a new revenue stream, while keeping full control over your schedule, pricing, and approvals." : "Request access to partnered commercial kitchens and book licensed, professional spaces when you need them.";
+      const additionalParagraph = isManager ? "Managing everything is simple: view and approve booking requests, adjust availability, and track usage directly from your dashboard." : `You&#8217;ll also find training resources, including Unilever modules and other materials aligned with HACCP principles and common food safety standards. These are learning tools only that can help you prepare for food handler certification requirements in your region.`;
+      const closingParagraph = isManager ? `We&#8217;re here to make this as smooth and valuable as possible for you and your team. If you&#8217;d like help setting up your listings or figuring out the best way to use Local Cooks for your kitchen, please reach out.` : `We&#8217;re here to support you at every step. If you&#8217;re unsure what to do next or how best to use the platform, please reach out.`;
+      const signOff = isManager ? "Best regards," : "Warmly,";
       const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Account Created - Local Cooks Community</title>
+  <title>Welcome to Local Cooks</title>
   ${getUniformEmailStyles()}
 </head>
 <body>
@@ -5877,65 +6064,82 @@ Visit: ${getWebsiteUrl()}
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">Hello ${userData.fullName},</h2>
-      <p class="message">
-        Welcome to Local Cooks Community! Your account has been successfully created and verified.
-      </p>
-      <p class="message">
-        You can now access your dashboard to complete your profile setup and start your food safety training modules.
-      </p>
-      <div class="status-badge approved">Status: Account Active</div>
-      <a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Welcome to Local Cooks, and thank you for joining us.</p>
+      <p class="message" style="margin-bottom: 10px;">Your account is now created and verified. From your dashboard, you can:</p>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">${bullet1}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">${bullet2}</td>
+        </tr>
+      </table>
+      <p class="message">${additionalParagraph}</p>
+      <p class="message" style="margin-bottom: 20px;">${closingParagraph}</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Verified</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Access Your Dashboard</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">${signOff}</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
     </div>
     <div class="footer">
-      <p class="footer-text">Thank you for joining <strong>Local Cooks</strong> Community!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
     </div>
   </div>
 </body>
 </html>`;
+      const bulletText1 = isManager ? "List your kitchen, storage, and equipment availability so qualified chefs and food businesses can book your space." : "Apply to sell your creations through Local Cooks; we handle payments and delivery logistics so you can focus on cooking.";
+      const bulletText2 = isManager ? "Turn underutilized hours and assets into a new revenue stream, while keeping full control over your schedule, pricing, and approvals." : "Request access to partnered commercial kitchens and book licensed, professional spaces when you need them.";
+      const additionalText = isManager ? "Managing everything is simple: view and approve booking requests, adjust availability, and track usage directly from your dashboard." : "You'll also find training resources, including Unilever modules and other materials aligned with HACCP principles and common food safety standards. These are learning tools only that can help you prepare for food handler certification requirements in your region.";
+      const closingText = isManager ? "We're here to make this as smooth and valuable as possible for you and your team. If you'd like help setting up your listings or figuring out the best way to use Local Cooks for your kitchen, please reach out." : "We're here to support you at every step. If you're unsure what to do next or how best to use the platform, please reach out.";
       const text2 = `
-Hello ${userData.fullName},
+Hi ${firstName},
 
-Welcome to Local Cooks Community! Your account has been successfully created and verified.
+Welcome to Local Cooks, and thank you for joining us.
 
-You can now access your dashboard to complete your profile setup and start your food safety training modules.
+Your account is now created and verified. From your dashboard, you can:
 
-Status: Account Active
+\u2022 ${bulletText1}
+\u2022 ${bulletText2}
+
+${additionalText}
+
+${closingText}
 
 Access your dashboard at: ${dashboardUrl}
 
-Thank you for joining Local Cooks Community!
+If you have any questions, contact us at support@localcook.shop
 
-If you have any questions, contact us at ${getSupportEmail()}.
+${signOff}
+The Local Cooks Team
 
-\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
   `.trim();
       return {
         to: userData.email,
-        subject: "Account Created - Local Cooks Community",
+        subject: "Welcome to Local Cooks",
         text: text2,
         html
       };
     };
     getSubdomainUrl = (userType = "main") => {
       const baseDomain = process.env.BASE_DOMAIN || "localcooks.ca";
-      if (process.env.NODE_ENV !== "production" && !process.env.BASE_URL) {
-        return "http://localhost:5000";
-      }
-      if (process.env.BASE_URL && !process.env.BASE_URL.includes("localhost")) {
-        const url = new URL(process.env.BASE_URL);
-        const hostname = url.hostname;
-        const parts = hostname.split(".");
-        if (parts.length >= 3) {
-          return process.env.BASE_URL;
+      const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
+      if (!isProduction2) {
+        const devBase = process.env.BASE_URL || "http://localhost:5001";
+        if (devBase.includes("localhost") || devBase.includes("127.0.0.1")) {
+          return devBase;
         }
-        if (userType === "main") {
-          return process.env.BASE_URL;
-        }
-        return `https://${userType}.${baseDomain}`;
       }
       if (userType === "main") {
         return `https://${baseDomain}`;
@@ -6723,8 +6927,10 @@ Visit: ${getWebsiteUrl()}
       <p class="message">
         You are now fully verified and can start using Local Cooks Community as a chef.
       </p>
-      <div class="status-badge approved">
-        \u2705 All Documents Approved
+      <div style="text-align: center;">
+        <div class="status-badge approved">
+          \u2705 All Documents Approved
+        </div>
       </div>
       <div class="info-box">
         <strong>\u{1F4C4} Approved Documents:</strong><br>
@@ -6735,7 +6941,9 @@ Visit: ${getWebsiteUrl()}
         <strong>\u{1F4AC} Admin Feedback:</strong><br>
         ${userData.adminFeedback}
       </div>` : ""}
-      <a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>
+      <div style="text-align: center;">
+        <a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>
+      </div>
       <div class="divider"></div>
     </div>
     <div class="footer">
@@ -6768,11 +6976,16 @@ Visit: ${getWebsiteUrl()}
       return { to: userData.email, subject, text: `Hello ${userData.name || "Manager"}, Your manager account has been created! Username: ${userData.username}, Password: ${userData.password}. Login at: ${loginUrl}`, html };
     };
     generateBookingNotificationEmail = (bookingData) => {
-      const subject = `New Kitchen Booking - ${bookingData.kitchenName}`;
+      const chefFirstName = bookingData.chefName.split(" ")[0];
+      const chefLastName = bookingData.chefName.includes(" ") ? bookingData.chefName.split(" ").slice(1).join(" ") : "";
+      const subject = `New Booking Request from ${chefFirstName}${chefLastName ? " " + chefLastName : ""}`;
       const timezone = bookingData.timezone || "America/St_Johns";
       const locationName = bookingData.locationName || bookingData.kitchenName;
       const bookingDetailsUrl = `${getDashboardUrl("kitchen")}/manager/booking/${bookingData.bookingId}`;
+      const dashboardUrl = getDashboardUrl("kitchen");
+      const managerFirstName = bookingData.managerName ? bookingData.managerName.split(" ")[0] : bookingData.managerEmail.split("@")[0];
       const bookingDateObj = bookingData.bookingDate instanceof Date ? bookingData.bookingDate : new Date(bookingData.bookingDate);
+      const formattedDate = bookingDateObj.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
       const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
       const calendarDescription = `Kitchen booking with ${bookingData.chefName} for ${bookingData.kitchenName}.
 
@@ -6792,7 +7005,6 @@ Notes: ${bookingData.specialNotes}` : ""}`;
         calendarDescription,
         timezone
       );
-      const calendarButtonText = detectEmailProvider(bookingData.managerEmail) === "outlook" ? "\u{1F4C5} Add to Outlook Calendar" : detectEmailProvider(bookingData.managerEmail) === "yahoo" ? "\u{1F4C5} Add to Yahoo Calendar" : detectEmailProvider(bookingData.managerEmail) === "apple" ? "\u{1F4C5} Add to Apple Calendar" : "\u{1F4C5} Add to Calendar";
       const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split("T")[0] : bookingData.bookingDate.split("T")[0];
       const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
       const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
@@ -6809,11 +7021,89 @@ Notes: ${bookingData.specialNotes}` : ""}`;
         eventUid
         // Use consistent UID for synchronization
       );
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">New Kitchen Booking</h2><p class="message">A chef has made a booking for your kitchen:</p><div class="info-box"><strong>\u{1F468}\u200D\u{1F373} Chef:</strong> ${bookingData.chefName}<br><strong>\u{1F3E2} Kitchen:</strong> ${bookingData.kitchenName}<br><strong>\u{1F4C5} Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>\u23F0 Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}${bookingData.specialNotes ? `<br><br><strong>\u{1F4DD} Notes:</strong> ${bookingData.specialNotes}` : ""}</div><p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>\u{1F4CE} Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${bookingDetailsUrl}" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">Review Booking</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${managerFirstName},</h2>
+      <p class="message" style="margin-bottom: 24px;">You've received a new booking request for ${bookingData.kitchenName} that needs your review.</p>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Chef Information:</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 16px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Name:</span> <strong style="color: #1e293b;">${bookingData.chefName}</strong></p>
+      </div>
+      <div style="margin: 0 0 24px 0; text-align: center;">
+        <a href="${dashboardUrl}" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0;">View Chef's Profile</a>
+      </div>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Booking Request Details:</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${bookingData.kitchenName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${bookingData.startTime} &#8211; ${bookingData.endTime}</strong></p>
+      </div>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Next Steps:</p>
+      <p class="message" style="margin-bottom: 20px;">Please review this request and respond within 24&#8211;48 hours so ${chefFirstName} can confirm their production schedule.</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${bookingDetailsUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review &amp; Respond to Request</a>
+      </div>
+      <p class="message" style="margin-top: 20px;">You can approve or decline this booking directly from your dashboard. If you need to discuss any details with the chef, you can use the built-in chat feature.</p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 20px 0 0 0;">A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: hsl(347, 91%, 51%); text-decoration: none;">add it to your calendar</a>.</p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 16px 0 0 0;">If you have any questions about this request, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Hi ${managerFirstName},
+
+You've received a new booking request for ${bookingData.kitchenName} that needs your review.
+
+Chef Information:
+Name: ${bookingData.chefName}
+
+Booking Request Details:
+Kitchen: ${bookingData.kitchenName}
+Date: ${formattedDate}
+Time: ${bookingData.startTime} - ${bookingData.endTime}
+
+Next Steps:
+Please review this request and respond within 24-48 hours so ${chefFirstName} can confirm their production schedule.
+
+Review & Respond: ${bookingDetailsUrl}
+
+You can approve or decline this booking directly from your dashboard. If you need to discuss any details with the chef, you can use the built-in chat feature.
+
+Add to calendar: ${calendarUrl}
+
+If you have any questions about this request, simply reply to this email or contact us at support@localcook.shop
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: bookingData.managerEmail,
         subject,
-        text: `New Kitchen Booking - Chef: ${bookingData.chefName}, Kitchen: ${bookingData.kitchenName}, Date: ${bookingDateObj.toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}. Add to calendar: ${calendarUrl}`,
+        text: text2,
         html,
         attachments: [{
           filename: "kitchen-booking.ics",
@@ -6842,82 +7132,158 @@ Notes: ${bookingData.specialNotes}` : ""}`;
       return { to: bookingData.managerEmail, subject, text: `Booking Cancelled - Chef: ${bookingData.chefName}, Kitchen: ${bookingData.kitchenName}, Date: ${new Date(bookingData.bookingDate).toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}`, html };
     };
     generateBookingStatusChangeNotificationEmail = (bookingData) => {
-      const subject = `Booking ${bookingData.status === "confirmed" ? "Confirmed" : "Updated"} - ${bookingData.kitchenName}`;
-      const statusColor = bookingData.status === "confirmed" ? "#16a34a" : "#dc2626";
-      const statusText = bookingData.status === "confirmed" ? "Confirmed" : "Cancelled";
+      const chefFirstName = bookingData.chefName.split(" ")[0];
       const timezone = bookingData.timezone || "America/St_Johns";
       const locationName = bookingData.locationName || bookingData.kitchenName;
+      const dashboardUrl = getDashboardUrl("kitchen");
+      const managerFirstName = bookingData.managerName ? bookingData.managerName.split(" ")[0] : bookingData.managerEmail.split("@")[0];
       const bookingDateObj = bookingData.bookingDate instanceof Date ? bookingData.bookingDate : new Date(bookingData.bookingDate);
-      let calendarUrl = "";
-      let calendarButtonText = "\u{1F4C5} Add to Calendar";
-      if (bookingData.status === "confirmed") {
-        const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
-        const calendarDescription = `Confirmed kitchen booking with ${bookingData.chefName} for ${bookingData.kitchenName}.
+      const formattedDate = bookingDateObj.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const [startH, startM] = bookingData.startTime.split(":").map(Number);
+      const [endH, endM] = bookingData.endTime.split(":").map(Number);
+      const durationMins = endH * 60 + endM - (startH * 60 + startM);
+      const durationHrs = Math.floor(durationMins / 60);
+      const durationRemMins = durationMins % 60;
+      const durationStr = durationRemMins > 0 ? `${durationHrs}h ${durationRemMins}m` : `${durationHrs}h`;
+      const subject = `You Confirmed a Booking for ${formattedDate}`;
+      const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
+      const calendarDescription = `Confirmed kitchen booking with ${bookingData.chefName} for ${bookingData.kitchenName}.
 
 Chef: ${bookingData.chefName}
 Date: ${bookingDateObj.toLocaleDateString()}
 Time: ${bookingData.startTime} - ${bookingData.endTime}
 Status: Confirmed`;
-        calendarUrl = generateCalendarUrl(
-          bookingData.managerEmail,
-          calendarTitle,
-          bookingData.bookingDate,
-          bookingData.startTime,
-          bookingData.endTime,
-          locationName,
-          calendarDescription,
-          timezone
-        );
-        const provider = detectEmailProvider(bookingData.managerEmail);
-        calendarButtonText = provider === "outlook" ? "\u{1F4C5} Add to Outlook Calendar" : provider === "yahoo" ? "\u{1F4C5} Add to Yahoo Calendar" : provider === "apple" ? "\u{1F4C5} Add to Apple Calendar" : "\u{1F4C5} Add to Calendar";
-      }
-      let attachments = [];
-      if (bookingData.status === "confirmed" && calendarUrl) {
-        const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split("T")[0] : bookingData.bookingDate.split("T")[0];
-        const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
-        const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
-        const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
-        const calendarDescription = `Confirmed kitchen booking with ${bookingData.chefName} for ${bookingData.kitchenName}.
+      const calendarUrl = generateCalendarUrl(
+        bookingData.managerEmail,
+        calendarTitle,
+        bookingData.bookingDate,
+        bookingData.startTime,
+        bookingData.endTime,
+        locationName,
+        calendarDescription,
+        timezone
+      );
+      const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split("T")[0] : bookingData.bookingDate.split("T")[0];
+      const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
+      const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
+      const eventUid = generateEventUid(bookingData.bookingDate, bookingData.startTime, locationName);
+      const icsContent = generateIcsFile(
+        calendarTitle,
+        startDateTime,
+        endDateTime,
+        locationName,
+        calendarDescription,
+        getSupportEmail(),
+        [bookingData.managerEmail],
+        // Manager is the primary attendee for this email
+        eventUid
+        // Use consistent UID for synchronization
+      );
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${managerFirstName},</h2>
+      <p class="message" style="margin-bottom: 24px;">Thank you for confirming this booking. The chef has been notified, and your kitchen is now reserved for their session.</p>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Booking Details:</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Chef:</span> <strong style="color: #1e293b;">${bookingData.chefName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${bookingData.startTime} &#8211; ${bookingData.endTime} (${durationStr})</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${bookingData.kitchenName}</strong></p>
+        ${bookingData.addons ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Equipment/Storage:</span> <strong style="color: #1e293b;">${bookingData.addons}</strong></p>` : ""}
+      </div>
+      <div style="margin: 0 0 24px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Confirmed</span>
+      </div>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Add to Your Calendar:</p>
+      <div style="margin: 0 0 8px 0; text-align: center;">
+        <a href="${calendarUrl}" target="_blank" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 8px 8px 0;">&#128197; Add to Google Calendar</a>
+        <a href="cid:kitchen-booking.ics" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 0 8px 0;">&#128197; Download ICS File</a>
+      </div>
+      <p class="message" style="margin-top: 24px; margin-bottom: 8px; font-weight: 600; color: #1e293b;">Before the Session:</p>
+      <p class="message" style="margin-bottom: 20px;">The chef will arrive at ${bookingData.startTime}. Please ensure the kitchen and requested equipment are accessible and ready. You can reach ${chefFirstName} directly through the chat in your dashboard if you need to coordinate any details.</p>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Need to Cancel or Reschedule?</p>
+      <p class="message" style="margin-bottom: 20px;">If something comes up, please use the dashboard tools and notify the chef as soon as possible. Cancellations within 24 hours may affect your booking acceptance rate.</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Go to Your Dashboard</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions or need assistance, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <p class="message" style="margin-top: 20px; color: #64748b;">Thank you for being part of Local Cooks.</p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Hi ${managerFirstName},
 
+Thank you for confirming this booking. The chef has been notified, and your kitchen is now reserved for their session.
+
+Booking Details:
 Chef: ${bookingData.chefName}
-Date: ${bookingDateObj.toLocaleDateString()}
-Time: ${bookingData.startTime} - ${bookingData.endTime}
-Status: Confirmed`;
-        const eventUid = generateEventUid(bookingData.bookingDate, bookingData.startTime, locationName);
-        const icsContent = generateIcsFile(
-          calendarTitle,
-          startDateTime,
-          endDateTime,
-          locationName,
-          calendarDescription,
-          getSupportEmail(),
-          [bookingData.managerEmail],
-          // Manager is the primary attendee for this email
-          eventUid
-          // Use consistent UID for synchronization
-        );
-        attachments = [{
-          filename: "kitchen-booking.ics",
-          content: icsContent,
-          contentType: "text/calendar; charset=utf-8; method=REQUEST"
-        }];
-      }
-      const calendarButton = bookingData.status === "confirmed" && calendarUrl ? `<p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>\u{1F4CE} Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl("kitchen")}/manager/bookings" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View Bookings</a></div>` : `<a href="${getDashboardUrl("kitchen")}/manager/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Bookings</a>`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Booking ${statusText}</h2><p class="message">The booking status has been updated:</p><div class="info-box"><strong>\u{1F468}\u200D\u{1F373} Chef:</strong> ${bookingData.chefName}<br><strong>\u{1F3E2} Kitchen:</strong> ${bookingData.kitchenName}<br><strong>\u{1F4C5} Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>\u23F0 Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>\u{1F4CA} Status:</strong> <span style="color: ${statusColor}; font-weight: 600;">${statusText}</span></div>${calendarButton}<div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-      const textCalendar = bookingData.status === "confirmed" && calendarUrl ? ` Add to calendar: ${calendarUrl}` : "";
+Date: ${formattedDate}
+Time: ${bookingData.startTime} \u2013 ${bookingData.endTime} (${durationStr})
+Kitchen: ${bookingData.kitchenName}
+${bookingData.addons ? `Equipment/Storage: ${bookingData.addons}
+` : ""}
+Add to your calendar: ${calendarUrl}
+
+Before the Session:
+The chef will arrive at ${bookingData.startTime}. Please ensure the kitchen and requested equipment are accessible and ready. You can reach ${chefFirstName} directly through the chat in your dashboard if you need to coordinate any details.
+
+Need to Cancel or Reschedule?
+If something comes up, please use the dashboard tools and notify the chef as soon as possible. Cancellations within 24 hours may affect your booking acceptance rate.
+
+Dashboard: ${dashboardUrl}
+
+If you have any questions or need assistance, simply reply to this email or contact us at support@localcook.shop
+
+Thank you for being part of Local Cooks.
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: bookingData.managerEmail,
         subject,
-        text: `Booking ${statusText} - Chef: ${bookingData.chefName}, Kitchen: ${bookingData.kitchenName}, Date: ${bookingDateObj.toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}, Status: ${statusText}${textCalendar}`,
+        text: text2,
         html,
-        attachments
+        attachments: [{
+          filename: "kitchen-booking.ics",
+          content: icsContent,
+          contentType: "text/calendar; charset=utf-8; method=REQUEST"
+        }]
       };
     };
     generateBookingRequestEmail = (bookingData) => {
-      const subject = `Booking Request Received - ${bookingData.kitchenName}`;
+      const subject = `Your Booking Request Has Been Submitted`;
       const timezone = bookingData.timezone || "America/St_Johns";
       const locationName = bookingData.locationName || bookingData.kitchenName;
+      const dashboardUrl = getDashboardUrl();
+      const firstName = bookingData.chefName.split(" ")[0];
       const bookingDateObj = bookingData.bookingDate instanceof Date ? bookingData.bookingDate : new Date(bookingData.bookingDate);
+      const formattedDate = bookingDateObj.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
       const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
       const calendarDescription = `Kitchen booking request for ${bookingData.kitchenName}.
 
@@ -6936,8 +7302,6 @@ Notes: ${bookingData.specialNotes}` : ""}`;
         calendarDescription,
         timezone
       );
-      const provider = detectEmailProvider(bookingData.chefEmail);
-      const calendarButtonText = provider === "outlook" ? "\u{1F4C5} Add to Outlook Calendar" : provider === "yahoo" ? "\u{1F4C5} Add to Yahoo Calendar" : provider === "apple" ? "\u{1F4C5} Add to Apple Calendar" : "\u{1F4C5} Add to Calendar";
       const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split("T")[0] : bookingData.bookingDate.split("T")[0];
       const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
       const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
@@ -6954,11 +7318,87 @@ Notes: ${bookingData.specialNotes}` : ""}`;
         eventUid
         // Use consistent UID for synchronization
       );
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${bookingData.chefName},</h2><p class="message">We've received your kitchen booking request! The manager has been notified and will review it shortly.</p><div class="info-box"><strong>\u{1F3E2} Kitchen:</strong> ${bookingData.kitchenName}<br><strong>\u{1F4C5} Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>\u23F0 Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Pending Approval</span>${bookingData.specialNotes ? `<br><br><strong>\u{1F4DD} Notes:</strong> ${bookingData.specialNotes}` : ""}</div><p class="message">You'll receive a confirmation email once the manager approves your booking.</p><p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>\u{1F4CE} Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl()}/book-kitchen" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View My Bookings</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Thank you for submitting your booking request for ${bookingData.kitchenName}. We&#8217;ve sent it to the kitchen manager and are awaiting their confirmation.</p>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Request Details:</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${bookingData.kitchenName}</strong></p>
+        ${bookingData.locationAddress ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${bookingData.locationAddress}</strong></p>` : locationName !== bookingData.kitchenName ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${locationName}</strong></p>` : ""}
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${bookingData.startTime} &#8211; ${bookingData.endTime}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Status:</span> <strong style="color: #f59e0b;">Pending Manager Confirmation</strong></p>
+      </div>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">What happens next:</p>
+      <p class="message" style="margin-bottom: 20px;">The kitchen manager will review your request and respond within 24&#8211;48 hours. You&#8217;ll receive an email notification as soon as they confirm or decline your booking.</p>
+      <p class="message" style="margin-bottom: 20px;">In the meantime, you can use the built-in chat with the kitchen manager if you need to clarify any details about your request.</p>
+      <p class="message" style="margin-bottom: 20px;">You can also check your request status anytime from your dashboard.</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Pending Confirmation</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${calendarUrl}" target="_blank" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 8px 0 0;">Add to Calendar</a>
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Hi ${firstName},
+
+Thank you for submitting your booking request for ${bookingData.kitchenName}. We've sent it to the kitchen manager and are awaiting their confirmation.
+
+Request Details:
+Kitchen: ${bookingData.kitchenName}
+${bookingData.locationAddress ? `Location: ${bookingData.locationAddress}
+` : ""}Date: ${formattedDate}
+Time: ${bookingData.startTime} \u2013 ${bookingData.endTime}
+Status: Pending Manager Confirmation
+
+What happens next:
+The kitchen manager will review your request and respond within 24\u201348 hours. You'll receive an email notification as soon as they confirm or decline your booking.
+
+In the meantime, you can use the built-in chat with the kitchen manager if you need to clarify any details about your request.
+
+You can also check your request status anytime from your dashboard: ${dashboardUrl}
+
+Add to calendar: ${calendarUrl}
+
+If you have any questions, simply reply to this email or contact us at support@localcook.shop
+
+Best,
+The Local Cooks Team
+
+${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: bookingData.chefEmail,
         subject,
-        text: `Hello ${bookingData.chefName}, We've received your kitchen booking request! Kitchen: ${bookingData.kitchenName}, Date: ${bookingDateObj.toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}. Status: Pending Approval. You'll receive a confirmation email once approved. Add to calendar: ${calendarUrl}`,
+        text: text2,
         html,
         attachments: [{
           filename: "kitchen-booking.ics",
@@ -6968,10 +7408,19 @@ Notes: ${bookingData.specialNotes}` : ""}`;
       };
     };
     generateBookingConfirmationEmail = (bookingData) => {
-      const subject = `Booking Confirmed - ${bookingData.kitchenName}`;
       const timezone = bookingData.timezone || "America/St_Johns";
       const locationName = bookingData.locationName || bookingData.kitchenName;
+      const dashboardUrl = getDashboardUrl();
+      const firstName = bookingData.chefName.split(" ")[0];
       const bookingDateObj = bookingData.bookingDate instanceof Date ? bookingData.bookingDate : new Date(bookingData.bookingDate);
+      const formattedDate = bookingDateObj.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const [startH, startM] = bookingData.startTime.split(":").map(Number);
+      const [endH, endM] = bookingData.endTime.split(":").map(Number);
+      const durationMins = endH * 60 + endM - (startH * 60 + startM);
+      const durationHrs = Math.floor(durationMins / 60);
+      const durationRemMins = durationMins % 60;
+      const durationStr = durationRemMins > 0 ? `${durationHrs}h ${durationRemMins}m` : `${durationHrs}h`;
+      const subject = `Your Kitchen Booking Is Confirmed for ${formattedDate}`;
       const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
       const calendarDescription = `Confirmed kitchen booking for ${bookingData.kitchenName}.
 
@@ -6990,8 +7439,6 @@ Notes: ${bookingData.specialNotes}` : ""}`;
         calendarDescription,
         timezone
       );
-      const provider = detectEmailProvider(bookingData.chefEmail);
-      const calendarButtonText = provider === "outlook" ? "\u{1F4C5} Add to Outlook Calendar" : provider === "yahoo" ? "\u{1F4C5} Add to Yahoo Calendar" : provider === "apple" ? "\u{1F4C5} Add to Apple Calendar" : "\u{1F4C5} Add to Calendar";
       const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split("T")[0] : bookingData.bookingDate.split("T")[0];
       const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
       const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
@@ -7008,11 +7455,107 @@ Notes: ${bookingData.specialNotes}` : ""}`;
         eventUid
         // Use consistent UID for synchronization
       );
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${bookingData.chefName},</h2><p class="message">Great news! Your kitchen booking has been <strong style="color: #16a34a;">CONFIRMED</strong> \u2705</p><div class="info-box"><strong>\u{1F3E2} Kitchen:</strong> ${bookingData.kitchenName}<br><strong>\u{1F4C5} Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>\u23F0 Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #16a34a; font-weight: 600;">Confirmed</span>${bookingData.specialNotes ? `<br><br><strong>\u{1F4DD} Notes:</strong> ${bookingData.specialNotes}` : ""}</div><p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>\u{1F4CE} Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl()}/book-kitchen" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View My Bookings</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you need to make changes, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 24px;">Great news &#8212; your booking at ${bookingData.kitchenName} has been confirmed!</p>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Booking Details:</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${bookingData.kitchenName}</strong></p>
+        ${bookingData.locationAddress ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${bookingData.locationAddress}</strong></p>` : locationName !== bookingData.kitchenName ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${locationName}</strong></p>` : ""}
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${bookingData.startTime} &#8211; ${bookingData.endTime} (${durationStr})</strong></p>
+        ${bookingData.addons ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Equipment/Storage Booked:</span> <strong style="color: #1e293b;">${bookingData.addons}</strong></p>` : ""}
+      </div>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Confirmed</span>
+      </div>
+      <p class="message" style="margin-top: 24px; margin-bottom: 8px; font-weight: 600; color: #1e293b;">Add to Your Calendar:</p>
+      <div style="margin: 0 0 8px 0; text-align: center;">
+        <a href="${calendarUrl}" target="_blank" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 8px 8px 0;">&#128197; Add to Google Calendar</a>
+        <a href="cid:kitchen-booking.ics" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 0 8px 0;">&#128197; Download ICS File</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 0 0 24px 0; text-align: center;">(Or open the attached calendar invite to add this booking to your preferred calendar app)</p>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Before Your Session:</p>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Arrive 10&#8211;15 minutes early for check-in</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Review the kitchen&#8217;s specific terms and policies in your dashboard</td>
+        </tr>
+      </table>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Need to Make Changes?</p>
+      <p class="message" style="margin-bottom: 20px;">If you need to reschedule or cancel, please use your dashboard.</p>
+      <p class="message" style="margin-bottom: 20px;">You can also reach the kitchen manager directly through the chat in your dashboard.</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Go to Your Dashboard</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">Contact us anytime at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a> or reply to this email.</p>
+      <p class="message" style="margin-top: 20px; font-style: italic; color: #64748b;">We&#8217;re excited for your upcoming session and look forward to supporting your culinary work!</p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Hi ${firstName},
+
+Great news \u2014 your booking at ${bookingData.kitchenName} has been confirmed!
+
+Booking Details:
+Kitchen: ${bookingData.kitchenName}
+${bookingData.locationAddress ? `Location: ${bookingData.locationAddress}
+` : ""}Date: ${formattedDate}
+Time: ${bookingData.startTime} \u2013 ${bookingData.endTime} (${durationStr})
+${bookingData.addons ? `Equipment/Storage Booked: ${bookingData.addons}
+` : ""}
+Add to your calendar: ${calendarUrl}
+(Or open the attached calendar invite to add this booking to your preferred calendar app)
+
+Before Your Session:
+\u2022 Arrive 10\u201315 minutes early for check-in
+\u2022 Review the kitchen's specific terms and policies in your dashboard
+
+Need to Make Changes?
+If you need to reschedule or cancel, please use your dashboard: ${dashboardUrl}
+You can also reach the kitchen manager directly through the chat in your dashboard.
+
+Contact us anytime at support@localcook.shop or reply to this email.
+
+We're excited for your upcoming session and look forward to supporting your culinary work!
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: bookingData.chefEmail,
         subject,
-        text: `Hello ${bookingData.chefName}, Great news! Your kitchen booking has been CONFIRMED! Kitchen: ${bookingData.kitchenName}, Date: ${bookingDateObj.toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}. Add to calendar: ${calendarUrl}`,
+        text: text2,
         html,
         attachments: [{
           filename: "kitchen-booking.ics",
@@ -7170,25 +7713,272 @@ Notes: ${bookingData.specialNotes}` : ""}`;
       };
     };
     generateNewKitchenApplicationManagerEmail = (data) => {
-      const subject = `New Kitchen Application - ${data.chefName}`;
+      const subject = `New Kitchen Access Application from ${data.chefName}`;
       const dashboardUrl = `${getDashboardUrl("kitchen")}/manager/applications`;
-      const formattedDate = data.submittedAt.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">New Kitchen Application</h2><p class="message">A chef has submitted an application to use your kitchen:</p><div class="info-box"><strong>\u{1F468}\u200D\u{1F373} Chef Name:</strong> ${data.chefName}<br><strong>\u{1F4E7} Email:</strong> ${data.chefEmail}<br><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F4C5} Submitted:</strong> ${formattedDate}</div><p class="message">Please review this application and approve or reject it from your manager dashboard.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review Application</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const managerFirstName = data.managerName ? data.managerName.split(" ")[0] : data.managerEmail.split("@")[0];
+      const chefFirstName = data.chefName.split(" ")[0];
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${managerFirstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">You&#8217;ve received a new application from a chef requesting access to ${data.locationName}.</p>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Chef Information:</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.6; color: #475569; margin: 0;"><span style="color: #64748b;">Name:</span> <strong style="color: #1e293b;">${data.chefName}</strong></p>
+      </div>
+      <div style="margin: 0 0 24px 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: #f8fafc; color: #1e293b !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0; border: 1px solid #e2e8f0;">View Dashboard</a>
+      </div>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Next steps:</p>
+      <p class="message" style="margin-bottom: 20px;">Please review ${chefFirstName}&#8217;s profile and application in your dashboard and decide whether to approve or decline their request.</p>
+      <div style="margin: 0 0 8px 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review Application</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 16px 0 0 0; text-align: center;">We recommend responding within 3&#8211;5 business days.</p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 16px 0 0 0;">If you have any questions about this application, you can reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Hi ${managerFirstName},
+
+You've received a new application from a chef requesting access to ${data.locationName}.
+
+Chef Information:
+Name: ${data.chefName}
+
+Next steps:
+Please review ${chefFirstName}'s profile and application in your dashboard and decide whether to approve or decline their request.
+
+Review application at: ${dashboardUrl}
+
+We recommend responding within 3\u20135 business days.
+
+If you have any questions about this application, you can reply to this email or contact us at support@localcook.shop
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: data.managerEmail,
         subject,
-        text: `New Kitchen Application - Chef: ${data.chefName} (${data.chefEmail}) has applied to ${data.locationName}. Submitted: ${formattedDate}. Please review from your manager dashboard.`,
+        text: text2,
+        html
+      };
+    };
+    generateKitchenApplicationSubmittedChefEmail = (data) => {
+      const subject = `Step 1 Approved for ${data.locationName} \u2013 Next Steps`;
+      const dashboardUrl = getDashboardUrl();
+      const firstName = data.chefName.split(" ")[0];
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Good news &#8212; your Step 1 application for ${data.locationName} has been approved.</p>
+      <p class="message" style="margin-bottom: 24px;">You now have access to the chat feature with this kitchen inside your Local Cooks dashboard. This allows you and the kitchen manager to coordinate directly and share any information needed to complete Step 2.</p>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">What to do next:</p>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Use the chat in your dashboard to connect with the kitchen manager</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Confirm any requirements or details they need from you</td>
+        </tr>
+      </table>
+      <p class="message" style="margin-bottom: 10px;">When you&#8217;re ready, complete Step 2 of your application by submitting your:</p>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Food establishment certificate</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Insurance documents (if required)</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Any additional information requested in the Step 2 form</td>
+        </tr>
+      </table>
+      <p class="message" style="margin-bottom: 20px;">Once Step 2 is submitted and approved, you&#8217;ll be able to start booking this kitchen through Local Cooks.</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Step 1 Approved</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Go to Your Dashboard</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions about the process, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Hi ${firstName},
+
+Good news \u2014 your Step 1 application for ${data.locationName} has been approved.
+
+You now have access to the chat feature with this kitchen inside your Local Cooks dashboard. This allows you and the kitchen manager to coordinate directly and share any information needed to complete Step 2.
+
+What to do next:
+
+\u2022 Use the chat in your dashboard to connect with the kitchen manager
+\u2022 Confirm any requirements or details they need from you
+
+When you're ready, complete Step 2 of your application by submitting your:
+
+\u2022 Food establishment certificate
+\u2022 Insurance documents (if required)
+\u2022 Any additional information requested in the Step 2 form
+
+Once Step 2 is submitted and approved, you'll be able to start booking this kitchen through Local Cooks.
+
+Go to your dashboard at: ${dashboardUrl}
+
+If you have any questions about the process, simply reply to this email or contact us at support@localcook.shop
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
+      return {
+        to: data.chefEmail,
+        subject,
+        text: text2,
         html
       };
     };
     generateKitchenApplicationApprovedEmail = (data) => {
-      const subject = `Kitchen Application Approved - ${data.locationName}`;
-      const dashboardUrl = `${getDashboardUrl()}/book-kitchen`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Great news! \u{1F389} Your kitchen application has been <strong style="color: #16a34a;">APPROVED</strong>!</p><div class="info-box"><strong>\u{1F3E2} Location:</strong> ${data.locationName}${data.kitchenName ? `<br><strong>\u{1F373} Kitchen:</strong> ${data.kitchenName}` : ""}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">You can now book time slots at this kitchen. Visit your dashboard to make your first booking!</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Book Kitchen Now</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const subject = `You're Fully Approved for ${data.locationName} \u2013 You Can Now Book`;
+      const dashboardUrl = getDashboardUrl();
+      const firstName = data.chefName.split(" ")[0];
+      const kitchenDisplay = data.kitchenName || data.locationName;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Great news &#8212; your Step 2 application for ${data.locationName} has been approved.</p>
+      <p class="message" style="margin-bottom: 24px;">You now have full access to this kitchen through Local Cooks and can start submitting booking requests based on the kitchen&#8217;s availability.</p>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">What you can do now:</p>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">View ${kitchenDisplay}&#8217;s schedule and available time slots</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Submit booking requests directly from your dashboard</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Coordinate final details with the kitchen via the built-in chat</td>
+        </tr>
+      </table>
+      <p class="message" style="margin-bottom: 20px;">Please make sure you continue to follow the kitchen&#8217;s specific guidelines and any local food safety requirements when using the space.</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Fully Approved</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Go to Your Dashboard</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions about bookings or how to use the platform, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Hi ${firstName},
+
+Great news \u2014 your Step 2 application for ${data.locationName} has been approved.
+
+You now have full access to this kitchen through Local Cooks and can start submitting booking requests based on the kitchen's availability.
+
+What you can do now:
+
+\u2022 View ${kitchenDisplay}'s schedule and available time slots
+\u2022 Submit booking requests directly from your dashboard
+\u2022 Coordinate final details with the kitchen via the built-in chat
+
+Please make sure you continue to follow the kitchen's specific guidelines and any local food safety requirements when using the space.
+
+Go to your dashboard at: ${dashboardUrl}
+
+If you have any questions about bookings or how to use the platform, simply reply to this email or contact us at support@localcook.shop
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: data.chefEmail,
         subject,
-        text: `Hello ${data.chefName}, Great news! Your kitchen application to ${data.locationName} has been APPROVED! You can now book time slots at this kitchen.`,
+        text: text2,
         html
       };
     };
@@ -7204,14 +7994,87 @@ Notes: ${bookingData.specialNotes}` : ""}`;
       };
     };
     generateKitchenLicenseApprovedEmail = (data) => {
-      const subject = `Kitchen License Approved - ${data.locationName}`;
+      const subject = `Your Kitchen Is Approved and Ready to List on Local Cooks`;
       const dashboardUrl = `${getDashboardUrl("kitchen")}/manager/booking-dashboard`;
-      const formattedDate = data.approvedAt.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.managerName},</h2><p class="message">Great news! \u{1F389} Your kitchen license has been <strong style="color: #16a34a;">APPROVED</strong> by the admin team!</p><div class="info-box"><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F4C5} Approved On:</strong> ${formattedDate}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">Your kitchen is now fully licensed and can accept chef applications and bookings.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Dashboard</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const firstName = data.managerName.split(" ")[0];
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Great news &#8212; your kitchen license has been reviewed and approved. Your account is now fully set up to host chefs and food businesses on Local Cooks.</p>
+      <p class="message" style="margin-bottom: 10px;">From your dashboard, you can now:</p>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Create and publish listings for your kitchen, storage, and equipment</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Set your availability and pricing to match your schedule and capacity</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Review and manage booking requests from verified chefs and food entrepreneurs</td>
+        </tr>
+      </table>
+      <p class="message" style="margin-bottom: 20px;">This is a great moment to add clear details and good photos to your listings so chefs can quickly understand what your space offers and when it&#8217;s available.</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Approved</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Go to Your Dashboard</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0; text-align: center;">We&#8217;re here to help you get the most out of the platform. If you&#8217;d like guidance on setting up your first listing or optimizing your availability and pricing, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Hi ${firstName},
+
+Great news \u2014 your kitchen license has been reviewed and approved. Your account is now fully set up to host chefs and food businesses on Local Cooks.
+
+From your dashboard, you can now:
+
+\u2022 Create and publish listings for your kitchen, storage, and equipment
+\u2022 Set your availability and pricing to match your schedule and capacity
+\u2022 Review and manage booking requests from verified chefs and food entrepreneurs
+
+This is a great moment to add clear details and good photos to your listings so chefs can quickly understand what your space offers and when it's available.
+
+Go to your dashboard at: ${dashboardUrl}
+
+We're here to help you get the most out of the platform. If you'd like guidance on setting up your first listing or optimizing your availability and pricing, simply reply to this email or contact us at support@localcook.shop
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: data.managerEmail,
         subject,
-        text: `Hello ${data.managerName}, Great news! Your kitchen license for ${data.locationName} has been APPROVED! Approved on: ${formattedDate}. Your kitchen can now accept chef applications and bookings.`,
+        text: text2,
         html
       };
     };
@@ -8222,14 +9085,15 @@ async function createOverstayHistoryEntry(overstayRecordId, previousStatus, newS
 async function getOverstayHistory(overstayRecordId) {
   return db.select().from(storageOverstayHistory).where(eq3(storageOverstayHistory.overstayRecordId, overstayRecordId)).orderBy(desc(storageOverstayHistory.createdAt));
 }
-async function getOverstayStats(locationId) {
-  const allRecords = await db.select({
+async function getOverstayStats(locationIds) {
+  const query = db.select({
     status: storageOverstayRecords.status,
     calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
     finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
     locationId: kitchens.locationId
   }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq3(storageListings.kitchenId, kitchens.id));
-  const filtered = locationId ? allRecords.filter((r) => r.locationId === locationId) : allRecords;
+  const allRecords = locationIds && locationIds.length > 0 ? await query.where(inArray(kitchens.locationId, locationIds)) : await query;
+  const filtered = allRecords;
   const stats = {
     total: filtered.length,
     pendingReview: filtered.filter((r) => r.status === "pending_review").length,
@@ -11659,10 +12523,10 @@ var init_location_repository = __esm({
             contactEmail: dto.contactEmail || null,
             contactPhone: dto.contactPhone || null,
             preferredContactMethod: dto.preferredContactMethod || "email",
-            cancellationPolicyHours: dto.cancellationPolicyHours || 24,
+            cancellationPolicyHours: dto.cancellationPolicyHours ?? 24,
             cancellationPolicyMessage: dto.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
             defaultDailyBookingLimit: dto.defaultDailyBookingLimit || 2,
-            minimumBookingWindowHours: dto.minimumBookingWindowHours || 1,
+            minimumBookingWindowHours: dto.minimumBookingWindowHours ?? 1,
             logoUrl: dto.logoUrl || null,
             brandImageUrl: dto.brandImageUrl || null,
             description: dto.description || null,
@@ -11875,10 +12739,10 @@ async function validateLocationInput(data) {
     address: z3.string().min(5, "Address must be at least 5 characters"),
     notificationEmail: z3.string().email("Invalid email format").optional(),
     notificationPhone: z3.string().optional(),
-    cancellationPolicyHours: z3.number().positive("Cancellation policy hours must be positive").optional(),
+    cancellationPolicyHours: z3.number().int().min(0, "Cancellation policy hours cannot be negative").optional(),
     cancellationPolicyMessage: z3.string().optional(),
     defaultDailyBookingLimit: z3.number().positive("Daily booking limit must be positive").optional(),
-    minimumBookingWindowHours: z3.number().positive("Minimum booking window must be positive").optional(),
+    minimumBookingWindowHours: z3.number().int().min(0, "Minimum booking window cannot be negative").max(168, "Minimum booking window cannot exceed 168 hours").optional(),
     logoUrl: z3.string().optional(),
     brandImageUrl: z3.string().optional(),
     timezone: z3.string().optional(),
@@ -11915,7 +12779,7 @@ async function validateKitchenInput(data) {
     isActive: z3.boolean().optional(),
     hourlyRate: z3.number().positive("Hourly rate must be positive").optional(),
     currency: z3.string().length(3).optional(),
-    minimumBookingHours: z3.number().positive("Minimum booking hours must be positive").optional(),
+    minimumBookingHours: z3.number().int("Minimum booking hours must be a whole number").min(0, "Minimum booking hours cannot be negative").max(24, "Minimum booking hours cannot exceed 24").optional(),
     pricingModel: z3.enum(["hourly", "daily", "weekly", "monthly-flat", "per-cubic-foot"]).optional()
   });
   try {
@@ -23558,11 +24422,16 @@ var init_bookings = __esm({
           return res.status(400).json({ error: "Chef email not found" });
         }
         const chefEmail = chef.username;
+        const minimumBookingHours = kitchenDetails.minimumBookingHours ?? 0;
+        if (minimumBookingHours > 0 && selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0 && selectedSlots.length < minimumBookingHours) {
+          return res.status(400).json({
+            error: `This kitchen requires a minimum of ${minimumBookingHours} hour${minimumBookingHours > 1 ? "s" : ""} per booking. You selected ${selectedSlots.length}.`
+          });
+        }
         const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
         let totalPriceCents;
         let effectiveDurationHours;
         if (selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0) {
-          const minimumBookingHours = kitchenDetails.minimumBookingHours || 1;
           effectiveDurationHours = Math.max(selectedSlots.length, minimumBookingHours);
           totalPriceCents = Math.round(kitchenPricing.hourlyRateCents * effectiveDurationHours);
           console.log(`[Checkout] Staggered slots pricing: ${selectedSlots.length} slots, effective ${effectiveDurationHours} hours, $${(totalPriceCents / 100).toFixed(2)}`);
@@ -23687,6 +24556,12 @@ var init_bookings = __esm({
         const kitchenLocationId1 = kitchenDetails.locationId;
         if (!kitchenLocationId1) {
           return res.status(400).json({ error: "Kitchen location not found" });
+        }
+        const minimumBookingHours = kitchenDetails.minimumBookingHours ?? 0;
+        if (minimumBookingHours > 0 && selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0 && selectedSlots.length < minimumBookingHours) {
+          return res.status(400).json({
+            error: `This kitchen requires a minimum of ${minimumBookingHours} hour${minimumBookingHours > 1 ? "s" : ""} per booking. You selected ${selectedSlots.length}.`
+          });
         }
         const applicationStatus = await chefService.getApplicationStatusForBooking(chefId, kitchenLocationId1);
         if (!applicationStatus.canBook) {
@@ -24724,6 +25599,10 @@ import {
   lte as lte3
 } from "drizzle-orm";
 import { format as format5 } from "date-fns";
+async function verifyManagerOwnsOverstay(overstayRecordId, managerId) {
+  const [row] = await db.select({ managerId: locations.managerId }).from(storageOverstayRecords).innerJoin(storageBookings, eq30(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq30(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq30(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).where(eq30(storageOverstayRecords.id, overstayRecordId)).limit(1);
+  return row?.managerId === managerId;
+}
 async function getManagerIdForBooking(bookingId, bookingType, db2) {
   if (bookingType === "kitchen" || bookingType === "bundle") {
     const [row] = await db2.select({ managerId: locations.managerId }).from(kitchenBookings).innerJoin(kitchens, eq30(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).where(eq30(kitchenBookings.id, bookingId)).limit(1);
@@ -26636,8 +27515,20 @@ var init_manager = __esm({
           if (currency !== void 0 && typeof currency !== "string") {
             return res.status(400).json({ error: "Currency must be a string" });
           }
-          if (minimumBookingHours !== void 0 && (typeof minimumBookingHours !== "number" || minimumBookingHours < 1)) {
-            return res.status(400).json({ error: "Minimum booking hours must be at least 1" });
+          if (minimumBookingHours !== void 0 && (typeof minimumBookingHours !== "number" || minimumBookingHours < 0 || minimumBookingHours > 24 || !Number.isInteger(minimumBookingHours))) {
+            return res.status(400).json({ error: "Minimum booking hours must be a whole number between 0 and 24" });
+          }
+          if (minimumBookingHours !== void 0 && minimumBookingHours > 0) {
+            const locationId = kitchen.locationId;
+            if (locationId) {
+              const location = await locationService.getLocationById(locationId);
+              const dailyLimit = location?.defaultDailyBookingLimit ?? 24;
+              if (minimumBookingHours > dailyLimit) {
+                return res.status(400).json({
+                  error: `Minimum booking hours (${minimumBookingHours}) cannot exceed the location's maximum daily booking limit (${dailyLimit} hours). Please increase the daily limit first or reduce the minimum.`
+                });
+              }
+            }
           }
           if (pricingModel !== void 0 && !["hourly", "daily", "weekly"].includes(pricingModel)) {
             return res.status(400).json({
@@ -26649,8 +27540,6 @@ var init_manager = __esm({
             pricing.hourlyRate = hourlyRate === null ? null : hourlyRate;
           }
           if (currency !== void 0) pricing.currency = currency;
-          if (minimumBookingHours !== void 0)
-            pricing.minimumBookingHours = minimumBookingHours;
           if (minimumBookingHours !== void 0)
             pricing.minimumBookingHours = minimumBookingHours;
           if (pricingModel !== void 0) pricing.pricingModel = pricingModel;
@@ -27751,6 +28640,29 @@ var init_manager = __esm({
                     smsError
                   );
                 }
+                if (location.notificationEmail) {
+                  try {
+                    const managerConfirmEmail = generateBookingStatusChangeNotificationEmail({
+                      managerEmail: location.notificationEmail,
+                      chefName: chef.username,
+                      kitchenName: kitchen.name,
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime,
+                      status: "confirmed",
+                      timezone,
+                      locationName
+                    });
+                    const managerEmailSent = await sendEmail(managerConfirmEmail);
+                    if (managerEmailSent) {
+                      logger.info(`[Manager] \u2705 Sent booking confirmed email to manager: ${location.notificationEmail}`);
+                    } else {
+                      logger.error(`[Manager] \u274C Failed to send booking confirmed email to manager: ${location.notificationEmail}`);
+                    }
+                  } catch (managerEmailError) {
+                    logger.error(`[Manager] Error sending booking confirmed email to manager:`, managerEmailError);
+                  }
+                }
                 logger.info(
                   `[Manager] Booking ${id} confirmed by manager ${user.id}`
                 );
@@ -28007,9 +28919,22 @@ var init_manager = __esm({
               error: "Daily booking limit must be between 1 and 24 hours"
             });
           }
-          if (minimumBookingWindowHours !== void 0 && (typeof minimumBookingWindowHours !== "number" || minimumBookingWindowHours < 0 || minimumBookingWindowHours > 168)) {
+          if (defaultDailyBookingLimit !== void 0) {
+            const locationKitchens = await db.select({ id: kitchens.id, name: kitchens.name, minimumBookingHours: kitchens.minimumBookingHours }).from(kitchens).where(eq30(kitchens.locationId, locationIdNum));
+            const conflicting = locationKitchens.filter((k) => {
+              const minHours = k.minimumBookingHours ? parseFloat(String(k.minimumBookingHours)) : 0;
+              return minHours > defaultDailyBookingLimit;
+            });
+            if (conflicting.length > 0) {
+              const names = conflicting.map((k) => k.name).join(", ");
+              return res.status(400).json({
+                error: `Cannot set daily limit to ${defaultDailyBookingLimit} hours. The following kitchen(s) have a minimum booking requirement that exceeds this limit: ${names}. Please reduce their minimum booking hours first.`
+              });
+            }
+          }
+          if (minimumBookingWindowHours !== void 0 && (typeof minimumBookingWindowHours !== "number" || !Number.isInteger(minimumBookingWindowHours) || minimumBookingWindowHours < 0 || minimumBookingWindowHours > 168)) {
             return res.status(400).json({
-              error: "Minimum booking window hours must be between 0 and 168 hours"
+              error: "Minimum booking window hours must be a whole number between 0 and 168"
             });
           }
           const locationResults = await db.select().from(locations).where(
@@ -29211,7 +30136,7 @@ var init_manager = __esm({
               (o) => !pendingStatuses.includes(o.status)
             );
           }
-          const stats = await overstayPenaltyService.getOverstayStats();
+          const stats = await overstayPenaltyService.getOverstayStats(locationIds);
           res.json({
             overstays: filteredPending,
             pastOverstays,
@@ -29230,8 +30155,13 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const overstayId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
           if (isNaN(overstayId)) {
             return res.status(400).json({ error: "Invalid overstay ID" });
+          }
+          const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
+          if (!ownsRecord) {
+            return res.status(403).json({ error: "Access denied" });
           }
           const record = await overstayPenaltyService.getOverstayRecord(overstayId);
           if (!record) {
@@ -29259,6 +30189,10 @@ var init_manager = __esm({
           const { finalPenaltyCents, managerNotes } = req.body;
           if (isNaN(overstayId)) {
             return res.status(400).json({ error: "Invalid overstay ID" });
+          }
+          const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
+          if (!ownsRecord) {
+            return res.status(403).json({ error: "Access denied" });
           }
           if (finalPenaltyCents !== void 0) {
             if (typeof finalPenaltyCents !== "number" || finalPenaltyCents < 0) {
@@ -29309,6 +30243,10 @@ var init_manager = __esm({
           if (isNaN(overstayId)) {
             return res.status(400).json({ error: "Invalid overstay ID" });
           }
+          const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
+          if (!ownsRecord) {
+            return res.status(403).json({ error: "Access denied" });
+          }
           if (!waiveReason || typeof waiveReason !== "string" || waiveReason.trim().length === 0) {
             return res.status(400).json({ error: "Waive reason is required" });
           }
@@ -29340,8 +30278,13 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const overstayId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
           if (isNaN(overstayId)) {
             return res.status(400).json({ error: "Invalid overstay ID" });
+          }
+          const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
+          if (!ownsRecord) {
+            return res.status(403).json({ error: "Access denied" });
           }
           const result = await overstayPenaltyService.chargeApprovedPenalty(overstayId);
           if (!result.success) {
@@ -29373,6 +30316,10 @@ var init_manager = __esm({
           const { resolutionType, resolutionNotes } = req.body;
           if (isNaN(overstayId)) {
             return res.status(400).json({ error: "Invalid overstay ID" });
+          }
+          const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
+          if (!ownsRecord) {
+            return res.status(403).json({ error: "Access denied" });
           }
           const validTypes = ["extended", "removed", "escalated"];
           if (!resolutionType || !validTypes.includes(resolutionType)) {
@@ -29411,7 +30358,7 @@ var init_manager = __esm({
           if (locationIds.length === 0) {
             return res.json({ stats: null });
           }
-          const stats = await overstayPenaltyService.getOverstayStats();
+          const stats = await overstayPenaltyService.getOverstayStats(locationIds);
           res.json({ stats });
         } catch (error) {
           logger.error("Error fetching overstay stats:", error);
@@ -29998,12 +30945,16 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const claimId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
           if (isNaN(claimId)) {
             return res.status(400).json({ error: "Invalid claim ID" });
           }
           const claim = await damageClaimService.getClaimById(claimId);
           if (!claim) {
             return res.status(404).json({ error: "Claim not found" });
+          }
+          if (claim.managerId !== managerId) {
+            return res.status(403).json({ error: "Access denied" });
           }
           const history = await damageClaimService.getClaimHistory(claimId);
           res.json({ claim, history });
@@ -30135,8 +31086,13 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const claimId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
           if (isNaN(claimId)) {
             return res.status(400).json({ error: "Invalid claim ID" });
+          }
+          const claim = await damageClaimService.getClaimById(claimId);
+          if (!claim || claim.managerId !== managerId) {
+            return res.status(403).json({ error: "Access denied" });
           }
           const history = await damageClaimService.getClaimHistory(claimId);
           res.json({ history });
@@ -30250,8 +31206,13 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const claimId = parseInt(req.params.id);
+          const managerId = req.neonUser.id;
           if (isNaN(claimId)) {
             return res.status(400).json({ error: "Invalid claim ID" });
+          }
+          const claimCheck = await damageClaimService.getClaimById(claimId);
+          if (!claimCheck || claimCheck.managerId !== managerId) {
+            return res.status(403).json({ error: "Access denied" });
           }
           const result = await damageClaimService.chargeApprovedClaim(claimId);
           if (!result.success) {
@@ -31459,7 +32420,7 @@ __export(admin_exports, {
   default: () => admin_default
 });
 import { Router as Router21 } from "express";
-import { eq as eq33, sql as sql16 } from "drizzle-orm";
+import { eq as eq33, sql as sql16, ilike } from "drizzle-orm";
 import { getFirestore as getFirestore2 } from "firebase-admin/firestore";
 async function getFirestoreDisplayNames(firebaseUids) {
   const nameMap = {};
@@ -31520,6 +32481,48 @@ var init_admin = __esm({
     init_damage_claim_limits_service();
     firestoreDb = null;
     router21 = Router21();
+    router21.get("/users", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const search = req.query.search;
+        let query = db.select({
+          id: users.id,
+          username: users.username,
+          role: users.role,
+          firebaseUid: users.firebaseUid
+        }).from(users);
+        if (search && search.trim()) {
+          const searchPattern = `%${search.trim()}%`;
+          query = query.where(
+            ilike(users.username, searchPattern)
+          );
+        }
+        const dbUsers = await query.limit(50);
+        const firebaseUids = dbUsers.map((u) => u.firebaseUid).filter((uid) => !!uid);
+        const displayNames = await getFirestoreDisplayNames(firebaseUids);
+        const mappedUsers = dbUsers.map((u) => {
+          const displayName = u.firebaseUid ? displayNames[u.firebaseUid] : null;
+          return {
+            id: u.id,
+            username: u.username,
+            email: u.username,
+            fullName: displayName || u.username,
+            role: u.role || "user",
+            displayText: displayName ? `${displayName} (${u.username})` : u.username
+          };
+        });
+        let filteredUsers = mappedUsers;
+        if (search && search.trim()) {
+          const lowerSearch = search.trim().toLowerCase();
+          filteredUsers = mappedUsers.filter(
+            (u) => u.username.toLowerCase().includes(lowerSearch) || u.fullName.toLowerCase().includes(lowerSearch)
+          );
+        }
+        res.json({ users: filteredUsers });
+      } catch (error) {
+        console.error("Error fetching users:", error);
+        res.status(500).json({ error: "Failed to fetch users" });
+      }
+    });
     router21.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         if (res.headersSent) {
@@ -33593,6 +34596,476 @@ var init_admin = __esm({
         res.status(500).json({ error: "Failed to fetch escalated penalties" });
       }
     });
+    router21.get("/transactions/locations", requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
+      try {
+        const result = await db.execute(sql16`
+            SELECT id, name FROM locations ORDER BY name ASC
+        `);
+        res.json(result.rows);
+      } catch (error) {
+        console.error("[Admin Transactions] Error fetching locations:", error);
+        res.status(500).json({ error: "Failed to fetch locations" });
+      }
+    });
+    router21.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const {
+          search,
+          status,
+          bookingType,
+          locationId,
+          kitchenId,
+          chefId,
+          managerId,
+          startDate,
+          endDate,
+          limit = "100",
+          offset = "0"
+        } = req.query;
+        const parsedLimit = Math.min(parseInt(limit) || 100, 500);
+        const parsedOffset = parseInt(offset) || 0;
+        const conditions = [];
+        if (status && ["pending", "processing", "succeeded", "failed", "canceled", "refunded", "partially_refunded"].includes(status)) {
+          conditions.push(sql16`pt.status = ${status}`);
+        }
+        if (bookingType && ["kitchen", "storage", "equipment", "bundle"].includes(bookingType)) {
+          conditions.push(sql16`pt.booking_type = ${bookingType}`);
+        }
+        if (locationId) {
+          const parsed = parseInt(locationId);
+          if (!isNaN(parsed)) {
+            conditions.push(sql16`(
+                    (pt.booking_type = 'kitchen' AND k.location_id = ${parsed}) OR
+                    (pt.booking_type = 'storage' AND sk.location_id = ${parsed}) OR
+                    (pt.booking_type = 'equipment' AND ek.location_id = ${parsed})
+                )`);
+          }
+        }
+        if (kitchenId) {
+          const parsed = parseInt(kitchenId);
+          if (!isNaN(parsed)) {
+            conditions.push(sql16`(
+                    (pt.booking_type = 'kitchen' AND kb.kitchen_id = ${parsed}) OR
+                    (pt.booking_type = 'storage' AND sl.kitchen_id = ${parsed}) OR
+                    (pt.booking_type = 'equipment' AND el.kitchen_id = ${parsed})
+                )`);
+          }
+        }
+        if (chefId) {
+          const parsed = parseInt(chefId);
+          if (!isNaN(parsed)) conditions.push(sql16`pt.chef_id = ${parsed}`);
+        }
+        if (managerId) {
+          const parsed = parseInt(managerId);
+          if (!isNaN(parsed)) conditions.push(sql16`pt.manager_id = ${parsed}`);
+        }
+        if (startDate) {
+          conditions.push(sql16`pt.created_at >= ${new Date(startDate)}`);
+        }
+        if (endDate) {
+          conditions.push(sql16`pt.created_at <= ${new Date(endDate)}`);
+        }
+        if (search && typeof search === "string" && search.trim()) {
+          const s = search.trim();
+          const like = "%" + s + "%";
+          const numVal = parseInt(s);
+          const isNum = !isNaN(numVal);
+          conditions.push(sql16`(
+                pt.payment_intent_id ILIKE ${like}
+                OR pt.charge_id ILIKE ${like}
+                OR pt.refund_id ILIKE ${like}
+                OR pt.payment_method_id ILIKE ${like}
+                OR pt.webhook_event_id ILIKE ${like}
+                OR pt.refund_reason ILIKE ${like}
+                OR pt.failure_reason ILIKE ${like}
+                OR chef_user.username ILIKE ${like}
+                OR COALESCE(cka.full_name, '') ILIKE ${like}
+                OR l.name ILIKE ${like}
+                OR k.name ILIKE ${like}
+                OR CAST(pt.id AS TEXT) = ${s}
+                OR CAST(pt.booking_id AS TEXT) = ${s}
+                ${isNum ? sql16`OR pt.chef_id = ${numVal} OR pt.manager_id = ${numVal}` : sql16``}
+            )`);
+        }
+        const whereClause = conditions.length > 0 ? sql16`WHERE ${sql16.join(conditions, sql16` AND `)}` : sql16``;
+        const joinBlock = sql16`
+            FROM payment_transactions pt
+            LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
+            LEFT JOIN kitchens k ON kb.kitchen_id = k.id
+            LEFT JOIN storage_bookings sb ON pt.booking_type = 'storage' AND pt.booking_id = sb.id
+            LEFT JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+            LEFT JOIN kitchens sk ON sl.kitchen_id = sk.id
+            LEFT JOIN equipment_bookings eb ON pt.booking_type = 'equipment' AND pt.booking_id = eb.id
+            LEFT JOIN equipment_listings el ON eb.equipment_listing_id = el.id
+            LEFT JOIN kitchens ek ON el.kitchen_id = ek.id
+            LEFT JOIN locations l ON (
+                (pt.booking_type = 'kitchen' AND k.location_id = l.id) OR
+                (pt.booking_type = 'storage' AND sk.location_id = l.id) OR
+                (pt.booking_type = 'equipment' AND ek.location_id = l.id)
+            )
+            LEFT JOIN users chef_user ON pt.chef_id = chef_user.id
+            LEFT JOIN users manager_user ON pt.manager_id = manager_user.id
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = pt.chef_id AND cka.location_id = l.id
+        `;
+        const countResult = await db.execute(sql16`SELECT COUNT(*) as total ${joinBlock} ${whereClause}`);
+        const total = parseInt(countResult.rows[0].total);
+        const atSign = "@";
+        const result = await db.execute(sql16`
+            SELECT
+                pt.id, pt.booking_id, pt.booking_type, pt.chef_id, pt.manager_id,
+                pt.amount, pt.base_amount, pt.service_fee, pt.stripe_processing_fee,
+                pt.manager_revenue, pt.refund_amount, pt.net_amount, pt.currency,
+                pt.payment_intent_id, pt.charge_id, pt.refund_id, pt.payment_method_id,
+                pt.status, pt.stripe_status, pt.metadata, pt.refund_reason, pt.failure_reason,
+                pt.webhook_event_id, pt.last_synced_at, pt.created_at, pt.updated_at,
+                pt.paid_at, pt.refunded_at,
+                chef_user.username as chef_email,
+                COALESCE(cka.full_name, split_part(chef_user.username, ${atSign}, 1)) as chef_name,
+                chef_user.stripe_customer_id as stripe_customer_id,
+                manager_user.username as manager_email,
+                l.id as location_id, l.name as location_name,
+                COALESCE(k.id, sk.id, ek.id) as kitchen_id,
+                COALESCE(k.name, sk.name, ek.name) as kitchen_name,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN kb.booking_date::text
+                    WHEN pt.booking_type = 'storage' THEN sb.start_date::text
+                    WHEN pt.booking_type = 'equipment' THEN eb.start_date::text
+                    ELSE NULL
+                END as booking_start,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN NULL
+                    WHEN pt.booking_type = 'storage' THEN sb.end_date::text
+                    WHEN pt.booking_type = 'equipment' THEN eb.end_date::text
+                    ELSE NULL
+                END as booking_end,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN kb.start_time
+                    ELSE NULL
+                END as kitchen_start_time,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN kb.end_time
+                    ELSE NULL
+                END as kitchen_end_time,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN kb.status::text
+                    WHEN pt.booking_type = 'storage' THEN sb.status::text
+                    WHEN pt.booking_type = 'equipment' THEN eb.status::text
+                    ELSE NULL
+                END as booking_status,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN kb.payment_status::text
+                    WHEN pt.booking_type = 'storage' THEN sb.payment_status::text
+                    WHEN pt.booking_type = 'equipment' THEN eb.payment_status::text
+                    ELSE NULL
+                END as booking_payment_status,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN k.name
+                    WHEN pt.booking_type = 'storage' THEN sl.name
+                    ELSE NULL
+                END as item_name
+            ${joinBlock}
+            ${whereClause}
+            ORDER BY pt.created_at DESC
+            LIMIT ${parsedLimit} OFFSET ${parsedOffset}
+        `);
+        const formattedTransactions = result.rows.map((tx) => ({
+          id: tx.id,
+          bookingId: tx.booking_id,
+          bookingType: tx.booking_type,
+          chefId: tx.chef_id,
+          managerId: tx.manager_id,
+          amount: parseFloat(tx.amount || "0"),
+          baseAmount: parseFloat(tx.base_amount || "0"),
+          serviceFee: parseFloat(tx.service_fee || "0"),
+          stripeProcessingFee: parseFloat(tx.stripe_processing_fee || "0"),
+          managerRevenue: parseFloat(tx.manager_revenue || "0"),
+          refundAmount: parseFloat(tx.refund_amount || "0"),
+          netAmount: parseFloat(tx.net_amount || "0"),
+          currency: tx.currency,
+          paymentIntentId: tx.payment_intent_id,
+          chargeId: tx.charge_id,
+          refundId: tx.refund_id,
+          paymentMethodId: tx.payment_method_id,
+          stripeCustomerId: tx.stripe_customer_id,
+          status: tx.status,
+          stripeStatus: tx.stripe_status,
+          bookingStatus: tx.booking_status,
+          bookingPaymentStatus: tx.booking_payment_status,
+          metadata: tx.metadata,
+          refundReason: tx.refund_reason,
+          failureReason: tx.failure_reason,
+          webhookEventId: tx.webhook_event_id,
+          createdAt: tx.created_at,
+          updatedAt: tx.updated_at,
+          paidAt: tx.paid_at,
+          refundedAt: tx.refunded_at,
+          lastSyncedAt: tx.last_synced_at,
+          chefEmail: tx.chef_email,
+          chefName: tx.chef_name,
+          managerEmail: tx.manager_email,
+          locationId: tx.location_id,
+          locationName: tx.location_name,
+          kitchenId: tx.kitchen_id,
+          kitchenName: tx.kitchen_name,
+          itemName: tx.item_name,
+          bookingStart: tx.booking_start,
+          bookingEnd: tx.booking_end,
+          kitchenStartTime: tx.kitchen_start_time,
+          kitchenEndTime: tx.kitchen_end_time
+        }));
+        res.json({ transactions: formattedTransactions, total });
+      } catch (error) {
+        console.error("[Admin Transactions] Error:", error?.message || error);
+        if (error?.stack) console.error("[Admin Transactions] Stack:", error.stack);
+        res.status(500).json({ error: "Failed to fetch transactions", detail: error?.message || String(error) });
+      }
+    });
+    router21.get("/overstay-penalties", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const { status: statusFilter, locationId, limit = "200", offset = "0" } = req.query;
+        const parsedLimit = Math.min(parseInt(limit) || 200, 500);
+        const parsedOffset = parseInt(offset) || 0;
+        const statusClause = statusFilter ? sql16`AND sor.status = ${statusFilter}` : sql16``;
+        const locationClause = locationId ? sql16`AND loc.id = ${parseInt(locationId)}` : sql16``;
+        const result = await db.execute(sql16`
+            SELECT 
+                sor.id,
+                sor.storage_booking_id as "storageBookingId",
+                sor.status,
+                sor.days_overdue as "daysOverdue",
+                sor.calculated_penalty_cents as "calculatedPenaltyCents",
+                sor.final_penalty_cents as "finalPenaltyCents",
+                sor.daily_rate_cents as "dailyRateCents",
+                sor.penalty_rate as "penaltyRate",
+                sor.penalty_waived as "penaltyWaived",
+                sor.waive_reason as "waiveReason",
+                sor.manager_notes as "managerNotes",
+                sor.detected_at as "detectedAt",
+                sor.end_date as "bookingEndDate",
+                sor.grace_period_ends_at as "gracePeriodEndsAt",
+                sor.penalty_approved_at as "penaltyApprovedAt",
+                sor.penalty_approved_by as "penaltyApprovedBy",
+                sor.charge_attempted_at as "chargeAttemptedAt",
+                sor.charge_succeeded_at as "chargeSucceededAt",
+                sor.charge_failed_at as "chargeFailedAt",
+                sor.charge_failure_reason as "chargeFailureReason",
+                sor.resolved_at as "resolvedAt",
+                sor.resolution_type as "resolutionType",
+                sor.resolution_notes as "resolutionNotes",
+                sor.stripe_payment_intent_id as "stripePaymentIntentId",
+                sor.stripe_charge_id as "stripeChargeId",
+                sor.chef_warning_sent_at as "chefWarningSentAt",
+                sor.chef_penalty_notice_sent_at as "chefPenaltyNoticeSentAt",
+                sor.manager_notified_at as "managerNotifiedAt",
+                sor.created_at as "createdAt",
+                sor.updated_at as "updatedAt",
+                sb.start_date as "bookingStartDate",
+                sb.total_price as "bookingTotalPrice",
+                sb.chef_id as "chefId",
+                sb.stripe_customer_id as "stripeCustomerId",
+                sb.stripe_payment_method_id as "stripePaymentMethodId",
+                sl.name as "storageName",
+                sl.storage_type as "storageType",
+                k.id as "kitchenId",
+                k.name as "kitchenName",
+                loc.id as "locationId",
+                loc.name as "locationName",
+                u.username as "chefEmail",
+                COALESCE(cka.full_name, split_part(u.username, '@', 1)) as "chefName",
+                mgr.username as "managerEmail",
+                COALESCE(mgr_cka.full_name, split_part(mgr.username, '@', 1)) as "managerName",
+                loc.manager_id as "managerId"
+            FROM storage_overstay_records sor
+            INNER JOIN storage_bookings sb ON sor.storage_booking_id = sb.id
+            INNER JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+            INNER JOIN kitchens k ON sl.kitchen_id = k.id
+            INNER JOIN locations loc ON k.location_id = loc.id
+            LEFT JOIN users u ON sb.chef_id = u.id
+            LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = sb.chef_id AND cka.location_id = loc.id
+            LEFT JOIN users mgr ON loc.manager_id = mgr.id
+            LEFT JOIN chef_kitchen_applications mgr_cka ON mgr_cka.chef_id = loc.manager_id AND mgr_cka.location_id = loc.id
+            WHERE 1=1 ${statusClause} ${locationClause}
+            ORDER BY sor.detected_at DESC
+            LIMIT ${parsedLimit} OFFSET ${parsedOffset}
+        `);
+        const countResult = await db.execute(sql16`
+            SELECT COUNT(*) as total
+            FROM storage_overstay_records sor
+            INNER JOIN storage_bookings sb ON sor.storage_booking_id = sb.id
+            INNER JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+            INNER JOIN kitchens k ON sl.kitchen_id = k.id
+            INNER JOIN locations loc ON k.location_id = loc.id
+            WHERE 1=1 ${statusClause} ${locationClause}
+        `);
+        const total = parseInt(countResult.rows[0]?.total || "0");
+        res.json({ overstayPenalties: result.rows, total });
+      } catch (error) {
+        console.error("[Admin Overstay Penalties] Error:", error?.message || error);
+        res.status(500).json({ error: "Failed to fetch overstay penalties" });
+      }
+    });
+    router21.get("/overstay-penalties/:id/history", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const overstayId = parseInt(req.params.id);
+        if (isNaN(overstayId)) return res.status(400).json({ error: "Invalid ID" });
+        const result = await db.execute(sql16`
+            SELECT 
+                soh.id,
+                soh.overstay_record_id as "overstayRecordId",
+                soh.previous_status as "previousStatus",
+                soh.new_status as "newStatus",
+                soh.event_type as "eventType",
+                soh.event_source as "eventSource",
+                soh.description,
+                soh.metadata,
+                soh.created_at as "createdAt",
+                soh.created_by as "createdBy",
+                u.username as "createdByEmail"
+            FROM storage_overstay_history soh
+            LEFT JOIN users u ON soh.created_by = u.id
+            WHERE soh.overstay_record_id = ${overstayId}
+            ORDER BY soh.created_at ASC
+        `);
+        res.json({ history: result.rows });
+      } catch (error) {
+        console.error("[Admin Overstay History] Error:", error?.message || error);
+        res.status(500).json({ error: "Failed to fetch overstay history" });
+      }
+    });
+    router21.get("/damage-claims-history", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const { status: statusFilter, locationId, bookingType, limit = "200", offset = "0" } = req.query;
+        const parsedLimit = Math.min(parseInt(limit) || 200, 500);
+        const parsedOffset = parseInt(offset) || 0;
+        const statusClause = statusFilter ? sql16`AND dc.status = ${statusFilter}` : sql16``;
+        const locationClause = locationId ? sql16`AND dc.location_id = ${parseInt(locationId)}` : sql16``;
+        const bookingTypeClause = bookingType ? sql16`AND dc.booking_type = ${bookingType}` : sql16``;
+        const result = await db.execute(sql16`
+            SELECT 
+                dc.id,
+                dc.booking_type as "bookingType",
+                dc.kitchen_booking_id as "kitchenBookingId",
+                dc.storage_booking_id as "storageBookingId",
+                dc.chef_id as "chefId",
+                dc.manager_id as "managerId",
+                dc.location_id as "locationId",
+                dc.status,
+                dc.claim_title as "claimTitle",
+                dc.claim_description as "claimDescription",
+                dc.damage_date as "damageDate",
+                dc.claimed_amount_cents as "claimedAmountCents",
+                dc.approved_amount_cents as "approvedAmountCents",
+                dc.final_amount_cents as "finalAmountCents",
+                dc.chef_response as "chefResponse",
+                dc.chef_responded_at as "chefRespondedAt",
+                dc.chef_response_deadline as "chefResponseDeadline",
+                dc.admin_reviewer_id as "adminReviewerId",
+                dc.admin_reviewed_at as "adminReviewedAt",
+                dc.admin_notes as "adminNotes",
+                dc.admin_decision_reason as "adminDecisionReason",
+                dc.stripe_payment_intent_id as "stripePaymentIntentId",
+                dc.stripe_charge_id as "stripeChargeId",
+                dc.charge_attempted_at as "chargeAttemptedAt",
+                dc.charge_succeeded_at as "chargeSucceededAt",
+                dc.charge_failed_at as "chargeFailedAt",
+                dc.charge_failure_reason as "chargeFailureReason",
+                dc.stripe_customer_id as "stripeCustomerId",
+                dc.stripe_payment_method_id as "stripePaymentMethodId",
+                dc.resolved_at as "resolvedAt",
+                dc.resolved_by as "resolvedBy",
+                dc.resolution_type as "resolutionType",
+                dc.resolution_notes as "resolutionNotes",
+                dc.damaged_items as "damagedItems",
+                dc.created_at as "createdAt",
+                dc.updated_at as "updatedAt",
+                dc.submitted_at as "submittedAt",
+                loc.name as "locationName",
+                chef_user.username as "chefEmail",
+                COALESCE(chef_cka.full_name, split_part(chef_user.username, '@', 1)) as "chefName",
+                mgr_user.username as "managerEmail",
+                COALESCE(mgr_cka.full_name, split_part(mgr_user.username, '@', 1)) as "managerName",
+                reviewer.username as "adminReviewerEmail"
+            FROM damage_claims dc
+            INNER JOIN locations loc ON dc.location_id = loc.id
+            LEFT JOIN users chef_user ON dc.chef_id = chef_user.id
+            LEFT JOIN chef_kitchen_applications chef_cka ON chef_cka.chef_id = dc.chef_id AND chef_cka.location_id = dc.location_id
+            LEFT JOIN users mgr_user ON dc.manager_id = mgr_user.id
+            LEFT JOIN chef_kitchen_applications mgr_cka ON mgr_cka.chef_id = dc.manager_id AND mgr_cka.location_id = dc.location_id
+            LEFT JOIN users reviewer ON dc.admin_reviewer_id = reviewer.id
+            WHERE 1=1 ${statusClause} ${locationClause} ${bookingTypeClause}
+            ORDER BY dc.created_at DESC
+            LIMIT ${parsedLimit} OFFSET ${parsedOffset}
+        `);
+        const countResult = await db.execute(sql16`
+            SELECT COUNT(*) as total
+            FROM damage_claims dc
+            WHERE 1=1 ${statusClause} ${locationClause} ${bookingTypeClause}
+        `);
+        const total = parseInt(countResult.rows[0]?.total || "0");
+        res.json({ damageClaims: result.rows, total });
+      } catch (error) {
+        console.error("[Admin Damage Claims History] Error:", error?.message || error);
+        res.status(500).json({ error: "Failed to fetch damage claims" });
+      }
+    });
+    router21.get("/damage-claims-history/:id/history", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const claimId = parseInt(req.params.id);
+        if (isNaN(claimId)) return res.status(400).json({ error: "Invalid ID" });
+        const result = await db.execute(sql16`
+            SELECT 
+                dch.id,
+                dch.damage_claim_id as "damageClaimId",
+                dch.previous_status as "previousStatus",
+                dch.new_status as "newStatus",
+                dch.action,
+                dch.action_by as "actionBy",
+                dch.action_by_user_id as "actionByUserId",
+                dch.notes,
+                dch.metadata,
+                dch.created_at as "createdAt",
+                u.username as "actionByEmail"
+            FROM damage_claim_history dch
+            LEFT JOIN users u ON dch.action_by_user_id = u.id
+            WHERE dch.damage_claim_id = ${claimId}
+            ORDER BY dch.created_at ASC
+        `);
+        res.json({ history: result.rows });
+      } catch (error) {
+        console.error("[Admin Damage Claim History] Error:", error?.message || error);
+        res.status(500).json({ error: "Failed to fetch damage claim history" });
+      }
+    });
+    router21.get("/damage-claims-history/:id/evidence", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const claimId = parseInt(req.params.id);
+        if (isNaN(claimId)) return res.status(400).json({ error: "Invalid ID" });
+        const result = await db.execute(sql16`
+            SELECT 
+                de.id,
+                de.damage_claim_id as "damageClaimId",
+                de.evidence_type as "evidenceType",
+                de.file_url as "fileUrl",
+                de.file_name as "fileName",
+                de.file_size as "fileSize",
+                de.mime_type as "mimeType",
+                de.description,
+                de.uploaded_by as "uploadedBy",
+                de.uploaded_at as "uploadedAt",
+                de.amount_cents as "amountCents",
+                de.vendor_name as "vendorName",
+                u.username as "uploadedByEmail"
+            FROM damage_evidence de
+            LEFT JOIN users u ON de.uploaded_by = u.id
+            WHERE de.damage_claim_id = ${claimId}
+            ORDER BY de.uploaded_at ASC
+        `);
+        res.json({ evidence: result.rows });
+      } catch (error) {
+        console.error("[Admin Damage Evidence] Error:", error?.message || error);
+        res.status(500).json({ error: "Failed to fetch evidence" });
+      }
+    });
     admin_default = router21;
   }
 });
@@ -34846,29 +36319,6 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
               chefName,
               kitchenName: kitchen.name
             });
-            if (location.notificationEmail) {
-              try {
-                const { sendEmail: sendEmail2, generateBookingPaymentReceivedEmail: generateBookingPaymentReceivedEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-                const paymentEmail = generateBookingPaymentReceivedEmail2({
-                  managerEmail: location.notificationEmail,
-                  chefName,
-                  kitchenName: kitchen.name,
-                  bookingDate: booking.bookingDate,
-                  startTime: booking.startTime,
-                  endTime: booking.endTime,
-                  amountCents: paymentIntent.amount,
-                  currency: paymentIntent.currency.toUpperCase(),
-                  bookingId: booking.id,
-                  locationName: location.name
-                });
-                await sendEmail2(paymentEmail, {
-                  trackingId: `booking_payment_received_${booking.id}_${Date.now()}`
-                });
-                logger.info(`[Webhook] Sent payment received email to manager: ${location.notificationEmail}`);
-              } catch (emailError) {
-                logger.error(`[Webhook] Error sending payment received email:`, emailError);
-              }
-            }
           }
         }
       }
@@ -36304,17 +37754,30 @@ var init_portal = __esm({
         if (!availabilityCheck.valid) {
           return res.status(400).json({ error: availabilityCheck.error || "Time slot not available" });
         }
+        const minimumBookingHours = kitchen.minimumBookingHours ?? kitchen.minimum_booking_hours ?? 0;
+        if (minimumBookingHours > 0) {
+          const [sH, sM] = startTime.split(":").map(Number);
+          const [eH, eM] = endTime.split(":").map(Number);
+          const durationHours = (eH * 60 + eM - sH * 60 - sM) / 60;
+          if (durationHours < minimumBookingHours) {
+            return res.status(400).json({
+              error: `This kitchen requires a minimum of ${minimumBookingHours} hour${minimumBookingHours > 1 ? "s" : ""} per booking. Your booking is ${durationHours} hour${durationHours !== 1 ? "s" : ""}.`
+            });
+          }
+        }
         const location = await locationService.getLocationById(userLocationId);
         const minimumBookingWindowHours = location?.minimumBookingWindowHours ?? 1;
-        const isToday = bookingDateObj.toDateString() === now.toDateString();
-        if (isToday) {
-          const [startHours, startMins] = startTime.split(":").map(Number);
-          const slotTime = new Date(bookingDateObj);
-          slotTime.setHours(startHours, startMins, 0, 0);
-          const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1e3 * 60 * 60);
+        const locationTimezone = location?.timezone || "America/St_Johns";
+        if (minimumBookingWindowHours > 0) {
+          const bookingDateStr = typeof bookingDate === "string" ? bookingDate.split("T")[0] : bookingDateObj.toISOString().split("T")[0];
+          const { isBookingTimePast: isBookingTimePast2, getHoursUntilBooking: getHoursUntilBooking2 } = await Promise.resolve().then(() => (init_date_utils(), date_utils_exports));
+          if (isBookingTimePast2(bookingDateStr, startTime, locationTimezone)) {
+            return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+          }
+          const hoursUntilBooking = getHoursUntilBooking2(bookingDateStr, startTime, locationTimezone);
           if (hoursUntilBooking < minimumBookingWindowHours) {
             return res.status(400).json({
-              error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance`
+              error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? "s" : ""} in advance`
             });
           }
         }
@@ -39345,15 +40808,29 @@ router7.patch("/manager/kitchen-applications/:id/status", requireFirebaseAuthWit
       try {
         if (application.email) {
           const location2 = await locationService2.getLocationById(application.locationId);
-          const approvalEmail = generateKitchenApplicationApprovedEmail({
-            chefEmail: application.email,
-            chefName: application.fullName || "Chef",
-            locationName: location2?.name || "Kitchen Location"
-          });
-          await sendEmail(approvalEmail, {
-            trackingId: `kitchen_app_approved_${application.id}_${Date.now()}`
-          });
-          console.log(`\u2705 Sent kitchen application approval email to chef: ${application.email}`);
+          const approvalTier = updatedApplication?.current_tier ?? 1;
+          if (approvalTier <= 1) {
+            const step1Email = generateKitchenApplicationSubmittedChefEmail({
+              chefEmail: application.email,
+              chefName: application.fullName || "Chef",
+              locationName: location2?.name || "Kitchen Location",
+              locationAddress: location2?.address || void 0
+            });
+            await sendEmail(step1Email, {
+              trackingId: `kitchen_app_step1_approved_${application.id}_${Date.now()}`
+            });
+            console.log(`\u2705 Sent step 1 approval email to chef: ${application.email} (Tier ${approvalTier})`);
+          } else {
+            const approvalEmail = generateKitchenApplicationApprovedEmail({
+              chefEmail: application.email,
+              chefName: application.fullName || "Chef",
+              locationName: location2?.name || "Kitchen Location"
+            });
+            await sendEmail(approvalEmail, {
+              trackingId: `kitchen_app_approved_${application.id}_${Date.now()}`
+            });
+            console.log(`\u2705 Sent full approval email to chef: ${application.email} (Tier ${approvalTier})`);
+          }
         }
       } catch (emailError) {
         console.error("Error sending kitchen application approval email:", emailError);

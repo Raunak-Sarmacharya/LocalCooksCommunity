@@ -11,6 +11,9 @@ import { KitchenLicenseApprovalSection } from "@/components/admin/sections/Kitch
 import { PlatformSettingsSection } from "@/components/admin/sections/PlatformSettingsSection";
 import { ManagerRevenuesSection } from "@/components/admin/sections/ManagerRevenuesSection";
 import { PlatformOverviewSection } from "@/components/admin/sections/PlatformOverviewSection";
+import { AdminTransactionHistory } from "@/components/admin/sections/AdminTransactionHistory";
+import AdminOverstayPenalties from "@/components/admin/sections/AdminOverstayPenalties";
+import AdminDamageClaimsHistory from "@/components/admin/sections/AdminDamageClaimsHistory";
 import {
   formatApplicationStatus,
   formatCertificationStatus,
@@ -114,7 +117,7 @@ function AdminDashboard() {
     "applications", "kitchen-licenses", "damage-claims", "escalated-penalties",
     "chef-kitchen-access", "kitchen-management", "promos", "manager-revenues",
     "platform-overview", "platform-settings", "overstay-settings",
-    "damage-claim-settings", "account-settings", "overview",
+    "damage-claim-settings", "account-settings", "overview", "transactions",
   ];
   const [activeSection, setActiveSection] = useState<AdminSection>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1074,6 +1077,27 @@ function AdminDashboard() {
 
       case "promos":
         return <PromoCodeSender />;
+
+      case "transactions":
+        return (
+          <ErrorBoundary>
+            <AdminTransactionHistory getFirebaseToken={getFirebaseToken} />
+          </ErrorBoundary>
+        );
+
+      case "overstay-penalties-history":
+        return (
+          <ErrorBoundary>
+            <AdminOverstayPenalties getFirebaseToken={getFirebaseToken} />
+          </ErrorBoundary>
+        );
+
+      case "damage-claims-history":
+        return (
+          <ErrorBoundary>
+            <AdminDamageClaimsHistory getFirebaseToken={getFirebaseToken} />
+          </ErrorBoundary>
+        );
 
       case "manager-revenues":
         return <ManagerRevenuesSection getFirebaseToken={getFirebaseToken} />;

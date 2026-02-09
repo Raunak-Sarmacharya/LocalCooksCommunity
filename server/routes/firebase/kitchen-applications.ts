@@ -19,6 +19,7 @@ import { notificationService } from '../../services/notification.service';
 import { 
     sendEmail, 
     generateNewKitchenApplicationManagerEmail,
+    generateKitchenApplicationSubmittedChefEmail,
     generateKitchenApplicationApprovedEmail,
     generateKitchenApplicationRejectedEmail
 } from '../../email';
@@ -932,19 +933,36 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                 console.error("Error creating application approval notification:", notifError);
             }
 
-            // Send email to chef about approval
+            // Send email to chef about approval — tier-aware
             try {
                 if (application.email) {
                     const location = await locationService.getLocationById(application.locationId);
-                    const approvalEmail = generateKitchenApplicationApprovedEmail({
-                        chefEmail: application.email,
-                        chefName: application.fullName || 'Chef',
-                        locationName: location?.name || 'Kitchen Location'
-                    });
-                    await sendEmail(approvalEmail, {
-                        trackingId: `kitchen_app_approved_${application.id}_${Date.now()}`
-                    });
-                    console.log(`✅ Sent kitchen application approval email to chef: ${application.email}`);
+                    const approvalTier = updatedApplication?.current_tier ?? 1;
+
+                    if (approvalTier <= 1) {
+                        // Step 1 approval: chef still has more steps — send "under review" email
+                        const step1Email = generateKitchenApplicationSubmittedChefEmail({
+                            chefEmail: application.email,
+                            chefName: application.fullName || 'Chef',
+                            locationName: location?.name || 'Kitchen Location',
+                            locationAddress: location?.address || undefined
+                        });
+                        await sendEmail(step1Email, {
+                            trackingId: `kitchen_app_step1_approved_${application.id}_${Date.now()}`
+                        });
+                        console.log(`✅ Sent step 1 approval email to chef: ${application.email} (Tier ${approvalTier})`);
+                    } else {
+                        // Tier 2+ approval: full access — send "APPROVED, book now" email
+                        const approvalEmail = generateKitchenApplicationApprovedEmail({
+                            chefEmail: application.email,
+                            chefName: application.fullName || 'Chef',
+                            locationName: location?.name || 'Kitchen Location'
+                        });
+                        await sendEmail(approvalEmail, {
+                            trackingId: `kitchen_app_approved_${application.id}_${Date.now()}`
+                        });
+                        console.log(`✅ Sent full approval email to chef: ${application.email} (Tier ${approvalTier})`);
+                    }
                 }
             } catch (emailError) {
                 console.error("Error sending kitchen application approval email:", emailError);

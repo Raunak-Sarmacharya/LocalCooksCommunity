@@ -584,10 +584,62 @@ export default function KitchenBookingSheet({
       return;
     }
 
+    const minHours = kitchenPricing?.minimumBookingHours ?? 0;
+
     setSelectedSlots(prev => {
+      // Deselect: if clicking an already-selected slot, remove it (and any auto-filled slots)
       if (prev.includes(slot.time)) {
+        // If minimum hours apply, clear all slots (they were auto-selected as a block)
+        if (minHours > 1) {
+          return [];
+        }
         return prev.filter(s => s !== slot.time);
-      } else if (prev.length < maxSlotsPerChef) {
+      }
+
+      // Select: auto-fill consecutive slots if minimum booking hours apply
+      if (minHours > 1 && prev.length === 0) {
+        // Find consecutive available slots starting from the clicked slot
+        const clickedIndex = allSlots.findIndex(s => s.time === slot.time);
+        if (clickedIndex === -1) return prev;
+
+        const slotsToSelect: string[] = [];
+        for (let i = clickedIndex; i < allSlots.length && slotsToSelect.length < minHours; i++) {
+          if (!allSlots[i].isFullyBooked) {
+            slotsToSelect.push(allSlots[i].time);
+          } else {
+            break; // Stop at fully booked slots
+          }
+        }
+
+        // Check if we can fit within the daily limit
+        if (slotsToSelect.length > maxSlotsPerChef) {
+          toast({
+            title: "Cannot meet minimum",
+            description: `This kitchen requires ${minHours} consecutive hours, but the daily limit is ${maxSlotsPerChef} hours.`,
+            variant: "destructive",
+          });
+          return prev;
+        }
+
+        if (slotsToSelect.length < minHours) {
+          toast({
+            title: "Not enough available slots",
+            description: `This kitchen requires a minimum of ${minHours} consecutive hours. Only ${slotsToSelect.length} available from this time.`,
+            variant: "destructive",
+          });
+          return prev;
+        }
+
+        toast({
+          title: `${minHours} hours auto-selected`,
+          description: `This kitchen has a ${minHours}-hour minimum booking. ${minHours} consecutive slots have been selected.`,
+        });
+
+        return slotsToSelect.sort();
+      }
+
+      // Normal selection (no minimum or already have slots selected)
+      if (prev.length < maxSlotsPerChef) {
         return [...prev, slot.time].sort();
       } else {
         toast({
@@ -1215,7 +1267,11 @@ export default function KitchenBookingSheet({
             <div>
               <h3 className="text-base font-medium text-foreground">Select Time</h3>
               <p className="text-sm text-muted-foreground mt-0.5">
-                {formatDate(selectedDate)} • Max {maxSlotsPerChef} hours
+                {formatDate(selectedDate)}
+                {kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 0
+                  ? ` • Min ${kitchenPricing.minimumBookingHours}hr`
+                  : ''}
+                {` • Max ${maxSlotsPerChef} hours`}
               </p>
             </div>
             <Button 
@@ -1245,6 +1301,14 @@ export default function KitchenBookingSheet({
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto">
+              {kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 1 && selectedSlots.length === 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-3 flex items-start gap-2">
+                  <Clock className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-amber-800">
+                    <strong>Minimum {kitchenPricing.minimumBookingHours}-hour booking.</strong> Selecting a time slot will automatically reserve {kitchenPricing.minimumBookingHours} consecutive hours.
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                 {allSlots.map((slot) => {
                   const isSelected = selectedSlots.includes(slot.time);
@@ -1335,12 +1399,15 @@ export default function KitchenBookingSheet({
                 
                 <div className="space-y-2 text-sm">
                   {/* Kitchen Time */}
-                  {kitchenPricing?.hourlyRate && (
+                  {kitchenPricing?.hourlyRate && estimatedPrice && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">
-                        Kitchen ({selectedSlots.length}hr × {formatCurrency(kitchenPricing.hourlyRate)})
+                        Kitchen ({estimatedPrice.durationHours}hr × {formatCurrency(kitchenPricing.hourlyRate)})
+                        {estimatedPrice.durationHours > selectedSlots.length && (
+                          <span className="text-xs text-amber-600 ml-1">(min {estimatedPrice.durationHours}hr)</span>
+                        )}
                       </span>
-                      <span className="font-medium">{formatCurrency(kitchenPricing.hourlyRate * selectedSlots.length)}</span>
+                      <span className="font-medium">{formatCurrency(estimatedPrice.basePrice)}</span>
                     </div>
                   )}
                   
@@ -1414,11 +1481,13 @@ export default function KitchenBookingSheet({
 
     const items: { label: string; value: number }[] = [];
     
-    // Kitchen time
-    if (selectedSlots.length > 0 && kitchenPricing?.hourlyRate) {
+    // Kitchen time - use estimatedPrice which accounts for minimumBookingHours
+    if (selectedSlots.length > 0 && kitchenPricing?.hourlyRate && estimatedPrice) {
+      const effectiveHours = estimatedPrice.durationHours;
+      const minApplied = effectiveHours > selectedSlots.length;
       items.push({
-        label: `${selectedSlots.length} hour${selectedSlots.length > 1 ? 's' : ''} kitchen time`,
-        value: kitchenPricing.hourlyRate * selectedSlots.length
+        label: `${effectiveHours} hour${effectiveHours > 1 ? 's' : ''} kitchen time${minApplied ? ` (min ${effectiveHours}hr)` : ''}`,
+        value: estimatedPrice.basePrice
       });
     }
 

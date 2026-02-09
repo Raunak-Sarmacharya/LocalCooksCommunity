@@ -71,9 +71,26 @@ import {
   equipmentListings,
   kitchenBookings,
   paymentTransactions,
+  storageOverstayRecords,
 } from "@shared/schema";
 
 const router = Router();
+
+async function verifyManagerOwnsOverstay(
+  overstayRecordId: number,
+  managerId: number,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ managerId: locations.managerId })
+    .from(storageOverstayRecords)
+    .innerJoin(storageBookingsTable, eq(storageOverstayRecords.storageBookingId, storageBookingsTable.id))
+    .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
+    .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+    .innerJoin(locations, eq(kitchens.locationId, locations.id))
+    .where(eq(storageOverstayRecords.id, overstayRecordId))
+    .limit(1);
+  return row?.managerId === managerId;
+}
 
 async function getManagerIdForBooking(
   bookingId: number,
@@ -2763,6 +2780,20 @@ router.put(
           .json({ error: "Minimum booking hours must be a whole number between 0 and 24" });
       }
 
+      // Cross-validate: minimumBookingHours cannot exceed location's defaultDailyBookingLimit
+      if (minimumBookingHours !== undefined && minimumBookingHours > 0) {
+        const locationId = kitchen.locationId;
+        if (locationId) {
+          const location = await locationService.getLocationById(locationId);
+          const dailyLimit = (location as any)?.defaultDailyBookingLimit ?? 24;
+          if (minimumBookingHours > dailyLimit) {
+            return res.status(400).json({
+              error: `Minimum booking hours (${minimumBookingHours}) cannot exceed the location's maximum daily booking limit (${dailyLimit} hours). Please increase the daily limit first or reduce the minimum.`
+            });
+          }
+        }
+      }
+
       if (
         pricingModel !== undefined &&
         !["hourly", "daily", "weekly"].includes(pricingModel)
@@ -2783,8 +2814,6 @@ router.put(
         pricing.hourlyRate = hourlyRate === null ? null : hourlyRate;
       }
       if (currency !== undefined) pricing.currency = currency;
-      if (minimumBookingHours !== undefined)
-        pricing.minimumBookingHours = minimumBookingHours;
       if (minimumBookingHours !== undefined)
         pricing.minimumBookingHours = minimumBookingHours;
       if (pricingModel !== undefined) pricing.pricingModel = pricingModel;
@@ -4441,6 +4470,31 @@ router.put(
               );
             }
 
+            // Send confirmation email to manager
+            if (location.notificationEmail) {
+              try {
+                const managerConfirmEmail = generateBookingStatusChangeNotificationEmail({
+                  managerEmail: location.notificationEmail,
+                  chefName: chef.username,
+                  kitchenName: kitchen.name,
+                  bookingDate: booking.bookingDate,
+                  startTime: booking.startTime,
+                  endTime: booking.endTime,
+                  status: 'confirmed',
+                  timezone,
+                  locationName,
+                });
+                const managerEmailSent = await sendEmail(managerConfirmEmail);
+                if (managerEmailSent) {
+                  logger.info(`[Manager] ✅ Sent booking confirmed email to manager: ${location.notificationEmail}`);
+                } else {
+                  logger.error(`[Manager] ❌ Failed to send booking confirmed email to manager: ${location.notificationEmail}`);
+                }
+              } catch (managerEmailError) {
+                logger.error(`[Manager] Error sending booking confirmed email to manager:`, managerEmailError);
+              }
+            }
+
             logger.info(
               `[Manager] Booking ${id} confirmed by manager ${user.id}`,
             );
@@ -4770,6 +4824,26 @@ router.put(
           .json({
             error: "Daily booking limit must be between 1 and 24 hours",
           });
+      }
+
+      // Cross-validate: daily limit cannot be less than any kitchen's minimumBookingHours
+      if (defaultDailyBookingLimit !== undefined) {
+        const locationKitchens = await db
+          .select({ id: kitchens.id, name: kitchens.name, minimumBookingHours: kitchens.minimumBookingHours })
+          .from(kitchens)
+          .where(eq(kitchens.locationId, locationIdNum));
+
+        const conflicting = locationKitchens.filter(k => {
+          const minHours = k.minimumBookingHours ? parseFloat(String(k.minimumBookingHours)) : 0;
+          return minHours > defaultDailyBookingLimit;
+        });
+
+        if (conflicting.length > 0) {
+          const names = conflicting.map(k => k.name).join(', ');
+          return res.status(400).json({
+            error: `Cannot set daily limit to ${defaultDailyBookingLimit} hours. The following kitchen(s) have a minimum booking requirement that exceeds this limit: ${names}. Please reduce their minimum booking hours first.`
+          });
+        }
       }
 
       if (
@@ -6540,8 +6614,8 @@ router.get(
         );
       }
 
-      // Get stats
-      const stats = await overstayPenaltyService.getOverstayStats();
+      // Get stats scoped to this manager's locations
+      const stats = await overstayPenaltyService.getOverstayStats(locationIds);
 
       res.json({
         overstays: filteredPending,
@@ -6566,8 +6640,15 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const overstayId = parseInt(req.params.id);
+      const managerId = req.neonUser!.id;
       if (isNaN(overstayId)) {
         return res.status(400).json({ error: "Invalid overstay ID" });
+      }
+
+      // Verify manager owns this overstay record's location
+      const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
+      if (!ownsRecord) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       const record = await overstayPenaltyService.getOverstayRecord(overstayId);
@@ -6606,6 +6687,12 @@ router.post(
 
       if (isNaN(overstayId)) {
         return res.status(400).json({ error: "Invalid overstay ID" });
+      }
+
+      // Verify manager owns this overstay record's location
+      const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
+      if (!ownsRecord) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       // Validate penalty amount if provided
@@ -6681,6 +6768,12 @@ router.post(
         return res.status(400).json({ error: "Invalid overstay ID" });
       }
 
+      // Verify manager owns this overstay record's location
+      const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
+      if (!ownsRecord) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
       if (
         !waiveReason ||
         typeof waiveReason !== "string" ||
@@ -6726,9 +6819,16 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const overstayId = parseInt(req.params.id);
+      const managerId = req.neonUser!.id;
 
       if (isNaN(overstayId)) {
         return res.status(400).json({ error: "Invalid overstay ID" });
+      }
+
+      // Verify manager owns this overstay record's location
+      const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
+      if (!ownsRecord) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       const result =
@@ -6771,6 +6871,12 @@ router.post(
 
       if (isNaN(overstayId)) {
         return res.status(400).json({ error: "Invalid overstay ID" });
+      }
+
+      // Verify manager owns this overstay record's location
+      const ownsRecord = await verifyManagerOwnsOverstay(overstayId, managerId);
+      if (!ownsRecord) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       const validTypes = ["extended", "removed", "escalated"];
@@ -6829,8 +6935,8 @@ router.get(
         return res.json({ stats: null });
       }
 
-      // For now, get global stats (could be filtered by location in future)
-      const stats = await overstayPenaltyService.getOverstayStats();
+      // Get stats scoped to this manager's locations
+      const stats = await overstayPenaltyService.getOverstayStats(locationIds);
 
       res.json({ stats });
     } catch (error) {
@@ -7695,6 +7801,7 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const claimId = parseInt(req.params.id);
+      const managerId = req.neonUser!.id;
       if (isNaN(claimId)) {
         return res.status(400).json({ error: "Invalid claim ID" });
       }
@@ -7702,6 +7809,11 @@ router.get(
       const claim = await damageClaimService.getClaimById(claimId);
       if (!claim) {
         return res.status(404).json({ error: "Claim not found" });
+      }
+
+      // Verify manager owns this claim
+      if (claim.managerId !== managerId) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       // Get history
@@ -7881,9 +7993,16 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const claimId = parseInt(req.params.id);
+      const managerId = req.neonUser!.id;
 
       if (isNaN(claimId)) {
         return res.status(400).json({ error: "Invalid claim ID" });
+      }
+
+      // Verify manager owns this claim
+      const claim = await damageClaimService.getClaimById(claimId);
+      if (!claim || claim.managerId !== managerId) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       const history = await damageClaimService.getClaimHistory(claimId);
@@ -8035,9 +8154,16 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const claimId = parseInt(req.params.id);
+      const managerId = req.neonUser!.id;
 
       if (isNaN(claimId)) {
         return res.status(400).json({ error: "Invalid claim ID" });
+      }
+
+      // Verify manager owns this claim
+      const claimCheck = await damageClaimService.getClaimById(claimId);
+      if (!claimCheck || claimCheck.managerId !== managerId) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       const result = await damageClaimService.chargeApprovedClaim(claimId);
