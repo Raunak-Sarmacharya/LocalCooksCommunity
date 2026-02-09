@@ -50,7 +50,8 @@ export type AdminSection =
   | "account-settings"
   | "transactions"
   | "overstay-penalties-history"
-  | "damage-claims-history";
+  | "damage-claims-history"
+  | "security-settings";
 
 interface AdminSidebarProps {
   activeSection: AdminSection;
@@ -103,6 +104,7 @@ const NAV_GROUPS = [
     label: "Settings",
     items: [
       { id: "platform-settings" as AdminSection, label: "Platform Settings", icon: Settings },
+      { id: "security-settings" as AdminSection, label: "Security & Rate Limits", icon: Shield },
       { id: "overstay-settings" as AdminSection, label: "Storage & Overstay", icon: Clock },
       { id: "damage-claim-settings" as AdminSection, label: "Damage Claims", icon: AlertTriangle },
       { id: "account-settings" as AdminSection, label: "Account Settings", icon: Lock },

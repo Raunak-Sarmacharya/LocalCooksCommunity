@@ -566,16 +566,20 @@ router.post("/managers", async (req: Request, res: Response) => {
         // Create manager user with hashed password
         // Set has_seen_welcome to false to force password change on first login
         const hashedPassword = await hashPassword(password);
-        const manager = await userService.createUser({
+        // Security: Create with safe fields first, then set privileged fields via updateUser
+        let manager = await userService.createUser({
             username,
             password: hashedPassword,
             role: "manager",
+            has_seen_welcome: false,  // Manager must change password on first login
+        });
+        // Set privileged fields via updateUser (admin-only path)
+        const updatedManager = await userService.updateUser(manager.id, {
             isChef: false,
             isManager: true,
             isPortalUser: false,
-            has_seen_welcome: false,  // Manager must change password on first login
-            managerProfileData: {},
         });
+        if (updatedManager) manager = updatedManager;
 
         // Send welcome email to manager with credentials
         try {
@@ -624,7 +628,8 @@ router.get("/managers", async (req: Request, res: Response) => {
 
         // Fetch all users with manager role and their managed locations with notification emails
         // Using Drizzle sql template for complex JSON aggregation
-        const result = await db.execute(sql.raw(`
+        // CRIT-2 Security: Parameterized sql tagged template (no sql.raw)
+        const result = await db.execute(sql`
             SELECT 
               u.id, 
               u.username, 
@@ -645,7 +650,7 @@ router.get("/managers", async (req: Request, res: Response) => {
             WHERE u.role = 'manager'
             GROUP BY u.id, u.username, u.role, u.firebase_uid
             ORDER BY u.username ASC
-        `));
+        `);
 
         // Fetch display names from Firestore for all managers with firebase_uid
         const firebaseUids = result.rows
@@ -3386,6 +3391,64 @@ router.get("/damage-claims-history/:id/evidence", requireFirebaseAuthWithUser, r
     } catch (error: any) {
         console.error('[Admin Damage Evidence] Error:', error?.message || error);
         res.status(500).json({ error: "Failed to fetch evidence" });
+    }
+});
+
+// ===================================
+// SECURITY SETTINGS — Rate Limit Configuration
+// ===================================
+
+router.get("/admin/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { getRateLimitConfig, getDefaultRateLimits } = await import('../security');
+        const current = await getRateLimitConfig();
+        const defaults = getDefaultRateLimits();
+        res.json({ current, defaults });
+    } catch (error: any) {
+        console.error('[Admin Security] Error fetching rate limits:', error?.message || error);
+        res.status(500).json({ error: "Failed to fetch rate limit settings" });
+    }
+});
+
+router.put("/admin/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { invalidateRateLimitCache } = await import('../security');
+        const SETTING_MAP: Record<string, string> = {
+            globalWindowMs: 'rate_limit_global_window_ms',
+            globalMaxRequests: 'rate_limit_global_max',
+            authWindowMs: 'rate_limit_auth_window_ms',
+            authMaxRequests: 'rate_limit_auth_max',
+            apiWindowMs: 'rate_limit_api_window_ms',
+            apiMaxRequests: 'rate_limit_api_max',
+            webhookWindowMs: 'rate_limit_webhook_window_ms',
+            webhookMaxRequests: 'rate_limit_webhook_max',
+        };
+        const updates: { key: string; value: string }[] = [];
+        for (const [bodyKey, settingKey] of Object.entries(SETTING_MAP)) {
+            if (bodyKey in req.body) {
+                const val = parseInt(req.body[bodyKey], 10);
+                if (isNaN(val) || val < 1) {
+                    return res.status(400).json({ error: `Invalid value for ${bodyKey}: must be a positive integer` });
+                }
+                updates.push({ key: settingKey, value: String(val) });
+            }
+        }
+        if (updates.length === 0) {
+            return res.status(400).json({ error: "No valid settings provided" });
+        }
+        for (const { key, value } of updates) {
+            await db.execute(sql`
+                INSERT INTO platform_settings (key, value) 
+                VALUES (${key}, ${value})
+                ON CONFLICT (key) DO UPDATE SET value = ${value}
+            `);
+        }
+        invalidateRateLimitCache();
+        console.log(`[Admin Security] Rate limits updated by admin ${req.neonUser?.id}: ${updates.map(u => `${u.key}=${u.value}`).join(', ')}`);
+        res.json({ success: true, updated: updates.length, settings: Object.fromEntries(updates.map(u => [u.key, u.value])) });
+    } catch (error: any) {
+        console.error('[Admin Security] Error updating rate limits:', error?.message || error);
+        res.status(500).json({ error: "Failed to update rate limit settings" });
     }
 });
 

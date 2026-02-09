@@ -17,29 +17,37 @@ service cloud.firestore {
     
     // ============================================
     // CHAT CONVERSATIONS - Real-time messaging
+    // HIGH-3 Security: Restrict to conversation participants only
     // ============================================
-    // Conversations collection for chef-manager chat
     match /conversations/{conversationId} {
-      // Allow authenticated users to read/write/list conversations
-      // Note: Application layer verifies chefId/managerId matches
-      // We use Firebase UID for auth, but store Neon user IDs in conversation
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
-      allow list: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if isAuthenticated();
+      // Helper: check if current user is a participant in this conversation
+      function isParticipant() {
+        return request.auth.uid == resource.data.chefFirebaseUid 
+            || request.auth.uid == resource.data.managerFirebaseUid;
+      }
       
-      // Messages subcollection - real-time chat messages
+      // Only participants can read their own conversations
+      allow read: if isAuthenticated() && isParticipant();
+      // Allow create if authenticated (participants set during creation)
+      allow create: if isAuthenticated();
+      // Only participants can update
+      allow update: if isAuthenticated() && isParticipant();
+      // No deletes
+      allow delete: if false;
+      
+      // Messages subcollection - restricted to conversation participants
       match /messages/{messageId} {
-        // Allow authenticated users to read/write/list messages
-        // Application layer handles authorization (chef vs manager)
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
-        allow list: if isAuthenticated();
-        allow create: if isAuthenticated();
-        allow update: if isAuthenticated();
-        allow delete: if isAuthenticated();
+        // Check parent conversation to verify participant access
+        function isConversationParticipant() {
+          let conv = get(/databases/$(database)/documents/conversations/$(conversationId));
+          return request.auth.uid == conv.data.chefFirebaseUid 
+              || request.auth.uid == conv.data.managerFirebaseUid;
+        }
+        
+        allow read: if isAuthenticated() && isConversationParticipant();
+        allow create: if isAuthenticated() && isConversationParticipant();
+        allow update: if isAuthenticated() && isConversationParticipant();
+        allow delete: if false;
       }
     }
     

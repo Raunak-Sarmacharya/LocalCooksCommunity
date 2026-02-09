@@ -4,6 +4,7 @@ import { initializeFirebaseAdmin } from "./firebase-setup.js";
 import { registerFirebaseRoutes } from "./firebase-routes.js";
 import { registerRoutes } from "./routes.js";
 import { log, serveStatic, setupVite } from "./vite.js";
+import { registerSecurityMiddleware } from "./security.js";
 
 const app = express();
 // Set environment explicitly to match NODE_ENV
@@ -17,6 +18,9 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
 // JSON parsing for all other routes
 app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ limit: '12mb', extended: true }));
+
+// Security middleware: Helmet (CSP, headers), CORS, Rate Limiting
+registerSecurityMiddleware(app);
 
 // Initialize Firebase Admin SDK
 initializeFirebaseAdmin();
@@ -68,13 +72,20 @@ const initPromise = (async () => {
     // ✅ FIREBASE AUTH ONLY - Modern JWT-based authentication (registered after specific routes)
     registerFirebaseRoutes(app);
 
-    // Error handling middleware
+    // Error handling middleware — MED-5: Sanitize error messages in production
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";
+      const isProduction = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
 
-      res.status(status).json({ message });
-      console.error(err);
+      // In production, hide internal error details for 5xx errors
+      const safeMessage = isProduction && status >= 500
+        ? 'An unexpected error occurred. Please try again later.'
+        : message;
+
+      res.status(status).json({ message: safeMessage });
+      // Always log full error server-side
+      console.error(`[Error ${status}]`, err);
     });
 
     routesInitialized = true;

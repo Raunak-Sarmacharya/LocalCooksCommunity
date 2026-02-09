@@ -116,24 +116,21 @@ async function getNotifications(
   
   const offset = (page - 1) * limit;
 
-  // Build filter conditions
-  let filterCondition = '';
+  // CRIT-2 Security: Build filter conditions using parameterized queries (no sql.raw)
+  let filterCondition = sql`AND is_archived = false`;
   if (filter === 'unread') {
-    filterCondition = 'AND is_read = false AND is_archived = false';
+    filterCondition = sql`AND is_read = false AND is_archived = false`;
   } else if (filter === 'read') {
-    filterCondition = 'AND is_read = true AND is_archived = false';
+    filterCondition = sql`AND is_read = true AND is_archived = false`;
   } else if (filter === 'archived') {
-    filterCondition = 'AND is_archived = true';
-  } else {
-    filterCondition = 'AND is_archived = false';
+    filterCondition = sql`AND is_archived = true`;
   }
 
-  const typeCondition = type ? `AND type = '${type}'::notification_type` : '';
-  // Include notifications for the specific location OR global notifications (location_id IS NULL)
-  const locationCondition = locationId ? `AND (location_id = ${locationId} OR location_id IS NULL)` : '';
+  const typeCondition = type ? sql`AND type = ${type}::notification_type` : sql``;
+  const locationCondition = locationId ? sql`AND (location_id = ${locationId} OR location_id IS NULL)` : sql``;
 
   // Get notifications with pagination
-  const notificationsResult = await db.execute(sql.raw(`
+  const notificationsResult = await db.execute(sql`
     SELECT 
       id, manager_id, location_id, type, priority, title, message, 
       metadata, is_read, read_at, is_archived, archived_at, 
@@ -152,10 +149,10 @@ async function getNotifications(
       created_at DESC
     LIMIT ${limit}
     OFFSET ${offset}
-  `));
+  `);
 
   // Get total count
-  const countResult = await db.execute(sql.raw(`
+  const countResult = await db.execute(sql`
     SELECT COUNT(*) as total
     FROM manager_notifications
     WHERE manager_id = ${managerId}
@@ -163,7 +160,7 @@ async function getNotifications(
       ${filterCondition}
       ${typeCondition}
       ${locationCondition}
-  `));
+  `);
 
   const total = parseInt((countResult.rows[0] as any)?.total || '0', 10);
 
@@ -184,12 +181,12 @@ async function getNotifications(
  * When locationId is provided, includes both location-specific AND global (null location) notifications
  */
 async function getUnreadCount(managerId: number, locationId?: number) {
-  // Include notifications for the specific location OR global notifications (location_id IS NULL)
+  // CRIT-2 Security: Parameterized query — no sql.raw()
   const locationCondition = locationId 
-    ? `AND (location_id = ${locationId} OR location_id IS NULL)` 
-    : '';
+    ? sql`AND (location_id = ${locationId} OR location_id IS NULL)` 
+    : sql``;
   
-  const result = await db.execute(sql.raw(`
+  const result = await db.execute(sql`
     SELECT COUNT(*) as count
     FROM manager_notifications
     WHERE manager_id = ${managerId}
@@ -197,7 +194,7 @@ async function getUnreadCount(managerId: number, locationId?: number) {
       AND is_archived = false
       AND (expires_at IS NULL OR expires_at > NOW())
       ${locationCondition}
-  `));
+  `);
 
   return parseInt((result.rows[0] as any)?.count || '0', 10);
 }

@@ -164,6 +164,22 @@ export const getFileUrl = (filename: string): string => {
   return `/api/files/documents/${filename}`;
 };
 
+// LOW-3 Security: Verify file content matches extension via magic bytes
+export function verifyFileMagicBytes(buffer: Buffer, mimeType: string): boolean {
+  const signatures: Record<string, number[][]> = {
+    'image/jpeg': [[0xFF, 0xD8, 0xFF]],
+    'image/png': [[0x89, 0x50, 0x4E, 0x47]],
+    'image/gif': [[0x47, 0x49, 0x46, 0x38]],
+    'image/webp': [[0x52, 0x49, 0x46, 0x46]], // RIFF header
+    'application/pdf': [[0x25, 0x50, 0x44, 0x46]], // %PDF
+  };
+  const expected = signatures[mimeType];
+  if (!expected) return true; // Unknown type — skip check
+  return expected.some(sig =>
+    sig.every((byte, i) => buffer.length > i && buffer[i] === byte)
+  );
+}
+
 // Helper function to clean up application documents when application is cancelled
 export const cleanupApplicationDocuments = async (application: { 
   foodSafetyLicenseUrl?: string | null, 

@@ -52,15 +52,16 @@ export class UserService {
       hashedPassword = await hashPassword(data.password);
     }
 
-    // Ensure default values match legacy behavior
+    // Security: Only set safe fields during creation. Privileged fields (isChef, isManager,
+    // isPortalUser) must be set via updateUser in admin/portal paths to prevent mass assignment.
     const userToCreate = {
-      ...data,
+      username: data.username,
       password: hashedPassword,
+      role: data.role,
+      firebaseUid: data.firebaseUid,
+      email: data.email,
       isVerified: data.isVerified ?? false,
       has_seen_welcome: data.has_seen_welcome ?? false,
-      isChef: data.isChef ?? false,
-      isManager: data.isManager ?? false,
-      isPortalUser: (data as any).isPortalUser ?? false,
     };
 
     return this.repo.create(userToCreate);

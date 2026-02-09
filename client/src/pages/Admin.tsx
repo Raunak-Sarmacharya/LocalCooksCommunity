@@ -80,6 +80,7 @@ import { auth } from "@/lib/firebase";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import ResponsiveTable from "@/components/ui/responsive-table";
 import { AdminOverviewSection } from "@/components/admin/sections/AdminOverviewSection";
+import { SecuritySettingsSection } from "@/components/admin/sections/SecuritySettingsSection";
 import {
   AlertCircle,
   AlertTriangle,
@@ -118,6 +119,7 @@ function AdminDashboard() {
     "chef-kitchen-access", "kitchen-management", "promos", "manager-revenues",
     "platform-overview", "platform-settings", "overstay-settings",
     "damage-claim-settings", "account-settings", "overview", "transactions",
+    "security-settings",
   ];
   const [activeSection, setActiveSection] = useState<AdminSection>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1117,6 +1119,13 @@ function AdminDashboard() {
 
       case "damage-claim-settings":
         return <DamageClaimSettings />;
+
+      case "security-settings":
+        return (
+          <ErrorBoundary>
+            <SecuritySettingsSection />
+          </ErrorBoundary>
+        );
 
       case "account-settings":
         return (

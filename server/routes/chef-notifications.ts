@@ -48,22 +48,20 @@ async function getNotifications(
 
   const offset = (page - 1) * limit;
 
-  // Build filter conditions
-  let filterCondition = '';
+  // CRIT-2 Security: Build filter conditions using parameterized queries (no sql.raw)
+  let filterCondition = sql`AND is_archived = false`;
   if (filter === 'unread') {
-    filterCondition = 'AND is_read = false AND is_archived = false';
+    filterCondition = sql`AND is_read = false AND is_archived = false`;
   } else if (filter === 'read') {
-    filterCondition = 'AND is_read = true AND is_archived = false';
+    filterCondition = sql`AND is_read = true AND is_archived = false`;
   } else if (filter === 'archived') {
-    filterCondition = 'AND is_archived = true';
-  } else {
-    filterCondition = 'AND is_archived = false';
+    filterCondition = sql`AND is_archived = true`;
   }
 
-  const typeCondition = type ? `AND type = '${type}'::chef_notification_type` : '';
+  const typeCondition = type ? sql`AND type = ${type}::chef_notification_type` : sql``;
 
   // Get notifications
-  const notificationsResult = await db.execute(sql.raw(`
+  const notificationsResult = await db.execute(sql`
     SELECT 
       id, chef_id, type, priority, title, message, 
       metadata, is_read, read_at, is_archived, archived_at, 
@@ -81,17 +79,17 @@ async function getNotifications(
       created_at DESC
     LIMIT ${limit}
     OFFSET ${offset}
-  `));
+  `);
 
   // Get total count
-  const countResult = await db.execute(sql.raw(`
+  const countResult = await db.execute(sql`
     SELECT COUNT(*) as total
     FROM chef_notifications
     WHERE chef_id = ${chefId}
       AND (expires_at IS NULL OR expires_at > NOW())
       ${filterCondition}
       ${typeCondition}
-  `));
+  `);
 
   const total = parseInt((countResult.rows[0] as { total: string })?.total || '0', 10);
 
@@ -111,14 +109,15 @@ async function getNotifications(
  * Get unread notification count for a chef
  */
 async function getUnreadCount(chefId: number) {
-  const result = await db.execute(sql.raw(`
+  // CRIT-2 Security: Parameterized query — no sql.raw()
+  const result = await db.execute(sql`
     SELECT COUNT(*) as count
     FROM chef_notifications
     WHERE chef_id = ${chefId}
       AND is_read = false
       AND is_archived = false
       AND (expires_at IS NULL OR expires_at > NOW())
-  `));
+  `);
 
   return { count: parseInt((result.rows[0] as { count: string })?.count || '0', 10) };
 }

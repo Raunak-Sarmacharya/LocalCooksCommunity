@@ -665,11 +665,11 @@ async function processExpiredCancellationRequests(): Promise<{ processed: number
  */
 router.post("/detect-overstays", async (req: Request, res: Response) => {
     try {
-        // Verify cron secret (Vercel sets this header for cron jobs)
+        // HIGH-5 Security: Verify cron secret — reject ALL requests when CRON_SECRET is missing
         const cronSecret = process.env.CRON_SECRET;
         const authHeader = req.headers.authorization;
         
-        if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+        if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
             console.warn("[Cron] Unauthorized cron job attempt");
             return res.status(401).json({ error: "Unauthorized" });
         }
@@ -776,7 +776,13 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
 // Use the new manager-controlled workflow instead
 router.post("/admin/storage-bookings/process-overstayer-penalties", async (req: Request, res: Response) => {
     try {
-        // Redirect to new detection system
+        // MED-4 Security: Require CRON_SECRET or admin auth for deprecated endpoint
+        const cronSecret = process.env.CRON_SECRET;
+        const authHeader = req.headers.authorization;
+        const isAdmin = req.neonUser?.role === 'admin';
+        if (!isAdmin && (!cronSecret || authHeader !== `Bearer ${cronSecret}`)) {
+            return res.status(401).json({ error: "Unauthorized" });
+        }
         console.warn("[DEPRECATED] Old penalty endpoint called - use /detect-overstays instead");
         
         const results = await overstayPenaltyService.detectOverstays();

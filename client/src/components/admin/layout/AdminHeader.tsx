@@ -35,6 +35,7 @@ const SECTION_META: Record<AdminSection, { category: string; title: string }> = 
   transactions: { category: "Revenue", title: "Transaction History" },
   "overstay-penalties-history": { category: "Revenue", title: "Overstay Penalties" },
   "damage-claims-history": { category: "Revenue", title: "Damage Claims History" },
+  "security-settings": { category: "Settings", title: "Security & Rate Limits" },
 };
 
 export function AdminHeader({ activeSection, onRefresh, isRefreshing }: AdminHeaderProps) {

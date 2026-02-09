@@ -13,16 +13,16 @@ export { User };
  */
 export interface CreateUserDTO {
   username: string;
-  password: string;
+  password?: string; // Optional — Firebase Auth users don't have passwords in Neon
   role?: 'admin' | 'chef' | 'manager';
   firebaseUid?: string;
   email?: string;
+  displayName?: string;
   isVerified?: boolean;
   has_seen_welcome?: boolean;
-  isChef?: boolean;
-  isManager?: boolean;
-  isPortalUser?: boolean;
-  managerProfileData?: Record<string, any>;
+  // Security: isChef, isManager, isPortalUser, managerProfileData removed from CreateUserDTO
+  // These privileged fields must only be set through proper service methods (updateUser),
+  // never during registration. This prevents mass assignment attacks.
 }
 
 /**
@@ -36,6 +36,7 @@ export interface UpdateUserDTO {
   role?: 'admin' | 'chef' | 'manager';
   isChef?: boolean;
   isManager?: boolean;
+  isPortalUser?: boolean;
   isVerified?: boolean;
   has_seen_welcome?: boolean;
   welcomeEmailSentAt?: Date; // Track when welcome email was sent (idempotency)

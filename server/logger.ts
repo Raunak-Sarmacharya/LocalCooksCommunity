@@ -1,5 +1,6 @@
 // Simple structured logger wrapper
-const isProd = process.env.NODE_ENV === 'production';
+// LOW-2: Detect production via VERCEL_ENV as well as NODE_ENV
+const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
 
 export const logger = {
     info: (msg: string, data?: object) => {
@@ -13,5 +14,9 @@ export const logger = {
     },
     debug: (msg: string, data?: object) => {
         if (!isProd) console.log(`[DEBUG] ${msg}`, data || '');
+    },
+    // Operational: always logs in both dev and prod (for critical business events)
+    operational: (msg: string, data?: object) => {
+        console.log(`[OP] ${msg}`, data || '');
     }
 };

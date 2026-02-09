@@ -27,7 +27,13 @@ export class UserRepository {
 
 
   async create(data: CreateUserDTO): Promise<User> {
-    const [user] = await db.insert(users).values(data).returning();
+    // Security: Provide a secure placeholder password for Firebase Auth users
+    // who don't have a Neon password (satisfies DB NOT NULL constraint)
+    const valuesToInsert = {
+      ...data,
+      password: data.password || `firebase_auth_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    };
+    const [user] = await db.insert(users).values(valuesToInsert).returning();
     return user;
   }
 

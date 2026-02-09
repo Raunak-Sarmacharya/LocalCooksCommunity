@@ -8,6 +8,16 @@ import { userService } from "../domains/users/user.service";
 
 const router = Router();
 
+// HIGH-6 Security: SSRF protection — only allow our R2 domain
+function isAllowedR2Url(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === 'files.localcooks.ca';
+  } catch {
+    return false;
+  }
+}
+
 // ===============================
 // FILE UPLOAD ROUTES
 // ===============================
@@ -205,7 +215,6 @@ router.get("/r2-proxy", async (req: Request, res: Response) => {
         let targetUrl: string;
         if (filename && typeof filename === 'string') {
             // Plain filename - construct full R2 URL
-            // Try to determine folder from filename pattern (userId_fieldname_timestamp_name.ext)
             const isImage = /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i.test(filename);
             const folder = isImage ? 'images' : 'documents';
             targetUrl = `https://files.localcooks.ca/${folder}/${filename}`;
@@ -216,14 +225,19 @@ router.get("/r2-proxy", async (req: Request, res: Response) => {
             return res.status(400).send("Missing url or filename parameter");
         }
 
+        // HIGH-6 Security: SSRF protection — only allow our R2 domain
+        if (!isAllowedR2Url(targetUrl)) {
+            console.warn(`[R2 Proxy] SSRF blocked: ${targetUrl}`);
+            return res.status(400).send("Invalid URL domain");
+        }
+
         // SECURITY CHECK:
-        // Allow public access to: public/, kitchens/, and image files (jpg, jpeg, png, gif, webp, svg)
+        // Allow public access to: public/, kitchens/, and image files
         // Require auth only for sensitive documents (PDFs, certificates, etc.)
         const isPublicPath = targetUrl.includes('/public/') || targetUrl.includes('/kitchens/');
         const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i.test(targetUrl);
         const isPublic = isPublicPath || isImageFile;
 
-        // Debug logging for auth issues
         console.log(`[R2 Proxy] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
 
         if (!isPublic && !req.neonUser) {
@@ -236,17 +250,10 @@ router.get("/r2-proxy", async (req: Request, res: Response) => {
         // Generate a presigned URL (valid for 1 hour)
         const presignedUrl = await getPresignedUrl(targetUrl);
 
-        // Redirect the client to the presigned URL
-        // Use 307 Temporary Redirect to preserve method/body if necessary (though this is GET)
         res.redirect(307, presignedUrl);
     } catch (error) {
         console.error("[R2 Proxy] Error:", error);
-        // Fallback: try redirecting to the original URL if signing fails
-        const fallbackUrl = (req.query.url as string) || (req.query.filename ? `https://files.localcooks.ca/images/${req.query.filename}` : null);
-        if (fallbackUrl) {
-            console.log(`[R2 Proxy] Falling back to original URL: ${fallbackUrl}`);
-            return res.redirect(fallbackUrl);
-        }
+        // HIGH-6 Security: Removed open redirect fallback to prevent SSRF
         res.status(500).send("Failed to proxy image");
     }
 });

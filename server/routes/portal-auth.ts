@@ -140,15 +140,19 @@ router.post("/portal-register", async (req: Request, res: Response) => {
             // Hash password and create user
             const hashedPassword = await hashPassword(password);
 
+            // Security: Create with safe fields first, then set privileged fields via updateUser
             user = await userService.createUser({
                 username: username,
                 password: hashedPassword,
                 role: "chef", // Default role, but portal user flag takes precedence
+            });
+            // Set privileged fields via updateUser (admin/portal path only)
+            const updatedPortalUser = await userService.updateUser(user.id, {
                 isChef: false,
                 isManager: false,
                 isPortalUser: true,
-                managerProfileData: {},
             });
+            if (updatedPortalUser) user = updatedPortalUser;
             isNewUser = true;
         } else {
             // Check if user is already a portal user
