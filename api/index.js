@@ -2017,7 +2017,11 @@ var init_user_repository = __esm({
         return !!user;
       }
       async create(data) {
-        const [user] = await db.insert(users).values(data).returning();
+        const valuesToInsert = {
+          ...data,
+          password: data.password || `firebase_auth_${Date.now()}_${Math.random().toString(36).slice(2)}`
+        };
+        const [user] = await db.insert(users).values(valuesToInsert).returning();
         return user;
       }
       async update(id, data) {
@@ -2110,7 +2114,7 @@ var isProd, logger;
 var init_logger = __esm({
   "server/logger.ts"() {
     "use strict";
-    isProd = process.env.NODE_ENV === "production";
+    isProd = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
     logger = {
       info: (msg, data) => {
         if (!isProd) console.log(`[INFO] ${msg}`, data || "");
@@ -2123,6 +2127,10 @@ var init_logger = __esm({
       },
       debug: (msg, data) => {
         if (!isProd) console.log(`[DEBUG] ${msg}`, data || "");
+      },
+      // Operational: always logs in both dev and prod (for critical business events)
+      operational: (msg, data) => {
+        console.log(`[OP] ${msg}`, data || "");
       }
     };
   }
@@ -11556,13 +11564,13 @@ var init_user_service = __esm({
           hashedPassword = await hashPassword(data.password);
         }
         const userToCreate = {
-          ...data,
+          username: data.username,
           password: hashedPassword,
+          role: data.role,
+          firebaseUid: data.firebaseUid,
+          email: data.email,
           isVerified: data.isVerified ?? false,
-          has_seen_welcome: data.has_seen_welcome ?? false,
-          isChef: data.isChef ?? false,
-          isManager: data.isManager ?? false,
-          isPortalUser: data.isPortalUser ?? false
+          has_seen_welcome: data.has_seen_welcome ?? false
         };
         return this.repo.create(userToCreate);
       }
@@ -15855,6 +15863,14 @@ __export(files_exports, {
 import express, { Router as Router13 } from "express";
 import path2 from "path";
 import fs5 from "fs";
+function isAllowedR2Url(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === "files.localcooks.ca";
+  } catch {
+    return false;
+  }
+}
 var router13, isVercel2, files_default;
 var init_files = __esm({
   "server/routes/files.ts"() {
@@ -15995,6 +16011,10 @@ var init_files = __esm({
         } else {
           return res.status(400).send("Missing url or filename parameter");
         }
+        if (!isAllowedR2Url(targetUrl)) {
+          console.warn(`[R2 Proxy] SSRF blocked: ${targetUrl}`);
+          return res.status(400).send("Invalid URL domain");
+        }
         const isPublicPath = targetUrl.includes("/public/") || targetUrl.includes("/kitchens/");
         const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i.test(targetUrl);
         const isPublic = isPublicPath || isImageFile;
@@ -16008,11 +16028,6 @@ var init_files = __esm({
         res.redirect(307, presignedUrl);
       } catch (error) {
         console.error("[R2 Proxy] Error:", error);
-        const fallbackUrl = req.query.url || (req.query.filename ? `https://files.localcooks.ca/images/${req.query.filename}` : null);
-        if (fallbackUrl) {
-          console.log(`[R2 Proxy] Falling back to original URL: ${fallbackUrl}`);
-          return res.redirect(fallbackUrl);
-        }
         res.status(500).send("Failed to proxy image");
       }
     });
@@ -16114,13 +16129,13 @@ var init_files = __esm({
             const searchPattern = `%${filename}`;
             const { kitchens: kitchens3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
             const { db: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-            const { or: or7, like, sql: sql19 } = await import("drizzle-orm");
+            const { or: or7, like, sql: sql20 } = await import("drizzle-orm");
             const [kitchenMatch] = await db2.select({ id: kitchens3.id }).from(kitchens3).where(
               or7(
                 like(kitchens3.imageUrl, searchPattern),
-                sql19`${kitchens3.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
+                sql20`${kitchens3.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
                 // also try with just filename if that's how it's stored in array
-                sql19`${kitchens3.galleryImages} @> ${JSON.stringify([filename])}::jsonb`
+                sql20`${kitchens3.galleryImages} @> ${JSON.stringify([filename])}::jsonb`
               )
             ).limit(1);
             if (kitchenMatch) {
@@ -23082,7 +23097,7 @@ var init_bookings = __esm({
       try {
         const cronSecret = process.env.CRON_SECRET;
         const authHeader = req.headers.authorization;
-        if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+        if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
           console.warn("[Cron] Unauthorized cron job attempt");
           return res.status(401).json({ error: "Unauthorized" });
         }
@@ -23169,6 +23184,12 @@ var init_bookings = __esm({
     });
     router14.post("/admin/storage-bookings/process-overstayer-penalties", async (req, res) => {
       try {
+        const cronSecret = process.env.CRON_SECRET;
+        const authHeader = req.headers.authorization;
+        const isAdmin = req.neonUser?.role === "admin";
+        if (!isAdmin && (!cronSecret || authHeader !== `Bearer ${cronSecret}`)) {
+          return res.status(401).json({ error: "Unauthorized" });
+        }
         console.warn("[DEPRECATED] Old penalty endpoint called - use /detect-overstays instead");
         const results = await overstayPenaltyService.detectOverstays();
         res.json({
@@ -31329,19 +31350,17 @@ async function getNotifications(managerId, options = {}) {
     locationId
   } = options;
   const offset = (page - 1) * limit;
-  let filterCondition = "";
+  let filterCondition = sql14`AND is_archived = false`;
   if (filter === "unread") {
-    filterCondition = "AND is_read = false AND is_archived = false";
+    filterCondition = sql14`AND is_read = false AND is_archived = false`;
   } else if (filter === "read") {
-    filterCondition = "AND is_read = true AND is_archived = false";
+    filterCondition = sql14`AND is_read = true AND is_archived = false`;
   } else if (filter === "archived") {
-    filterCondition = "AND is_archived = true";
-  } else {
-    filterCondition = "AND is_archived = false";
+    filterCondition = sql14`AND is_archived = true`;
   }
-  const typeCondition = type ? `AND type = '${type}'::notification_type` : "";
-  const locationCondition = locationId ? `AND (location_id = ${locationId} OR location_id IS NULL)` : "";
-  const notificationsResult = await db.execute(sql14.raw(`
+  const typeCondition = type ? sql14`AND type = ${type}::notification_type` : sql14``;
+  const locationCondition = locationId ? sql14`AND (location_id = ${locationId} OR location_id IS NULL)` : sql14``;
+  const notificationsResult = await db.execute(sql14`
     SELECT 
       id, manager_id, location_id, type, priority, title, message, 
       metadata, is_read, read_at, is_archived, archived_at, 
@@ -31360,8 +31379,8 @@ async function getNotifications(managerId, options = {}) {
       created_at DESC
     LIMIT ${limit}
     OFFSET ${offset}
-  `));
-  const countResult = await db.execute(sql14.raw(`
+  `);
+  const countResult = await db.execute(sql14`
     SELECT COUNT(*) as total
     FROM manager_notifications
     WHERE manager_id = ${managerId}
@@ -31369,7 +31388,7 @@ async function getNotifications(managerId, options = {}) {
       ${filterCondition}
       ${typeCondition}
       ${locationCondition}
-  `));
+  `);
   const total = parseInt(countResult.rows[0]?.total || "0", 10);
   return {
     notifications: notificationsResult.rows,
@@ -31383,8 +31402,8 @@ async function getNotifications(managerId, options = {}) {
   };
 }
 async function getUnreadCount(managerId, locationId) {
-  const locationCondition = locationId ? `AND (location_id = ${locationId} OR location_id IS NULL)` : "";
-  const result = await db.execute(sql14.raw(`
+  const locationCondition = locationId ? sql14`AND (location_id = ${locationId} OR location_id IS NULL)` : sql14``;
+  const result = await db.execute(sql14`
     SELECT COUNT(*) as count
     FROM manager_notifications
     WHERE manager_id = ${managerId}
@@ -31392,7 +31411,7 @@ async function getUnreadCount(managerId, locationId) {
       AND is_archived = false
       AND (expires_at IS NULL OR expires_at > NOW())
       ${locationCondition}
-  `));
+  `);
   return parseInt(result.rows[0]?.count || "0", 10);
 }
 async function markAsRead(managerId, notificationIds) {
@@ -31612,18 +31631,16 @@ async function getNotifications2(chefId, options = {}) {
     type
   } = options;
   const offset = (page - 1) * limit;
-  let filterCondition = "";
+  let filterCondition = sql15`AND is_archived = false`;
   if (filter === "unread") {
-    filterCondition = "AND is_read = false AND is_archived = false";
+    filterCondition = sql15`AND is_read = false AND is_archived = false`;
   } else if (filter === "read") {
-    filterCondition = "AND is_read = true AND is_archived = false";
+    filterCondition = sql15`AND is_read = true AND is_archived = false`;
   } else if (filter === "archived") {
-    filterCondition = "AND is_archived = true";
-  } else {
-    filterCondition = "AND is_archived = false";
+    filterCondition = sql15`AND is_archived = true`;
   }
-  const typeCondition = type ? `AND type = '${type}'::chef_notification_type` : "";
-  const notificationsResult = await db.execute(sql15.raw(`
+  const typeCondition = type ? sql15`AND type = ${type}::chef_notification_type` : sql15``;
+  const notificationsResult = await db.execute(sql15`
     SELECT 
       id, chef_id, type, priority, title, message, 
       metadata, is_read, read_at, is_archived, archived_at, 
@@ -31641,15 +31658,15 @@ async function getNotifications2(chefId, options = {}) {
       created_at DESC
     LIMIT ${limit}
     OFFSET ${offset}
-  `));
-  const countResult = await db.execute(sql15.raw(`
+  `);
+  const countResult = await db.execute(sql15`
     SELECT COUNT(*) as total
     FROM chef_notifications
     WHERE chef_id = ${chefId}
       AND (expires_at IS NULL OR expires_at > NOW())
       ${filterCondition}
       ${typeCondition}
-  `));
+  `);
   const total = parseInt(countResult.rows[0]?.total || "0", 10);
   return {
     notifications: notificationsResult.rows,
@@ -31663,14 +31680,14 @@ async function getNotifications2(chefId, options = {}) {
   };
 }
 async function getUnreadCount2(chefId) {
-  const result = await db.execute(sql15.raw(`
+  const result = await db.execute(sql15`
     SELECT COUNT(*) as count
     FROM chef_notifications
     WHERE chef_id = ${chefId}
       AND is_read = false
       AND is_archived = false
       AND (expires_at IS NULL OR expires_at > NOW())
-  `));
+  `);
   return { count: parseInt(result.rows[0]?.count || "0", 10) };
 }
 async function markAsRead2(chefId, notificationIds) {
@@ -32414,13 +32431,236 @@ var init_storage_listings = __esm({
   }
 });
 
+// server/security.ts
+var security_exports = {};
+__export(security_exports, {
+  escapeHtml: () => escapeHtml,
+  getDefaultRateLimits: () => getDefaultRateLimits,
+  getRateLimitConfig: () => getRateLimitConfig,
+  invalidateRateLimitCache: () => invalidateRateLimitCache,
+  registerSecurityMiddleware: () => registerSecurityMiddleware,
+  sanitizeErrorForClient: () => sanitizeErrorForClient
+});
+import helmet from "helmet";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
+import { sql as sql16 } from "drizzle-orm";
+async function loadRateLimitConfig() {
+  const now = Date.now();
+  if (now - lastConfigFetch < CONFIG_CACHE_TTL) {
+    return cachedConfig;
+  }
+  try {
+    const result = await db.execute(sql16`
+      SELECT key, value FROM platform_settings 
+      WHERE key LIKE 'rate_limit_%'
+    `);
+    const settings = {};
+    for (const row of result.rows) {
+      settings[row.key] = row.value;
+    }
+    cachedConfig = {
+      globalWindowMs: parseInt(settings["rate_limit_global_window_ms"] || "") || DEFAULT_RATE_LIMITS.globalWindowMs,
+      globalMaxRequests: parseInt(settings["rate_limit_global_max"] || "") || DEFAULT_RATE_LIMITS.globalMaxRequests,
+      authWindowMs: parseInt(settings["rate_limit_auth_window_ms"] || "") || DEFAULT_RATE_LIMITS.authWindowMs,
+      authMaxRequests: parseInt(settings["rate_limit_auth_max"] || "") || DEFAULT_RATE_LIMITS.authMaxRequests,
+      apiWindowMs: parseInt(settings["rate_limit_api_window_ms"] || "") || DEFAULT_RATE_LIMITS.apiWindowMs,
+      apiMaxRequests: parseInt(settings["rate_limit_api_max"] || "") || DEFAULT_RATE_LIMITS.apiMaxRequests,
+      webhookWindowMs: parseInt(settings["rate_limit_webhook_window_ms"] || "") || DEFAULT_RATE_LIMITS.webhookWindowMs,
+      webhookMaxRequests: parseInt(settings["rate_limit_webhook_max"] || "") || DEFAULT_RATE_LIMITS.webhookMaxRequests
+    };
+    lastConfigFetch = now;
+  } catch (error) {
+    console.log("[Security] Using default rate limits (DB config not available)");
+  }
+  return cachedConfig;
+}
+function invalidateRateLimitCache() {
+  lastConfigFetch = 0;
+}
+async function getRateLimitConfig() {
+  return loadRateLimitConfig();
+}
+function getDefaultRateLimits() {
+  return { ...DEFAULT_RATE_LIMITS };
+}
+function getCorsOrigins() {
+  const origins = [
+    "https://localcooks.ca",
+    "https://www.localcooks.ca",
+    "https://chef.localcooks.ca",
+    "https://kitchen.localcooks.ca",
+    "https://admin.localcooks.ca",
+    // Vercel preview deployments
+    /^https:\/\/local-cooks-community.*\.vercel\.app$/
+  ];
+  if (process.env.NODE_ENV === "development" || !process.env.VERCEL) {
+    origins.push("http://localhost:5001");
+    origins.push("http://localhost:5173");
+    origins.push("http://localhost:3000");
+    origins.push(/^http:\/\/localhost:\d+$/);
+  }
+  const customOrigins = process.env.CORS_ALLOWED_ORIGINS;
+  if (customOrigins) {
+    customOrigins.split(",").map((o) => o.trim()).filter(Boolean).forEach((o) => origins.push(o));
+  }
+  return origins;
+}
+function escapeHtml(str) {
+  if (!str) return "";
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
+}
+function sanitizeErrorForClient(error, fallbackMessage) {
+  if (process.env.NODE_ENV === "development") {
+    return error instanceof Error ? error.message : fallbackMessage;
+  }
+  return fallbackMessage;
+}
+function registerSecurityMiddleware(app2) {
+  const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
+  app2.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          // Required for Vite HMR in dev
+          "'unsafe-eval'",
+          // Required for Vite HMR in dev
+          "https://js.stripe.com",
+          "https://code.tidio.co",
+          "https://widget-v4.tidiochat.com",
+          "https://maps.googleapis.com",
+          ...isProduction2 ? [] : ["http://localhost:*"]
+        ],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+        imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
+        connectSrc: [
+          "'self'",
+          "https://api.stripe.com",
+          "https://*.firebaseio.com",
+          "https://*.googleapis.com",
+          "https://*.cloudfunctions.net",
+          "https://code.tidio.co",
+          "https://widget-v4.tidiochat.com",
+          "wss://*.tidiochat.com",
+          "https://files.localcooks.ca",
+          ...isProduction2 ? ["https://*.localcooks.ca"] : ["http://localhost:*", "ws://localhost:*"]
+        ],
+        frameSrc: [
+          "'self'",
+          "https://js.stripe.com",
+          "https://hooks.stripe.com",
+          "https://widget-v4.tidiochat.com"
+        ],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'self'"]
+      }
+    },
+    crossOriginEmbedderPolicy: false,
+    // Required for Stripe/Tidio iframes
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+    // Required for OAuth popups
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+    // Allow cross-origin images
+  }));
+  app2.use(cors({
+    origin: getCorsOrigins(),
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    maxAge: 86400
+    // Cache preflight for 24 hours
+  }));
+  const globalLimiter = rateLimit({
+    windowMs: DEFAULT_RATE_LIMITS.globalWindowMs,
+    max: async () => {
+      const config = await loadRateLimitConfig();
+      return config.globalMaxRequests;
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many requests. Please try again later." },
+    skip: (req) => {
+      return req.path === "/api/webhooks/stripe";
+    },
+    keyGenerator: (req) => {
+      return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    }
+  });
+  app2.use(globalLimiter);
+  const authLimiter = rateLimit({
+    windowMs: DEFAULT_RATE_LIMITS.authWindowMs,
+    max: async () => {
+      const config = await loadRateLimitConfig();
+      return config.authMaxRequests;
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many authentication attempts. Please wait before trying again." },
+    keyGenerator: (req) => {
+      return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    }
+  });
+  app2.use("/api/portal-login", authLimiter);
+  app2.use("/api/firebase-register-user", authLimiter);
+  app2.use("/api/firebase-sync-user", authLimiter);
+  app2.use("/api/user-exists", authLimiter);
+  const webhookLimiter = rateLimit({
+    windowMs: DEFAULT_RATE_LIMITS.webhookWindowMs,
+    max: async () => {
+      const config = await loadRateLimitConfig();
+      return config.webhookMaxRequests;
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+      return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+    }
+  });
+  app2.use("/api/webhooks", webhookLimiter);
+  console.log(`[Security] Helmet, CORS, and Rate Limiting configured (env: ${isProduction2 ? "production" : "development"})`);
+}
+var DEFAULT_RATE_LIMITS, cachedConfig, lastConfigFetch, CONFIG_CACHE_TTL;
+var init_security = __esm({
+  "server/security.ts"() {
+    "use strict";
+    init_db();
+    DEFAULT_RATE_LIMITS = {
+      globalWindowMs: 15 * 60 * 1e3,
+      // 15 minutes
+      globalMaxRequests: 300,
+      // 300 requests per 15 min (dev-friendly)
+      authWindowMs: 15 * 60 * 1e3,
+      // 15 minutes
+      authMaxRequests: 15,
+      // 15 auth attempts per 15 min
+      apiWindowMs: 1 * 60 * 1e3,
+      // 1 minute
+      apiMaxRequests: 60,
+      // 60 API calls per minute
+      webhookWindowMs: 1 * 60 * 1e3,
+      // 1 minute
+      webhookMaxRequests: 100
+      // 100 webhook calls per minute (Stripe bursts)
+    };
+    cachedConfig = { ...DEFAULT_RATE_LIMITS };
+    lastConfigFetch = 0;
+    CONFIG_CACHE_TTL = 6e4;
+  }
+});
+
 // server/routes/admin.ts
 var admin_exports = {};
 __export(admin_exports, {
   default: () => admin_default
 });
 import { Router as Router21 } from "express";
-import { eq as eq33, sql as sql16, ilike } from "drizzle-orm";
+import { eq as eq33, sql as sql17, ilike } from "drizzle-orm";
 import { getFirestore as getFirestore2 } from "firebase-admin/firestore";
 async function getFirestoreDisplayNames(firebaseUids) {
   const nameMap = {};
@@ -32529,16 +32769,16 @@ var init_admin = __esm({
           return;
         }
         const { startDate, endDate } = req.query;
-        const conditions = [sql16`pt.status = 'succeeded'`];
+        const conditions = [sql17`pt.status = 'succeeded'`];
         if (startDate) {
-          conditions.push(sql16`DATE(pt.paid_at) >= ${startDate}::date`);
+          conditions.push(sql17`DATE(pt.paid_at) >= ${startDate}::date`);
         }
         if (endDate) {
-          conditions.push(sql16`DATE(pt.paid_at) <= ${endDate}::date`);
+          conditions.push(sql17`DATE(pt.paid_at) <= ${endDate}::date`);
         }
-        const txnFilters = sql16.join(conditions, sql16` AND `);
+        const txnFilters = sql17.join(conditions, sql17` AND `);
         const managerRole = "manager";
-        const result = await db.execute(sql16`
+        const result = await db.execute(sql17`
         SELECT 
           u.id as manager_id,
           u.username as manager_name,
@@ -32576,17 +32816,17 @@ var init_admin = __esm({
           return;
         }
         const { startDate, endDate } = req.query;
-        const managerCountResult = await db.select({ count: sql16`count(*)::int` }).from(users).where(eq33(users.role, "manager"));
+        const managerCountResult = await db.select({ count: sql17`count(*)::int` }).from(users).where(eq33(users.role, "manager"));
         const totalManagers = managerCountResult[0]?.count || 0;
-        const conditions = [sql16`kb.status != 'cancelled'`];
+        const conditions = [sql17`kb.status != 'cancelled'`];
         if (startDate) {
-          conditions.push(sql16`kb.booking_date >= ${startDate}::date`);
+          conditions.push(sql17`kb.booking_date >= ${startDate}::date`);
         }
         if (endDate) {
-          conditions.push(sql16`kb.booking_date <= ${endDate}::date`);
+          conditions.push(sql17`kb.booking_date <= ${endDate}::date`);
         }
-        const bookingFilters = sql16.join(conditions, sql16` AND `);
-        const bookingResult = await db.execute(sql16`
+        const bookingFilters = sql17.join(conditions, sql17` AND `);
+        const bookingResult = await db.execute(sql17`
         SELECT 
           COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
           COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
@@ -32835,17 +33075,19 @@ var init_admin = __esm({
           return res.status(400).json({ error: "Username already exists" });
         }
         const hashedPassword = await hashPassword(password);
-        const manager = await userService.createUser({
+        let manager = await userService.createUser({
           username,
           password: hashedPassword,
           role: "manager",
+          has_seen_welcome: false
+          // Manager must change password on first login
+        });
+        const updatedManager = await userService.updateUser(manager.id, {
           isChef: false,
           isManager: true,
-          isPortalUser: false,
-          has_seen_welcome: false,
-          // Manager must change password on first login
-          managerProfileData: {}
+          isPortalUser: false
         });
+        if (updatedManager) manager = updatedManager;
         try {
           const managerEmail = email || username;
           const welcomeEmail = generateManagerCredentialsEmail({
@@ -32878,7 +33120,7 @@ var init_admin = __esm({
         if (user.role !== "admin") {
           return res.status(403).json({ error: "Admin access required" });
         }
-        const result = await db.execute(sql16.raw(`
+        const result = await db.execute(sql17`
             SELECT 
               u.id, 
               u.username, 
@@ -32899,7 +33141,7 @@ var init_admin = __esm({
             WHERE u.role = 'manager'
             GROUP BY u.id, u.username, u.role, u.firebase_uid
             ORDER BY u.username ASC
-        `));
+        `);
         const firebaseUids = result.rows.map((row) => row.firebase_uid).filter((uid) => !!uid);
         const firestoreNames = await getFirestoreDisplayNames(firebaseUids);
         const managersWithEmails = result.rows.map((row) => {
@@ -33035,7 +33277,7 @@ var init_admin = __esm({
     });
     router21.get("/locations/pending-licenses-count", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
-        const result = await db.select({ count: sql16`count(*)::int` }).from(locations).where(eq33(locations.kitchenLicenseStatus, "pending"));
+        const result = await db.select({ count: sql17`count(*)::int` }).from(locations).where(eq33(locations.kitchenLicenseStatus, "pending"));
         const count3 = result[0]?.count || 0;
         res.json({ count: count3 });
       } catch (error) {
@@ -33855,7 +34097,7 @@ var init_admin = __esm({
     router21.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const config = await getFeeConfig();
-        const settings = await db.select().from(platformSettings).where(sql16`key IN ('stripe_percentage_fee', 'stripe_flat_fee_cents', 'platform_commission_rate', 'minimum_application_fee_cents', 'use_stripe_platform_pricing')`);
+        const settings = await db.select().from(platformSettings).where(sql17`key IN ('stripe_percentage_fee', 'stripe_flat_fee_cents', 'platform_commission_rate', 'minimum_application_fee_cents', 'use_stripe_platform_pricing')`);
         const settingsMap = Object.fromEntries(settings.map((s) => [s.key, {
           value: s.value,
           description: s.description,
@@ -34299,8 +34541,8 @@ var init_admin = __esm({
       try {
         const statusFilter = req.query.status;
         const { damageEvidence: damageEvidence2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-        const statusCondition = statusFilter && statusFilter !== "all" ? sql16`AND dc.status = ${statusFilter}` : sql16``;
-        const claimsQuery = await db.execute(sql16`
+        const statusCondition = statusFilter && statusFilter !== "all" ? sql17`AND dc.status = ${statusFilter}` : sql17``;
+        const claimsQuery = await db.execute(sql17`
             SELECT 
                 dc.*,
                 chef_user.username as chef_email,
@@ -34525,8 +34767,8 @@ var init_admin = __esm({
     router21.get("/escalated-penalties", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const showAll = req.query.all === "true";
-        const overstayStatusFilter = showAll ? sql16`` : sql16`AND sor.status = 'escalated'`;
-        const overstayResult = await db.execute(sql16`
+        const overstayStatusFilter = showAll ? sql17`` : sql17`AND sor.status = 'escalated'`;
+        const overstayResult = await db.execute(sql17`
             SELECT 
                 sor.id,
                 sor.storage_booking_id as "storageBookingId",
@@ -34553,8 +34795,8 @@ var init_admin = __esm({
             ORDER BY sor.detected_at DESC
         `);
         const allOverstays = overstayResult.rows;
-        const claimStatusFilter = showAll ? sql16`` : sql16`AND dc.status = 'escalated'`;
-        const claimResult = await db.execute(sql16`
+        const claimStatusFilter = showAll ? sql17`` : sql17`AND dc.status = 'escalated'`;
+        const claimResult = await db.execute(sql17`
             SELECT 
                 dc.id,
                 dc.claim_title as "claimTitle",
@@ -34598,7 +34840,7 @@ var init_admin = __esm({
     });
     router21.get("/transactions/locations", requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
       try {
-        const result = await db.execute(sql16`
+        const result = await db.execute(sql17`
             SELECT id, name FROM locations ORDER BY name ASC
         `);
         res.json(result.rows);
@@ -34626,15 +34868,15 @@ var init_admin = __esm({
         const parsedOffset = parseInt(offset) || 0;
         const conditions = [];
         if (status && ["pending", "processing", "succeeded", "failed", "canceled", "refunded", "partially_refunded"].includes(status)) {
-          conditions.push(sql16`pt.status = ${status}`);
+          conditions.push(sql17`pt.status = ${status}`);
         }
         if (bookingType && ["kitchen", "storage", "equipment", "bundle"].includes(bookingType)) {
-          conditions.push(sql16`pt.booking_type = ${bookingType}`);
+          conditions.push(sql17`pt.booking_type = ${bookingType}`);
         }
         if (locationId) {
           const parsed = parseInt(locationId);
           if (!isNaN(parsed)) {
-            conditions.push(sql16`(
+            conditions.push(sql17`(
                     (pt.booking_type = 'kitchen' AND k.location_id = ${parsed}) OR
                     (pt.booking_type = 'storage' AND sk.location_id = ${parsed}) OR
                     (pt.booking_type = 'equipment' AND ek.location_id = ${parsed})
@@ -34644,7 +34886,7 @@ var init_admin = __esm({
         if (kitchenId) {
           const parsed = parseInt(kitchenId);
           if (!isNaN(parsed)) {
-            conditions.push(sql16`(
+            conditions.push(sql17`(
                     (pt.booking_type = 'kitchen' AND kb.kitchen_id = ${parsed}) OR
                     (pt.booking_type = 'storage' AND sl.kitchen_id = ${parsed}) OR
                     (pt.booking_type = 'equipment' AND el.kitchen_id = ${parsed})
@@ -34653,24 +34895,24 @@ var init_admin = __esm({
         }
         if (chefId) {
           const parsed = parseInt(chefId);
-          if (!isNaN(parsed)) conditions.push(sql16`pt.chef_id = ${parsed}`);
+          if (!isNaN(parsed)) conditions.push(sql17`pt.chef_id = ${parsed}`);
         }
         if (managerId) {
           const parsed = parseInt(managerId);
-          if (!isNaN(parsed)) conditions.push(sql16`pt.manager_id = ${parsed}`);
+          if (!isNaN(parsed)) conditions.push(sql17`pt.manager_id = ${parsed}`);
         }
         if (startDate) {
-          conditions.push(sql16`pt.created_at >= ${new Date(startDate)}`);
+          conditions.push(sql17`pt.created_at >= ${new Date(startDate)}`);
         }
         if (endDate) {
-          conditions.push(sql16`pt.created_at <= ${new Date(endDate)}`);
+          conditions.push(sql17`pt.created_at <= ${new Date(endDate)}`);
         }
         if (search && typeof search === "string" && search.trim()) {
           const s = search.trim();
           const like = "%" + s + "%";
           const numVal = parseInt(s);
           const isNum = !isNaN(numVal);
-          conditions.push(sql16`(
+          conditions.push(sql17`(
                 pt.payment_intent_id ILIKE ${like}
                 OR pt.charge_id ILIKE ${like}
                 OR pt.refund_id ILIKE ${like}
@@ -34684,11 +34926,11 @@ var init_admin = __esm({
                 OR k.name ILIKE ${like}
                 OR CAST(pt.id AS TEXT) = ${s}
                 OR CAST(pt.booking_id AS TEXT) = ${s}
-                ${isNum ? sql16`OR pt.chef_id = ${numVal} OR pt.manager_id = ${numVal}` : sql16``}
+                ${isNum ? sql17`OR pt.chef_id = ${numVal} OR pt.manager_id = ${numVal}` : sql17``}
             )`);
         }
-        const whereClause = conditions.length > 0 ? sql16`WHERE ${sql16.join(conditions, sql16` AND `)}` : sql16``;
-        const joinBlock = sql16`
+        const whereClause = conditions.length > 0 ? sql17`WHERE ${sql17.join(conditions, sql17` AND `)}` : sql17``;
+        const joinBlock = sql17`
             FROM payment_transactions pt
             LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
             LEFT JOIN kitchens k ON kb.kitchen_id = k.id
@@ -34707,10 +34949,10 @@ var init_admin = __esm({
             LEFT JOIN users manager_user ON pt.manager_id = manager_user.id
             LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = pt.chef_id AND cka.location_id = l.id
         `;
-        const countResult = await db.execute(sql16`SELECT COUNT(*) as total ${joinBlock} ${whereClause}`);
+        const countResult = await db.execute(sql17`SELECT COUNT(*) as total ${joinBlock} ${whereClause}`);
         const total = parseInt(countResult.rows[0].total);
         const atSign = "@";
-        const result = await db.execute(sql16`
+        const result = await db.execute(sql17`
             SELECT
                 pt.id, pt.booking_id, pt.booking_type, pt.chef_id, pt.manager_id,
                 pt.amount, pt.base_amount, pt.service_fee, pt.stripe_processing_fee,
@@ -34825,9 +35067,9 @@ var init_admin = __esm({
         const { status: statusFilter, locationId, limit = "200", offset = "0" } = req.query;
         const parsedLimit = Math.min(parseInt(limit) || 200, 500);
         const parsedOffset = parseInt(offset) || 0;
-        const statusClause = statusFilter ? sql16`AND sor.status = ${statusFilter}` : sql16``;
-        const locationClause = locationId ? sql16`AND loc.id = ${parseInt(locationId)}` : sql16``;
-        const result = await db.execute(sql16`
+        const statusClause = statusFilter ? sql17`AND sor.status = ${statusFilter}` : sql17``;
+        const locationClause = locationId ? sql17`AND loc.id = ${parseInt(locationId)}` : sql17``;
+        const result = await db.execute(sql17`
             SELECT 
                 sor.id,
                 sor.storage_booking_id as "storageBookingId",
@@ -34888,7 +35130,7 @@ var init_admin = __esm({
             ORDER BY sor.detected_at DESC
             LIMIT ${parsedLimit} OFFSET ${parsedOffset}
         `);
-        const countResult = await db.execute(sql16`
+        const countResult = await db.execute(sql17`
             SELECT COUNT(*) as total
             FROM storage_overstay_records sor
             INNER JOIN storage_bookings sb ON sor.storage_booking_id = sb.id
@@ -34908,7 +35150,7 @@ var init_admin = __esm({
       try {
         const overstayId = parseInt(req.params.id);
         if (isNaN(overstayId)) return res.status(400).json({ error: "Invalid ID" });
-        const result = await db.execute(sql16`
+        const result = await db.execute(sql17`
             SELECT 
                 soh.id,
                 soh.overstay_record_id as "overstayRecordId",
@@ -34937,10 +35179,10 @@ var init_admin = __esm({
         const { status: statusFilter, locationId, bookingType, limit = "200", offset = "0" } = req.query;
         const parsedLimit = Math.min(parseInt(limit) || 200, 500);
         const parsedOffset = parseInt(offset) || 0;
-        const statusClause = statusFilter ? sql16`AND dc.status = ${statusFilter}` : sql16``;
-        const locationClause = locationId ? sql16`AND dc.location_id = ${parseInt(locationId)}` : sql16``;
-        const bookingTypeClause = bookingType ? sql16`AND dc.booking_type = ${bookingType}` : sql16``;
-        const result = await db.execute(sql16`
+        const statusClause = statusFilter ? sql17`AND dc.status = ${statusFilter}` : sql17``;
+        const locationClause = locationId ? sql17`AND dc.location_id = ${parseInt(locationId)}` : sql17``;
+        const bookingTypeClause = bookingType ? sql17`AND dc.booking_type = ${bookingType}` : sql17``;
+        const result = await db.execute(sql17`
             SELECT 
                 dc.id,
                 dc.booking_type as "bookingType",
@@ -34996,7 +35238,7 @@ var init_admin = __esm({
             ORDER BY dc.created_at DESC
             LIMIT ${parsedLimit} OFFSET ${parsedOffset}
         `);
-        const countResult = await db.execute(sql16`
+        const countResult = await db.execute(sql17`
             SELECT COUNT(*) as total
             FROM damage_claims dc
             WHERE 1=1 ${statusClause} ${locationClause} ${bookingTypeClause}
@@ -35012,7 +35254,7 @@ var init_admin = __esm({
       try {
         const claimId = parseInt(req.params.id);
         if (isNaN(claimId)) return res.status(400).json({ error: "Invalid ID" });
-        const result = await db.execute(sql16`
+        const result = await db.execute(sql17`
             SELECT 
                 dch.id,
                 dch.damage_claim_id as "damageClaimId",
@@ -35040,7 +35282,7 @@ var init_admin = __esm({
       try {
         const claimId = parseInt(req.params.id);
         if (isNaN(claimId)) return res.status(400).json({ error: "Invalid ID" });
-        const result = await db.execute(sql16`
+        const result = await db.execute(sql17`
             SELECT 
                 de.id,
                 de.damage_claim_id as "damageClaimId",
@@ -35066,6 +35308,58 @@ var init_admin = __esm({
         res.status(500).json({ error: "Failed to fetch evidence" });
       }
     });
+    router21.get("/admin/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const { getRateLimitConfig: getRateLimitConfig2, getDefaultRateLimits: getDefaultRateLimits2 } = await Promise.resolve().then(() => (init_security(), security_exports));
+        const current = await getRateLimitConfig2();
+        const defaults = getDefaultRateLimits2();
+        res.json({ current, defaults });
+      } catch (error) {
+        console.error("[Admin Security] Error fetching rate limits:", error?.message || error);
+        res.status(500).json({ error: "Failed to fetch rate limit settings" });
+      }
+    });
+    router21.put("/admin/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const { invalidateRateLimitCache: invalidateRateLimitCache2 } = await Promise.resolve().then(() => (init_security(), security_exports));
+        const SETTING_MAP = {
+          globalWindowMs: "rate_limit_global_window_ms",
+          globalMaxRequests: "rate_limit_global_max",
+          authWindowMs: "rate_limit_auth_window_ms",
+          authMaxRequests: "rate_limit_auth_max",
+          apiWindowMs: "rate_limit_api_window_ms",
+          apiMaxRequests: "rate_limit_api_max",
+          webhookWindowMs: "rate_limit_webhook_window_ms",
+          webhookMaxRequests: "rate_limit_webhook_max"
+        };
+        const updates = [];
+        for (const [bodyKey, settingKey] of Object.entries(SETTING_MAP)) {
+          if (bodyKey in req.body) {
+            const val = parseInt(req.body[bodyKey], 10);
+            if (isNaN(val) || val < 1) {
+              return res.status(400).json({ error: `Invalid value for ${bodyKey}: must be a positive integer` });
+            }
+            updates.push({ key: settingKey, value: String(val) });
+          }
+        }
+        if (updates.length === 0) {
+          return res.status(400).json({ error: "No valid settings provided" });
+        }
+        for (const { key, value } of updates) {
+          await db.execute(sql17`
+                INSERT INTO platform_settings (key, value) 
+                VALUES (${key}, ${value})
+                ON CONFLICT (key) DO UPDATE SET value = ${value}
+            `);
+        }
+        invalidateRateLimitCache2();
+        console.log(`[Admin Security] Rate limits updated by admin ${req.neonUser?.id}: ${updates.map((u) => `${u.key}=${u.value}`).join(", ")}`);
+        res.json({ success: true, updated: updates.length, settings: Object.fromEntries(updates.map((u) => [u.key, u.value])) });
+      } catch (error) {
+        console.error("[Admin Security] Error updating rate limits:", error?.message || error);
+        res.status(500).json({ error: "Failed to update rate limit settings" });
+      }
+    });
     admin_default = router21;
   }
 });
@@ -35077,7 +35371,7 @@ __export(stripe_checkout_transactions_service_exports, {
   getTransactionBySessionId: () => getTransactionBySessionId,
   updateTransactionBySessionId: () => updateTransactionBySessionId
 });
-import { sql as sql17 } from "drizzle-orm";
+import { sql as sql18 } from "drizzle-orm";
 async function createTransaction(params, db2) {
   const {
     bookingId,
@@ -35091,7 +35385,7 @@ async function createTransaction(params, db2) {
     managerReceivesCents,
     metadata = {}
   } = params;
-  const result = await db2.execute(sql17`
+  const result = await db2.execute(sql18`
     INSERT INTO transactions (
       booking_id,
       stripe_session_id,
@@ -35127,29 +35421,29 @@ async function createTransaction(params, db2) {
 async function updateTransactionBySessionId(sessionId, params, db2) {
   const updates = [];
   if (params.status !== void 0) {
-    updates.push(sql17`status = ${params.status}`);
+    updates.push(sql18`status = ${params.status}`);
   }
   if (params.stripePaymentIntentId !== void 0) {
-    updates.push(sql17`stripe_payment_intent_id = ${params.stripePaymentIntentId}`);
+    updates.push(sql18`stripe_payment_intent_id = ${params.stripePaymentIntentId}`);
   }
   if (params.stripeChargeId !== void 0) {
-    updates.push(sql17`stripe_charge_id = ${params.stripeChargeId}`);
+    updates.push(sql18`stripe_charge_id = ${params.stripeChargeId}`);
   }
   if (params.completedAt !== void 0) {
-    updates.push(sql17`completed_at = ${params.completedAt}`);
+    updates.push(sql18`completed_at = ${params.completedAt}`);
   }
   if (params.refundedAt !== void 0) {
-    updates.push(sql17`refunded_at = ${params.refundedAt}`);
+    updates.push(sql18`refunded_at = ${params.refundedAt}`);
   }
   if (params.metadata !== void 0) {
-    updates.push(sql17`metadata = ${JSON.stringify(params.metadata)}`);
+    updates.push(sql18`metadata = ${JSON.stringify(params.metadata)}`);
   }
   if (updates.length === 0) {
     return getTransactionBySessionId(sessionId, db2);
   }
-  const result = await db2.execute(sql17`
+  const result = await db2.execute(sql18`
     UPDATE transactions
-    SET ${sql17.join(updates, sql17`, `)}
+    SET ${sql18.join(updates, sql18`, `)}
     WHERE stripe_session_id = ${sessionId}
     RETURNING *
   `);
@@ -35159,7 +35453,7 @@ async function updateTransactionBySessionId(sessionId, params, db2) {
   return mapRowToTransaction(result.rows[0]);
 }
 async function getTransactionBySessionId(sessionId, db2) {
-  const result = await db2.execute(sql17`
+  const result = await db2.execute(sql18`
     SELECT * FROM transactions WHERE stripe_session_id = ${sessionId}
   `);
   if (result.rows.length === 0) {
@@ -37371,13 +37665,15 @@ var init_portal_auth = __esm({
           user = await userService.createUser({
             username,
             password: hashedPassword,
-            role: "chef",
+            role: "chef"
             // Default role, but portal user flag takes precedence
+          });
+          const updatedPortalUser = await userService.updateUser(user.id, {
             isChef: false,
             isManager: false,
-            isPortalUser: true,
-            managerProfileData: {}
+            isPortalUser: true
           });
+          if (updatedPortalUser) user = updatedPortalUser;
           isNewUser = true;
         } else {
           const isPortalUser = user.isPortalUser || user.is_portal_user;
@@ -37863,7 +38159,7 @@ __export(chef_exports, {
   default: () => chef_default
 });
 import { Router as Router25 } from "express";
-import { sql as sql18, eq as eq37 } from "drizzle-orm";
+import { sql as sql19, eq as eq37 } from "drizzle-orm";
 import { and as and23, desc as desc20 } from "drizzle-orm";
 var router25, chef_default;
 var init_chef = __esm({
@@ -37884,7 +38180,7 @@ var init_chef = __esm({
       console.log("[Chef Stripe Connect] Create request received for chef:", req.neonUser?.id);
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql18`
+        const userResult = await db.execute(sql19`
             SELECT id, username as email, stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -37931,7 +38227,7 @@ var init_chef = __esm({
     router25.get("/stripe-connect/onboarding-link", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql18`
+        const userResult = await db.execute(sql19`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -37955,7 +38251,7 @@ var init_chef = __esm({
     router25.get("/stripe-connect/dashboard-link", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql18`
+        const userResult = await db.execute(sql19`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -38107,7 +38403,7 @@ var init_chef = __esm({
         if (metadata?.storage_extension_id) {
           const extensionId = parseInt(String(metadata.storage_extension_id));
           if (!isNaN(extensionId)) {
-            const extensionResult = await db.execute(sql18`
+            const extensionResult = await db.execute(sql19`
                     SELECT 
                         pse.id,
                         pse.extension_days,
@@ -38130,7 +38426,7 @@ var init_chef = __esm({
           }
         }
         let chef = null;
-        const chefResult = await db.execute(sql18`
+        const chefResult = await db.execute(sql19`
             SELECT u.id, u.username, cka.full_name
             FROM users u
             LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -38236,7 +38532,7 @@ var init_chef = __esm({
           return res.status(404).json({ error: "No payment transaction found for this overstay penalty" });
         }
         let chef = null;
-        const chefResult = await db.execute(sql18`
+        const chefResult = await db.execute(sql19`
             SELECT u.id, u.username, cka.full_name
             FROM users u
             LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -41497,11 +41793,13 @@ function serveStatic(app2) {
 }
 
 // server/index.ts
+init_security();
 var app = express3();
 app.set("env", process.env.NODE_ENV || "development");
 app.post("/api/webhooks/stripe", express3.raw({ type: "application/json" }));
 app.use(express3.json({ limit: "12mb" }));
 app.use(express3.urlencoded({ limit: "12mb", extended: true }));
+registerSecurityMiddleware(app);
 initializeFirebaseAdmin();
 app.use((req, res, next) => {
   const start = Date.now();
@@ -41537,8 +41835,10 @@ var initPromise = (async () => {
     app.use((err, _req, res, _next) => {
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";
-      res.status(status).json({ message });
-      console.error(err);
+      const isProduction2 = process.env.NODE_ENV === "production" || !!process.env.VERCEL;
+      const safeMessage = isProduction2 && status >= 500 ? "An unexpected error occurred. Please try again later." : message;
+      res.status(status).json({ message: safeMessage });
+      console.error(`[Error ${status}]`, err);
     });
     routesInitialized = true;
     log("[ROUTES] All routes registered successfully");
