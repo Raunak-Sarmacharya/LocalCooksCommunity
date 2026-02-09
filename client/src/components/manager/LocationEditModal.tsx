@@ -68,7 +68,7 @@ const settingsSchema = z.object({
   timezone: z.string(),
   cancellationPolicyHours: z.coerce.number().min(0, "Hours cannot be negative"),
   defaultDailyBookingLimit: z.coerce.number().min(1, "Must be at least 1 hour").max(24, "Cannot exceed 24 hours"),
-  minimumBookingWindowHours: z.coerce.number().min(0, "Hours cannot be negative").max(168, "Cannot exceed 1 week (168 hours)"),
+  minimumBookingWindowHours: z.coerce.number().int("Must be a whole number").min(0, "Hours cannot be negative").max(168, "Cannot exceed 1 week (168 hours)"),
   cancellationPolicyMessage: z.string().optional(),
   logoUrl: z.string().optional(),
 });
@@ -162,7 +162,7 @@ export default function LocationEditModal({
       cancellationPolicyHours: location.cancellationPolicyHours || 24,
       cancellationPolicyMessage: location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
       defaultDailyBookingLimit: location.defaultDailyBookingLimit || 2,
-      minimumBookingWindowHours: location.minimumBookingWindowHours || 1,
+      minimumBookingWindowHours: location.minimumBookingWindowHours ?? 1,
       logoUrl: location.logoUrl || "",
     },
   });
@@ -179,7 +179,7 @@ export default function LocationEditModal({
         cancellationPolicyHours: location.cancellationPolicyHours || 24,
         cancellationPolicyMessage: location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
         defaultDailyBookingLimit: location.defaultDailyBookingLimit || 2,
-        minimumBookingWindowHours: location.minimumBookingWindowHours || 1,
+        minimumBookingWindowHours: location.minimumBookingWindowHours ?? 1,
         logoUrl: location.logoUrl || "",
       });
     }
@@ -483,7 +483,7 @@ export default function LocationEditModal({
                         <div className="relative">
                           <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                           <FormControl>
-                            <Input className="pl-10" type="number" min="0" max="168" {...field} disabled={viewOnly} />
+                            <Input className="pl-10" type="number" min="0" max="168" step="1" {...field} disabled={viewOnly} />
                           </FormControl>
                         </div>
                         <FormDescription>How many hours in advance bookings must be made (0-168 hours)</FormDescription>

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { CheckCircle, ClipboardList } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ApplicationRequirementsWizard } from "@/components/manager/requirements";
@@ -24,6 +24,13 @@ export default function ApplicationRequirementsStep() {
   const [currentWizardStep, setCurrentWizardStep] = useState<WizardStep>('step1');
   const [isSaving, setIsSaving] = useState(false);
   const wizardRef = useRef<ApplicationRequirementsWizardHandle>(null);
+  const topRef = useRef<HTMLDivElement>(null);
+
+  // [ENTERPRISE] Scroll to top of this step when wizard tab changes
+  const scrollToTop = useCallback(() => {
+    // scrollIntoView on the step container — works inside any scrollable parent
+    topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   if (!selectedLocationId) return null;
 
@@ -35,7 +42,7 @@ export default function ApplicationRequirementsStep() {
     // [ENTERPRISE] Double-click guard
     if (isSaving) return;
 
-    // Explicitly save unsaved changes before navigating
+    // Auto-save unsaved changes before any navigation
     if (wizardRef.current?.hasUnsavedChanges) {
       setIsSaving(true);
       try {
@@ -48,20 +55,20 @@ export default function ApplicationRequirementsStep() {
       setIsSaving(false);
     }
 
-    // Refresh requirements status after save
-    if (refreshRequirements) {
-      await refreshRequirements();
-    }
-    
     if (isLastWizardStep) {
-      // On last wizard tab, proceed to next onboarding step
+      // On last wizard tab, refresh and proceed to next onboarding step
+      if (refreshRequirements) {
+        await refreshRequirements();
+      }
       setTimeout(() => {
         handleNext();
       }, 100);
     } else {
-      // Move to next wizard tab
+      // Move to next wizard tab and scroll to top
       const nextStep = WIZARD_STEP_ORDER[currentStepIndex + 1];
       setCurrentWizardStep(nextStep);
+      // Slight delay to let React render the new tab content before scrolling
+      requestAnimationFrame(() => scrollToTop());
     }
   };
 
@@ -70,25 +77,36 @@ export default function ApplicationRequirementsStep() {
       // On first wizard tab, go back to previous onboarding step
       handleBack();
     } else {
-      // Move to previous wizard tab
+      // Move to previous wizard tab and scroll to top
       const prevStep = WIZARD_STEP_ORDER[currentStepIndex - 1];
       setCurrentWizardStep(prevStep);
+      requestAnimationFrame(() => scrollToTop());
     }
   };
 
   const handleWizardStepChange = (step: WizardStep, _isLastStep: boolean) => {
     setCurrentWizardStep(step);
+    // Scroll to top when user clicks a tab directly
+    requestAnimationFrame(() => scrollToTop());
   };
 
-  // Determine button labels based on wizard position
+  // [ENTERPRISE] Consistent button labels:
+  // - Non-last tab: always "Next Tab" (tab navigation is never gated)
+  // - Last tab + unsaved: "Save & Continue"
+  // - Last tab + saved: "Continue to Next Step"
   const getNextLabel = () => {
+    if (!isLastWizardStep) return "Next Tab";
     if (!hasRequirements) return "Save & Continue";
-    if (isLastWizardStep) return "Continue";
-    return "Next Tab";
+    return "Continue to Next Step";
   };
+
+  // [ENTERPRISE] Only disable the button on the LAST wizard tab when requirements
+  // haven't been saved yet AND there are no unsaved changes to save.
+  // Tab navigation between step1/step2/facility is NEVER gated.
+  const isNextDisabled = isLastWizardStep && !hasRequirements && !wizardRef.current?.hasUnsavedChanges;
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div ref={topRef} className="space-y-6 animate-in fade-in duration-500">
       {/* Status Alert */}
       {hasRequirements ? (
         <Alert className="border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-900/50">
@@ -125,7 +143,7 @@ export default function ApplicationRequirementsStep() {
         showBack={!isFirstStep || !isFirstWizardStep}
         showSkip={true}
         nextLabel={getNextLabel()}
-        isNextDisabled={!hasRequirements}
+        isNextDisabled={isNextDisabled}
         isLoading={isSaving}
       />
     </div>

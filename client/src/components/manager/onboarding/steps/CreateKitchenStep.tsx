@@ -308,10 +308,21 @@ export default function CreateKitchenStep() {
                     </Label>
                     <Input
                       type="number"
-                      min="0.25"
-                      step="0.25"
+                      min="0"
+                      max="24"
+                      step="1"
                       value={data.minimumBookingHours}
-                      onChange={(e) => setData({ ...data, minimumBookingHours: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setData({ ...data, minimumBookingHours: '' });
+                          return;
+                        }
+                        const parsed = parseInt(val, 10);
+                        if (!isNaN(parsed) && parsed >= 0 && parsed <= 24) {
+                          setData({ ...data, minimumBookingHours: String(parsed) });
+                        }
+                      }}
                       placeholder="1"
                       className="h-10"
                     />

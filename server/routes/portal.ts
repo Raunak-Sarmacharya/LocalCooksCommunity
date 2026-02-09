@@ -414,21 +414,40 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
             return res.status(400).json({ error: availabilityCheck.error || "Time slot not available" });
         }
 
+        // Enforce minimum booking hours for this kitchen (0 = no restriction)
+        const minimumBookingHours = (kitchen as any).minimumBookingHours ?? (kitchen as any).minimum_booking_hours ?? 0;
+        if (minimumBookingHours > 0) {
+            const [sH, sM] = startTime.split(':').map(Number);
+            const [eH, eM] = endTime.split(':').map(Number);
+            const durationHours = (eH * 60 + eM - sH * 60 - sM) / 60;
+            if (durationHours < minimumBookingHours) {
+                return res.status(400).json({
+                    error: `This kitchen requires a minimum of ${minimumBookingHours} hour${minimumBookingHours > 1 ? 's' : ''} per booking. Your booking is ${durationHours} hour${durationHours !== 1 ? 's' : ''}.`
+                });
+            }
+        }
+
         // Get location to check minimum booking window
         const location = await locationService.getLocationById(userLocationId);
         const minimumBookingWindowHours = (location as any)?.minimumBookingWindowHours ?? 1;
+        const locationTimezone = (location as any)?.timezone || 'America/St_Johns';
 
-        // Check minimum booking window if booking is today
-        const isToday = bookingDateObj.toDateString() === now.toDateString();
-        if (isToday) {
-            const [startHours, startMins] = startTime.split(':').map(Number);
-            const slotTime = new Date(bookingDateObj);
-            slotTime.setHours(startHours, startMins, 0, 0);
-            const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+        // Timezone-aware booking window enforcement (works for today AND future dates)
+        if (minimumBookingWindowHours > 0) {
+            const bookingDateStr = typeof bookingDate === 'string'
+                ? bookingDate.split('T')[0]
+                : bookingDateObj.toISOString().split('T')[0];
 
+            const { isBookingTimePast, getHoursUntilBooking } = await import('../date-utils');
+
+            if (isBookingTimePast(bookingDateStr, startTime, locationTimezone)) {
+                return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+            }
+
+            const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, locationTimezone);
             if (hoursUntilBooking < minimumBookingWindowHours) {
                 return res.status(400).json({
-                    error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance`
+                    error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance`
                 });
             }
         }

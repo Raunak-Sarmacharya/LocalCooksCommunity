@@ -1216,7 +1216,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           body: JSON.stringify({
             hourlyRate: Math.round(parseFloat(kitchenFormData.hourlyRate) * 100),
             currency: kitchenFormData.currency,
-            minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours) || 1
+            minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours, 10) || 0
           })
         });
         
@@ -1226,7 +1226,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
             ...newKitchen,
             hourlyRate: Math.round(parseFloat(kitchenFormData.hourlyRate) * 100),
             currency: kitchenFormData.currency,
-            minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours) || 1,
+            minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours, 10) || 0,
             imageUrl: kitchenFormData.imageUrl || newKitchen.imageUrl
           };
         }

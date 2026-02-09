@@ -90,10 +90,10 @@ export async function validateLocationInput(data: unknown) {
     address: z.string().min(5, 'Address must be at least 5 characters'),
     notificationEmail: z.string().email('Invalid email format').optional(),
     notificationPhone: z.string().optional(),
-    cancellationPolicyHours: z.number().positive('Cancellation policy hours must be positive').optional(),
+    cancellationPolicyHours: z.number().int().min(0, 'Cancellation policy hours cannot be negative').optional(),
     cancellationPolicyMessage: z.string().optional(),
     defaultDailyBookingLimit: z.number().positive('Daily booking limit must be positive').optional(),
-    minimumBookingWindowHours: z.number().positive('Minimum booking window must be positive').optional(),
+    minimumBookingWindowHours: z.number().int().min(0, 'Minimum booking window cannot be negative').max(168, 'Minimum booking window cannot exceed 168 hours').optional(),
     logoUrl: z.string().optional(),
     brandImageUrl: z.string().optional(),
     timezone: z.string().optional(),
@@ -134,7 +134,7 @@ export async function validateKitchenInput(data: unknown) {
     isActive: z.boolean().optional(),
     hourlyRate: z.number().positive('Hourly rate must be positive').optional(),
     currency: z.string().length(3).optional(),
-    minimumBookingHours: z.number().positive('Minimum booking hours must be positive').optional(),
+    minimumBookingHours: z.number().int('Minimum booking hours must be a whole number').min(0, 'Minimum booking hours cannot be negative').max(24, 'Minimum booking hours cannot exceed 24').optional(),
     pricingModel: z.enum(['hourly', 'daily', 'weekly', 'monthly-flat', 'per-cubic-foot']).optional(),
   });
 

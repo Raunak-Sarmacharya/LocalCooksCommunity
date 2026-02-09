@@ -2756,11 +2756,11 @@ router.put(
 
       if (
         minimumBookingHours !== undefined &&
-        (typeof minimumBookingHours !== "number" || minimumBookingHours < 1)
+        (typeof minimumBookingHours !== "number" || minimumBookingHours < 0 || minimumBookingHours > 24 || !Number.isInteger(minimumBookingHours))
       ) {
         return res
           .status(400)
-          .json({ error: "Minimum booking hours must be at least 1" });
+          .json({ error: "Minimum booking hours must be a whole number between 0 and 24" });
       }
 
       if (
@@ -4775,6 +4775,7 @@ router.put(
       if (
         minimumBookingWindowHours !== undefined &&
         (typeof minimumBookingWindowHours !== "number" ||
+          !Number.isInteger(minimumBookingWindowHours) ||
           minimumBookingWindowHours < 0 ||
           minimumBookingWindowHours > 168)
       ) {
@@ -4782,7 +4783,7 @@ router.put(
           .status(400)
           .json({
             error:
-              "Minimum booking window hours must be between 0 and 168 hours",
+              "Minimum booking window hours must be a whole number between 0 and 168",
           });
       }
 

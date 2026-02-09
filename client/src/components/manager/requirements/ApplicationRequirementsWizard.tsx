@@ -102,6 +102,12 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
     const isLast = stepIndex === WIZARD_STEPS.length - 1;
     onStepChange?.(step, isLast);
   };
+  // [ENTERPRISE] Ref for scroll-to-top on tab change
+  const containerRef = useRef<HTMLDivElement>(null);
+  const scrollToTop = useCallback(() => {
+    containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
   const [requirements, setRequirements] = useState<Partial<LocationRequirements>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [completedSteps, setCompletedSteps] = useState<Set<WizardStep>>(new Set());
@@ -231,12 +237,15 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
 
   const goToStep = (step: WizardStep) => {
     setActiveStep(step);
+    // [ENTERPRISE] Scroll to top when switching tabs
+    requestAnimationFrame(() => scrollToTop());
   };
 
   const goToNextStep = () => {
     const currentIndex = WIZARD_STEPS.findIndex(s => s.id === activeStep);
     if (currentIndex < WIZARD_STEPS.length - 1) {
       setActiveStep(WIZARD_STEPS[currentIndex + 1].id);
+      requestAnimationFrame(() => scrollToTop());
     }
   };
 
@@ -244,6 +253,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
     const currentIndex = WIZARD_STEPS.findIndex(s => s.id === activeStep);
     if (currentIndex > 0) {
       setActiveStep(WIZARD_STEPS[currentIndex - 1].id);
+      requestAnimationFrame(() => scrollToTop());
     }
   };
 
@@ -277,7 +287,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
   }
 
   return (
-    <div className={cn('space-y-6', compact && 'space-y-4')}>
+    <div ref={containerRef} className={cn('space-y-6', compact && 'space-y-4')}>
       {/* Header with Location Name */}
       {!compact && locationName && (
         <div className="flex items-center justify-between">

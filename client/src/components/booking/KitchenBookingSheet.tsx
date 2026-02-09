@@ -344,7 +344,7 @@ export default function KitchenBookingSheet({
       return;
     }
 
-    const durationHours = Math.max(selectedSlots.length, kitchenPricing.minimumBookingHours || 1);
+    const durationHours = Math.max(selectedSlots.length, kitchenPricing.minimumBookingHours ?? 0);
 
     if (kitchenPricing.hourlyRate && kitchenPricing.hourlyRate > 0) {
       const basePrice = kitchenPricing.hourlyRate * durationHours;
@@ -413,16 +413,21 @@ export default function KitchenBookingSheet({
       const now = new Date();
       const [year, month, day] = date.split('-').map(Number);
       const selectedDateObj = new Date(year, month - 1, day);
-      const isToday = selectedDateObj.toDateString() === now.toDateString();
-      const minimumBookingWindowHours = selectedKitchen?.location?.minimumBookingWindowHours ?? 1;
+
+      // Get minimum booking window from location (0 = no restriction)
+      const minimumBookingWindowHours = selectedKitchen?.location?.minimumBookingWindowHours ?? 0;
 
       const filteredSlots = slots.filter((slot: any) => {
         const [slotHours, slotMins] = slot.time.split(':').map(Number);
         const slotTime = new Date(selectedDateObj);
         slotTime.setHours(slotHours, slotMins, 0, 0);
 
-        if (isToday) {
-          if (slotTime <= now) return false;
+        // Filter out past times (applies to any date)
+        if (slotTime <= now) return false;
+
+        // Enforce minimum booking window across ALL dates (not just today)
+        // e.g., a 48-hour window must also filter tomorrow's slots that are within range
+        if (minimumBookingWindowHours > 0) {
           const hoursUntilSlot = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
           if (hoursUntilSlot < minimumBookingWindowHours) return false;
         }
@@ -546,10 +551,10 @@ export default function KitchenBookingSheet({
         setKitchenPricing({
           hourlyRate: hourlyRateCents,
           currency: pricing.currency || 'CAD',
-          minimumBookingHours: pricing.minimumBookingHours || 1,
+          minimumBookingHours: pricing.minimumBookingHours ?? 0,
         });
       } else {
-        setKitchenPricing({ hourlyRate: null, currency: 'CAD', minimumBookingHours: 1 });
+        setKitchenPricing({ hourlyRate: null, currency: 'CAD', minimumBookingHours: 0 });
       }
 
       // Fetch addons
@@ -557,7 +562,7 @@ export default function KitchenBookingSheet({
       setCurrentStep('addons');
     } catch (error) {
       console.error('Error fetching kitchen data:', error);
-      setKitchenPricing({ hourlyRate: null, currency: 'CAD', minimumBookingHours: 1 });
+      setKitchenPricing({ hourlyRate: null, currency: 'CAD', minimumBookingHours: 0 });
     }
   };
 
@@ -673,6 +678,17 @@ export default function KitchenBookingSheet({
   const redirectToStripeCheckout = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
 
+    // Enforce minimum booking hours (0 = no restriction)
+    const minHours = kitchenPricing?.minimumBookingHours ?? 0;
+    if (minHours > 0 && selectedSlots.length < minHours) {
+      toast({
+        title: "Minimum Booking Required",
+        description: `This kitchen requires a minimum of ${minHours} hour${minHours > 1 ? 's' : ''} per booking. You have selected ${selectedSlots.length}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Check for unpaid penalties first
     if (penaltyData?.hasUnpaidPenalties) {
       const totalOwed = (penaltyData.totalOwedCents / 100).toFixed(2);
@@ -770,6 +786,17 @@ export default function KitchenBookingSheet({
   // Handle free booking submission
   const handleFreeBookingSubmit = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
+
+    // Enforce minimum booking hours (0 = no restriction)
+    const minHours = kitchenPricing?.minimumBookingHours ?? 0;
+    if (minHours > 0 && selectedSlots.length < minHours) {
+      toast({
+        title: "Minimum Booking Required",
+        description: `This kitchen requires a minimum of ${minHours} hour${minHours > 1 ? 's' : ''} per booking. You have selected ${selectedSlots.length}.`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Check for unpaid penalties first
     if (penaltyData?.hasUnpaidPenalties) {

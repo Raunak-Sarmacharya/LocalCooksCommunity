@@ -2616,6 +2616,14 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         }
         const chefEmail = chef.username;
 
+        // Enforce minimum booking hours (0 = no restriction)
+        const minimumBookingHours = kitchenDetails.minimumBookingHours ?? 0;
+        if (minimumBookingHours > 0 && selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0 && selectedSlots.length < minimumBookingHours) {
+            return res.status(400).json({
+                error: `This kitchen requires a minimum of ${minimumBookingHours} hour${minimumBookingHours > 1 ? 's' : ''} per booking. You selected ${selectedSlots.length}.`
+            });
+        }
+
         // Calculate total price
         // IMPORTANT: When staggered slots are selected, use slot count for pricing
         // not the duration from startTime to endTime (which would overcharge)
@@ -2626,7 +2634,6 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         
         if (selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0) {
             // Staggered slots: price based on number of slots (each slot = 1 hour)
-            const minimumBookingHours = kitchenDetails.minimumBookingHours || 1;
             effectiveDurationHours = Math.max(selectedSlots.length, minimumBookingHours);
             totalPriceCents = Math.round(kitchenPricing.hourlyRateCents * effectiveDurationHours);
             console.log(`[Checkout] Staggered slots pricing: ${selectedSlots.length} slots, effective ${effectiveDurationHours} hours, $${(totalPriceCents / 100).toFixed(2)}`);
@@ -2776,12 +2783,19 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
         
         console.log(`[Booking Route] Received booking request with selectedEquipmentIds: ${JSON.stringify(selectedEquipmentIds)}`);
 
-        // Get the location for this kitchen
-        // Get the location for this kitchen
+        // Get the kitchen details
         const kitchenDetails = await kitchenService.getKitchenById(kitchenId);
         const kitchenLocationId1 = kitchenDetails.locationId;
         if (!kitchenLocationId1) {
             return res.status(400).json({ error: "Kitchen location not found" });
+        }
+
+        // Enforce minimum booking hours (0 = no restriction)
+        const minimumBookingHours = kitchenDetails.minimumBookingHours ?? 0;
+        if (minimumBookingHours > 0 && selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0 && selectedSlots.length < minimumBookingHours) {
+            return res.status(400).json({
+                error: `This kitchen requires a minimum of ${minimumBookingHours} hour${minimumBookingHours > 1 ? 's' : ''} per booking. You selected ${selectedSlots.length}.`
+            });
         }
 
         // Check if chef has an approved kitchen application for this location

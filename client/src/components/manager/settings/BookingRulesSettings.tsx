@@ -5,14 +5,16 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { AlertCircle, Clock, Save, Info, Loader2, FileText, Upload } from 'lucide-react';
+import { AlertCircle, Clock, Save, Info, Loader2, FileText, Upload, ChefHat } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { auth } from '@/lib/firebase';
+import { apiGet, apiPut } from '@/lib/api';
 
 interface Location {
   id: number;
@@ -43,7 +45,7 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
   const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
 
   // Minimum Booking Window State
-  const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours || 1);
+  const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours ?? 1);
 
   // Overstay Penalty Defaults State
   const [overstayGracePeriodDays, setOverstayGracePeriodDays] = useState<number | null>(null);
@@ -56,6 +58,13 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
   const [termsFile, setTermsFile] = useState<File | null>(null);
   const [isUploadingTerms, setIsUploadingTerms] = useState(false);
 
+  // Kitchen-level Minimum Booking Duration State
+  const [kitchens, setKitchens] = useState<Array<{ id: number; name: string; minimumBookingHours: number }>>([]);
+  const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
+  const [minimumBookingHours, setMinimumBookingHours] = useState<number>(0);
+  const [isLoadingKitchens, setIsLoadingKitchens] = useState(false);
+  const [isSavingDuration, setIsSavingDuration] = useState(false);
+
   // Update state when location changes
   useEffect(() => {
     setCancellationHours(location.cancellationPolicyHours || 24);
@@ -63,8 +72,70 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
       location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
     );
     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
-    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
+    setMinimumBookingWindowHours(location.minimumBookingWindowHours ?? 1);
   }, [location]);
+
+  // Fetch kitchens for this location
+  const fetchKitchens = useCallback(async () => {
+    if (!location.id) return;
+    setIsLoadingKitchens(true);
+    try {
+      const data = await apiGet(`/manager/kitchens/${location.id}`);
+      const mapped = (data || []).map((k: any) => ({
+        id: k.id,
+        name: k.name,
+        minimumBookingHours: k.minimumBookingHours ?? 0,
+      }));
+      setKitchens(mapped);
+      // Auto-select first kitchen if none selected
+      if (mapped.length > 0 && !selectedKitchenId) {
+        setSelectedKitchenId(mapped[0].id);
+        setMinimumBookingHours(mapped[0].minimumBookingHours);
+      }
+    } catch (error) {
+      console.error('Error fetching kitchens:', error);
+    } finally {
+      setIsLoadingKitchens(false);
+    }
+  }, [location.id]);
+
+  useEffect(() => {
+    setSelectedKitchenId(null);
+    setKitchens([]);
+    setMinimumBookingHours(0);
+    fetchKitchens();
+  }, [location.id, fetchKitchens]);
+
+  // When kitchen selection changes, load its minimumBookingHours
+  useEffect(() => {
+    if (selectedKitchenId) {
+      const kitchen = kitchens.find(k => k.id === selectedKitchenId);
+      if (kitchen) {
+        setMinimumBookingHours(kitchen.minimumBookingHours);
+      }
+    }
+  }, [selectedKitchenId, kitchens]);
+
+  // Save minimum booking duration for the selected kitchen
+  const handleSaveMinBookingDuration = async () => {
+    if (!selectedKitchenId) return;
+    setIsSavingDuration(true);
+    try {
+      const updated = await apiPut(`/manager/kitchens/${selectedKitchenId}/pricing`, {
+        minimumBookingHours: minimumBookingHours,
+      });
+      // Update local cache
+      setKitchens(prev => prev.map(k =>
+        k.id === selectedKitchenId ? { ...k, minimumBookingHours: updated.minimumBookingHours ?? minimumBookingHours } : k
+      ));
+      toast({ title: "Success", description: `Minimum booking duration updated for ${kitchens.find(k => k.id === selectedKitchenId)?.name || 'kitchen'}` });
+    } catch (error: any) {
+      console.error('Error saving minimum booking duration:', error);
+      toast({ title: "Error", description: error.message || "Failed to save minimum booking duration", variant: "destructive" });
+    } finally {
+      setIsSavingDuration(false);
+    }
+  };
 
   // Fetch overstay penalty defaults
   const fetchOverstayPenaltyDefaults = useCallback(async () => {
@@ -342,8 +413,12 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
               type="number"
               min="0"
               max="168"
+              step="1"
               value={minimumBookingWindowHours}
-              onChange={(e) => setMinimumBookingWindowHours(parseInt(e.target.value) || 1)}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                setMinimumBookingWindowHours(isNaN(val) ? 0 : Math.min(168, Math.max(0, val)));
+              }}
               className="mt-1.5 max-w-xs"
             />
             <p className="text-xs text-muted-foreground mt-1">
@@ -372,6 +447,101 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
               </>
             )}
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Minimum Booking Duration (per-kitchen) */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <ChefHat className="h-5 w-5 text-violet-600" />
+            <div>
+              <CardTitle className="text-lg">Minimum Booking Duration</CardTitle>
+              <CardDescription>Set the minimum hours required per booking for each kitchen</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLoadingKitchens ? (
+            <div className="flex items-center gap-2 py-4">
+              <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
+              <span className="text-sm text-muted-foreground">Loading kitchens...</span>
+            </div>
+          ) : kitchens.length === 0 ? (
+            <div className="text-sm text-muted-foreground py-4">
+              No kitchens found for this location. Create a kitchen first.
+            </div>
+          ) : (
+            <>
+              <div>
+                <Label htmlFor="kitchen-selector">Select Kitchen</Label>
+                <Select
+                  value={selectedKitchenId?.toString() || ''}
+                  onValueChange={(value) => setSelectedKitchenId(parseInt(value, 10))}
+                >
+                  <SelectTrigger id="kitchen-selector" className="mt-1.5 max-w-xs">
+                    <SelectValue placeholder="Select a kitchen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {kitchens.map((kitchen) => (
+                      <SelectItem key={kitchen.id} value={kitchen.id.toString()}>
+                        {kitchen.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedKitchenId && (
+                <>
+                  <div>
+                    <Label htmlFor="min-booking-duration">Minimum Hours per Booking</Label>
+                    <Input
+                      id="min-booking-duration"
+                      type="number"
+                      min="0"
+                      max="24"
+                      step="1"
+                      value={minimumBookingHours}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (e.target.value === '' || isNaN(val)) {
+                          setMinimumBookingHours(0);
+                        } else {
+                          setMinimumBookingHours(Math.min(24, Math.max(0, val)));
+                        }
+                      }}
+                      className="mt-1.5 max-w-xs"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Minimum number of hours a chef must book per session (0 = no restriction, max 24)
+                    </p>
+                  </div>
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <Info className="h-4 w-4 text-blue-600 mt-0.5" />
+                      <p className="text-xs text-blue-800">
+                        This setting is per-kitchen. Chefs will not be able to submit a booking with fewer hours than the minimum set here.
+                      </p>
+                    </div>
+                  </div>
+                  <Button onClick={handleSaveMinBookingDuration} disabled={isSavingDuration}>
+                    {isSavingDuration ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save Duration
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 

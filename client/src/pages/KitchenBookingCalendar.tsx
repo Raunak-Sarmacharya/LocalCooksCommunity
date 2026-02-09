@@ -398,40 +398,33 @@ export default function KitchenBookingCalendar() {
       // Parse date in local timezone to avoid timezone issues
       const [year, month, day] = date.split('-').map(Number);
       const selectedDateObj = new Date(year, month - 1, day);
-      const isToday = selectedDateObj.toDateString() === now.toDateString();
 
-      // Get minimum booking window from location (default 1 hour)
-      const minimumBookingWindowHours = selectedKitchen?.location?.minimumBookingWindowHours ?? 1;
+      // Get minimum booking window from location (0 = no restriction)
+      const minimumBookingWindowHours = selectedKitchen?.location?.minimumBookingWindowHours ?? 0;
 
       const filteredSlots = slots.filter((slot: any) => {
         const [slotHours, slotMins] = slot.time.split(':').map(Number);
         const slotTime = new Date(selectedDateObj);
         slotTime.setHours(slotHours, slotMins, 0, 0);
 
-        // Only apply filtering rules if the date is today
-        if (isToday) {
-          // Filter out past times
-          if (slotTime <= now) {
-            console.log(`   ⏰ Filtered out ${slot.time} - past time (slotTime: ${slotTime.toISOString()}, now: ${now.toISOString()})`);
-            return false;
-          }
-
-          // Filter out times within minimum booking window (only for today)
-          const hoursUntilSlot = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-          if (hoursUntilSlot < minimumBookingWindowHours) {
-            console.log(`   ⏰ Filtered out ${slot.time} - within ${minimumBookingWindowHours}h window (${hoursUntilSlot.toFixed(2)} hours until slot)`);
-            return false;
-          }
-
-          console.log(`   ✅ Keeping ${slot.time} - ${hoursUntilSlot.toFixed(2)} hours until slot`);
+        // Filter out past times (applies to any date, not just today)
+        if (slotTime <= now) {
+          return false;
         }
 
-        // For future dates, all slots are available (no time-based filtering needed)
+        // Enforce minimum booking window across ALL dates (not just today)
+        // e.g., a 48-hour window must also filter tomorrow's slots that are within range
+        if (minimumBookingWindowHours > 0) {
+          const hoursUntilSlot = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+          if (hoursUntilSlot < minimumBookingWindowHours) {
+            return false;
+          }
+        }
+
         return true;
       });
 
-      console.log(`📅 Filtered ${slots.length} slots to ${filteredSlots.length} (removed past times and times within ${minimumBookingWindowHours}h window)`);
-      console.log(`   Current time: ${now.toLocaleTimeString()}, Selected date is today: ${isToday}, Minimum booking window: ${minimumBookingWindowHours}h`);
+      console.log(`📅 Filtered ${slots.length} slots to ${filteredSlots.length} (removed past/within ${minimumBookingWindowHours}h window)`);
       setAllSlots(filteredSlots);
 
       if (slots.length === 0) {
@@ -675,7 +668,7 @@ export default function KitchenBookingCalendar() {
     // Each selected slot represents a 1-hour block
     // Duration = number of slots selected (in hours)
     // This is consistent with booking submission which uses: selectedSlots.length * 60 minutes
-    const durationHours = Math.max(selectedSlots.length, kitchenPricing.minimumBookingHours || 1);
+    const durationHours = Math.max(selectedSlots.length, kitchenPricing.minimumBookingHours ?? 0);
 
     // Only calculate price if hourly rate is set
     // hourlyRate is already in cents
@@ -738,6 +731,17 @@ export default function KitchenBookingCalendar() {
 
   const handleBookingSubmit = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
+
+    // Enforce minimum booking hours (0 = no restriction)
+    const minHours = kitchenPricing?.minimumBookingHours ?? 0;
+    if (minHours > 0 && selectedSlots.length < minHours) {
+      toast({
+        title: "Minimum Booking Required",
+        description: `This kitchen requires a minimum of ${minHours} hour${minHours > 1 ? 's' : ''} per booking. You have selected ${selectedSlots.length}.`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Calculate start and end time from selected 1-hour slots
     const sortedSlots = [...selectedSlots].sort();

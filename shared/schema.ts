@@ -615,7 +615,7 @@ export const insertKitchenSchema = createInsertSchema(kitchens, {
   isActive: z.boolean().optional(),
   hourlyRate: z.number().int().positive("Hourly rate must be positive").optional(),
   currency: z.string().min(3).max(3).optional(),
-  minimumBookingHours: z.number().int().positive("Minimum booking hours must be positive").optional(),
+  minimumBookingHours: z.number().int().min(0, "Minimum booking hours cannot be negative").max(24, "Minimum booking hours cannot exceed 24").optional(),
   pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
   taxRatePercent: z.number().min(0).max(100).nullable().optional(),
 }).omit({
@@ -631,7 +631,7 @@ export const updateKitchenSchema = z.object({
   isActive: z.boolean().optional(),
   hourlyRate: z.number().int().positive("Hourly rate must be positive").optional(),
   currency: z.string().min(3).max(3).optional(),
-  minimumBookingHours: z.number().int().positive("Minimum booking hours must be positive").optional(),
+  minimumBookingHours: z.number().int().min(0, "Minimum booking hours cannot be negative").max(24, "Minimum booking hours cannot exceed 24").optional(),
   pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
   taxRatePercent: z.number().min(0).max(100).nullable().optional(),
 });

@@ -1,4 +1,4 @@
-import { DollarSign, Clock, Save, Info, Loader2 } from "lucide-react";
+import { DollarSign, Save, Info, Loader2 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -14,7 +14,6 @@ import { apiGet, apiPut } from "@/lib/api";
 interface KitchenPricing {
   hourlyRate: number | null;
   currency: string;
-  minimumBookingHours: number;
   pricingModel: 'hourly' | 'daily' | 'weekly';
   taxRatePercent: number | null;
 }
@@ -60,7 +59,6 @@ function KitchenPricingContent({
   const [pricing, setPricing] = useState<KitchenPricing>({
     hourlyRate: null,
     currency: 'CAD',
-    minimumBookingHours: 1,
     pricingModel: 'hourly',
     taxRatePercent: null,
   });
@@ -80,17 +78,10 @@ function KitchenPricingContent({
       console.log('Pricing loaded:', data);
       console.log('Pricing loaded:', data);
 
-      // Ensure proper data types
-      const minHours = data.minimumBookingHours;
-      const validMinHours = (minHours !== undefined && minHours !== null && !isNaN(Number(minHours)) && Number(minHours) >= 1)
-        ? Math.max(1, Math.floor(Number(minHours)))
-        : 1;
-
       setPricing({
         // Convert cents to dollars for UI display
         hourlyRate: data.hourlyRate !== undefined && data.hourlyRate !== null ? Number(data.hourlyRate) / 100 : null,
         currency: data.currency || 'CAD',
-        minimumBookingHours: validMinHours,
         pricingModel: data.pricingModel || 'hourly',
         taxRatePercent: data.taxRatePercent !== undefined && data.taxRatePercent !== null ? Number(data.taxRatePercent) : null,
       });
@@ -113,7 +104,6 @@ function KitchenPricingContent({
         hourlyRate: null,
         taxRatePercent: null,
         currency: 'CAD',
-        minimumBookingHours: 1,
         pricingModel: 'hourly',
       });
     }
@@ -140,17 +130,6 @@ function KitchenPricingContent({
       return;
     }
 
-    // Validate minimumBookingHours - must be at least 1
-    const minBookingHours = Number(pricing.minimumBookingHours);
-    if (isNaN(minBookingHours) || minBookingHours < 1) {
-      toast({
-        title: "Validation Error",
-        description: "Minimum booking hours must be at least 1",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsSaving(true);
     try {
       // Prepare payload - convert dollars to cents for database storage
@@ -161,7 +140,6 @@ function KitchenPricingContent({
       const payload = {
         hourlyRate: hourlyRateInCents,
         currency: pricing.currency || 'CAD',
-        minimumBookingHours: Math.max(1, Math.floor(minBookingHours)), // Ensure it's at least 1 and an integer
         pricingModel: pricing.pricingModel || 'hourly',
         taxRatePercent: pricing.taxRatePercent,
       };
@@ -177,7 +155,6 @@ function KitchenPricingContent({
         hourlyRate: updated.hourlyRate !== null && updated.hourlyRate !== undefined ? Number(updated.hourlyRate) / 100 : null,
         taxRatePercent: updated.taxRatePercent !== undefined && updated.taxRatePercent !== null ? Number(updated.taxRatePercent) : null,
         currency: updated.currency || 'CAD',
-        minimumBookingHours: updated.minimumBookingHours || 1,
         pricingModel: updated.pricingModel || 'hourly',
       });
 
@@ -327,44 +304,6 @@ function KitchenPricingContent({
                 <SelectItem value="EUR">EUR (Euro)</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-
-          {/* Minimum Booking Hours */}
-          <div>
-            <Label htmlFor="minimumBookingHours" className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Minimum Booking Duration
-            </Label>
-            <Input
-              id="minimumBookingHours"
-              type="number"
-              min="1"
-              step="1"
-              value={pricing.minimumBookingHours}
-              onChange={(e) => {
-                const inputValue = e.target.value;
-                if (inputValue === '' || inputValue === null || inputValue === undefined) {
-                  setPricing({ ...pricing, minimumBookingHours: 1 });
-                  return;
-                }
-                const parsedValue = parseInt(inputValue, 10);
-                if (!isNaN(parsedValue) && parsedValue >= 1) {
-                  setPricing({ ...pricing, minimumBookingHours: parsedValue });
-                } else {
-                  setPricing({ ...pricing, minimumBookingHours: 1 });
-                }
-              }}
-              onBlur={(e) => {
-                const value = parseInt(e.target.value, 10);
-                if (isNaN(value) || value < 1) {
-                  setPricing({ ...pricing, minimumBookingHours: 1 });
-                }
-              }}
-              className="mt-2"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Minimum number of hours required per booking
-            </p>
           </div>
 
           {/* Info Alert */}

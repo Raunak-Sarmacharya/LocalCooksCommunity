@@ -771,7 +771,6 @@ export default function ManagerBookingDashboard() {
           </div>
           <LocationRequirementsSettings
             locationId={selectedLocation.id}
-            locationName={selectedLocation.name}
           />
         </div>
       )}
@@ -1265,7 +1264,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
   );
   const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
-  const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours || 1);
+  const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours ?? 1);
   
   // Overstay penalty defaults state
   const [overstayGracePeriodDays, setOverstayGracePeriodDays] = useState<number | null>(null);
@@ -3033,8 +3032,12 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       type="number"
                       min="0"
                       max="168"
+                      step="1"
                       value={minimumBookingWindowHours}
-                      onChange={(e) => setMinimumBookingWindowHours(parseInt(e.target.value) || 1)}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        setMinimumBookingWindowHours(isNaN(val) ? 0 : Math.min(168, Math.max(0, val)));
+                      }}
                       className="w-full max-w-xs border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                     />
                     <p className="text-xs text-gray-600 mt-1">
