@@ -52,9 +52,7 @@ export default function PaymentSetupStep() {
       <OnboardingNavigationFooter
         onNext={handleNext}
         onBack={handleBack}
-        onSkip={skipCurrentStep}
         showBack={!isFirstStep}
-        showSkip={true}
         isNextDisabled={!isStripeOnboardingComplete}
         nextLabel={isStripeOnboardingComplete ? "Continue" : getDisabledLabel()}
       />

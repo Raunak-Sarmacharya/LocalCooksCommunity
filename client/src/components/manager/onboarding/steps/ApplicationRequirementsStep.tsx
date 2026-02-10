@@ -139,9 +139,7 @@ export default function ApplicationRequirementsStep() {
       <OnboardingNavigationFooter
         onNext={handleContinue}
         onBack={handleBackNavigation}
-        onSkip={skipCurrentStep}
         showBack={!isFirstStep || !isFirstWizardStep}
-        showSkip={true}
         nextLabel={getNextLabel()}
         isNextDisabled={isNextDisabled}
         isLoading={isSaving}

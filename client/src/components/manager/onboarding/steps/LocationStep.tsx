@@ -596,9 +596,7 @@ export default function LocationStep() {
       <OnboardingNavigationFooter
         onNext={handleNext}
         onBack={handleBack}
-        onSkip={skipCurrentStep}
         showBack={!isFirstStep}
-        showSkip={true}
         isLoading={isSubmitting}
         isNextDisabled={
           isSubmitting ||

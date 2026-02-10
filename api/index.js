@@ -35308,7 +35308,7 @@ var init_admin = __esm({
         res.status(500).json({ error: "Failed to fetch evidence" });
       }
     });
-    router21.get("/admin/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.get("/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const { getRateLimitConfig: getRateLimitConfig2, getDefaultRateLimits: getDefaultRateLimits2 } = await Promise.resolve().then(() => (init_security(), security_exports));
         const current = await getRateLimitConfig2();
@@ -35319,7 +35319,7 @@ var init_admin = __esm({
         res.status(500).json({ error: "Failed to fetch rate limit settings" });
       }
     });
-    router21.put("/admin/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.put("/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const { invalidateRateLimitCache: invalidateRateLimitCache2 } = await Promise.resolve().then(() => (init_security(), security_exports));
         const SETTING_MAP = {

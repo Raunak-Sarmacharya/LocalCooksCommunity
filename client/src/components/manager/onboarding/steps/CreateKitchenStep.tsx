@@ -368,9 +368,7 @@ export default function CreateKitchenStep() {
         <OnboardingNavigationFooter
           onNext={handleNext}
           onBack={handleBack}
-          onSkip={skipCurrentStep}
           showBack={!isFirstStep}
-          showSkip={true}
           isNextDisabled={kitchens.length === 0}
         />
       )}
