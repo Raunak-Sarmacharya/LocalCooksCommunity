@@ -236,7 +236,17 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   const [isLoadingRequirements, setIsLoadingRequirements] = useState(false);
 
   // Multi-location State
-  const [isAddingLocation, setIsAddingLocation] = useState(false);
+  // [MULTI-LOCATION FIX] Initialize from URL param to survive context unmount/remount across route changes
+  // When startNewLocation() navigates from /manager/dashboard to /manager/setup, the context
+  // is destroyed and recreated (each route has its own ManagerProtectedRoute wrapper).
+  // The URL param is the only signal that survives this transition.
+  const [isAddingLocation, setIsAddingLocation] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('newLocation') === 'true';
+    }
+    return false;
+  });
 
   // [ENTERPRISE] Submission State - Prevents race conditions and duplicate submissions
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -300,6 +310,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         } else {
           // Already string format (new)
           normalized[key] = Boolean(value);
+          // Also normalize location-specific keys: "create-kitchen_location_28" → "create-kitchen"
+          // saveAndExit() saves with locationId suffix, but completedSteps checks generic keys
+          const locSuffixMatch = key.match(/^(.+)_location_\d+$/);
+          if (locSuffixMatch && !normalized[locSuffixMatch[1]]) {
+            normalized[locSuffixMatch[1]] = Boolean(value);
+          }
         }
       }
       setDbCompletedSteps(normalized);
@@ -354,8 +370,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       if ((hasLicense && hasTerms) || dbCompletedSteps['location']) {
         result['location'] = true;
       }
-    } else if (dbCompletedSteps['location']) {
+    } else if (dbCompletedSteps['location'] && !isAddingLocation) {
       // Fallback: if dbCompletedSteps says location is done but locations haven't loaded yet
+      // [MULTI-LOCATION FIX] Don't use fallback when adding a new location — old location's completion doesn't count
       result['location'] = true;
     }
 
@@ -392,7 +409,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     return result;
   }, [userData, locations, selectedLocationId, kitchens.length,
     hasRequirements, hasAvailability, isStripeOnboardingComplete,
-    dbCompletedSteps, existingStorageListings.length, existingEquipmentListings.length]);
+    dbCompletedSteps, existingStorageListings.length, existingEquipmentListings.length, isAddingLocation]);
 
   // Build visible steps: show all steps, but skip welcome if returning user with location
   let visibleStepsFiltered = [...steps];
@@ -455,11 +472,16 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   }, [setIsOpen]);
 
-  // Reset multi-location state when dialog closes
+  // Reset multi-location state when dialog CLOSES (transitions from open → closed)
+  // [MULTI-LOCATION FIX] Use prev-value ref to only trigger on transition, NOT on mount.
+  // On mount isOpen starts as false — the old code would immediately reset isAddingLocation,
+  // wiping out the URL-param-based initialization before the auto-select effect could see it.
+  const prevIsOpenRef = useRef(isOpen);
   useEffect(() => {
-    if (!isOpen) {
+    if (prevIsOpenRef.current && !isOpen) {
       setIsAddingLocation(false);
     }
+    prevIsOpenRef.current = isOpen;
   }, [isOpen]);
 
   // [ENTERPRISE FIX] Reset auto-skip flag on mount and when wizard opens
@@ -477,11 +499,45 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   }, [isOpen]);
 
+  // [MULTI-LOCATION FIX] On mount in new-location mode: skip welcome step, navigate engine
+  // to 'location', and clean the URL param so a manual refresh starts fresh.
+  const hasNavigatedNewLocationEngine = useRef(false);
+  useEffect(() => {
+    if (isAddingLocation && engine && !hasNavigatedNewLocationEngine.current) {
+      hasNavigatedNewLocationEngine.current = true;
+      engine.goToStep('location');
+      // Clean URL param to prevent re-trigger on manual page refresh
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('newLocation')) {
+        url.searchParams.delete('newLocation');
+        window.history.replaceState(null, '', url.pathname);
+      }
+      console.log('[Onboarding] New location mode initialized — navigated engine to location step');
+    }
+  }, [isAddingLocation, engine]);
+
 
   // Auto-select location and initialize form state from existing data
+  // [MULTI-LOCATION FIX] Skip when adding a new location — selectedLocationId is intentionally null
+  // [MULTI-LOCATION FIX] Respect ?locationId=X URL param so "Continue Setup" opens the correct location
   useEffect(() => {
-    if (!isLoadingLocations && hasExistingLocation && !selectedLocationId && locations.length > 0) {
-      const loc = locations[0] as any;
+    if (!isLoadingLocations && hasExistingLocation && !selectedLocationId && locations.length > 0 && !isAddingLocation) {
+      // Check URL param for a specific location to select (e.g., from "Continue Setup" or "Help Center")
+      let loc: any = null;
+      const params = new URLSearchParams(window.location.search);
+      const locationIdFromUrl = params.get('locationId');
+      if (locationIdFromUrl) {
+        const targetId = parseInt(locationIdFromUrl, 10);
+        loc = locations.find((l: any) => l.id === targetId) || null;
+        // Clean up URL param after use — it's a one-time signal
+        params.delete('locationId');
+        const remaining = params.toString();
+        window.history.replaceState(null, '', window.location.pathname + (remaining ? `?${remaining}` : ''));
+      }
+      // Fall back to first location if no URL param or location not found
+      if (!loc) {
+        loc = locations[0] as any;
+      }
       setSelectedLocationId(loc.id);
       setLocationName(loc.name || "");
       setLocationAddress(loc.address || "");
@@ -529,7 +585,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         licenseExpiry: existingLicenseExpiry
       });
     }
-  }, [isLoadingLocations, hasExistingLocation, locations, selectedLocationId]);
+  }, [isLoadingLocations, hasExistingLocation, locations, selectedLocationId, isAddingLocation]);
 
   // [ENTERPRISE FIX] Sync uploaded URLs from selectedLocation whenever location data changes
   // This ensures the form state reflects persisted data when user returns to setup page
@@ -590,10 +646,22 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
 
     // [FIX] Wait for critical data to load before making any skip decisions
-    if (!kitchensLoaded || !requirementsLoaded || !availabilityLoaded) {
-      console.log('[Onboarding] Waiting for kitchens/requirements/availability to load...', {
-        kitchensLoaded, requirementsLoaded, availabilityLoaded
-      });
+    // Kitchen data must be loaded to determine create-kitchen completion
+    if (!kitchensLoaded) {
+      console.log('[Onboarding] Waiting for kitchens to load...');
+      return;
+    }
+    // Requirements depend on location (not kitchen), always wait
+    if (!requirementsLoaded) {
+      console.log('[Onboarding] Waiting for requirements to load...');
+      return;
+    }
+    // Availability depends on selectedKitchenId — only wait if a kitchen is actually selected.
+    // If no kitchen is selected (0 kitchens, or 2+ without auto-select), proceed without
+    // availability data. The auto-skip will correctly identify create-kitchen or availability
+    // as incomplete based on kitchens.length and hasAvailability (which defaults to false).
+    if (selectedKitchenId && !availabilityLoaded) {
+      console.log('[Onboarding] Waiting for availability to load...');
       return;
     }
 
@@ -658,7 +726,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     console.log(`[Onboarding] User on incomplete step: ${currentId}, staying here`);
 
   }, [engine, hasExistingLocation, isLoadingLocations, selectedLocationId, isAddingLocation,
-    kitchensLoaded, requirementsLoaded, availabilityLoaded, completedSteps, currentStep?.id, locations]);
+    kitchensLoaded, requirementsLoaded, availabilityLoaded, selectedKitchenId, completedSteps, currentStep?.id, locations]);
 
   // Load kitchens when location selected
   useEffect(() => {
@@ -677,7 +745,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
             const data = await response.json();
             const kData = Array.isArray(data) ? data : [];
             setKitchens(kData);
-            if (kData.length === 1 && !selectedKitchenId) setSelectedKitchenId(kData[0].id);
+            // Auto-select first kitchen so availability/listings can be checked
+            // Works for 1 kitchen (obvious) and 2+ kitchens (gives a starting point)
+            if (kData.length > 0 && !selectedKitchenId) setSelectedKitchenId(kData[0].id);
             if (kData.length === 0) setShowCreateKitchen(true);
           }
         } catch (e) {
@@ -1067,10 +1137,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
       // [FIX 3] Robust POST vs PUT decision - check multiple sources to prevent duplicates
       // Priority: lastSubmittedLocationIdRef > selectedLocationId > first location in array
+      // [MULTI-LOCATION FIX] When isAddingLocation is true, do NOT fall through to locations[0].id
+      // — that would overwrite the first location instead of creating a new one
       const effectiveLocationId = 
         lastSubmittedLocationIdRef.current || 
         selectedLocationId || 
-        (locations.length > 0 ? locations[0].id : null);
+        (!isAddingLocation && locations.length > 0 ? locations[0].id : null);
 
       const shouldCreate = !effectiveLocationId;
       const endpoint = shouldCreate
@@ -1311,6 +1383,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         body: JSON.stringify({ skipped: false })
       });
       setIsOpen(false);
+      setIsAddingLocation(false); // [MULTI-LOCATION FIX] Reset flag so auto-select works again
       onboardSkip();
       toast({ title: "Flow Completed", description: "All set!" });
     } catch (e) {
@@ -1318,7 +1391,16 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   };
 
-  const [, setLocation] = useLocation();
+  const [currentPath, setLocation] = useLocation();
+
+  // [MULTI-LOCATION FIX] Reset isAddingLocation when navigating away from setup page
+  // This catches ALL exit scenarios: CompletionSummary "Go to Dashboard", browser back, direct URL, etc.
+  useEffect(() => {
+    if (isAddingLocation && !currentPath.startsWith('/manager/setup')) {
+      setIsAddingLocation(false);
+      console.log('[Onboarding] Reset isAddingLocation - navigated away from setup page');
+    }
+  }, [currentPath, isAddingLocation]);
 
   const value: ManagerOnboardingContextType = {
     // Adapter
@@ -1470,7 +1552,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         const token = await auth.currentUser?.getIdToken();
         if (!token) {
           console.warn('[Onboarding] No auth token for saveAndExit');
-          setLocation('/manager/dashboard');
+          const locId = selectedLocationId || lastSubmittedLocationIdRef.current;
+          setLocation(locId ? `/manager/dashboard?locationId=${locId}` : '/manager/dashboard');
           return;
         }
 
@@ -1537,41 +1620,77 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           description: "You can continue setup anytime from where you left off." 
         });
 
-        // 4. Navigate to dashboard
-        setLocation('/manager/dashboard');
+        // 4. Reset multi-location flag and navigate to dashboard with locationId
+        // so the dashboard auto-selects the location we were just working on
+        setIsAddingLocation(false);
+        const locId = selectedLocationId || lastSubmittedLocationIdRef.current;
+        setLocation(locId ? `/manager/dashboard?locationId=${locId}` : '/manager/dashboard');
 
       } catch (error) {
         console.error('[Onboarding] Error in saveAndExit:', error);
         // Still navigate even if save fails - don't trap the user
-        setLocation('/manager/dashboard');
+        setIsAddingLocation(false);
+        const locId = selectedLocationId || lastSubmittedLocationIdRef.current;
+        setLocation(locId ? `/manager/dashboard?locationId=${locId}` : '/manager/dashboard');
       }
     },
     
     startNewLocation: () => {
+      // --- 1. Clear ALL form state ---
       setSelectedLocationId(null);
       setLocationName("");
       setLocationAddress("");
-      // Auto-populate email fields from account email
       const accountEmail = firebaseUser?.email || "";
       setNotificationEmail(accountEmail);
       setNotificationPhone("");
-      // Contact email auto-populated based on preferred method (default is email)
       setContactEmail(accountEmail);
       setContactPhone("");
       setPreferredContactMethod("email");
       setLicenseFile(null);
       setLicenseExpiryDate("");
       setLicenseUploadedUrl(null);
-      licenseUploadedUrlRef.current = null; // Also clear ref
+      licenseUploadedUrlRef.current = null;
       setTermsFile(null);
       setTermsUploadedUrl(null);
-      termsUploadedUrlRef.current = null; // Also clear ref
-      setIsAddingLocation(true);
-      // [ENTERPRISE] Reset submission tracking for new location flow
+      termsUploadedUrlRef.current = null;
+
+      // --- 2. Clear ALL domain state (kitchens, listings, availability, requirements) ---
+      setKitchens([]);
+      setSelectedKitchenId(null);
+      setKitchensLoaded(false);
+      setShowCreateKitchen(false);
+      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '' });
+      setExistingStorageListings([]);
+      setExistingEquipmentListings([]);
+      setHasAvailability(false);
+      setAvailabilityLoaded(false);
+      setHasRequirements(false);
+      setRequirementsLoaded(false);
+
+      // --- 3. Clear completion tracking so old location's state doesn't bleed through ---
+      setDbCompletedSteps({});
+
+      // --- 4. Reset submission tracking ---
       lastSubmittedLocationIdRef.current = null;
       submissionIdRef.current = null;
-      // setIsOpen(true); // OLD MODAL
-      setLocation('/manager/setup'); // NEW FULL PAGE
+
+      // --- 5. Set multi-location flag BEFORE engine reset ---
+      setIsAddingLocation(true);
+
+      // --- 6. Reset auto-skip ref so fresh navigation logic runs ---
+      hasPerformedInitialAutoSkip.current = false;
+
+      // --- 7. Reset OnboardJS engine and navigate to 'location' step (skip welcome for secondary locations) ---
+      if (engine) {
+        engine.reset().then(() => {
+          engine.goToStep('location');
+        });
+      }
+
+      // --- 8. Navigate to setup page with newLocation URL param ---
+      // The URL param survives the context unmount/remount that occurs on route change
+      // (each route has its own ManagerProtectedRoute → ManagerOnboardingProvider tree)
+      setLocation('/manager/setup?newLocation=true');
     },
     
     // [ENTERPRISE] Expose submission state for UI

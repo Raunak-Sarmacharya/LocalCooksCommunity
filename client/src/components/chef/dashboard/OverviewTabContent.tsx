@@ -308,7 +308,7 @@ export default function OverviewTabContent({
                 </Button>
                 <Button 
                   variant="outline"
-                  className="flex-1 group-hover:bg-blue-600 group-hover:text-white transition-colors"
+                  className="flex-1 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
                   onClick={() => onSetActiveTab("discover-kitchens")}
                 >
                   Discover More
@@ -317,7 +317,8 @@ export default function OverviewTabContent({
               </>
             ) : (
               <Button 
-                className="w-full bg-blue-600 hover:bg-blue-700"
+                variant="secondary"
+                className="w-full"
                 onClick={() => onSetActiveTab("discover-kitchens")}
               >
                 Explore Kitchens
@@ -346,7 +347,7 @@ export default function OverviewTabContent({
             {!microlearningCompletion?.confirmed && (
               <Button 
                 variant="outline" 
-                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-green-50 hover:border-green-200"
+                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
                 asChild
               >
                 <Link href="/microlearning/overview">
@@ -379,7 +380,7 @@ export default function OverviewTabContent({
             {kitchenApplications.length === 0 && (
               <Button 
                 variant="outline" 
-                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-blue-50 hover:border-blue-200"
+                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
                 onClick={() => onSetActiveTab("discover-kitchens")}
               >
                 <Building className="h-5 w-5 text-blue-600" />
@@ -393,7 +394,7 @@ export default function OverviewTabContent({
             {enrichedBookings?.length === 0 && kitchenApplications.some(a => a.status === 'approved') && (
               <Button 
                 variant="outline" 
-                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-amber-50 hover:border-amber-200"
+                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
                 onClick={onBookSessionClick}
               >
                 <Calendar className="h-5 w-5 text-amber-600" />
@@ -406,7 +407,7 @@ export default function OverviewTabContent({
 
             <Button 
               variant="outline" 
-              className="h-auto py-4 px-4 justify-start gap-3 hover:bg-purple-50 hover:border-purple-200"
+              className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
               onClick={() => onSetActiveTab("messages")}
             >
               <MessageCircle className="h-5 w-5 text-purple-600" />

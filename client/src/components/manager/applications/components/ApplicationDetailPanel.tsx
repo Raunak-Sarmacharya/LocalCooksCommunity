@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Application } from "../types"
 import { Button } from "@/components/ui/button"
+import { StatusButton } from "@/components/ui/status-button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
@@ -87,6 +88,13 @@ export function ApplicationDetailPanel({
     reviewFeedback,
     onFeedbackChange
 }: ApplicationDetailPanelProps) {
+    const [activeAction, setActiveAction] = useState<string | null>(null);
+
+    // Reset activeAction when the operation completes
+    useEffect(() => {
+        if (!isUpdating) setActiveAction(null);
+    }, [isUpdating]);
+
     const tier = application.current_tier ?? 1;
     const hasStep2 = !!application.tier2_completed_at;
     const isFullyApproved = application.status === 'approved' && tier >= 3;
@@ -487,58 +495,52 @@ export function ApplicationDetailPanel({
 
                     {isPending && (
                         <>
-                            <Button
+                            <StatusButton
                                 variant="outline"
-                                onClick={onReject}
+                                onClick={() => { setActiveAction('reject'); onReject(); }}
+                                status={activeAction === 'reject' && isUpdating ? "loading" : "idle"}
                                 disabled={isUpdating || !reviewFeedback.trim()}
                                 className="flex-1 border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
-                            >
-                                <X className="mr-2 h-4 w-4" />
-                                Reject
-                            </Button>
-                            <Button
-                                onClick={onApprove}
-                                disabled={isUpdating}
-                                className="flex-1 bg-[#208D80] hover:bg-[#1A7470]"
-                            >
-                                <Check className="mr-2 h-4 w-4" />
-                                Approve Step 1
-                            </Button>
+                                labels={{ idle: "Reject", loading: "Rejecting", success: "Rejected" }}
+                            />
+                            <StatusButton
+                                onClick={() => { setActiveAction('approve'); onApprove(); }}
+                                status={activeAction === 'approve' && isUpdating ? "loading" : "idle"}
+                                disabled={isUpdating && activeAction !== 'approve'}
+                                className="flex-1"
+                                labels={{ idle: "Approve Step 1", loading: "Approving", success: "Approved" }}
+                            />
                         </>
                     )}
 
                     {isStep2NeedsReview && (
                         <>
-                            <Button
+                            <StatusButton
                                 variant="outline"
-                                onClick={onRevokeAccess}
-                                disabled={isUpdating}
+                                onClick={() => { setActiveAction('revoke'); onRevokeAccess(); }}
+                                status={activeAction === 'revoke' && isUpdating ? "loading" : "idle"}
+                                disabled={isUpdating && activeAction !== 'revoke'}
                                 className="flex-1 border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
-                            >
-                                <Ban className="mr-2 h-4 w-4" />
-                                Revoke Access
-                            </Button>
-                            <Button
-                                onClick={onApproveTier2}
-                                disabled={isUpdating}
-                                className="flex-1 bg-orange-600 hover:bg-orange-700"
-                            >
-                                <Check className="mr-2 h-4 w-4" />
-                                Approve Step 2
-                            </Button>
+                                labels={{ idle: "Revoke Access", loading: "Revoking", success: "Revoked" }}
+                            />
+                            <StatusButton
+                                onClick={() => { setActiveAction('approveTier2'); onApproveTier2(); }}
+                                status={activeAction === 'approveTier2' && isUpdating ? "loading" : "idle"}
+                                disabled={isUpdating && activeAction !== 'approveTier2'}
+                                className="flex-1"
+                                labels={{ idle: "Approve Step 2", loading: "Approving", success: "Approved" }}
+                            />
                         </>
                     )}
 
                     {isFullyApproved && (
-                        <Button
+                        <StatusButton
                             variant="outline"
-                            onClick={onRevokeAccess}
-                            disabled={isUpdating}
+                            onClick={() => { setActiveAction('revoke'); onRevokeAccess(); }}
+                            status={activeAction === 'revoke' && isUpdating ? "loading" : "idle"}
                             className="flex-1 border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
-                        >
-                            <Ban className="mr-2 h-4 w-4" />
-                            Revoke Access
-                        </Button>
+                            labels={{ idle: "Revoke Access", loading: "Revoking", success: "Revoked" }}
+                        />
                     )}
                 </div>
             </div>

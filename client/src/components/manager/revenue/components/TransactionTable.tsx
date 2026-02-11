@@ -21,6 +21,7 @@ import { Search, Download, ChevronDown, Receipt, FileSpreadsheet, X } from "luci
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { CurrencyInput } from "@/components/ui/currency-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -155,13 +156,21 @@ export function TransactionTable({
         return filteredData.reduce(
             (acc, t) => {
                 const refund = t.refundAmount || 0;
-                const net = t.netRevenue || 0;
-                // Effective net = net revenue minus refund amount
-                const effectiveNet = Math.max(0, net - refund);
+                const totalPrice = t.totalPrice || 0;
+                const taxRate = t.taxRatePercent || 0;
+                const stripeFee = t.stripeFee || 0;
+                // Reverse-calculate correct tax from tax-inclusive total
+                // Formula: base = round(total / (1 + rate/100)), tax = total - base
+                const correctTax = taxRate > 0
+                    ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
+                    : 0;
+                // Recalculate net revenue with corrected tax
+                const correctNet = totalPrice - correctTax - stripeFee;
+                const effectiveNet = Math.max(0, correctNet - refund);
                 return {
-                    totalPrice: acc.totalPrice + (t.totalPrice || 0),
-                    taxAmount: acc.taxAmount + (t.taxAmount || 0),
-                    stripeFee: acc.stripeFee + (t.stripeFee || 0),
+                    totalPrice: acc.totalPrice + totalPrice,
+                    taxAmount: acc.taxAmount + correctTax,
+                    stripeFee: acc.stripeFee + stripeFee,
                     refundAmount: acc.refundAmount + refund,
                     netRevenue: acc.netRevenue + effectiveNet,
                 };
@@ -474,16 +483,14 @@ export function TransactionTable({
 
                             <div className="space-y-2">
                                 <Label htmlFor="refund-amount">Refund amount ({refundCurrency})</Label>
-                                <Input
+                                <CurrencyInput
                                     id="refund-amount"
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
                                     value={refundAmount}
-                                    onChange={(e) => {
-                                        setRefundAmount(e.target.value)
+                                    onValueChange={(val) => {
+                                        setRefundAmount(val)
                                         setRefundError(null)
                                     }}
+                                    placeholder="0.00"
                                 />
                                 {!isRefundAmountValid && refundAmount.trim() !== '' && (
                                     <p className="text-xs text-destructive">

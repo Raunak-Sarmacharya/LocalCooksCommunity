@@ -149,6 +149,7 @@ export function useKitchenBookings() {
         isAuthorizedHold: booking.isAuthorizedHold ?? false,
         originalAuthorizedAmount: booking.originalAuthorizedAmount ?? null,
         refundAmount: booking.refundAmount ?? booking.refund_amount ?? 0,
+        chargedAmount: booking.chargedAmount ?? booking.charged_amount ?? null,
         cancellationRequestedAt: booking.cancellationRequestedAt ?? booking.cancellation_requested_at ?? null,
       }));
       

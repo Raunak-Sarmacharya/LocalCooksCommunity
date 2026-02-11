@@ -3,8 +3,10 @@
  * Manages timezone and location-specific settings
  */
 
-import { Globe, Save } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { useCallback } from 'react';
+import { Globe } from 'lucide-react';
+import { StatusButton } from '@/components/ui/status-button';
+import { useStatusButton } from '@/hooks/use-status-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DEFAULT_TIMEZONE } from '@/utils/timezone-utils';
 
@@ -17,19 +19,20 @@ interface Location {
 
 interface LocationSettingsProps {
   location: Location;
-  onSave: (updates: any) => void;
-  isSaving: boolean;
+  onSave: (updates: any) => Promise<unknown>;
 }
 
-export default function LocationSettings({ location, onSave, isSaving }: LocationSettingsProps) {
+export default function LocationSettings({ location, onSave }: LocationSettingsProps) {
   const timezone = DEFAULT_TIMEZONE;
 
-  const handleSave = () => {
-    onSave({
-      locationId: location.id,
-      timezone: timezone,
-    });
-  };
+  const saveAction = useStatusButton(
+    useCallback(async () => {
+      await onSave({
+        locationId: location.id,
+        timezone: DEFAULT_TIMEZONE,
+      });
+    }, [onSave, location.id]),
+  );
 
   return (
     <div className="space-y-6">
@@ -103,10 +106,12 @@ export default function LocationSettings({ location, onSave, isSaving }: Locatio
             </p>
           </div>
 
-          <Button onClick={handleSave} disabled={isSaving} variant="outline">
-            <Save className="mr-2 h-4 w-4" />
-            Save Settings
-          </Button>
+          <StatusButton
+            status={saveAction.status}
+            onClick={saveAction.execute}
+            variant="outline"
+            labels={{ idle: "Save Settings", loading: "Saving", success: "Saved" }}
+          />
         </CardContent>
       </Card>
     </div>

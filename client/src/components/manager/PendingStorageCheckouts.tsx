@@ -35,12 +35,13 @@ import {
   ShieldCheck,
   FileWarning,
   Timer,
-  DollarSign,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
+import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -319,7 +320,7 @@ const getCheckoutColumns = ({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 text-green-700 border-green-200 hover:bg-green-50 hover:text-green-800"
+                  className="h-8"
                   onClick={() => onClear(checkout)}
                   disabled={isClearing}
                 >
@@ -920,25 +921,18 @@ export function PendingStorageCheckouts() {
               {/* Claimed Amount */}
               <div className="space-y-1.5">
                 <Label htmlFor="claim-amount">Claim Amount (CAD) *</Label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="claim-amount"
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    placeholder="0.00"
-                    className="pl-9"
-                    value={claimForm.claimedAmountCents ? (Number(claimForm.claimedAmountCents) / 100).toFixed(2) : ''}
-                    onChange={(e) => {
-                      const dollars = parseFloat(e.target.value);
-                      setClaimForm(prev => ({
-                        ...prev,
-                        claimedAmountCents: isNaN(dollars) ? '' : Math.round(dollars * 100),
-                      }));
-                    }}
-                  />
-                </div>
+                <CurrencyInput
+                  id="claim-amount"
+                  placeholder="0.00"
+                  value={claimForm.claimedAmountCents ? (Number(claimForm.claimedAmountCents) / 100).toFixed(2) : ''}
+                  onValueChange={(val) => {
+                    const dollars = parseFloat(val);
+                    setClaimForm(prev => ({
+                      ...prev,
+                      claimedAmountCents: isNaN(dollars) ? '' : Math.round(dollars * 100),
+                    }));
+                  }}
+                />
               </div>
 
               {/* Damage Date */}
@@ -986,18 +980,11 @@ export function PendingStorageCheckouts() {
             <Button variant="outline" onClick={() => setClaimSheetOpen(false)}>
               Cancel
             </Button>
-            <Button
+            <StatusButton
               onClick={handleClaimSubmit}
-              disabled={startClaimMutation.isPending}
-              className="bg-amber-600 hover:bg-amber-700 text-white"
-            >
-              {startClaimMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <FileWarning className="h-4 w-4 mr-2" />
-              )}
-              File Claim
-            </Button>
+              status={startClaimMutation.isPending ? "loading" : "idle"}
+              labels={{ idle: "File Claim", loading: "Filing", success: "Filed" }}
+            />
           </SheetFooter>
         </SheetContent>
       </Sheet>
@@ -1041,23 +1028,21 @@ export function PendingStorageCheckouts() {
               {/* Quick action buttons below photos */}
               <Separator />
               <div className="flex items-center gap-2">
-                <Button
+                <StatusButton
                   variant="outline"
                   size="sm"
-                  className="flex-1 text-green-700 border-green-200 hover:bg-green-50"
+                  className="flex-1"
                   onClick={() => {
                     setPhotoViewerOpen(false);
                     handleClear(selectedCheckout);
                   }}
-                  disabled={clearMutation.isPending}
-                >
-                  <ShieldCheck className="h-4 w-4 mr-2" />
-                  Clear — No Issues
-                </Button>
+                  status={clearMutation.isPending ? "loading" : "idle"}
+                  labels={{ idle: "Clear — No Issues", loading: "Clearing", success: "Cleared" }}
+                />
                 <Button
                   variant="outline"
                   size="sm"
-                  className="flex-1 text-amber-700 border-amber-200 hover:bg-amber-50"
+                  className="flex-1"
                   onClick={() => {
                     setPhotoViewerOpen(false);
                     handleFileClaimClick(selectedCheckout);

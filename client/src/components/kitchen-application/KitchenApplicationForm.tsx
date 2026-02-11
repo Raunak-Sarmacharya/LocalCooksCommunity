@@ -555,12 +555,10 @@ export default function KitchenApplicationForm({
         formData.append("cookingExperience", data.experience);
       }
 
-      // Certification status
-      formData.append("foodSafetyLicense", foodHandlerFile ? "yes" : "no");
-      // Only include foodEstablishmentCert if required or if a file is provided
-      if (requirements?.requireFoodEstablishmentCert || businessLicenseFile) {
-        formData.append("foodEstablishmentCert", businessLicenseFile ? "yes" : "no");
-      }
+      // Certification status — "yes" if new file uploaded OR existing cert already on record
+      formData.append("foodSafetyLicense", (foodHandlerFile || existingFoodHandlerUrl) ? "yes" : "no");
+      // Food establishment cert — "yes" if new file uploaded OR existing cert already on record
+      formData.append("foodEstablishmentCert", (businessLicenseFile || existingBusinessLicenseUrl) ? "yes" : "no");
 
       // Expiry dates (only if provided)
       if (data.foodHandlerCertExpiry) {
@@ -1194,15 +1192,16 @@ export default function KitchenApplicationForm({
                     <div className="flex gap-2">
                       <Check className="h-4 w-4 text-[#2BA89F] flex-shrink-0 mt-0.5" />
                       <p className="text-sm text-gray-700">
-                        All chefs must have current <strong>Food Handler Certification</strong> to use our kitchens.
+                        {requirements?.requireFoodHandlerCert === false
+                          ? <>Upload your <strong>Food Handler Certification</strong> if you have one.</>
+                          : <>All chefs must have current <strong>Food Handler Certification</strong> to use our kitchens.</>}
                       </p>
                     </div>
                   </div>
 
                   <div className="space-y-6">
                     {/* Food Handler Certificate Upload */}
-                    {requirements?.requireFoodHandlerCert !== false && (
-                      <div>
+                    <div>
                         <Label className="text-sm font-medium block mb-2">
                           Food Handler Certification {requirements?.requireFoodHandlerCert && <span className="text-red-500">*</span>}
                           {!requirements?.requireFoodHandlerCert && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
@@ -1271,11 +1270,9 @@ export default function KitchenApplicationForm({
                           </div>
                         )}
                       </div>
-                    )}
 
                     {/* Food Handler Expiry Date */}
-                    {requirements?.requireFoodHandlerExpiry !== false && (
-                      <FormField
+                    <FormField
                         control={form.control}
                         name="foodHandlerCertExpiry"
                         render={({ field }) => (
@@ -1295,7 +1292,6 @@ export default function KitchenApplicationForm({
                           </FormItem>
                         )}
                       />
-                    )}
 
                     {/* Note: Tier 2 document uploads (Food Establishment License, Expiry, Insurance) are shown in the dedicated Tier 2 section below */}
                   </div>
@@ -1751,7 +1747,6 @@ export default function KitchenApplicationForm({
                       </div>
 
                       {/* Food Establishment License/Permit */}
-                      {requirements?.tier2_food_establishment_cert_required !== false && (
                         <div>
                           <Label className="text-sm font-medium block mb-2">
                             Food Establishment License/Permit
@@ -1822,10 +1817,8 @@ export default function KitchenApplicationForm({
                             </div>
                           )}
                         </div>
-                      )}
 
                       {/* Food Establishment Expiry Date */}
-                      {requirements?.tier2_food_establishment_expiry_required !== false && (
                         <FormField
                           control={form.control}
                           name="foodEstablishmentCertExpiry"
@@ -1848,10 +1841,8 @@ export default function KitchenApplicationForm({
                             </FormItem>
                           )}
                         />
-                      )}
 
                       {/* Insurance Document */}
-                      {requirements?.tier2_insurance_document_required !== false && (
                         <div className="pt-4 border-t border-gray-100">
                           <Label className="text-sm font-medium block mb-2">
                             Insurance Document
@@ -1885,7 +1876,6 @@ export default function KitchenApplicationForm({
                             className="hidden"
                           />
                         </div>
-                      )}
 
                       {/* Kitchen Experience Description */}
                       {requirements?.tier2_kitchen_experience_required && (

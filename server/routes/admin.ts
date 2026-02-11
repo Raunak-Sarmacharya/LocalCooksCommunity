@@ -3164,7 +3164,8 @@ router.get("/overstay-penalties", requireFirebaseAuthWithUser, requireAdmin, asy
                 COALESCE(cka.full_name, split_part(u.username, '@', 1)) as "chefName",
                 mgr.username as "managerEmail",
                 COALESCE(mgr_cka.full_name, split_part(mgr.username, '@', 1)) as "managerName",
-                loc.manager_id as "managerId"
+                loc.manager_id as "managerId",
+                k.tax_rate_percent as "kitchenTaxRatePercent"
             FROM storage_overstay_records sor
             INNER JOIN storage_bookings sb ON sor.storage_booking_id = sb.id
             INNER JOIN storage_listings sl ON sb.storage_listing_id = sl.id

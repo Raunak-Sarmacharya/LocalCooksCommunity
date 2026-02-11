@@ -43,7 +43,7 @@ import {
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import {
   Alert,
   AlertDescription,
@@ -386,16 +386,11 @@ function DecisionDialog({
                 <div className="space-y-2">
                   <Label htmlFor="approvedAmount">Approved Amount (CAD)</Label>
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">$</span>
-                    <Input
+                    <CurrencyInput
                       id="approvedAmount"
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      max={(claim.claimedAmountCents / 100 - 0.01).toFixed(2)}
                       value={approvedAmount}
-                      onChange={(e) => setApprovedAmount(e.target.value)}
-                      className="w-32"
+                      onValueChange={setApprovedAmount}
+                      className="w-40"
                     />
                     <span className="text-sm text-muted-foreground">
                       of {formatCurrency(claim.claimedAmountCents)} claimed

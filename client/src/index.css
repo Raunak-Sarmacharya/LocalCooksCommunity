@@ -15,15 +15,15 @@
   --card-foreground: 20 14.3% 4.1%;
   --border: 20 5.9% 90%;
   --input: 20 5.9% 90%;
-  --primary: 347 91% 51%;
+  --primary: 348 85% 59%;
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 0%;
   --secondary-foreground: 0 0% 100%;
   --accent: 0 0% 100%;
-  --accent-foreground: 347 91% 51%;
+  --accent-foreground: 348 85% 59%;
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 60 9.1% 97.8%;
-  --ring: 347 91% 51%;
+  --ring: 348 85% 59%;
   --radius: 0.5rem;
 
   /* Layout Variables */
@@ -52,12 +52,12 @@
   /* Sidebar Variables */
   --sidebar-background: 0 0% 100%;
   --sidebar-foreground: 240 5.3% 26.1%;
-  --sidebar-primary: 347 91% 51%;
+  --sidebar-primary: 348 85% 59%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 347 91% 96%;
-  --sidebar-accent-foreground: 347 91% 51%;
+  --sidebar-accent: 348 85% 96%;
+  --sidebar-accent-foreground: 348 85% 59%;
   --sidebar-border: 220 13% 91%;
-  --sidebar-ring: 347 91% 51%;
+  --sidebar-ring: 348 85% 59%;
 }
 
 .dark {
@@ -71,15 +71,15 @@
   --card-foreground: 0 0% 98%;
   --border: 240 3.7% 15.9%;
   --input: 240 3.7% 15.9%;
-  --primary: 347 91% 51%;
+  --primary: 348 85% 59%;
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 0%;
   --secondary-foreground: 0 0% 100%;
   --accent: 0 0% 100%;
-  --accent-foreground: 347 91% 51%;
+  --accent-foreground: 348 85% 59%;
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 0 0% 98%;
-  --ring: 347 91% 51%;
+  --ring: 348 85% 59%;
 }
 
 @layer base {
@@ -885,6 +885,17 @@ a[role="button"],
   .auth-button:active {
     transform: scale(0.98);
   }
+}
+
+/* Hide spinner arrows on all number inputs (Chrome, Safari, Edge, Firefox) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 /* Email Design Studio - Brand Header */

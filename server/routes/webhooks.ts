@@ -984,7 +984,7 @@ async function handleCheckoutSessionCompleted(
                   locationName: location.name,
                   bookingId: booking.id,
                 });
-                const emailSent = await sendEmail(managerEmail);
+                const emailSent = await sendEmail(managerEmail, { trackingId: `booking_${booking.id}_manager` });
                 if (emailSent) {
                   logger.info(`[Webhook] ✅ Sent manager notification email for booking ${booking.id} to ${managerEmailAddress}`);
                 } else {
@@ -1045,7 +1045,7 @@ async function handleCheckoutSessionCompleted(
               timezone: location?.timezone || "America/St_Johns",
               locationName: location?.name,
             });
-            const emailSent = await sendEmail(chefEmail);
+            const emailSent = await sendEmail(chefEmail, { trackingId: `booking_${booking.id}_chef` });
             if (emailSent) {
               logger.info(`[Webhook] ✅ Sent chef booking request email for booking ${booking.id} to ${chef.username}`);
             } else {

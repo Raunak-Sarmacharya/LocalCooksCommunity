@@ -180,7 +180,7 @@ export function CancellationRequestSheet({
           </Button>
           <Button
             variant={isRequest ? "default" : "destructive"}
-            className={`flex-1 ${isRequest ? "bg-amber-600 hover:bg-amber-700" : ""}`}
+            className="flex-1"
             onClick={handleSubmit}
             disabled={isPending}
           >

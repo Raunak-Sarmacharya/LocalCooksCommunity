@@ -389,18 +389,13 @@ export function AppSidebar({
                                 )}
                                 <SidebarSeparator />
                                 <DropdownMenuItem
-                                    className="gap-2 p-2 opacity-60 cursor-default"
-                                    onSelect={(e) => e.preventDefault()}
+                                    className="gap-2 p-2 cursor-pointer"
+                                    onSelect={() => onCreateLocation?.()}
                                 >
-                                    <div className="flex size-6 items-center justify-center rounded-md border bg-muted">
-                                        <Sparkles className="size-4 text-muted-foreground/50" />
+                                    <div className="flex size-6 items-center justify-center rounded-md border bg-primary/10">
+                                        <Sparkles className="size-4 text-primary" />
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-medium text-muted-foreground/70">Add new location</span>
-                                        <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary ring-1 ring-inset ring-primary/20">
-                                            Coming Soon
-                                        </span>
-                                    </div>
+                                    <span className="font-medium">Add new location</span>
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>

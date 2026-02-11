@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -403,20 +403,15 @@ function OverstayCard({
           <div className="space-y-4 py-4">
             <div>
               <label className="text-sm font-medium">Penalty Amount (CAD)</label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                max={(overstay.calculatedPenaltyCents / 100).toFixed(2)}
+              <CurrencyInput
                 value={adjustedAmount}
-                onChange={(e) => {
-                  const value = parseFloat(e.target.value);
+                onValueChange={(val) => {
+                  const value = parseFloat(val);
                   const maxAmount = overstay.calculatedPenaltyCents / 100;
-                  // Cap at maximum calculated penalty
-                  if (value > maxAmount) {
+                  if (!isNaN(value) && value > maxAmount) {
                     setAdjustedAmount(maxAmount.toFixed(2));
                   } else {
-                    setAdjustedAmount(e.target.value);
+                    setAdjustedAmount(val);
                   }
                 }}
                 className="mt-1"

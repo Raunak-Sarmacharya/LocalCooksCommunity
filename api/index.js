@@ -4772,9 +4772,8 @@ function createBookingDateTime(dateStr, timeStr, timezone = "America/St_Johns") 
   return createBookingDateTimeImpl(dateStr, timeStr, timezone);
 }
 async function sendApplicationReceivedEmail(applicationData) {
-  const supportEmail = getSupportEmail();
-  const organizationName = getOrganizationName();
-  const subject = `Application Received - ${organizationName}`;
+  const firstName = applicationData.fullName ? applicationData.fullName.split(" ")[0] : "there";
+  const subject = `Application Received - Local Cooks`;
   const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -4790,49 +4789,45 @@ async function sendApplicationReceivedEmail(applicationData) {
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
-      <p class="message">
-        Thank you for submitting your application to join ${organizationName}. 
-        We've received your application and our team will review it shortly.
-      </p>
-      <div class="status-badge">Status: Under Review</div>
-      <div class="info-box">
-        <strong>What happens next?</strong><br>
-        Our team typically reviews applications within 2-3 business days. 
-        You'll receive an email notification once we've made a decision.
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Thank you for submitting your application to Local Cooks. We&#8217;ve received it and our team will review it shortly.</p>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">What happens next:</p>
+      <p class="message" style="margin-bottom: 20px;">Our team typically reviews applications within 2&#8211;3 business days. You&#8217;ll receive an email notification once we&#8217;ve made a decision.</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Under Review</span>
       </div>
-      <a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Track Application Status</a>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${getDashboardUrl()}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Track Application Status</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
     </div>
     <div class="footer">
-      <p class="footer-text">Thank you for your interest in ${organizationName}!</p>
-      <div class="footer-links">
-        <a href="mailto:${supportEmail}">Support</a> \u2022 
-        <a href="mailto:${supportEmail}?subject=Unsubscribe">Unsubscribe</a> \u2022 
-        <a href="${getPrivacyUrl()}">Privacy Policy</a>
-      </div>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
     </div>
   </div>
 </body>
 </html>`;
   const textContent = `
-Application Received - ${organizationName}
+Hi ${firstName},
 
-Hello ${applicationData.fullName},
+Thank you for submitting your application to Local Cooks. We've received it and our team will review it shortly.
 
-Thank you for submitting your application to join ${organizationName}. We've received your application and our team will review it shortly.
-
-Status: Under Review
-
-What happens next?
-Our team typically reviews applications within 2-3 business days. You'll receive an email notification once we've made a decision.
+What happens next:
+Our team typically reviews applications within 2\u20133 business days. You'll receive an email notification once we've made a decision.
 
 Track your application status: ${getDashboardUrl()}
 
-Thank you for your interest in ${organizationName}!
+If you have any questions, contact us at support@localcook.shop
 
-If you have any questions, contact us at ${supportEmail}
+Best,
+The Local Cooks Team
 
-\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${organizationName}
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
 `;
   return sendEmail({
     to: applicationData.email,
@@ -4842,9 +4837,8 @@ If you have any questions, contact us at ${supportEmail}
   });
 }
 async function sendApplicationRejectedEmail(applicationData, reason) {
-  const supportEmail = getSupportEmail();
-  const organizationName = getOrganizationName();
-  const subject = `Application Update - ${organizationName}`;
+  const firstName = applicationData.fullName ? applicationData.fullName.split(" ")[0] : "there";
+  const subject = `Application Update - Local Cooks`;
   const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -4860,58 +4854,51 @@ async function sendApplicationRejectedEmail(applicationData, reason) {
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
-      <p class="message">
-        Thank you for your interest in joining ${organizationName}. After careful review, we're unable to approve your application at this time.
-      </p>
-      <div class="status-badge">Status: Not Approved</div>
-      
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Thank you for your interest in joining Local Cooks. After careful review, we&#8217;re unable to approve your application at this time.</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">Not Approved</span>
+      </div>
       ${reason ? `
-      <div class="info-box">
-        <strong>Feedback:</strong> ${reason}
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 24px 0 0 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Feedback:</span> <strong style="color: #1e293b;">${reason}</strong></p>
+      </div>` : ""}
+      <p class="message" style="margin-top: 24px; margin-bottom: 20px;">We encourage you to gain more experience and reapply in the future. We&#8217;d be happy to reconsider your application when you&#8217;re ready.</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${getWebsiteUrl()}/apply" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Learn About Requirements</a>
       </div>
-      ` : ""}
-      
-      <div class="info-box">
-        <strong>\u{1F4DA} Next Steps:</strong><br>
-        We encourage you to gain more experience and reapply in the future. 
-        We'd be happy to reconsider your application when you're ready.
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
       </div>
-      
-      <a href="${getWebsiteUrl()}/apply" class="cta-button" style="color: white !important; text-decoration: none !important;">Learn About Requirements</a>
     </div>
     <div class="footer">
-      <p class="footer-text">Thank you for your interest in ${organizationName}!</p>
-      <div class="footer-links">
-        <a href="mailto:${supportEmail}">Support</a> \u2022 
-        <a href="mailto:${supportEmail}?subject=Unsubscribe">Unsubscribe</a> \u2022 
-        <a href="${getPrivacyUrl()}">Privacy Policy</a>
-      </div>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
     </div>
   </div>
 </body>
 </html>`;
   const textContent = `
-Application Update - ${organizationName}
+Hi ${firstName},
 
-Hello ${applicationData.fullName},
-
-Thank you for your interest in joining ${organizationName}. After careful review, we're unable to approve your application at this time.
+Thank you for your interest in joining Local Cooks. After careful review, we're unable to approve your application at this time.
 
 Status: Not Approved
 
 ${reason ? `Feedback: ${reason}
 
-` : ""}Next Steps:
-We encourage you to gain more experience and reapply in the future. We'd be happy to reconsider your application when you're ready.
+` : ""}We encourage you to gain more experience and reapply in the future. We'd be happy to reconsider your application when you're ready.
 
-Learn more about requirements: ${getWebsiteUrl()}/apply
+Learn more: ${getWebsiteUrl()}/apply
 
-Thank you for your interest in ${organizationName}!
+If you have any questions, contact us at support@localcook.shop
 
-If you have any questions, contact us at ${supportEmail}
+Best regards,
+The Local Cooks Team
 
-\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${organizationName}
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
 `;
   return sendEmail({
     to: applicationData.email,
@@ -4920,7 +4907,7 @@ If you have any questions, contact us at ${supportEmail}
     text: textContent
   });
 }
-var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION_WINDOW, createTransporter, getEmailConfig, sendEmail, getDomainFromEmail, getOrganizationName, getUnsubscribeEmail, getSupportEmail, detectEmailProvider, formatDateForCalendar, escapeIcalText, generateEventUid, generateIcsFile, generateCalendarUrl, getUniformEmailStyles, generateStatusChangeEmail, generateVendorCredentials, generateFullVerificationEmail, generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generatePasswordResetEmail, generateEmailVerificationEmail, generateWelcomeEmail, getSubdomainUrl, getWebsiteUrl, getDashboardUrl, getPrivacyUrl, getVendorDashboardUrl, getPromoUrl, generateDocumentUpdateEmail, generatePromoCodeEmail, generateChefAllDocumentsApprovedEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingPaymentReceivedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateLocationEmailChangedEmail, generateStorageExtensionPendingApprovalEmail, generateStorageExtensionPaymentReceivedEmail, generateStorageExtensionApprovedEmail, generateStorageExtensionRejectedEmail, generateStorageExpiringWarningEmail, generateOverstayDetectedEmail, generatePenaltyChargedEmail, generateOverstayManagerNotificationEmail, generateNewKitchenApplicationManagerEmail, generateKitchenApplicationSubmittedChefEmail, generateKitchenApplicationApprovedEmail, generateKitchenApplicationRejectedEmail, generateKitchenLicenseApprovedEmail, generateKitchenLicenseRejectedEmail, generateKitchenLicenseSubmittedAdminEmail, generateDamageClaimFiledEmail, generateDamageClaimResponseEmail, generateDamageClaimDisputedAdminEmail, generateDamageClaimDecisionEmail, generateDamageClaimChargedEmail, generateNewUserRegistrationAdminEmail;
+var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION_WINDOW, createTransporter, getEmailConfig, sendEmail, getDomainFromEmail, getOrganizationName, getUnsubscribeEmail, getSupportEmail, detectEmailProvider, formatDateForCalendar, escapeIcalText, generateEventUid, generateIcsFile, generateCalendarUrl, getUniformEmailStyles, generateStatusChangeEmail, generateVendorCredentials, generateFullVerificationEmail, generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generatePasswordResetEmail, generateEmailVerificationEmail, generateWelcomeEmail, getSubdomainUrl, getWebsiteUrl, getDashboardUrl, getVendorDashboardUrl, getPromoUrl, generateDocumentUpdateEmail, generatePromoCodeEmail, generateChefAllDocumentsApprovedEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingPaymentReceivedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateLocationEmailChangedEmail, generateStorageExtensionPendingApprovalEmail, generateStorageExtensionPaymentReceivedEmail, generateStorageExtensionApprovedEmail, generateStorageExtensionRejectedEmail, generateStorageExpiringWarningEmail, generateOverstayDetectedEmail, generatePenaltyChargedEmail, generateOverstayManagerNotificationEmail, generateNewKitchenApplicationManagerEmail, generateKitchenApplicationSubmittedChefEmail, generateKitchenApplicationApprovedEmail, generateKitchenApplicationRejectedEmail, generateKitchenLicenseApprovedEmail, generateKitchenLicenseRejectedEmail, generateKitchenLicenseSubmittedAdminEmail, generateDamageClaimFiledEmail, generateDamageClaimResponseEmail, generateDamageClaimDisputedAdminEmail, generateDamageClaimDecisionEmail, generateDamageClaimChargedEmail, generateNewUserRegistrationAdminEmail;
 var init_email = __esm({
   "server/email.ts"() {
     "use strict";
@@ -5548,63 +5535,50 @@ var init_email = __esm({
   a { color: hsl(347, 91%, 51%); text-decoration: underline; }
 </style>`;
     generateStatusChangeEmail = (applicationData) => {
+      const firstName = applicationData.fullName.split(" ")[0];
       const getSubjectLine = (status) => {
         switch (status) {
           case "approved":
-            return "Application Approved - Local Cooks Community";
+            return "Application Approved - Local Cooks";
           case "rejected":
-            return "Application Update - Local Cooks Community";
+            return "Application Update - Local Cooks";
           case "cancelled":
-            return "Application Status Update - Local Cooks Community";
+            return "Application Status Update - Local Cooks";
           case "under_review":
-            return "Application Under Review - Local Cooks Community";
+            return "Application Under Review - Local Cooks";
           default:
-            return "Application Status Update - Local Cooks Community";
+            return "Application Status Update - Local Cooks";
         }
       };
       const subject = getSubjectLine(applicationData.status);
-      const generatePlainText = (status, fullName) => {
-        const statusMessages = {
-          approved: `Congratulations! Your application has been approved.`,
-          rejected: `Thank you for your application. After careful review, we are unable to move forward at this time.`,
-          cancelled: `Your application has been cancelled.`,
-          under_review: `Your application is currently under review.`,
-          pending: `Your application has been received and is pending review.`
-        };
-        return `Hello ${fullName},
-
-${statusMessages[status] || "Your application status has been updated."}
-
-Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
-
-${status === "approved" ? `Access your dashboard: ${getDashboardUrl()}
-
-\u{1F393} NEXT STEP: Complete your food safety training to unlock all features and get certified!` : ""}${status === "cancelled" ? `
-
-You can submit a new application anytime: ${getWebsiteUrl()}/apply` : ""}
-
-If you have any questions, please contact us at ${getSupportEmail()}.
-
-Best regards,
-Local Cooks Community Team
-
-Visit: ${getWebsiteUrl()}
-`;
-      };
       const getMessage = (status) => {
         switch (status) {
           case "approved":
-            return "Congratulations! Your application has been approved. You now have full access to the Local Cooks platform, including our comprehensive food safety training program.";
+            return "Your application has been approved. You now have full access to the Local Cooks platform, including our food safety training program.";
           case "rejected":
-            return "Thank you for your application. After careful review, we are unable to move forward with your application at this time. We appreciate your interest in Local Cooks.";
+            return "Thank you for your application. After careful review, we are unable to move forward at this time. We appreciate your interest in Local Cooks.";
           case "cancelled":
-            return "Your application has been cancelled. You can submit a new application anytime when you're ready to join the Local Cooks community.";
+            return "Your application has been cancelled. You can submit a new application anytime when you&#8217;re ready.";
           case "under_review":
-            return "Your application is currently under review by our team. We will notify you once the review is complete.";
+            return "Your application is currently under review by our team. We&#8217;ll notify you once the review is complete.";
           case "pending":
-            return "Your application has been received and is pending review. We will contact you with updates soon.";
+            return "Your application has been received and is pending review. We&#8217;ll be in touch with updates soon.";
           default:
             return "Your application status has been updated. Please check your dashboard for more details.";
+        }
+      };
+      const getStatusBadge = (status) => {
+        switch (status) {
+          case "approved":
+            return `<span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Approved</span>`;
+          case "rejected":
+            return `<span style="display: inline-block; padding: 4px 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">Not Approved</span>`;
+          case "cancelled":
+            return `<span style="display: inline-block; padding: 4px 12px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">Cancelled</span>`;
+          case "under_review":
+            return `<span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Under Review</span>`;
+          default:
+            return `<span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Pending</span>`;
         }
       };
       const message = getMessage(applicationData.status);
@@ -5623,43 +5597,75 @@ Visit: ${getWebsiteUrl()}
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
-      <p class="message">${message}</p>
-      <div class="status-badge${applicationData.status === "approved" ? " approved" : applicationData.status === "rejected" ? " rejected" : applicationData.status === "cancelled" ? " cancelled" : ""}">
-        Status: ${applicationData.status.charAt(0).toUpperCase() + applicationData.status.slice(1)}
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">${message}</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        ${getStatusBadge(applicationData.status)}
       </div>
       ${applicationData.status === "approved" ? `
-      <div class="info-box">
-        <strong>\u{1F393} Your Next Step: Food Safety Training</strong>
-        <p>You now have full access to our comprehensive food safety training program. Complete all 22 training videos to:</p>
-        <ul style="margin: 8px 0; padding-left: 20px;">
-          <li>Earn your official Local Cooks certification</li>
-          <li>Learn essential HACCP principles</li>
-          <li>Access advanced platform features</li>
-          <li>Build customer trust with verified status</li>
-        </ul>
+      <p class="message" style="margin-top: 24px; margin-bottom: 8px; font-weight: 600; color: #1e293b;">Your next step:</p>
+      <p class="message" style="margin-bottom: 10px;">Complete your food safety training to unlock all features. From your dashboard you can:</p>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Access all 22 food safety training videos</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Earn your Local Cooks certification and HACCP fundamentals</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Build customer trust with a verified status on your profile</td>
+        </tr>
+      </table>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${getDashboardUrl()}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Start Food Safety Training</a>
+      </div>` : ""}${applicationData.status === "cancelled" ? `
+      <p class="message" style="margin-top: 24px; margin-bottom: 20px;">You can submit a new application anytime when you&#8217;re ready to join Local Cooks.</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${getWebsiteUrl()}/apply" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Submit New Application</a>
+      </div>` : ""}
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
       </div>
-      <a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Start Food Safety Training</a>` : ""}${applicationData.status === "cancelled" ? `
-      <div class="info-box">
-        <strong>Ready to Apply Again?</strong>
-        <p>You can submit a new application anytime when you're ready to join the Local Cooks community. We look forward to welcoming you to our platform!</p>
-      </div>
-      <a href="${getWebsiteUrl()}/apply" class="cta-button" style="color: white !important; text-decoration: none !important;">Submit New Application</a>` : ""}
-      <div class="divider"></div>
     </div>
     <div class="footer">
-      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
     </div>
   </div>
 </body>
 </html>`;
+      const statusLabel = applicationData.status.charAt(0).toUpperCase() + applicationData.status.slice(1).replace("_", " ");
+      const text2 = `
+Hi ${firstName},
+
+${getMessage(applicationData.status).replace(/&#8217;/g, "'")}
+
+Status: ${statusLabel}
+
+${applicationData.status === "approved" ? `Your next step: Complete your food safety training to unlock all features.
+
+\u2022 Access all 22 food safety training videos
+\u2022 Earn your Local Cooks certification and HACCP fundamentals
+\u2022 Build customer trust with a verified status
+
+Start training: ${getDashboardUrl()}` : ""}${applicationData.status === "cancelled" ? `You can submit a new application anytime: ${getWebsiteUrl()}/apply` : ""}
+
+If you have any questions, contact us at support@localcook.shop
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: applicationData.email,
         subject,
-        text: generatePlainText(applicationData.status, applicationData.fullName),
+        text: text2,
         html
       };
     };
@@ -5676,13 +5682,14 @@ Visit: ${getWebsiteUrl()}
     };
     generateFullVerificationEmail = (userData) => {
       const { username, password } = generateVendorCredentials(userData.fullName, userData.phone);
+      const firstName = userData.fullName.split(" ")[0];
       const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chef Account Approved - Login Credentials Included</title>
+  <title>Chef Account Approved</title>
   ${getUniformEmailStyles()}
 </head>
 <body>
@@ -5691,71 +5698,76 @@ Visit: ${getWebsiteUrl()}
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">Congratulations ${userData.fullName}!</h2>
-      <p class="message">
-        Your documents have been approved and you are now <strong>fully verified</strong>! You can now start accepting orders and serving customers through our Local Cooks platform.
-      </p>
-      <div class="status-badge approved">Status: Approved</div>
-      
-      <div class="info-box">
-        <strong>Your Login Credentials:</strong>
-        <table class="credentials-table">
-          <tr>
-            <td>Username:</td>
-            <td><code>${username}</code></td>
-          </tr>
-          <tr>
-            <td>Password:</td>
-            <td><code>${password}</code></td>
-          </tr>
-        </table>
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Your documents have been approved and you are now fully verified. You can start accepting orders and serving customers through Local Cooks.</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Fully Verified</span>
       </div>
-      
-      <div class="warning-box">
-        <p class="warning-text">
-          <strong>Important:</strong> Please change your password after your first login for security.
-        </p>
+      <p class="message" style="margin-top: 24px; margin-bottom: 8px; font-weight: 600; color: #1e293b;">Your login credentials:</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 16px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Username:</span> <strong style="color: #1e293b; font-family: 'Courier New', monospace;">${username}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Password:</span> <strong style="color: #1e293b; font-family: 'Courier New', monospace;">${password}</strong></p>
       </div>
-      
-      <div class="info-box">
-        <strong>\u{1F680} Next Steps - Choose Your Path:</strong>
-        <p>You now have two important accounts to set up:</p>
+      <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 0 0 24px 0;">
+        <p style="font-size: 14px; line-height: 1.6; color: #92400e; margin: 0;"><strong>Important:</strong> Please change your password after your first login for security.</p>
       </div>
-      
-      <div style="text-align: center; margin: 24px 0; width: 100%;">
-        <div style="display: block; margin: 0 auto; max-width: 320px;">
-          <a href="https://localcook.shop/app/shop/index.php" class="cta-button" style="display: block; width: 100%; background: #2563eb; color: white !important; margin-bottom: 16px; box-sizing: border-box;">
-            \u{1F468}\u200D\u{1F373} Access Chef Dashboard
-          </a>
-          <a href="${getVendorDashboardUrl()}" class="cta-button" style="display: block; width: 100%; background: #16a34a; color: white !important; box-sizing: border-box;">
-            \u{1F4B3} Set Up Stripe Payments
-          </a>
-        </div>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Next steps:</p>
+      <p class="message" style="margin-bottom: 10px;">You have two accounts to set up:</p>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;"><strong style="color: #1e293b;">Chef Dashboard</strong> &#8212; use your credentials above to manage your profile, products, and orders</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;"><strong style="color: #1e293b;">Stripe Payments</strong> &#8212; set up payment processing to start receiving payments from customers</td>
+        </tr>
+      </table>
+      <div style="text-align: center; margin: 0 0 8px 0;">
+        <a href="https://localcook.shop/app/shop/index.php" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0 8px 8px 0;">Access Chef Dashboard</a>
+        <a href="${getVendorDashboardUrl()}" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 0 8px 0;">Set Up Stripe Payments</a>
       </div>
-      
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0;">
-        <p style="margin: 0; font-size: 14px; color: #64748b;">
-          <strong>\u{1F468}\u200D\u{1F373} Chef Dashboard:</strong> Use your credentials above to log into your chef dashboard where you can manage your profile, products, and orders.
-          <br><br>
-          <strong>\u{1F4B3} Stripe Payments:</strong> Set up your payment processing to start receiving payments from customers. This is required to get paid for orders.
-        </p>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Warmly,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
       </div>
-      
-      <div class="divider"></div>
-      
     </div>
     <div class="footer">
-      <p class="footer-text">Welcome to the <strong>Local Cooks Community</strong>!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
     </div>
   </div>
 </body>
 </html>`;
+      const text2 = `
+Hi ${firstName},
+
+Your documents have been approved and you are now fully verified. You can start accepting orders and serving customers through Local Cooks.
+
+Your login credentials:
+Username: ${username}
+Password: ${password}
+
+Important: Please change your password after your first login for security.
+
+Next steps:
+\u2022 Chef Dashboard \u2014 use your credentials above to manage your profile, products, and orders
+  Access: https://localcook.shop/app/shop/index.php
+\u2022 Stripe Payments \u2014 set up payment processing to start receiving payments
+  Access: ${getVendorDashboardUrl()}
+
+If you have any questions, contact us at support@localcook.shop
+
+Warmly,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: userData.email,
-        subject: "Chef Account Approved - Login Credentials Included",
+        subject: "Chef Account Approved",
+        text: text2,
         html,
         headers: {
           "X-Priority": "3",
@@ -5766,14 +5778,14 @@ Visit: ${getWebsiteUrl()}
       };
     };
     generateApplicationWithDocumentsEmail = (applicationData) => {
-      const supportEmail = getSupportEmail();
+      const firstName = applicationData.fullName.split(" ")[0];
       const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Application and Documents Received - Under Review</title>
+  <title>Application and Documents Received</title>
   ${getUniformEmailStyles()}
 </head>
 <body>
@@ -5782,39 +5794,57 @@ Visit: ${getWebsiteUrl()}
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
-      <p class="message">
-        Thank you for submitting your application to Local Cooks! We have received both your application and your supporting documents.
-      </p>
-      <p class="message">
-        Our team will now review your application and documents together. You'll receive another email once the review is complete.
-      </p>
-      <div class="status-badge">Status: Under Review</div>
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Thank you for submitting your application to Local Cooks. We&#8217;ve received both your application and supporting documents.</p>
+      <p class="message" style="margin-bottom: 20px;">Our team will review everything together. You&#8217;ll receive another email once the review is complete, typically within 2&#8211;3 business days.</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Under Review</span>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
     </div>
     <div class="footer">
-      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
       <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
     </div>
   </div>
 </body>
 </html>`;
+      const text2 = `
+Hi ${firstName},
+
+Thank you for submitting your application to Local Cooks. We've received both your application and supporting documents.
+
+Our team will review everything together. You'll receive another email once the review is complete, typically within 2\u20133 business days.
+
+Status: Under Review
+
+If you have any questions, contact us at support@localcook.shop
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: applicationData.email,
-        subject: "Application and Documents Received - Under Review",
+        subject: "Application and Documents Received",
+        text: text2,
         html
       };
     };
     generateApplicationWithoutDocumentsEmail = (applicationData) => {
-      const supportEmail = getSupportEmail();
+      const firstName = applicationData.fullName.split(" ")[0];
       const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Local Cooks Application Confirmation - Next Steps</title>
+  <title>Application Received - Next Steps</title>
   ${getUniformEmailStyles()}
 </head>
 <body>
@@ -5823,84 +5853,90 @@ Visit: ${getWebsiteUrl()}
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
-      <p class="message">
-        Thank you for submitting your application to Local Cooks! We have received your application and it will be reviewed soon.
-      </p>
-      <p class="message">
-        <strong>Next Steps:</strong> Please visit your dashboard to upload the required documents to complete your application.
-      </p>
-      <div class="status-badge">Status: Under Review</div>
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Thank you for submitting your application to Local Cooks. We&#8217;ve received it and it will be reviewed soon.</p>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Next step:</p>
+      <p class="message" style="margin-bottom: 20px;">Please visit your dashboard to upload the required documents to complete your application.</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Documents Required</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${getDashboardUrl()}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Upload Documents</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
     </div>
     <div class="footer">
-      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
       <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
     </div>
   </div>
 </body>
 </html>`;
+      const text2 = `
+Hi ${firstName},
+
+Thank you for submitting your application to Local Cooks. We've received it and it will be reviewed soon.
+
+Next step: Please visit your dashboard to upload the required documents to complete your application.
+
+Upload documents: ${getDashboardUrl()}
+
+If you have any questions, contact us at support@localcook.shop
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: applicationData.email,
-        subject: "Local Cooks Application Confirmation - Next Steps",
+        subject: "Application Received - Next Steps",
+        text: text2,
         html
       };
     };
     generateDocumentStatusChangeEmail = (userData) => {
+      const firstName = userData.fullName.split(" ")[0];
+      const docName = userData.documentType === "foodSafetyLicenseStatus" ? "Food Safety License" : "Food Establishment Certificate";
       const getSubjectLine = (documentType, status) => {
-        const docName2 = documentType === "foodSafetyLicenseStatus" ? "Food Safety License" : "Food Establishment Certificate";
+        const dn = documentType === "foodSafetyLicenseStatus" ? "Food Safety License" : "Food Establishment Certificate";
         switch (status) {
           case "approved":
-            return `${docName2} Approved - Local Cooks Community`;
+            return `${dn} Approved - Local Cooks`;
           case "rejected":
-            return `${docName2} Update Required - Local Cooks Community`;
+            return `${dn} Update Required - Local Cooks`;
           default:
-            return `${docName2} Status Update - Local Cooks Community`;
+            return `${dn} Status Update - Local Cooks`;
         }
       };
       const subject = getSubjectLine(userData.documentType, userData.status);
-      const generatePlainText = (documentType, status, fullName, adminFeedback) => {
-        const docName2 = documentType === "foodSafetyLicenseStatus" ? "Food Safety License" : "Food Establishment Certificate";
-        const statusMessages = {
-          approved: `Great news! Your ${docName2} has been approved.`,
-          rejected: `Your ${docName2} requires some updates before it can be approved.`,
-          pending: `Your ${docName2} is being reviewed by our team.`
-        };
-        return `Hello ${fullName},
-
-${statusMessages[status] || `Your ${docName2} status has been updated.`}
-
-Document: ${docName2}
-Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
-
-${adminFeedback ? `Admin Feedback: ${adminFeedback}
-
-` : ""}${status === "approved" ? `Access your dashboard: ${getDashboardUrl()}` : status === "rejected" ? `Please update your document and resubmit: ${getDashboardUrl()}` : ""}
-
-If you have any questions, please contact us at ${getSupportEmail()}.
-
-Best regards,
-Local Cooks Community Team
-
-Visit: ${getWebsiteUrl()}
-`;
-      };
-      const getMessage = (documentType, status) => {
-        const docName2 = documentType === "foodSafetyLicenseStatus" ? "Food Safety License" : "Food Establishment Certificate";
+      const getMessage = (status) => {
         switch (status) {
           case "approved":
-            return `Congratulations! Your ${docName2} has been approved by our verification team. This brings you one step closer to being fully verified on Local Cooks.`;
+            return `Your ${docName} has been approved by our verification team. This brings you one step closer to being fully verified on Local Cooks.`;
           case "rejected":
-            return `Your ${docName2} could not be approved at this time. Please review the feedback below and upload an updated document.`;
+            return `Your ${docName} could not be approved at this time. Please review the feedback below and upload an updated document.`;
           case "pending":
-            return `Your ${docName2} is currently being reviewed by our verification team. We will notify you once the review is complete.`;
+            return `Your ${docName} is currently being reviewed by our verification team. We&#8217;ll notify you once the review is complete.`;
           default:
-            return `Your ${docName2} status has been updated. Please check your dashboard for more details.`;
+            return `Your ${docName} status has been updated. Please check your dashboard for more details.`;
         }
       };
-      const message = getMessage(userData.documentType, userData.status);
-      const docName = userData.documentType === "foodSafetyLicenseStatus" ? "Food Safety License" : "Food Establishment Certificate";
+      const getStatusBadge = (status) => {
+        switch (status) {
+          case "approved":
+            return `<span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Approved</span>`;
+          case "rejected":
+            return `<span style="display: inline-block; padding: 4px 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">Update Required</span>`;
+          default:
+            return `<span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Under Review</span>`;
+        }
+      };
+      const message = getMessage(userData.status);
       const html = `
 <!DOCTYPE html>
 <html>
@@ -5916,40 +5952,64 @@ Visit: ${getWebsiteUrl()}
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">Hello ${userData.fullName},</h2>
-      <p class="message">${message}</p>
-      <div style="text-align: center;">
-        <div class="status-badge${userData.status === "approved" ? " approved" : userData.status === "rejected" ? " rejected" : ""}">
-          \u{1F4C4} ${docName}: ${userData.status.charAt(0).toUpperCase() + userData.status.slice(1)}
-        </div>
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">${message}</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Document:</span> <strong style="color: #1e293b;">${docName}</strong></p>
+      </div>
+      <div style="margin: 0 0 4px 0; text-align: center;">
+        ${getStatusBadge(userData.status)}
       </div>
       ${userData.adminFeedback ? `
-      <div class="info-box">
-        <strong>\u{1F4AC} Admin Feedback:</strong><br>
-        ${userData.adminFeedback}
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 24px 0 0 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Feedback:</span> <strong style="color: #1e293b;">${userData.adminFeedback}</strong></p>
       </div>` : ""}
-      <div style="text-align: center;">
-        ${userData.status === "approved" ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>` : userData.status === "rejected" ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Update Document</a>` : ""}
+      ${userData.status === "approved" || userData.status === "rejected" ? `
+      <div style="margin: 24px 0 0 0; text-align: center;">
+        <a href="${getDashboardUrl()}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">${userData.status === "approved" ? "Access Your Dashboard" : "Update Document"}</a>
+      </div>` : ""}
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
       </div>
-      <div class="divider"></div>
     </div>
     <div class="footer">
-      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
     </div>
   </div>
 </body>
 </html>`;
+      const statusLabel = userData.status.charAt(0).toUpperCase() + userData.status.slice(1);
+      const text2 = `
+Hi ${firstName},
+
+${getMessage(userData.status).replace(/&#8217;/g, "'")}
+
+Document: ${docName}
+Status: ${statusLabel}
+
+${userData.adminFeedback ? `Feedback: ${userData.adminFeedback}
+
+` : ""}${userData.status === "approved" ? `Access your dashboard: ${getDashboardUrl()}` : userData.status === "rejected" ? `Update your document: ${getDashboardUrl()}` : ""}
+
+If you have any questions, contact us at support@localcook.shop
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: userData.email,
         subject,
-        text: generatePlainText(userData.documentType, userData.status, userData.fullName, userData.adminFeedback),
+        text: text2,
         html
       };
     };
     generatePasswordResetEmail = (userData) => {
+      const firstName = userData.fullName.split(" ")[0];
       const html = `
 <!DOCTYPE html>
 <html>
@@ -5965,32 +6025,50 @@ Visit: ${getWebsiteUrl()}
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">Hello ${userData.fullName},</h2>
-      <p class="message">
-        We received a request to reset your password for your Local Cooks account. If you didn't make this request, you can safely ignore this email.
-      </p>
-      <p class="message">
-        Click the button below to create a new password. This link will expire in 1 hour for security.
-      </p>
-      <a href="${userData.resetUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Reset My Password</a>
-      <div class="warning-box">
-        <p class="warning-text">
-          <strong>Important:</strong> If you didn't request this password reset, please contact our support team immediately.
-        </p>
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">We received a request to reset your password for your Local Cooks account. Click the button below to create a new password.</p>
+      <p class="message" style="margin-bottom: 20px;">This link will expire in 1 hour for security.</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${userData.resetUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Reset My Password</a>
+      </div>
+      <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 24px 0 0 0;">
+        <p style="font-size: 14px; line-height: 1.6; color: #92400e; margin: 0;"><strong>Didn&#8217;t request this?</strong> If you didn&#8217;t ask to reset your password, you can safely ignore this email. Your account remains secure.</p>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you need help, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
       </div>
     </div>
     <div class="footer">
-      <p class="footer-text">Keep your account secure with <strong>Local Cooks</strong></p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
     </div>
   </div>
 </body>
 </html>`;
+      const text2 = `
+Hi ${firstName},
+
+We received a request to reset your password for your Local Cooks account.
+
+Reset your password: ${userData.resetUrl}
+
+This link will expire in 1 hour for security.
+
+If you didn't request this, you can safely ignore this email. Your account remains secure.
+
+If you need help, contact us at support@localcook.shop
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: userData.email,
         subject: "Password Reset Request - Local Cooks",
+        text: text2,
         html,
         headers: {
           "X-Priority": "3",
@@ -6001,13 +6079,14 @@ Visit: ${getWebsiteUrl()}
       };
     };
     generateEmailVerificationEmail = (userData) => {
+      const firstName = userData.fullName.split(" ")[0];
       const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Email Verification Required - Local Cooks</title>
+  <title>Verify Your Email - Local Cooks</title>
   ${getUniformEmailStyles()}
 </head>
 <body>
@@ -6016,28 +6095,48 @@ Visit: ${getWebsiteUrl()}
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">Welcome ${userData.fullName}!</h2>
-      <p class="message">
-        Thank you for joining Local Cooks Community! We're excited to have you on board.
-      </p>
-      <p class="message">
-        To complete your registration and activate your account, please verify your email address by clicking the button below.
-      </p>
-      <a href="${userData.verificationUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Verify My Email</a>
-      <div class="status-badge">Status: Verification Required</div>
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Thank you for joining Local Cooks. To complete your registration and activate your account, please verify your email address.</p>
+      <p class="message" style="margin-bottom: 20px;">Click the button below to confirm your email. This link will expire in 24 hours for security.</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Verification Required</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${userData.verificationUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Verify My Email</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you didn&#8217;t create an account with Local Cooks, you can safely ignore this email.</p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
     </div>
     <div class="footer">
-      <p class="footer-text">Welcome to the <strong>Local Cooks</strong> community!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
     </div>
   </div>
 </body>
 </html>`;
+      const text2 = `
+Hi ${firstName},
+
+Thank you for joining Local Cooks. To complete your registration and activate your account, please verify your email address.
+
+Verify your email: ${userData.verificationUrl}
+
+This link will expire in 24 hours for security.
+
+If you didn't create an account with Local Cooks, you can safely ignore this email.
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: userData.email,
-        subject: "Email Verification Required - Local Cooks",
+        subject: "Verify Your Email - Local Cooks",
+        text: text2,
         html,
         headers: {
           "X-Priority": "3",
@@ -6159,11 +6258,9 @@ The Local Cooks Team
     };
     getDashboardUrl = (userType = "chef") => {
       const baseUrl = getSubdomainUrl(userType);
-      return baseUrl;
-    };
-    getPrivacyUrl = () => {
-      const baseUrl = getWebsiteUrl();
-      return `${baseUrl}/privacy`;
+      if (userType === "admin") return `${baseUrl}/admin`;
+      if (userType === "kitchen") return `${baseUrl}/manager/dashboard`;
+      return `${baseUrl}/dashboard`;
     };
     getVendorDashboardUrl = () => {
       return process.env.VENDOR_DASHBOARD_URL || "https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php";
@@ -6172,6 +6269,7 @@ The Local Cooks Team
       return "https://localcook.shop/app/index.php";
     };
     generateDocumentUpdateEmail = (userData) => {
+      const firstName = userData.fullName.split(" ")[0];
       const html = `
 <!DOCTYPE html>
 <html>
@@ -6187,23 +6285,21 @@ The Local Cooks Team
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">Hello ${userData.fullName},</h2>
-      <p class="message">
-        Thank you for updating your documents. Our team will review them and update your verification status as soon as possible.
-      </p>
-      <p class="message">
-        You'll receive another email once your documents have been reviewed.
-      </p>
-      <div class="status-badge">
-        \u{1F4C4} Document Update Received
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Thank you for updating your documents. Our team will review them and update your verification status as soon as possible.</p>
+      <p class="message" style="margin-bottom: 20px;">You&#8217;ll receive another email once your documents have been reviewed.</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Under Review</span>
       </div>
-      <div class="divider"></div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
     </div>
     <div class="footer">
-      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
     </div>
   </div>
 </body>
@@ -6211,6 +6307,16 @@ The Local Cooks Team
       return {
         to: userData.email,
         subject: "Document Update Received - Local Cooks",
+        text: `Hi ${firstName},
+
+Thank you for updating your documents. Our team will review them and update your verification status as soon as possible.
+
+You'll receive another email once your documents have been reviewed.
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html,
         headers: {
           "X-Priority": "3",
@@ -6889,30 +6995,8 @@ Visit: ${getPromoUrl()}
       };
     };
     generateChefAllDocumentsApprovedEmail = (userData) => {
-      const subject = "All Documents Approved - Welcome to Local Cooks Community!";
-      const generatePlainText = (fullName, approvedDocuments, adminFeedback) => {
-        const docList2 = approvedDocuments.join(", ");
-        return `Hello ${fullName},
-
-\u{1F389} Congratulations! All your submitted documents have been approved by our verification team.
-
-Approved Documents: ${docList2}
-
-You are now fully verified and can start using Local Cooks Community as a chef.
-
-${adminFeedback ? `Admin Feedback: ${adminFeedback}
-
-` : ""}Access your dashboard: ${getDashboardUrl()}
-
-If you have any questions, please contact us at ${getSupportEmail()}.
-
-Best regards,
-Local Cooks Community Team
-
-Visit: ${getWebsiteUrl()}
-`;
-      };
-      const docList = userData.approvedDocuments.join(", ");
+      const firstName = userData.fullName.split(" ")[0];
+      const subject = "All Documents Approved - Local Cooks";
       const html = `
 <!DOCTYPE html>
 <html>
@@ -6928,60 +7012,205 @@ Visit: ${getWebsiteUrl()}
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">Hello ${userData.fullName},</h2>
-      <p class="message">
-        \u{1F389} <strong>Congratulations!</strong> All your submitted documents have been approved by our verification team.
-      </p>
-      <p class="message">
-        You are now fully verified and can start using Local Cooks Community as a chef.
-      </p>
-      <div style="text-align: center;">
-        <div class="status-badge approved">
-          \u2705 All Documents Approved
-        </div>
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">All your submitted documents have been approved by our verification team. You are now fully verified and can start using Local Cooks as a chef.</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; All Documents Approved</span>
       </div>
-      <div class="info-box">
-        <strong>\u{1F4C4} Approved Documents:</strong><br>
-        ${userData.approvedDocuments.map((doc) => `\u2022 ${doc}`).join("<br>")}
-      </div>
+      <p class="message" style="margin-top: 24px; margin-bottom: 8px; font-weight: 600; color: #1e293b;">Approved documents:</p>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
+        ${userData.approvedDocuments.map((doc) => `<tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">${doc}</td>
+        </tr>`).join("")}
+      </table>
       ${userData.adminFeedback ? `
-      <div class="info-box">
-        <strong>\u{1F4AC} Admin Feedback:</strong><br>
-        ${userData.adminFeedback}
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Feedback:</span> <strong style="color: #1e293b;">${userData.adminFeedback}</strong></p>
       </div>` : ""}
-      <div style="text-align: center;">
-        <a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${getDashboardUrl()}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Access Your Dashboard</a>
       </div>
-      <div class="divider"></div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Warmly,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
     </div>
     <div class="footer">
-      <p class="footer-text">Welcome to <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
     </div>
   </div>
 </body>
 </html>`;
+      const text2 = `
+Hi ${firstName},
+
+All your submitted documents have been approved by our verification team. You are now fully verified and can start using Local Cooks as a chef.
+
+Approved documents:
+${userData.approvedDocuments.map((doc) => `\u2022 ${doc}`).join("\n")}
+
+${userData.adminFeedback ? `Feedback: ${userData.adminFeedback}
+
+` : ""}Access your dashboard: ${getDashboardUrl()}
+
+If you have any questions, contact us at support@localcook.shop
+
+Warmly,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: userData.email,
         subject,
-        text: generatePlainText(userData.fullName, userData.approvedDocuments, userData.adminFeedback),
+        text: text2,
         html
       };
     };
     generateManagerMagicLinkEmail = (userData) => {
       const subject = "Set Up Your Manager Account - Local Cooks";
-      const baseUrl = getDashboardUrl("kitchen");
+      const firstName = userData.name.split(" ")[0];
+      const baseUrl = getSubdomainUrl("kitchen");
       const resetUrl = `${baseUrl}/password-reset?token=${userData.resetToken}&role=manager`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${userData.name},</h2><p class="message">Your manager account has been created for the Local Cooks commercial kitchen booking system!</p><p class="message">Click the button below to set up your password and access your manager dashboard:</p><a href="${resetUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Set Up Password</a><div class="info-box"><strong>\u{1F510} Account Access:</strong><br>You'll be able to manage kitchen schedules, view bookings, and set up availability for your location.</div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-      return { to: userData.email, subject, text: `Hello ${userData.name}, Your manager account has been created. Click here to set up your password: ${resetUrl}`, html };
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Your manager account has been created for the Local Cooks commercial kitchen booking system.</p>
+      <p class="message" style="margin-bottom: 10px;">Click the button below to set up your password and access your manager dashboard. Once set up, you&#8217;ll be able to:</p>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Manage kitchen schedules and availability</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">View and approve booking requests from chefs</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Set up your location&#8217;s pricing and policies</td>
+        </tr>
+      </table>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${resetUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Set Up Password</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Hi ${firstName},
+
+Your manager account has been created for the Local Cooks commercial kitchen booking system.
+
+Set up your password: ${resetUrl}
+
+Once set up, you'll be able to:
+\u2022 Manage kitchen schedules and availability
+\u2022 View and approve booking requests from chefs
+\u2022 Set up your location's pricing and policies
+
+If you have any questions, contact us at support@localcook.shop
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
+      return { to: userData.email, subject, text: text2, html };
     };
     generateManagerCredentialsEmail = (userData) => {
-      const subject = "Your Manager Account - Local Cooks Community";
-      const loginUrl = `${getDashboardUrl("kitchen")}/manager/login`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${userData.name || "Manager"},</h2><p class="message">Your manager account has been created for the Local Cooks kitchen booking system!</p><div class="info-box"><strong>\u{1F510} Your Login Credentials:</strong><table class="credentials-table"><tr><td>Username:</td><td><code>${userData.username}</code></td></tr><tr><td>Password:</td><td><code>${userData.password}</code></td></tr></table></div><div class="warning-box"><p class="warning-text"><strong>\u26A0\uFE0F Important:</strong> Please change your password after your first login for security.</p></div><p class="message">You'll be able to manage kitchen schedules, view bookings, and set up availability for your locations.</p><a href="${loginUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Login Now</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-      return { to: userData.email, subject, text: `Hello ${userData.name || "Manager"}, Your manager account has been created! Username: ${userData.username}, Password: ${userData.password}. Login at: ${loginUrl}`, html };
+      const subject = "Your Manager Account - Local Cooks";
+      const firstName = (userData.name || "Manager").split(" ")[0];
+      const loginUrl = `${getSubdomainUrl("kitchen")}/manager/login`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Your manager account has been created for the Local Cooks kitchen booking system.</p>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Your login credentials:</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 16px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Username:</span> <strong style="color: #1e293b; font-family: 'Courier New', monospace;">${userData.username}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Password:</span> <strong style="color: #1e293b; font-family: 'Courier New', monospace;">${userData.password}</strong></p>
+      </div>
+      <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 0 0 24px 0;">
+        <p style="font-size: 14px; line-height: 1.6; color: #92400e; margin: 0;"><strong>Important:</strong> Please change your password after your first login for security.</p>
+      </div>
+      <p class="message" style="margin-bottom: 20px;">You&#8217;ll be able to manage kitchen schedules, view bookings, and set up availability for your locations.</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${loginUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Login Now</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Hi ${firstName},
+
+Your manager account has been created for the Local Cooks kitchen booking system.
+
+Your login credentials:
+Username: ${userData.username}
+Password: ${userData.password}
+
+Important: Please change your password after your first login for security.
+
+Login at: ${loginUrl}
+
+If you have any questions, contact us at support@localcook.shop
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
+      return { to: userData.email, subject, text: text2, html };
     };
     generateBookingNotificationEmail = (bookingData) => {
       const chefFirstName = bookingData.chefName.split(" ")[0];
@@ -6989,7 +7218,7 @@ Visit: ${getWebsiteUrl()}
       const subject = `New Booking Request from ${chefFirstName}${chefLastName ? " " + chefLastName : ""}`;
       const timezone = bookingData.timezone || "America/St_Johns";
       const locationName = bookingData.locationName || bookingData.kitchenName;
-      const bookingDetailsUrl = `${getDashboardUrl("kitchen")}/manager/booking/${bookingData.bookingId}`;
+      const bookingDetailsUrl = `${getSubdomainUrl("kitchen")}/manager/booking/${bookingData.bookingId}`;
       const dashboardUrl = getDashboardUrl("kitchen");
       const managerFirstName = bookingData.managerName ? bookingData.managerName.split(" ")[0] : bookingData.managerEmail.split("@")[0];
       const bookingDateObj = bookingData.bookingDate instanceof Date ? bookingData.bookingDate : new Date(bookingData.bookingDate);
@@ -7125,19 +7354,140 @@ The Local Cooks Team
       const formattedAmount = `$${(data.amountCents / 100).toFixed(2)} ${data.currency}`;
       const bookingDateObj = data.bookingDate instanceof Date ? data.bookingDate : new Date(data.bookingDate);
       const formattedDate = bookingDateObj.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-      const bookingDetailsUrl = `${getDashboardUrl("kitchen")}/manager/booking/${data.bookingId}`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">\u{1F4B0} Payment Received!</h2><p class="message">Great news! Payment has been received for a kitchen booking:</p><div class="info-box"><strong>\u{1F468}\u200D\u{1F373} Chef:</strong> ${data.chefName}<br><strong>\u{1F3E2} Kitchen:</strong> ${data.kitchenName}<br><strong>\u{1F4C5} Date:</strong> ${formattedDate}<br><strong>\u23F0 Time:</strong> ${data.startTime} - ${data.endTime}<br><strong>\u{1F4B5} Amount:</strong> <span style="color: #16a34a; font-weight: 600;">${formattedAmount}</span><br><strong>\u{1F4CA} Payment Status:</strong> <span style="color: #16a34a; font-weight: 600;">Paid</span></div><p class="message">The booking is now confirmed and ready. Please review the booking details.</p><div style="text-align: center; margin: 24px 0;"><a href="${bookingDetailsUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Booking Details</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const bookingDetailsUrl = `${getSubdomainUrl("kitchen")}/manager/booking/${data.bookingId}`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Payment Received</h2>
+      <p class="message" style="margin-bottom: 20px;">Payment has been received for a kitchen booking. The booking is now confirmed and ready.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Chef:</span> <strong style="color: #1e293b;">${data.chefName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${data.kitchenName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${data.startTime} &#8211; ${data.endTime}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Amount:</span> <strong style="color: #16a34a;">${formattedAmount}</strong></p>
+      </div>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Paid</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${bookingDetailsUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Booking Details</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Payment Received
+
+Chef: ${data.chefName}
+Kitchen: ${data.kitchenName}
+Date: ${formattedDate}
+Time: ${data.startTime} \u2013 ${data.endTime}
+Amount: ${formattedAmount}
+
+The booking is now confirmed and ready.
+
+View booking: ${bookingDetailsUrl}
+
+If you have any questions, contact us at support@localcook.shop
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
       return {
         to: data.managerEmail,
         subject,
-        text: `Payment Received! Chef: ${data.chefName}, Kitchen: ${data.kitchenName}, Date: ${formattedDate}, Time: ${data.startTime} - ${data.endTime}, Amount: ${formattedAmount}. View booking: ${bookingDetailsUrl}`,
+        text: text2,
         html
       };
     };
     generateBookingCancellationNotificationEmail = (bookingData) => {
       const subject = `Booking Cancelled - ${bookingData.kitchenName}`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Booking Cancelled</h2><p class="message">A chef has cancelled their booking:</p><div class="info-box"><strong>\u{1F468}\u200D\u{1F373} Chef:</strong> ${bookingData.chefName}<br><strong>\u{1F3E2} Kitchen:</strong> ${bookingData.kitchenName}<br><strong>\u{1F4C5} Date:</strong> ${new Date(bookingData.bookingDate).toLocaleDateString()}<br><strong>\u23F0 Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #dc2626; font-weight: 600;">Cancelled</span>${bookingData.cancellationReason ? `<br><br><strong>\u{1F4DD} Reason:</strong> ${bookingData.cancellationReason}` : ""}</div><a href="${getDashboardUrl("kitchen")}/manager/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-      return { to: bookingData.managerEmail, subject, text: `Booking Cancelled - Chef: ${bookingData.chefName}, Kitchen: ${bookingData.kitchenName}, Date: ${new Date(bookingData.bookingDate).toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}`, html };
+      const formattedDate = new Date(bookingData.bookingDate).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Booking Cancelled</h2>
+      <p class="message" style="margin-bottom: 20px;">A chef has cancelled their booking at ${bookingData.kitchenName}.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Chef:</span> <strong style="color: #1e293b;">${bookingData.chefName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${bookingData.kitchenName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${bookingData.startTime} &#8211; ${bookingData.endTime}</strong></p>
+        ${bookingData.cancellationReason ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 8px 0 0 0;"><span style="color: #64748b;">Reason:</span> <strong style="color: #1e293b;">${bookingData.cancellationReason}</strong></p>` : ""}
+      </div>
+      <div style="margin: 0 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">Cancelled</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${getSubdomainUrl("kitchen")}/manager/bookings" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Bookings</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Booking Cancelled
+
+Chef: ${bookingData.chefName}
+Kitchen: ${bookingData.kitchenName}
+Date: ${formattedDate}
+Time: ${bookingData.startTime} \u2013 ${bookingData.endTime}
+${bookingData.cancellationReason ? `Reason: ${bookingData.cancellationReason}
+` : ""}
+View bookings: ${getSubdomainUrl("kitchen")}/manager/bookings
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
+      return { to: bookingData.managerEmail, subject, text: text2, html };
     };
     generateBookingStatusChangeNotificationEmail = (bookingData) => {
       const chefFirstName = bookingData.chefName.split(" ")[0];
@@ -7573,156 +7923,1009 @@ The Local Cooks Team
       };
     };
     generateBookingCancellationEmail = (bookingData) => {
+      const firstName = bookingData.chefName.split(" ")[0];
       const subject = `Booking Cancelled - ${bookingData.kitchenName}`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${bookingData.chefName},</h2><p class="message">Your kitchen booking has been cancelled.</p><div class="info-box"><strong>\u{1F3E2} Kitchen:</strong> ${bookingData.kitchenName}<br><strong>\u{1F4C5} Date:</strong> ${new Date(bookingData.bookingDate).toLocaleDateString()}<br><strong>\u23F0 Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #dc2626; font-weight: 600;">Cancelled</span>${bookingData.cancellationReason ? `<br><br><strong>\u{1F4DD} Reason:</strong> ${bookingData.cancellationReason}` : ""}</div><p class="message">You can make a new booking anytime from your dashboard.</p><a href="${getDashboardUrl()}/book-kitchen" class="cta-button" style="color: white !important; text-decoration: none !important;">Browse Available Kitchens</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-      return { to: bookingData.chefEmail, subject, text: `Hello ${bookingData.chefName}, Your kitchen booking has been cancelled. Kitchen: ${bookingData.kitchenName}, Date: ${new Date(bookingData.bookingDate).toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}${bookingData.cancellationReason ? `. Reason: ${bookingData.cancellationReason}` : ""}`, html };
+      const formattedDate = new Date(bookingData.bookingDate).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Your kitchen booking has been cancelled.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${bookingData.kitchenName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${bookingData.startTime} &#8211; ${bookingData.endTime}</strong></p>
+        ${bookingData.cancellationReason ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 8px 0 0 0;"><span style="color: #64748b;">Reason:</span> <strong style="color: #1e293b;">${bookingData.cancellationReason}</strong></p>` : ""}
+      </div>
+      <div style="margin: 0 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">Cancelled</span>
+      </div>
+      <p class="message" style="margin-top: 24px; margin-bottom: 20px;">You can make a new booking anytime from your dashboard.</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${getSubdomainUrl("chef")}/book-kitchen" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Browse Available Kitchens</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Hi ${firstName},
+
+Your kitchen booking has been cancelled.
+
+Kitchen: ${bookingData.kitchenName}
+Date: ${formattedDate}
+Time: ${bookingData.startTime} \u2013 ${bookingData.endTime}
+${bookingData.cancellationReason ? `Reason: ${bookingData.cancellationReason}
+` : ""}
+You can make a new booking anytime from your dashboard: ${getSubdomainUrl("chef")}/book-kitchen
+
+If you have any questions, contact us at support@localcook.shop
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
+      return { to: bookingData.chefEmail, subject, text: text2, html };
     };
     generateKitchenAvailabilityChangeEmail = (data) => {
+      const firstName = data.chefName.split(" ")[0];
       const subject = `Kitchen Availability Update - ${data.kitchenName}`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">The availability for <strong>${data.kitchenName}</strong> has been updated.</p><div class="info-box"><strong>\u{1F3E2} Kitchen:</strong> ${data.kitchenName}<br><strong>\u{1F4CB} Change Type:</strong> ${data.changeType}<br><strong>\u{1F4DD} Details:</strong> ${data.details}</div><p class="message">Please check the updated availability before making your next booking.</p><a href="${getDashboardUrl()}/book-kitchen" class="cta-button" style="color: white !important; text-decoration: none !important;">View Kitchen Availability</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-      return { to: data.chefEmail, subject, text: `Hello ${data.chefName}, The availability for ${data.kitchenName} has been updated. Change Type: ${data.changeType}. Details: ${data.details}`, html };
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">The availability for <strong>${data.kitchenName}</strong> has been updated. Please check the updated availability before making your next booking.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${data.kitchenName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Change:</span> <strong style="color: #1e293b;">${data.changeType}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Details:</span> <strong style="color: #1e293b;">${data.details}</strong></p>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${getSubdomainUrl("chef")}/book-kitchen" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Kitchen Availability</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Hi ${firstName},
+
+The availability for ${data.kitchenName} has been updated.
+
+Change: ${data.changeType}
+Details: ${data.details}
+
+View availability: ${getSubdomainUrl("chef")}/book-kitchen
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
+      return { to: data.chefEmail, subject, text: text2, html };
     };
     generateKitchenSettingsChangeEmail = (data) => {
+      const firstName = data.name.split(" ")[0];
       const subject = `Kitchen Settings Updated - ${data.kitchenName}`;
-      const greeting = data.isChef ? `Hello ${data.name},` : `Hello ${data.name},`;
-      const message = data.isChef ? `The settings for <strong>${data.kitchenName}</strong> have been updated. This may affect your existing or future bookings.` : `The settings for <strong>${data.kitchenName}</strong> have been updated.`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">${greeting}</h2><p class="message">${message}</p><div class="info-box"><strong>\u{1F3E2} Kitchen:</strong> ${data.kitchenName}<br><strong>\u{1F4DD} Changes:</strong> ${data.changes}</div>${data.isChef ? `<p class="message">Please review the updated settings before making your next booking.</p><a href="${getDashboardUrl()}/book-kitchen" class="cta-button" style="color: white !important; text-decoration: none !important;">View Kitchen Details</a>` : `<a href="${getDashboardUrl("kitchen")}/manager/booking-dashboard" class="cta-button" style="color: white !important; text-decoration: none !important;">View Kitchen Settings</a>`}<div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-      return { to: data.email, subject, text: `${greeting} ${message} Kitchen: ${data.kitchenName}. Changes: ${data.changes}`, html };
+      const ctaUrl = data.isChef ? `${getSubdomainUrl("chef")}/book-kitchen` : getDashboardUrl("kitchen");
+      const ctaLabel = data.isChef ? "View Kitchen Details" : "View Kitchen Settings";
+      const extraNote = data.isChef ? " This may affect your existing or future bookings." : "";
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">The settings for <strong>${data.kitchenName}</strong> have been updated.${extraNote}</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${data.kitchenName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Changes:</span> <strong style="color: #1e293b;">${data.changes}</strong></p>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${ctaUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">${ctaLabel}</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+Hi ${firstName},
+
+The settings for ${data.kitchenName} have been updated.${extraNote}
+
+Changes: ${data.changes}
+
+${ctaLabel}: ${ctaUrl}
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
+      return { to: data.email, subject, text: text2, html };
     };
     generateChefProfileRequestEmail = (data) => {
       const subject = `Chef Access Request - ${data.locationName}`;
-      const reviewUrl = `${getDashboardUrl("kitchen")}/manager/applications`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">New Chef Access Request</h2><p class="message">A chef has requested access to your location and kitchen facilities:</p><div class="info-box"><strong>\u{1F468}\u200D\u{1F373} Chef Name:</strong> ${data.chefName}<br><strong>\u{1F4E7} Chef Email:</strong> ${data.chefEmail}<br><strong>\u{1F4CD} Location:</strong> ${data.locationName}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Pending Review</span></div><p class="message">Please review the chef's profile and approve or reject their request from your manager dashboard.</p><a href="${reviewUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review Chef Request</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-      return { to: data.managerEmail, subject, text: `New Chef Access Request - Chef: ${data.chefName} (${data.chefEmail}) has requested access to location: ${data.locationName}. Status: Pending Review. Please review from your manager dashboard.`, html };
+      const reviewUrl = `${getSubdomainUrl("kitchen")}/manager/applications`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">New Chef Access Request</h2>
+      <p class="message" style="margin-bottom: 20px;">A chef has requested access to your location and kitchen facilities. Please review and approve or reject from your manager dashboard.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Chef:</span> <strong style="color: #1e293b;">${data.chefName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Email:</span> <strong style="color: #1e293b;">${data.chefEmail}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
+      </div>
+      <div style="margin: 0 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Pending Review</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${reviewUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review Chef Request</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `
+New Chef Access Request
+
+Chef: ${data.chefName} (${data.chefEmail})
+Location: ${data.locationName}
+Status: Pending Review
+
+Review: ${reviewUrl}
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks
+  `.trim();
+      return { to: data.managerEmail, subject, text: text2, html };
     };
     generateChefLocationAccessApprovedEmail = (data) => {
+      const firstName = data.chefName.split(" ")[0];
       const subject = `Kitchen Access Approved - ${data.locationName}`;
-      const bookingsUrl = `${getDashboardUrl()}/book-kitchen`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Great news! The manager has <strong style="color: #16a34a;">APPROVED</strong> your chef profile for kitchen access at <strong>${data.locationName}</strong> \u2705</p><div class="info-box"><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">You can now book kitchen facilities at this location. Start making your bookings from your dashboard!</p><a href="${bookingsUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Available Kitchens</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-      return { to: data.chefEmail, subject, text: `Hello ${data.chefName}, Great news! The manager has approved your chef profile for kitchen access at ${data.locationName}. You can now book kitchen facilities at this location.`, html };
+      const bookingsUrl = `${getSubdomainUrl("chef")}/book-kitchen`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Your chef profile has been approved for kitchen access at <strong>${data.locationName}</strong>. You can now book kitchen facilities at this location.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
+      </div>
+      <div style="margin: 0 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Approved</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${bookingsUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Available Kitchens</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `Hi ${firstName},
+
+Your chef profile has been approved for kitchen access at ${data.locationName}. You can now book kitchen facilities at this location.
+
+View available kitchens: ${bookingsUrl}
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`;
+      return { to: data.chefEmail, subject, text: text2, html };
     };
     generateChefKitchenAccessApprovedEmail = (data) => {
+      const firstName = data.chefName.split(" ")[0];
       const subject = `Kitchen Access Approved - ${data.kitchenName}`;
-      const bookingsUrl = `${getDashboardUrl()}/book-kitchen`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Great news! The manager has <strong style="color: #16a34a;">APPROVED</strong> your chef profile for kitchen access at <strong>${data.kitchenName}</strong> \u2705</p><div class="info-box"><strong>\u{1F3E2} Kitchen:</strong> ${data.kitchenName}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">You can now book this kitchen. Start making your bookings from your dashboard!</p><a href="${bookingsUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Available Kitchens</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-      return { to: data.chefEmail, subject, text: `Hello ${data.chefName}, Great news! The manager has approved your chef profile for kitchen access at ${data.kitchenName}. You can now book this kitchen.`, html };
+      const bookingsUrl = `${getSubdomainUrl("chef")}/book-kitchen`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Your chef profile has been approved for kitchen access at <strong>${data.kitchenName}</strong>. You can now book this kitchen from your dashboard.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${data.kitchenName}</strong></p>
+      </div>
+      <div style="margin: 0 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Approved</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${bookingsUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Available Kitchens</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `Hi ${firstName},
+
+Your chef profile has been approved for kitchen access at ${data.kitchenName}. You can now book this kitchen from your dashboard.
+
+View available kitchens: ${bookingsUrl}
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`;
+      return { to: data.chefEmail, subject, text: text2, html };
     };
     generateLocationEmailChangedEmail = (data) => {
       const subject = `Location Notification Email Updated - ${data.locationName}`;
-      const dashboardUrl = `${getDashboardUrl("kitchen")}/manager/dashboard`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Location Notification Email Updated</h2><p class="message">This email address has been set as the notification email for <strong>${data.locationName}</strong>.</p><div class="info-box"><strong>\u{1F4CD} Location:</strong> ${data.locationName}<br><strong>\u{1F4E7} Notification Email:</strong> ${data.email}</div><p class="message">You will now receive email notifications for bookings, cancellations, and other important updates for this location.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Dashboard</a><div class="divider"></div></div><div class="footer"><p class="footer-text">If you didn't make this change, please contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-      return { to: data.email, subject, text: `Location Notification Email Updated - This email address has been set as the notification email for ${data.locationName}. You will now receive email notifications for bookings, cancellations, and other important updates for this location.`, html };
+      const dashboardUrl = getDashboardUrl("kitchen");
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Notification Email Updated</h2>
+      <p class="message" style="margin-bottom: 20px;">This email address has been set as the notification email for <strong>${data.locationName}</strong>. You&#8217;ll now receive notifications for bookings, cancellations, and other important updates for this location.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Email:</span> <strong style="color: #1e293b;">${data.email}</strong></p>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Dashboard</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you didn&#8217;t make this change, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const text2 = `Notification Email Updated
+
+This email address has been set as the notification email for ${data.locationName}. You'll now receive notifications for bookings, cancellations, and other important updates.
+
+Location: ${data.locationName}
+Email: ${data.email}
+
+View dashboard: ${dashboardUrl}
+
+If you didn't make this change, contact us at support@localcook.shop
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`;
+      return { to: data.email, subject, text: text2, html };
     };
     generateStorageExtensionPendingApprovalEmail = (data) => {
       const subject = `Storage Extension Request - ${data.storageName}`;
-      const dashboardUrl = `${getDashboardUrl("kitchen")}/manager/bookings`;
+      const dashboardUrl = `${getDashboardUrl("kitchen")}?view=bookings`;
       const formattedPrice = `$${(data.totalPrice / 100).toFixed(2)}`;
       const formattedDate = data.newEndDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Storage Extension Request</h2><p class="message">A chef has requested to extend their storage booking. Payment has been received and is awaiting your approval.</p><div class="info-box"><strong>\u{1F468}\u200D\u{1F373} Chef:</strong> ${data.chefName}<br><strong>\u{1F4E6} Storage:</strong> ${data.storageName}<br><strong>\u{1F4C5} Extension:</strong> ${data.extensionDays} days<br><strong>\u{1F4C6} New End Date:</strong> ${formattedDate}<br><strong>\u{1F4B0} Amount Paid:</strong> ${formattedPrice}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Awaiting Approval</span></div><p class="message">Please review and approve or reject this extension request from your manager dashboard.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review Extension Request</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Storage Extension Request</h2>
+      <p class="message" style="margin-bottom: 20px;">A chef has requested to extend their storage booking. Payment has been received and is awaiting your approval.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Chef:</span> <strong style="color: #1e293b;">${data.chefName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Storage:</span> <strong style="color: #1e293b;">${data.storageName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Extension:</span> <strong style="color: #1e293b;">${data.extensionDays} days</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">New End Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Amount Paid:</span> <strong style="color: #16a34a;">${formattedPrice}</strong></p>
+      </div>
+      <div style="margin: 0 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Awaiting Approval</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review Extension Request</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.managerEmail,
         subject,
-        text: `Storage Extension Request - Chef: ${data.chefName}, Storage: ${data.storageName}, Extension: ${data.extensionDays} days, New End Date: ${formattedDate}, Amount: ${formattedPrice}. Status: Awaiting Approval. Please review from your manager dashboard.`,
+        text: `Storage Extension Request
+
+Chef: ${data.chefName}
+Storage: ${data.storageName}
+Extension: ${data.extensionDays} days
+New End Date: ${formattedDate}
+Amount: ${formattedPrice}
+Status: Awaiting Approval
+
+Review: ${dashboardUrl}
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateStorageExtensionPaymentReceivedEmail = (data) => {
+      const firstName = data.chefName.split(" ")[0];
       const subject = `Storage Extension Payment Received - ${data.storageName}`;
-      const dashboardUrl = `${getDashboardUrl()}/dashboard`;
+      const dashboardUrl = getDashboardUrl();
       const formattedPrice = `$${(data.totalPrice / 100).toFixed(2)}`;
       const formattedDate = data.newEndDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Your payment for the storage extension has been received! The manager has been notified and will review your request shortly.</p><div class="info-box"><strong>\u{1F4E6} Storage:</strong> ${data.storageName}<br><strong>\u{1F4C5} Extension:</strong> ${data.extensionDays} days<br><strong>\u{1F4C6} New End Date:</strong> ${formattedDate}<br><strong>\u{1F4B0} Amount Paid:</strong> ${formattedPrice}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Awaiting Manager Approval</span></div><p class="message">You'll receive a confirmation email once the manager approves your extension.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Your payment for the storage extension has been received. The manager has been notified and will review your request shortly.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Storage:</span> <strong style="color: #1e293b;">${data.storageName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Extension:</span> <strong style="color: #1e293b;">${data.extensionDays} days</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">New End Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Amount Paid:</span> <strong style="color: #16a34a;">${formattedPrice}</strong></p>
+      </div>
+      <div style="margin: 0 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Awaiting Approval</span>
+      </div>
+      <p class="message" style="margin-top: 20px; margin-bottom: 20px;">You&#8217;ll receive a confirmation email once the manager approves your extension.</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.chefEmail,
         subject,
-        text: `Hello ${data.chefName}, Your payment for the storage extension has been received! Storage: ${data.storageName}, Extension: ${data.extensionDays} days, New End Date: ${formattedDate}, Amount: ${formattedPrice}. Status: Awaiting Manager Approval.`,
+        text: `Hi ${firstName},
+
+Your payment for the storage extension has been received.
+
+Storage: ${data.storageName}
+Extension: ${data.extensionDays} days
+New End Date: ${formattedDate}
+Amount: ${formattedPrice}
+Status: Awaiting Approval
+
+View bookings: ${dashboardUrl}
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateStorageExtensionApprovedEmail = (data) => {
+      const firstName = data.chefName.split(" ")[0];
       const subject = `Storage Extension Approved - ${data.storageName}`;
-      const dashboardUrl = `${getDashboardUrl()}/dashboard`;
+      const dashboardUrl = getDashboardUrl();
       const formattedDate = data.newEndDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Great news! Your storage extension has been <strong style="color: #16a34a;">APPROVED</strong> \u2705</p><div class="info-box"><strong>\u{1F4E6} Storage:</strong> ${data.storageName}<br><strong>\u{1F4C5} Extension:</strong> ${data.extensionDays} days<br><strong>\u{1F4C6} New End Date:</strong> ${formattedDate}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">Your storage booking has been extended. You can continue using the storage until the new end date.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Your storage extension has been approved. You can continue using the storage until the new end date.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Storage:</span> <strong style="color: #1e293b;">${data.storageName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Extension:</span> <strong style="color: #1e293b;">${data.extensionDays} days</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">New End Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+      </div>
+      <div style="margin: 0 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Approved</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.chefEmail,
         subject,
-        text: `Hello ${data.chefName}, Great news! Your storage extension has been APPROVED! Storage: ${data.storageName}, Extension: ${data.extensionDays} days, New End Date: ${formattedDate}.`,
+        text: `Hi ${firstName},
+
+Your storage extension has been approved.
+
+Storage: ${data.storageName}
+Extension: ${data.extensionDays} days
+New End Date: ${formattedDate}
+
+View bookings: ${dashboardUrl}
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateStorageExtensionRejectedEmail = (data) => {
+      const firstName = data.chefName.split(" ")[0];
       const subject = `Storage Extension Declined - ${data.storageName}`;
-      const dashboardUrl = `${getDashboardUrl()}/dashboard`;
-      const refundText = data.refundAmount ? `A refund of $${(data.refundAmount / 100).toFixed(2)} has been processed and will be credited to your original payment method within 5-10 business days.` : "A refund will be processed shortly.";
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Unfortunately, your storage extension request has been declined.</p><div class="info-box"><strong>\u{1F4E6} Storage:</strong> ${data.storageName}<br><strong>\u{1F4C5} Requested Extension:</strong> ${data.extensionDays} days<br><strong>\u{1F4CA} Status:</strong> <span style="color: #dc2626; font-weight: 600;">Declined</span>${data.rejectionReason ? `<br><br><strong>\u{1F4DD} Reason:</strong> ${data.rejectionReason}` : ""}</div><p class="message">${refundText}</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const dashboardUrl = getDashboardUrl();
+      const refundText = data.refundAmount ? `A refund of $${(data.refundAmount / 100).toFixed(2)} has been processed and will be credited to your original payment method within 5&#8211;10 business days.` : "A refund will be processed shortly.";
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Unfortunately, your storage extension request has been declined.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Storage:</span> <strong style="color: #1e293b;">${data.storageName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Requested Extension:</span> <strong style="color: #1e293b;">${data.extensionDays} days</strong></p>
+        ${data.rejectionReason ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 8px 0 0 0;"><span style="color: #64748b;">Reason:</span> <strong style="color: #1e293b;">${data.rejectionReason}</strong></p>` : ""}
+      </div>
+      <div style="margin: 0 0 16px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10007; Declined</span>
+      </div>
+      <p class="message" style="margin-bottom: 20px;">${refundText}</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      const refundPlainText = data.refundAmount ? `A refund of $${(data.refundAmount / 100).toFixed(2)} has been processed and will be credited within 5-10 business days.` : "A refund will be processed shortly.";
       return {
         to: data.chefEmail,
         subject,
-        text: `Hello ${data.chefName}, Unfortunately, your storage extension request has been declined. Storage: ${data.storageName}, Requested Extension: ${data.extensionDays} days.${data.rejectionReason ? ` Reason: ${data.rejectionReason}.` : ""} ${refundText}`,
+        text: `Hi ${firstName},
+
+Your storage extension request has been declined.
+
+Storage: ${data.storageName}
+Requested Extension: ${data.extensionDays} days
+${data.rejectionReason ? `Reason: ${data.rejectionReason}
+` : ""}
+${refundPlainText}
+
+View bookings: ${dashboardUrl}
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateStorageExpiringWarningEmail = (data) => {
-      const subject = `\u26A0\uFE0F Storage Booking Expiring ${data.daysUntilExpiry === 0 ? "Today" : `in ${data.daysUntilExpiry} Day${data.daysUntilExpiry > 1 ? "s" : ""}`}`;
-      const dashboardUrl = `${getDashboardUrl()}/dashboard`;
+      const firstName = data.chefName.split(" ")[0];
+      const subject = `Storage Booking Expiring ${data.daysUntilExpiry === 0 ? "Today" : `in ${data.daysUntilExpiry} Day${data.daysUntilExpiry > 1 ? "s" : ""}`}`;
+      const dashboardUrl = getDashboardUrl();
       const formattedEndDate = data.endDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
       const dailyRate = (data.dailyRateCents / 100).toFixed(2);
       const penaltyPerDay = (data.dailyRateCents * data.penaltyRate / 100).toFixed(2);
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Your storage booking is ${data.daysUntilExpiry === 0 ? '<strong style="color: #dc2626;">expiring today</strong>' : `expiring in <strong>${data.daysUntilExpiry} day${data.daysUntilExpiry > 1 ? "s" : ""}</strong>`}. Please take action to avoid overstay penalties.</p><div class="info-box"><strong>\u{1F4E6} Storage:</strong> ${data.storageName}<br><strong>\u{1F4C5} End Date:</strong> ${formattedEndDate}<br><strong>\u{1F4B0} Daily Rate:</strong> $${dailyRate} CAD</div><div class="info-box" style="background-color: #fef3c7; border-color: #f59e0b;"><strong>\u26A0\uFE0F Overstay Policy:</strong><br>\u2022 <strong>Grace Period:</strong> ${data.gracePeriodDays} days after end date<br>\u2022 <strong>Penalty Rate:</strong> ${(data.penaltyRate * 100).toFixed(0)}% of daily rate per day ($${penaltyPerDay}/day)<br>\u2022 Penalties require manager approval before charging</div><p class="message">To avoid penalties, please either:</p><ul style="margin: 16px 0; padding-left: 20px;"><li>Extend your storage booking</li><li>Remove your items before the end date</li></ul><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Manage My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const expiryText = data.daysUntilExpiry === 0 ? '<strong style="color: #dc2626;">expiring today</strong>' : `expiring in <strong>${data.daysUntilExpiry} day${data.daysUntilExpiry > 1 ? "s" : ""}</strong>`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Your storage booking is ${expiryText}. Please take action to avoid overstay penalties.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 16px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Storage:</span> <strong style="color: #1e293b;">${data.storageName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">End Date:</span> <strong style="color: #1e293b;">${formattedEndDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Daily Rate:</span> <strong style="color: #1e293b;">$${dailyRate} CAD</strong></p>
+      </div>
+      <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 14px; font-weight: 600; color: #92400e; margin: 0 0 8px 0;">Overstay Policy</p>
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0;">
+          <tr>
+            <td style="padding: 4px 10px 4px 0; vertical-align: top; width: 16px; color: #d97706; font-size: 14px; line-height: 22px;">&#8226;</td>
+            <td style="padding: 4px 0; font-size: 14px; line-height: 1.5; color: #92400e;">Grace Period: ${data.gracePeriodDays} days after end date</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 10px 4px 0; vertical-align: top; width: 16px; color: #d97706; font-size: 14px; line-height: 22px;">&#8226;</td>
+            <td style="padding: 4px 0; font-size: 14px; line-height: 1.5; color: #92400e;">Penalty Rate: ${(data.penaltyRate * 100).toFixed(0)}% of daily rate ($${penaltyPerDay}/day)</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 10px 4px 0; vertical-align: top; width: 16px; color: #d97706; font-size: 14px; line-height: 22px;">&#8226;</td>
+            <td style="padding: 4px 0; font-size: 14px; line-height: 1.5; color: #92400e;">Penalties require manager approval before charging</td>
+          </tr>
+        </table>
+      </div>
+      <p class="message" style="margin-bottom: 8px;">To avoid penalties, please either:</p>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Extend your storage booking</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Remove your items before the end date</td>
+        </tr>
+      </table>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Manage My Bookings</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.chefEmail,
         subject,
-        text: `Hello ${data.chefName}, Your storage booking for ${data.storageName} is expiring on ${formattedEndDate}. Please extend or remove your items to avoid overstay penalties. Grace period: ${data.gracePeriodDays} days. Penalty rate: ${(data.penaltyRate * 100).toFixed(0)}% of daily rate per day.`,
+        text: `Hi ${firstName},
+
+Your storage booking for ${data.storageName} is expiring on ${formattedEndDate}. Please extend or remove your items to avoid overstay penalties.
+
+Grace period: ${data.gracePeriodDays} days
+Penalty rate: ${(data.penaltyRate * 100).toFixed(0)}% of daily rate ($${penaltyPerDay}/day)
+
+Manage bookings: ${dashboardUrl}
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateOverstayDetectedEmail = (data) => {
-      const subject = data.isInGracePeriod ? `\u{1F4E6} Storage Overstay - Grace Period Active` : `\u26A0\uFE0F Storage Overstay - Penalty Pending Review`;
-      const dashboardUrl = `${getDashboardUrl()}/dashboard`;
+      const firstName = data.chefName.split(" ")[0];
+      const subject = data.isInGracePeriod ? `Storage Overstay - Grace Period Active` : `Storage Overstay - Penalty Pending Review`;
+      const dashboardUrl = getDashboardUrl();
       const formattedEndDate = data.endDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
       const formattedGraceEnd = data.gracePeriodEndsAt.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
       const penaltyAmount = (data.calculatedPenaltyCents / 100).toFixed(2);
-      const graceMessage = data.isInGracePeriod ? `<p class="message">You are currently in the <strong>grace period</strong>. No penalties will be charged if you resolve this before <strong>${formattedGraceEnd}</strong>.</p>` : `<p class="message" style="color: #dc2626;">The grace period has ended. A penalty of <strong>$${penaltyAmount} CAD</strong> has been calculated and is pending manager review.</p>`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Your storage booking has exceeded its end date.</p><div class="info-box" style="background-color: ${data.isInGracePeriod ? "#fef3c7" : "#fee2e2"}; border-color: ${data.isInGracePeriod ? "#f59e0b" : "#dc2626"};"><strong>\u{1F4E6} Storage:</strong> ${data.storageName}<br><strong>\u{1F4C5} End Date:</strong> ${formattedEndDate}<br><strong>\u23F0 Days Overdue:</strong> ${data.daysOverdue}<br><strong>\u{1F6E1}\uFE0F Grace Period Ends:</strong> ${formattedGraceEnd}${!data.isInGracePeriod ? `<br><strong>\u{1F4B0} Calculated Penalty:</strong> $${penaltyAmount} CAD` : ""}</div>${graceMessage}<p class="message">To resolve this overstay, please:</p><ul style="margin: 16px 0; padding-left: 20px;"><li>Extend your storage booking, or</li><li>Contact the kitchen manager to arrange item removal</li></ul><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Manage My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const alertBg = data.isInGracePeriod ? "#fffbeb" : "#fef2f2";
+      const alertBorder = data.isInGracePeriod ? "#fef3c7" : "#fecaca";
+      const alertColor = data.isInGracePeriod ? "#92400e" : "#991b1b";
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Your storage booking has exceeded its end date.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 16px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Storage:</span> <strong style="color: #1e293b;">${data.storageName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">End Date:</span> <strong style="color: #1e293b;">${formattedEndDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Days Overdue:</span> <strong style="color: #1e293b;">${data.daysOverdue}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Grace Period Ends:</span> <strong style="color: #1e293b;">${formattedGraceEnd}</strong></p>
+        ${!data.isInGracePeriod ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Calculated Penalty:</span> <strong style="color: #dc2626;">$${penaltyAmount} CAD</strong></p>` : ""}
+      </div>
+      <div style="background: ${alertBg}; border: 1px solid ${alertBorder}; border-radius: 8px; padding: 12px 16px; margin: 0 0 24px 0;">
+        <p style="font-size: 14px; line-height: 1.6; color: ${alertColor}; margin: 0;">${data.isInGracePeriod ? `You are currently in the <strong>grace period</strong>. No penalties will be charged if you resolve this before <strong>${formattedGraceEnd}</strong>.` : `The grace period has ended. A penalty of <strong>$${penaltyAmount} CAD</strong> has been calculated and is pending manager review.`}</p>
+      </div>
+      <p class="message" style="margin-bottom: 8px;">To resolve this overstay, please:</p>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Remove your items or resolve the overstay</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Contact the kitchen manager to arrange item removal</td>
+        </tr>
+      </table>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Manage My Bookings</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.chefEmail,
         subject,
-        text: `Hello ${data.chefName}, Your storage booking for ${data.storageName} has exceeded its end date (${formattedEndDate}). Days overdue: ${data.daysOverdue}. ${data.isInGracePeriod ? `Grace period ends: ${formattedGraceEnd}. No penalties yet.` : `Calculated penalty: $${penaltyAmount} CAD (pending manager review).`}`,
+        text: `Hi ${firstName},
+
+Your storage booking for ${data.storageName} has exceeded its end date (${formattedEndDate}). Days overdue: ${data.daysOverdue}. ${data.isInGracePeriod ? `Grace period ends: ${formattedGraceEnd}. No penalties yet.` : `Calculated penalty: $${penaltyAmount} CAD (pending manager review).`}
+
+Manage bookings: ${dashboardUrl}
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generatePenaltyChargedEmail = (data) => {
-      const subject = `\u{1F4B3} Overstay Penalty Charged - $${(data.penaltyAmountCents / 100).toFixed(2)} CAD`;
-      const dashboardUrl = `${getDashboardUrl()}/dashboard`;
-      const formattedDate = data.chargeDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const firstName = data.chefName.split(" ")[0];
       const penaltyAmount = (data.penaltyAmountCents / 100).toFixed(2);
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">An overstay penalty has been charged to your payment method.</p><div class="info-box" style="background-color: #fee2e2; border-color: #dc2626;"><strong>\u{1F4E6} Storage:</strong> ${data.storageName}<br><strong>\u23F0 Days Overdue:</strong> ${data.daysOverdue}<br><strong>\u{1F4B0} Penalty Amount:</strong> $${penaltyAmount} CAD<br><strong>\u{1F4C5} Charge Date:</strong> ${formattedDate}</div><p class="message">This charge was approved by the kitchen manager after the grace period ended. If you believe this charge is in error, please contact the kitchen manager directly.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const subject = `Overstay Penalty Charged - $${penaltyAmount} CAD`;
+      const dashboardUrl = getDashboardUrl();
+      const formattedDate = data.chargeDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">An overstay penalty has been charged to your payment method.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Storage:</span> <strong style="color: #1e293b;">${data.storageName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Days Overdue:</span> <strong style="color: #1e293b;">${data.daysOverdue}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Penalty Amount:</span> <strong style="color: #dc2626;">$${penaltyAmount} CAD</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Charge Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+      </div>
+      <div style="margin: 0 0 16px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">Penalty Charged</span>
+      </div>
+      <p class="message" style="margin-bottom: 20px;">This charge was approved by the kitchen manager after the grace period ended. If you believe this charge is in error, please contact the kitchen manager directly.</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.chefEmail,
         subject,
-        text: `Hello ${data.chefName}, An overstay penalty of $${penaltyAmount} CAD has been charged for ${data.storageName}. Days overdue: ${data.daysOverdue}. Charge date: ${formattedDate}.`,
+        text: `Hi ${firstName},
+
+An overstay penalty of $${penaltyAmount} CAD has been charged for ${data.storageName}.
+
+Days overdue: ${data.daysOverdue}
+Charge date: ${formattedDate}
+
+View bookings: ${dashboardUrl}
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateOverstayManagerNotificationEmail = (data) => {
-      const subject = data.isInGracePeriod ? `\u{1F4E6} Storage Overstay Detected - ${data.storageName}` : `\u26A0\uFE0F Overstay Pending Review - ${data.storageName}`;
-      const dashboardUrl = `${getDashboardUrl("kitchen")}/manager/overstays`;
+      const subject = data.isInGracePeriod ? `Storage Overstay Detected - ${data.storageName}` : `Overstay Pending Review - ${data.storageName}`;
+      const dashboardUrl = `${getDashboardUrl("kitchen")}?view=overstays`;
       const formattedEndDate = data.endDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
       const formattedGraceEnd = data.gracePeriodEndsAt.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
       const penaltyAmount = (data.calculatedPenaltyCents / 100).toFixed(2);
-      const actionMessage = data.isInGracePeriod ? `<p class="message">The chef is currently in the grace period (ends ${formattedGraceEnd}). No action required yet, but you may want to reach out to the chef.</p>` : `<p class="message" style="color: #dc2626;"><strong>Action Required:</strong> The grace period has ended. Please review and decide whether to approve, adjust, or waive the penalty.</p>`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Overstay Alert</h2><p class="message">A storage booking at <strong>${data.kitchenName}</strong> has exceeded its end date.</p><div class="info-box" style="background-color: ${data.isInGracePeriod ? "#fef3c7" : "#fee2e2"}; border-color: ${data.isInGracePeriod ? "#f59e0b" : "#dc2626"};"><strong>\u{1F4E6} Storage:</strong> ${data.storageName}<br><strong>\u{1F464} Chef:</strong> ${data.chefName} (${data.chefEmail})<br><strong>\u{1F4C5} End Date:</strong> ${formattedEndDate}<br><strong>\u23F0 Days Overdue:</strong> ${data.daysOverdue}<br><strong>\u{1F6E1}\uFE0F Grace Period Ends:</strong> ${formattedGraceEnd}<br><strong>\u{1F4B0} Calculated Penalty:</strong> $${penaltyAmount} CAD</div>${actionMessage}<a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review Overstays</a><div class="divider"></div></div><div class="footer"><p class="footer-text">This is an automated notification from Local Cooks Community.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const alertBg = data.isInGracePeriod ? "#fffbeb" : "#fef2f2";
+      const alertBorder = data.isInGracePeriod ? "#fef3c7" : "#fecaca";
+      const alertColor = data.isInGracePeriod ? "#92400e" : "#991b1b";
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Overstay Alert</h2>
+      <p class="message" style="margin-bottom: 20px;">A storage booking at <strong>${data.kitchenName}</strong> has exceeded its end date.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 16px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Storage:</span> <strong style="color: #1e293b;">${data.storageName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Chef:</span> <strong style="color: #1e293b;">${data.chefName} (${data.chefEmail})</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">End Date:</span> <strong style="color: #1e293b;">${formattedEndDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Days Overdue:</span> <strong style="color: #1e293b;">${data.daysOverdue}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Grace Period Ends:</span> <strong style="color: #1e293b;">${formattedGraceEnd}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Calculated Penalty:</span> <strong style="color: #dc2626;">$${penaltyAmount} CAD</strong></p>
+      </div>
+      <div style="background: ${alertBg}; border: 1px solid ${alertBorder}; border-radius: 8px; padding: 12px 16px; margin: 0 0 24px 0;">
+        <p style="font-size: 14px; line-height: 1.6; color: ${alertColor}; margin: 0;">${data.isInGracePeriod ? `The chef is currently in the grace period (ends ${formattedGraceEnd}). No action required yet, but you may want to reach out.` : `<strong>Action Required:</strong> The grace period has ended. Please review and decide whether to approve, adjust, or waive the penalty.`}</p>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review Overstays</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.managerEmail,
         subject,
-        text: `Overstay Alert: ${data.storageName} at ${data.kitchenName}. Chef: ${data.chefName}. Days overdue: ${data.daysOverdue}. Calculated penalty: $${penaltyAmount} CAD. ${data.isInGracePeriod ? "Grace period active." : "Action required - please review."}`,
+        text: `Overstay Alert: ${data.storageName} at ${data.kitchenName}
+
+Chef: ${data.chefName} (${data.chefEmail})
+Days overdue: ${data.daysOverdue}
+Calculated penalty: $${penaltyAmount} CAD
+${data.isInGracePeriod ? "Grace period active." : "Action required - please review."}
+
+Review: ${dashboardUrl}
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateNewKitchenApplicationManagerEmail = (data) => {
       const subject = `New Kitchen Access Application from ${data.chefName}`;
-      const dashboardUrl = `${getDashboardUrl("kitchen")}/manager/applications`;
+      const dashboardUrl = `${getDashboardUrl("kitchen")}?view=applications`;
       const managerFirstName = data.managerName ? data.managerName.split(" ")[0] : data.managerEmail.split("@")[0];
       const chefFirstName = data.chefName.split(" ")[0];
       const html = `
@@ -7991,19 +9194,71 @@ The Local Cooks Team
       };
     };
     generateKitchenApplicationRejectedEmail = (data) => {
+      const firstName = data.chefName.split(" ")[0];
       const subject = `Kitchen Application Update - ${data.locationName}`;
-      const dashboardUrl = `${getDashboardUrl()}/dashboard`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Thank you for your interest in using our kitchen facilities. Unfortunately, your application could not be approved at this time.</p><div class="info-box"><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #dc2626; font-weight: 600;">Not Approved</span>${data.feedback ? `<br><br><strong>\u{1F4DD} Feedback:</strong> ${data.feedback}` : ""}</div><p class="message">You may reapply in the future or explore other kitchen locations on our platform.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Applications</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const dashboardUrl = getDashboardUrl();
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Thank you for your interest in using our kitchen facilities. Unfortunately, your application could not be approved at this time.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
+        ${data.feedback ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 8px 0 0 0;"><span style="color: #64748b;">Feedback:</span> <strong style="color: #1e293b;">${data.feedback}</strong></p>` : ""}
+      </div>
+      <div style="margin: 0 0 16px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">Not Approved</span>
+      </div>
+      <p class="message" style="margin-bottom: 20px;">You may reapply in the future or explore other kitchen locations on our platform.</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Applications</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.chefEmail,
         subject,
-        text: `Hello ${data.chefName}, Thank you for your interest. Unfortunately, your kitchen application to ${data.locationName} could not be approved at this time.${data.feedback ? ` Feedback: ${data.feedback}` : ""}`,
+        text: `Hi ${firstName},
+
+Thank you for your interest. Unfortunately, your kitchen application to ${data.locationName} could not be approved at this time.${data.feedback ? `
+
+Feedback: ${data.feedback}` : ""}
+
+You may reapply or explore other locations: ${dashboardUrl}
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateKitchenLicenseApprovedEmail = (data) => {
       const subject = `Your Kitchen Is Approved and Ready to List on Local Cooks`;
-      const dashboardUrl = `${getDashboardUrl("kitchen")}/manager/booking-dashboard`;
+      const dashboardUrl = getDashboardUrl("kitchen");
       const firstName = data.managerName.split(" ")[0];
       const html = `
 <!DOCTYPE html>
@@ -8087,66 +9342,341 @@ The Local Cooks Team
       };
     };
     generateKitchenLicenseRejectedEmail = (data) => {
+      const firstName = data.managerName.split(" ")[0];
       const subject = `Kitchen License Update Required - ${data.locationName}`;
-      const dashboardUrl = `${getDashboardUrl("kitchen")}/manager/booking-dashboard`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.managerName},</h2><p class="message">Your kitchen license submission requires attention. The admin team was unable to approve it at this time.</p><div class="info-box"><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #dc2626; font-weight: 600;">Rejected</span>${data.feedback ? `<br><br><strong>\u{1F4DD} Feedback:</strong> ${data.feedback}` : ""}</div><p class="message">Please review the feedback and upload a new license document from your dashboard.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Upload New License</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const dashboardUrl = `${getDashboardUrl("kitchen")}?view=settings-license`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Your kitchen license submission requires attention. The admin team was unable to approve it at this time.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
+        ${data.feedback ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 8px 0 0 0;"><span style="color: #64748b;">Feedback:</span> <strong style="color: #1e293b;">${data.feedback}</strong></p>` : ""}
+      </div>
+      <div style="margin: 0 0 16px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">Action Required</span>
+      </div>
+      <p class="message" style="margin-bottom: 20px;">Please review the feedback and upload a new license document from your dashboard.</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Upload New License</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.managerEmail,
         subject,
-        text: `Hello ${data.managerName}, Your kitchen license for ${data.locationName} requires attention.${data.feedback ? ` Feedback: ${data.feedback}` : ""} Please upload a new license document.`,
+        text: `Hi ${firstName},
+
+Your kitchen license for ${data.locationName} requires attention.${data.feedback ? `
+
+Feedback: ${data.feedback}` : ""}
+
+Please upload a new license: ${dashboardUrl}
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateKitchenLicenseSubmittedAdminEmail = (data) => {
       const subject = `Kitchen License Pending Review - ${data.locationName}`;
-      const dashboardUrl = `${getDashboardUrl("admin")}/admin`;
+      const dashboardUrl = `${getDashboardUrl("admin")}?section=kitchen-licenses`;
       const formattedDate = data.submittedAt.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Kitchen License Pending Review</h2><p class="message">A manager has submitted a kitchen license for your review:</p><div class="info-box"><strong>\u{1F464} Manager:</strong> ${data.managerName}<br><strong>\u{1F4E7} Email:</strong> ${data.managerEmail}<br><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F4C5} Submitted:</strong> ${formattedDate}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Pending Review</span></div><p class="message">Please review and approve or reject this license from the admin dashboard.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review License</a><div class="divider"></div></div><div class="footer"><p class="footer-text">This is an automated notification from Local Cooks Community.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Kitchen License Pending Review</h2>
+      <p class="message" style="margin-bottom: 20px;">A manager has submitted a kitchen license for your review.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Manager:</span> <strong style="color: #1e293b;">${data.managerName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Email:</span> <strong style="color: #1e293b;">${data.managerEmail}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Submitted:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+      </div>
+      <div style="margin: 0 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Pending Review</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review License</a>
+      </div>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.adminEmail,
         subject,
-        text: `Kitchen License Pending Review - Manager: ${data.managerName} (${data.managerEmail}) submitted license for ${data.locationName}. Submitted: ${formattedDate}. Please review from admin dashboard.`,
+        text: `Kitchen License Pending Review
+
+Manager: ${data.managerName} (${data.managerEmail})
+Location: ${data.locationName}
+Submitted: ${formattedDate}
+
+Review: ${dashboardUrl}
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateDamageClaimFiledEmail = (data) => {
+      const firstName = data.chefName.split(" ")[0];
       const subject = `Damage Claim Filed - Action Required`;
-      const dashboardUrl = `${getDashboardUrl()}/dashboard`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">A damage claim has been filed against your booking. Please review and respond before the deadline.</p><div class="info-box"><strong>\u{1F4CB} Claim:</strong> ${data.claimTitle}<br><strong>\u{1F4B0} Amount:</strong> ${data.claimedAmount}<br><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F464} Filed by:</strong> ${data.managerName}<br><strong>\u{1F4C5} Damage Date:</strong> ${data.damageDate}<br><strong>\u23F0 Response Deadline:</strong> <span style="color: #dc2626; font-weight: 600;">${data.responseDeadline}</span></div><p class="message">You can accept the claim or dispute it for admin review. If you don't respond by the deadline, the claim may be automatically approved.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review & Respond</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const dashboardUrl = getDashboardUrl();
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">A damage claim has been filed against your booking. Please review and respond before the deadline.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Claim:</span> <strong style="color: #1e293b;">${data.claimTitle}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Amount:</span> <strong style="color: #1e293b;">${data.claimedAmount}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Filed by:</span> <strong style="color: #1e293b;">${data.managerName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Damage Date:</span> <strong style="color: #1e293b;">${data.damageDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Response Deadline:</span> <strong style="color: #dc2626;">${data.responseDeadline}</strong></p>
+      </div>
+      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin: 0 0 24px 0;">
+        <p style="font-size: 14px; line-height: 1.6; color: #991b1b; margin: 0;">You can accept the claim or dispute it for admin review. If you don&#8217;t respond by the deadline, the claim may be automatically approved.</p>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review &amp; Respond</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.chefEmail,
         subject,
-        text: `Hello ${data.chefName}, A damage claim has been filed against your booking at ${data.locationName}. Claim: ${data.claimTitle}. Amount: ${data.claimedAmount}. Please respond by ${data.responseDeadline}.`,
+        text: `Hi ${firstName},
+
+A damage claim has been filed against your booking at ${data.locationName}.
+
+Claim: ${data.claimTitle}
+Amount: ${data.claimedAmount}
+Deadline: ${data.responseDeadline}
+
+Respond: ${dashboardUrl}
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateDamageClaimResponseEmail = (data) => {
+      const managerFirstName = data.managerName.split(" ")[0];
       const isAccepted = data.response === "accepted";
       const subject = `Damage Claim ${isAccepted ? "Accepted" : "Disputed"} - ${data.claimTitle}`;
-      const dashboardUrl = `${getDashboardUrl("kitchen")}/manager/booking-dashboard`;
+      const dashboardUrl = `${getDashboardUrl("kitchen")}?view=damage-claims`;
       const statusColor = isAccepted ? "#16a34a" : "#dc2626";
-      const statusText = isAccepted ? "ACCEPTED" : "DISPUTED";
-      const nextSteps = isAccepted ? "You can now charge the chef's saved payment method from your dashboard." : "The claim has been escalated to admin for review. You will be notified of the decision.";
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.managerName},</h2><p class="message">${data.chefName} has responded to your damage claim.</p><div class="info-box"><strong>\u{1F4CB} Claim:</strong> ${data.claimTitle}<br><strong>\u{1F4B0} Amount:</strong> ${data.claimedAmount}<br><strong>\u{1F4CA} Status:</strong> <span style="color: ${statusColor}; font-weight: 600;">${statusText}</span>${data.chefResponse ? `<br><br><strong>\u{1F4AC} Chef's Response:</strong> ${data.chefResponse}` : ""}</div><p class="message">${nextSteps}</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Claim</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const statusText = isAccepted ? "Accepted" : "Disputed";
+      const badgeBg = isAccepted ? "#f0fdf4" : "#fef2f2";
+      const badgeBorder = isAccepted ? "#dcfce7" : "#fecaca";
+      const nextSteps = isAccepted ? "You can now charge the chef&#8217;s saved payment method from your dashboard." : "The claim has been escalated to admin for review. You will be notified of the decision.";
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${managerFirstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">${data.chefName} has responded to your damage claim.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Claim:</span> <strong style="color: #1e293b;">${data.claimTitle}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Amount:</span> <strong style="color: #1e293b;">${data.claimedAmount}</strong></p>
+        ${data.chefResponse ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 8px 0 0 0;"><span style="color: #64748b;">Chef&#8217;s Response:</span> <strong style="color: #1e293b;">${data.chefResponse}</strong></p>` : ""}
+      </div>
+      <div style="margin: 0 0 16px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: ${badgeBg}; color: ${statusColor}; border: 1px solid ${badgeBorder}; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">${statusText}</span>
+      </div>
+      <p class="message" style="margin-bottom: 20px;">${nextSteps}</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Claim</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.managerEmail,
         subject,
-        text: `Hello ${data.managerName}, ${data.chefName} has ${data.response} your damage claim "${data.claimTitle}" for ${data.claimedAmount}.${data.chefResponse ? ` Response: ${data.chefResponse}` : ""} ${nextSteps}`,
+        text: `Hi ${managerFirstName},
+
+${data.chefName} has ${data.response} your damage claim "${data.claimTitle}" for ${data.claimedAmount}.${data.chefResponse ? `
+
+Response: ${data.chefResponse}` : ""}
+
+${isAccepted ? "You can now charge from your dashboard." : "Escalated to admin for review."}
+
+View claim: ${dashboardUrl}
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateDamageClaimDisputedAdminEmail = (data) => {
       const subject = `Damage Claim Disputed - Admin Review Required`;
-      const dashboardUrl = `${getDashboardUrl("admin")}/admin`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Damage Claim Dispute - Review Required</h2><p class="message">A chef has disputed a damage claim and requires your review:</p><div class="info-box"><strong>\u{1F4CB} Claim:</strong> ${data.claimTitle}<br><strong>\u{1F4B0} Amount:</strong> ${data.claimedAmount}<br><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F464} Manager:</strong> ${data.managerName}<br><strong>\u{1F468}\u200D\u{1F373} Chef:</strong> ${data.chefName} (${data.chefEmail})<br><br><strong>\u{1F4AC} Chef's Dispute Reason:</strong><br>${data.chefResponse}</div><p class="message">Please review the evidence and make a decision.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review Dispute</a><div class="divider"></div></div><div class="footer"><p class="footer-text">This is an automated notification from Local Cooks Community.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const dashboardUrl = `${getDashboardUrl("admin")}?section=damage-claims`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Damage Claim Dispute &#8212; Review Required</h2>
+      <p class="message" style="margin-bottom: 20px;">A chef has disputed a damage claim and requires your review.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 16px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Claim:</span> <strong style="color: #1e293b;">${data.claimTitle}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Amount:</span> <strong style="color: #1e293b;">${data.claimedAmount}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Manager:</span> <strong style="color: #1e293b;">${data.managerName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Chef:</span> <strong style="color: #1e293b;">${data.chefName} (${data.chefEmail})</strong></p>
+      </div>
+      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin: 0 0 24px 0;">
+        <p style="font-size: 14px; font-weight: 600; color: #991b1b; margin: 0 0 4px 0;">Chef&#8217;s Dispute Reason:</p>
+        <p style="font-size: 14px; line-height: 1.6; color: #991b1b; margin: 0;">${data.chefResponse}</p>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review Dispute</a>
+      </div>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.adminEmail,
         subject,
-        text: `Damage Claim Dispute - Claim: ${data.claimTitle}, Amount: ${data.claimedAmount}, Location: ${data.locationName}, Manager: ${data.managerName}, Chef: ${data.chefName}. Chef's reason: ${data.chefResponse}. Please review from admin dashboard.`,
+        text: `Damage Claim Dispute - Review Required
+
+Claim: ${data.claimTitle}
+Amount: ${data.claimedAmount}
+Location: ${data.locationName}
+Manager: ${data.managerName}
+Chef: ${data.chefName} (${data.chefEmail})
+
+Dispute Reason: ${data.chefResponse}
+
+Review: ${dashboardUrl}
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateDamageClaimDecisionEmail = (data) => {
+      const firstName = data.recipientName.split(" ")[0];
       const isChef = data.recipientRole === "chef";
       const decisionLabels = {
         approved: "Approved",
@@ -8155,44 +9685,208 @@ The Local Cooks Team
       };
       const decisionColors = {
         approved: "#16a34a",
-        partially_approved: "#f59e0b",
+        partially_approved: "#d97706",
         rejected: "#dc2626"
       };
+      const badgeBgs = {
+        approved: "#f0fdf4",
+        partially_approved: "#fffbeb",
+        rejected: "#fef2f2"
+      };
+      const badgeBorders = {
+        approved: "#dcfce7",
+        partially_approved: "#fef3c7",
+        rejected: "#fecaca"
+      };
       const subject = `Damage Claim ${decisionLabels[data.decision]} - ${data.claimTitle}`;
-      const dashboardUrl = isChef ? `${getDashboardUrl()}/dashboard` : `${getDashboardUrl("kitchen")}/manager/booking-dashboard`;
-      const amountText = data.decision === "partially_approved" && data.finalAmount ? `<br><strong>\u{1F4B0} Final Amount:</strong> ${data.finalAmount} (originally ${data.claimedAmount})` : `<br><strong>\u{1F4B0} Amount:</strong> ${data.claimedAmount}`;
+      const dashboardUrl = isChef ? getDashboardUrl() : getDashboardUrl("kitchen");
       const nextStepsChef = data.decision === "rejected" ? "No payment will be charged to your account." : "The approved amount will be charged to your saved payment method.";
       const nextStepsManager = data.decision === "rejected" ? "The claim has been rejected and no payment will be collected." : "You can now charge the chef from your dashboard.";
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.recipientName},</h2><p class="message">The admin has made a decision on the disputed damage claim.</p><div class="info-box"><strong>\u{1F4CB} Claim:</strong> ${data.claimTitle}${amountText}<br><strong>\u{1F4CA} Decision:</strong> <span style="color: ${decisionColors[data.decision]}; font-weight: 600;">${decisionLabels[data.decision]}</span><br><br><strong>\u{1F4DD} Reason:</strong> ${data.decisionReason}</div><p class="message">${isChef ? nextStepsChef : nextStepsManager}</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Details</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">The admin has made a decision on the disputed damage claim.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Claim:</span> <strong style="color: #1e293b;">${data.claimTitle}</strong></p>
+        ${data.decision === "partially_approved" && data.finalAmount ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Final Amount:</span> <strong style="color: #1e293b;">${data.finalAmount}</strong> <span style="color: #94a3b8;">(originally ${data.claimedAmount})</span></p>` : `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Amount:</span> <strong style="color: #1e293b;">${data.claimedAmount}</strong></p>`}
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 8px 0 0 0;"><span style="color: #64748b;">Reason:</span> <strong style="color: #1e293b;">${data.decisionReason}</strong></p>
+      </div>
+      <div style="margin: 0 0 16px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: ${badgeBgs[data.decision]}; color: ${decisionColors[data.decision]}; border: 1px solid ${badgeBorders[data.decision]}; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">${decisionLabels[data.decision]}</span>
+      </div>
+      <p class="message" style="margin-bottom: 20px;">${isChef ? nextStepsChef : nextStepsManager}</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Details</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.recipientEmail,
         subject,
-        text: `Hello ${data.recipientName}, The admin has ${decisionLabels[data.decision].toLowerCase()} the damage claim "${data.claimTitle}". ${data.decisionReason}`,
+        text: `Hi ${firstName},
+
+The admin has ${decisionLabels[data.decision].toLowerCase()} the damage claim "${data.claimTitle}".
+
+${data.decisionReason}
+
+View details: ${dashboardUrl}
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateDamageClaimChargedEmail = (data) => {
+      const firstName = data.chefName.split(" ")[0];
       const subject = `Payment Processed - Damage Claim`;
-      const dashboardUrl = `${getDashboardUrl()}/dashboard`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">A payment has been processed for a damage claim.</p><div class="info-box"><strong>\u{1F4CB} Claim:</strong> ${data.claimTitle}<br><strong>\u{1F4B0} Amount Charged:</strong> ${data.chargedAmount}<br><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #16a34a; font-weight: 600;">Payment Complete</span></div><p class="message">This charge was made to your saved payment method. A receipt has been sent to your email by Stripe.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Details</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const dashboardUrl = getDashboardUrl();
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">A payment has been processed for a damage claim.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Claim:</span> <strong style="color: #1e293b;">${data.claimTitle}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Amount Charged:</span> <strong style="color: #1e293b;">${data.chargedAmount}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
+      </div>
+      <div style="margin: 0 0 16px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Payment Complete</span>
+      </div>
+      <p class="message" style="margin-bottom: 20px;">This charge was made to your saved payment method. A receipt has been sent to your email by Stripe.</p>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Details</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.chefEmail,
         subject,
-        text: `Hello ${data.chefName}, A payment of ${data.chargedAmount} has been processed for the damage claim "${data.claimTitle}" at ${data.locationName}.`,
+        text: `Hi ${firstName},
+
+A payment of ${data.chargedAmount} has been processed for the damage claim "${data.claimTitle}" at ${data.locationName}.
+
+View details: ${dashboardUrl}
+
+Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
     generateNewUserRegistrationAdminEmail = (data) => {
-      const subject = `New ${data.userRole.charAt(0).toUpperCase() + data.userRole.slice(1)} Registration - ${data.newUserName}`;
-      const dashboardUrl = `${getDashboardUrl("admin")}/admin`;
+      const roleLabel = data.userRole.charAt(0).toUpperCase() + data.userRole.slice(1);
+      const subject = `New ${roleLabel} Registration - ${data.newUserName}`;
+      const dashboardUrl = `${getDashboardUrl("admin")}?section=overview`;
       const formattedDate = data.registrationDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
       const roleColor = data.userRole === "admin" ? "#dc2626" : data.userRole === "manager" ? "#2563eb" : "#16a34a";
-      const roleLabel = data.userRole.charAt(0).toUpperCase() + data.userRole.slice(1);
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">New User Registration</h2><p class="message">A new user has registered on the platform:</p><div class="info-box"><strong>\u{1F464} Name:</strong> ${data.newUserName}<br><strong>\u{1F4E7} Email:</strong> ${data.newUserEmail}<br><strong>\u{1F3F7}\uFE0F Role:</strong> <span style="color: ${roleColor}; font-weight: 600;">${roleLabel}</span><br><strong>\u{1F4C5} Registered:</strong> ${formattedDate}</div><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Users</a><div class="divider"></div></div><div class="footer"><p class="footer-text">This is an automated notification from Local Cooks Community.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const roleBg = data.userRole === "admin" ? "#fef2f2" : data.userRole === "manager" ? "#eff6ff" : "#f0fdf4";
+      const roleBorder = data.userRole === "admin" ? "#fecaca" : data.userRole === "manager" ? "#dbeafe" : "#dcfce7";
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">New User Registration</h2>
+      <p class="message" style="margin-bottom: 20px;">A new user has registered on the platform.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Name:</span> <strong style="color: #1e293b;">${data.newUserName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Email:</span> <strong style="color: #1e293b;">${data.newUserEmail}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Registered:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+      </div>
+      <div style="margin: 0 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: ${roleBg}; color: ${roleColor}; border: 1px solid ${roleBorder}; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">${roleLabel}</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Users</a>
+      </div>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
       return {
         to: data.adminEmail,
         subject,
-        text: `New ${roleLabel} Registration - Name: ${data.newUserName}, Email: ${data.newUserEmail}, Registered: ${formattedDate}`,
+        text: `New ${roleLabel} Registration
+
+Name: ${data.newUserName}
+Email: ${data.newUserEmail}
+Registered: ${formattedDate}
+
+View users: ${dashboardUrl}
+
+Best regards,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
         html
       };
     };
@@ -9199,6 +10893,7 @@ async function getChefAllPenalties(chefId) {
     storageName: storageListings.name,
     storageType: storageListings.storageType,
     kitchenName: kitchens.name,
+    kitchenTaxRatePercent: kitchens.taxRatePercent,
     bookingEndDate: storageBookings.endDate
   }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq3(storageListings.kitchenId, kitchens.id)).where(
     and(
@@ -9214,12 +10909,18 @@ async function getChefAllPenalties(chefId) {
     const hasChargeSucceededTimestamp = !!r.chargeSucceededAt;
     const isPaid = statusIndicatesPaid || hasStripeCharge || resolutionIndicatesPaid || hasChargeSucceededTimestamp;
     const isResolved = isPaid || r.status === "penalty_waived" || r.status === "resolved" || !failureStatuses.includes(r.status) && !!r.resolvedAt;
+    const baseCents = r.finalPenaltyCents || r.calculatedPenaltyCents || 0;
+    const taxRate = parseFloat(String(r.kitchenTaxRatePercent || 0));
+    const taxCents = Math.round(baseCents * taxRate / 100);
     return {
       ...r,
       storageName: r.storageName || "Storage",
       storageType: r.storageType || "dry",
       kitchenName: r.kitchenName || "Kitchen",
-      penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0,
+      kitchenTaxRatePercent: taxRate,
+      penaltyAmountCents: baseCents,
+      penaltyTaxCents: taxCents,
+      penaltyTotalCents: baseCents + taxCents,
       isResolved,
       isPaid
     };
@@ -9487,6 +11188,7 @@ async function getChefUnpaidPenalties(chefId) {
     storageName: storageListings.name,
     storageType: storageListings.storageType,
     kitchenName: kitchens.name,
+    kitchenTaxRatePercent: kitchens.taxRatePercent,
     bookingEndDate: storageBookings.endDate
   }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq3(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq3(storageListings.kitchenId, kitchens.id)).where(
     and(
@@ -9494,14 +11196,22 @@ async function getChefUnpaidPenalties(chefId) {
       inArray(storageOverstayRecords.status, blockingStatuses)
     )
   ).orderBy(desc(storageOverstayRecords.detectedAt));
-  return records.map((r) => ({
-    ...r,
-    storageName: r.storageName || "Storage",
-    storageType: r.storageType || "dry",
-    kitchenName: r.kitchenName || "Kitchen",
-    penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0,
-    requiresImmediatePayment: ["penalty_approved", "charge_failed", "escalated"].includes(r.status)
-  }));
+  return records.map((r) => {
+    const baseCents = r.finalPenaltyCents || r.calculatedPenaltyCents || 0;
+    const taxRate = parseFloat(String(r.kitchenTaxRatePercent || 0));
+    const taxCents = Math.round(baseCents * taxRate / 100);
+    return {
+      ...r,
+      storageName: r.storageName || "Storage",
+      storageType: r.storageType || "dry",
+      kitchenName: r.kitchenName || "Kitchen",
+      kitchenTaxRatePercent: taxRate,
+      penaltyAmountCents: baseCents,
+      penaltyTaxCents: taxCents,
+      penaltyTotalCents: baseCents + taxCents,
+      requiresImmediatePayment: ["penalty_approved", "charge_failed", "escalated"].includes(r.status)
+    };
+  });
 }
 async function refundOverstayPenalty(overstayRecordId, refundReason, refundedBy, partialAmountCents) {
   try {
@@ -16720,8 +18430,12 @@ var init_booking_repository = __esm({
             // true when payment is held but not yet captured
             originalAuthorizedAmount,
             // Original auth amount for voided display context
-            refundAmount
+            refundAmount,
             // Actual refund amount in cents (for display)
+            // ── Tax-inclusive amount from PT (what chef actually paid/authorized) ──
+            // kb.total_price is pre-tax subtotal; PT.amount is the tax-inclusive charge
+            chargedAmount: rawTransactionAmount
+            // null if no PT record
           };
         });
       }
@@ -19753,7 +21467,8 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         serviceFee: ptServiceFee,
         platformFee: ptServiceFee,
         taxAmount: taxCents,
-        taxRatePercent,
+        taxRatePercent: isDamageClaim ? 0 : taxRatePercent,
+        // Tax rate percentage applied (0 for damage claims - reimbursements, not revenue)
         stripeFee,
         // Actual Stripe processing fee (from Stripe API or estimated)
         managerRevenue: ptManagerRevenue || ptAmount,
@@ -22965,7 +24680,7 @@ var init_bookings = __esm({
         const today = /* @__PURE__ */ new Date();
         today.setHours(0, 0, 0, 0);
         const expiringBookings = storageBookings2.filter((booking) => {
-          if (booking.status === "cancelled") return false;
+          if (booking.status !== "confirmed") return false;
           const endDate = new Date(booking.endDate);
           endDate.setHours(0, 0, 0, 0);
           const daysUntilExpiry = Math.ceil((endDate.getTime() - today.getTime()) / (1e3 * 60 * 60 * 24));
@@ -23221,6 +24936,9 @@ var init_bookings = __esm({
         if (booking.chefId !== req.neonUser.id) {
           return res.status(403).json({ error: "You don't have permission to extend this booking" });
         }
+        if (booking.status === "pending") {
+          return res.status(400).json({ error: "Cannot extend a booking that hasn't been approved yet. Please wait for manager approval." });
+        }
         if (booking.status === "cancelled") {
           return res.status(400).json({ error: "Cannot extend a cancelled booking" });
         }
@@ -23304,6 +25022,9 @@ var init_bookings = __esm({
         }
         if (booking.chefId !== req.neonUser.id) {
           return res.status(403).json({ error: "You don't have permission to extend this booking" });
+        }
+        if (booking.status === "pending") {
+          return res.status(400).json({ error: "Cannot extend a booking that hasn't been approved yet. Please wait for manager approval." });
         }
         if (booking.status === "cancelled") {
           return res.status(400).json({ error: "Cannot extend a cancelled booking" });
@@ -24717,7 +26438,7 @@ var init_bookings = __esm({
               timezone: location?.timezone || "America/St_Johns",
               locationName: location?.name
             });
-            await sendEmail2(chefEmail);
+            await sendEmail2(chefEmail, { trackingId: `booking_${booking.id}_chef` });
           }
         } catch (emailError) {
           console.error("Error sending booking emails:", emailError);
@@ -24771,69 +26492,6 @@ var init_bookings = __esm({
             return res.status(403).json({ error: "This booking does not belong to you" });
           }
           const [kitchen2] = await db.select({ name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq29(kitchens.id, bookingByIntent.kitchenId)).limit(1);
-          const bookingAge = Date.now() - new Date(bookingByIntent.createdAt).getTime();
-          const FIVE_MINUTES = 5 * 60 * 1e3;
-          if (bookingAge < FIVE_MINUTES && kitchen2?.locationId) {
-            console.log(`[by-session] Booking ${bookingByIntent.id} is recent (${Math.round(bookingAge / 1e3)}s old), sending manager notification as fallback`);
-            try {
-              const [location] = await db.select({
-                name: locations.name,
-                managerId: locations.managerId,
-                notificationEmail: locations.notificationEmail,
-                timezone: locations.timezone
-              }).from(locations).where(eq29(locations.id, kitchen2.locationId)).limit(1);
-              if (location && location.managerId) {
-                const [chef] = await db.select({ username: users.username }).from(users).where(eq29(users.id, chefId)).limit(1);
-                const chefName = chef?.username || "Chef";
-                let managerEmailAddress = location.notificationEmail;
-                if (!managerEmailAddress) {
-                  const [manager] = await db.select({ username: users.username }).from(users).where(eq29(users.id, location.managerId)).limit(1);
-                  managerEmailAddress = manager?.username;
-                }
-                if (managerEmailAddress) {
-                  const { sendEmail: sendEmail2, generateBookingNotificationEmail: generateBookingNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
-                  const managerEmail = generateBookingNotificationEmail3({
-                    managerEmail: managerEmailAddress,
-                    chefName,
-                    kitchenName: kitchen2.name,
-                    bookingDate: bookingByIntent.bookingDate,
-                    startTime: bookingByIntent.startTime,
-                    endTime: bookingByIntent.endTime,
-                    specialNotes: bookingByIntent.specialNotes || void 0,
-                    timezone: location.timezone || "America/St_Johns",
-                    locationName: location.name,
-                    bookingId: bookingByIntent.id
-                  });
-                  const emailSent = await sendEmail2(managerEmail, { trackingId: `booking_${bookingByIntent.id}_manager` });
-                  if (emailSent) {
-                    console.log(`[by-session] \u2705 Sent manager notification for booking ${bookingByIntent.id}`);
-                  } else {
-                    console.log(`[by-session] \u274C Failed to send manager notification for booking ${bookingByIntent.id}`);
-                  }
-                }
-                if (chef?.username) {
-                  const { sendEmail: sendEmail2, generateBookingRequestEmail: generateBookingRequestEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
-                  const chefEmail = generateBookingRequestEmail3({
-                    chefEmail: chef.username,
-                    chefName: chef.username,
-                    kitchenName: kitchen2.name,
-                    bookingDate: bookingByIntent.bookingDate,
-                    startTime: bookingByIntent.startTime,
-                    endTime: bookingByIntent.endTime,
-                    specialNotes: bookingByIntent.specialNotes || void 0,
-                    timezone: location.timezone || "America/St_Johns",
-                    locationName: location.name
-                  });
-                  const chefEmailSent = await sendEmail2(chefEmail, { trackingId: `booking_${bookingByIntent.id}_chef` });
-                  if (chefEmailSent) {
-                    console.log(`[by-session] \u2705 Sent chef confirmation for booking ${bookingByIntent.id}`);
-                  }
-                }
-              }
-            } catch (emailError) {
-              console.error(`[by-session] Error sending fallback emails:`, emailError);
-            }
-          }
           return res.json({
             ...bookingByIntent,
             kitchenName: kitchen2?.name || "Kitchen"
@@ -25041,8 +26699,8 @@ var init_bookings = __esm({
           id: p.overstayId,
           type: "overstay_penalty",
           title: `Overstay Penalty \u2014 ${p.storageName}`,
-          description: `${p.daysOverdue} days overdue at ${p.kitchenName}`,
-          amountCents: p.penaltyAmountCents,
+          description: `${p.daysOverdue} days overdue at ${p.kitchenName}${p.kitchenTaxRatePercent > 0 ? ` (incl. ${p.kitchenTaxRatePercent}% tax)` : ""}`,
+          amountCents: p.penaltyTotalCents,
           status: p.status,
           createdAt: p.detectedAt,
           payEndpoint: `/api/chef/overstay-penalties/${p.overstayId}/pay`
@@ -28622,6 +30280,15 @@ var init_manager = __esm({
             }
             const timezone = location.timezone || "America/St_Johns";
             const locationName = location.name;
+            const locationAddress = location.address || void 0;
+            const storageItems = Array.isArray(booking.storageItems) ? booking.storageItems : [];
+            const equipmentItems = Array.isArray(booking.equipmentItems) ? booking.equipmentItems : [];
+            const activeStorage = storageItems.filter((s) => !s.rejected);
+            const activeEquipment = equipmentItems.filter((e) => !e.rejected);
+            const addonParts = [];
+            if (activeStorage.length > 0) addonParts.push(`${activeStorage.length} storage unit${activeStorage.length > 1 ? "s" : ""}`);
+            if (activeEquipment.length > 0) addonParts.push(`${activeEquipment.length} equipment item${activeEquipment.length > 1 ? "s" : ""}`);
+            const addons = addonParts.length > 0 ? addonParts.join(", ") : void 0;
             if (chef) {
               if (status === "confirmed") {
                 const chefConfirmationEmail = generateBookingConfirmationEmail({
@@ -28632,9 +30299,11 @@ var init_manager = __esm({
                   startTime: booking.startTime,
                   endTime: booking.endTime,
                   timezone,
-                  locationName
+                  locationName,
+                  locationAddress,
+                  addons
                 });
-                const emailSent = await sendEmail(chefConfirmationEmail);
+                const emailSent = await sendEmail(chefConfirmationEmail, { trackingId: `booking_${id}_confirmed_chef` });
                 if (emailSent) {
                   logger.info(
                     `[Manager] \u2705 Sent booking confirmation email to chef: ${chef.username}`
@@ -28672,9 +30341,10 @@ var init_manager = __esm({
                       endTime: booking.endTime,
                       status: "confirmed",
                       timezone,
-                      locationName
+                      locationName,
+                      addons
                     });
-                    const managerEmailSent = await sendEmail(managerConfirmEmail);
+                    const managerEmailSent = await sendEmail(managerConfirmEmail, { trackingId: `booking_${id}_confirmed_manager` });
                     if (managerEmailSent) {
                       logger.info(`[Manager] \u2705 Sent booking confirmed email to manager: ${location.notificationEmail}`);
                     } else {
@@ -28714,7 +30384,7 @@ var init_manager = __esm({
                   endTime: booking.endTime,
                   cancellationReason: "Booking was declined by the kitchen manager"
                 });
-                const cancelEmailSent = await sendEmail(chefCancellationEmail);
+                const cancelEmailSent = await sendEmail(chefCancellationEmail, { trackingId: `booking_${id}_cancelled_chef` });
                 if (cancelEmailSent) {
                   logger.info(
                     `[Manager] \u2705 Sent booking cancellation email to chef: ${chef.username}`
@@ -32499,6 +34169,7 @@ function getCorsOrigins() {
     origins.push("http://localhost:5173");
     origins.push("http://localhost:3000");
     origins.push(/^http:\/\/localhost:\d+$/);
+    origins.push(/^http:\/\/[a-z]+\.localhost:\d+$/);
   }
   const customOrigins = process.env.CORS_ALLOWED_ORIGINS;
   if (customOrigins) {
@@ -32532,6 +34203,9 @@ function registerSecurityMiddleware(app2) {
           "https://code.tidio.co",
           "https://widget-v4.tidiochat.com",
           "https://maps.googleapis.com",
+          "https://apis.google.com",
+          "https://accounts.google.com",
+          "https://www.gstatic.com",
           ...isProduction2 ? [] : ["http://localhost:*"]
         ],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
@@ -32553,7 +34227,9 @@ function registerSecurityMiddleware(app2) {
           "'self'",
           "https://js.stripe.com",
           "https://hooks.stripe.com",
-          "https://widget-v4.tidiochat.com"
+          "https://widget-v4.tidiochat.com",
+          "https://accounts.google.com",
+          "https://*.firebaseapp.com"
         ],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
@@ -32586,11 +34262,17 @@ function registerSecurityMiddleware(app2) {
     legacyHeaders: false,
     message: { error: "Too many requests. Please try again later." },
     skip: (req) => {
-      return req.path === "/api/webhooks/stripe";
+      if (req.path === "/api/webhooks/stripe") return true;
+      if (!isProduction2 && !req.path.startsWith("/api/")) return true;
+      return false;
     },
-    keyGenerator: (req) => {
-      return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
-    }
+    // In production (behind Vercel proxy), use X-Forwarded-For; in dev, use default
+    ...isProduction2 ? {
+      keyGenerator: (req) => {
+        return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+      }
+    } : {},
+    validate: false
   });
   app2.use(globalLimiter);
   const authLimiter = rateLimit({
@@ -32602,9 +34284,12 @@ function registerSecurityMiddleware(app2) {
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: "Too many authentication attempts. Please wait before trying again." },
-    keyGenerator: (req) => {
-      return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
-    }
+    ...isProduction2 ? {
+      keyGenerator: (req) => {
+        return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+      }
+    } : {},
+    validate: false
   });
   app2.use("/api/portal-login", authLimiter);
   app2.use("/api/firebase-register-user", authLimiter);
@@ -32618,9 +34303,12 @@ function registerSecurityMiddleware(app2) {
     },
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => {
-      return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
-    }
+    ...isProduction2 ? {
+      keyGenerator: (req) => {
+        return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+      }
+    } : {},
+    validate: false
   });
   app2.use("/api/webhooks", webhookLimiter);
   console.log(`[Security] Helmet, CORS, and Rate Limiting configured (env: ${isProduction2 ? "production" : "development"})`);
@@ -35116,7 +36804,8 @@ var init_admin = __esm({
                 COALESCE(cka.full_name, split_part(u.username, '@', 1)) as "chefName",
                 mgr.username as "managerEmail",
                 COALESCE(mgr_cka.full_name, split_part(mgr.username, '@', 1)) as "managerName",
-                loc.manager_id as "managerId"
+                loc.manager_id as "managerId",
+                k.tax_rate_percent as "kitchenTaxRatePercent"
             FROM storage_overstay_records sor
             INNER JOIN storage_bookings sb ON sor.storage_booking_id = sb.id
             INNER JOIN storage_listings sl ON sb.storage_listing_id = sl.id
@@ -36035,7 +37724,7 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
                   locationName: location.name,
                   bookingId: booking.id
                 });
-                const emailSent = await sendEmail2(managerEmail);
+                const emailSent = await sendEmail2(managerEmail, { trackingId: `booking_${booking.id}_manager` });
                 if (emailSent) {
                   logger.info(`[Webhook] \u2705 Sent manager notification email for booking ${booking.id} to ${managerEmailAddress}`);
                 } else {
@@ -36077,7 +37766,7 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
               timezone: location?.timezone || "America/St_Johns",
               locationName: location?.name
             });
-            const emailSent = await sendEmail2(chefEmail);
+            const emailSent = await sendEmail2(chefEmail, { trackingId: `booking_${booking.id}_chef` });
             if (emailSent) {
               logger.info(`[Webhook] \u2705 Sent chef booking request email for booking ${booking.id} to ${chef.username}`);
             } else {

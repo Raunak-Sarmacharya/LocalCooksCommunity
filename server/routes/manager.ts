@@ -4423,6 +4423,17 @@ router.put(
 
         const timezone = (location as any).timezone || "America/St_Johns";
         const locationName = location.name;
+        const locationAddress = (location as any).address || undefined;
+
+        // Build addons summary from booking storage/equipment items
+        const storageItems: any[] = Array.isArray((booking as any).storageItems) ? (booking as any).storageItems : [];
+        const equipmentItems: any[] = Array.isArray((booking as any).equipmentItems) ? (booking as any).equipmentItems : [];
+        const activeStorage = storageItems.filter((s: any) => !s.rejected);
+        const activeEquipment = equipmentItems.filter((e: any) => !e.rejected);
+        const addonParts: string[] = [];
+        if (activeStorage.length > 0) addonParts.push(`${activeStorage.length} storage unit${activeStorage.length > 1 ? 's' : ''}`);
+        if (activeEquipment.length > 0) addonParts.push(`${activeEquipment.length} equipment item${activeEquipment.length > 1 ? 's' : ''}`);
+        const addons = addonParts.length > 0 ? addonParts.join(', ') : undefined;
 
         if (chef) {
           if (status === "confirmed") {
@@ -4436,8 +4447,10 @@ router.put(
               endTime: booking.endTime,
               timezone,
               locationName,
+              locationAddress,
+              addons,
             });
-            const emailSent = await sendEmail(chefConfirmationEmail);
+            const emailSent = await sendEmail(chefConfirmationEmail, { trackingId: `booking_${id}_confirmed_chef` });
             if (emailSent) {
               logger.info(
                 `[Manager] ✅ Sent booking confirmation email to chef: ${chef.username}`,
@@ -4483,8 +4496,9 @@ router.put(
                   status: 'confirmed',
                   timezone,
                   locationName,
+                  addons,
                 });
-                const managerEmailSent = await sendEmail(managerConfirmEmail);
+                const managerEmailSent = await sendEmail(managerConfirmEmail, { trackingId: `booking_${id}_confirmed_manager` });
                 if (managerEmailSent) {
                   logger.info(`[Manager] ✅ Sent booking confirmed email to manager: ${location.notificationEmail}`);
                 } else {
@@ -4534,7 +4548,7 @@ router.put(
               endTime: booking.endTime,
               cancellationReason: "Booking was declined by the kitchen manager",
             });
-            const cancelEmailSent = await sendEmail(chefCancellationEmail);
+            const cancelEmailSent = await sendEmail(chefCancellationEmail, { trackingId: `booking_${id}_cancelled_chef` });
             if (cancelEmailSent) {
               logger.info(
                 `[Manager] ✅ Sent booking cancellation email to chef: ${chef.username}`,

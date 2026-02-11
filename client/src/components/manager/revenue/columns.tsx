@@ -228,14 +228,19 @@ export function getTransactionColumns({
                 <div className="text-right">Tax</div>
             ),
             cell: ({ row }) => {
-                const taxAmount = row.original.taxAmount ?? 0;
+                const totalPrice = row.original.totalPrice ?? 0;
                 const taxRate = row.original.taxRatePercent ?? 0;
+                // Reverse-calculate correct tax from tax-inclusive total
+                // Formula: base = round(total / (1 + rate/100)), tax = total - base
+                const correctTax = taxRate > 0
+                    ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
+                    : 0;
                 return (
                     <TooltipProvider>
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <div className="text-right text-amber-600 text-sm">
-                                    {formatCurrency(taxAmount)}
+                                    {formatCurrency(correctTax)}
                                 </div>
                             </TooltipTrigger>
                             <TooltipContent>
@@ -308,10 +313,17 @@ export function getTransactionColumns({
                 </Button>
             ),
             cell: ({ row }) => {
-                const netRevenue = row.original.netRevenue ?? 0;
+                const totalPrice = row.original.totalPrice ?? 0;
+                const taxRate = row.original.taxRatePercent ?? 0;
+                const stripeFee = row.original.stripeFee ?? 0;
                 const refundAmount = row.original.refundAmount ?? 0;
-                // Show effective net revenue (after refunds)
-                const effectiveNet = Math.max(0, netRevenue - refundAmount);
+                // Reverse-calculate correct tax from tax-inclusive total
+                const correctTax = taxRate > 0
+                    ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
+                    : 0;
+                // Recalculate net revenue with corrected tax
+                const correctNet = totalPrice - correctTax - stripeFee;
+                const effectiveNet = Math.max(0, correctNet - refundAmount);
                 const hasRefund = refundAmount > 0;
                 return (
                     <TooltipProvider>
@@ -324,7 +336,7 @@ export function getTransactionColumns({
                             <TooltipContent>
                                 {hasRefund ? (
                                     <div className="text-sm space-y-1">
-                                        <p>Original: {formatCurrency(netRevenue)}</p>
+                                        <p>Original: {formatCurrency(correctNet)}</p>
                                         <p className="text-red-500">Refund: -{formatCurrency(refundAmount)}</p>
                                         <p className="font-semibold">Effective: {formatCurrency(effectiveNet)}</p>
                                     </div>

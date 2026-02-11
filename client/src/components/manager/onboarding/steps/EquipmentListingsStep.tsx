@@ -8,6 +8,7 @@
 import React, { useState, useMemo } from "react";
 import { Info, Plus, CheckCircle, Loader2, Search, Check, ChevronDown, ChevronUp, X, DollarSign, Package, Flame, ChefHat, Snowflake, Sparkles, SprayCan, PlusCircle, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -61,6 +62,7 @@ export default function EquipmentListingsStep() {
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['cooking', 'food-prep']);
   const [selectedEquipment, setSelectedEquipment] = useState<Record<string, SelectedEquipment>>({});
   const [isCreating, setIsCreating] = useState(false);
+  const [activeCreatingAction, setActiveCreatingAction] = useState<'custom' | 'bulk' | null>(null);
   
   // Custom equipment state for intuitive "not found" flow
   const [customEquipment, setCustomEquipment] = useState({
@@ -451,17 +453,18 @@ export default function EquipmentListingsStep() {
                                   </div>
                                 </>
                               )}
-                              <Button 
+                              <StatusButton 
                                 size="sm"
                                 className="w-full h-8 text-xs" 
                                 onClick={() => {
+                                  setActiveCreatingAction('custom');
                                   if (!customEquipment.name) setCustomEquipment(prev => ({ ...prev, name: searchQuery }));
                                   saveCustomEquipment();
                                 }}
-                                disabled={isCreating || (!customEquipment.name.trim() && !searchQuery.trim())}
-                              >
-                                {isCreating ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Adding...</> : <><PlusCircle className="h-3 w-3 mr-1" />Add Custom</>}
-                              </Button>
+                                status={activeCreatingAction === 'custom' && isCreating ? "loading" : "idle"}
+                                disabled={(isCreating && activeCreatingAction !== 'custom') || (!customEquipment.name.trim() && !searchQuery.trim())}
+                                labels={{ idle: "Add Custom", loading: "Adding", success: "Added" }}
+                              />
                             </div>
                           </div>
                         )}
@@ -590,21 +593,14 @@ export default function EquipmentListingsStep() {
                     )}
 
                     {selectedEquipmentCount > 0 && (
-                      <Button 
+                      <StatusButton 
                         className="w-full mt-3" 
                         size="sm"
-                        onClick={handleCreate}
-                        disabled={isCreating}
-                      >
-                        {isCreating ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <>
-                            <Plus className="h-4 w-4 mr-1" />
-                            Add {selectedEquipmentCount} Equipment
-                          </>
-                        )}
-                      </Button>
+                        onClick={() => { setActiveCreatingAction('bulk'); handleCreate(); }}
+                        status={activeCreatingAction === 'bulk' && isCreating ? "loading" : "idle"}
+                        disabled={isCreating && activeCreatingAction !== 'bulk'}
+                        labels={{ idle: `Add ${selectedEquipmentCount} Equipment`, loading: "Adding", success: "Added" }}
+                      />
                     )}
                   </div>
                 </div>

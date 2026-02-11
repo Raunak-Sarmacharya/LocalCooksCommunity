@@ -59,7 +59,7 @@ export default function ManagerPortalApplications({ embedded = false }: ManagerP
       
       <div className="space-y-3">
         <Link href="/manager/booking-dashboard">
-          <Button className="w-full bg-[#208D80] hover:bg-[#1A7470] text-lg py-6">
+          <Button variant="secondary" className="w-full text-lg py-6">
             <ArrowRight className="mr-2 h-5 w-5" />
             Go to Dashboard
           </Button>

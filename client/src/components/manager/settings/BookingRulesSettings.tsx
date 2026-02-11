@@ -4,11 +4,13 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { AlertCircle, Clock, Save, Info, Loader2, FileText, Upload, ChefHat } from 'lucide-react';
+
+import { AlertCircle, Clock, Info, Loader2, Save, FileText, Upload, ChefHat } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { StatusButton } from '@/components/ui/status-button';
+import { useStatusButton } from '@/hooks/use-status-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { NumericInput } from '@/components/ui/numeric-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -28,11 +30,10 @@ interface Location {
 
 interface BookingRulesSettingsProps {
   location: Location;
-  onSave: (updates: any) => void;
-  isSaving: boolean;
+  onSave: (updates: any) => Promise<unknown>;
 }
 
-export default function BookingRulesSettings({ location, onSave, isSaving }: BookingRulesSettingsProps) {
+export default function BookingRulesSettings({ location, onSave }: BookingRulesSettingsProps) {
   const { toast } = useToast();
   
   // Cancellation Policy State
@@ -63,7 +64,6 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
   const [minimumBookingHours, setMinimumBookingHours] = useState<number>(0);
   const [isLoadingKitchens, setIsLoadingKitchens] = useState(false);
-  const [isSavingDuration, setIsSavingDuration] = useState(false);
 
   // Update state when location changes
   useEffect(() => {
@@ -116,26 +116,6 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
     }
   }, [selectedKitchenId, kitchens]);
 
-  // Save minimum booking duration for the selected kitchen
-  const handleSaveMinBookingDuration = async () => {
-    if (!selectedKitchenId) return;
-    setIsSavingDuration(true);
-    try {
-      const updated = await apiPut(`/manager/kitchens/${selectedKitchenId}/pricing`, {
-        minimumBookingHours: minimumBookingHours,
-      });
-      // Update local cache
-      setKitchens(prev => prev.map(k =>
-        k.id === selectedKitchenId ? { ...k, minimumBookingHours: updated.minimumBookingHours ?? minimumBookingHours } : k
-      ));
-      toast({ title: "Success", description: `Minimum booking duration updated for ${kitchens.find(k => k.id === selectedKitchenId)?.name || 'kitchen'}` });
-    } catch (error: any) {
-      console.error('Error saving minimum booking duration:', error);
-      toast({ title: "Error", description: error.message || "Failed to save minimum booking duration", variant: "destructive" });
-    } finally {
-      setIsSavingDuration(false);
-    }
-  };
 
   // Fetch overstay penalty defaults
   const fetchOverstayPenaltyDefaults = useCallback(async () => {
@@ -178,15 +158,30 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
     fetchOverstayPenaltyDefaults();
   }, [fetchOverstayPenaltyDefaults]);
 
-  const handleSaveBookingRules = () => {
-    onSave({
-      locationId: location.id,
-      cancellationPolicyHours: cancellationHours,
-      cancellationPolicyMessage: cancellationMessage,
-      defaultDailyBookingLimit: dailyBookingLimit,
-      minimumBookingWindowHours: minimumBookingWindowHours,
-    });
-  };
+  const saveRulesAction = useStatusButton(
+    useCallback(async () => {
+      await onSave({
+        locationId: location.id,
+        cancellationPolicyHours: cancellationHours,
+        cancellationPolicyMessage: cancellationMessage,
+        defaultDailyBookingLimit: dailyBookingLimit,
+        minimumBookingWindowHours: minimumBookingWindowHours,
+      });
+    }, [onSave, location.id, cancellationHours, cancellationMessage, dailyBookingLimit, minimumBookingWindowHours]),
+  );
+
+  const saveDurationAction = useStatusButton(
+    useCallback(async () => {
+      if (!selectedKitchenId) return;
+      const updated = await apiPut(`/manager/kitchens/${selectedKitchenId}/pricing`, {
+        minimumBookingHours: minimumBookingHours,
+      });
+      setKitchens(prev => prev.map(k =>
+        k.id === selectedKitchenId ? { ...k, minimumBookingHours: updated.minimumBookingHours ?? minimumBookingHours } : k
+      ));
+      toast({ title: "Success", description: `Minimum booking duration updated` });
+    }, [selectedKitchenId, minimumBookingHours, toast]),
+  );
 
   const handleSaveOverstayPenaltyDefaults = async () => {
     if (!location.id) return;
@@ -324,14 +319,12 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="cancellation-hours">Cancellation Window (Hours)</Label>
-            <Input
+            <Label htmlFor="cancellation-hours">Cancellation Window</Label>
+            <NumericInput
               id="cancellation-hours"
-              type="number"
-              min="0"
-              max="168"
-              value={cancellationHours}
-              onChange={(e) => setCancellationHours(parseInt(e.target.value) || 0)}
+              suffix="hours"
+              value={String(cancellationHours)}
+              onValueChange={(val) => setCancellationHours(parseInt(val) || 0)}
               className="mt-1.5 max-w-xs"
             />
             <p className="text-xs text-muted-foreground mt-1">
@@ -370,13 +363,11 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
         <CardContent className="space-y-4">
           <div>
             <Label htmlFor="daily-limit">Default Hours per Chef per Day</Label>
-            <Input
+            <NumericInput
               id="daily-limit"
-              type="number"
-              min="1"
-              max="24"
-              value={dailyBookingLimit}
-              onChange={(e) => setDailyBookingLimit(parseInt(e.target.value) || 2)}
+              suffix="hours"
+              value={String(dailyBookingLimit)}
+              onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 2)}
               className="mt-1.5 max-w-xs"
             />
             <p className="text-xs text-muted-foreground mt-1">
@@ -408,16 +399,13 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
         <CardContent className="space-y-4">
           <div>
             <Label htmlFor="min-window">Minimum Hours in Advance</Label>
-            <Input
+            <NumericInput
               id="min-window"
-              type="number"
-              min="0"
-              max="168"
-              step="1"
-              value={minimumBookingWindowHours}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                setMinimumBookingWindowHours(isNaN(val) ? 0 : Math.min(168, Math.max(0, val)));
+              suffix="hours"
+              value={String(minimumBookingWindowHours)}
+              onValueChange={(val) => {
+                const parsed = parseInt(val, 10);
+                setMinimumBookingWindowHours(isNaN(parsed) ? 0 : Math.min(168, Math.max(0, parsed)));
               }}
               className="mt-1.5 max-w-xs"
             />
@@ -434,19 +422,11 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
             </div>
           </div>
 
-          <Button onClick={handleSaveBookingRules} disabled={isSaving}>
-            {isSaving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="mr-2 h-4 w-4" />
-                Save Booking Rules
-              </>
-            )}
-          </Button>
+          <StatusButton
+            status={saveRulesAction.status}
+            onClick={saveRulesAction.execute}
+            labels={{ idle: "Save Booking Rules", loading: "Saving", success: "Saved" }}
+          />
         </CardContent>
       </Card>
 
@@ -496,19 +476,16 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
                 <>
                   <div>
                     <Label htmlFor="min-booking-duration">Minimum Hours per Booking</Label>
-                    <Input
+                    <NumericInput
                       id="min-booking-duration"
-                      type="number"
-                      min="0"
-                      max="24"
-                      step="1"
-                      value={minimumBookingHours}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        if (e.target.value === '' || isNaN(val)) {
+                      suffix="hours"
+                      value={String(minimumBookingHours)}
+                      onValueChange={(val) => {
+                        const parsed = parseInt(val, 10);
+                        if (val === '' || isNaN(parsed)) {
                           setMinimumBookingHours(0);
                         } else {
-                          setMinimumBookingHours(Math.min(24, Math.max(0, val)));
+                          setMinimumBookingHours(Math.min(24, Math.max(0, parsed)));
                         }
                       }}
                       className="mt-1.5 max-w-xs"
@@ -525,19 +502,11 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
                       </p>
                     </div>
                   </div>
-                  <Button onClick={handleSaveMinBookingDuration} disabled={isSavingDuration}>
-                    {isSavingDuration ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="mr-2 h-4 w-4" />
-                        Save Duration
-                      </>
-                    )}
-                  </Button>
+                  <StatusButton
+                    status={saveDurationAction.status}
+                    onClick={saveDurationAction.execute}
+                    labels={{ idle: "Save Duration", loading: "Saving", success: "Saved" }}
+                  />
                 </>
               )}
             </>
@@ -639,15 +608,12 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="grace-period">Grace Period (Days)</Label>
-                  <Input
+                  <Label htmlFor="grace-period">Grace Period</Label>
+                  <NumericInput
                     id="grace-period"
-                    type="number"
-                    min="0"
-                    max="14"
-                    value={overstayGracePeriodDays ?? ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
+                    suffix="days"
+                    value={overstayGracePeriodDays != null ? String(overstayGracePeriodDays) : ''}
+                    onValueChange={(val) => {
                       setOverstayGracePeriodDays(val === '' ? null : parseInt(val));
                     }}
                     placeholder="Platform default"
@@ -659,16 +625,12 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
                 </div>
 
                 <div>
-                  <Label htmlFor="penalty-rate">Penalty Rate (%)</Label>
-                  <Input
+                  <Label htmlFor="penalty-rate">Penalty Rate</Label>
+                  <NumericInput
                     id="penalty-rate"
-                    type="number"
-                    min="0"
-                    max="50"
-                    step="1"
-                    value={overstayPenaltyRate ?? ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
+                    suffix="%"
+                    value={overstayPenaltyRate != null ? String(overstayPenaltyRate) : ''}
+                    onValueChange={(val) => {
                       setOverstayPenaltyRate(val === '' ? null : parseInt(val));
                     }}
                     placeholder="Platform default"
@@ -681,14 +643,11 @@ export default function BookingRulesSettings({ location, onSave, isSaving }: Boo
 
                 <div>
                   <Label htmlFor="max-penalty">Max Penalty Days</Label>
-                  <Input
+                  <NumericInput
                     id="max-penalty"
-                    type="number"
-                    min="1"
-                    max="90"
-                    value={overstayMaxPenaltyDays ?? ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
+                    suffix="days"
+                    value={overstayMaxPenaltyDays != null ? String(overstayMaxPenaltyDays) : ''}
+                    onValueChange={(val) => {
                       setOverstayMaxPenaltyDays(val === '' ? null : parseInt(val));
                     }}
                     placeholder="Platform default"

@@ -5,6 +5,7 @@ import { FileText, Loader2, Plus, Upload, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
+import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
 import {
     Dialog,
@@ -399,24 +400,15 @@ export function CreateLocationDialog({
                             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isCreating}>
                                 Cancel
                             </Button>
-                            <Button type="submit" disabled={isCreating || isUploadingLicense || isUploadingTerms}>
-                                {isUploadingLicense || isUploadingTerms ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                        Uploading...
-                                    </>
-                                ) : isCreating ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                        Creating...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Plus className="h-4 w-4 mr-2" />
-                                        Create Location
-                                    </>
-                                )}
-                            </Button>
+                            <StatusButton
+                                type="submit"
+                                status={(isCreating || isUploadingLicense || isUploadingTerms) ? "loading" : "idle"}
+                                labels={{
+                                    idle: "Create Location",
+                                    loading: (isUploadingLicense || isUploadingTerms) ? "Uploading" : "Creating",
+                                    success: "Created"
+                                }}
+                            />
                         </DialogFooter>
                     </form>
                 </Form>

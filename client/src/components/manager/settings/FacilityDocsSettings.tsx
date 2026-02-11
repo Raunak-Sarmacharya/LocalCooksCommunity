@@ -7,6 +7,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { StatusButton } from '@/components/ui/status-button';
+import { useStatusButton } from '@/hooks/use-status-button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,7 +23,6 @@ import {
   Wind,
   Info,
   CheckCircle2,
-  Save,
 } from 'lucide-react';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { useToast } from '@/hooks/use-toast';
@@ -190,9 +191,11 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
     saveMutation.mutate({ ventilation_specs_url: '' });
   };
 
-  const handleSaveVentilationSpecs = () => {
-    saveMutation.mutate({ ventilation_specs: ventilationSpecs });
-  };
+  const saveVentilationAction = useStatusButton(
+    useCallback(async () => {
+      await saveMutation.mutateAsync({ ventilation_specs: ventilationSpecs });
+    }, [saveMutation, ventilationSpecs]),
+  );
 
   if (isLoading) {
     return (
@@ -370,19 +373,11 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
           </div>
 
           {hasUnsavedChanges && (
-            <Button onClick={handleSaveVentilationSpecs} disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Description
-                </>
-              )}
-            </Button>
+            <StatusButton
+              status={saveVentilationAction.status}
+              onClick={saveVentilationAction.execute}
+              labels={{ idle: "Save Description", loading: "Saving", success: "Saved" }}
+            />
           )}
 
           {/* Divider */}

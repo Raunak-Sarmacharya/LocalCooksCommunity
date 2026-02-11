@@ -12,7 +12,9 @@ import { cn } from "@/lib/utils";
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 
 import { Button } from "@/components/ui/button";
+import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -491,7 +493,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                 <Textarea value={newKitchenDescription} onChange={e => setNewKitchenDescription(e.target.value)} placeholder="Describe the space..." />
                                             </div>
                                             <div className="flex gap-2">
-                                                <Button
+                                                <StatusButton
                                                     onClick={async () => {
                                                         if (!newKitchenName) return;
                                                         setIsCreatingKitchen(true);
@@ -508,10 +510,9 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                             setShowCreateKitchen(false);
                                                         } catch (e) { console.error(e); } finally { setIsCreatingKitchen(false); }
                                                     }}
-                                                    disabled={isCreatingKitchen}
-                                                >
-                                                    {isCreatingKitchen ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
-                                                </Button>
+                                                    status={isCreatingKitchen ? "loading" : "idle"}
+                                                    labels={{ idle: "Create", loading: "Creating", success: "Created" }}
+                                                />
                                                 <Button variant="outline" onClick={() => setShowCreateKitchen(false)}>Cancel</Button>
                                             </div>
                                         </div>
@@ -598,20 +599,20 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                 <CardHeader><CardTitle>Booking Rules</CardTitle></CardHeader>
                                 <CardContent className="space-y-6">
                                     <div className="space-y-2">
-                                        <Label>Cancellation Window (Hours)</Label>
-                                        <Input type="number" value={cancellationHours} onChange={e => setCancellationHours(parseInt(e.target.value) || 0)} />
+                                        <Label>Cancellation Window</Label>
+                                        <NumericInput suffix="hours" value={String(cancellationHours)} onValueChange={(val) => setCancellationHours(parseInt(val) || 0)} />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Policy Message</Label>
                                         <Textarea value={cancellationMessage} onChange={e => setCancellationMessage(e.target.value)} />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Default Daily Limit (Hours)</Label>
-                                        <Input type="number" value={dailyBookingLimit} onChange={e => setDailyBookingLimit(parseInt(e.target.value) || 0)} />
+                                        <Label>Default Daily Limit</Label>
+                                        <NumericInput suffix="hours" value={String(dailyBookingLimit)} onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 0)} />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Minimum Advance Notice (Hours)</Label>
-                                        <Input type="number" value={minimumBookingWindowHours} onChange={e => setMinimumBookingWindowHours(parseInt(e.target.value) || 0)} />
+                                        <Label>Minimum Advance Notice</Label>
+                                        <NumericInput suffix="hours" value={String(minimumBookingWindowHours)} onValueChange={(val) => setMinimumBookingWindowHours(parseInt(val) || 0)} />
                                     </div>
                                     <Button onClick={() => handleSave()} disabled={isUpdating}>
                                         <Save className="h-4 w-4 mr-2" /> Save All Settings

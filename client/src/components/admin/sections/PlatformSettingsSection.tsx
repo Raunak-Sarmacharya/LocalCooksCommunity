@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
@@ -253,36 +253,25 @@ export function PlatformSettingsSection() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <Label>Stripe Percentage Fee (%)</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min="0"
-                  max="10"
-                  step="0.1"
-                  value={feeConfig.stripePercentageFee}
-                  onChange={(e) => setFeeConfig({ ...feeConfig, stripePercentageFee: e.target.value })}
-                  className="max-w-32"
-                />
-                <span className="text-sm text-muted-foreground">%</span>
-              </div>
+              <Label>Stripe Percentage Fee</Label>
+              <NumericInput
+                suffix="%"
+                allowDecimals
+                value={feeConfig.stripePercentageFee}
+                onValueChange={(val) => setFeeConfig({ ...feeConfig, stripePercentageFee: val })}
+                className="max-w-32"
+              />
               <p className="text-xs text-muted-foreground">Standard: 2.9%</p>
             </div>
 
             <div className="space-y-2">
               <Label>Stripe Flat Fee (cents)</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={feeConfig.stripeFlatFeeCents}
-                  onChange={(e) => setFeeConfig({ ...feeConfig, stripeFlatFeeCents: e.target.value })}
-                  className="max-w-32"
-                />
-                <span className="text-sm text-muted-foreground">&#162; (${(parseInt(feeConfig.stripeFlatFeeCents) / 100 || 0).toFixed(2)})</span>
-              </div>
+              <NumericInput
+                suffix="¢"
+                value={feeConfig.stripeFlatFeeCents}
+                onValueChange={(val) => setFeeConfig({ ...feeConfig, stripeFlatFeeCents: val })}
+                className="max-w-32"
+              />
               <p className="text-xs text-muted-foreground">Standard: 30&#162; ($0.30)</p>
             </div>
           </div>
@@ -307,36 +296,25 @@ export function PlatformSettingsSection() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <Label>Platform Commission Rate (%)</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min="0"
-                  max="50"
-                  step="0.1"
-                  value={feeConfig.platformCommissionRate}
-                  onChange={(e) => setFeeConfig({ ...feeConfig, platformCommissionRate: e.target.value })}
-                  className="max-w-32"
-                />
-                <span className="text-sm text-muted-foreground">%</span>
-              </div>
+              <Label>Platform Commission Rate</Label>
+              <NumericInput
+                suffix="%"
+                allowDecimals
+                value={feeConfig.platformCommissionRate}
+                onValueChange={(val) => setFeeConfig({ ...feeConfig, platformCommissionRate: val })}
+                className="max-w-32"
+              />
               <p className="text-xs text-muted-foreground">Current: {feeConfig.platformCommissionRate}% (0% = break-even)</p>
             </div>
 
             <div className="space-y-2">
               <Label>Minimum Application Fee (cents)</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min="0"
-                  max="1000"
-                  step="1"
-                  value={feeConfig.minimumApplicationFeeCents}
-                  onChange={(e) => setFeeConfig({ ...feeConfig, minimumApplicationFeeCents: e.target.value })}
-                  className="max-w-32"
-                />
-                <span className="text-sm text-muted-foreground">&#162; (${(parseInt(feeConfig.minimumApplicationFeeCents) / 100 || 0).toFixed(2)})</span>
-              </div>
+              <NumericInput
+                suffix="¢"
+                value={feeConfig.minimumApplicationFeeCents}
+                onValueChange={(val) => setFeeConfig({ ...feeConfig, minimumApplicationFeeCents: val })}
+                className="max-w-32"
+              />
               <p className="text-xs text-muted-foreground">Set to 0 for no minimum</p>
             </div>
           </div>
@@ -441,19 +419,13 @@ export function PlatformSettingsSection() {
 
           {autoAcceptEnabled && (
             <div className="space-y-2">
-              <Label>Review Window (hours)</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min="1"
-                  max="720"
-                  step="1"
-                  value={autoAcceptHours}
-                  onChange={(e) => setAutoAcceptHours(e.target.value)}
-                  className="max-w-32"
-                />
-                <span className="text-sm text-muted-foreground">hours</span>
-              </div>
+              <Label>Review Window</Label>
+              <NumericInput
+                suffix="hours"
+                value={autoAcceptHours}
+                onValueChange={setAutoAcceptHours}
+                className="max-w-32"
+              />
               <p className="text-xs text-muted-foreground">
                 {parseInt(autoAcceptHours) >= 24
                   ? `≈ ${(parseInt(autoAcceptHours) / 24).toFixed(1)} days`

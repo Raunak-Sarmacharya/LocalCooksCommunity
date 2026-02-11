@@ -116,6 +116,7 @@ interface OverstayPenalty {
   managerEmail: string | null;
   managerName: string | null;
   managerId: number | null;
+  kitchenTaxRatePercent?: number;
 }
 
 interface HistoryEvent {
@@ -274,10 +275,25 @@ function getColumns(onViewDetails: (p: OverstayPenalty) => void): ColumnDef<Over
           Amount <ArrowUpDown className="ml-1 h-3 w-3" />
         </Button>
       ),
-      accessorFn: (row) => row.finalPenaltyCents || row.calculatedPenaltyCents || 0,
+      accessorFn: (row) => {
+        const base = row.finalPenaltyCents || row.calculatedPenaltyCents || 0;
+        const taxRate = parseFloat(String(row.kitchenTaxRatePercent || 0));
+        return taxRate > 0 ? Math.round(base * (1 + taxRate / 100)) : base;
+      },
       cell: ({ row }) => {
-        const cents = row.original.finalPenaltyCents || row.original.calculatedPenaltyCents || 0;
-        return <span className="font-mono text-sm">{formatCurrency(cents)}</span>;
+        const base = row.original.finalPenaltyCents || row.original.calculatedPenaltyCents || 0;
+        const taxRate = parseFloat(String(row.original.kitchenTaxRatePercent || 0));
+        const total = taxRate > 0 ? Math.round(base * (1 + taxRate / 100)) : base;
+        return (
+          <div>
+            <span className="font-mono text-sm">{formatCurrency(total)}</span>
+            {taxRate > 0 && (
+              <div className="text-xs text-muted-foreground">
+                {formatCurrency(base)} + {taxRate}% tax
+              </div>
+            )}
+          </div>
+        );
       },
     },
     {
@@ -416,7 +432,11 @@ export default function AdminOverstayPenalties({ getFirebaseToken: _getFirebaseT
     const pending = penalties.filter((p) => ["pending_review", "penalty_approved", "charge_pending"].includes(p.status)).length;
     const totalCollected = penalties
       .filter((p) => p.status === "charge_succeeded")
-      .reduce((sum, p) => sum + (p.finalPenaltyCents || p.calculatedPenaltyCents || 0), 0);
+      .reduce((sum, p) => {
+        const base = p.finalPenaltyCents || p.calculatedPenaltyCents || 0;
+        const taxRate = parseFloat(String(p.kitchenTaxRatePercent || 0));
+        return sum + (taxRate > 0 ? Math.round(base * (1 + taxRate / 100)) : base);
+      }, 0);
     return { totalPenalties, escalated, paid, waived, pending, totalCollected };
   }, [penalties]);
 
@@ -609,6 +629,20 @@ export default function AdminOverstayPenalties({ getFirebaseToken: _getFirebaseT
                     <span className="text-muted-foreground">Calculated Penalty</span><span className="font-mono">{formatCurrency(selectedPenalty.calculatedPenaltyCents)}</span>
                     <span className="text-muted-foreground">Final Penalty</span>
                     <span className="font-mono font-semibold">{selectedPenalty.finalPenaltyCents != null ? formatCurrency(selectedPenalty.finalPenaltyCents) : "—"}</span>
+                    {(() => {
+                      const taxRate = parseFloat(String(selectedPenalty.kitchenTaxRatePercent || 0));
+                      if (taxRate <= 0) return null;
+                      const base = selectedPenalty.finalPenaltyCents || selectedPenalty.calculatedPenaltyCents || 0;
+                      const tax = Math.round((base * taxRate) / 100);
+                      return (
+                        <>
+                          <span className="text-muted-foreground">Tax ({taxRate}%)</span>
+                          <span className="font-mono text-amber-600">{formatCurrency(tax)}</span>
+                          <span className="text-muted-foreground">Total Charged</span>
+                          <span className="font-mono font-semibold text-primary">{formatCurrency(base + tax)}</span>
+                        </>
+                      );
+                    })()}
                     {selectedPenalty.penaltyWaived && (
                       <><span className="text-muted-foreground">Waive Reason</span><span>{selectedPenalty.waiveReason || "—"}</span></>
                     )}

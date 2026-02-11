@@ -261,7 +261,7 @@ function ResponseDialog({
               </p>
               <Button
                 size="sm"
-                className="bg-red-600 hover:bg-red-700 text-white"
+                variant="destructive"
                 disabled={isPaying}
                 onClick={async () => {
                   setIsPaying(true);

@@ -85,6 +85,7 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -769,14 +770,11 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
               </div>
 
               <div className="space-y-2">
-                <Label>Claimed Amount ($)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="10"
+                <Label>Claimed Amount</Label>
+                <CurrencyInput
                   placeholder="0.00"
                   value={formData.claimedAmount}
-                  onChange={(e) => setFormData({ ...formData, claimedAmount: e.target.value })}
+                  onValueChange={(val) => setFormData({ ...formData, claimedAmount: val })}
                 />
               </div>
             </div>

@@ -278,7 +278,7 @@ export function PendingCancellationRequests({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                  className="h-8 text-destructive border-destructive/30 hover:bg-destructive/5"
                   onClick={() => handleAction("decline", req)}
                   disabled={isProcessing}
                 >
@@ -287,7 +287,7 @@ export function PendingCancellationRequests({
                 </Button>
                 <Button
                   size="sm"
-                  className="h-8 bg-green-600 hover:bg-green-700 text-white"
+                  className="h-8"
                   onClick={() => handleAction("accept", req)}
                   disabled={isProcessing}
                 >

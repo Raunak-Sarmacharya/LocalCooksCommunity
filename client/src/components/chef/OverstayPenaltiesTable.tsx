@@ -68,6 +68,9 @@ interface OverstayPenalty {
   kitchenName: string;
   bookingEndDate: string;
   penaltyAmountCents: number;
+  penaltyTaxCents?: number;
+  penaltyTotalCents?: number;
+  kitchenTaxRatePercent?: number;
   isResolved?: boolean;
   isPaid?: boolean;
 }
@@ -220,13 +223,21 @@ function getOverstayPenaltyColumns(
         </Button>
       ),
       cell: ({ row }) => {
-        const amount = row.getValue("penaltyAmountCents") as number;
+        const penalty = row.original;
+        const base = penalty.penaltyAmountCents;
+        const total = penalty.penaltyTotalCents ?? base;
+        const taxRate = penalty.kitchenTaxRatePercent ?? 0;
         return (
           <div className="text-right">
             <div className="font-medium text-sm flex items-center justify-end gap-1">
               <DollarSign className="h-3 w-3 text-muted-foreground" />
-              {formatCurrency(amount)}
+              {formatCurrency(total)}
             </div>
+            {taxRate > 0 && (
+              <div className="text-xs text-muted-foreground">
+                {formatCurrency(base)} + {taxRate}% tax
+              </div>
+            )}
           </div>
         );
       },

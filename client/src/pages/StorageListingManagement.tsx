@@ -7,6 +7,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { StatusButton } from "@/components/ui/status-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -172,6 +173,7 @@ function StorageListingContent({
   const [pendingToggle, setPendingToggle] = useState<{ id: number; isActive: boolean } | null>(null);
   
   const [isSaving, setIsSaving] = useState(false);
+  const [activeSavingAction, setActiveSavingAction] = useState<'custom' | 'bulk' | 'edit' | null>(null);
   const [isToggling, setIsToggling] = useState(false);
 
   // Custom storage state for intuitive "not found" flow
@@ -705,10 +707,13 @@ function StorageListingContent({
                                 </div>
                               </div>
                             </div>
-                            <Button onClick={saveCustomStorage} disabled={isSaving || !customStorage.dailyRate} className="w-full">
-                              {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <PlusCircle className="h-4 w-4 mr-2" />}
-                              Add "{searchQuery}" Storage
-                            </Button>
+                            <StatusButton
+                              onClick={() => { setActiveSavingAction('custom'); saveCustomStorage(); }}
+                              status={activeSavingAction === 'custom' && isSaving ? "loading" : "idle"}
+                              disabled={(isSaving && activeSavingAction !== 'custom') || !customStorage.dailyRate}
+                              className="w-full"
+                              labels={{ idle: `Add Custom Storage`, loading: "Adding", success: "Added" }}
+                            />
                           </CardContent>
                         </Card>
                       )}
@@ -803,10 +808,13 @@ function StorageListingContent({
                     </ScrollArea>
                   )}
                   {selectedStorageCount > 0 && (
-                    <Button onClick={saveSelectedStorage} disabled={isSaving} className="w-full mt-4">
-                      {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Check className="h-4 w-4 mr-2" />}
-                      Add {selectedStorageCount} Storage{selectedStorageCount > 1 ? 's' : ''}
-                    </Button>
+                    <StatusButton
+                      onClick={() => { setActiveSavingAction('bulk'); saveSelectedStorage(); }}
+                      status={activeSavingAction === 'bulk' && isSaving ? "loading" : "idle"}
+                      disabled={isSaving && activeSavingAction !== 'bulk'}
+                      className="w-full mt-4"
+                      labels={{ idle: `Add ${selectedStorageCount} Storage${selectedStorageCount > 1 ? 's' : ''}`, loading: "Adding", success: "Added" }}
+                    />
                   )}
                 </CardContent>
               </Card>
@@ -1041,23 +1049,11 @@ function StorageListingContent({
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Cancel
             </Button>
-            <Button 
-              onClick={saveEditedListing} 
-              disabled={isSaving}
-              className="bg-[#F51042] hover:bg-[#d10e3a] text-white gap-2"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Check className="h-4 w-4" />
-                  Save Changes
-                </>
-              )}
-            </Button>
+            <StatusButton 
+              onClick={() => { setActiveSavingAction('edit'); saveEditedListing(); }} 
+              status={activeSavingAction === 'edit' && isSaving ? "loading" : "idle"}
+              labels={{ idle: "Save Changes", loading: "Saving", success: "Saved" }}
+            />
           </SheetFooter>
         </SheetContent>
       </Sheet>
@@ -1085,9 +1081,12 @@ function StorageListingContent({
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setToggleDialogOpen(false); setPendingToggle(null); }} disabled={isToggling}>Cancel</Button>
-            <Button variant="destructive" onClick={() => pendingToggle && doToggleActive(pendingToggle.id, pendingToggle.isActive)} disabled={isToggling}>
-              {isToggling ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}Deactivate
-            </Button>
+            <StatusButton
+              variant="destructive"
+              onClick={() => pendingToggle && doToggleActive(pendingToggle.id, pendingToggle.isActive)}
+              status={isToggling ? "loading" : "idle"}
+              labels={{ idle: "Deactivate", loading: "Deactivating", success: "Deactivated" }}
+            />
           </DialogFooter>
         </DialogContent>
       </Dialog>

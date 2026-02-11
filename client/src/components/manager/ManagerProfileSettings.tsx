@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -14,6 +14,8 @@ import {
   Loader2, Mail, Phone, User, KeyRound, Shield, 
   Camera, CheckCircle2, Building2, Edit3, Lock, MapPin, CreditCard, Clock
 } from "lucide-react";
+import { StatusButton } from "@/components/ui/status-button";
+import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { cn } from "@/lib/utils";
@@ -228,13 +230,15 @@ export default function ManagerProfileSettings() {
         },
     });
 
-    const handleSave = () => {
-        updateProfileMutation.mutate({
-            username: username !== user?.username ? username : undefined,
-            displayName: displayName || undefined,
-            phone: phone || undefined,
-        });
-    };
+    const saveProfileAction = useStatusButton(
+        useCallback(async () => {
+            await updateProfileMutation.mutateAsync({
+                username: username !== user?.username ? username : undefined,
+                displayName: displayName || undefined,
+                phone: phone || undefined,
+            });
+        }, [updateProfileMutation, username, user?.username, displayName, phone]),
+    );
 
     // Update location contact info mutation
     const updateLocationContactMutation = useMutation({
@@ -537,23 +541,11 @@ export default function ManagerProfileSettings() {
                             {/* Save Button */}
                             {isEditingProfile && (
                                 <div className="flex justify-end pt-4 border-t border-slate-100">
-                                    <Button
-                                        onClick={handleSave}
-                                        disabled={updateProfileMutation.isPending}
-                                        className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700"
-                                    >
-                                        {updateProfileMutation.isPending ? (
-                                            <>
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                Saving...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <CheckCircle2 className="mr-2 h-4 w-4" />
-                                                Save Changes
-                                            </>
-                                        )}
-                                    </Button>
+                                    <StatusButton
+                                        status={saveProfileAction.status}
+                                        onClick={saveProfileAction.execute}
+                                        labels={{ idle: "Save Changes", loading: "Saving", success: "Saved" }}
+                                    />
                                 </div>
                             )}
                         </div>
@@ -693,7 +685,7 @@ export default function ManagerProfileSettings() {
                                                             size="sm"
                                                             onClick={() => handleSaveLocationContact(location.id)}
                                                             disabled={updateLocationContactMutation.isPending}
-                                                            className="w-full h-8 text-xs bg-teal-600 hover:bg-teal-700"
+                                                            className="w-full h-8 text-xs"
                                                         >
                                                             {updateLocationContactMutation.isPending ? (
                                                                 <Loader2 className="h-3 w-3 animate-spin mr-1" />

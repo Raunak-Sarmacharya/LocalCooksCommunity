@@ -554,7 +554,7 @@ export default function KitchenApplicationCard({
               {app.status === 'approved' && currentStep >= 3 && (
                 <Button
                   size="sm"
-                  className="bg-blue-600 hover:bg-blue-700"
+                  
                   onClick={() => onBookKitchen(app.locationId, app.location?.name || 'Kitchen', app.location?.address)}
                 >
                   <Calendar className="h-4 w-4 mr-1" />

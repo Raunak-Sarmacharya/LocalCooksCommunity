@@ -4,7 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
@@ -231,27 +232,18 @@ function KitchenPricingContent({
               {pricing.pricingModel === 'hourly' ? 'Hourly Rate' :
                 pricing.pricingModel === 'daily' ? 'Daily Rate' : 'Weekly Rate'} ({pricing.currency})
             </Label>
-            <div className="mt-2 relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <Input
-                id="hourlyRate"
-                type="number"
-                step="0.01"
-                min="0"
-                value={pricing.hourlyRate === null ? '' : pricing.hourlyRate}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setPricing({
-                    ...pricing,
-                    hourlyRate: value === '' ? null : parseFloat(value),
-                  });
-                }}
-                placeholder="0.00"
-                className="pl-9"
-              />
-            </div>
+            <CurrencyInput
+              id="hourlyRate"
+              value={pricing.hourlyRate === null ? '' : String(pricing.hourlyRate)}
+              onValueChange={(val) => {
+                setPricing({
+                  ...pricing,
+                  hourlyRate: val === '' ? null : parseFloat(val),
+                });
+              }}
+              placeholder="0.00"
+              className="mt-2"
+            />
             <p className="text-xs text-muted-foreground mt-1">
               {pricing.pricingModel === 'hourly'
                 ? 'Amount charged per hour'
@@ -265,24 +257,20 @@ function KitchenPricingContent({
           {/* Tax Rate */}
           <div>
             <Label htmlFor="taxRatePercent">Tax Rate (%)</Label>
-            <div className="mt-2 relative">
-                <Input
-                  id="taxRatePercent"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
-                  value={pricing.taxRatePercent === null ? '' : pricing.taxRatePercent}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setPricing({
-                      ...pricing,
-                      taxRatePercent: value === '' ? null : parseFloat(value),
-                    });
-                  }}
-                  placeholder="e.g. 13"
-                />
-            </div>
+            <NumericInput
+              id="taxRatePercent"
+              allowDecimals
+              suffix="%"
+              value={pricing.taxRatePercent === null ? '' : String(pricing.taxRatePercent)}
+              onValueChange={(val) => {
+                setPricing({
+                  ...pricing,
+                  taxRatePercent: val === '' ? null : parseFloat(val),
+                });
+              }}
+              placeholder="e.g. 13"
+              className="mt-2"
+            />
              <p className="text-xs text-muted-foreground mt-1">
                Percentage tax to apply to bookings (e.g., GST/HST)
              </p>

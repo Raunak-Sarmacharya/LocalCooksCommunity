@@ -293,7 +293,7 @@ export default function ManagerRevenueDashboard({
       </Card>
 
       {/* Revenue Metrics */}
-      <RevenueMetricCards metrics={metrics} isLoading={isLoadingMetrics} />
+      <RevenueMetricCards metrics={metrics} isLoading={isLoadingMetrics} transactions={transactionsData?.transactions} />
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

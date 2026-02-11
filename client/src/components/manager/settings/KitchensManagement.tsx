@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChefHat, Plus, Trash2, Upload, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { StatusButton } from '@/components/ui/status-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -481,16 +482,11 @@ export default function KitchensManagement({ location }: KitchensManagementProps
               />
             </div>
             <div className="flex gap-2">
-              <Button onClick={handleCreateKitchen} disabled={isCreatingKitchen}>
-                {isCreatingKitchen ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  'Create Kitchen'
-                )}
-              </Button>
+              <StatusButton
+                onClick={handleCreateKitchen}
+                status={isCreatingKitchen ? "loading" : "idle"}
+                labels={{ idle: "Create Kitchen", loading: "Creating", success: "Created" }}
+              />
               <Button variant="outline" onClick={() => setShowCreateKitchen(false)}>
                 Cancel
               </Button>

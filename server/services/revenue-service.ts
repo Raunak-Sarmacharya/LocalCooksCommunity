@@ -1216,7 +1216,7 @@ export async function getTransactionHistory(
         serviceFee: ptServiceFee,
         platformFee: ptServiceFee,
         taxAmount: taxCents,
-        taxRatePercent: taxRatePercent,
+        taxRatePercent: isDamageClaim ? 0 : taxRatePercent, // Tax rate percentage applied (0 for damage claims - reimbursements, not revenue)
         stripeFee: stripeFee, // Actual Stripe processing fee (from Stripe API or estimated)
         managerRevenue: ptManagerRevenue || ptAmount,
         netRevenue: netRevenue,

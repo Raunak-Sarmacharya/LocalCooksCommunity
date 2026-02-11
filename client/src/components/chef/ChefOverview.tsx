@@ -306,7 +306,7 @@ export function ChefOverview({
                 </Button>
                 <Button
                   variant="outline"
-                  className="flex-1 group-hover:bg-blue-600 group-hover:text-white transition-colors"
+                  className="flex-1 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
                   onClick={() => (window.location.href = "/compare-kitchens")}
                 >
                   Discover More
@@ -315,7 +315,8 @@ export function ChefOverview({
               </>
             ) : (
               <Button
-                className="w-full bg-blue-600 hover:bg-blue-700"
+                variant="secondary"
+                className="w-full"
                 onClick={() => (window.location.href = "/compare-kitchens")}
               >
                 Explore Kitchens
@@ -344,7 +345,7 @@ export function ChefOverview({
             {!microlearningCompletion?.confirmed && (
               <Button
                 variant="outline"
-                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-green-50 hover:border-green-200"
+                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
                 asChild
               >
                 <Link href="/microlearning/overview">
@@ -374,7 +375,7 @@ export function ChefOverview({
             {kitchenApplications.length === 0 && (
               <Button
                 variant="outline"
-                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-blue-50 hover:border-blue-200"
+                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
                 onClick={() => (window.location.href = "/compare-kitchens")}
               >
                 <Building className="h-5 w-5 text-blue-600" />
@@ -389,7 +390,7 @@ export function ChefOverview({
               kitchenApplications.some((a) => a.status === "approved") && (
                 <Button
                   variant="outline"
-                  className="h-auto py-4 px-4 justify-start gap-3 hover:bg-amber-50 hover:border-amber-200"
+                  className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
                   onClick={() => onNavigate("bookings")}
                 >
                   <Calendar className="h-5 w-5 text-amber-600" />
@@ -402,7 +403,7 @@ export function ChefOverview({
 
             <Button
               variant="outline"
-              className="h-auto py-4 px-4 justify-start gap-3 hover:bg-purple-50 hover:border-purple-200"
+              className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
               onClick={() => onNavigate("messages")}
             >
               <MessageCircle className="h-5 w-5 text-purple-600" />

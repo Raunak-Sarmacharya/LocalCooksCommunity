@@ -45,8 +45,10 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import ManagerProfileSettings from "@/components/manager/ManagerProfileSettings";
+import { useManagerOnboarding } from "@/components/manager/onboarding/ManagerOnboardingContext";
 import { OnboardingStatusBanner } from "@/components/manager/OnboardingStatusBanner";
 import {
   AlertDialog,
@@ -160,6 +162,7 @@ export default function ManagerBookingDashboard() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation(); // [NEW] Used for setup navigation
   const { locations, isLoadingLocations } = useManagerDashboard();
+  const { startNewLocation } = useManagerOnboarding();
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
 
   // Tab state - check URL params first, then default to 'overview'
@@ -173,7 +176,7 @@ export default function ManagerBookingDashboard() {
     return 'overview';
   });
 
-  // Handle locationId from URL for direct navigation to views like application-requirements
+  // Handle locationId from URL for direct navigation (e.g., returning from setup, notification links)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const locationIdFromUrl = params.get('locationId');
@@ -183,6 +186,10 @@ export default function ManagerBookingDashboard() {
       if (foundLocation) {
         setSelectedLocation(foundLocation);
       }
+      // Clean up URL param after use — it's a one-time signal, not persistent state
+      params.delete('locationId');
+      const remaining = params.toString();
+      window.history.replaceState(null, '', window.location.pathname + (remaining ? `?${remaining}` : ''));
     }
   }, [locations, selectedLocation]);
 
@@ -529,9 +536,10 @@ export default function ManagerBookingDashboard() {
 
 
 
-  /* New Setup Handler */
+  /* New Setup Handler — pass selected locationId so setup opens the correct location */
   const handleContinueSetup = () => {
-    setLocation('/manager/setup');
+    const locId = selectedLocation?.id;
+    setLocation(locId ? `/manager/setup?locationId=${locId}` : '/manager/setup');
   };
 
   return (
@@ -541,6 +549,7 @@ export default function ManagerBookingDashboard() {
       locations={locations}
       selectedLocation={selectedLocation}
       onLocationChange={(loc) => setSelectedLocation(loc as Location)}
+      onCreateLocation={startNewLocation}
     >
       {/* Onboarding Status Banners */}
       <OnboardingStatusBanner
@@ -674,7 +683,7 @@ export default function ManagerBookingDashboard() {
         <ManagerLocationsPage
           locations={locations}
           isLoading={isLoadingLocations}
-          onCreateLocation={() => {}}
+          onCreateLocation={startNewLocation}
           onSelectLocation={(loc) => {
             setSelectedLocation(loc as Location);
             setActiveView('overview');
@@ -718,8 +727,7 @@ export default function ManagerBookingDashboard() {
       {activeView === 'settings-booking-rules' && selectedLocation && (
         <BookingRulesSettings
           location={locationDetails || selectedLocation}
-          onSave={(updates) => updateLocationSettings.mutate(updates)}
-          isSaving={updateLocationSettings.isPending}
+          onSave={(updates) => updateLocationSettings.mutateAsync(updates)}
         />
       )}
 
@@ -748,8 +756,7 @@ export default function ManagerBookingDashboard() {
       {activeView === 'settings-location' && selectedLocation && (
         <LocationSettings
           location={locationDetails || selectedLocation}
-          onSave={(updates) => updateLocationSettings.mutate(updates)}
-          isSaving={updateLocationSettings.isPending}
+          onSave={(updates) => updateLocationSettings.mutateAsync(updates)}
         />
       )}
 
@@ -786,8 +793,7 @@ export default function ManagerBookingDashboard() {
       {activeView === 'notifications' && selectedLocation && (
         <NotificationsSettings
           location={locationDetails || selectedLocation}
-          onSave={(updates) => updateLocationSettings.mutate(updates)}
-          isSaving={updateLocationSettings.isPending}
+          onSave={(updates) => updateLocationSettings.mutateAsync(updates)}
         />
       )}
 
@@ -1885,7 +1891,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                         const event = new CustomEvent('open-onboarding-from-help');
                         window.dispatchEvent(event);
                       }}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      className="gap-2"
                     >
                       <HelpCircle className="h-4 w-4" />
                       Open Onboarding Wizard
@@ -2057,7 +2063,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                                 }
                               }}
                               disabled={!licenseExpiryDate}
-                              className="bg-orange-600 hover:bg-orange-700 text-white"
                             >
                               <Save className="h-4 w-4 mr-1" />
                               Save Expiry Date
@@ -2462,7 +2467,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       <Button
                         onClick={() => handleSave()}
                         disabled={isUpdating}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white"
                       >
                         {isUpdating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                         Save Landing Content
@@ -2491,7 +2495,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       <Button
                         size="sm"
                         onClick={() => setShowCreateKitchen(true)}
-                        className="bg-amber-600 hover:bg-amber-700 text-white"
+
                       >
                         <Plus className="h-4 w-4 mr-1" />
                         Add Kitchen
@@ -2587,7 +2591,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                               }
                             }}
                             disabled={isCreatingKitchen}
-                            className="bg-amber-600 hover:bg-amber-700 text-white"
                           >
                             {isCreatingKitchen ? (
                               <>
@@ -2628,7 +2631,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       <Button
                         size="sm"
                         onClick={() => setShowCreateKitchen(true)}
-                        className="bg-amber-600 hover:bg-amber-700 text-white"
+
                       >
                         <Plus className="h-4 w-4 mr-1" />
                         Create Your First Kitchen
@@ -2890,14 +2893,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   </div>
 
                   <div className="flex gap-3 pt-2">
-                    <button
+                    <Button
                       onClick={() => handleSave()}
                       disabled={isUpdating}
-                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <Save className="h-4 w-4" />
                       Save Changes
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -2922,13 +2924,11 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     <label className="block text-sm font-medium text-gray-900 mb-2">
                       Cancellation Window (Hours)
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="168"
-                      value={cancellationHours}
-                      onChange={(e) => setCancellationHours(parseInt(e.target.value) || 0)}
-                      className="w-full max-w-xs border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    <NumericInput
+                      suffix="hours"
+                      value={String(cancellationHours)}
+                      onValueChange={(val) => setCancellationHours(parseInt(val) || 0)}
+                      className="max-w-xs"
                     />
                     <p className="text-xs text-gray-600 mt-1">
                       Minimum hours before booking time that cancellation is allowed (0 = no restrictions)
@@ -2952,14 +2952,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   </div>
 
                   <div className="flex gap-3 pt-2">
-                    <button
+                    <Button
                       onClick={() => handleSave()}
                       disabled={isUpdating}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <Save className="h-4 w-4" />
                       Save Changes
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -2981,13 +2980,11 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     <label className="block text-sm font-medium text-gray-900 mb-2">
                       Default Hours per Chef per Day
                     </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="24"
-                      value={dailyBookingLimit}
-                      onChange={(e) => setDailyBookingLimit(parseInt(e.target.value) || 2)}
-                      className="w-full max-w-xs border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    <NumericInput
+                      suffix="hours"
+                      value={String(dailyBookingLimit)}
+                      onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 2)}
+                      className="max-w-xs"
                     />
                     <p className="text-xs text-gray-600 mt-1">
                       Maximum hours a chef can book in a single day across all kitchens at this location (1-24 hours)
@@ -2999,14 +2996,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   </div>
 
                   <div className="flex gap-3 pt-2">
-                    <button
+                    <Button
                       onClick={() => handleSaveDailyBookingLimit()}
                       disabled={isUpdating}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <Save className="h-4 w-4" />
                       Save Changes
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -3028,17 +3024,14 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     <label className="block text-sm font-medium text-gray-900 mb-2">
                       Minimum Hours in Advance
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="168"
-                      step="1"
-                      value={minimumBookingWindowHours}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        setMinimumBookingWindowHours(isNaN(val) ? 0 : Math.min(168, Math.max(0, val)));
+                    <NumericInput
+                      suffix="hours"
+                      value={String(minimumBookingWindowHours)}
+                      onValueChange={(val) => {
+                        const parsed = parseInt(val, 10);
+                        setMinimumBookingWindowHours(isNaN(parsed) ? 0 : Math.min(168, Math.max(0, parsed)));
                       }}
-                      className="w-full max-w-xs border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      className="max-w-xs"
                     />
                     <p className="text-xs text-gray-600 mt-1">
                       Chefs must book at least this many hours before the booking time (0 = no restrictions, default: 1 hour)
@@ -3050,14 +3043,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   </div>
 
                   <div className="flex gap-3 pt-2">
-                    <button
+                    <Button
                       onClick={() => handleSave()}
                       disabled={isUpdating}
-                      className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <Save className="h-4 w-4" />
                       Save All Settings
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -3087,17 +3079,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           <label className="block text-sm font-medium text-gray-900 mb-2">
                             Grace Period (Days)
                           </label>
-                          <input
-                            type="number"
-                            min="0"
-                            max="14"
-                            value={overstayGracePeriodDays ?? ''}
-                            onChange={(e) => {
-                              const val = e.target.value;
+                          <NumericInput
+                            suffix="days"
+                            value={overstayGracePeriodDays != null ? String(overstayGracePeriodDays) : ''}
+                            onValueChange={(val) => {
                               setOverstayGracePeriodDays(val === '' ? null : parseInt(val));
                             }}
                             placeholder="Use platform default"
-                            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
                           />
                           <p className="text-xs text-gray-600 mt-1">
                             Days before penalties apply (0-14). Leave empty to use platform default.
@@ -3108,18 +3096,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           <label className="block text-sm font-medium text-gray-900 mb-2">
                             Penalty Rate (%)
                           </label>
-                          <input
-                            type="number"
-                            min="0"
-                            max="50"
-                            step="1"
-                            value={overstayPenaltyRate ?? ''}
-                            onChange={(e) => {
-                              const val = e.target.value;
+                          <NumericInput
+                            suffix="%"
+                            value={overstayPenaltyRate != null ? String(overstayPenaltyRate) : ''}
+                            onValueChange={(val) => {
                               setOverstayPenaltyRate(val === '' ? null : parseInt(val));
                             }}
                             placeholder="Use platform default"
-                            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
                           />
                           <p className="text-xs text-gray-600 mt-1">
                             % of daily rate per day (0-50%). Leave empty to use platform default.
@@ -3130,17 +3113,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           <label className="block text-sm font-medium text-gray-900 mb-2">
                             Max Penalty Days
                           </label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="90"
-                            value={overstayMaxPenaltyDays ?? ''}
-                            onChange={(e) => {
-                              const val = e.target.value;
+                          <NumericInput
+                            suffix="days"
+                            value={overstayMaxPenaltyDays != null ? String(overstayMaxPenaltyDays) : ''}
+                            onValueChange={(val) => {
                               setOverstayMaxPenaltyDays(val === '' ? null : parseInt(val));
                             }}
                             placeholder="Use platform default"
-                            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
                           />
                           <p className="text-xs text-gray-600 mt-1">
                             Max days to charge penalties (1-90). Leave empty to use platform default.
@@ -3165,14 +3144,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       </div>
 
                       <div className="flex gap-3 pt-2">
-                        <button
+                        <Button
                           onClick={() => handleSaveOverstayPenaltyDefaults()}
                           disabled={isUpdating}
-                          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           <Save className="h-4 w-4" />
                           Save Penalty Defaults
-                        </button>
+                        </Button>
                       </div>
                     </>
                   )}
@@ -3218,14 +3196,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   </div>
 
                   <div className="flex gap-3 pt-2">
-                    <button
+                    <Button
                       onClick={() => handleSave()}
                       disabled={isUpdating}
-                      className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <Save className="h-4 w-4" />
                       Save Changes
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>

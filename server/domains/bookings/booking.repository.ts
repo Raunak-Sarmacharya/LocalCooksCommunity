@@ -149,6 +149,9 @@ export class BookingRepository {
                 isAuthorizedHold,       // true when payment is held but not yet captured
                 originalAuthorizedAmount, // Original auth amount for voided display context
                 refundAmount,           // Actual refund amount in cents (for display)
+                // ── Tax-inclusive amount from PT (what chef actually paid/authorized) ──
+                // kb.total_price is pre-tax subtotal; PT.amount is the tax-inclusive charge
+                chargedAmount: rawTransactionAmount, // null if no PT record
             };
         });
     }

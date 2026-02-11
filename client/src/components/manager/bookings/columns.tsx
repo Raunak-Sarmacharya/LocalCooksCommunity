@@ -395,12 +395,14 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
             // Fall back to booking totalPrice if no transaction data
             const displayAmount = transactionAmount ?? row.original.totalPrice ?? 0;
             
-            // ENTERPRISE STANDARD: Use values calculated EXACTLY like transaction history
-            // Tax = kb.total_price * tax_rate_percent / 100 (calculated in booking.repository.ts)
-            // Net = transactionAmount - taxAmount - stripeFee (calculated in booking.repository.ts)
+            // Reverse-calculate correct tax from tax-inclusive total
+            // Server's taxAmount is wrong (calculated on total instead of base amount)
+            // Formula: base = round(total / (1 + rate/100)), tax = total - base
             const taxRatePercent = row.original.taxRatePercent ?? 0;
-            const taxAmount = row.original.taxAmount ?? 0; // From API (same calc as transaction history)
-            const netAmount = row.original.netRevenue ?? (displayAmount - taxAmount - stripeFee);
+            const taxAmount = taxRatePercent > 0
+                ? displayAmount - Math.round(displayAmount / (1 + taxRatePercent / 100))
+                : 0;
+            const netAmount = displayAmount - taxAmount - stripeFee;
             
             const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 

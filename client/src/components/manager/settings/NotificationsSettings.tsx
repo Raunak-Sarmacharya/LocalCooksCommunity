@@ -3,9 +3,10 @@
  * Manages email and phone notification preferences
  */
 
-import { useState, useEffect } from 'react';
-import { Mail, Phone, Save, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { useState, useEffect, useCallback } from 'react';
+import { Mail, Phone } from 'lucide-react';
+import { StatusButton } from '@/components/ui/status-button';
+import { useStatusButton } from '@/hooks/use-status-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,11 +20,10 @@ interface Location {
 
 interface NotificationsSettingsProps {
   location: Location;
-  onSave: (updates: any) => void;
-  isSaving: boolean;
+  onSave: (updates: any) => Promise<unknown>;
 }
 
-export default function NotificationsSettings({ location, onSave, isSaving }: NotificationsSettingsProps) {
+export default function NotificationsSettings({ location, onSave }: NotificationsSettingsProps) {
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
   const [notificationPhone, setNotificationPhone] = useState(location.notificationPhone || '');
 
@@ -32,13 +32,15 @@ export default function NotificationsSettings({ location, onSave, isSaving }: No
     setNotificationPhone(location.notificationPhone || '');
   }, [location]);
 
-  const handleSave = () => {
-    onSave({
-      locationId: location.id,
-      notificationEmail: notificationEmail || undefined,
-      notificationPhone: notificationPhone || undefined,
-    });
-  };
+  const saveAction = useStatusButton(
+    useCallback(async () => {
+      await onSave({
+        locationId: location.id,
+        notificationEmail: notificationEmail || undefined,
+        notificationPhone: notificationPhone || undefined,
+      });
+    }, [onSave, location.id, notificationEmail, notificationPhone]),
+  );
 
   return (
     <div className="space-y-6">
@@ -108,19 +110,11 @@ export default function NotificationsSettings({ location, onSave, isSaving }: No
             </ul>
           </div>
 
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="mr-2 h-4 w-4" />
-                Save Notification Settings
-              </>
-            )}
-          </Button>
+          <StatusButton
+            status={saveAction.status}
+            onClick={saveAction.execute}
+            labels={{ idle: "Save Notification Settings", loading: "Saving", success: "Saved" }}
+          />
         </CardContent>
       </Card>
     </div>

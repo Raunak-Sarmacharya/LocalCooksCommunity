@@ -87,7 +87,8 @@ export default function OutstandingDuesBanner() {
           {items.length === 1 ? (
             <Button
               size="sm"
-              className="bg-red-600 hover:bg-red-700 text-white shadow-sm"
+              variant="destructive"
+              className="shadow-sm"
               onClick={() => handlePay(items[0])}
               disabled={payingItemId !== null}
             >
@@ -102,7 +103,7 @@ export default function OutstandingDuesBanner() {
             <Button
               size="sm"
               variant="ghost"
-              className="text-red-700 hover:bg-red-100"
+              className="text-destructive hover:bg-destructive/10"
               onClick={() => setExpanded(!expanded)}
             >
               {expanded ? 'Hide' : 'View All'}
@@ -140,7 +141,8 @@ export default function OutstandingDuesBanner() {
                   </span>
                   <Button
                     size="sm"
-                    className="bg-red-600 hover:bg-red-700 text-white text-xs h-8 px-3"
+                    variant="destructive"
+                    className="text-xs h-8 px-3"
                     onClick={() => handlePay(item)}
                     disabled={payingItemId !== null}
                   >

@@ -3,7 +3,18 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-  ({ className, type, ...props }, ref) => {
+  ({ className, type, onWheel, ...props }, ref) => {
+    // Prevent scroll hijacking on number inputs — blur on wheel to stop value changes
+    const handleWheel = React.useCallback(
+      (e: React.WheelEvent<HTMLInputElement>) => {
+        if (type === "number") {
+          (e.target as HTMLInputElement).blur()
+        }
+        onWheel?.(e)
+      },
+      [type, onWheel]
+    )
+
     return (
       <input
         type={type}
@@ -12,6 +23,7 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           className
         )}
         ref={ref}
+        onWheel={handleWheel}
         {...props}
       />
     )

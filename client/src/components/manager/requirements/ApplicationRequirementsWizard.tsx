@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { StatusButton } from '@/components/ui/status-button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
@@ -408,21 +409,12 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
               </p>
             </div>
           </div>
-          <Button
+          <StatusButton
             onClick={handleSave}
-            disabled={saveMutation.isPending}
+            status={saveMutation.isPending ? "loading" : "idle"}
             size="sm"
-            className="bg-amber-600 hover:bg-amber-700 text-white"
-          >
-            {saveMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-1.5" />
-                Save Now
-              </>
-            )}
-          </Button>
+            labels={{ idle: "Save Now", loading: "Saving", success: "Saved" }}
+          />
         </div>
       )}
 
@@ -465,26 +457,12 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
           </Button>
 
           <div className="flex items-center gap-3">
-            <Button
+            <StatusButton
               onClick={handleSave}
-              disabled={saveMutation.isPending}
+              status={saveMutation.isPending ? "loading" : "idle"}
               variant={hasUnsavedChanges ? 'default' : 'outline'}
-              className={cn(
-                hasUnsavedChanges && 'bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white'
-              )}
-            >
-              {saveMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  {hasUnsavedChanges ? 'Save Changes' : 'Save'}
-                </>
-              )}
-            </Button>
+              labels={{ idle: hasUnsavedChanges ? "Save Changes" : "Save", loading: "Saving", success: "Saved" }}
+            />
 
             {!isLastStep && (
               <Button

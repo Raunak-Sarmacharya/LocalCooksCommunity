@@ -1015,7 +1015,8 @@ export default function ApplicantDashboard() {
                 <Button
                   size="lg"
                   onClick={() => setActiveTab("discover-kitchens")}
-                  className="w-full rounded-xl shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/30 transition-all bg-blue-600 hover:bg-blue-700"
+                  variant="secondary"
+                  className="w-full rounded-xl shadow-lg shadow-primary/10 group-hover:shadow-primary/20 transition-all"
                 >
                   <Building className="h-5 w-5 mr-2" />
                   Discover Kitchens

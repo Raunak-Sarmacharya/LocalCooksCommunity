@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import {
   CheckCircle2,
@@ -1093,19 +1093,13 @@ function BookingActionSheetContent({
                   <div className="space-y-1.5">
                     <Label className="text-xs text-amber-700">Custom refund amount</Label>
                     <div className="flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max={(refundCalc.maxRefundable / 100).toFixed(2)}
-                          value={customRefundInput}
-                          onChange={(e) => setCustomRefundInput(e.target.value)}
-                          className="h-8 pl-7 text-sm font-mono"
-                          placeholder="0.00"
-                        />
-                      </div>
+                      <CurrencyInput
+                        size="sm"
+                        value={customRefundInput}
+                        onValueChange={setCustomRefundInput}
+                        placeholder="0.00"
+                        className="flex-1"
+                      />
                       <Button
                         variant="ghost"
                         size="sm"

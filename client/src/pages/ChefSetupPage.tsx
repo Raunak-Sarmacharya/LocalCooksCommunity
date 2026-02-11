@@ -537,7 +537,7 @@ function BrowseKitchensStep({ hasApplications }: { hasApplications: boolean }) {
             <p className="text-muted-foreground">
               Explore our network of commercial kitchens and apply for access. Find the perfect space for your culinary needs.
             </p>
-            <Button asChild className="w-full bg-blue-600 hover:bg-blue-700">
+            <Button asChild variant="secondary" className="w-full">
               <Link href="/compare-kitchens">Browse Kitchens</Link>
             </Button>
           </div>

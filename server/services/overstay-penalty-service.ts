@@ -1637,6 +1637,7 @@ export async function getChefAllPenalties(chefId: number) {
       storageName: storageListings.name,
       storageType: storageListings.storageType,
       kitchenName: kitchens.name,
+      kitchenTaxRatePercent: kitchens.taxRatePercent,
       bookingEndDate: storageBookings.endDate,
     })
     .from(storageOverstayRecords)
@@ -1674,12 +1675,19 @@ export async function getChefAllPenalties(chefId: number) {
       r.status === 'resolved' ||
       (!failureStatuses.includes(r.status) && !!r.resolvedAt);
     
+    const baseCents = r.finalPenaltyCents || r.calculatedPenaltyCents || 0;
+    const taxRate = parseFloat(String(r.kitchenTaxRatePercent || 0));
+    const taxCents = Math.round((baseCents * taxRate) / 100);
+    
     return {
       ...r,
       storageName: r.storageName || 'Storage',
       storageType: r.storageType || 'dry',
       kitchenName: r.kitchenName || 'Kitchen',
-      penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0,
+      kitchenTaxRatePercent: taxRate,
+      penaltyAmountCents: baseCents,
+      penaltyTaxCents: taxCents,
+      penaltyTotalCents: baseCents + taxCents,
       isResolved,
       isPaid,
     };
@@ -2137,6 +2145,7 @@ export async function getChefUnpaidPenalties(chefId: number) {
       storageName: storageListings.name,
       storageType: storageListings.storageType,
       kitchenName: kitchens.name,
+      kitchenTaxRatePercent: kitchens.taxRatePercent,
       bookingEndDate: storageBookings.endDate,
     })
     .from(storageOverstayRecords)
@@ -2151,14 +2160,22 @@ export async function getChefUnpaidPenalties(chefId: number) {
     )
     .orderBy(desc(storageOverstayRecords.detectedAt));
 
-  return records.map(r => ({
-    ...r,
-    storageName: r.storageName || 'Storage',
-    storageType: r.storageType || 'dry',
-    kitchenName: r.kitchenName || 'Kitchen',
-    penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0,
-    requiresImmediatePayment: ['penalty_approved', 'charge_failed', 'escalated'].includes(r.status),
-  }));
+  return records.map(r => {
+    const baseCents = r.finalPenaltyCents || r.calculatedPenaltyCents || 0;
+    const taxRate = parseFloat(String(r.kitchenTaxRatePercent || 0));
+    const taxCents = Math.round((baseCents * taxRate) / 100);
+    return {
+      ...r,
+      storageName: r.storageName || 'Storage',
+      storageType: r.storageType || 'dry',
+      kitchenName: r.kitchenName || 'Kitchen',
+      kitchenTaxRatePercent: taxRate,
+      penaltyAmountCents: baseCents,
+      penaltyTaxCents: taxCents,
+      penaltyTotalCents: baseCents + taxCents,
+      requiresImmediatePayment: ['penalty_approved', 'charge_failed', 'escalated'].includes(r.status),
+    };
+  });
 }
 
 // ============================================================================

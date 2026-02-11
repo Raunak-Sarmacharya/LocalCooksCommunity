@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { CheckCircle, Loader2, Plus, ChefHat, Edit2, ChevronDown, ChevronUp, Image, DollarSign, Clock, Sparkles, Info } from "lucide-react";
+import { CheckCircle, Plus, ChefHat, Edit2, ChevronDown, ChevronUp, Image, DollarSign, Clock, Sparkles, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -204,7 +205,7 @@ export default function CreateKitchenStep() {
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto">
               Set up your first kitchen to start receiving booking requests from chefs in your area.
             </p>
-            <Button onClick={() => setShowCreate(true)} size="lg" className="bg-[#F51042] hover:bg-[#d90e39]">
+            <Button onClick={() => setShowCreate(true)} size="lg">
               <Plus className="h-4 w-4 mr-2" /> Create Kitchen Space
             </Button>
           </CardContent>
@@ -333,23 +334,13 @@ export default function CreateKitchenStep() {
 
             {/* Action Buttons */}
             <div className="flex gap-3 pt-2">
-              <Button
+              <StatusButton
+                status={isCreating ? "loading" : "idle"}
                 onClick={() => createKitchen()}
-                disabled={isCreating || !data.name || !data.hourlyRate}
-                className="flex-1 bg-[#F51042] hover:bg-[#d90e39]"
-              >
-                {isCreating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Create Kitchen
-                  </>
-                )}
-              </Button>
+                disabled={!data.name || !data.hourlyRate}
+                className="flex-1"
+                labels={{ idle: "Create Kitchen", loading: "Creating", success: "Created" }}
+              />
               <Button 
                 variant="outline" 
                 onClick={() => setShowCreate(false)} 

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Info, Plus, CheckCircle, Loader2, Search, Package, Thermometer, Snowflake, Check, PlusCircle, SearchX, ChevronDown, ChevronUp, X, DollarSign, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -62,6 +63,7 @@ export default function StorageListingsStep() {
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['dry', 'cold', 'freezer']);
   const [selectedStorage, setSelectedStorage] = useState<Record<string, SelectedStorage>>({});
   const [isCreating, setIsCreating] = useState(false);
+  const [activeCreatingAction, setActiveCreatingAction] = useState<'custom' | 'bulk' | null>(null);
 
   const selectedStorageCount = Object.keys(selectedStorage).length;
 
@@ -432,10 +434,14 @@ export default function StorageListingsStep() {
                                   </div>
                                 </div>
                               </div>
-                              <Button onClick={saveCustomStorage} disabled={isCreating || !customStorage.dailyRate} className="w-full h-8 text-xs">
-                                {isCreating ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <PlusCircle className="h-3 w-3 mr-1" />}
-                                Add Custom Storage
-                              </Button>
+                              <StatusButton
+                                onClick={() => { setActiveCreatingAction('custom'); saveCustomStorage(); }}
+                                status={activeCreatingAction === 'custom' && isCreating ? "loading" : "idle"}
+                                disabled={(isCreating && activeCreatingAction !== 'custom') || !customStorage.dailyRate}
+                                className="w-full h-8 text-xs"
+                                size="sm"
+                                labels={{ idle: "Add Custom Storage", loading: "Adding", success: "Added" }}
+                              />
                             </CardContent>
                           </Card>
                         )}
@@ -586,21 +592,14 @@ export default function StorageListingsStep() {
                     )}
 
                     {selectedStorageCount > 0 && (
-                      <Button 
+                      <StatusButton 
                         className="w-full mt-3" 
                         size="sm"
-                        onClick={saveSelectedStorage}
-                        disabled={isCreating}
-                      >
-                        {isCreating ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <>
-                            <Plus className="h-4 w-4 mr-1" />
-                            Add {selectedStorageCount} Storage
-                          </>
-                        )}
-                      </Button>
+                        onClick={() => { setActiveCreatingAction('bulk'); saveSelectedStorage(); }}
+                        status={activeCreatingAction === 'bulk' && isCreating ? "loading" : "idle"}
+                        disabled={isCreating && activeCreatingAction !== 'bulk'}
+                        labels={{ idle: `Add ${selectedStorageCount} Storage`, loading: "Adding", success: "Added" }}
+                      />
                     )}
                   </div>
                 </div>

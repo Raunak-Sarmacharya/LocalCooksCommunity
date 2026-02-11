@@ -1087,12 +1087,12 @@ export default function BookingControlPanel({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-2">
                             {getStatusBadge(storageBooking.status)}
-                            {isExpiringSoon && (
+                            {storageBooking.status === 'confirmed' && isExpiringSoon && (
                               <span className="text-xs text-amber-700 font-medium bg-amber-100 px-2 py-0.5 rounded">
                                 Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}
                               </span>
                             )}
-                            {isExpired && !storageBooking.paidPenalty && (
+                            {storageBooking.status === 'confirmed' && isExpired && !storageBooking.paidPenalty && (
                               <span className="text-xs text-red-700 font-medium bg-red-100 px-2 py-0.5 rounded">
                                 Expired {Math.abs(daysUntilExpiry)} day{Math.abs(daysUntilExpiry) !== 1 ? 's' : ''} ago
                               </span>
@@ -1209,7 +1209,7 @@ export default function BookingControlPanel({
                           </div>
                         )}
 
-                        {isExpiringSoon && (
+                        {storageBooking.status === 'confirmed' && isExpiringSoon && (
                           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                             <p className="text-xs text-amber-800">
                               <strong>⚠️ Expiring Soon:</strong> Your storage expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}. 
@@ -1218,7 +1218,7 @@ export default function BookingControlPanel({
                           </div>
                         )}
 
-                        {isExpired && !storageBooking.paidPenalty && (
+                        {storageBooking.status === 'confirmed' && isExpired && !storageBooking.paidPenalty && (
                           <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                             <p className="text-xs text-red-800">
                               <strong>⚠️ Expired:</strong> Your storage expired {Math.abs(daysUntilExpiry)} day{Math.abs(daysUntilExpiry) !== 1 ? 's' : ''} ago. 

@@ -42,6 +42,7 @@ export default function CompletionSummaryStep() {
     const [isCompletingOnboarding, setIsCompletingOnboarding] = useState(false);
     const {
         selectedLocation,
+        selectedLocationId,
         kitchens,
         setIsOpen,
         isStripeOnboardingComplete,
@@ -225,8 +226,9 @@ export default function CompletionSummaryStep() {
         }
 
         setIsOpen(false);
-        setLocation('/manager/dashboard');
-    }, [isOnboardingComplete, setIsOpen, setLocation, queryClient]);
+        const locId = selectedLocationId || selectedLocation?.id;
+        setLocation(locId ? `/manager/dashboard?locationId=${locId}` : '/manager/dashboard');
+    }, [isOnboardingComplete, setIsOpen, setLocation, queryClient, selectedLocationId, selectedLocation]);
 
     return (
         <div className="animate-in fade-in duration-500">

@@ -1,11 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { updateProfile } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Save, User, Mail, Phone, Loader2, KeyRound } from "lucide-react";
+import { StatusButton } from "@/components/ui/status-button";
+import { useStatusButton } from "@/hooks/use-status-button";
+import { User, Mail, Phone, Loader2, KeyRound } from "lucide-react";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import ChangePassword from "@/components/auth/ChangePassword";
 
@@ -169,13 +171,15 @@ export default function ManagerProfile() {
     },
   });
 
-  const handleSave = () => {
-    updateProfileMutation.mutate({
-      username: username !== user?.username ? username : undefined,
-      displayName: displayName || undefined,
-      phone: phone || undefined,
-    });
-  };
+  const saveProfileAction = useStatusButton(
+    useCallback(async () => {
+      await updateProfileMutation.mutateAsync({
+        username: username !== user?.username ? username : undefined,
+        displayName: displayName || undefined,
+        phone: phone || undefined,
+      });
+    }, [updateProfileMutation, username, user?.username, displayName, phone]),
+  );
 
   if (isLoadingProfile || isLoadingDetails) {
     return (
@@ -291,23 +295,11 @@ export default function ManagerProfile() {
                 </div>
 
                 <div className="flex gap-3 pt-2">
-                  <Button
-                    onClick={handleSave}
-                    disabled={updateProfileMutation.isPending}
-                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {updateProfileMutation.isPending ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4" />
-                        Save Changes
-                      </>
-                    )}
-                  </Button>
+                  <StatusButton
+                    status={saveProfileAction.status}
+                    onClick={saveProfileAction.execute}
+                    labels={{ idle: "Save Changes", loading: "Saving", success: "Saved" }}
+                  />
                   <Button
                     onClick={() => {
                       setUsername(user.username || "");

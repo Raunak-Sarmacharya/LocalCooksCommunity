@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast, createBookingDateTime, getNowInTimezone } from "@/utils/timezone-utils";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { DataTable } from "@/components/ui/data-table";
@@ -1184,19 +1186,12 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                 {/* Refund Input with Real-time Preview */}
                 <div className="space-y-3">
                   <div className="space-y-2">
-                    <label htmlFor="refundAmount" className="text-sm font-medium">
-                      Refund Amount ($)
-                    </label>
-                    <input
+                    <Label htmlFor="refundAmount">Refund Amount</Label>
+                    <CurrencyInput
                       id="refundAmount"
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      max={((bookingToRefund?.refundableAmount || 0) / 100).toFixed(2)}
                       value={refundAmount}
-                      onChange={(e) => setRefundAmount(e.target.value)}
-                      className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      placeholder="Enter amount"
+                      onValueChange={setRefundAmount}
+                      placeholder="0.00"
                     />
                   </div>
                   

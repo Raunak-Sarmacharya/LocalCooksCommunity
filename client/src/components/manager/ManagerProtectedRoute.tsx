@@ -1,4 +1,5 @@
 import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -124,12 +125,11 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 mb-4">Authentication Error: {String(error)}</p>
-          <button 
+          <Button 
             onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
           >
             Retry
-          </button>
+          </Button>
         </div>
       </div>
     );

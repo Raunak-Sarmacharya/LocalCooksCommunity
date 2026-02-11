@@ -35,11 +35,12 @@ import {
     Banknote,
 } from "lucide-react"
 import { formatCurrency, formatPercent } from "@/lib/formatters"
-import type { RevenueMetrics } from "../types"
+import type { RevenueMetrics, Transaction } from "../types"
 
 interface RevenueMetricCardsProps {
     metrics: RevenueMetrics | null
     isLoading: boolean
+    transactions?: Transaction[]
 }
 
 function MetricCardSkeleton() {
@@ -154,7 +155,7 @@ interface StripeBalanceData {
     hasStripeAccount: boolean
 }
 
-export function RevenueMetricCards({ metrics, isLoading }: RevenueMetricCardsProps) {
+export function RevenueMetricCards({ metrics, isLoading, transactions }: RevenueMetricCardsProps) {
     // Fetch live Stripe balance for real-time payout data
     const { data: stripeBalance, isLoading: isLoadingBalance } = useQuery<StripeBalanceData>({
         queryKey: ['stripeBalance'],
@@ -201,11 +202,27 @@ export function RevenueMetricCards({ metrics, isLoading }: RevenueMetricCardsPro
         return null
     }
 
-    // Use the new fields - taxAmount is actual tax collected (not platform fee)
-    // Only show tax if explicitly set (don't fall back to platformFee which is service fee)
-    const taxAmount = metrics.taxAmount ?? 0
+    // Recalculate tax per-transaction using reverse-calculation from tax-inclusive totals
+    // This fixes the bug where server calculates tax on the total (tax-inclusive) instead of the base amount
     const stripeFee = metrics.stripeFee ?? 0
-    const netRevenue = metrics.netRevenue ?? (metrics.totalRevenue - taxAmount - stripeFee)
+    let taxAmount: number;
+    let netRevenue: number;
+    if (transactions && transactions.length > 0) {
+        // Per-transaction corrected tax: base = round(total / (1 + rate/100)), tax = total - base
+        taxAmount = transactions.reduce((sum, t) => {
+            const totalPrice = t.totalPrice || 0;
+            const taxRate = t.taxRatePercent || 0;
+            const correctTax = taxRate > 0
+                ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
+                : 0;
+            return sum + correctTax;
+        }, 0);
+        netRevenue = metrics.totalRevenue - taxAmount - stripeFee;
+    } else {
+        // Fallback: use server-provided values (best effort without per-transaction data)
+        taxAmount = metrics.taxAmount ?? 0;
+        netRevenue = metrics.netRevenue ?? (metrics.totalRevenue - taxAmount - stripeFee);
+    }
 
     return (
         <div className="space-y-4">

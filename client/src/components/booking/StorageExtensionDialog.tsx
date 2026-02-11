@@ -388,7 +388,7 @@ export function StorageExtensionDialog({
           <Button
             onClick={handleExtend}
             disabled={!selectedDate || !extensionDetails || !extensionDetails.valid || isProcessing}
-            className="bg-purple-600 hover:bg-purple-700 min-w-[160px]"
+            className="min-w-[160px]"
           >
             {isProcessing ? (
               "Processing..."

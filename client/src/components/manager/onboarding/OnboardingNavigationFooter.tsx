@@ -1,6 +1,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Loader2, ArrowRight, SkipForward } from "lucide-react";
+import { StatusButton } from "@/components/ui/status-button";
+import { ChevronLeft, SkipForward } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface OnboardingNavigationFooterProps {
@@ -66,29 +67,19 @@ export function OnboardingNavigationFooter({
                         <SkipForward className="w-4 h-4" />
                     </Button>
                 )}
-                <Button
+                <StatusButton
                     onClick={onNext}
-                    disabled={isNextDisabled || isLoading}
+                    disabled={isNextDisabled}
+                    status={isLoading ? "loading" : "idle"}
                     size="lg"
                     className={cn(
-                        "gap-2 min-w-[140px] font-semibold",
+                        "min-w-[140px] font-semibold",
                         "bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80",
                         "shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30",
                         "transition-all duration-200"
                     )}
-                >
-                    {isLoading ? (
-                        <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Saving...
-                        </>
-                    ) : (
-                        <>
-                            {nextLabel}
-                            <ArrowRight className="w-4 h-4" />
-                        </>
-                    )}
-                </Button>
+                    labels={{ idle: nextLabel, loading: "Saving", success: "Saved" }}
+                />
             </div>
         </div>
     );

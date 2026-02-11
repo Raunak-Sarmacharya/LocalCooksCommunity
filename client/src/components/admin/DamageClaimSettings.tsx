@@ -16,7 +16,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -208,13 +209,11 @@ export function DamageClaimSettings() {
           <CardContent>
             <div className="space-y-2">
               <Label htmlFor="claimSubmissionDeadlineDays">Days</Label>
-              <Input
+              <NumericInput
                 id="claimSubmissionDeadlineDays"
-                type="number"
-                min="1"
-                max="30"
+                suffix="days"
                 value={formData.claimSubmissionDeadlineDays}
-                onChange={(e) => setFormData({ ...formData, claimSubmissionDeadlineDays: e.target.value })}
+                onValueChange={(val) => setFormData({ ...formData, claimSubmissionDeadlineDays: val })}
                 placeholder={String(limits.claimSubmissionDeadlineDays)}
               />
               <p className="text-xs text-muted-foreground">
@@ -238,13 +237,11 @@ export function DamageClaimSettings() {
           <CardContent>
             <div className="space-y-2">
               <Label htmlFor="chefResponseDeadlineHours">Hours</Label>
-              <Input
+              <NumericInput
                 id="chefResponseDeadlineHours"
-                type="number"
-                min="24"
-                max="168"
+                suffix="hours"
                 value={formData.chefResponseDeadlineHours}
-                onChange={(e) => setFormData({ ...formData, chefResponseDeadlineHours: e.target.value })}
+                onValueChange={(val) => setFormData({ ...formData, chefResponseDeadlineHours: val })}
                 placeholder={String(limits.chefResponseDeadlineHours)}
               />
               <p className="text-xs text-muted-foreground">
@@ -268,26 +265,20 @@ export function DamageClaimSettings() {
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="minClaimAmount">Minimum ($)</Label>
-                <Input
+                <Label htmlFor="minClaimAmount">Minimum</Label>
+                <CurrencyInput
                   id="minClaimAmount"
-                  type="number"
-                  step="0.01"
-                  min="1"
                   value={formData.minClaimAmount}
-                  onChange={(e) => setFormData({ ...formData, minClaimAmount: e.target.value })}
+                  onValueChange={(val) => setFormData({ ...formData, minClaimAmount: val })}
                   placeholder={(limits.minClaimAmountCents / 100).toFixed(2)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="maxClaimAmount">Maximum ($)</Label>
-                <Input
+                <Label htmlFor="maxClaimAmount">Maximum</Label>
+                <CurrencyInput
                   id="maxClaimAmount"
-                  type="number"
-                  step="0.01"
-                  min="100"
                   value={formData.maxClaimAmount}
-                  onChange={(e) => setFormData({ ...formData, maxClaimAmount: e.target.value })}
+                  onValueChange={(val) => setFormData({ ...formData, maxClaimAmount: val })}
                   placeholder={(limits.maxClaimAmountCents / 100).toFixed(2)}
                 />
               </div>
@@ -309,13 +300,10 @@ export function DamageClaimSettings() {
           <CardContent>
             <div className="space-y-2">
               <Label htmlFor="maxClaimsPerBooking">Max Claims</Label>
-              <Input
+              <NumericInput
                 id="maxClaimsPerBooking"
-                type="number"
-                min="1"
-                max="10"
                 value={formData.maxClaimsPerBooking}
-                onChange={(e) => setFormData({ ...formData, maxClaimsPerBooking: e.target.value })}
+                onValueChange={(val) => setFormData({ ...formData, maxClaimsPerBooking: val })}
                 placeholder={String(limits.maxClaimsPerBooking)}
               />
               <p className="text-xs text-muted-foreground">

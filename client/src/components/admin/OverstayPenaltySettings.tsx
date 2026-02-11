@@ -18,7 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
@@ -297,13 +297,11 @@ export default function OverstayPenaltySettings() {
                 <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                 Grace Period (days)
               </Label>
-              <Input
+              <NumericInput
                 id="gracePeriodDays"
-                type="number"
-                min="0"
-                max="14"
+                suffix="days"
                 value={overstayForm.gracePeriodDays}
-                onChange={(e) => setOverstayForm({ ...overstayForm, gracePeriodDays: e.target.value })}
+                onValueChange={(val) => setOverstayForm({ ...overstayForm, gracePeriodDays: val })}
                 className="max-w-40"
               />
               <p className="text-xs text-muted-foreground">
@@ -322,19 +320,14 @@ export default function OverstayPenaltySettings() {
                 <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
                 Daily Penalty Rate (%)
               </Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="penaltyRate"
-                  type="number"
-                  min="1"
-                  max="100"
-                  step="0.5"
-                  value={overstayForm.penaltyRatePercent}
-                  onChange={(e) => setOverstayForm({ ...overstayForm, penaltyRatePercent: e.target.value })}
-                  className="max-w-40"
-                />
-                <span className="text-sm text-muted-foreground">% of daily storage rate</span>
-              </div>
+              <NumericInput
+                id="penaltyRate"
+                suffix="%"
+                allowDecimals
+                value={overstayForm.penaltyRatePercent}
+                onValueChange={(val) => setOverstayForm({ ...overstayForm, penaltyRatePercent: val })}
+                className="max-w-40"
+              />
               <p className="text-xs text-muted-foreground">
                 Percentage of the daily storage rate charged per overdue day.{" "}
                 {overstayDefaults && (
@@ -351,13 +344,11 @@ export default function OverstayPenaltySettings() {
                 <Timer className="h-3.5 w-3.5 text-muted-foreground" />
                 Max Penalty Days
               </Label>
-              <Input
+              <NumericInput
                 id="maxPenaltyDays"
-                type="number"
-                min="1"
-                max="90"
+                suffix="days"
                 value={overstayForm.maxPenaltyDays}
-                onChange={(e) => setOverstayForm({ ...overstayForm, maxPenaltyDays: e.target.value })}
+                onValueChange={(val) => setOverstayForm({ ...overstayForm, maxPenaltyDays: val })}
                 className="max-w-40"
               />
               <p className="text-xs text-muted-foreground">
@@ -461,13 +452,11 @@ export default function OverstayPenaltySettings() {
                 <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                 Review Window (hours)
               </Label>
-              <Input
+              <NumericInput
                 id="reviewWindowHours"
-                type="number"
-                min="1"
-                max="24"
+                suffix="hours"
                 value={checkoutForm.reviewWindowHours}
-                onChange={(e) => setCheckoutForm({ ...checkoutForm, reviewWindowHours: e.target.value })}
+                onValueChange={(val) => setCheckoutForm({ ...checkoutForm, reviewWindowHours: val })}
                 className="max-w-40"
               />
               <p className="text-xs text-muted-foreground">
@@ -486,13 +475,11 @@ export default function OverstayPenaltySettings() {
                 <Timer className="h-3.5 w-3.5 text-muted-foreground" />
                 Extended Claim Window (hours)
               </Label>
-              <Input
+              <NumericInput
                 id="extendedClaimWindowHours"
-                type="number"
-                min="2"
-                max="168"
+                suffix="hours"
                 value={checkoutForm.extendedClaimWindowHours}
-                onChange={(e) => setCheckoutForm({ ...checkoutForm, extendedClaimWindowHours: e.target.value })}
+                onValueChange={(val) => setCheckoutForm({ ...checkoutForm, extendedClaimWindowHours: val })}
                 className="max-w-40"
               />
               <p className="text-xs text-muted-foreground">

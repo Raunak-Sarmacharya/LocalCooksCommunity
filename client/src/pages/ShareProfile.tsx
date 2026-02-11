@@ -284,7 +284,7 @@ export default function ShareProfile() {
                       <Button
                         onClick={() => handleShareProfile(location.id)}
                         disabled={shareProfile.isPending}
-                        className="w-full bg-blue-600 hover:bg-blue-700"
+                        className="w-full"
                       >
                         {shareProfile.isPending ? (
                           <>
@@ -302,14 +302,14 @@ export default function ShareProfile() {
                       <Button
                         onClick={() => handleShareProfile(location.id)}
                         disabled={shareProfile.isPending}
-                        className="w-full bg-blue-600 hover:bg-blue-700"
+                        className="w-full"
                       >
                         <Share2 className="mr-2 h-4 w-4" />
                         Share Again
                       </Button>
                     ) : isApproved ? (
                       <Link href="/book-kitchen" className="block">
-                        <Button className="w-full bg-green-600 hover:bg-green-700">
+                        <Button className="w-full">
                           <CheckCircle className="mr-2 h-4 w-4" />
                           Book Kitchens
                         </Button>

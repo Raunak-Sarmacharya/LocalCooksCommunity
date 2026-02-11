@@ -18,6 +18,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { StatusButton } from "@/components/ui/status-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -138,6 +139,7 @@ function EquipmentListingContent({
   const [pendingToggle, setPendingToggle] = useState<{ id: number; isActive: boolean } | null>(null);
   
   const [isSaving, setIsSaving] = useState(false);
+  const [activeSavingAction, setActiveSavingAction] = useState<'custom' | 'bulk' | 'edit' | null>(null);
   const [isToggling, setIsToggling] = useState(false);
 
   // Custom equipment state for intuitive "not found" flow
@@ -566,16 +568,17 @@ function EquipmentListingContent({
                                   </div>
                                 )}
                               </div>
-                              <Button 
+                              <StatusButton 
                                 className="w-full mt-2" 
                                 onClick={() => {
+                                  setActiveSavingAction('custom');
                                   if (!customEquipment.name) setCustomEquipment(prev => ({ ...prev, name: searchQuery }));
                                   saveCustomEquipment();
                                 }}
-                                disabled={isSaving || (!customEquipment.name.trim() && !searchQuery.trim())}
-                              >
-                                {isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Adding...</> : <><PlusCircle className="h-4 w-4 mr-2" />Add Custom Equipment</>}
-                              </Button>
+                                status={activeSavingAction === 'custom' && isSaving ? "loading" : "idle"}
+                                disabled={(isSaving && activeSavingAction !== 'custom') || (!customEquipment.name.trim() && !searchQuery.trim())}
+                                labels={{ idle: "Add Custom Equipment", loading: "Adding", success: "Added" }}
+                              />
                             </div>
                           </CardContent>
                         </Card>
@@ -647,9 +650,13 @@ function EquipmentListingContent({
                     </ScrollArea>
                   )}
                   {selectedEquipmentCount > 0 && (
-                    <Button className="w-full mt-4" onClick={saveSelectedEquipment} disabled={isSaving}>
-                      {isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Adding...</> : <><Save className="h-4 w-4 mr-2" />Add {selectedEquipmentCount} Equipment</>}
-                    </Button>
+                    <StatusButton
+                      className="w-full mt-4"
+                      onClick={() => { setActiveSavingAction('bulk'); saveSelectedEquipment(); }}
+                      status={activeSavingAction === 'bulk' && isSaving ? "loading" : "idle"}
+                      disabled={isSaving && activeSavingAction !== 'bulk'}
+                      labels={{ idle: `Add ${selectedEquipmentCount} Equipment`, loading: "Adding", success: "Added" }}
+                    />
                   )}
                 </CardContent>
               </Card>
@@ -757,13 +764,11 @@ function EquipmentListingContent({
           
           <SheetFooter className="p-6 pt-4 border-t gap-2">
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
-            <Button 
-              onClick={saveEditedListing} 
-              disabled={isSaving}
-              className="bg-[#F51042] hover:bg-[#d10e3a] text-white gap-2"
-            >
-              {isSaving ? <><Loader2 className="h-4 w-4 animate-spin" />Saving...</> : <><Check className="h-4 w-4" />Save Changes</>}
-            </Button>
+            <StatusButton 
+              onClick={() => { setActiveSavingAction('edit'); saveEditedListing(); }} 
+              status={activeSavingAction === 'edit' && isSaving ? "loading" : "idle"}
+              labels={{ idle: "Save Changes", loading: "Saving", success: "Saved" }}
+            />
           </SheetFooter>
         </SheetContent>
       </Sheet>
@@ -780,9 +785,12 @@ function EquipmentListingContent({
           <DialogHeader><DialogTitle>Deactivate Equipment Listing?</DialogTitle><DialogDescription>This equipment will no longer be available for booking. You can reactivate it at any time.</DialogDescription></DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setToggleDialogOpen(false); setPendingToggle(null); }} disabled={isToggling}>Cancel</Button>
-            <Button variant="destructive" onClick={() => pendingToggle && doToggleActive(pendingToggle.id, pendingToggle.isActive)} disabled={isToggling}>
-              {isToggling ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Deactivating...</> : 'Deactivate'}
-            </Button>
+            <StatusButton
+              variant="destructive"
+              onClick={() => pendingToggle && doToggleActive(pendingToggle.id, pendingToggle.isActive)}
+              status={isToggling ? "loading" : "idle"}
+              labels={{ idle: "Deactivate", loading: "Deactivating", success: "Deactivated" }}
+            />
           </DialogFooter>
         </DialogContent>
       </Dialog>

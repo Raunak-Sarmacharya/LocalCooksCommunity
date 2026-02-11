@@ -163,18 +163,28 @@ export function transactionsToCSV(
 ): string {
     const headers = ['Date', 'Chef', 'Kitchen', 'Location', 'Total', 'Tax', 'Tax Rate', 'Stripe Fee', 'Net Revenue', 'Status'];
 
-    const rows = transactions.map(t => [
-        formatDate(t.bookingDate),
-        t.chefName || 'Guest',
-        t.kitchenName,
-        t.locationName,
-        formatCurrency(t.totalPrice),
-        formatCurrency(t.taxAmount ?? 0),
-        `${t.taxRatePercent ?? 0}%`,
-        formatCurrency(t.stripeFee ?? 0),
-        formatCurrency(t.netRevenue ?? 0),
-        t.paymentStatus
-    ]);
+    const rows = transactions.map(t => {
+        const totalPrice = t.totalPrice || 0;
+        const taxRate = t.taxRatePercent ?? 0;
+        const stripeFee = t.stripeFee ?? 0;
+        // Reverse-calculate correct tax from tax-inclusive total
+        const correctTax = taxRate > 0
+            ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
+            : 0;
+        const correctNet = totalPrice - correctTax - stripeFee;
+        return [
+            formatDate(t.bookingDate),
+            t.chefName || 'Guest',
+            t.kitchenName,
+            t.locationName,
+            formatCurrency(totalPrice),
+            formatCurrency(correctTax),
+            `${taxRate}%`,
+            formatCurrency(stripeFee),
+            formatCurrency(correctNet),
+            t.paymentStatus
+        ];
+    });
 
     const csvRows = includeHeaders ? [headers, ...rows] : rows;
 

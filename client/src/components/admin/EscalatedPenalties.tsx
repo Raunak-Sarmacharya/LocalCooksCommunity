@@ -66,6 +66,7 @@ interface EscalatedOverstay {
   locationName: string;
   chefEmail: string | null;
   chefName: string | null;
+  kitchenTaxRatePercent?: number;
 }
 
 interface EscalatedClaim {
@@ -351,8 +352,22 @@ export default function EscalatedPenalties() {
                       <TableCell>
                         <Badge variant="destructive" className="text-xs">{o.daysOverdue} days</Badge>
                       </TableCell>
-                      <TableCell className="text-right font-semibold text-sm">
-                        {formatCurrency(o.finalPenaltyCents || o.calculatedPenaltyCents)}
+                      <TableCell className="text-right text-sm">
+                        {(() => {
+                          const base = o.finalPenaltyCents || o.calculatedPenaltyCents;
+                          const taxRate = parseFloat(String(o.kitchenTaxRatePercent || 0));
+                          const total = taxRate > 0 ? Math.round(base * (1 + taxRate / 100)) : base;
+                          return (
+                            <div>
+                              <div className="font-semibold">{formatCurrency(total)}</div>
+                              {taxRate > 0 && (
+                                <div className="text-xs text-muted-foreground">
+                                  {formatCurrency(base)} + {taxRate}% tax
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>{getOverstayStatusBadge(o.status)}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">

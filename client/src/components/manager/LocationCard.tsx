@@ -240,7 +240,7 @@ export default function LocationCard({
             <Button
               size="sm"
               onClick={() => onManage(location)}
-              className="flex-1 gap-1.5 bg-[#F51042] hover:bg-[#d10e3a] text-white"
+              className="flex-1 gap-1.5"
               disabled={location.kitchenLicenseStatus !== 'approved'}
             >
               Manage

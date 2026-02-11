@@ -108,6 +108,7 @@ interface Booking {
   isAuthorizedHold?: boolean       // true when payment held but not yet captured
   originalAuthorizedAmount?: number // Original auth amount for voided display context (cents)
   refundAmount?: number            // Actual refund amount in cents (from PT)
+  chargedAmount?: number | null     // Tax-inclusive amount from PT (what chef actually paid/authorized)
   cancellationRequestedAt?: string
 }
 
@@ -522,7 +523,9 @@ const getChefBookingColumns = ({
       </Button>
     ),
     cell: ({ row }) => {
-      const totalPrice = row.original.totalPrice
+      // Use chargedAmount (tax-inclusive from PT) as primary, fall back to totalPrice (pre-tax from KB)
+      const chargedAmount = row.original.chargedAmount
+      const totalPrice = chargedAmount ?? row.original.totalPrice
       const isVoided = row.original.isVoidedAuthorization === true
       const isAuthHold = row.original.isAuthorizedHold === true
       const originalAuthAmount = row.original.originalAuthorizedAmount

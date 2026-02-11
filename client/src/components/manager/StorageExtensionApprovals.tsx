@@ -242,7 +242,6 @@ export function StorageExtensionApprovals() {
                 <div className="flex flex-col gap-2">
                   <Button
                     size="sm"
-                    className="bg-green-600 hover:bg-green-700"
                     onClick={() => handleApprove(extension)}
                     disabled={approveMutation.isPending}
                   >
@@ -252,7 +251,7 @@ export function StorageExtensionApprovals() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="border-red-300 text-red-600 hover:bg-red-50"
+                    className="text-destructive border-destructive/30 hover:bg-destructive/5"
                     onClick={() => handleRejectClick(extension)}
                     disabled={rejectMutation.isPending}
                   >

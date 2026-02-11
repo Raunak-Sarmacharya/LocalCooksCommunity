@@ -312,7 +312,7 @@ export default function MyKitchensTabContent({
               <CardTitle className="text-xl">No kitchen access yet</CardTitle>
               <CardDescription className="max-w-sm mx-auto">Explore commercial kitchens in your area and apply for access to start booking.</CardDescription>
             </div>
-            <Button className="px-8 rounded-xl bg-blue-600 hover:bg-blue-700" onClick={() => onSetActiveTab("discover-kitchens")}>
+            <Button variant="secondary" className="px-8 rounded-xl" onClick={() => onSetActiveTab("discover-kitchens")}>
               Explore Kitchens
             </Button>
           </CardContent>

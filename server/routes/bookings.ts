@@ -168,7 +168,9 @@ router.get("/chef/storage-bookings/expiring", requireChef, async (req: Request, 
         today.setHours(0, 0, 0, 0);
         
         const expiringBookings = storageBookings.filter((booking: any) => {
-            if (booking.status === 'cancelled') return false;
+            // Only confirmed bookings can expire — pending (not yet approved),
+            // cancelled, and completed bookings should not show expiry warnings
+            if (booking.status !== 'confirmed') return false;
             
             const endDate = new Date(booking.endDate);
             endDate.setHours(0, 0, 0, 0);
@@ -823,6 +825,10 @@ router.post("/chef/storage-bookings/:id/extension-preview", requireChef, require
             return res.status(403).json({ error: "You don't have permission to extend this booking" });
         }
 
+        if (booking.status === 'pending') {
+            return res.status(400).json({ error: "Cannot extend a booking that hasn't been approved yet. Please wait for manager approval." });
+        }
+
         if (booking.status === 'cancelled') {
             return res.status(400).json({ error: "Cannot extend a cancelled booking" });
         }
@@ -936,6 +942,10 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, requir
 
         if (booking.chefId !== req.neonUser!.id) {
             return res.status(403).json({ error: "You don't have permission to extend this booking" });
+        }
+
+        if (booking.status === 'pending') {
+            return res.status(400).json({ error: "Cannot extend a booking that hasn't been approved yet. Please wait for manager approval." });
         }
 
         if (booking.status === 'cancelled') {
@@ -2987,7 +2997,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                     timezone: (location as any)?.timezone || 'America/St_Johns',
                     locationName: (location as any)?.name
                 });
-                await sendEmail(chefEmail);
+                await sendEmail(chefEmail, { trackingId: `booking_${booking.id}_chef` });
 
                 // CRITICAL FIX: Manager notification is now sent from webhook after payment completes
                 // This prevents managers from seeing/receiving notifications for abandoned checkouts
@@ -3077,90 +3087,13 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                 .where(eq(kitchens.id, bookingByIntent.kitchenId))
                 .limit(1);
             
-            // Send manager notification if booking was created recently (within 5 min) 
-            // This handles cases where webhook didn't fire (local dev) or email failed
-            const bookingAge = Date.now() - new Date(bookingByIntent.createdAt).getTime();
-            const FIVE_MINUTES = 5 * 60 * 1000;
-            if (bookingAge < FIVE_MINUTES && kitchen?.locationId) {
-                console.log(`[by-session] Booking ${bookingByIntent.id} is recent (${Math.round(bookingAge/1000)}s old), sending manager notification as fallback`);
-                try {
-                    const [location] = await db
-                        .select({ 
-                            name: locations.name, 
-                            managerId: locations.managerId,
-                            notificationEmail: locations.notificationEmail,
-                            timezone: locations.timezone,
-                        })
-                        .from(locations)
-                        .where(eq(locations.id, kitchen.locationId))
-                        .limit(1);
-                    
-                    if (location && location.managerId) {
-                        const [chef] = await db
-                            .select({ username: users.username })
-                            .from(users)
-                            .where(eq(users.id, chefId))
-                            .limit(1);
-                        
-                        const chefName = chef?.username || "Chef";
-                        
-                        // Get manager email
-                        let managerEmailAddress = location.notificationEmail;
-                        if (!managerEmailAddress) {
-                            const [manager] = await db
-                                .select({ username: users.username })
-                                .from(users)
-                                .where(eq(users.id, location.managerId))
-                                .limit(1);
-                            managerEmailAddress = manager?.username;
-                        }
-                        
-                        if (managerEmailAddress) {
-                            const { sendEmail, generateBookingNotificationEmail } = await import('../email');
-                            const managerEmail = generateBookingNotificationEmail({
-                                managerEmail: managerEmailAddress,
-                                chefName,
-                                kitchenName: kitchen.name,
-                                bookingDate: bookingByIntent.bookingDate,
-                                startTime: bookingByIntent.startTime,
-                                endTime: bookingByIntent.endTime,
-                                specialNotes: bookingByIntent.specialNotes || undefined,
-                                timezone: location.timezone || "America/St_Johns",
-                                locationName: location.name,
-                                bookingId: bookingByIntent.id,
-                            });
-                            const emailSent = await sendEmail(managerEmail, { trackingId: `booking_${bookingByIntent.id}_manager` });
-                            if (emailSent) {
-                                console.log(`[by-session] ✅ Sent manager notification for booking ${bookingByIntent.id}`);
-                            } else {
-                                console.log(`[by-session] ❌ Failed to send manager notification for booking ${bookingByIntent.id}`);
-                            }
-                        }
-                        
-                        // Also send chef confirmation email
-                        if (chef?.username) {
-                            const { sendEmail, generateBookingRequestEmail } = await import('../email');
-                            const chefEmail = generateBookingRequestEmail({
-                                chefEmail: chef.username,
-                                chefName: chef.username,
-                                kitchenName: kitchen.name,
-                                bookingDate: bookingByIntent.bookingDate,
-                                startTime: bookingByIntent.startTime,
-                                endTime: bookingByIntent.endTime,
-                                specialNotes: bookingByIntent.specialNotes || undefined,
-                                timezone: location.timezone || "America/St_Johns",
-                                locationName: location.name,
-                            });
-                            const chefEmailSent = await sendEmail(chefEmail, { trackingId: `booking_${bookingByIntent.id}_chef` });
-                            if (chefEmailSent) {
-                                console.log(`[by-session] ✅ Sent chef confirmation for booking ${bookingByIntent.id}`);
-                            }
-                        }
-                    }
-                } catch (emailError) {
-                    console.error(`[by-session] Error sending fallback emails:`, emailError);
-                }
-            }
+            // NOTE: Email notifications for existing bookings are sent by the webhook
+            // (handleCheckoutSessionCompleted in webhooks.ts) when the booking is created.
+            // Previously this endpoint re-sent emails as a "fallback" for bookings <5 min old,
+            // but that caused DUPLICATE emails in production because the in-memory trackingId
+            // duplicate prevention doesn't work across separate serverless invocations.
+            // The fallback booking CREATION path below (L3173+) still sends emails for
+            // bookings it creates when the webhook truly didn't fire.
             
             return res.json({
                 ...bookingByIntent,
@@ -3471,8 +3404,8 @@ router.get("/chef/outstanding-dues", requireChef, async (req: Request, res: Resp
                 id: p.overstayId,
                 type: 'overstay_penalty' as const,
                 title: `Overstay Penalty — ${p.storageName}`,
-                description: `${p.daysOverdue} days overdue at ${p.kitchenName}`,
-                amountCents: p.penaltyAmountCents,
+                description: `${p.daysOverdue} days overdue at ${p.kitchenName}${p.kitchenTaxRatePercent > 0 ? ` (incl. ${p.kitchenTaxRatePercent}% tax)` : ''}`,
+                amountCents: p.penaltyTotalCents,
                 status: p.status,
                 createdAt: p.detectedAt,
                 payEndpoint: `/api/chef/overstay-penalties/${p.overstayId}/pay`,

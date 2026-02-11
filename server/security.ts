@@ -128,6 +128,8 @@ function getCorsOrigins(): (string | RegExp)[] {
     origins.push('http://localhost:5173');
     origins.push('http://localhost:3000');
     origins.push(/^http:\/\/localhost:\d+$/);
+    // Subdomain-based dev origins (kitchen.localhost, chef.localhost, admin.localhost)
+    origins.push(/^http:\/\/[a-z]+\.localhost:\d+$/);
   }
 
   // Custom origins from env (comma-separated)
@@ -189,6 +191,9 @@ export function registerSecurityMiddleware(app: Express): void {
           "https://code.tidio.co",
           "https://widget-v4.tidiochat.com",
           "https://maps.googleapis.com",
+          "https://apis.google.com",
+          "https://accounts.google.com",
+          "https://www.gstatic.com",
           ...(isProduction ? [] : ["http://localhost:*"]),
         ],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
@@ -211,6 +216,8 @@ export function registerSecurityMiddleware(app: Express): void {
           "https://js.stripe.com",
           "https://hooks.stripe.com",
           "https://widget-v4.tidiochat.com",
+          "https://accounts.google.com",
+          "https://*.firebaseapp.com",
         ],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
@@ -246,14 +253,19 @@ export function registerSecurityMiddleware(app: Express): void {
     message: { error: 'Too many requests. Please try again later.' },
     skip: (req) => {
       // Skip rate limiting for Stripe webhooks (they have their own signature verification)
-      return req.path === '/api/webhooks/stripe';
+      if (req.path === '/api/webhooks/stripe') return true;
+      // In development, only rate-limit /api/ routes — skip Vite asset requests
+      // (/@fs/, /src/, /node_modules/, static files, HMR, etc.)
+      if (!isProduction && !req.path.startsWith('/api/')) return true;
+      return false;
     },
-    keyGenerator: (req) => {
-      // Use X-Forwarded-For for Vercel (behind proxy)
-      return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() 
-        || req.ip 
-        || 'unknown';
-    },
+    // In production (behind Vercel proxy), use X-Forwarded-For; in dev, use default
+    ...(isProduction ? {
+      keyGenerator: (req: any) => {
+        return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+      },
+    } : {}),
+    validate: false,
   });
   app.use(globalLimiter);
 
@@ -267,11 +279,12 @@ export function registerSecurityMiddleware(app: Express): void {
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many authentication attempts. Please wait before trying again.' },
-    keyGenerator: (req) => {
-      return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() 
-        || req.ip 
-        || 'unknown';
-    },
+    ...(isProduction ? {
+      keyGenerator: (req: any) => {
+        return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+      },
+    } : {}),
+    validate: false,
   });
 
   // Apply strict limiter to auth-sensitive endpoints
@@ -289,11 +302,12 @@ export function registerSecurityMiddleware(app: Express): void {
     },
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => {
-      return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() 
-        || req.ip 
-        || 'unknown';
-    },
+    ...(isProduction ? {
+      keyGenerator: (req: any) => {
+        return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+      },
+    } : {}),
+    validate: false,
   });
   app.use('/api/webhooks', webhookLimiter);
 

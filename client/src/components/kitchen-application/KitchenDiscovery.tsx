@@ -521,7 +521,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                 </Link>
                               </Button>
                               {kitchen.canAcceptBookings ? (
-                                <Button size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700" asChild>
+                                <Button size="sm" className="gap-2" asChild>
                                   <Link href={applicationUrl}>
                                     Apply Now
                                     <ArrowRight className="h-4 w-4" />
