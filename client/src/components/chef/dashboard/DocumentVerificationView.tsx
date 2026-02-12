@@ -107,7 +107,7 @@ export default function DocumentVerificationView({
                 "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold",
                 documentVerification?.foodSafetyLicenseStatus === 'approved' ? "bg-green-500 text-white" :
                 documentVerification?.foodSafetyLicenseStatus === 'pending' ? "bg-amber-100 border-2 border-amber-400 text-amber-600" :
-                "bg-gray-100 text-gray-400"
+                "bg-muted text-muted-foreground"
               )}>
                 {documentVerification?.foodSafetyLicenseStatus === 'approved' ? <CheckCircle className="h-5 w-5" /> : "2"}
               </div>
@@ -115,12 +115,12 @@ export default function DocumentVerificationView({
             </div>
             <div className={cn(
               "flex-1 h-0.5 mx-2",
-              documentVerification?.foodSafetyLicenseStatus === 'approved' ? "bg-gradient-to-r from-amber-400 to-green-500" : "bg-gray-200"
+              documentVerification?.foodSafetyLicenseStatus === 'approved' ? "bg-gradient-to-r from-amber-400 to-green-500" : "bg-border"
             )} />
             <div className="flex flex-col items-center gap-2 flex-1">
               <div className={cn(
                 "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold",
-                documentVerification?.foodSafetyLicenseStatus === 'approved' ? "bg-green-500 text-white" : "bg-gray-100 text-gray-400"
+                documentVerification?.foodSafetyLicenseStatus === 'approved' ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
               )}>
                 {documentVerification?.foodSafetyLicenseStatus === 'approved' ? <CheckCircle className="h-5 w-5" /> : "3"}
               </div>

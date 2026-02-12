@@ -81,12 +81,12 @@ export function RequirementsStepTwo({
           </div>
           
           <div className="mt-4 flex flex-wrap gap-2">
-            <Badge variant="secondary" className="bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border-0">
+            <Badge variant="success">
               <Info className="h-3 w-3 mr-1" />
               These are collected after initial approval
             </Badge>
             {enabledCount > 0 && (
-              <Badge variant="secondary" className="bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+              <Badge variant="outline">
                 {enabledCount} requirement{enabledCount !== 1 ? 's' : ''} enabled
               </Badge>
             )}
@@ -152,7 +152,7 @@ export function RequirementsStepTwo({
                             {field.recommended && (
                               <Badge
                                 variant="outline"
-                                className="text-[10px] px-1.5 py-0 h-4 border-amber-300 text-amber-700 bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:bg-amber-950/30"
+                                className="text-[10px] px-1.5 py-0 h-4 border-warning/30 text-warning bg-warning/10"
                               >
                                 <Sparkles className="h-2.5 w-2.5 mr-0.5" />
                                 Recommended

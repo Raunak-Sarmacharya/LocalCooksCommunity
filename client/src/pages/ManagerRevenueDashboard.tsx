@@ -319,9 +319,7 @@ export default function ManagerRevenueDashboard({
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-violet-100 rounded-lg">
-                <FileText className="h-4 w-4 text-violet-600" />
-              </div>
+              <FileText className="h-4 w-4 text-violet-600" />
               <div>
                 <CardTitle className="text-base">Recent Invoices</CardTitle>
                 <p className="text-xs text-muted-foreground">Latest booking invoices</p>
@@ -372,9 +370,7 @@ export default function ManagerRevenueDashboard({
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-emerald-100 rounded-lg">
-              <CreditCard className="h-4 w-4 text-emerald-600" />
-            </div>
+            <CreditCard className="h-4 w-4 text-emerald-600" />
             <div>
               <CardTitle className="text-base">Payout History</CardTitle>
               <p className="text-xs text-muted-foreground">Your Stripe Connect payouts</p>

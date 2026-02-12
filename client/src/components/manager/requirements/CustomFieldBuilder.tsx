@@ -214,7 +214,7 @@ export function CustomFieldBuilder({
         <Button
           onClick={openAddDialog}
           size="sm"
-          className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white shadow-sm"
+          className="shadow-sm"
         >
           <Plus className="h-4 w-4 mr-1.5" />
           Add Field
@@ -476,7 +476,6 @@ export function CustomFieldBuilder({
             </Button>
             <Button
               onClick={handleSave}
-              className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700"
             >
               {editor.editingField ? 'Update Field' : 'Add Field'}
             </Button>

@@ -61,18 +61,18 @@ function KitchenCard({ kitchen, locationId, isExpanded, onToggle }: KitchenCardP
                 <div>
                   <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">{kitchen.name}</CardTitle>
                   <div className="flex items-center gap-3 mt-1.5">
-                    <Badge variant="secondary" className="text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                    <Badge variant="outline" className="text-xs font-medium text-muted-foreground">
                       <DollarSign className="w-3 h-3 mr-0.5" />
                       {hourlyRateDisplay}
                     </Badge>
                     {kitchen.minimumBookingHours && (
-                      <Badge variant="secondary" className="text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                      <Badge variant="outline" className="text-xs font-medium text-muted-foreground">
                         <Clock className="w-3 h-3 mr-0.5" />
                         Min {kitchen.minimumBookingHours}h
                       </Badge>
                     )}
                     {!hasImage && (
-                      <Badge variant="outline" className="text-xs text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800">
+                      <Badge variant="warning" className="text-xs">
                         <Image className="w-3 h-3 mr-1" />
                         Add photos
                       </Badge>

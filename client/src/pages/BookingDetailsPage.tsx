@@ -328,14 +328,14 @@ export default function BookingDetailsPage() {
     switch (status) {
       case "confirmed":
         return (
-          <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50/50 font-medium">
+          <Badge variant="success" className="font-medium">
             <CheckCircle2 className="h-3 w-3 mr-1" />
             Confirmed
           </Badge>
         );
       case "pending":
         return (
-          <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50/50 font-medium">
+          <Badge variant="warning" className="font-medium">
             <AlertCircle className="h-3 w-3 mr-1" />
             Pending
           </Badge>
@@ -369,7 +369,7 @@ export default function BookingDetailsPage() {
         );
       case "paid":
         return (
-          <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50/50 font-medium">
+          <Badge variant="success" className="font-medium">
             <CreditCard className="h-3 w-3 mr-1" />
             Paid
           </Badge>
@@ -383,7 +383,7 @@ export default function BookingDetailsPage() {
         );
       case "pending":
         return (
-          <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50/50 font-medium">
+          <Badge variant="warning" className="font-medium">
             <AlertCircle className="h-3 w-3 mr-1" />
             Pending
           </Badge>
@@ -397,7 +397,7 @@ export default function BookingDetailsPage() {
         );
       case "partially_refunded":
         return (
-          <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50/50 font-medium">
+          <Badge variant="warning" className="font-medium">
             <Receipt className="h-3 w-3 mr-1" />
             Partial Refund
           </Badge>
@@ -957,11 +957,11 @@ export default function BookingDetailsPage() {
                           {formatCurrency(storage.totalPrice)}
                         </span>
                         {storage.status === "completed" ? (
-                          <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200">
+                          <Badge variant="outline" className="text-[10px] text-success border-success/30">
                             <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />cleared
                           </Badge>
                         ) : refunded ? (
-                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200">
+                          <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
                             <Receipt className="h-2.5 w-2.5 mr-0.5" />refunded
                           </Badge>
                         ) : voided ? (
@@ -973,11 +973,11 @@ export default function BookingDetailsPage() {
                             <XCircle className="h-2.5 w-2.5 mr-0.5" />cancelled
                           </Badge>
                         ) : storage.status === "confirmed" || storage.status === "active" ? (
-                          <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200">
+                          <Badge variant="outline" className="text-[10px] text-success border-success/30">
                             <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />confirmed
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200">
+                          <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
                             <AlertCircle className="h-2.5 w-2.5 mr-0.5" />{storage.status}
                           </Badge>
                         )}
@@ -1021,7 +1021,7 @@ export default function BookingDetailsPage() {
                           {formatCurrency(equipment.totalPrice)}
                         </span>
                         {refunded ? (
-                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200">
+                          <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
                             <Receipt className="h-2.5 w-2.5 mr-0.5" />refunded
                           </Badge>
                         ) : voided ? (
@@ -1033,11 +1033,11 @@ export default function BookingDetailsPage() {
                             <XCircle className="h-2.5 w-2.5 mr-0.5" />cancelled
                           </Badge>
                         ) : equipment.status === "confirmed" || equipment.status === "active" ? (
-                          <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200">
+                          <Badge variant="outline" className="text-[10px] text-success border-success/30">
                             <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />confirmed
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200">
+                          <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
                             <AlertCircle className="h-2.5 w-2.5 mr-0.5" />{equipment.status}
                           </Badge>
                         )}

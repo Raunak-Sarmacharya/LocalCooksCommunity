@@ -99,35 +99,35 @@ function formatCurrency(cents: number): string {
 function getStatusBadge(status: string, refundAmount: number) {
   if (status === 'refunded' || (status === 'partially_refunded' && refundAmount > 0)) {
     return (
-      <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+      <Badge variant="info">
         {status === 'partially_refunded' ? 'Partial Refund' : 'Refunded'}
       </Badge>
     );
   }
   if (status === 'succeeded') {
     return (
-      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+      <Badge variant="success">
         Completed
       </Badge>
     );
   }
   if (status === 'pending' || status === 'processing') {
     return (
-      <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+      <Badge variant="warning">
         {status === 'processing' ? 'Processing' : 'Pending'}
       </Badge>
     );
   }
   if (status === 'canceled') {
     return (
-      <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">
+      <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
         No Charge
       </Badge>
     );
   }
   if (status === 'failed') {
     return (
-      <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+      <Badge variant="outline" className="text-destructive border-destructive/30">
         Failed
       </Badge>
     );
@@ -144,7 +144,7 @@ function getBookingTypeIcon(type: string) {
     case 'equipment':
       return <Building2 className="h-4 w-4 text-blue-600" />;
     default:
-      return <Receipt className="h-4 w-4 text-gray-600" />;
+      return <Receipt className="h-4 w-4 text-muted-foreground" />;
   }
 }
 
@@ -259,7 +259,7 @@ function getTransactionColumns(): ColumnDef<Transaction>[] {
             <div className="text-right">
               <div className="font-medium text-sm text-muted-foreground">No Charge</div>
               {tx.amount > 0 && (
-                <div className="text-xs text-gray-400 line-through">
+                <div className="text-xs text-muted-foreground/50 line-through">
                   {formatCurrency(tx.amount)}
                 </div>
               )}
@@ -400,7 +400,7 @@ export function TransactionHistory() {
           <CreditCard className="h-5 w-5 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Transaction History</h1>
+          <h1 className="text-2xl font-bold text-foreground">Transaction History</h1>
           <p className="text-sm text-muted-foreground">
             View all your payments and refunds
           </p>
@@ -544,7 +544,7 @@ export function TransactionHistory() {
                         row.original.status === "succeeded" && row.original.refundAmount === 0 && "bg-green-50/30",
                         (row.original.status === "refunded" || row.original.refundAmount > 0) && "bg-purple-50/30",
                         (row.original.status === "pending" || row.original.status === "processing") && "bg-yellow-50/30",
-                        row.original.status === "canceled" && "bg-gray-50/40"
+                        row.original.status === "canceled" && "bg-muted/40"
                       )}
                     >
                       {row.getVisibleCells().map((cell) => (

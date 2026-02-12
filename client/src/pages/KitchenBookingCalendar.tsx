@@ -1132,10 +1132,15 @@ export default function KitchenBookingCalendar() {
 
                     {/* GROUP 2: Storage Spaces (Separate Group) */}
                     {storageListings.length > 0 && (
-                      <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl shadow-sm border-2 border-purple-200 p-6">
+                      <div className="rounded-xl shadow-sm border border-border bg-background p-5">
                         <div className="flex items-center gap-2 mb-4">
-                          <Package className="h-5 w-5 text-purple-600" />
-                          <h3 className="text-lg font-semibold text-purple-900">Storage Spaces</h3>
+                          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <Package className="h-4 w-4 text-primary" />
+                          </div>
+                          <div>
+                            <h3 className="text-base font-semibold text-foreground">Storage Spaces</h3>
+                            <p className="text-xs text-muted-foreground">Book independently with custom dates</p>
+                          </div>
                         </div>
 
                         <StorageSelection
@@ -1144,27 +1149,15 @@ export default function KitchenBookingCalendar() {
                           onSelectionChange={setSelectedStorage}
                           kitchenBookingDate={selectedDate || undefined}
                         />
-
-                        {/* Storage Selection Summary */}
-                        {selectedStorage.length > 0 && (
-                          <div className="mt-4 pt-4 border-t border-purple-200">
-                            <div className="flex items-center gap-2 text-sm text-purple-700 font-medium">
-                              <Package className="h-4 w-4" />
-                              <span>
-                                Selected: {selectedStorage.length} storage space{selectedStorage.length !== 1 ? 's' : ''}
-                              </span>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     )}
 
                     {/* Loading state for add-ons */}
                     {isLoadingAddons && (
-                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                      <div className="rounded-xl shadow-sm border border-border bg-background p-6">
                         <div className="flex items-center gap-3">
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                          <span className="text-gray-600">Loading available add-ons...</span>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+                          <span className="text-muted-foreground">Loading available add-ons...</span>
                         </div>
                       </div>
                     )}

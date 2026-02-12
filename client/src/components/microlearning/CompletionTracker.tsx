@@ -62,7 +62,7 @@ export default function CompletionTracker({
             <p className="text-sm text-gray-600">Complete all videos to earn your food safety certification</p>
           </div>
           {allCompleted && (
-            <Badge variant="secondary" className="bg-green-100 text-green-800 self-start">
+            <Badge variant="success" className="self-start">
               <Award className="h-4 w-4 mr-1 flex-shrink-0" />
               <span className="whitespace-nowrap">Completed</span>
             </Badge>

@@ -10,11 +10,12 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
+import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { Bar, BarChart, XAxis, YAxis } from "recharts";
 import {
   BookOpen,
   Building,
   Calendar,
-  CheckCircle,
   Clock,
   FileText,
   Shield,
@@ -23,6 +24,7 @@ import {
   Utensils,
   TrendingUp,
   MessageCircle,
+  Activity,
 } from "lucide-react";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
 import type { 
@@ -79,7 +81,7 @@ export default function OverviewTabContent({
     if (app.status === 'approved') {
       const tier = app.current_tier ?? 1;
       if (tier >= 3) {
-        return { label: 'Ready to Book', variant: 'default' as const, color: 'bg-green-600' };
+        return { label: 'Ready to Book', variant: 'success' as const, color: 'bg-green-600' };
       }
       if (tier === 2 && app.tier2_completed_at) {
         return { label: 'Step 2 Review', variant: 'secondary' as const, color: 'bg-orange-500' };
@@ -87,9 +89,39 @@ export default function OverviewTabContent({
       if (tier === 2 && !app.tier2_completed_at) {
         return { label: 'Step 2 Pending', variant: 'secondary' as const, color: 'bg-blue-500' };
       }
-      return { label: 'Step 1 Approved', variant: 'default' as const, color: 'bg-blue-600' };
+      return { label: 'Step 1 Approved', variant: 'success' as const, color: 'bg-blue-600' };
     }
-    return { label: 'Unknown', variant: 'outline' as const, color: 'bg-gray-500' };
+    return { label: 'Unknown', variant: 'outline' as const, color: 'bg-muted-foreground/40' };
+  };
+
+  // Dynamic greeting based on time of day
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+
+  // Dynamic subtitle based on chef state
+  const getSubtitle = () => {
+    const pendingKitchens = kitchenApplications.filter(a => a.status === 'inReview').length;
+    const activeBookings = enrichedBookings?.length || 0;
+    const hasApp = applications?.length > 0;
+    const appStatus = getApplicationStatus();
+
+    if (!hasApp && kitchenApplications.length === 0) {
+      return 'Get started by applying to sell or booking a commercial kitchen.';
+    }
+    if (appStatus === 'In Review' || pendingKitchens > 0) {
+      const parts: string[] = [];
+      if (appStatus === 'In Review') parts.push('your seller application is under review');
+      if (pendingKitchens > 0) parts.push(`${pendingKitchens} kitchen application${pendingKitchens > 1 ? 's' : ''} pending`);
+      return `Heads up \u2014 ${parts.join(' and ')}.`;
+    }
+    if (activeBookings > 0) {
+      return `You have ${activeBookings} active booking${activeBookings > 1 ? 's' : ''}. Here\u2019s your dashboard.`;
+    }
+    return 'Here\u2019s an overview of your LocalCooks journey.';
   };
 
   return (
@@ -98,10 +130,10 @@ export default function OverviewTabContent({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
-            Welcome back{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!
+            {getGreeting()}{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!
           </h1>
           <p className="text-muted-foreground mt-1">
-            Here's an overview of your LocalCooks journey
+            {getSubtitle()}
           </p>
         </div>
       </div>
@@ -174,7 +206,7 @@ export default function OverviewTabContent({
                 </div>
               </div>
               {applications?.length > 0 && (
-                <Badge variant={getStatusVariant(getMostRecentApplication()?.status || "")} className="text-[10px]">
+                <Badge variant={getStatusVariant(getMostRecentApplication()?.status || "")} className="text-xs">
                   {formatApplicationStatus(getMostRecentApplication()?.status || "")}
                 </Badge>
               )}
@@ -201,7 +233,7 @@ export default function OverviewTabContent({
                     <Shield className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">Documents</span>
                   </div>
-                  <Badge variant="outline" className="text-[10px]">{getDocumentStatus()}</Badge>
+                  <Badge variant="outline" className="text-xs">{getDocumentStatus()}</Badge>
                 </div>
               </div>
             ) : (
@@ -252,7 +284,7 @@ export default function OverviewTabContent({
                 </div>
               </div>
               {kitchenApplications.length > 0 && (
-                <Badge variant={kitchenSummary.variant} className="text-[10px]">
+                <Badge variant={kitchenSummary.variant} className="text-xs">
                   {kitchenSummary.label}
                 </Badge>
               )}
@@ -275,7 +307,7 @@ export default function OverviewTabContent({
                       </div>
                       <Badge 
                         variant={status.variant} 
-                        className={cn("text-[10px]", status.color, "text-white hover:" + status.color)}
+                        className={cn("text-xs", status.color, "text-white hover:" + status.color)}
                       >
                         {status.label}
                       </Badge>
@@ -328,6 +360,112 @@ export default function OverviewTabContent({
           </CardFooter>
         </Card>
       </div>
+
+      {/* Booking Status Chart + Recent Activity */}
+      {(enrichedBookings?.length > 0 || applications?.length > 0 || kitchenApplications.length > 0) && (
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Booking Status Distribution */}
+          {enrichedBookings?.length > 0 && (() => {
+            const statusCounts: Record<string, number> = {};
+            enrichedBookings.forEach((b) => {
+              const s = b.status || 'unknown';
+              statusCounts[s] = (statusCounts[s] || 0) + 1;
+            });
+            const chartData = Object.entries(statusCounts).map(([status, count]) => ({
+              status: status.charAt(0).toUpperCase() + status.slice(1),
+              count,
+              fill: status === 'confirmed' ? 'var(--chart-1)'
+                : status === 'pending' ? 'var(--chart-2)'
+                : status === 'completed' ? 'var(--chart-3)'
+                : status === 'cancelled' ? 'var(--chart-4)'
+                : 'var(--chart-5)',
+            }));
+            const chartConfig: ChartConfig = {
+              count: { label: 'Bookings' },
+            };
+            return (
+              <Card className="border-border/50 shadow-sm">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                      <Activity className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">Booking Overview</CardTitle>
+                      <CardDescription>{enrichedBookings.length} total booking{enrichedBookings.length !== 1 ? 's' : ''}</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer config={chartConfig} className="h-[200px] w-full">
+                    <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 16, top: 8, bottom: 8 }}>
+                      <XAxis type="number" hide />
+                      <YAxis type="category" dataKey="status" width={80} tickLine={false} axisLine={false} className="text-xs" />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Bar dataKey="count" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          {/* Recent Activity Feed */}
+          <Card className="border-border/50 shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
+                  <Clock className="h-5 w-5 text-purple-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Recent Activity</CardTitle>
+                  <CardDescription>Your latest actions</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 max-h-[200px] overflow-y-auto">
+                {/* Generate activity items from existing data */}
+                {[...(applications || []).map(app => ({
+                  icon: Store,
+                  color: 'text-primary',
+                  label: `Seller application ${app.status === 'approved' ? 'approved' : app.status === 'inReview' ? 'submitted' : app.status}`,
+                  time: app.createdAt ? new Date(app.createdAt).toLocaleDateString() : '',
+                  sortDate: app.createdAt ? new Date(app.createdAt).getTime() : 0,
+                })),
+                ...kitchenApplications.map(app => ({
+                  icon: Building,
+                  color: 'text-blue-600',
+                  label: `Applied to ${app.location?.name || 'kitchen'}`,
+                  time: app.createdAt ? new Date(app.createdAt).toLocaleDateString() : '',
+                  sortDate: app.createdAt ? new Date(app.createdAt).getTime() : 0,
+                })),
+                ...(enrichedBookings || []).slice(0, 3).map(b => ({
+                  icon: Calendar,
+                  color: 'text-amber-600',
+                  label: `Booking at ${b.kitchenName || b.locationName || 'kitchen'} — ${b.status}`,
+                  time: b.startTime ? new Date(b.startTime).toLocaleDateString() : '',
+                  sortDate: b.startTime ? new Date(b.startTime).getTime() : 0,
+                })),
+                ].sort((a, b) => b.sortDate - a.sortDate).slice(0, 5).map((item, idx) => (
+                  <div key={idx} className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                    <div className="mt-0.5">
+                      <item.icon className={cn("h-4 w-4", item.color)} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{item.label}</p>
+                      <p className="text-xs text-muted-foreground">{item.time}</p>
+                    </div>
+                  </div>
+                ))}
+                {applications?.length === 0 && kitchenApplications.length === 0 && enrichedBookings?.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">No recent activity yet.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Quick Actions / Next Steps */}
       <Card className="border-border/50 shadow-sm">

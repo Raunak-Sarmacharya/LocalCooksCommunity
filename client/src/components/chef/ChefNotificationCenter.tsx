@@ -151,7 +151,7 @@ function getPriorityColor(priority: string) {
       return "bg-blue-500";
     case "low":
     default:
-      return "bg-gray-300";
+      return "bg-muted-foreground/30";
   }
 }
 
@@ -164,7 +164,7 @@ function formatNotificationTime(dateString: string) {
 // Skeleton components
 function NotificationItemSkeleton() {
   return (
-    <div className="p-3 border-b border-gray-100">
+    <div className="p-3 border-b border-border">
       <div className="flex items-start gap-3">
         <Skeleton className="h-8 w-8 rounded-full" />
         <div className="flex-1 space-y-2">
@@ -194,8 +194,8 @@ function ErrorNotificationState({ onRetry }: { onRetry: () => void }) {
       <div className="text-red-300 mb-4">
         <AlertTriangle className="h-12 w-12" />
       </div>
-      <h4 className="text-sm font-medium text-gray-700">Failed to load notifications</h4>
-      <p className="text-xs text-gray-500 mt-1 max-w-[200px]">
+      <h4 className="text-sm font-medium text-foreground">Failed to load notifications</h4>
+      <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">
         There was an error loading your notifications. Please try again.
       </p>
       <Button 
@@ -240,9 +240,9 @@ function EmptyNotificationState({ filter }: { filter: FilterType }) {
 
   return (
     <div className="flex flex-col items-center justify-center h-60 px-6 text-center">
-      <div className="text-gray-300 mb-4">{icon}</div>
-      <h4 className="text-sm font-medium text-gray-700">{title}</h4>
-      <p className="text-xs text-gray-500 mt-1 max-w-[200px]">{description}</p>
+      <div className="text-muted-foreground/40 mb-4">{icon}</div>
+      <h4 className="text-sm font-medium text-foreground">{title}</h4>
+      <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">{description}</p>
     </div>
   );
 }
@@ -312,8 +312,8 @@ function NotificationItem({
       tabIndex={0}
       onKeyDown={handleKeyDown}
       className={cn(
-        "group relative p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer",
-        "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset",
+        "group relative p-3 border-b border-border hover:bg-muted/50 transition-colors cursor-pointer",
+        "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset",
         !notification.is_read && "bg-blue-50/50"
       )}
       onClick={async () => {
@@ -335,7 +335,7 @@ function NotificationItem({
         {/* Icon */}
         <div className={cn(
           "flex-shrink-0 p-2 rounded-full",
-          notification.is_read ? "bg-gray-100 text-gray-500" : "bg-blue-100 text-blue-600"
+          notification.is_read ? "bg-muted text-muted-foreground" : "bg-blue-100 text-blue-600"
         )}>
           {getNotificationIcon(notification.type)}
         </div>
@@ -345,17 +345,17 @@ function NotificationItem({
           <div className="flex items-center justify-between gap-2">
             <h4 className={cn(
               "text-sm truncate",
-              notification.is_read ? "font-normal text-gray-700" : "font-semibold text-gray-900"
+              notification.is_read ? "font-normal text-muted-foreground" : "font-semibold text-foreground"
             )}>
               {notification.title}
             </h4>
-            <span className="text-xs text-gray-400 flex-shrink-0">
+            <span className="text-xs text-muted-foreground/60 flex-shrink-0">
               {formatNotificationTime(notification.created_at)}
             </span>
           </div>
           <p 
             id={`notification-${notification.id}-message`}
-            className="text-sm text-gray-600 line-clamp-2 mt-0.5"
+            className="text-sm text-muted-foreground line-clamp-2 mt-0.5"
           >
             {notification.message}
           </p>
@@ -783,7 +783,7 @@ export default function ChefNotificationCenter() {
         </div>
 
         {/* Filter tabs */}
-        <div className="px-4 py-2 border-b bg-gray-50" role="navigation" aria-label="Notification filters">
+        <div className="px-4 py-2 border-b bg-muted/50" role="navigation" aria-label="Notification filters">
           <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
             <TabsList className="w-full flex gap-1 h-auto p-1" aria-label="Filter notifications by status">
               <TabsTrigger value="all" className="flex-1 text-xs px-2 py-1.5">All</TabsTrigger>
@@ -811,7 +811,7 @@ export default function ChefNotificationCenter() {
                 <section key={group.label} aria-labelledby={`group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}>
                   <h3 
                     id={`group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}
-                    className="sticky top-0 bg-gray-100 px-4 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className="sticky top-0 bg-muted px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider"
                   >
                     {group.label}
                   </h3>
@@ -832,8 +832,8 @@ export default function ChefNotificationCenter() {
 
         {/* Footer */}
         {notifications.length > 0 && (
-          <div className="p-3 border-t bg-gray-50 text-center">
-            <Button variant="link" size="sm" className="text-xs text-gray-600">
+          <div className="p-3 border-t bg-muted/50 text-center">
+            <Button variant="link" size="sm" className="text-xs text-muted-foreground">
               View all notifications
             </Button>
           </div>

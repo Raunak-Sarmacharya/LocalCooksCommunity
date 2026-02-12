@@ -170,19 +170,19 @@ function formatDateTimeSt(dateStr: string | null | undefined): string {
   }
 }
 
-const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" }> = {
   draft: { label: "Draft", variant: "outline" },
-  submitted: { label: "Submitted", variant: "default" },
+  submitted: { label: "Submitted", variant: "warning" },
   chef_accepted: { label: "Chef Accepted", variant: "secondary" },
   chef_disputed: { label: "Chef Disputed", variant: "destructive" },
-  under_review: { label: "Under Review", variant: "default" },
-  approved: { label: "Approved", variant: "secondary" },
-  partially_approved: { label: "Partially Approved", variant: "secondary" },
+  under_review: { label: "Under Review", variant: "warning" },
+  approved: { label: "Approved", variant: "success" },
+  partially_approved: { label: "Partially Approved", variant: "success" },
   rejected: { label: "Rejected", variant: "destructive" },
-  charge_pending: { label: "Charge Pending", variant: "default" },
-  charge_succeeded: { label: "Paid", variant: "secondary" },
+  charge_pending: { label: "Charge Pending", variant: "warning" },
+  charge_succeeded: { label: "Paid", variant: "success" },
   charge_failed: { label: "Charge Failed", variant: "destructive" },
-  resolved: { label: "Resolved", variant: "secondary" },
+  resolved: { label: "Resolved", variant: "success" },
   expired: { label: "Expired", variant: "outline" },
   escalated: { label: "Escalated", variant: "destructive" },
 };

@@ -146,17 +146,17 @@ function formatCurrency(cents: number): string {
 }
 
 function getStatusBadge(status: string) {
-  const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
-    submitted: { variant: "default", label: "Awaiting Your Response" },
+  const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning"; label: string }> = {
+    submitted: { variant: "warning", label: "Awaiting Your Response" },
     chef_accepted: { variant: "secondary", label: "You Accepted" },
     chef_disputed: { variant: "destructive", label: "You Disputed" },
-    under_review: { variant: "default", label: "Under Admin Review" },
-    approved: { variant: "secondary", label: "Approved" },
-    partially_approved: { variant: "secondary", label: "Partially Approved" },
-    rejected: { variant: "outline", label: "Rejected" },
-    charge_pending: { variant: "default", label: "Payment Processing" },
-    charge_succeeded: { variant: "destructive", label: "Charged" },
-    charge_failed: { variant: "outline", label: "Charge Failed" },
+    under_review: { variant: "warning", label: "Under Admin Review" },
+    approved: { variant: "success", label: "Approved" },
+    partially_approved: { variant: "success", label: "Partially Approved" },
+    rejected: { variant: "destructive", label: "Rejected" },
+    charge_pending: { variant: "warning", label: "Payment Processing" },
+    charge_succeeded: { variant: "success", label: "Charged" },
+    charge_failed: { variant: "destructive", label: "Charge Failed" },
     escalated: { variant: "destructive", label: "Payment Required" },
     resolved: { variant: "outline", label: "Resolved" },
     expired: { variant: "outline", label: "Expired" },
@@ -291,15 +291,15 @@ function ResponseDialog({
 
         {/* Resolved Status Banner */}
         {isResolved && !isEscalated && (
-          <Alert className={claim.status === 'charge_succeeded' ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-gray-50'}>
-            <CheckCircle className={`h-4 w-4 ${claim.status === 'charge_succeeded' ? 'text-green-600' : 'text-gray-600'}`} />
-            <AlertTitle className={claim.status === 'charge_succeeded' ? 'text-green-800' : 'text-gray-800'}>
+          <Alert className={claim.status === 'charge_succeeded' ? 'border-green-500 bg-green-50' : 'border-border bg-muted/50'}>
+            <CheckCircle className={`h-4 w-4 ${claim.status === 'charge_succeeded' ? 'text-green-600' : 'text-muted-foreground'}`} />
+            <AlertTitle className={claim.status === 'charge_succeeded' ? 'text-green-800' : 'text-foreground'}>
               {claim.status === 'charge_succeeded' ? 'Payment Completed' : 
                claim.status === 'rejected' ? 'Claim Rejected' :
                claim.status === 'expired' ? 'Claim Expired' :
                claim.status === 'charge_failed' ? 'Payment Failed' : 'Claim Resolved'}
             </AlertTitle>
-            <AlertDescription className={claim.status === 'charge_succeeded' ? 'text-green-700' : 'text-gray-700'}>
+            <AlertDescription className={claim.status === 'charge_succeeded' ? 'text-green-700' : 'text-muted-foreground'}>
               {claim.status === 'charge_succeeded' 
                 ? `Your card was charged ${formatCurrency(claim.finalAmountCents || claim.claimedAmountCents)} for this damage claim.`
                 : claim.status === 'rejected'
@@ -358,7 +358,7 @@ function ResponseDialog({
                       <span className="font-medium capitalize">{item.equipmentType}</span>
                       {item.brand && <span className="text-muted-foreground">({item.brand})</span>}
                     </div>
-                    <Badge variant="secondary" className="text-[10px]">
+                    <Badge variant="secondary" className="text-xs">
                       {item.equipmentBookingId ? 'Rented' : 'Included'}
                     </Badge>
                   </div>
@@ -383,7 +383,7 @@ function ResponseDialog({
                     {ev.evidenceType.includes('photo') || ev.evidenceType === 'video' ? (
                       <Image className="w-4 h-4 text-blue-500" />
                     ) : (
-                      <FileText className="w-4 h-4 text-gray-500" />
+                      <FileText className="w-4 h-4 text-muted-foreground" />
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">

@@ -1,7 +1,12 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import {
   MessageCircle,
   Mail,
@@ -253,9 +258,9 @@ export default function ChefSupportPage({ userEmail, userName, userId }: ChefSup
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {faqItems.map((category, categoryIndex) => (
+          {faqItems.map((category) => (
             <Card key={category.category} className="border-border/50">
-              <CardHeader className="pb-4">
+              <CardHeader className="pb-2">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
                     <category.icon className="h-5 w-5 text-primary" />
@@ -263,17 +268,19 @@ export default function ChefSupportPage({ userEmail, userName, userId }: ChefSup
                   <CardTitle className="text-lg">{category.category}</CardTitle>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {category.questions.map((item, itemIndex) => (
-                  <div key={itemIndex} className="space-y-2">
-                    <h4 className="font-medium text-sm text-foreground flex items-start gap-2">
-                      <span className="text-primary mt-0.5">Q:</span>
-                      {item.q}
-                    </h4>
-                    <p className="text-sm text-muted-foreground pl-5">{item.a}</p>
-                    {itemIndex < category.questions.length - 1 && <Separator className="mt-4" />}
-                  </div>
-                ))}
+              <CardContent className="pt-0">
+                <Accordion type="single" collapsible className="w-full">
+                  {category.questions.map((item, itemIndex) => (
+                    <AccordionItem key={itemIndex} value={`item-${itemIndex}`}>
+                      <AccordionTrigger className="text-sm font-medium text-left hover:no-underline">
+                        {item.q}
+                      </AccordionTrigger>
+                      <AccordionContent className="text-sm text-muted-foreground">
+                        {item.a}
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
               </CardContent>
             </Card>
           ))}

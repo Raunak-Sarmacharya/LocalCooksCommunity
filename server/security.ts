@@ -219,6 +219,11 @@ export function registerSecurityMiddleware(app: Express): void {
           "https://accounts.google.com",
           "https://*.firebaseapp.com",
         ],
+        mediaSrc: [
+          "'self'",
+          "https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev",
+          "blob:",
+        ],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
         formAction: ["'self'"],

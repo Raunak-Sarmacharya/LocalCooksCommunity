@@ -139,21 +139,21 @@ const getStatusBadge = (status: string) => {
   switch (status) {
     case 'detected':
     case 'grace_period':
-      return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200"><Clock className="w-3 h-3 mr-1" />Grace Period</Badge>;
+      return <Badge variant="warning"><Clock className="w-3 h-3 mr-1" />Grace Period</Badge>;
     case 'pending_review':
-      return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200"><AlertTriangle className="w-3 h-3 mr-1" />Pending Review</Badge>;
+      return <Badge variant="warning"><AlertTriangle className="w-3 h-3 mr-1" />Pending Review</Badge>;
     case 'penalty_approved':
-      return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200"><CheckCircle className="w-3 h-3 mr-1" />Approved</Badge>;
+      return <Badge variant="info"><CheckCircle className="w-3 h-3 mr-1" />Approved</Badge>;
     case 'penalty_waived':
-      return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200"><XCircle className="w-3 h-3 mr-1" />Waived</Badge>;
+      return <Badge variant="success"><XCircle className="w-3 h-3 mr-1" />Waived</Badge>;
     case 'charge_pending':
-      return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200"><CreditCard className="w-3 h-3 mr-1" />Charging...</Badge>;
+      return <Badge variant="info"><CreditCard className="w-3 h-3 mr-1" />Charging...</Badge>;
     case 'charge_succeeded':
-      return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200"><DollarSign className="w-3 h-3 mr-1" />Charged</Badge>;
+      return <Badge variant="success"><DollarSign className="w-3 h-3 mr-1" />Charged</Badge>;
     case 'charge_failed':
       return <Badge variant="destructive"><AlertTriangle className="w-3 h-3 mr-1" />Charge Failed</Badge>;
     case 'resolved':
-      return <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200"><CheckCircle className="w-3 h-3 mr-1" />Resolved</Badge>;
+      return <Badge variant="outline" className="text-muted-foreground"><CheckCircle className="w-3 h-3 mr-1" />Resolved</Badge>;
     case 'escalated':
       return <Badge variant="destructive"><AlertTriangle className="w-3 h-3 mr-1" />Escalated</Badge>;
     default:

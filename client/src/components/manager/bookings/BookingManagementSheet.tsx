@@ -535,8 +535,7 @@ function BookingManagementContent({
               <Button
                 type="button"
                 size="sm"
-                variant="default"
-                className="bg-green-600 hover:bg-green-700"
+                variant="success"
                 disabled={isProcessing}
                 onClick={(e) => handleCancellationAction("accept", e)}
               >
@@ -547,7 +546,7 @@ function BookingManagementContent({
                 type="button"
                 size="sm"
                 variant="outline"
-                className="border-red-200 text-red-700 hover:bg-red-50"
+                className="border-destructive/30 text-destructive hover:bg-destructive/5"
                 disabled={isProcessing}
                 onClick={(e) => handleCancellationAction("decline", e)}
               >
@@ -600,8 +599,8 @@ function BookingManagementContent({
               <Badge className={cn(
                 "text-[10px] transition-colors",
                 kitchenDecision === "keep"
-                  ? "bg-green-100 text-green-700 border-green-200"
-                  : "bg-red-100 text-red-700 border-red-200",
+                  ? "border-success/30 text-success bg-success/10"
+                  : "border-destructive/30 text-destructive bg-destructive/10",
               )}>
                 {kitchenDecision === "keep" ? (
                   <><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />Active</>
@@ -649,8 +648,8 @@ function BookingManagementContent({
                           <Button
                             type="button"
                             size="sm"
-                            variant="default"
-                            className="h-6 px-2 text-[10px] bg-green-600 hover:bg-green-700"
+                            variant="success"
+                            className="h-6 px-2 text-[10px]"
                             disabled={isProcessing}
                             onClick={(e) => handleStorageCancellationAction(item.storageBookingId, "accept", e)}
                           >
@@ -660,7 +659,7 @@ function BookingManagementContent({
                             type="button"
                             size="sm"
                             variant="outline"
-                            className="h-6 px-2 text-[10px] border-red-200 text-red-700"
+                            className="h-6 px-2 text-[10px] border-destructive/30 text-destructive"
                             disabled={isProcessing}
                             onClick={(e) => handleStorageCancellationAction(item.storageBookingId, "decline", e)}
                           >
@@ -704,8 +703,8 @@ function BookingManagementContent({
                         <Badge className={cn(
                           "text-[10px] transition-colors",
                           isKeeping
-                            ? "bg-green-100 text-green-700 border-green-200"
-                            : "bg-red-100 text-red-700 border-red-200",
+                            ? "border-success/30 text-success bg-success/10"
+                            : "border-destructive/30 text-destructive bg-destructive/10",
                         )}>
                           {isKeeping ? (
                             <><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />Active</>
@@ -736,7 +735,7 @@ function BookingManagementContent({
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs font-mono text-gray-400 line-through">{formatPrice(item.totalPrice)}</span>
-                    <Badge className="text-[10px] bg-gray-100 text-gray-500 border-gray-200">
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
                       <XCircle className="h-2.5 w-2.5 mr-0.5" />
                       Cancelled
                     </Badge>
@@ -798,8 +797,8 @@ function BookingManagementContent({
                       <Badge className={cn(
                         "text-[10px] transition-colors",
                         isKeeping
-                          ? "bg-green-100 text-green-700 border-green-200"
-                          : "bg-red-100 text-red-700 border-red-200",
+                          ? "border-success/30 text-success bg-success/10"
+                          : "border-destructive/30 text-destructive bg-destructive/10",
                       )}>
                         {isKeeping ? (
                           <><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />Active</>
@@ -826,7 +825,7 @@ function BookingManagementContent({
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs font-mono text-gray-400 line-through">{formatPrice(item.totalPrice)}</span>
-                    <Badge className="text-[10px] bg-gray-100 text-gray-500 border-gray-200">
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
                       <XCircle className="h-2.5 w-2.5 mr-0.5" />
                       Cancelled
                     </Badge>
@@ -945,7 +944,7 @@ function BookingManagementContent({
                     variant="ghost"
                     size="sm"
                     onClick={(e) => { e.stopPropagation(); setIsEditingRefund(true); setCustomRefundInput((refundCalc.autoRefundAmount / 100).toFixed(2)); }}
-                    className="h-7 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-100 px-2"
+                    className="h-7 text-xs text-muted-foreground hover:text-foreground px-2"
                   >
                     <Pencil className="h-3 w-3 mr-1" />
                     Modify refund amount
@@ -1005,7 +1004,7 @@ function BookingManagementContent({
                   type="button"
                   variant={refundMode ? "default" : "outline"}
                   size="sm"
-                  className={cn("h-7 text-xs", refundMode && "bg-blue-600 hover:bg-blue-700")}
+                  className={cn("h-7 text-xs")}
                   onClick={(e) => {
                     e.stopPropagation();
                     setRefundMode(!refundMode);
@@ -1085,19 +1084,19 @@ function BookingManagementContent({
         {/* Summary badges */}
         <div className="flex items-center gap-2 w-full flex-wrap">
           {keepCount > 0 && (
-            <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">
+            <Badge variant="success" className="text-xs">
               <CheckCircle2 className="h-3 w-3 mr-1" />
               {keepCount} active
             </Badge>
           )}
           {cancelCount > 0 && (
-            <Badge className="bg-red-100 text-red-700 border-red-200 text-xs">
+            <Badge variant="outline" className="text-xs text-destructive border-destructive/30">
               <Ban className="h-3 w-3 mr-1" />
               {cancelCount} cancelling
             </Badge>
           )}
           {(refundCalc.hasCancellations || refundMode) && effectiveRefundAmount > 0 && (
-            <Badge variant="outline" className="text-xs text-amber-700 border-amber-200 ml-auto">
+            <Badge variant="warning" className="text-xs ml-auto">
               <DollarSign className="h-3 w-3 mr-0.5" />
               {formatPrice(effectiveRefundAmount)} refund
             </Badge>
@@ -1122,7 +1121,7 @@ function BookingManagementContent({
               type="button"
               onClick={handleSubmit}
               disabled={isProcessing || effectiveRefundAmount <= 0 || !booking.transactionId}
-              className="flex-1 min-w-[160px] bg-blue-600 hover:bg-blue-700 text-white"
+              className="flex-1 min-w-[160px]"
             >
               {isProcessing ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -1139,12 +1138,8 @@ function BookingManagementContent({
               type="button"
               onClick={handleSubmit}
               disabled={isProcessing}
-              className={cn(
-                "flex-1 min-w-[160px]",
-                effectiveRefundAmount > 0
-                  ? "bg-red-600 hover:bg-red-700 text-white"
-                  : "bg-red-600 hover:bg-red-700 text-white",
-              )}
+              variant="destructive"
+              className="flex-1 min-w-[160px]"
             >
               {isProcessing ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />

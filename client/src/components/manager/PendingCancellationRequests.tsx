@@ -219,8 +219,7 @@ export function PendingCancellationRequests({
               </div>
             </div>
             <Badge
-              variant="secondary"
-              className="bg-amber-100 text-amber-700 border-amber-300"
+              variant="warning"
             >
               {requests.length} pending
             </Badge>
@@ -263,8 +262,8 @@ export function PendingCancellationRequests({
                     )}
                   </div>
                   <Badge
-                    variant="outline"
-                    className="text-[10px] bg-amber-50 text-amber-700 border-amber-200"
+                    variant="warning"
+                    className="text-[10px]"
                   >
                     <Clock className="h-2.5 w-2.5 mr-0.5" />
                     {req.kind === "kitchen"
@@ -367,8 +366,8 @@ export function PendingCancellationRequests({
               disabled={isProcessing}
               className={
                 confirmDialog.action === "accept"
-                  ? "bg-green-600 hover:bg-green-700"
-                  : "bg-red-600 hover:bg-red-700"
+                  ? "bg-success text-success-foreground hover:bg-success/90"
+                  : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
               }
             >
               {isProcessing

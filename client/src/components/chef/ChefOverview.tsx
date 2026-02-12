@@ -57,12 +57,42 @@ export function ChefOverview({
     const pending = kitchenApplications.filter((a) => a.status === "inReview").length;
     const total = kitchenApplications.length;
     if (total === 0) return { label: "No Applications", variant: "outline" as const };
-    if (approved > 0) return { label: `${approved} Approved`, variant: "default" as const };
+    if (approved > 0) return { label: `${approved} Approved`, variant: "success" as const };
     if (pending > 0) return { label: `${pending} Pending`, variant: "secondary" as const };
     return { label: `${total} Total`, variant: "outline" as const };
   };
 
   const kitchenSummary = getKitchenAccessSummary();
+
+  // Dynamic greeting based on time of day
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    return "Good evening";
+  };
+
+  // Dynamic subtitle based on chef's current state
+  const getSubtitle = () => {
+    const pendingKitchens = kitchenApplications.filter(a => a.status === "inReview").length;
+    const activeBookings = enrichedBookings?.length || 0;
+    const hasApp = applications?.length > 0;
+    const appStatus = getApplicationStatus();
+
+    if (!hasApp && kitchenApplications.length === 0) {
+      return "Get started by applying to sell or booking a commercial kitchen.";
+    }
+    if (appStatus === "In Review" || pendingKitchens > 0) {
+      const parts: string[] = [];
+      if (appStatus === "In Review") parts.push("your seller application is under review");
+      if (pendingKitchens > 0) parts.push(`${pendingKitchens} kitchen application${pendingKitchens > 1 ? "s" : ""} pending`);
+      return `Heads up — ${parts.join(" and ")}.`;
+    }
+    if (activeBookings > 0) {
+      return `You have ${activeBookings} active booking${activeBookings > 1 ? "s" : ""}. Here\u2019s your dashboard.`;
+    }
+    return "Here\u2019s an overview of your LocalCooks journey.";
+  };
 
   return (
     <div className="space-y-8">
@@ -70,10 +100,10 @@ export function ChefOverview({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
-            Welcome back{user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""}!
+            {getGreeting()}{user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""}!
           </h1>
           <p className="text-muted-foreground mt-1">
-            Here's an overview of your LocalCooks journey
+            {getSubtitle()}
           </p>
         </div>
       </div>
@@ -162,7 +192,7 @@ export function ChefOverview({
               {applications?.length > 0 && (
                 <Badge
                   variant={getStatusVariant(getMostRecentApplication()?.status || "")}
-                  className="text-[10px]"
+                  className="text-xs"
                 >
                   {formatApplicationStatus(getMostRecentApplication()?.status || "")}
                 </Badge>
@@ -195,7 +225,7 @@ export function ChefOverview({
                     <Shield className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">Documents</span>
                   </div>
-                  <Badge variant="outline" className="text-[10px]">
+                  <Badge variant="outline" className="text-xs">
                     {getDocumentStatus()}
                   </Badge>
                 </div>
@@ -247,7 +277,7 @@ export function ChefOverview({
                 </div>
               </div>
               {kitchenApplications.length > 0 && (
-                <Badge variant={kitchenSummary.variant} className="text-[10px]">
+                <Badge variant={kitchenSummary.variant} className="text-xs">
                   {kitchenSummary.label}
                 </Badge>
               )}
@@ -274,7 +304,7 @@ export function ChefOverview({
                     </div>
                     <Badge
                       variant={app.status === "approved" ? "default" : "secondary"}
-                      className="text-[10px]"
+                      className="text-xs"
                     >
                       {app.status === "approved" ? "Approved" : "Pending"}
                     </Badge>

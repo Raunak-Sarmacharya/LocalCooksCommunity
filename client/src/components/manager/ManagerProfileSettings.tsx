@@ -581,7 +581,7 @@ export default function ManagerProfileSettings() {
                         <div className="p-5 space-y-4">
                             <div className="flex items-center justify-between">
                                 <span className="text-sm text-slate-600">Account Type</span>
-                                <Badge variant="secondary" className="bg-teal-50 text-teal-700 border-teal-200">
+                                <Badge variant="info">
                                     Manager
                                 </Badge>
                             </div>

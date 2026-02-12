@@ -12,6 +12,7 @@ import {
     DollarSign,
     FileText,
     Globe,
+    LayoutDashboard,
     MapPin,
     Package,
     PackageCheck,
@@ -87,7 +88,7 @@ const navData: { navMain: NavGroup[] } = {
                 {
                     title: "Dashboard",
                     url: "overview",
-                    icon: MapPin,
+                    icon: LayoutDashboard,
                 },
                 {
                     title: "My Locations",

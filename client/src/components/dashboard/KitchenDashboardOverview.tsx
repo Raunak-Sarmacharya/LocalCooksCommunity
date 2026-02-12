@@ -630,63 +630,44 @@ export default function KitchenDashboardOverview({
         {/* Row 1: Three Smaller Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           {/* Today's Bookings */}
-          <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-rose-500 to-pink-600 text-white shadow-lg shadow-rose-500/25 hover:shadow-xl hover:shadow-rose-500/30 transition-all duration-300 hover:-translate-y-1">
+          <Card className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300">
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-rose-100 text-[10px] font-medium uppercase tracking-wider">Today</p>
-                  <p className="text-2xl font-bold mt-1">{dashboardMetrics.todayBookings}</p>
-                  <p className="text-rose-100 text-xs mt-1">Sessions scheduled</p>
+                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">Today</p>
+                  <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.todayBookings}</p>
+                  <p className="text-gray-500 text-xs mt-1">Sessions scheduled</p>
                 </div>
-                <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm">
-                  <CalendarDays className="h-4 w-4" />
-                </div>
+                <CalendarDays className="h-4 w-4 text-rose-500" />
               </div>
-              <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
             </CardContent>
           </Card>
 
           {/* This Week */}
-          <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-lg shadow-violet-500/25 hover:shadow-xl hover:shadow-violet-500/30 transition-all duration-300 hover:-translate-y-1">
+          <Card className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300">
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-violet-100 text-[10px] font-medium uppercase tracking-wider">This Week</p>
-                  <p className="text-2xl font-bold mt-1">{dashboardMetrics.weekBookings}</p>
-                  <p className="text-violet-100 text-xs mt-1">Upcoming bookings</p>
+                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">This Week</p>
+                  <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.weekBookings}</p>
+                  <p className="text-gray-500 text-xs mt-1">Upcoming bookings</p>
                 </div>
-                <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm">
-                  <Calendar className="h-4 w-4" />
-                </div>
+                <Calendar className="h-4 w-4 text-violet-500" />
               </div>
-              <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
             </CardContent>
           </Card>
 
           {/* Pending Review */}
-          <Card className={`relative overflow-hidden border-0 shadow-lg transition-all duration-300 hover:-translate-y-1 ${
-            dashboardMetrics.pendingBookings > 0 
-              ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-amber-500/25 hover:shadow-xl hover:shadow-amber-500/30' 
-              : 'bg-white border border-gray-100 text-gray-900 hover:shadow-xl'
-          }`}>
+          <Card className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300">
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className={`text-[10px] font-medium uppercase tracking-wider ${dashboardMetrics.pendingBookings > 0 ? 'text-amber-100' : 'text-gray-500'}`}>
-                    Pending
-                  </p>
-                  <p className="text-2xl font-bold mt-1">{dashboardMetrics.pendingBookings}</p>
-                  <p className={`text-xs mt-1 ${dashboardMetrics.pendingBookings > 0 ? 'text-amber-100' : 'text-gray-500'}`}>
-                    Needs review
-                  </p>
+                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">Pending</p>
+                  <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.pendingBookings}</p>
+                  <p className="text-gray-500 text-xs mt-1">Needs review</p>
                 </div>
-                <div className={`p-1.5 rounded-lg ${dashboardMetrics.pendingBookings > 0 ? 'bg-white/20 backdrop-blur-sm' : 'bg-amber-100'}`}>
-                  <Clock className={`h-4 w-4 ${dashboardMetrics.pendingBookings > 0 ? 'text-white' : 'text-amber-600'}`} />
-                </div>
+                <Clock className="h-4 w-4 text-amber-500" />
               </div>
-              {dashboardMetrics.pendingBookings > 0 && (
-                <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
-              )}
             </CardContent>
           </Card>
         </div>
@@ -698,9 +679,7 @@ export default function KitchenDashboardOverview({
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-blue-100 rounded-lg">
-                    <BarChart3 className="h-4 w-4 text-blue-600" />
-                  </div>
+                  <BarChart3 className="h-4 w-4 text-blue-600" />
                   <div>
                     <p className="text-gray-700 text-sm font-semibold">Weekly Activity</p>
                     <p className="text-xs text-gray-500">Next 7 days</p>
@@ -777,9 +756,7 @@ export default function KitchenDashboardOverview({
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-rose-100 rounded-lg">
-                    <BarChart3 className="h-4 w-4 text-rose-600" />
-                  </div>
+                  <BarChart3 className="h-4 w-4 text-rose-600" />
                   <p className="text-gray-700 text-sm font-semibold">This Month</p>
                 </div>
                 <div className={`flex items-center gap-1 text-sm font-medium px-2 py-1 rounded-full ${
@@ -821,30 +798,27 @@ export default function KitchenDashboardOverview({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Total Revenue This Month */}
           <Card 
-            className="relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+            className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer"
             onClick={() => onNavigate('revenue')}
           >
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-emerald-100 text-[10px] font-medium uppercase tracking-wider">This Month</p>
-                  <p className="text-2xl font-bold mt-1">
+                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">This Month</p>
+                  <p className="text-2xl font-bold mt-1 text-gray-900">
                     {isLoadingRevenue ? (
-                      <span className="text-emerald-100">...</span>
+                      <span className="text-gray-400">...</span>
                     ) : revenueMetrics ? (
                       formatCurrency(revenueMetrics.totalRevenue || 0)
                     ) : (
                       '$0.00'
                     )}
                   </p>
-                  <p className="text-emerald-100 text-xs mt-1">Total revenue</p>
+                  <p className="text-gray-500 text-xs mt-1">Total revenue</p>
                 </div>
-                <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm">
-                  <DollarSign className="h-4 w-4" />
-                </div>
+                <DollarSign className="h-4 w-4 text-emerald-500" />
               </div>
-              <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
-              <div className="mt-3 pt-3 border-t border-white/20 flex items-center gap-1 text-xs text-emerald-100">
+              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1 text-xs text-gray-500">
                 <span>View details</span>
                 <ArrowRight className="h-3 w-3" />
               </div>
@@ -853,32 +827,29 @@ export default function KitchenDashboardOverview({
 
           {/* Your Earnings - Live Stripe Balance (Available) */}
           <Card 
-            className="relative overflow-hidden border-0 bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+            className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer"
             onClick={() => onNavigate('revenue')}
           >
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-blue-100 text-[10px] font-medium uppercase tracking-wider">Available Balance</p>
-                  <p className="text-2xl font-bold mt-1">
+                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">Available Balance</p>
+                  <p className="text-2xl font-bold mt-1 text-gray-900">
                     {isLoadingStripeBalance ? (
-                      <span className="text-blue-100">...</span>
+                      <span className="text-gray-400">...</span>
                     ) : stripeBalance ? (
                       formatCurrency(stripeBalance.available || 0)
                     ) : (
                       '$0.00'
                     )}
                   </p>
-                  <p className="text-blue-100 text-xs mt-1">
+                  <p className="text-gray-500 text-xs mt-1">
                     {stripeBalance?.hasStripeAccount ? 'Ready for payout' : 'No Stripe account'}
                   </p>
                 </div>
-                <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm">
-                  <DollarSign className="h-4 w-4" />
-                </div>
+                <DollarSign className="h-4 w-4 text-blue-500" />
               </div>
-              <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
-              <div className="mt-3 pt-3 border-t border-white/20 flex items-center gap-1 text-xs text-blue-100">
+              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1 text-xs text-gray-500">
                 <span>View details</span>
                 <ArrowRight className="h-3 w-3" />
               </div>
@@ -887,53 +858,24 @@ export default function KitchenDashboardOverview({
 
           {/* Pending Balance - Live Stripe Balance */}
           <Card
-            className={`relative overflow-hidden border-0 shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer ${
-              stripeBalance && stripeBalance.pending > 0
-                ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-amber-500/25 hover:shadow-xl hover:shadow-amber-500/30'
-                : 'bg-white border border-gray-100 text-gray-900 hover:shadow-xl'
-            }`}
+            className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer"
             onClick={() => onNavigate('revenue')}
           >
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className={`text-[10px] font-medium uppercase tracking-wider ${
-                    stripeBalance && stripeBalance.pending > 0 ? 'text-amber-100' : 'text-gray-500'
-                  }`}>
-                    Pending
-                  </p>
-                  <p className="text-2xl font-bold mt-1">
+                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">Pending</p>
+                  <p className="text-2xl font-bold mt-1 text-gray-900">
                     {isLoadingStripeBalance ? (
-                      <span className="text-gray-500">...</span>
+                      <span className="text-gray-400">...</span>
                     ) : (
                       formatCurrency(stripeBalance?.pending ?? 0)
                     )}
                   </p>
-                  <p className={`text-xs mt-1 ${
-                    stripeBalance && stripeBalance.pending > 0 ? 'text-amber-100' : 'text-gray-500'
-                  }`}>
-                    Processing (2-7 days)
-                  </p>
+                  <p className="text-gray-500 text-xs mt-1">Processing (2-7 days)</p>
                 </div>
-                <div className={`p-1.5 rounded-lg ${
-                  stripeBalance && stripeBalance.pending > 0
-                    ? 'bg-white/20 backdrop-blur-sm'
-                    : 'bg-amber-100'
-                }`}>
-                  <Clock className={`h-4 w-4 ${
-                    stripeBalance && stripeBalance.pending > 0 ? 'text-white' : 'text-amber-600'
-                  }`} />
-                </div>
+                <Clock className="h-4 w-4 text-amber-500" />
               </div>
-              {stripeBalance && stripeBalance.pending > 0 && (
-                <>
-                  <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
-                  <div className="mt-3 pt-3 border-t border-white/20 flex items-center gap-1 text-xs text-amber-100">
-                    <span>View details</span>
-                    <ArrowRight className="h-3 w-3" />
-                  </div>
-                </>
-              )}
             </CardContent>
           </Card>
         </div>
@@ -1056,9 +998,7 @@ export default function KitchenDashboardOverview({
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-violet-100 rounded-lg">
-                  <FileText className="h-4 w-4 text-violet-600" />
-                </div>
+                <FileText className="h-4 w-4 text-violet-600" />
                 <div>
                   <CardTitle className="text-base">Recent Bookings</CardTitle>
                   <p className="text-xs text-gray-500">Latest requests</p>
@@ -1420,9 +1360,7 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Users className="h-4 w-4 text-blue-600" />
-            </div>
+            <Users className="h-4 w-4 text-blue-600" />
             <div>
               <CardTitle className="text-base">Customer Management</CardTitle>
               <p className="text-xs text-gray-500">Chefs</p>

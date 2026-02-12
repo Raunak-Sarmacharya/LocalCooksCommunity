@@ -89,7 +89,7 @@ export function IssuesAndRefunds() {
           <AlertTriangle className="h-5 w-5 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Resolution Center</h1>
+          <h1 className="text-2xl font-bold text-foreground">Resolution Center</h1>
           <p className="text-sm text-muted-foreground">
             View damage claims and overstay penalties
           </p>
@@ -98,7 +98,7 @@ export function IssuesAndRefunds() {
 
       {/* Tabs for switching between damage claims and overstay penalties */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6">
+        <TabsList className="grid w-full grid-cols-2 rounded-xl bg-muted p-1 mb-6">
           <TabsTrigger 
             value="damage-claims" 
             className="flex items-center gap-2 rounded-lg data-[state=active]:bg-white"

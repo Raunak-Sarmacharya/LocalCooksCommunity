@@ -59,17 +59,17 @@ export const getLocationColumns = ({ onEdit, onManage, onViewDetails }: Location
         cell: ({ row }) => {
             const status = row.getValue("kitchenLicenseStatus") as string
 
-            let variant: "default" | "secondary" | "destructive" | "outline" = "secondary"
+            let variant: "success" | "secondary" | "destructive" | "warning" = "warning"
             let label = "Pending"
 
             if (status === 'approved') {
-                variant = "default" // Or a custom 'success' variant if available in Badge
+                variant = "success"
                 label = "Approved"
             } else if (status === 'rejected') {
                 variant = "destructive"
                 label = "Rejected"
             } else {
-                variant = "secondary" // Pending
+                variant = "warning"
                 label = "Pending"
             }
 

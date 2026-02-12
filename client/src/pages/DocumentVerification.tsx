@@ -144,21 +144,21 @@ export default function DocumentVerification() {
     switch (status) {
       case "pending":
         return (
-          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+          <Badge variant="warning">
             <Clock className="h-3 w-3 mr-1" />
             Pending Review
           </Badge>
         );
       case "approved":
         return (
-          <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
+          <Badge variant="success">
             <CheckCircle className="h-3 w-3 mr-1" />
             Approved
           </Badge>
         );
       case "rejected":
         return (
-          <Badge variant="secondary" className="bg-red-100 text-red-800 border-red-300">
+          <Badge variant="outline" className="text-destructive border-destructive/30">
             <XCircle className="h-3 w-3 mr-1" />
             Rejected
           </Badge>

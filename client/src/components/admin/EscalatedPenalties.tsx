@@ -120,11 +120,11 @@ function formatCurrency(cents: number) {
 // ============================================================================
 
 function getOverstayStatusBadge(status: string) {
-  const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
-    detected: { variant: "default", label: "Detected" },
+  const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning"; label: string }> = {
+    detected: { variant: "warning", label: "Detected" },
     escalated: { variant: "destructive", label: "Escalated" },
-    charged: { variant: "secondary", label: "Charged" },
-    resolved: { variant: "outline", label: "Resolved" },
+    charged: { variant: "success", label: "Charged" },
+    resolved: { variant: "success", label: "Resolved" },
     waived: { variant: "outline", label: "Waived" },
   };
   const c = config[status] || { variant: "outline" as const, label: status };
@@ -132,9 +132,9 @@ function getOverstayStatusBadge(status: string) {
 }
 
 function getClaimStatusBadge(status: string) {
-  const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
+  const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning"; label: string }> = {
     escalated: { variant: "destructive", label: "Escalated" },
-    charge_succeeded: { variant: "secondary", label: "Charged" },
+    charge_succeeded: { variant: "success", label: "Charged" },
     charge_failed: { variant: "destructive", label: "Charge Failed" },
     resolved: { variant: "outline", label: "Resolved" },
   };

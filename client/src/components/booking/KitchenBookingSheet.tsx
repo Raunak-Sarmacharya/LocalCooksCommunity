@@ -1157,7 +1157,7 @@ export default function KitchenBookingSheet({
               {/* Day headers - abbreviated on mobile */}
               <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-1.5">
                 {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => (
-                  <div key={idx} className="text-center text-[10px] sm:text-xs font-bold text-muted-foreground/70 uppercase tracking-wide py-1">
+                  <div key={idx} className="text-center text-xs sm:text-xs font-bold text-muted-foreground/70 uppercase tracking-wide py-1">
                     <span className="sm:hidden">{day}</span>
                     <span className="hidden sm:inline">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][idx]}</span>
                   </div>

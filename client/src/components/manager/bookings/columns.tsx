@@ -701,25 +701,25 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                         {label}
                     </Badge>
                     {isVoided && (
-                        <Badge variant="outline" className="text-[10px] text-gray-600 border-gray-300 bg-gray-50 w-fit">
+                        <Badge variant="outline" className="text-[10px] text-muted-foreground w-fit">
                             <DollarSign className="h-2.5 w-2.5 mr-0.5" />
                             Auth Voided
                         </Badge>
                     )}
                     {isAuthHold && status === 'pending' && (
-                        <Badge variant="outline" className="text-[10px] text-blue-700 border-blue-200 bg-blue-50 w-fit">
+                        <Badge variant="info" className="text-[10px] w-fit">
                             <DollarSign className="h-2.5 w-2.5 mr-0.5" />
                             Payment Held
                         </Badge>
                     )}
                     {isRefunded && (
-                        <Badge variant="outline" className="text-[10px] text-orange-700 border-orange-200 bg-orange-50 w-fit">
+                        <Badge variant="warning" className="text-[10px] w-fit">
                             <RotateCcw className="h-2.5 w-2.5 mr-0.5" />
                             Refunded
                         </Badge>
                     )}
                     {isPartiallyRefunded && (
-                        <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-200 bg-amber-50 w-fit">
+                        <Badge variant="warning" className="text-[10px] w-fit">
                             <RotateCcw className="h-2.5 w-2.5 mr-0.5" />
                             Partial Refund
                         </Badge>

@@ -22,7 +22,7 @@ export default {
         'mobile-lg': { 'min': '641px', 'max': '768px' },
       },
       fontFamily: {
-        sans: ["Instrument Sans", "system-ui", "sans-serif"],
+        sans: ["Figtree", "system-ui", "sans-serif"],
         display: ["Lobster", "cursive"],
         mono: ["Space Mono", "monospace"],
       },
@@ -67,6 +67,18 @@ export default {
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
+        },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
         },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

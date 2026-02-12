@@ -161,42 +161,42 @@ function copyToClipboard(text: string) {
 function getStatusBadge(status: string, refundAmount: number) {
   if (status === "refunded" || (status === "partially_refunded" && refundAmount > 0)) {
     return (
-      <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+      <Badge variant="info">
         {status === "partially_refunded" ? "Partial Refund" : "Refunded"}
       </Badge>
     );
   }
   if (status === "succeeded") {
     return (
-      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+      <Badge variant="success">
         Completed
       </Badge>
     );
   }
   if (status === "authorized") {
     return (
-      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+      <Badge variant="info">
         Authorized
       </Badge>
     );
   }
   if (status === "pending" || status === "processing") {
     return (
-      <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+      <Badge variant="warning">
         {status === "processing" ? "Processing" : "Pending"}
       </Badge>
     );
   }
   if (status === "canceled") {
     return (
-      <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">
+      <Badge variant="outline" className="text-muted-foreground">
         No Charge
       </Badge>
     );
   }
   if (status === "failed") {
     return (
-      <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+      <Badge variant="outline" className="text-destructive border-destructive/30">
         Failed
       </Badge>
     );
@@ -988,9 +988,7 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-          <CreditCard className="h-5 w-5 text-white" />
-        </div>
+        <CreditCard className="h-5 w-5 text-indigo-600" />
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Transaction History</h1>
           <p className="text-sm text-muted-foreground">

@@ -28,7 +28,7 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
     // Pending Review (new application)
     if (status === "inReview") {
         return (
-            <Badge className="bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-50">
+            <Badge variant="warning">
                 <Clock className="h-3 w-3 mr-1" />
                 Pending Review
             </Badge>
@@ -40,7 +40,7 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
         // Step 2 Needs Review (Chef submitted Step 2, manager needs to review)
         if (tier === 2 && hasStep2) {
             return (
-                <Badge className="bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-50">
+                <Badge variant="warning">
                     <Clock className="h-3 w-3 mr-1" />
                     Step 2 Review
                 </Badge>
@@ -50,7 +50,7 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
         // Step 1 Approved (waiting for chef to submit Step 2)
         if (tier === 1) {
             return (
-                <Badge className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-50">
+                <Badge variant="info">
                     <Check className="h-3 w-3 mr-1" />
                     Step 1 Done
                 </Badge>
@@ -60,7 +60,7 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
         // Fully Approved (can book kitchens)
         if (tier >= 3) {
             return (
-                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-50">
+                <Badge variant="success">
                     <Check className="h-3 w-3 mr-1" />
                     Approved
                 </Badge>
@@ -69,7 +69,7 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
 
         // Edge case fallback
         return (
-            <Badge className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-50">
+            <Badge variant="info">
                 In Progress
             </Badge>
         )
@@ -78,7 +78,7 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
     // Rejected
     if (status === "rejected") {
         return (
-            <Badge className="bg-red-50 text-red-700 border-red-200 hover:bg-red-50">
+            <Badge variant="outline" className="text-destructive border-destructive/30">
                 <X className="h-3 w-3 mr-1" />
                 Rejected
             </Badge>
@@ -88,7 +88,7 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
     // Cancelled
     if (status === "cancelled") {
         return (
-            <Badge variant="secondary" className="text-gray-600">
+            <Badge variant="outline" className="text-muted-foreground">
                 Cancelled
             </Badge>
         )

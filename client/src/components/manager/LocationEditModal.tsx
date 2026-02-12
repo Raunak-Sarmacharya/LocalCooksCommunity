@@ -584,7 +584,7 @@ export default function LocationEditModal({
               type="submit"
               onClick={form.handleSubmit(onSubmit)}
               disabled={isLoading}
-              className="bg-[#F51042] hover:bg-[#d10e3a] text-white gap-2"
+              className="gap-2"
             >
               {isLoading ? (
                 <>

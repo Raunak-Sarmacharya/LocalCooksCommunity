@@ -4,7 +4,7 @@ import {
     videoProgress,
     microlearningCompletions
 } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { InsertVideoProgress, InsertMicrolearningCompletion } from "./microlearning.types";
 
 export class MicrolearningRepository {
@@ -25,20 +25,28 @@ export class MicrolearningRepository {
     }
 
     async upsertVideoProgress(data: InsertVideoProgress) {
-        // Safe cast for conflict target inference
+        // CRITICAL: Never downgrade completed from true→false.
+        // Race condition: onProgress fires with completed=false right before/after
+        // onComplete fires with completed=true — the last write wins in the DB.
+        // Use SQL GREATEST/OR to ensure completed stays true once set.
         return db
             .insert(videoProgress)
             .values(data)
             .onConflictDoUpdate({
                 target: [videoProgress.userId, videoProgress.videoId],
                 set: {
-                    progress: data.progress,
-                    completed: data.completed,
-                    watchedPercentage: data.watchedPercentage,
+                    progress: data.completed
+                        ? data.progress
+                        : sql`GREATEST(${videoProgress.progress}, ${data.progress})`,
+                    completed: data.completed
+                        ? sql`true`
+                        : sql`${videoProgress.completed}`,
+                    watchedPercentage: sql`GREATEST(${videoProgress.watchedPercentage}, ${data.watchedPercentage})`,
                     isRewatching: data.isRewatching,
                     updatedAt: new Date(),
-                    // Update completedAt if it's provided in the new data
-                    ...(data.completedAt ? { completedAt: data.completedAt } : {})
+                    completedAt: data.completedAt
+                        ? data.completedAt
+                        : sql`${videoProgress.completedAt}`,
                 },
             });
     }

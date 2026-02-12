@@ -535,28 +535,28 @@ function AdminDashboard() {
     switch (status) {
       case "pending":
         return (
-          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+          <Badge variant="warning">
             <Clock className="h-3 w-3 mr-1" />
             Pending
           </Badge>
         );
       case "approved":
         return (
-          <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
+          <Badge variant="success">
             <CheckCircle className="h-3 w-3 mr-1" />
             Approved
           </Badge>
         );
       case "rejected":
         return (
-          <Badge variant="secondary" className="bg-red-100 text-red-800 border-red-300">
+          <Badge variant="outline" className="text-destructive border-destructive/30">
             <XCircle className="h-3 w-3 mr-1" />
             Rejected
           </Badge>
         );
       default:
         return (
-          <Badge variant="secondary" className="bg-gray-100 text-gray-800 border-gray-300">
+          <Badge variant="outline" className="text-muted-foreground">
             Not Set
           </Badge>
         );
@@ -584,35 +584,35 @@ function AdminDashboard() {
     switch (status) {
       case "inReview":
         return (
-          <Badge className="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-amber-100 text-amber-800 border-amber-300">
+          <Badge variant="warning" className="px-2 sm:px-3 py-1 text-xs sm:text-sm">
             <Clock className="h-3 w-3 mr-1" />
             In Review
           </Badge>
         );
       case "approved":
         return (
-          <Badge className="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-green-100 text-green-800 border-green-300">
+          <Badge variant="success" className="px-2 sm:px-3 py-1 text-xs sm:text-sm">
             <CheckCircle className="h-3 w-3 mr-1" />
             Approved
           </Badge>
         );
       case "rejected":
         return (
-          <Badge className="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-red-100 text-red-800 border-red-300">
+          <Badge variant="outline" className="px-2 sm:px-3 py-1 text-xs sm:text-sm text-destructive border-destructive/30">
             <XCircle className="h-3 w-3 mr-1" />
             Rejected
           </Badge>
         );
       case "cancelled":
         return (
-          <Badge className="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-gray-100 text-gray-800 border-gray-300">
+          <Badge variant="outline" className="px-2 sm:px-3 py-1 text-xs sm:text-sm text-muted-foreground">
             <XCircle className="h-3 w-3 mr-1" />
             Cancelled
           </Badge>
         );
       default:
         return (
-          <Badge className="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-gray-100 text-gray-800 border-gray-300">
+          <Badge variant="outline" className="px-2 sm:px-3 py-1 text-xs sm:text-sm text-muted-foreground">
             Unknown
           </Badge>
         );
@@ -1132,7 +1132,7 @@ function AdminDashboard() {
           <div className="max-w-2xl">
             <div className="mb-6">
               <h3 className="text-xl font-semibold mb-2">Account Settings</h3>
-              <p className="text-muted-foreground">Manage your admin account password</p>
+              <p className="text-muted-foreground">Manage your admin account security</p>
             </div>
             <ChangePassword role="admin" />
           </div>

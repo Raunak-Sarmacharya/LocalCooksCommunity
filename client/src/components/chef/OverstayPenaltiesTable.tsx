@@ -105,19 +105,19 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 function getStatusBadge(penalty: OverstayPenalty) {
   if (penalty.chargeSucceededAt || penalty.isPaid) {
-    return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Paid</Badge>;
+    return <Badge variant="success">Paid</Badge>;
   }
   if (penalty.isResolved) {
-    return <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">Resolved</Badge>;
+    return <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-border">Resolved</Badge>;
   }
   if (penalty.status === 'escalated') {
-    return <Badge variant="destructive" className="bg-red-600">Action Required</Badge>;
+    return <Badge variant="destructive">Action Required</Badge>;
   }
   if (penalty.status === 'charge_failed') {
     return <Badge variant="destructive">Payment Failed</Badge>;
   }
   if (penalty.status === 'charge_pending') {
-    return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">Processing</Badge>;
+    return <Badge variant="warning">Processing</Badge>;
   }
   return <Badge variant="destructive">Payment Required</Badge>;
 }

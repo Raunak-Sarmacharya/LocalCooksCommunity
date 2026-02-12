@@ -593,8 +593,8 @@ function BookingActionSheetContent({
                 className={cn(
                   "text-[10px] transition-colors cursor-pointer",
                   kitchenAction === "confirmed"
-                    ? "bg-green-100 text-green-700 border-green-200 hover:bg-green-200"
-                    : "bg-red-100 text-red-700 border-red-200 hover:bg-red-200"
+                    ? "border-success/30 text-success bg-success/10 hover:bg-success/15"
+                    : "border-destructive/30 text-destructive bg-destructive/10 hover:bg-destructive/15"
                 )}
               >
                 {kitchenAction === "confirmed" ? (
@@ -726,7 +726,7 @@ function BookingActionSheetContent({
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs font-mono text-gray-400 line-through">{formatPrice(item.totalPrice)}</span>
-                    <Badge className="text-[10px] bg-gray-100 text-gray-500 border-gray-200">
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
                       <XCircle className="h-2.5 w-2.5 mr-0.5" />
                       Rejected
                     </Badge>
@@ -836,7 +836,7 @@ function BookingActionSheetContent({
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs font-mono text-gray-400 line-through">{formatPrice(item.totalPrice)}</span>
-                    <Badge className="text-[10px] bg-gray-100 text-gray-500 border-gray-200">
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
                       <XCircle className="h-2.5 w-2.5 mr-0.5" />
                       Rejected
                     </Badge>
@@ -1084,7 +1084,7 @@ function BookingActionSheetContent({
                     variant="ghost"
                     size="sm"
                     onClick={handleEditRefund}
-                    className="h-7 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-100 px-2"
+                    className="h-7 text-xs text-muted-foreground hover:text-foreground px-2"
                   >
                     <Pencil className="h-3 w-3 mr-1" />
                     Modify refund amount
@@ -1149,25 +1149,25 @@ function BookingActionSheetContent({
         {/* Summary badges */}
         <div className="flex items-center gap-2 w-full">
           {approvedCount > 0 && (
-            <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">
+            <Badge variant="success" className="text-xs">
               <CheckCircle2 className="h-3 w-3 mr-1" />
               {approvedCount} approved
             </Badge>
           )}
           {rejectedCount > 0 && (
-            <Badge className="bg-red-100 text-red-700 border-red-200 text-xs">
+            <Badge variant="outline" className="text-xs text-destructive border-destructive/30">
               <XCircle className="h-3 w-3 mr-1" />
               {rejectedCount} rejected
             </Badge>
           )}
           {!isAuthorized && refundCalc.hasAnyRejection && (
-            <Badge variant="outline" className="text-xs text-amber-700 border-amber-200 ml-auto">
+            <Badge variant="warning" className="text-xs ml-auto">
               <DollarSign className="h-3 w-3 mr-0.5" />
               {formatPrice(effectiveRefundAmount)} refund
             </Badge>
           )}
           {isAuthorized && refundCalc.hasAnyRejection && (
-            <Badge variant="outline" className="text-xs text-blue-700 border-blue-200 ml-auto">
+            <Badge variant="info" className="text-xs ml-auto">
               No charge
             </Badge>
           )}
@@ -1186,14 +1186,8 @@ function BookingActionSheetContent({
           <Button
             onClick={handleSubmit}
             disabled={isLoading}
-            className={cn(
-              "flex-1 min-w-[160px]",
-              allRejected
-                ? "bg-red-600 hover:bg-red-700 text-white"
-                : allApproved
-                ? "bg-green-600 hover:bg-green-700 text-white"
-                : "bg-primary hover:bg-primary/90 text-primary-foreground"
-            )}
+            variant={allRejected ? "destructive" : allApproved ? "success" : "default"}
+            className="flex-1 min-w-[160px]"
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />

@@ -1183,30 +1183,27 @@ export default function KitchenComparisonPage() {
                             </div>
                           </div>
                           {location.allTiersCompleted ? (
-                            <Badge className="bg-green-100 text-green-800 border-green-200">
+                            <Badge variant="success">
                               <Check className="h-3 w-3 mr-1" />
                               Ready to Book
                             </Badge>
                           ) : location.isApproved ? (
-                            <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                            <Badge variant="info">
                               <Clock className="h-3 w-3 mr-1" />
                               Steps In Progress
                             </Badge>
                           ) : location.isPending ? (
-                            <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
+                            <Badge variant="warning">
                               <Clock className="h-3 w-3 mr-1" />
                               Pending Review
                             </Badge>
                           ) : (location as any).isRejected ? (
-                            <Badge className="bg-orange-100 text-orange-800 border-orange-200">
+                            <Badge variant="outline" className="text-destructive border-destructive/30">
                               <FileText className="h-3 w-3 mr-1" />
                               Rejected
                             </Badge>
                           ) : (
-                            <Badge className={`${location.kitchenLicenseStatus === 'pending'
-                              ? "bg-orange-100 text-orange-800 border-orange-200"
-                              : "bg-blue-100 text-blue-800 border-blue-200"
-                              }`}>
+                            <Badge variant={location.kitchenLicenseStatus === 'pending' ? "warning" : "info"}>
                               <Plus className="h-3 w-3 mr-1" />
                               {location.kitchenLicenseStatus === 'pending'
                                 ? "Pending Approval"
@@ -1293,7 +1290,7 @@ export default function KitchenComparisonPage() {
                                           <Badge
                                             key={idx}
                                             variant="outline"
-                                            className="text-xs bg-white border-green-300 text-green-700"
+                                            className="text-xs border-success/30 text-success"
                                           >
                                             {eq.equipmentType}
                                           </Badge>
@@ -1301,7 +1298,7 @@ export default function KitchenComparisonPage() {
                                         {kitchen.equipment.included.length > 2 && (
                                           <Badge
                                             variant="outline"
-                                            className="text-xs bg-white border-green-300 text-green-700"
+                                            className="text-xs border-success/30 text-success"
                                           >
                                             +{kitchen.equipment.included.length - 2} more
                                           </Badge>
@@ -1415,7 +1412,7 @@ export default function KitchenComparisonPage() {
                                           <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
                                           <div className="flex items-center justify-between mb-2">
                                             <div className="flex items-center gap-2">
-                                              <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 gap-1">
+                                              <Badge variant="info" className="gap-1">
                                                 <Check className="h-3 w-3" />
                                                 Step 1 Approved
                                               </Badge>

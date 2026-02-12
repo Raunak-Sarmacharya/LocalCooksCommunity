@@ -69,9 +69,7 @@ export default function OutstandingDuesBanner() {
       {/* Header */}
       <div className="px-5 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="p-2 bg-red-100 rounded-full shrink-0">
-            <AlertTriangle className="h-5 w-5 text-red-600" />
-          </div>
+          <AlertTriangle className="h-5 w-5 text-red-600 shrink-0" />
           <div className="min-w-0">
             <p className="font-semibold text-red-900 text-sm sm:text-base">
               Outstanding Balance: {formatCurrency(totalOwedCents)}
@@ -129,7 +127,7 @@ export default function OutstandingDuesBanner() {
                     <p className="text-sm font-medium text-red-900 truncate">
                       {item.title}
                     </p>
-                    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${getStatusColor(item.status)}`}>
+                    <Badge variant="outline" className={`text-xs px-1.5 py-0 ${getStatusColor(item.status)}`}>
                       {getStatusLabel(item.status)}
                     </Badge>
                   </div>

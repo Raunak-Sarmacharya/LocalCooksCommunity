@@ -38,8 +38,8 @@ export default function SellerApplicationCard({
 
   // Helper function for document status badge
   const getDocStatusBadge = (status: string | undefined) => {
-    if (!status || status === 'N/A') return { variant: 'outline' as const, className: 'bg-gray-100 text-gray-600' };
-    if (status === 'approved') return { variant: 'default' as const, className: 'bg-green-100 text-green-800 border-green-200' };
+    if (!status || status === 'N/A') return { variant: 'outline' as const, className: 'bg-muted text-muted-foreground' };
+    if (status === 'approved') return { variant: 'success' as const, className: '' };
     if (status === 'pending') return { variant: 'secondary' as const, className: 'bg-amber-100 text-amber-800 border-amber-200' };
     if (status === 'rejected') return { variant: 'destructive' as const, className: 'bg-red-100 text-red-800 border-red-200' };
     return { variant: 'outline' as const, className: '' };
@@ -58,7 +58,7 @@ export default function SellerApplicationCard({
           app.status === 'approved' ? "bg-green-500" :
           app.status === 'inReview' ? "bg-amber-500" :
           app.status === 'rejected' ? "bg-red-500" :
-          "bg-gray-400"
+          "bg-muted-foreground/40"
         )} />
         
         {/* Collapsed Header - Always Visible */}
@@ -71,20 +71,20 @@ export default function SellerApplicationCard({
                   app.status === 'approved' ? "bg-green-100" :
                   app.status === 'inReview' ? "bg-amber-100" :
                   app.status === 'rejected' ? "bg-red-100" :
-                  "bg-gray-100"
+                  "bg-muted"
                 )}>
                   <Store className={cn(
                     "h-5 w-5",
                     app.status === 'approved' ? "text-green-600" :
                     app.status === 'inReview' ? "text-amber-600" :
                     app.status === 'rejected' ? "text-red-600" :
-                    "text-gray-600"
+                    "text-muted-foreground"
                   )} />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-foreground">Seller Application #{app.id}</p>
-                    <Badge variant={getStatusVariant(app.status)} className="text-[10px] uppercase tracking-wider font-bold">
+                    <Badge variant={getStatusVariant(app.status)} className="text-xs uppercase tracking-wider font-bold">
                       {formatApplicationStatus(app.status)}
                     </Badge>
                   </div>
@@ -126,12 +126,12 @@ export default function SellerApplicationCard({
               app.status === 'approved' ? "bg-green-50 border-green-200" :
               app.status === 'inReview' ? "bg-amber-50 border-amber-200" :
               app.status === 'rejected' ? "bg-red-50 border-red-200" :
-              "bg-gray-50 border-gray-200"
+              "bg-muted/50 border-border"
             )}>
               {app.status === 'approved' ? <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" /> :
                app.status === 'inReview' ? <Clock className="h-4 w-4 text-amber-600 mt-0.5" /> :
                app.status === 'rejected' ? <XCircle className="h-4 w-4 text-red-600 mt-0.5" /> :
-               <AlertCircle className="h-4 w-4 text-gray-600 mt-0.5" />}
+               <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5" />}
               <p className="text-sm text-muted-foreground">
                 {app.status === 'approved' ? 'Your seller application has been approved. Complete document verification to start selling.' :
                  app.status === 'inReview' ? 'Our team is reviewing your application. You will be notified once a decision is made.' :
@@ -145,19 +145,19 @@ export default function SellerApplicationCard({
               <p className="text-xs font-bold uppercase text-muted-foreground tracking-wider">Submitted Information</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="p-2 bg-muted/30 rounded-lg">
-                  <p className="text-[10px] text-muted-foreground uppercase">Full Name</p>
+                  <p className="text-xs text-muted-foreground uppercase">Full Name</p>
                   <p className="text-sm font-medium truncate">{app.fullName || 'N/A'}</p>
                 </div>
                 <div className="p-2 bg-muted/30 rounded-lg">
-                  <p className="text-[10px] text-muted-foreground uppercase">Email</p>
+                  <p className="text-xs text-muted-foreground uppercase">Email</p>
                   <p className="text-sm font-medium truncate">{app.email || 'N/A'}</p>
                 </div>
                 <div className="p-2 bg-muted/30 rounded-lg">
-                  <p className="text-[10px] text-muted-foreground uppercase">Phone</p>
+                  <p className="text-xs text-muted-foreground uppercase">Phone</p>
                   <p className="text-sm font-medium">{app.phone || 'N/A'}</p>
                 </div>
                 <div className="p-2 bg-muted/30 rounded-lg">
-                  <p className="text-[10px] text-muted-foreground uppercase">Kitchen Pref</p>
+                  <p className="text-xs text-muted-foreground uppercase">Kitchen Pref</p>
                   <p className="text-sm font-medium capitalize">{app.kitchenPreference || 'N/A'}</p>
                 </div>
               </div>
@@ -181,11 +181,11 @@ export default function SellerApplicationCard({
                     <span className="text-sm">Food Safety License</span>
                   </div>
                   {foodSafetyUrl ? (
-                    <Badge variant={getDocStatusBadge(foodSafetyStatus).variant} className={cn("text-[10px]", getDocStatusBadge(foodSafetyStatus).className)}>
+                    <Badge variant={getDocStatusBadge(foodSafetyStatus).variant} className={cn("text-xs", getDocStatusBadge(foodSafetyStatus).className)}>
                       {foodSafetyStatus || 'Pending'}
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="bg-gray-100">Not Uploaded</Badge>
+                    <Badge variant="outline" className="bg-muted">Not Uploaded</Badge>
                   )}
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-card">
@@ -194,11 +194,11 @@ export default function SellerApplicationCard({
                     <span className="text-sm">Establishment Cert</span>
                   </div>
                   {establishmentUrl ? (
-                    <Badge variant={getDocStatusBadge(establishmentStatus).variant} className={cn("text-[10px]", getDocStatusBadge(establishmentStatus).className)}>
+                    <Badge variant={getDocStatusBadge(establishmentStatus).variant} className={cn("text-xs", getDocStatusBadge(establishmentStatus).className)}>
                       {establishmentStatus || 'Pending'}
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="bg-gray-100">Not Uploaded</Badge>
+                    <Badge variant="outline" className="bg-muted">Not Uploaded</Badge>
                   )}
                 </div>
               </div>

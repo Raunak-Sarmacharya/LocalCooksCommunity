@@ -263,22 +263,22 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
   const getStatusBadge = () => {
     const status = location.kitchenLicenseStatus;
     if (!status || !location.kitchenLicenseUrl) {
-      return <Badge variant="outline" className="bg-gray-50 text-gray-600">Not Uploaded</Badge>;
+      return <Badge variant="outline" className="text-muted-foreground">Not Uploaded</Badge>;
     }
     
     switch (status) {
       case 'approved':
         if (isLicenseExpired) {
-          return <Badge variant="destructive" className="bg-red-100 text-red-700">Expired</Badge>;
+          return <Badge variant="outline" className="text-destructive border-destructive/30">Expired</Badge>;
         }
         if (isExpiryApproaching(location.kitchenLicenseExpiry)) {
-          return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Expiring Soon</Badge>;
+          return <Badge variant="warning">Expiring Soon</Badge>;
         }
-        return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Approved</Badge>;
+        return <Badge variant="success">Approved</Badge>;
       case 'pending':
-        return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Pending Review</Badge>;
+        return <Badge variant="warning">Pending Review</Badge>;
       case 'rejected':
-        return <Badge variant="destructive" className="bg-red-100 text-red-700">Rejected</Badge>;
+        return <Badge variant="outline" className="text-destructive border-destructive/30">Rejected</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -466,9 +466,9 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
               </div>
             </div>
             {location.kitchenTermsUrl ? (
-              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Uploaded</Badge>
+              <Badge variant="success">Uploaded</Badge>
             ) : (
-              <Badge variant="outline" className="bg-gray-50 text-gray-600">Not Uploaded</Badge>
+              <Badge variant="outline" className="text-muted-foreground">Not Uploaded</Badge>
             )}
           </div>
         </CardHeader>

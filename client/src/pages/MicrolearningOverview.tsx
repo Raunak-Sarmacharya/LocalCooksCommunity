@@ -389,15 +389,15 @@ export default function MicrolearningOverview() {
                       <h3 className="text-sm md:text-base font-semibold text-slate-800">Food Safety Basics</h3>
                       <div className="flex gap-2 flex-wrap justify-center sm:justify-start">
                         {hasFullAccess ? (
-                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 px-2 md:px-3 py-1 text-xs">
+                          <Badge variant="success" className="px-2 md:px-3 py-1 text-xs">
                             14 Available
                           </Badge>
                         ) : (
                           <>
-                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 px-2 md:px-3 py-1 text-xs">
+                            <Badge variant="success" className="px-2 md:px-3 py-1 text-xs">
                               1 Available
                             </Badge>
-                            <Badge className="bg-slate-100 text-slate-600 border-slate-300 px-2 md:px-3 py-1 text-xs">
+                            <Badge variant="outline" className="px-2 md:px-3 py-1 text-xs text-muted-foreground">
                               13 Locked
                             </Badge>
                           </>
@@ -412,11 +412,11 @@ export default function MicrolearningOverview() {
                       <h3 className="text-sm md:text-base font-semibold text-slate-800">Safety & Hygiene How-To's</h3>
                       <div className="flex justify-center sm:justify-start">
                         {hasFullAccess ? (
-                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 px-2 md:px-3 py-1 text-xs">
+                          <Badge variant="success" className="px-2 md:px-3 py-1 text-xs">
                             8 Available
                           </Badge>
                         ) : (
-                          <Badge className="bg-slate-100 text-slate-600 border-slate-300 px-2 md:px-3 py-1 text-xs">
+                          <Badge variant="outline" className="px-2 md:px-3 py-1 text-xs text-muted-foreground">
                             8 Locked
                           </Badge>
                         )}
@@ -490,7 +490,7 @@ export default function MicrolearningOverview() {
                         >
                           <Sparkles className="h-6 w-6 text-yellow-500" />
                         </motion.div>
-                        <Badge className="bg-emerald-200 text-emerald-800 border-emerald-400 px-3 py-1 font-semibold">
+                        <Badge variant="success" className="px-3 py-1 font-semibold">
                           <BadgeCheck className="h-4 w-4 mr-1" />
                           Local Cooks Certified
                         </Badge>

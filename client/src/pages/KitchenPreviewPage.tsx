@@ -727,7 +727,7 @@ function StorageCard({ storage }: { storage: StorageListing }) {
             )}
             
             {storage.pricingModel === 'per_cubic_foot' && storage.pricePerCubicFoot && (
-              <Badge variant="outline" className="text-xs gap-1 border-violet-200 text-violet-600">
+              <Badge variant="outline" className="text-xs gap-1 border-info/30 text-info">
                 <DollarSign className="w-3 h-3" />
                 +${storage.pricePerCubicFoot.toFixed(2)}/ft³
               </Badge>
@@ -797,7 +797,7 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger>
-                        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 gap-1">
+                        <Badge variant="success" className="gap-1">
                           <Sparkles className="w-3 h-3" />
                           {includedCount} Included
                         </Badge>
@@ -807,7 +807,7 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
                   </TooltipProvider>
                 )}
                 {storageCount > 0 && (
-                  <Badge className="bg-violet-100 text-violet-700 border-violet-200 gap-1">
+                  <Badge variant="info" className="gap-1">
                     <Package className="w-3 h-3" />
                     {storageCount} Storage
                   </Badge>
@@ -1001,7 +1001,7 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
                             <h3 className="font-semibold text-foreground">Included with Booking</h3>
                             <p className="text-xs text-muted-foreground">No additional cost</p>
                           </div>
-                          <Badge className="ml-auto bg-emerald-100 text-emerald-700 border-emerald-200">
+                          <Badge variant="success" className="ml-auto">
                             {kitchen.equipment.included.length} items
                           </Badge>
                         </div>
@@ -1030,7 +1030,7 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
                             <h3 className="font-semibold text-foreground">Available for Rent</h3>
                             <p className="text-xs text-muted-foreground">Additional rental fees apply</p>
                           </div>
-                          <Badge className="ml-auto bg-slate-100 text-slate-700 border-slate-200">
+                          <Badge variant="outline" className="ml-auto text-muted-foreground">
                             {kitchen.equipment.rental.length} items
                           </Badge>
                         </div>
@@ -1374,12 +1374,12 @@ export default function KitchenPreviewPage() {
                         {location.name}
                       </h1>
                       {location.kitchenLicenseStatus === 'approved' ? (
-                        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 gap-1">
+                        <Badge variant="success" className="gap-1">
                           <Shield className="h-3 w-3" />
                           Verified Kitchen
                         </Badge>
                       ) : location.kitchenLicenseStatus === 'pending' ? (
-                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1">
+                        <Badge variant="warning" className="gap-1">
                           <Clock className="h-3 w-3" />
                           Pending Verification
                         </Badge>
@@ -1785,13 +1785,13 @@ export default function KitchenPreviewPage() {
                       </p>
                     )}
                     {location.kitchenLicenseStatus === 'pending' && (
-                      <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-xs">
+                      <Badge variant="warning" className="text-xs">
                         <Clock className="h-3 w-3 mr-1" />
                         Pending Approval
                       </Badge>
                     )}
                     {location.kitchenLicenseStatus === 'approved' && (
-                      <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">
+                      <Badge variant="success" className="text-xs">
                         <Check className="h-3 w-3 mr-1" />
                         Licensed Kitchen
                       </Badge>

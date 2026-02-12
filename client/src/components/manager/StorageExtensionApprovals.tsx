@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Check, X, Package, Clock, AlertCircle, ChevronRight } from "lucide-react";
+import { Check, X, Package, Clock, AlertCircle, CheckCircle, Calendar, ChefHat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -134,15 +134,22 @@ export function StorageExtensionApprovals() {
   if (isLoading) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Storage Extension Requests
-          </CardTitle>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div>
+              <CardTitle className="text-base">Storage Extension Requests</CardTitle>
+              <CardDescription className="text-xs">
+                Review and approve storage booking extension requests
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="flex items-center justify-center py-6">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
           </div>
         </CardContent>
       </Card>
@@ -152,19 +159,23 @@ export function StorageExtensionApprovals() {
   if (!pendingExtensions || pendingExtensions.length === 0) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Storage Extension Requests
-          </CardTitle>
-          <CardDescription>
-            Review and approve storage booking extension requests
-          </CardDescription>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div>
+              <CardTitle className="text-base">Storage Extension Requests</CardTitle>
+              <CardDescription className="text-xs">
+                Review and approve storage booking extension requests
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-gray-500">
-            <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p>No pending extension requests</p>
+          <div className="flex flex-col items-center justify-center py-6 text-center">
+            <CheckCircle className="h-8 w-8 text-muted-foreground/40 mb-2" />
+            <p className="text-sm text-muted-foreground">No pending extension requests</p>
           </div>
         </CardContent>
       </Card>
@@ -173,92 +184,81 @@ export function StorageExtensionApprovals() {
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Storage Extension Requests
-            <Badge variant="secondary" className="ml-2">
+      <Card className="border-amber-200 bg-amber-50/30">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-full bg-amber-100 flex items-center justify-center">
+                <Package className="h-4 w-4 text-amber-600" />
+              </div>
+              <div>
+                <CardTitle className="text-base">
+                  Storage Extension Requests
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Review and approve storage booking extension requests
+                </CardDescription>
+              </div>
+            </div>
+            <Badge variant="warning">
               {pendingExtensions.length} pending
             </Badge>
-          </CardTitle>
-          <CardDescription>
-            Review and approve storage booking extension requests from chefs
-          </CardDescription>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3">
           {pendingExtensions.map((extension) => (
             <div
               key={extension.id}
-              className="border rounded-lg p-4 bg-amber-50 border-amber-200"
+              className="flex items-center justify-between gap-4 rounded-lg border bg-white p-3.5 shadow-sm"
             >
-              <div className="flex items-start justify-between">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
-                      <Clock className="h-3 w-3 mr-1" />
-                      Awaiting Approval
-                    </Badge>
-                    <span className="text-sm text-gray-500">
-                      Requested {format(new Date(extension.createdAt), "MMM d, yyyy 'at' h:mm a")}
-                    </span>
-                  </div>
-                  
-                  <h4 className="font-semibold text-lg">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
+                <div className="h-8 w-8 rounded-md bg-purple-50 flex items-center justify-center shrink-0">
+                  <Package className="h-4 w-4 text-purple-600" />
+                </div>
+                <div className="min-w-0 space-y-1">
+                  <p className="text-sm font-medium truncate">
                     {extension.storageName}
-                    <span className="text-gray-500 font-normal text-sm ml-2">
-                      ({extension.storageType})
+                    <span className="text-muted-foreground font-normal ml-1">({extension.storageType})</span>
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <ChefHat className="h-3 w-3" />
+                      {extension.chefEmail}
                     </span>
-                  </h4>
-                  
-                  <div className="text-sm text-gray-600">
-                    <p><strong>Chef:</strong> {extension.chefEmail}</p>
-                    <p><strong>Kitchen:</strong> {extension.kitchenName}</p>
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {format(new Date(extension.currentEndDate), "MMM d")} → {format(new Date(extension.newEndDate), "MMM d, yyyy")}
+                    </span>
                   </div>
-
-                  <div className="flex items-center gap-4 text-sm">
-                    <div className="bg-white rounded px-3 py-2 border">
-                      <p className="text-xs text-gray-500">Current End Date</p>
-                      <p className="font-medium">{format(new Date(extension.currentEndDate), "MMM d, yyyy")}</p>
-                    </div>
-                    <ChevronRight className="h-4 w-4 text-gray-400" />
-                    <div className="bg-green-50 rounded px-3 py-2 border border-green-200">
-                      <p className="text-xs text-green-600">New End Date</p>
-                      <p className="font-medium text-green-700">{format(new Date(extension.newEndDate), "MMM d, yyyy")}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="text-gray-600">
-                      <strong>{extension.extensionDays}</strong> day{extension.extensionDays > 1 ? 's' : ''} extension
-                    </span>
-                    <span className="text-gray-600">
-                      <strong>${(extension.extensionTotalPriceCents / 100).toFixed(2)}</strong>
-                      {extension.status === 'authorized' ? ' held' : ' paid'}
-                    </span>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="warning" className="text-[10px]">
+                      <Clock className="h-2.5 w-2.5 mr-0.5" />
+                      {extension.extensionDays} day{extension.extensionDays > 1 ? 's' : ''} · ${(extension.extensionTotalPriceCents / 100).toFixed(2)} {extension.status === 'authorized' ? 'held' : 'paid'}
+                    </Badge>
                   </div>
                 </div>
+              </div>
 
-                <div className="flex flex-col gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => handleApprove(extension)}
-                    disabled={approveMutation.isPending}
-                  >
-                    <Check className="h-4 w-4 mr-1" />
-                    Approve
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-destructive border-destructive/30 hover:bg-destructive/5"
-                    onClick={() => handleRejectClick(extension)}
-                    disabled={rejectMutation.isPending}
-                  >
-                    <X className="h-4 w-4 mr-1" />
-                    Reject
-                  </Button>
-                </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-destructive border-destructive/30 hover:bg-destructive/5"
+                  onClick={() => handleRejectClick(extension)}
+                  disabled={rejectMutation.isPending}
+                >
+                  <X className="h-3.5 w-3.5 mr-1" />
+                  Reject
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8"
+                  onClick={() => handleApprove(extension)}
+                  disabled={approveMutation.isPending}
+                >
+                  <Check className="h-3.5 w-3.5 mr-1" />
+                  Approve
+                </Button>
               </div>
             </div>
           ))}
@@ -282,11 +282,11 @@ export function StorageExtensionApprovals() {
 
           {selectedExtension && (
             <div className="space-y-4">
-              <div className="bg-gray-50 rounded-lg p-3 text-sm">
-                <p><strong>Storage:</strong> {selectedExtension.storageName}</p>
-                <p><strong>Chef:</strong> {selectedExtension.chefEmail}</p>
-                <p><strong>Extension:</strong> {selectedExtension.extensionDays} days</p>
-                <p><strong>{selectedExtension.status === 'authorized' ? 'Hold to release' : 'Amount to refund'}:</strong> ${(selectedExtension.extensionTotalPriceCents / 100).toFixed(2)}</p>
+              <div className="bg-muted rounded-lg p-3 space-y-1.5 text-sm">
+                <div className="font-medium">{selectedExtension.storageName} ({selectedExtension.storageType})</div>
+                <div className="text-muted-foreground text-xs">
+                  {selectedExtension.chefEmail} · {selectedExtension.extensionDays} days · ${(selectedExtension.extensionTotalPriceCents / 100).toFixed(2)} {selectedExtension.status === 'authorized' ? 'held' : 'paid'}
+                </div>
               </div>
 
               <div className="space-y-2">

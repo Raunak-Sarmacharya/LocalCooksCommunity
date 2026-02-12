@@ -233,7 +233,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
             <p className="text-sm text-slate-600 mt-1">
               These documents help chefs prepare for using your kitchen space. They're automatically accessible after a chef is approved.
             </p>
-            <Badge variant="secondary" className="mt-3 bg-violet-100 text-violet-700 border-0">
+            <Badge variant="info" className="mt-3">
               <Info className="h-3 w-3 mr-1" />
               Same data as Application Requirements → Facility Info
             </Badge>

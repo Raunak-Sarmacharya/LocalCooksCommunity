@@ -356,7 +356,7 @@ export default function ManagerKitchenApplications({
               {updateApplicationStatus.isPending ? "Processing..." : "Reject"}
             </Button>
             <Button
-              className="bg-green-600 hover:bg-green-700"
+              variant="success"
               onClick={handleApprove}
               disabled={updateApplicationStatus.isPending}
             >

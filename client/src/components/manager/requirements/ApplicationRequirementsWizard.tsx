@@ -301,8 +301,8 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
             </p>
           </div>
           {hasUnsavedChanges && (
-            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">
-              <div className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5 animate-pulse" />
+            <Badge variant="warning">
+              <div className="w-1.5 h-1.5 rounded-full bg-warning mr-1.5 animate-pulse" />
               Unsaved changes
             </Badge>
           )}
@@ -467,7 +467,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
             {!isLastStep && (
               <Button
                 onClick={goToNextStep}
-                className="gap-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700"
+                className="gap-2"
               >
                 Next Step
                 <ChevronRight className="h-4 w-4" />

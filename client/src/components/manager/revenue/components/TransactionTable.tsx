@@ -244,9 +244,7 @@ export function TransactionTable({
             <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
-                        <div className="p-1.5 bg-rose-100 rounded-lg">
-                            <Receipt className="h-4 w-4 text-rose-600" />
-                        </div>
+                        <Receipt className="h-4 w-4 text-rose-600" />
                         <div>
                             <CardTitle className="text-base">Transaction History</CardTitle>
                             <p className="text-xs text-muted-foreground">All booking transactions</p>

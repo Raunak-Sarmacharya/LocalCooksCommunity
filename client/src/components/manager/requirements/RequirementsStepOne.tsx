@@ -85,7 +85,7 @@ export function RequirementsStepOne({
           </div>
           
           <div className="mt-4 flex flex-wrap gap-2">
-            <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-0">
+            <Badge variant="info">
               <Info className="h-3 w-3 mr-1" />
               Tip: Keep required fields minimal to encourage applications
             </Badge>
@@ -137,7 +137,7 @@ export function RequirementsStepOne({
                           {field.recommended && (
                             <Badge
                               variant="outline"
-                              className="text-[10px] px-1.5 py-0 h-4 border-amber-300 text-amber-700 bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:bg-amber-950/30"
+                              className="text-[10px] px-1.5 py-0 h-4 border-warning/30 text-warning bg-warning/10"
                             >
                               <Sparkles className="h-2.5 w-2.5 mr-0.5" />
                               Recommended

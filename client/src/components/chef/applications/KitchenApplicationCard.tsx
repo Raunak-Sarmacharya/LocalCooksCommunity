@@ -53,8 +53,8 @@ interface KitchenApplicationCardProps {
 
 // Helper to format document status display
 const getDocStatusBadge = (status: string | null | undefined) => {
-  if (!status || status === 'N/A') return { variant: 'outline' as const, className: 'bg-gray-100 text-gray-600', label: 'Not Uploaded' };
-  if (status === 'approved') return { variant: 'default' as const, className: 'bg-green-100 text-green-800 border-green-200', label: 'Approved' };
+  if (!status || status === 'N/A') return { variant: 'outline' as const, className: 'bg-muted text-muted-foreground', label: 'Not Uploaded' };
+  if (status === 'approved') return { variant: 'success' as const, className: '', label: 'Approved' };
   if (status === 'pending') return { variant: 'secondary' as const, className: 'bg-amber-100 text-amber-800 border-amber-200', label: 'Pending' };
   if (status === 'rejected') return { variant: 'destructive' as const, className: 'bg-red-100 text-red-800 border-red-200', label: 'Rejected' };
   return { variant: 'outline' as const, className: '', label: status };
@@ -114,9 +114,9 @@ export default function KitchenApplicationCard({
       return { label: 'Rejected', color: 'bg-red-500', textColor: 'text-red-600', bgLight: 'bg-red-100', stepLabel: 'Rejected' };
     }
     if (app.status === 'cancelled') {
-      return { label: 'Cancelled', color: 'bg-gray-400', textColor: 'text-gray-600', bgLight: 'bg-gray-100', stepLabel: 'Cancelled' };
+      return { label: 'Cancelled', color: 'bg-muted-foreground/40', textColor: 'text-muted-foreground', bgLight: 'bg-muted', stepLabel: 'Cancelled' };
     }
-    return { label: 'Unknown', color: 'bg-gray-400', textColor: 'text-gray-600', bgLight: 'bg-gray-100', stepLabel: 'Unknown' };
+    return { label: 'Unknown', color: 'bg-muted-foreground/40', textColor: 'text-muted-foreground', bgLight: 'bg-muted', stepLabel: 'Unknown' };
   };
 
   const statusConfig = getStatusConfig();
@@ -173,19 +173,19 @@ export default function KitchenApplicationCard({
             {/* Application Summary */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="p-2 bg-muted/30 rounded-lg">
-                <p className="text-[10px] text-muted-foreground uppercase">Application ID</p>
+                <p className="text-xs text-muted-foreground uppercase">Application ID</p>
                 <p className="text-sm font-medium">#{app.id}</p>
               </div>
               <div className="p-2 bg-muted/30 rounded-lg">
-                <p className="text-[10px] text-muted-foreground uppercase">Submitted</p>
+                <p className="text-xs text-muted-foreground uppercase">Submitted</p>
                 <p className="text-sm font-medium">{new Date(app.createdAt || '').toLocaleDateString()}</p>
               </div>
               <div className="p-2 bg-muted/30 rounded-lg">
-                <p className="text-[10px] text-muted-foreground uppercase">Current Progress</p>
+                <p className="text-xs text-muted-foreground uppercase">Current Progress</p>
                 <p className="text-sm font-medium">{statusConfig.stepLabel}</p>
               </div>
               <div className="p-2 bg-muted/30 rounded-lg">
-                <p className="text-[10px] text-muted-foreground uppercase">Status</p>
+                <p className="text-xs text-muted-foreground uppercase">Status</p>
                 <p className="text-sm font-medium capitalize">{app.status}</p>
               </div>
             </div>
@@ -198,23 +198,23 @@ export default function KitchenApplicationCard({
                   <div className="flex-1">
                     <div className={cn(
                       "h-2 rounded-full",
-                      currentStep >= 1 ? "bg-blue-500" : "bg-gray-200"
+                      currentStep >= 1 ? "bg-blue-500" : "bg-border"
                     )} />
-                    <p className="text-[10px] text-center mt-1 text-muted-foreground">Step 1</p>
+                    <p className="text-xs text-center mt-1 text-muted-foreground">Step 1</p>
                   </div>
                   <div className="flex-1">
                     <div className={cn(
                       "h-2 rounded-full",
-                      currentStep >= 2 ? "bg-blue-500" : "bg-gray-200"
+                      currentStep >= 2 ? "bg-blue-500" : "bg-border"
                     )} />
-                    <p className="text-[10px] text-center mt-1 text-muted-foreground">Step 2</p>
+                    <p className="text-xs text-center mt-1 text-muted-foreground">Step 2</p>
                   </div>
                   <div className="flex-1">
                     <div className={cn(
                       "h-2 rounded-full",
-                      currentStep >= 3 ? "bg-green-500" : "bg-gray-200"
+                      currentStep >= 3 ? "bg-green-500" : "bg-border"
                     )} />
-                    <p className="text-[10px] text-center mt-1 text-muted-foreground">Complete</p>
+                    <p className="text-xs text-center mt-1 text-muted-foreground">Complete</p>
                   </div>
                 </div>
               </div>
@@ -232,7 +232,7 @@ export default function KitchenApplicationCard({
                 </div>
                 <p className="text-sm font-bold text-foreground">Step 1 - Initial Application</p>
                 {(app as any).tier1_completed_at && (
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  <Badge variant="success">
                     <CheckCircle className="h-3 w-3 mr-1" />
                     Submitted {new Date((app as any).tier1_completed_at || app.createdAt).toLocaleDateString()}
                   </Badge>
@@ -246,21 +246,21 @@ export default function KitchenApplicationCard({
                   <div className="flex items-center gap-2 p-2 bg-muted/20 rounded-lg">
                     <User className="h-4 w-4 text-muted-foreground" />
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Full Name</p>
+                      <p className="text-xs text-muted-foreground uppercase">Full Name</p>
                       <p className="text-sm font-medium">{app.fullName || 'N/A'}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 p-2 bg-muted/20 rounded-lg">
                     <Mail className="h-4 w-4 text-muted-foreground" />
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Email</p>
+                      <p className="text-xs text-muted-foreground uppercase">Email</p>
                       <p className="text-sm font-medium truncate">{app.email || 'N/A'}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 p-2 bg-muted/20 rounded-lg">
                     <Phone className="h-4 w-4 text-muted-foreground" />
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Phone</p>
+                      <p className="text-xs text-muted-foreground uppercase">Phone</p>
                       <p className="text-sm font-medium">{app.phone || 'N/A'}</p>
                     </div>
                   </div>
@@ -274,11 +274,11 @@ export default function KitchenApplicationCard({
                     <div className="space-y-3">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="p-2 bg-muted/20 rounded-lg">
-                          <p className="text-[10px] text-muted-foreground uppercase">Kitchen Preference</p>
+                          <p className="text-xs text-muted-foreground uppercase">Kitchen Preference</p>
                           <p className="text-sm font-medium capitalize">{app.kitchenPreference || 'N/A'}</p>
                         </div>
                         <div className="p-2 bg-muted/20 rounded-lg">
-                          <p className="text-[10px] text-muted-foreground uppercase">Cooking Experience</p>
+                          <p className="text-xs text-muted-foreground uppercase">Cooking Experience</p>
                           <p className="text-sm font-medium">{formatExperience(app.cookingExperience || businessInfo?.experience)}</p>
                         </div>
                       </div>
@@ -289,13 +289,13 @@ export default function KitchenApplicationCard({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {businessInfo.businessName && (
                                 <div className="p-2 bg-muted/20 rounded-lg">
-                                  <p className="text-[10px] text-muted-foreground uppercase">Business Name</p>
+                                  <p className="text-xs text-muted-foreground uppercase">Business Name</p>
                                   <p className="text-sm font-medium">{businessInfo.businessName}</p>
                                 </div>
                               )}
                               {businessInfo.businessType && (
                                 <div className="p-2 bg-muted/20 rounded-lg">
-                                  <p className="text-[10px] text-muted-foreground uppercase">Business Type</p>
+                                  <p className="text-xs text-muted-foreground uppercase">Business Type</p>
                                   <p className="text-sm font-medium capitalize">{businessInfo.businessType}</p>
                                 </div>
                               )}
@@ -306,13 +306,13 @@ export default function KitchenApplicationCard({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {businessInfo.usageFrequency && (
                                 <div className="p-2 bg-muted/20 rounded-lg">
-                                  <p className="text-[10px] text-muted-foreground uppercase">Usage Frequency</p>
+                                  <p className="text-xs text-muted-foreground uppercase">Usage Frequency</p>
                                   <p className="text-sm font-medium capitalize">{businessInfo.usageFrequency}</p>
                                 </div>
                               )}
                               {businessInfo.sessionDuration && (
                                 <div className="p-2 bg-muted/20 rounded-lg">
-                                  <p className="text-[10px] text-muted-foreground uppercase">Session Duration</p>
+                                  <p className="text-xs text-muted-foreground uppercase">Session Duration</p>
                                   <p className="text-sm font-medium">{businessInfo.sessionDuration} hours</p>
                                 </div>
                               )}
@@ -323,13 +323,13 @@ export default function KitchenApplicationCard({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {businessInfo.foodHandlerCertExpiry && (
                                 <div className="p-2 bg-muted/20 rounded-lg">
-                                  <p className="text-[10px] text-muted-foreground uppercase">Food Handler Cert Expiry</p>
+                                  <p className="text-xs text-muted-foreground uppercase">Food Handler Cert Expiry</p>
                                   <p className="text-sm font-medium">{formatExpiryDate(businessInfo.foodHandlerCertExpiry)}</p>
                                 </div>
                               )}
                               {businessInfo.foodEstablishmentCertExpiry && (
                                 <div className="p-2 bg-muted/20 rounded-lg">
-                                  <p className="text-[10px] text-muted-foreground uppercase">Establishment Cert Expiry</p>
+                                  <p className="text-xs text-muted-foreground uppercase">Establishment Cert Expiry</p>
                                   <p className="text-sm font-medium">{formatExpiryDate(businessInfo.foodEstablishmentCertExpiry)}</p>
                                 </div>
                               )}
@@ -338,7 +338,7 @@ export default function KitchenApplicationCard({
                           {/* Free-text Description */}
                           {businessInfo.description && (
                             <div className="p-2 bg-muted/20 rounded-lg">
-                              <p className="text-[10px] text-muted-foreground uppercase">Description</p>
+                              <p className="text-xs text-muted-foreground uppercase">Description</p>
                               <p className="text-sm">{businessInfo.description}</p>
                             </div>
                           )}
@@ -356,7 +356,7 @@ export default function KitchenApplicationCard({
                       <FileText className="h-4 w-4 text-blue-600" />
                       <div>
                         <span className="text-sm font-medium">Food Safety License</span>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           Has License: {formatYesNoNotSure(app.foodSafetyLicense)}
                         </p>
                       </div>
@@ -375,7 +375,7 @@ export default function KitchenApplicationCard({
                           />
                         </>
                       ) : (
-                        <Badge variant="outline" className="bg-gray-100">Not Uploaded</Badge>
+                        <Badge variant="outline" className="bg-muted">Not Uploaded</Badge>
                       )}
                     </div>
                   </div>
@@ -384,7 +384,7 @@ export default function KitchenApplicationCard({
                       <FileText className="h-4 w-4 text-green-600" />
                       <div>
                         <span className="text-sm font-medium">Establishment Cert</span>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           Has Cert: {formatYesNoNotSure(app.foodEstablishmentCert)}
                         </p>
                       </div>
@@ -403,7 +403,7 @@ export default function KitchenApplicationCard({
                           />
                         </>
                       ) : (
-                        <Badge variant="outline" className="bg-gray-100">Not Uploaded</Badge>
+                        <Badge variant="outline" className="bg-muted">Not Uploaded</Badge>
                       )}
                     </div>
                   </div>
@@ -421,18 +421,18 @@ export default function KitchenApplicationCard({
                   <div className="flex items-center gap-2">
                     <div className={cn(
                       "w-6 h-6 rounded-full flex items-center justify-center",
-                      hasStep2Data ? "bg-blue-100" : "bg-gray-100"
+                      hasStep2Data ? "bg-blue-100" : "bg-muted"
                     )}>
-                      <span className={cn("text-xs font-bold", hasStep2Data ? "text-blue-600" : "text-gray-400")}>2</span>
+                      <span className={cn("text-xs font-bold", hasStep2Data ? "text-blue-600" : "text-muted-foreground")}>2</span>
                     </div>
                     <p className="text-sm font-bold text-foreground">Step 2 - Additional Requirements</p>
                     {(app as any).tier2_completed_at ? (
-                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                      <Badge variant="success">
                         <CheckCircle className="h-3 w-3 mr-1" />
                         Submitted {new Date((app as any).tier2_completed_at).toLocaleDateString()}
                       </Badge>
                     ) : currentStep === 2 ? (
-                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                      <Badge variant="warning">
                         <Clock className="h-3 w-3 mr-1" />
                         In Progress
                       </Badge>
@@ -447,11 +447,11 @@ export default function KitchenApplicationCard({
                           <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Government License</p>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div className="p-2 bg-muted/20 rounded-lg">
-                              <p className="text-[10px] text-muted-foreground uppercase">License Number</p>
+                              <p className="text-xs text-muted-foreground uppercase">License Number</p>
                               <p className="text-sm font-medium">{(app as any).government_license_number || step2Data.governmentLicenseNumber || 'N/A'}</p>
                             </div>
                             <div className="p-2 bg-muted/20 rounded-lg">
-                              <p className="text-[10px] text-muted-foreground uppercase">Received Date</p>
+                              <p className="text-xs text-muted-foreground uppercase">Received Date</p>
                               <p className="text-sm font-medium">
                                 {(app as any).government_license_received_date || step2Data.governmentLicenseReceivedDate
                                   ? new Date((app as any).government_license_received_date || step2Data.governmentLicenseReceivedDate).toLocaleDateString()
@@ -459,7 +459,7 @@ export default function KitchenApplicationCard({
                               </p>
                             </div>
                             <div className="p-2 bg-muted/20 rounded-lg">
-                              <p className="text-[10px] text-muted-foreground uppercase">Expiry Date</p>
+                              <p className="text-xs text-muted-foreground uppercase">Expiry Date</p>
                               <p className="text-sm font-medium">
                                 {(app as any).government_license_expiry_date || step2Data.governmentLicenseExpiryDate
                                   ? new Date((app as any).government_license_expiry_date || step2Data.governmentLicenseExpiryDate).toLocaleDateString()
@@ -488,7 +488,7 @@ export default function KitchenApplicationCard({
 
                               return (
                                 <div key={key} className="p-2 bg-muted/20 rounded-lg">
-                                  <p className="text-[10px] text-muted-foreground uppercase">{displayKey}</p>
+                                  <p className="text-xs text-muted-foreground uppercase">{displayKey}</p>
                                   <p className="text-sm font-medium">{String(value) || 'N/A'}</p>
                                 </div>
                               );
@@ -516,7 +516,7 @@ export default function KitchenApplicationCard({
                                         showIcon={false}
                                       />
                                     ) : (
-                                      <Badge variant="outline" className="bg-gray-100">Not Uploaded</Badge>
+                                      <Badge variant="outline" className="bg-muted">Not Uploaded</Badge>
                                     )}
                                   </div>
                                 ))}

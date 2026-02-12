@@ -163,16 +163,16 @@ function formatDateTimeSt(dateStr: string | null | undefined): string {
   }
 }
 
-const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" }> = {
   detected: { label: "Detected", variant: "outline" },
   grace_period: { label: "Grace Period", variant: "secondary" },
-  pending_review: { label: "Pending Review", variant: "default" },
-  penalty_approved: { label: "Approved", variant: "default" },
+  pending_review: { label: "Pending Review", variant: "warning" },
+  penalty_approved: { label: "Approved", variant: "success" },
   penalty_waived: { label: "Waived", variant: "secondary" },
-  charge_pending: { label: "Charge Pending", variant: "default" },
-  charge_succeeded: { label: "Paid", variant: "secondary" },
+  charge_pending: { label: "Charge Pending", variant: "warning" },
+  charge_succeeded: { label: "Paid", variant: "success" },
   charge_failed: { label: "Charge Failed", variant: "destructive" },
-  resolved: { label: "Resolved", variant: "secondary" },
+  resolved: { label: "Resolved", variant: "success" },
   escalated: { label: "Escalated", variant: "destructive" },
 };
 

@@ -121,6 +121,31 @@ router.post("/chef-onboarding-complete", requireFirebaseAuthWithUser, async (req
   }
 });
 
+/**
+ * POST /api/user/sync-password
+ * Sync password to Neon DB after Firebase password set/change.
+ * Called by client after successful linkWithCredential or updatePassword.
+ */
+router.post("/sync-password", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+  try {
+    const user = req.neonUser!;
+
+    const { newPassword } = req.body;
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ error: 'Valid password (min 8 characters) is required' });
+    }
+
+    // updateUser auto-hashes the password via hashPassword()
+    await userService.updateUser(user.id, { password: newPassword });
+
+    console.log(`[sync-password] Password synced to Neon for user ${user.id} (${user.username})`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[sync-password] Error syncing password:', error);
+    res.status(500).json({ error: 'Failed to sync password' });
+  }
+});
+
 // ===================================
 // ENTERPRISE-GRADE EMAIL VERIFICATION SYNC
 // ===================================

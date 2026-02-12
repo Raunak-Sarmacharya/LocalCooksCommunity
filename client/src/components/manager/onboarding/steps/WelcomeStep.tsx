@@ -88,7 +88,7 @@ export default function WelcomeStep() {
           onClick={() => handleNext()}
           className={cn(
             "h-12 px-8 text-base font-medium",
-            "bg-[#F51042] hover:bg-[#E10F38] text-white",
+            "",
             "shadow-sm hover:shadow-md transition-all duration-200"
           )}
         >

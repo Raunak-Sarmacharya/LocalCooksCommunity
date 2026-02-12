@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Lobster&family=Space+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Lobster&family=Space+Mono:wght@400;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,15 +6,15 @@
 
 :root {
   --background: 0 0% 100%;
-  --foreground: 20 14.3% 4.1%;
-  --muted: 60 4.8% 95.9%;
-  --muted-foreground: 25 5.3% 44.7%;
+  --foreground: 224 71.4% 4.1%;
+  --muted: 220 14.3% 95.9%;
+  --muted-foreground: 220 8.9% 46.1%;
   --popover: 0 0% 100%;
-  --popover-foreground: 20 14.3% 4.1%;
+  --popover-foreground: 224 71.4% 4.1%;
   --card: 0 0% 100%;
-  --card-foreground: 20 14.3% 4.1%;
-  --border: 20 5.9% 90%;
-  --input: 20 5.9% 90%;
+  --card-foreground: 224 71.4% 4.1%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
   --primary: 348 85% 59%;
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 0%;
@@ -23,8 +23,14 @@
   --accent-foreground: 348 85% 59%;
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 60 9.1% 97.8%;
+  --success: 142 71% 35%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 100%;
+  --info: 217 91% 60%;
+  --info-foreground: 0 0% 100%;
   --ring: 348 85% 59%;
-  --radius: 0.5rem;
+  --radius: 0.375rem;
 
   /* Layout Variables */
   --header-height: 96px;
@@ -49,28 +55,35 @@
   /* --color-cream: #FFE8DD; */
   /* --color-cream-dark: #FFD4C4; */
 
-  /* Sidebar Variables */
+  /* Chart Variables (required by shadcn chart component) */
+  --chart-1: 142 71% 45%;
+  --chart-2: 43 96% 56%;
+  --chart-3: 199 89% 48%;
+  --chart-4: 0 84% 60%;
+  --chart-5: 262 83% 58%;
+
+  /* Sidebar Variables (menuAccent=subtle, menuColor=default) */
   --sidebar-background: 0 0% 100%;
-  --sidebar-foreground: 240 5.3% 26.1%;
+  --sidebar-foreground: 224 71.4% 4.1%;
   --sidebar-primary: 348 85% 59%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 348 85% 96%;
-  --sidebar-accent-foreground: 348 85% 59%;
+  --sidebar-accent: 348 80% 96%;
+  --sidebar-accent-foreground: 348 85% 40%;
   --sidebar-border: 220 13% 91%;
   --sidebar-ring: 348 85% 59%;
 }
 
 .dark {
-  --background: 240 10% 3.9%;
-  --foreground: 0 0% 98%;
-  --muted: 240 3.7% 15.9%;
-  --muted-foreground: 240 5% 64.9%;
-  --popover: 240 10% 3.9%;
-  --popover-foreground: 0 0% 98%;
-  --card: 240 10% 3.9%;
-  --card-foreground: 0 0% 98%;
-  --border: 240 3.7% 15.9%;
-  --input: 240 3.7% 15.9%;
+  --background: 224 71.4% 4.1%;
+  --foreground: 210 20% 98%;
+  --muted: 215 27.9% 16.9%;
+  --muted-foreground: 217.9 10.6% 64.9%;
+  --popover: 224 71.4% 4.1%;
+  --popover-foreground: 210 20% 98%;
+  --card: 224 71.4% 4.1%;
+  --card-foreground: 210 20% 98%;
+  --border: 215 27.9% 16.9%;
+  --input: 215 27.9% 16.9%;
   --primary: 348 85% 59%;
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 0%;
@@ -78,8 +91,17 @@
   --accent: 0 0% 100%;
   --accent-foreground: 348 85% 59%;
   --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 0 0% 98%;
+  --destructive-foreground: 210 20% 98%;
   --ring: 348 85% 59%;
+
+  --sidebar-background: 224 71.4% 4.1%;
+  --sidebar-foreground: 210 20% 98%;
+  --sidebar-primary: 348 85% 59%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 215 27.9% 16.9%;
+  --sidebar-accent-foreground: 210 20% 98%;
+  --sidebar-border: 215 27.9% 16.9%;
+  --sidebar-ring: 348 85% 59%;
 }
 
 @layer base {
@@ -89,7 +111,7 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
-    font-family: 'Instrument Sans', system-ui, sans-serif;
+    font-family: 'Figtree', system-ui, sans-serif;
     -webkit-tap-highlight-color: transparent;
     /* Remove mobile tap highlight */
   }
@@ -461,7 +483,7 @@
 
   /* Body text matching landing page */
   .font-body-brand {
-    font-family: 'Instrument Sans', system-ui, sans-serif;
+    font-family: 'Figtree', system-ui, sans-serif;
     font-size: 0.6875rem;
     line-height: 1.5;
     color: #1C1C1C;
@@ -566,11 +588,11 @@ html {
 }
 
 /* Form field enhancements */
-input:focus,
+input:focus:not([cmdk-input]),
 select:focus,
 textarea:focus {
   border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 2px hsla(var(--primary), 0.2);
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2);
 }
 
 /* Mobile-friendly button size */

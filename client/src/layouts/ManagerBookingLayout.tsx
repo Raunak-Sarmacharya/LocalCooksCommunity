@@ -15,7 +15,6 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -112,26 +111,41 @@ export default function ManagerBookingLayout({
                                     <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                                 </div>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent className="w-56" align="end" forceMount>
-                                <DropdownMenuLabel className="font-normal">
-                                    <div className="flex flex-col space-y-1">
-                                        <p className="text-sm font-medium leading-none">
-                                            {user?.displayName || "Manager"}
-                                        </p>
-                                        <p className="text-xs leading-none text-muted-foreground">
-                                            {user?.email}
-                                        </p>
-                                    </div>
-                                </DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => navigate("/manager/dashboard")}>
-                                    <UserIcon className="mr-2 h-4 w-4" />
-                                    <span>Dashboard</span>
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => logout()}>
-                                    <LogOut className="mr-2 h-4 w-4" />
-                                    <span>Log out</span>
+                            <DropdownMenuContent
+                                align="end"
+                                sideOffset={4}
+                                forceMount
+                                className="w-64 p-2 bg-background/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl shadow-foreground/5"
+                            >
+                                <div className="px-3 py-2.5 mb-1">
+                                    <p className="text-sm font-medium text-foreground tracking-tight leading-tight">
+                                        {user?.displayName || "Manager"}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground tracking-tight leading-tight">
+                                        {user?.email}
+                                    </p>
+                                </div>
+
+                                <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
+
+                                <div className="space-y-1">
+                                    <DropdownMenuItem
+                                        onClick={() => navigate("/manager/dashboard")}
+                                        className="flex items-center p-3 rounded-md transition-all duration-200 cursor-pointer group hover:shadow-sm border border-transparent hover:border-border/50"
+                                    >
+                                        <UserIcon className="mr-2 h-4 w-4" />
+                                        <span className="text-sm font-medium tracking-tight">Dashboard</span>
+                                    </DropdownMenuItem>
+                                </div>
+
+                                <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
+
+                                <DropdownMenuItem
+                                    onClick={() => logout()}
+                                    className="flex items-center gap-3 p-3 rounded-md duration-200 bg-destructive/10 hover:bg-destructive/20 cursor-pointer border border-transparent hover:border-destructive/30 hover:shadow-sm transition-all group"
+                                >
+                                    <LogOut className="h-4 w-4 text-destructive group-hover:text-destructive" />
+                                    <span className="text-sm font-medium text-destructive">Sign Out</span>
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>

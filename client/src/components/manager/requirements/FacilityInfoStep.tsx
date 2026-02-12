@@ -142,7 +142,7 @@ export function FacilityInfoStep({
           </div>
           
           <div className="mt-4 flex flex-wrap gap-2">
-            <Badge variant="secondary" className="bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300 border-0">
+            <Badge variant="info">
               <Info className="h-3 w-3 mr-1" />
               Shared automatically with approved chefs
             </Badge>
@@ -237,7 +237,7 @@ export function FacilityInfoStep({
               <Button
                 onClick={handleFloorPlansUpload}
                 disabled={isUploading}
-                className="w-full bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700"
+                className="w-full"
               >
                 {isUploading ? (
                   <>
@@ -374,7 +374,7 @@ export function FacilityInfoStep({
               <Button
                 onClick={handleVentilationUpload}
                 disabled={isUploading}
-                className="w-full bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700"
+                className="w-full"
               >
                 {isUploading ? (
                   <>
@@ -384,7 +384,7 @@ export function FacilityInfoStep({
                 ) : (
                   <>
                     <Upload className="mr-2 h-4 w-4" />
-                    Upload Document
+                    Upload Ventilation Document
                   </>
                 )}
               </Button>

@@ -345,7 +345,7 @@ function BookingApprovalDialogContent({
                   {storageOverrideCount > 0 && (
                     <Badge
                       variant="outline"
-                      className="text-[10px] text-amber-600 border-amber-200"
+                      className="text-[10px] text-warning border-warning/30"
                     >
                       <AlertTriangle className="h-2.5 w-2.5 mr-1" />
                       {storageOverrideCount} modified
@@ -514,12 +514,8 @@ function BookingApprovalDialogContent({
             <Button
               onClick={handleSubmit}
               disabled={isLoading}
-              className={cn(
-                "flex-1 sm:flex-none min-w-[140px]",
-                isConfirmMode
-                  ? "bg-green-600 hover:bg-green-700 text-white"
-                  : "bg-red-600 hover:bg-red-700 text-white"
-              )}
+              variant={isConfirmMode ? "success" : "destructive"}
+              className="flex-1 sm:flex-none min-w-[140px]"
             >
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />

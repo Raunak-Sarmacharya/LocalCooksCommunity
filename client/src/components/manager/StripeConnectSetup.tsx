@@ -388,7 +388,7 @@ export default function StripeConnectSetup() {
         <Button 
           onClick={handleCreateAccount}
           disabled={createAccountMutation.isPending}
-          className="w-full bg-[#635bff] hover:bg-[#5851db]"
+          className="w-full"
         >
           {createAccountMutation.isPending ? (
             <>
@@ -603,7 +603,8 @@ export default function StripeConnectSetup() {
 
           <Button 
             onClick={handleAccessDashboard}
-            className={`w-full ${stage === 'past_due' || stage === 'rejected' ? 'bg-red-600 hover:bg-red-700' : 'bg-[#635bff] hover:bg-[#5851db]'}`}
+            variant={stage === 'past_due' || stage === 'rejected' ? 'destructive' : 'default'}
+            className="w-full"
             disabled={getDashboardLinkMutation.isPending}
           >
             {getDashboardLinkMutation.isPending ? (

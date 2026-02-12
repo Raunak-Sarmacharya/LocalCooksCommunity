@@ -134,17 +134,17 @@ function formatCurrency(cents: number): string {
 }
 
 function getStatusBadge(status: string) {
-  const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
+  const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning"; label: string }> = {
     draft: { variant: "outline", label: "Draft" },
-    submitted: { variant: "default", label: "Awaiting Chef Response" },
+    submitted: { variant: "warning", label: "Awaiting Chef Response" },
     chef_accepted: { variant: "secondary", label: "Chef Accepted" },
     chef_disputed: { variant: "destructive", label: "Disputed" },
-    under_review: { variant: "default", label: "Under Admin Review" },
-    approved: { variant: "secondary", label: "Approved" },
-    partially_approved: { variant: "secondary", label: "Partially Approved" },
+    under_review: { variant: "warning", label: "Under Admin Review" },
+    approved: { variant: "success", label: "Approved" },
+    partially_approved: { variant: "success", label: "Partially Approved" },
     rejected: { variant: "destructive", label: "Rejected" },
-    charge_pending: { variant: "default", label: "Charging..." },
-    charge_succeeded: { variant: "secondary", label: "Paid" },
+    charge_pending: { variant: "warning", label: "Charging..." },
+    charge_succeeded: { variant: "success", label: "Paid" },
     charge_failed: { variant: "destructive", label: "Charge Failed" },
     escalated: { variant: "destructive", label: "Escalated — Awaiting Chef Payment" },
     resolved: { variant: "outline", label: "Resolved" },

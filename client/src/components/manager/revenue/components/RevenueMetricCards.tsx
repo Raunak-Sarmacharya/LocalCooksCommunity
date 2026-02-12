@@ -65,12 +65,10 @@ interface MetricCardProps {
     value: string
     subtitle: string
     icon: React.ReactNode
-    iconBgClass: string
+    iconBgClass?: string
     valueClass?: string
     changePercent?: number
     tooltip?: string
-    gradient?: boolean
-    gradientClass?: string
 }
 
 function MetricCard({
@@ -78,30 +76,24 @@ function MetricCard({
     value,
     subtitle,
     icon,
-    iconBgClass,
     valueClass = "text-foreground",
     changePercent,
     tooltip,
-    gradient = false,
-    gradientClass,
 }: MetricCardProps) {
     const content = (
-        <Card className={`relative overflow-hidden transition-all duration-200 hover:shadow-md ${gradient ? `border-0 ${gradientClass} text-white` : ''
-            }`}>
+        <Card className="border border-gray-200 bg-white transition-all duration-200 hover:shadow-md">
             <CardContent className="p-4">
                 <div className="flex items-start justify-between">
                     <div>
                         <div className="flex items-center gap-1.5">
-                            <p className={`text-xs font-medium uppercase tracking-wider ${gradient ? 'text-white/80' : 'text-muted-foreground'
-                                }`}>
+                            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                                 {title}
                             </p>
                             {tooltip && (
                                 <TooltipProvider>
                                     <Tooltip>
                                         <TooltipTrigger asChild>
-                                            <Info className={`h-3 w-3 cursor-help ${gradient ? 'text-white/60' : 'text-muted-foreground'
-                                                }`} />
+                                            <Info className="h-3 w-3 cursor-help text-muted-foreground" />
                                         </TooltipTrigger>
                                         <TooltipContent className="max-w-xs">
                                             <p className="text-sm">{tooltip}</p>
@@ -110,11 +102,11 @@ function MetricCard({
                                 </TooltipProvider>
                             )}
                         </div>
-                        <p className={`text-2xl font-bold mt-1 ${gradient ? 'text-white' : valueClass}`}>
+                        <p className={`text-2xl font-bold mt-1 ${valueClass}`}>
                             {value}
                         </p>
                         <div className="flex items-center gap-2 mt-1">
-                            <p className={`text-xs ${gradient ? 'text-white/70' : 'text-muted-foreground'}`}>
+                            <p className="text-xs text-muted-foreground">
                                 {subtitle}
                             </p>
                             {changePercent !== undefined && changePercent !== 0 && (
@@ -132,13 +124,8 @@ function MetricCard({
                             )}
                         </div>
                     </div>
-                    <div className={`p-2 rounded-lg ${gradient ? 'bg-white/20' : iconBgClass}`}>
-                        {icon}
-                    </div>
+                    {icon}
                 </div>
-                {gradient && (
-                    <div className="absolute -bottom-3 -right-3 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
-                )}
             </CardContent>
         </Card>
     )
@@ -232,27 +219,23 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                     title="Gross Revenue"
                     value={formatCurrency(metrics.totalRevenue)}
                     subtitle="Total amount charged"
-                    icon={<DollarSign className="h-4 w-4" />}
+                    icon={<DollarSign className="h-4 w-4 text-emerald-500" />}
                     iconBgClass="bg-emerald-100"
                     changePercent={metrics.revenueChangePercent}
-                    gradient={true}
-                    gradientClass="bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/25"
                     tooltip="Total gross revenue from all bookings before any deductions"
                 />
                 <MetricCard
                     title="Net Revenue"
                     value={formatCurrency(netRevenue)}
                     subtitle="After tax & fees"
-                    icon={<Wallet className="h-4 w-4" />}
+                    icon={<Wallet className="h-4 w-4 text-blue-500" />}
                     iconBgClass="bg-blue-100"
-                    gradient={true}
-                    gradientClass="bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25"
                     tooltip="Your actual earnings after tax collected and Stripe processing fees"
                 />
             </div>
 
             {/* Revenue Breakdown - Enterprise Detail Section */}
-            <Card className="border-0 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+            <Card className="border border-gray-200 bg-white">
                 <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-4">
                         <BarChart3 className="h-4 w-4 text-slate-600" />

@@ -148,7 +148,7 @@ function ReviewDeadlineBadge({ deadline, isExpired }: { deadline: string | null;
 
   if (isExpired || isPast(deadlineDate)) {
     return (
-      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs font-normal">
+      <Badge variant="warning" className="text-xs font-normal">
         <Timer className="h-3 w-3 mr-1" />
         Auto-clearing soon
       </Badge>
@@ -417,7 +417,7 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
       const status = row.getValue("checkoutStatus") as string;
       if (status === 'completed') {
         return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+          <Badge variant="success">
             <ShieldCheck className="h-3 w-3 mr-1" />
             Cleared
           </Badge>
@@ -425,7 +425,7 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
       }
       if (status === 'checkout_claim_filed') {
         return (
-          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+          <Badge variant="warning">
             <FileWarning className="h-3 w-3 mr-1" />
             Claim Filed
           </Badge>

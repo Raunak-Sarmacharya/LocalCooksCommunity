@@ -5,7 +5,8 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChefHat, Plus, Trash2, Upload, Loader2 } from 'lucide-react';
+import { ChefHat, Plus, Trash2, Loader2, ImagePlus } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { StatusButton } from '@/components/ui/status-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -169,9 +170,9 @@ function KitchenGalleryImages({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {currentGalleryImages.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {currentGalleryImages.map((imageUrl, index) => (
             <ImageWithReplace
               key={index}
@@ -185,7 +186,7 @@ function KitchenGalleryImages({
               }}
               onRemove={() => handleRemoveImage(imageUrl)}
               alt={`Gallery image ${index + 1}`}
-              className="h-32"
+              className="h-28 rounded-lg"
               containerClassName="w-full"
               aspectRatio="1/1"
               showReplaceButton={true}
@@ -195,7 +196,7 @@ function KitchenGalleryImages({
         </div>
       )}
 
-      <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-gray-400 transition-colors">
+      <div className="group border-2 border-dashed border-gray-200 rounded-lg p-6 hover:border-primary/40 hover:bg-primary/[0.02] transition-all duration-200">
         <input
           type="file"
           accept="image/jpeg,image/jpg,image/png,image/webp"
@@ -212,18 +213,20 @@ function KitchenGalleryImages({
         />
         <label
           htmlFor={`gallery-upload-${kitchenId}`}
-          className={`flex flex-col items-center justify-center cursor-pointer ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className={`flex flex-col items-center justify-center cursor-pointer gap-2 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           {isUploading ? (
             <>
-              <Loader2 className="h-8 w-8 text-gray-400 animate-spin mb-2" />
-              <span className="text-sm text-gray-600">Uploading... {Math.round(uploadProgress)}%</span>
+              <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+              <span className="text-sm text-muted-foreground">Uploading... {Math.round(uploadProgress)}%</span>
             </>
           ) : (
             <>
-              <Upload className="h-8 w-8 text-gray-400 mb-2" />
-              <span className="text-sm font-medium text-gray-700 mb-1">Click to add gallery image</span>
-              <span className="text-xs text-gray-500">JPG, PNG, WebP (max 4.5MB)</span>
+              <ImagePlus className="h-6 w-6 text-muted-foreground group-hover:text-primary/60 transition-colors" />
+              <div className="text-center">
+                <span className="text-sm font-medium text-gray-700">Add photo</span>
+                <p className="text-xs text-muted-foreground mt-0.5">JPG, PNG, WebP · Max 4.5 MB</p>
+              </div>
             </>
           )}
         </label>
@@ -439,55 +442,57 @@ export default function KitchensManagement({ location }: KitchensManagementProps
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Kitchens</h2>
-          <p className="text-muted-foreground">
-            Manage kitchen photos and descriptions for {location.name}.
-          </p>
+        <div className="flex items-center gap-3">
+          <ChefHat className="h-5 w-5 text-primary" />
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">Kitchens</h2>
+            <p className="text-sm text-muted-foreground">
+              Manage photos and descriptions for {location.name}
+            </p>
+          </div>
         </div>
-        <Button onClick={() => setShowCreateKitchen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
+        <Button onClick={() => setShowCreateKitchen(true)} size="sm">
+          <Plus className="mr-1.5 h-4 w-4" />
           Add Kitchen
         </Button>
       </div>
 
       {/* Create Kitchen Form */}
       {showCreateKitchen && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Create New Kitchen</CardTitle>
-            <CardDescription>Add a new kitchen to this location</CardDescription>
+        <Card className="border-primary/20 shadow-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-base">New Kitchen</CardTitle>
+            <CardDescription>Add a new kitchen space to this location</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="kitchen-name">Kitchen Name</Label>
               <Input
                 id="kitchen-name"
                 value={newKitchenName}
                 onChange={(e) => setNewKitchenName(e.target.value)}
                 placeholder="e.g., Main Kitchen, Prep Kitchen"
-                className="mt-1.5"
               />
             </div>
-            <div>
-              <Label htmlFor="kitchen-desc">Description (Optional)</Label>
+            <div className="space-y-2">
+              <Label htmlFor="kitchen-desc">Description <span className="text-muted-foreground font-normal">(optional)</span></Label>
               <Textarea
                 id="kitchen-desc"
                 value={newKitchenDescription}
                 onChange={(e) => setNewKitchenDescription(e.target.value)}
-                placeholder="Describe this kitchen's features and equipment"
+                placeholder="Describe this kitchen's features, equipment, and capacity"
                 rows={3}
-                className="mt-1.5"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 pt-1">
               <StatusButton
                 onClick={handleCreateKitchen}
                 status={isCreatingKitchen ? "loading" : "idle"}
                 labels={{ idle: "Create Kitchen", loading: "Creating", success: "Created" }}
               />
-              <Button variant="outline" onClick={() => setShowCreateKitchen(false)}>
+              <Button variant="ghost" onClick={() => setShowCreateKitchen(false)}>
                 Cancel
               </Button>
             </div>
@@ -497,110 +502,126 @@ export default function KitchensManagement({ location }: KitchensManagementProps
 
       {/* Kitchen List */}
       {isLoadingKitchens ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : kitchens.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <ChefHat className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No Kitchens Yet</h3>
-            <p className="text-muted-foreground text-center mb-4">
-              Add your first kitchen to start accepting bookings.
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+              <ChefHat className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <h3 className="text-base font-semibold mb-1">No kitchens yet</h3>
+            <p className="text-sm text-muted-foreground text-center mb-6 max-w-sm">
+              Add your first kitchen to start managing photos, descriptions, and accepting bookings.
             </p>
-            <Button onClick={() => setShowCreateKitchen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Kitchen
+            <Button onClick={() => setShowCreateKitchen(true)} size="sm">
+              <Plus className="mr-1.5 h-4 w-4" />
+              Add Your First Kitchen
             </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {kitchens.map((kitchen) => (
-            <Card key={kitchen.id} className="border-amber-200 bg-amber-50/30">
-              <CardContent className="p-6">
-                <div className="flex gap-6">
-                  <div className="flex-1 space-y-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold text-gray-900">{kitchen.name}</h4>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Delete
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently delete the kitchen "{kitchen.name}" and all associated bookings, availability settings, and custom overrides. This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              className="bg-red-600 hover:bg-red-700 text-white"
-                              onClick={() => handleDeleteKitchen(kitchen.id)}
-                            >
-                              Delete Kitchen
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                    <div>
-                      <Label>Description</Label>
-                      <Textarea
-                        value={kitchenDescriptions[kitchen.id] ?? kitchen.description ?? ''}
-                        onChange={(e) => {
-                          setKitchenDescriptions(prev => ({
-                            ...prev,
-                            [kitchen.id]: e.target.value
-                          }));
-                        }}
-                        onBlur={(e) => {
-                          const newDescription = e.target.value.trim();
-                          const currentDescription = kitchen.description || '';
-                          if (newDescription !== currentDescription) {
-                            handleKitchenDescriptionUpdate(kitchen.id, newDescription);
-                          }
-                        }}
-                        placeholder="Enter a description for this kitchen"
-                        className="mt-1.5"
-                        rows={3}
-                        disabled={updatingKitchenId === kitchen.id}
-                      />
-                      {updatingKitchenId === kitchen.id && (
-                        <p className="text-xs text-amber-600 mt-1">Saving...</p>
-                      )}
-                    </div>
+            <Card key={kitchen.id} className="overflow-hidden shadow-sm">
+              {/* Hero Image Area */}
+              <div className="relative">
+                <ImageWithReplace
+                  imageUrl={kitchen.imageUrl || undefined}
+                  onImageChange={(newUrl) => {
+                    handleKitchenImageUpdate(kitchen.id, newUrl || null);
+                  }}
+                  onRemove={() => handleKitchenImageUpdate(kitchen.id, null)}
+                  alt={kitchen.name}
+                  className="w-full h-44 object-cover"
+                  containerClassName="w-full"
+                  aspectRatio="21/9"
+                  fieldName="kitchenImage"
+                  maxSize={4.5 * 1024 * 1024}
+                  allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
+                />
+              </div>
+
+              <CardContent className="p-0">
+                {/* Kitchen Header */}
+                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-gray-900">{kitchen.name}</h3>
                   </div>
-                  <div className="w-48">
-                    <Label className="mb-2 block">Main Image</Label>
-                    <ImageWithReplace
-                      imageUrl={kitchen.imageUrl || undefined}
-                      onImageChange={(newUrl) => {
-                        handleKitchenImageUpdate(kitchen.id, newUrl || null);
-                      }}
-                      onRemove={() => handleKitchenImageUpdate(kitchen.id, null)}
-                      alt={kitchen.name}
-                      className="w-full h-32 object-cover rounded-lg"
-                      containerClassName="w-full"
-                      aspectRatio="16/9"
-                      fieldName="kitchenImage"
-                      maxSize={4.5 * 1024 * 1024}
-                      allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
-                    />
-                  </div>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/5 h-8 px-2"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently delete the kitchen &ldquo;{kitchen.name}&rdquo; and all associated bookings, availability settings, and custom overrides. This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          onClick={() => handleDeleteKitchen(kitchen.id)}
+                        >
+                          Delete Kitchen
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-amber-200">
-                  <Label className="mb-3 block">Gallery Images</Label>
+                {/* Description Section */}
+                <div className="px-5 py-4">
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Description</Label>
+                  <Textarea
+                    value={kitchenDescriptions[kitchen.id] ?? kitchen.description ?? ''}
+                    onChange={(e) => {
+                      setKitchenDescriptions(prev => ({
+                        ...prev,
+                        [kitchen.id]: e.target.value
+                      }));
+                    }}
+                    onBlur={(e) => {
+                      const newDescription = e.target.value.trim();
+                      const currentDescription = kitchen.description || '';
+                      if (newDescription !== currentDescription) {
+                        handleKitchenDescriptionUpdate(kitchen.id, newDescription);
+                      }
+                    }}
+                    placeholder="Describe this kitchen's features, equipment, and what makes it special..."
+                    className="mt-2 resize-none"
+                    rows={3}
+                    disabled={updatingKitchenId === kitchen.id}
+                  />
+                  {updatingKitchenId === kitchen.id && (
+                    <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Saving changes...
+                    </p>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Gallery Section */}
+                <div className="px-5 py-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Gallery</Label>
+                    {(kitchen.galleryImages || []).length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {(kitchen.galleryImages || []).length} photo{(kitchen.galleryImages || []).length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
                   <KitchenGalleryImages
                     kitchenId={kitchen.id}
                     galleryImages={kitchen.galleryImages || []}

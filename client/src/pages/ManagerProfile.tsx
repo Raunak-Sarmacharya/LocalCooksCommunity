@@ -322,9 +322,9 @@ export default function ManagerProfile() {
               <div className="flex items-start gap-3">
                 <KeyRound className="h-5 w-5 text-orange-600 mt-0.5" />
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Change Password</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Security</h3>
                   <p className="text-sm text-gray-600 mb-4">
-                    Update your account password to keep your account secure.
+                    Manage your password and account security.
                   </p>
                 </div>
               </div>

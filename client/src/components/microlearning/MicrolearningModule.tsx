@@ -707,22 +707,22 @@ export default function MicrolearningModule({
               {/* Access Level Indicator */}
               <div className="hidden sm:flex items-center gap-2">
                 {completionConfirmed ? (
-                  <Badge className="bg-green-100 text-green-800 border-green-300 px-3 py-1">
+                  <Badge variant="success" className="px-3 py-1">
                     <Award className="h-3 w-3 mr-1" />
                     Completed
                   </Badge>
                 ) : accessLevel === 'full' ? (
-                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 px-3 py-1">
+                  <Badge variant="success" className="px-3 py-1">
                     <CheckCircle className="h-3 w-3 mr-1" />
                     Full Access
                   </Badge>
                 ) : user?.role === 'admin' ? (
-                  <Badge className="bg-purple-100 text-purple-800 border-purple-300 px-3 py-1">
+                  <Badge variant="info" className="px-3 py-1">
                     <Shield className="h-3 w-3 mr-1" />
                     Admin
                   </Badge>
                 ) : (
-                  <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 px-3 py-1">
+                  <Badge variant="warning" className="px-3 py-1">
                     <Lock className="h-3 w-3 mr-1" />
                     Limited
                   </Badge>
@@ -854,11 +854,11 @@ export default function MicrolearningModule({
                   <div className="flex-1 min-w-0">
                     <h2 className="text-xl font-bold text-slate-900 mb-2 leading-tight">{currentVideo.title}</h2>
                     <div className="flex flex-wrap items-center gap-3 mb-3">
-                      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">
+                      <Badge variant="success">
                         HACCP-based
                       </Badge>
                       {accessLevel === 'limited' && currentVideoIndex === 0 && (
-                        <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                        <Badge variant="warning">
                           Free Preview
                         </Badge>
                       )}
@@ -1094,7 +1094,7 @@ export default function MicrolearningModule({
                         Safety & Hygiene How-To's
                       </h4>
                       {accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin' && (
-                        <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 text-xs">
+                        <Badge variant="warning" className="text-xs">
                           Locked
                         </Badge>
                       )}

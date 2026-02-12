@@ -123,14 +123,14 @@ const getExtensionColumns = (
         switch (status) {
           case 'pending':
             return (
-              <Badge variant="outline" className="bg-gray-100 text-gray-700 border-gray-300">
+              <Badge variant="outline" className="text-muted-foreground">
                 <Clock className="h-3 w-3 mr-1" />
                 Awaiting Payment
               </Badge>
             );
           case 'paid':
             return (
-              <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
+              <Badge variant="warning">
                 <Clock className="h-3 w-3 mr-1" />
                 Awaiting Approval
               </Badge>
@@ -138,21 +138,21 @@ const getExtensionColumns = (
           case 'approved':
           case 'completed':
             return (
-              <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
+              <Badge variant="success">
                 <Check className="h-3 w-3 mr-1" />
                 Approved
               </Badge>
             );
           case 'rejected':
             return (
-              <Badge variant="outline" className="bg-red-100 text-red-800 border-red-300">
+              <Badge variant="outline" className="text-destructive border-destructive/30">
                 <X className="h-3 w-3 mr-1" />
                 Rejected
               </Badge>
             );
           case 'refunded':
             return (
-              <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
+              <Badge variant="info">
                 <Check className="h-3 w-3 mr-1" />
                 Refunded
               </Badge>

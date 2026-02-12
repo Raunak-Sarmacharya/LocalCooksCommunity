@@ -143,7 +143,7 @@ export default function MyKitchensTabContent({
                           <Badge
                             variant="default"
                             className={cn(
-                              "text-[10px] uppercase tracking-wider",
+                              "text-xs uppercase tracking-wider",
                               statusConfig.bgColor
                             )}
                           >
@@ -163,7 +163,7 @@ export default function MyKitchensTabContent({
                           <div className="flex items-center gap-1 text-lg font-bold text-foreground">
                             <span>{priceDisplay}</span>
                           </div>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">per hour</p>
+                          <p className="text-xs text-muted-foreground uppercase tracking-wider">per hour</p>
                         </div>
                       )}
                     </div>

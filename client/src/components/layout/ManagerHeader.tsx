@@ -15,7 +15,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -227,89 +226,89 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
                     align="end"
-                    className="w-72 bg-white border-gray-200 shadow-xl"
+                    sideOffset={4}
+                    className="w-64 p-2 bg-background/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl shadow-foreground/5"
                   >
-                    {/* User Info Section */}
-                    <div className="px-4 py-5 text-center border-b border-gray-200">
-                      <div className="flex justify-center mb-3">
-                        <Avatar className="h-16 w-16 border-2 border-gray-200">
-                          <AvatarImage src={userPhotoURL || undefined} alt={userDisplayName || "User"} />
-                          <AvatarFallback className="bg-gradient-to-br from-[#F51042]/90 to-[#F51042]/70 text-white font-semibold text-lg">
-                            {userInitials}
-                          </AvatarFallback>
-                        </Avatar>
-                      </div>
-                      <p className="text-base font-semibold text-gray-900 mb-1">
+                    <div className="px-3 py-2.5 mb-1">
+                      <p className="text-sm font-medium text-foreground tracking-tight leading-tight">
                         {userDisplayName || "Manager"}
                       </p>
-                      <p className="text-xs text-gray-500 break-all px-2">
+                      <p className="text-xs text-muted-foreground tracking-tight leading-tight">
                         {userEmail || ""}
                       </p>
                     </div>
 
-                    {/* Manager Portal Options */}
-                    <div className="py-1">
-                      <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
-                        <Link href="/manager/booking-dashboard" className="flex items-center w-full">
-                          <LayoutDashboard className="mr-3 h-4 w-4" />
-                          <span>Dashboard</span>
-                        </Link>
-                      </DropdownMenuItem>
+                    <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
 
-                      <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
-                        <Link href="/manager/booking-dashboard?view=revenue" className="flex items-center w-full">
-                          <DollarSign className="mr-3 h-4 w-4" />
-                          <span>Revenue</span>
-                        </Link>
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
-                        <Link href="/manager/booking-dashboard?view=bookings" className="flex items-center w-full">
-                          <BookOpen className="mr-3 h-4 w-4" />
-                          <span>Bookings</span>
-                        </Link>
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
-                        <Link href="/manager/booking-dashboard?view=locations" className="flex items-center w-full">
-                          <Building2 className="mr-3 h-4 w-4" />
-                          <span>Locations</span>
-                        </Link>
-                      </DropdownMenuItem>
-
-                    </div>
-
-                    <DropdownMenuSeparator className="bg-gray-200" />
-
-                    {/* Account Options */}
-                    <div className="py-1">
-                      <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
-                        <Link href="/manager/profile" className="flex items-center w-full">
-                          <User className="mr-3 h-4 w-4" />
-                          <span>Profile</span>
-                        </Link>
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
-                        <Link href="/manager/profile" className="flex items-center w-full">
-                          <Settings className="mr-3 h-4 w-4" />
-                          <span>Settings</span>
-                        </Link>
-                      </DropdownMenuItem>
-                    </div>
-
-                    <DropdownMenuSeparator className="bg-gray-200" />
-
-                    {/* Logout */}
-                    <div className="py-1">
-                      <DropdownMenuItem
-                        onClick={handleLogout}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 focus:bg-red-50 focus:text-red-700 cursor-pointer"
+                    <div className="space-y-1">
+                      <DropdownMenuItem asChild
+                        className="flex items-center p-3 rounded-md transition-all duration-200 cursor-pointer group hover:shadow-sm border border-transparent hover:border-border/50"
                       >
-                        <LogOut className="mr-3 h-4 w-4" />
-                        <span>Log out</span>
+                        <Link href="/manager/booking-dashboard" className="flex items-center w-full">
+                          <LayoutDashboard className="mr-2 h-4 w-4" />
+                          <span className="text-sm font-medium tracking-tight">Dashboard</span>
+                        </Link>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem asChild
+                        className="flex items-center p-3 rounded-md transition-all duration-200 cursor-pointer group hover:shadow-sm border border-transparent hover:border-border/50"
+                      >
+                        <Link href="/manager/booking-dashboard?view=revenue" className="flex items-center w-full">
+                          <DollarSign className="mr-2 h-4 w-4" />
+                          <span className="text-sm font-medium tracking-tight">Revenue</span>
+                        </Link>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem asChild
+                        className="flex items-center p-3 rounded-md transition-all duration-200 cursor-pointer group hover:shadow-sm border border-transparent hover:border-border/50"
+                      >
+                        <Link href="/manager/booking-dashboard?view=bookings" className="flex items-center w-full">
+                          <BookOpen className="mr-2 h-4 w-4" />
+                          <span className="text-sm font-medium tracking-tight">Bookings</span>
+                        </Link>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem asChild
+                        className="flex items-center p-3 rounded-md transition-all duration-200 cursor-pointer group hover:shadow-sm border border-transparent hover:border-border/50"
+                      >
+                        <Link href="/manager/booking-dashboard?view=locations" className="flex items-center w-full">
+                          <Building2 className="mr-2 h-4 w-4" />
+                          <span className="text-sm font-medium tracking-tight">Locations</span>
+                        </Link>
                       </DropdownMenuItem>
                     </div>
+
+                    <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
+
+                    <div className="space-y-1">
+                      <DropdownMenuItem asChild
+                        className="flex items-center p-3 rounded-md transition-all duration-200 cursor-pointer group hover:shadow-sm border border-transparent hover:border-border/50"
+                      >
+                        <Link href="/manager/profile" className="flex items-center w-full">
+                          <User className="mr-2 h-4 w-4" />
+                          <span className="text-sm font-medium tracking-tight">Profile</span>
+                        </Link>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem asChild
+                        className="flex items-center p-3 rounded-md transition-all duration-200 cursor-pointer group hover:shadow-sm border border-transparent hover:border-border/50"
+                      >
+                        <Link href="/manager/profile" className="flex items-center w-full">
+                          <Settings className="mr-2 h-4 w-4" />
+                          <span className="text-sm font-medium tracking-tight">Settings</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    </div>
+
+                    <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
+
+                    <DropdownMenuItem
+                      onClick={handleLogout}
+                      className="flex items-center gap-3 p-3 rounded-md duration-200 bg-destructive/10 hover:bg-destructive/20 cursor-pointer border border-transparent hover:border-destructive/30 hover:shadow-sm transition-all group"
+                    >
+                      <LogOut className="h-4 w-4 text-destructive group-hover:text-destructive" />
+                      <span className="text-sm font-medium text-destructive">Sign Out</span>
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </>

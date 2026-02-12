@@ -207,8 +207,8 @@ export function CheckoutStatusTracker({
                       </span>
                       {step.state === "active" && (
                         <Badge
-                          variant="outline"
-                          className="bg-blue-50 text-blue-700 border-blue-200 text-xs font-normal"
+                          variant="info"
+                          className="text-xs font-normal"
                         >
                           In Progress
                         </Badge>
@@ -337,8 +337,8 @@ function buildSteps(
       icon: <FileWarning className="h-4 w-4" />,
       detail: (
         <Badge
-          variant="outline"
-          className="bg-amber-50 text-amber-700 border-amber-200 text-xs font-normal mt-1"
+          variant="warning"
+          className="text-xs font-normal mt-1"
         >
           <FileWarning className="h-3 w-3 mr-1" />
           Check Damage Claims in your dashboard

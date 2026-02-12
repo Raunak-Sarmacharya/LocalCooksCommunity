@@ -116,11 +116,11 @@ export function KitchenLicenseApprovalSection() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 border-yellow-300">Pending Review</Badge>;
+        return <Badge variant="warning">Pending Review</Badge>;
       case 'approved':
-        return <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">Approved</Badge>;
+        return <Badge variant="success">Approved</Badge>;
       case 'rejected':
-        return <Badge variant="secondary" className="bg-red-100 text-red-800 border-red-300">Rejected</Badge>;
+        return <Badge variant="outline" className="text-destructive border-destructive/30">Rejected</Badge>;
       default:
         return <Badge variant="outline">Unknown</Badge>;
     }

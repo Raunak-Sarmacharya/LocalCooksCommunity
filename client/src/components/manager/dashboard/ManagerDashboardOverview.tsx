@@ -430,7 +430,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                                         }
                                                         className={
                                                             booking.status === 'pending' ? "text-yellow-800 border-yellow-300 bg-yellow-100" :
-                                                                booking.status === 'confirmed' ? "bg-green-600 hover:bg-green-700" :
+                                                                booking.status === 'confirmed' ? "bg-success text-success-foreground hover:bg-success/90" :
                                                                     ""
                                                         }
                                                     >

@@ -520,7 +520,7 @@ function StorageListingContent({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <h4 className="font-medium truncate">{listing.name}</h4>
-                            <Badge variant={listing.isActive !== false ? "default" : "secondary"} className="text-xs">{listing.isActive !== false ? 'Active' : 'Inactive'}</Badge>
+                            <Badge variant={listing.isActive !== false ? "success" : "outline"} className="text-xs">{listing.isActive !== false ? 'Active' : 'Inactive'}</Badge>
                           </div>
                           <div className="flex items-center gap-3 text-sm text-muted-foreground">
                             <span className="capitalize">{listing.storageType}</span>

@@ -3,8 +3,9 @@ import { eq, inArray, desc, and } from "drizzle-orm";
 import { db } from "../db";
 import { requireChef } from "./middleware";
 import { normalizeImageUrl } from "./utils";
-import { applications, chefLocationAccess, locations } from "@shared/schema";
+import { applications, chefLocationAccess, locations, users } from "@shared/schema";
 import { sendEmail, generateChefProfileRequestEmail } from "../email";
+import { normalizePhoneForStorage } from "../phone-utils";
 
 const router = Router();
 
@@ -315,5 +316,127 @@ router.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req: Re
 });
 
 // Equipment Listings moved to ./equipment.ts
+
+// ===================================
+// CHEF PROFILE ENDPOINTS
+// ===================================
+
+// Chef: Get own profile data (aggregated from user record, application, and profile data)
+router.get("/chef/my-profile", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+
+        // Get user record
+        const [userData] = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+        if (!userData) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        // Get latest approved application for fallback name/phone/email
+        const [latestApp] = await db
+            .select()
+            .from(applications)
+            .where(and(
+                eq(applications.userId, chefId),
+                eq(applications.status, 'approved')
+            ))
+            .orderBy(desc(applications.createdAt))
+            .limit(1);
+
+        // Extract profile data from managerProfileData JSONB (reused for chef too)
+        let profileData: Record<string, any> = {};
+        try {
+            const raw = userData.managerProfileData;
+            if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+                profileData = raw as Record<string, any>;
+            }
+        } catch {
+            // parse failed, use empty
+        }
+
+        // Priority: profileData > Firebase displayName (sent from client) > application > username
+        res.json({
+            phone: profileData.phone || latestApp?.phone || null,
+            displayName: profileData.displayName || latestApp?.fullName || null,
+            profileImageUrl: profileData.profileImageUrl || null,
+            applicationStatus: latestApp?.status || null,
+            applicationFullName: latestApp?.fullName || null,
+            applicationEmail: latestApp?.email || null,
+            applicationPhone: latestApp?.phone || null,
+        });
+    } catch (error: any) {
+        console.error("[Chef Profile] GET error:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch chef profile" });
+    }
+});
+
+// Chef: Update own profile data
+router.put("/chef/my-profile", requireChef, async (req: Request, res: Response) => {
+    try {
+        const user = req.neonUser!;
+        const { username, displayName, phone, profileImageUrl } = req.body;
+
+        const profileUpdates: Record<string, any> = {};
+        if (displayName !== undefined) profileUpdates.displayName = displayName;
+        if (phone !== undefined) {
+            if (phone && phone.trim() !== "") {
+                const normalized = normalizePhoneForStorage(phone);
+                if (!normalized) return res.status(400).json({ error: "Invalid phone number format" });
+                profileUpdates.phone = normalized;
+            } else {
+                profileUpdates.phone = null;
+            }
+        }
+        if (profileImageUrl !== undefined) profileUpdates.profileImageUrl = profileImageUrl;
+
+        // Update username if changed
+        if (username !== undefined && username !== user.username) {
+            const existingUser = await userService.getUserByUsername(username);
+            if (existingUser && existingUser.id !== user.id) {
+                return res.status(400).json({ error: "Username already taken" });
+            }
+            await userService.updateUser(user.id, { username });
+        }
+
+        // Merge profile updates into managerProfileData JSONB
+        if (Object.keys(profileUpdates).length > 0) {
+            const [currentUser] = await db
+                .select({ managerProfileData: users.managerProfileData })
+                .from(users)
+                .where(eq(users.id, user.id))
+                .limit(1);
+
+            const currentData: Record<string, any> = (currentUser?.managerProfileData as Record<string, any>) || {};
+            const newData = { ...currentData, ...profileUpdates };
+
+            await db
+                .update(users)
+                .set({ managerProfileData: newData })
+                .where(eq(users.id, user.id));
+        }
+
+        // Return updated profile
+        const [updatedUser] = await db
+            .select({ managerProfileData: users.managerProfileData })
+            .from(users)
+            .where(eq(users.id, user.id))
+            .limit(1);
+
+        const finalProfile: Record<string, any> = (updatedUser?.managerProfileData as Record<string, any>) || {};
+        res.json({
+            profileImageUrl: finalProfile.profileImageUrl || null,
+            phone: finalProfile.phone || null,
+            displayName: finalProfile.displayName || null,
+        });
+    } catch (error: any) {
+        console.error("[Chef Profile] PUT error:", error);
+        res.status(500).json({ error: error.message || "Failed to update chef profile" });
+    }
+});
 
 export default router;

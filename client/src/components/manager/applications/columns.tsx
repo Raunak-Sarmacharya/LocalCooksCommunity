@@ -19,19 +19,19 @@ function StatusBadge({ status }: { status: string }) {
     switch (status) {
         case "inReview":
             return (
-                <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-yellow-200">
+                <Badge variant="warning">
                     Pending Review
                 </Badge>
             )
         case "approved":
             return (
-                <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-100 border-green-200">
+                <Badge variant="success">
                     Approved
                 </Badge>
             )
         case "rejected":
             return (
-                <Badge variant="destructive" className="bg-red-100 text-red-800 hover:bg-red-100 border-red-200">
+                <Badge variant="outline" className="text-destructive border-destructive/30">
                     Rejected
                 </Badge>
             )

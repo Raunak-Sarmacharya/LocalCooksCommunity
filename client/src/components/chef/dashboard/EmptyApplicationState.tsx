@@ -150,7 +150,7 @@ export default function EmptyApplicationState({
           
           {/* Floating badge */}
           <div className="absolute top-6 right-6">
-            <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 border-blue-500/20 text-xs font-semibold">
+            <Badge variant="info" className="text-xs font-semibold">
               Popular
             </Badge>
           </div>

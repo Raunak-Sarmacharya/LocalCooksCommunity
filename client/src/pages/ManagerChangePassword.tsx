@@ -131,10 +131,25 @@ export default function ManagerChangePassword() {
       // Step 2: Update password using Firebase Auth
       await updatePassword(currentFirebaseUser, data.newPassword);
       
-      // Step 3: Mark welcome as seen (password changed) via API
+      // Step 3: Sync hashed password to Neon DB (non-blocking)
       try {
         const token = await currentFirebaseUser.getIdToken();
-        await fetch('/api/auth/seen-welcome', {
+        await fetch('/api/user/sync-password', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ newPassword: data.newPassword }),
+        });
+      } catch (syncError) {
+        console.warn('Failed to sync password to database:', syncError);
+      }
+      
+      // Step 4: Mark welcome as seen (password changed) via API
+      try {
+        const token = await currentFirebaseUser.getIdToken();
+        await fetch('/api/user/seen-welcome', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -194,6 +209,34 @@ export default function ManagerChangePassword() {
   if (user.has_seen_welcome !== false) {
     setLocation('/manager/dashboard');
     return null;
+  }
+
+  // Google-only users don't have a password to change — skip this gate
+  const currentFirebaseUserCheck = auth.currentUser;
+  const isGoogleOnly = currentFirebaseUserCheck?.providerData.some(
+    (p: { providerId: string }) => p.providerId === 'google.com'
+  ) && !currentFirebaseUserCheck?.providerData.some(
+    (p: { providerId: string }) => p.providerId === 'password'
+  );
+  if (isGoogleOnly) {
+    // Mark welcome as seen and redirect
+    (async () => {
+      try {
+        const token = await currentFirebaseUserCheck!.getIdToken();
+        await fetch('/api/user/seen-welcome', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          credentials: 'include',
+        });
+      } catch { /* non-blocking */ }
+      queryClient.clear();
+      window.location.href = '/manager/dashboard';
+    })();
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
   return (

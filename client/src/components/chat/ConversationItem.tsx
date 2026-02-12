@@ -102,7 +102,7 @@ export function ConversationItem({
           </div>
           
           <div className="col-span-4 flex flex-col items-end justify-between py-0.5">
-            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
               {formatDistanceToNow(lastMessageDate, { addSuffix: false }).replace('about ', '')}
             </span>
             {unreadCount > 0 && (
@@ -120,7 +120,7 @@ export function ConversationItem({
           <Badge 
             variant="outline" 
             className={cn(
-              "text-[10px] px-2 py-0.5 font-medium flex items-center gap-1",
+              "text-xs px-2 py-0.5 font-medium flex items-center gap-1",
               statusBadge.className
             )}
           >
@@ -128,7 +128,7 @@ export function ConversationItem({
             {statusBadge.label}
           </Badge>
           {applicationStatus === 'step1_approved' && (
-            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
               <MessageCircle className="h-3 w-3" />
               Chat enabled
             </span>

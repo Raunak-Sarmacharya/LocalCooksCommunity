@@ -1741,9 +1741,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 onClick={() => setActiveTab('setup')}
               >
                 <div className="flex items-start gap-3">
-                  <div className="p-2 bg-indigo-100 rounded-lg">
-                    <FileText className="h-5 w-5 text-indigo-600" />
-                  </div>
+                  <FileText className="h-5 w-5 text-indigo-600 mt-0.5" />
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900 mb-1">Setup</h3>
                     <p className="text-sm text-gray-600">
@@ -1758,9 +1756,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 onClick={() => setActiveTab('branding')}
               >
                 <div className="flex items-start gap-3">
-                  <div className="p-2 bg-green-100 rounded-lg">
-                    <ImageIcon className="h-5 w-5 text-green-600" />
-                  </div>
+                  <ImageIcon className="h-5 w-5 text-green-600 mt-0.5" />
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900 mb-1">Kitchen</h3>
                     <p className="text-sm text-gray-600">
@@ -1775,9 +1771,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 onClick={() => setActiveTab('notifications')}
               >
                 <div className="flex items-start gap-3">
-                  <div className="p-2 bg-purple-100 rounded-lg">
-                    <Mail className="h-5 w-5 text-purple-600" />
-                  </div>
+                  <Mail className="h-5 w-5 text-purple-600 mt-0.5" />
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900 mb-1">Notifications</h3>
                     <p className="text-sm text-gray-600">
@@ -1792,9 +1786,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 onClick={() => setActiveTab('booking-rules')}
               >
                 <div className="flex items-start gap-3">
-                  <div className="p-2 bg-orange-100 rounded-lg">
-                    <Clock className="h-5 w-5 text-orange-600" />
-                  </div>
+                  <Clock className="h-5 w-5 text-orange-600 mt-0.5" />
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900 mb-1">Booking Rules</h3>
                     <p className="text-sm text-gray-600">
@@ -1809,9 +1801,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 onClick={() => setActiveTab('application-requirements')}
               >
                 <div className="flex items-start gap-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <FileText className="h-5 w-5 text-blue-600" />
-                  </div>
+                  <FileText className="h-5 w-5 text-blue-600 mt-0.5" />
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900 mb-1">Application</h3>
                     <p className="text-sm text-gray-600">
@@ -1826,9 +1816,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 onClick={() => setActiveTab('location')}
               >
                 <div className="flex items-start gap-3">
-                  <div className="p-2 bg-cyan-100 rounded-lg">
-                    <Globe className="h-5 w-5 text-cyan-600" />
-                  </div>
+                  <Globe className="h-5 w-5 text-cyan-600 mt-0.5" />
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900 mb-1">Location</h3>
                     <p className="text-sm text-gray-600">

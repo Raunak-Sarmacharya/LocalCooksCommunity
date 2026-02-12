@@ -324,19 +324,19 @@ const getChefBookingColumns = ({
           // Payment auth expired or voided — never charged
           variant = "outline"
           icon = <Clock className="h-3 w-3 mr-1" />
-          className = "bg-gray-100 text-gray-600 border-gray-300"
+          className = "bg-muted text-muted-foreground border-border"
           label = "Expired"
         } else if (booking.cancellationRequestedAt) {
           // Chef requested cancellation, manager accepted
           variant = "outline"
           icon = <XCircle className="h-3 w-3 mr-1" />
-          className = "bg-gray-100 text-gray-600 border-gray-300"
+          className = "bg-muted text-muted-foreground border-border"
           label = "Cancelled"
         } else if (booking.paymentStatus === 'refunded') {
           // Cancelled and fully refunded
           variant = "outline"
           icon = <XCircle className="h-3 w-3 mr-1" />
-          className = "bg-gray-100 text-gray-600 border-gray-300"
+          className = "bg-muted text-muted-foreground border-border"
           label = "Refunded"
         } else {
           // Manager declined the booking
@@ -364,7 +364,7 @@ const getChefBookingColumns = ({
           const isUpcoming = bookingDateTime >= now
           if (isUpcoming && status !== 'cancelled') {
             timeBadge = (
-              <span className="text-[10px] text-muted-foreground ml-1">
+              <span className="text-xs text-muted-foreground ml-1">
                 ({getTimeUntilBooking(bookingDateTime, now)})
               </span>
             )
@@ -400,13 +400,13 @@ const getChefBookingColumns = ({
             {timeBadge}
           </div>
           {isVoided && (
-            <div className="flex items-center gap-1 text-[10px] text-gray-600 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200 w-fit">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded border border-border w-fit">
               <XCircle className="h-2.5 w-2.5" />
               No charge
             </div>
           )}
           {isAuthHold && status === 'pending' && (
-            <div className="flex items-center gap-1 text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 w-fit">
+            <div className="flex items-center gap-1 text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 w-fit">
               <Clock className="h-2.5 w-2.5" />
               Payment held
             </div>
@@ -415,25 +415,25 @@ const getChefBookingColumns = ({
               Full voided auth already communicates everything was rejected — individual badges would be redundant
               and misleading (implying kitchen was approved but specific addons were individually rejected). */}
           {!isVoided && rejectedStorageCount > 0 && (
-            <div className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded w-fit">
+            <div className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded w-fit">
               <Package className="h-2.5 w-2.5" />
               {rejectedStorageCount} storage declined
             </div>
           )}
           {!isVoided && rejectedEquipmentCount > 0 && (
-            <div className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded w-fit">
+            <div className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded w-fit">
               <Package className="h-2.5 w-2.5" />
               {rejectedEquipmentCount} equipment declined
             </div>
           )}
           {pendingStorageCount > 0 && status === 'confirmed' && (
-            <div className="flex items-center gap-1 text-[10px] text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded w-fit">
+            <div className="flex items-center gap-1 text-xs text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded w-fit">
               <Package className="h-2.5 w-2.5" />
               {pendingStorageCount} storage pending
             </div>
           )}
           {status === 'cancelled' && booking.paymentStatus === 'partially_refunded' && (
-            <div className="flex items-center gap-1 text-[10px] text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200 w-fit">
+            <div className="flex items-center gap-1 text-xs text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200 w-fit">
               <AlertTriangle className="h-2.5 w-2.5" />
               Partial refund
             </div>
@@ -541,7 +541,7 @@ const getChefBookingColumns = ({
               <TooltipTrigger asChild>
                 <div className="text-right cursor-help">
                   <div className="font-medium text-sm text-muted-foreground">No Charge</div>
-                  <div className="text-xs text-gray-500">Hold released</div>
+                  <div className="text-xs text-muted-foreground">Hold released</div>
                 </div>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
@@ -869,14 +869,14 @@ const getStorageBookingColumns = ({
       // Completed bookings — checkout cleared or claim filed
       if (status === 'completed' && checkoutStatus === 'checkout_claim_filed') {
         return (
-          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+          <Badge variant="warning">
             <AlertTriangle className="h-3 w-3 mr-1" />
             Claim Filed
           </Badge>
         )
       } else if (status === 'completed') {
         return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+          <Badge variant="success">
             <CheckCircle className="h-3 w-3 mr-1" />
             Cleared
           </Badge>
@@ -886,7 +886,7 @@ const getStorageBookingColumns = ({
       } else if (status === 'cancelled' && storageBooking.paymentStatus === 'failed') {
         // Payment auth expired or failed — never charged
         return (
-          <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300">
+          <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
             <Clock className="h-3 w-3 mr-1" />
             Expired
           </Badge>
@@ -894,7 +894,7 @@ const getStorageBookingColumns = ({
       } else if (status === 'cancelled' && storageBooking.cancellationRequestedAt) {
         // Chef requested cancellation, manager accepted
         return (
-          <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300">
+          <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
             <XCircle className="h-3 w-3 mr-1" />
             Cancelled
           </Badge>
@@ -902,7 +902,7 @@ const getStorageBookingColumns = ({
       } else if (status === 'cancelled' && storageBooking.paymentStatus === 'refunded') {
         // Cancelled and fully refunded
         return (
-          <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300">
+          <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
             <XCircle className="h-3 w-3 mr-1" />
             Refunded
           </Badge>
@@ -910,49 +910,49 @@ const getStorageBookingColumns = ({
       } else if (status === 'cancelled') {
         // Manager declined the booking (no chef cancellation request, payment was paid)
         return (
-          <Badge variant="destructive" className="bg-red-100 text-red-800 border-red-300">
+          <Badge variant="outline" className="text-destructive border-destructive/30">
             <XCircle className="h-3 w-3 mr-1" />
             Declined
           </Badge>
         )
       } else if (status === 'cancellation_requested') {
         return (
-          <Badge variant="secondary" className="bg-orange-100 text-orange-800 border-orange-300">
+          <Badge variant="warning">
             <Clock className="h-3 w-3 mr-1" />
             Cancellation Pending
           </Badge>
         )
       } else if (status === 'pending') {
         return (
-          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+          <Badge variant="warning">
             <Clock className="h-3 w-3 mr-1" />
             Pending Approval
           </Badge>
         )
       } else if (status === 'confirmed' && checkoutStatus === 'checkout_requested') {
         return (
-          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+          <Badge variant="info">
             <Clock className="h-3 w-3 mr-1" />
             Checkout Under Review
           </Badge>
         )
       } else if (status === 'confirmed' && checkoutStatus === 'checkout_approved') {
         return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+          <Badge variant="success">
             <CheckCircle className="h-3 w-3 mr-1" />
             Checkout Approved
           </Badge>
         )
       } else if (status === 'confirmed' && checkoutStatus === 'active') {
         return (
-          <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+          <Badge variant="success">
             <CheckCircle className="h-3 w-3 mr-1" />
             Active
           </Badge>
         )
       } else if (status === 'confirmed') {
         return (
-          <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+          <Badge variant="success">
             <CheckCircle className="h-3 w-3 mr-1" />
             Confirmed
           </Badge>

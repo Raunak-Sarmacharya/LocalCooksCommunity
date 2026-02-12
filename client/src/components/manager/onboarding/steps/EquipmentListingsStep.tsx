@@ -255,9 +255,7 @@ export default function EquipmentListingsStep() {
 
       <div className="bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-rose-200/50 rounded-xl p-5 shadow-sm">
         <div className="flex items-start gap-3">
-          <div className="p-2 bg-rose-100 rounded-lg">
-            <Info className="h-5 w-5 text-[#F51042] flex-shrink-0" />
-          </div>
+          <Info className="h-5 w-5 text-[#F51042] flex-shrink-0 mt-0.5" />
           <div className="text-sm text-gray-700">
             <p className="font-bold mb-2 text-gray-900">Why list equipment?</p>
             <p>Detailed equipment lists help chefs know if your kitchen is right for them. Select from common commercial kitchen equipment below.</p>

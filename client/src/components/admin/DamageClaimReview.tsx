@@ -107,15 +107,15 @@ function formatCurrency(cents: number): string {
 }
 
 function getStatusBadge(status: string) {
-  const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
-    under_review: { variant: "default", label: "Under Review" },
-    approved: { variant: "secondary", label: "Approved" },
-    partially_approved: { variant: "secondary", label: "Partially Approved" },
-    rejected: { variant: "outline", label: "Rejected" },
-    charge_pending: { variant: "default", label: "Charge Pending" },
-    charge_succeeded: { variant: "secondary", label: "Charged" },
+  const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning"; label: string }> = {
+    under_review: { variant: "warning", label: "Under Review" },
+    approved: { variant: "success", label: "Approved" },
+    partially_approved: { variant: "success", label: "Partially Approved" },
+    rejected: { variant: "destructive", label: "Rejected" },
+    charge_pending: { variant: "warning", label: "Charge Pending" },
+    charge_succeeded: { variant: "success", label: "Charged" },
     charge_failed: { variant: "destructive", label: "Charge Failed" },
-    resolved: { variant: "outline", label: "Resolved" },
+    resolved: { variant: "success", label: "Resolved" },
   };
 
   const config = statusConfig[status] || { variant: "outline" as const, label: status };

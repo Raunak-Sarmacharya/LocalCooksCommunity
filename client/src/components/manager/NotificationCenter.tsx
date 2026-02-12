@@ -370,7 +370,7 @@ function NotificationItem({
             <Button
               variant="link"
               size="sm"
-              className="h-auto p-0 mt-1 text-blue-600"
+              className="h-auto p-0 mt-1 text-primary"
               onClick={async (e) => {
                 e.stopPropagation();
                 // Mark as read when clicking action button

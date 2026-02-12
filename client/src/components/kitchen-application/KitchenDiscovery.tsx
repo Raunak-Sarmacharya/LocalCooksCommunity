@@ -180,7 +180,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
       default:
         return {
           label: status,
-          color: "bg-gray-100 text-gray-800 border-gray-200",
+          color: "bg-muted text-foreground border-border",
           icon: Clock,
         };
     }
@@ -213,11 +213,11 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           <div className="grid grid-cols-2 gap-2 text-center">
             <div className="p-2 bg-green-50 rounded-lg">
               <p className="text-2xl font-bold text-green-600">{approvedCount}</p>
-              <p className="text-xs text-gray-600">Approved</p>
+              <p className="text-xs text-muted-foreground">Approved</p>
             </div>
             <div className="p-2 bg-yellow-50 rounded-lg">
               <p className="text-2xl font-bold text-yellow-600">{pendingCount}</p>
-              <p className="text-xs text-gray-600">Pending</p>
+              <p className="text-xs text-muted-foreground">Pending</p>
             </div>
           </div>
 
@@ -243,14 +243,14 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           {/* Recent applications */}
           {applications.length > 0 && (
             <div className="pt-2 border-t">
-              <p className="text-xs font-medium text-gray-600 mb-2">Recent Applications</p>
+              <p className="text-xs font-medium text-muted-foreground mb-2">Recent Applications</p>
               <div className="space-y-1">
                 {applications.slice(0, 3).map((app) => {
                   const config = getStatusConfig(app.status);
                   return (
                     <div
                       key={app.id}
-                      className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm"
+                      className="flex items-center justify-between p-2 bg-muted/50 rounded text-sm"
                     >
                       <span className="truncate flex-1">{app.location?.name || "Location"}</span>
                       <Badge className={`text-xs ${config.color}`}>{config.label}</Badge>
@@ -284,11 +284,11 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           <div className="flex gap-3">
             <div className="text-center px-3 py-2 bg-green-50 rounded-lg">
               <p className="text-xl font-bold text-green-600">{approvedCount}</p>
-              <p className="text-xs text-gray-600">Approved</p>
+              <p className="text-xs text-muted-foreground">Approved</p>
             </div>
             <div className="text-center px-3 py-2 bg-yellow-50 rounded-lg">
               <p className="text-xl font-bold text-yellow-600">{pendingCount}</p>
-              <p className="text-xs text-gray-600">Pending</p>
+              <p className="text-xs text-muted-foreground">Pending</p>
             </div>
           </div>
         </div>
@@ -396,7 +396,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                     {kitchen.name}
                                   </h3>
                                   {kitchen.canAcceptBookings ? (
-                                    <Badge variant="default" className="bg-green-600 hover:bg-green-600 text-[10px] uppercase tracking-wider">
+                                    <Badge variant="success" className="text-xs uppercase tracking-wider">
                                       <Check className="h-3 w-3 mr-1" />
                                       Accepting Bookings
                                     </Badge>
@@ -404,7 +404,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                     <TooltipProvider>
                                       <Tooltip>
                                         <TooltipTrigger>
-                                          <Badge variant="secondary" className="text-[10px] uppercase tracking-wider">
+                                          <Badge variant="secondary" className="text-xs uppercase tracking-wider">
                                             <Clock className="h-3 w-3 mr-1" />
                                             Coming Soon
                                           </Badge>
@@ -433,7 +433,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                     <DollarSign className="h-4 w-4 text-green-600" />
                                     <span>{priceDisplay.replace('$', '')}</span>
                                   </div>
-                                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">per hour</p>
+                                  <p className="text-xs text-muted-foreground uppercase tracking-wider">per hour</p>
                                 </div>
                               )}
                             </div>
@@ -556,10 +556,10 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           {/* Applications Tab */}
           <TabsContent value="applications" className="space-y-4">
             {applications.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-lg">
-                <Clock className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-600 font-medium">No applications yet</p>
-                <p className="text-sm text-gray-500 mt-1">
+              <div className="text-center py-12 bg-muted/50 rounded-lg">
+                <Clock className="h-12 w-12 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-muted-foreground font-medium">No applications yet</p>
+                <p className="text-sm text-muted-foreground/70 mt-1">
                   Apply to a kitchen to get started
                 </p>
                 <Button className="mt-4" onClick={() => setActiveTab("discover")}>
@@ -597,10 +597,10 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                   {config.label}
                                 </Badge>
                               </div>
-                              <p className="text-sm text-gray-600 truncate">
+                              <p className="text-sm text-muted-foreground truncate">
                                 {app.location?.address || "Address not available"}
                               </p>
-                              <p className="text-xs text-gray-500 mt-1">
+                              <p className="text-xs text-muted-foreground/70 mt-1">
                                 Applied: {new Date(app.createdAt).toLocaleDateString()}
                               </p>
                             </div>
@@ -652,10 +652,10 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           {/* Approved Tab */}
           <TabsContent value="approved" className="space-y-4">
             {approvedCount === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-lg">
-                <Check className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-600 font-medium">No approved applications yet</p>
-                <p className="text-sm text-gray-500 mt-1">
+              <div className="text-center py-12 bg-muted/50 rounded-lg">
+                <Check className="h-12 w-12 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-muted-foreground font-medium">No approved applications yet</p>
+                <p className="text-sm text-muted-foreground/70 mt-1">
                   Once your applications are approved, they&apos;ll appear here
                 </p>
               </div>
@@ -681,7 +681,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                               <h3 className="font-semibold">
                                 {app.location?.name || "Unknown Location"}
                               </h3>
-                              <p className="text-sm text-gray-600 truncate">
+                              <p className="text-sm text-muted-foreground truncate">
                                 {app.location?.address}
                               </p>
 

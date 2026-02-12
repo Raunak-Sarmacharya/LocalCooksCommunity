@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
   User,
+  Check,
   CheckCircle,
   XCircle,
   Clock,
@@ -834,7 +835,7 @@ function ManagerKitchenApplicationsContentLegacy({
               {/* ========== STEP 1 SECTION ========== */}
               <div className="border-2 border-blue-200 rounded-lg p-4 bg-blue-50/30">
                 <div className="flex items-center gap-2 mb-4">
-                  <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
+                  <Badge variant="info">
                     Step 1: Initial Application
                   </Badge>
                   {selectedApplication.tier1_completed_at && (
@@ -905,16 +906,16 @@ function ManagerKitchenApplicationsContentLegacy({
               {selectedApplication.tier2_completed_at && (
                 <div className="border-2 border-orange-200 rounded-lg p-4 bg-orange-50/30">
                   <div className="flex items-center gap-2 mb-4">
-                    <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-300">
+                    <Badge variant="warning">
                       Step 2: Kitchen Coordination
                     </Badge>
                     {selectedApplication.current_tier === 2 && (
-                      <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                      <Badge variant="warning">
                         Awaiting Review
                       </Badge>
                     )}
                     {selectedApplication.current_tier >= 3 && (
-                      <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
+                      <Badge variant="success">
                         Approved
                       </Badge>
                     )}
@@ -1131,7 +1132,7 @@ function ApplicationCard({
     switch (application.status) {
       case 'inReview':
         return (
-          <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300">
+          <Badge variant="warning">
             <Clock className="h-3 w-3 mr-1" />
             Pending
           </Badge>
@@ -1143,7 +1144,7 @@ function ApplicationCard({
         // current_tier=2 AND tier2_completed_at is set
         if (tier === 2 && application.tier2_completed_at) {
           return (
-            <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
+            <Badge variant="warning">
               <Clock className="h-3 w-3 mr-1" />
               Step 2 Needs Review
             </Badge>
@@ -1154,9 +1155,9 @@ function ApplicationCard({
         // current_tier=1 (Step 1 complete, Step 2 not started)
         if (tier === 1) {
           return (
-            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
-              <Clock className="h-3 w-3 mr-1" />
-              Step 1 Approved
+            <Badge variant="info">
+              <Check className="h-3 w-3 mr-1" />
+              Step 1 Done
             </Badge>
           );
         }
@@ -1165,7 +1166,7 @@ function ApplicationCard({
         // current_tier >= 3
         if (tier >= 3) {
           return (
-            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
+            <Badge variant="success">
               <CheckCircle className="h-3 w-3 mr-1" />
               Fully Approved
             </Badge>
@@ -1174,7 +1175,7 @@ function ApplicationCard({
 
         // Fallback for any edge cases (e.g., tier=2 without tier2_completed_at)
         return (
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
+          <Badge variant="info">
             <Clock className="h-3 w-3 mr-1" />
             In Progress
           </Badge>
@@ -1182,7 +1183,7 @@ function ApplicationCard({
       }
       case 'rejected':
         return (
-          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300">
+          <Badge variant="outline" className="text-destructive border-destructive/30">
             <XCircle className="h-3 w-3 mr-1" />
             Rejected
           </Badge>

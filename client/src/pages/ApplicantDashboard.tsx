@@ -13,6 +13,7 @@ import ChefBookingsView from "@/components/booking/ChefBookingsView";
 import { PendingStorageExtensions } from "@/components/booking/PendingStorageExtensions";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
+import ChefCommandPalette from "@/components/chef/ChefCommandPalette";
 import {
   Dialog,
   DialogContent,
@@ -63,6 +64,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
@@ -79,6 +81,7 @@ import { IssuesAndRefunds } from "@/components/chef/IssuesAndRefunds";
 import { TransactionHistory } from "@/components/chef/TransactionHistory";
 import TidioController from "@/components/chat/TidioController";
 import OutstandingDuesBanner from "@/components/chef/OutstandingDuesBanner";
+import ChefProfileSettings from "@/components/chef/ChefProfileSettings";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
 import DocumentUpload, { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
 import { SellerApplicationCard, KitchenApplicationCard } from "@/components/chef/applications";
@@ -119,19 +122,35 @@ export default function ApplicantDashboard() {
     return 'overview';
   };
 
-  const [activeTab, setActiveTab] = useState(getInitialTab);
+  const [activeTab, setActiveTabState] = useState(getInitialTab);
+
+  // Sync URL when tab changes (makes tabs bookmarkable)
+  const setActiveTab = (tab: string) => {
+    setActiveTabState(tab);
+    const url = new URL(window.location.href);
+    if (tab === 'overview') {
+      url.searchParams.delete('view');
+    } else {
+      url.searchParams.set('view', tab);
+    }
+    window.history.replaceState({}, '', url.toString());
+  };
 
   // Application form view mode - 'list' shows applications, 'form' shows the application form, 'documents' shows document verification
   const [applicationViewMode, setApplicationViewMode] = useState<'list' | 'form' | 'documents'>('list');
 
+  // Training view mode - 'overview' shows training overview, 'player' shows the video player
+  const [trainingViewMode, setTrainingViewMode] = useState<'overview' | 'player'>('overview');
+
   // Update activeTab and applicationViewMode when URL changes (for notification clicks and deep links)
+  // Use setActiveTabState here since the URL already has the correct ?view= param
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
     const action = params.get('action');
 
-    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages', 'support', 'feedback', 'damage-claims'].includes(view)) {
-      setActiveTab(view);
+    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages', 'support', 'feedback', 'damage-claims', 'profile'].includes(view)) {
+      setActiveTabState(view);
 
       // If navigating to applications with action=new, open the form
       if (view === 'applications' && action === 'new') {
@@ -691,7 +710,7 @@ export default function ApplicantDashboard() {
     return {
       label: 'Unknown',
       variant: 'outline' as const,
-      bgColor: 'bg-gray-500',
+      bgColor: 'bg-muted-foreground/40',
       icon: AlertCircle,
       description: 'Status unknown.'
     };
@@ -787,7 +806,7 @@ export default function ApplicantDashboard() {
                   <Building className="h-4 w-4 text-blue-600" />
                 </div>
                 <h3 className="text-lg font-semibold text-foreground">Kitchen Applications</h3>
-                <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800">
+                <Badge variant="info" className="text-xs">
                   {kitchenApplications.length}
                 </Badge>
               </div>
@@ -942,7 +961,7 @@ export default function ApplicantDashboard() {
 
               {/* Floating badge */}
               <div className="absolute top-6 right-6">
-                <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 border-blue-500/20 text-xs font-semibold">
+                <Badge variant="info" className="text-xs font-semibold">
                   Popular
                 </Badge>
               </div>
@@ -1065,7 +1084,10 @@ export default function ApplicantDashboard() {
   );
 
   const trainingTabContent = (
-    <TrainingOverviewPanel />
+    <TrainingOverviewPanel
+      viewMode={trainingViewMode}
+      onViewModeChange={setTrainingViewMode}
+    />
   );
 
   const bookingsTabContent = (
@@ -1166,6 +1188,12 @@ export default function ApplicantDashboard() {
             <TransactionHistory />
           </div>
         );
+      case "profile":
+        return (
+          <div className="space-y-8 animate-in fade-in-50 duration-500">
+            <ChefProfileSettings />
+          </div>
+        );
       default:
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{overviewTabContent}</div>;
     }
@@ -1193,6 +1221,15 @@ export default function ApplicantDashboard() {
       ];
     }
 
+    // If in training tab with player view, add nested breadcrumb
+    if (activeTab === 'training' && trainingViewMode === 'player') {
+      return [
+        ...baseBreadcrumbs,
+        { label: "Training", onClick: () => setTrainingViewMode('overview') },
+        { label: "Video Player" }
+      ];
+    }
+
     // Default: just show the current tab
     return undefined; // Let the layout generate default breadcrumbs
   };
@@ -1202,14 +1239,24 @@ export default function ApplicantDashboard() {
       activeView={activeTab}
       onViewChange={(view) => {
         setActiveTab(view);
-        // Reset application view mode when changing tabs
+        // Reset sub-view modes when switching tabs
         if (view !== 'applications') {
           setApplicationViewMode('list');
+        }
+        if (view !== 'training') {
+          setTrainingViewMode('overview');
         }
       }}
       messageBadgeCount={0}
       breadcrumbs={getBreadcrumbs()}
     >
+      {/* ⌘K Command Palette */}
+      <ChefCommandPalette onNavigate={(view) => {
+        setActiveTab(view);
+        if (view !== 'applications') setApplicationViewMode('list');
+        if (view !== 'training') setTrainingViewMode('overview');
+      }} />
+
       {/* Tidio Chat Controller - manages widget visibility based on current view */}
       <TidioController
         userEmail={authUser?.email || undefined}
@@ -1248,7 +1295,17 @@ export default function ApplicantDashboard() {
       {/* Outstanding Dues Banner — blocks bookings until resolved */}
       <OutstandingDuesBanner />
 
-      {renderContent()}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.2, ease: "easeInOut" }}
+        >
+          {renderContent()}
+        </motion.div>
+      </AnimatePresence>
 
       {/* Global Modals */}
       <Dialog open={showVendorPortalPopup} onOpenChange={setShowVendorPortalPopup}>
@@ -1300,7 +1357,7 @@ export default function ApplicantDashboard() {
                   <MessageCircle className="h-5 w-5 text-primary" />
                   <div>
                     <h4 className="font-bold text-sm">Chat with {chatApplication.location?.name || "Kitchen Manager"}</h4>
-                    <p className="text-[10px] text-muted-foreground">Application #{chatApplication.id}</p>
+                    <p className="text-xs text-muted-foreground">Application #{chatApplication.id}</p>
                   </div>
                 </div>
               </div>

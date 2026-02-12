@@ -1,29 +1,22 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { auth } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
 import {
   ArrowRight,
   Award,
-  BadgeCheck,
   BookOpen,
   CheckCircle,
-  Clock,
   Download,
   ExternalLink,
   FileText,
-  GraduationCap,
-  Play,
-  Shield,
-  Sparkles,
-  Star,
-  Trophy,
-  Users
+  Lock,
+  Play
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'wouter';
@@ -33,13 +26,19 @@ type ViewMode = 'overview' | 'player';
 
 interface TrainingOverviewPanelProps {
   className?: string;
+  viewMode?: ViewMode;
+  onViewModeChange?: (mode: ViewMode) => void;
 }
 
-export default function TrainingOverviewPanel({ className }: TrainingOverviewPanelProps) {
+export default function TrainingOverviewPanel({ className, viewMode: controlledViewMode, onViewModeChange }: TrainingOverviewPanelProps) {
   const { user: firebaseUser } = useFirebaseAuth();
   const { showAlert } = useCustomAlerts();
   const [isDownloading, setIsDownloading] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('overview');
+  const [internalViewMode, setInternalViewMode] = useState<ViewMode>('overview');
+
+  // Support both controlled (from parent breadcrumbs) and uncontrolled usage
+  const viewMode = controlledViewMode ?? internalViewMode;
+  const setViewMode = onViewModeChange ?? setInternalViewMode;
 
   const user = firebaseUser;
 
@@ -145,7 +144,7 @@ export default function TrainingOverviewPanel({ className }: TrainingOverviewPan
 
   // Calculate progress from video progress data
   const videoProgress = trainingAccess?.progress || [];
-  const completedVideos = videoProgress.filter((p: any) => p.completed).length;
+  const completedVideos = videoProgress.filter((p: { completed?: boolean }) => p.completed).length;
   const totalVideos = 22;
   const progressPercentage = Math.round((completedVideos / totalVideos) * 100);
 
@@ -153,7 +152,6 @@ export default function TrainingOverviewPanel({ className }: TrainingOverviewPan
   if (viewMode === 'player') {
     return (
       <TrainingVideoPlayer 
-        onBack={() => setViewMode('overview')} 
         className={className}
       />
     );
@@ -237,481 +235,260 @@ export default function TrainingOverviewPanel({ className }: TrainingOverviewPan
     <div className={cn("space-y-6", className)}>
       {/* Header */}
       <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-sm">
-          <BookOpen className="h-6 w-6 text-primary" />
+        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+          <BookOpen className="h-5 w-5 text-primary" />
         </div>
         <div className="flex-1">
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Training & Certification</h2>
-          <p className="text-muted-foreground mt-1">Improve your food safety knowledge and get certified.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Training & Certification</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">Food safety knowledge and professional certification</p>
         </div>
         {isCompleted && (
-          <Badge className="bg-green-600 text-white px-3 py-1.5">
-            <Award className="h-4 w-4 mr-1.5" />
+          <Badge variant="success">
+            <Award className="h-3 w-3 mr-1" />
             Certified
           </Badge>
         )}
       </div>
 
-      {/* Training Modules Overview Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <Card className="border-border/50 shadow-sm overflow-hidden">
-          <div className="h-1.5 bg-gradient-to-r from-emerald-500 via-blue-500 to-purple-500" />
-          <CardHeader className="pb-4">
-            <CardTitle className="text-xl text-center">Training Modules Overview</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Module Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Food Safety Basics */}
-              <div className="p-4 rounded-xl bg-muted/30 border border-border/50 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-foreground">Food Safety Basics</h3>
-                  <div className="flex gap-2">
-                    {hasFullAccess ? (
-                      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs">
-                        14 Available
-                      </Badge>
-                    ) : (
-                      <>
-                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs">
-                          1 Available
-                        </Badge>
-                        <Badge className="bg-slate-100 text-slate-600 border-slate-300 text-xs">
-                          13 Locked
-                        </Badge>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Essential HACCP principles, contamination prevention, and food handling fundamentals.
-                </p>
-              </div>
-
-              {/* Safety & Hygiene How-To's */}
-              <div className="p-4 rounded-xl bg-muted/30 border border-border/50 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-foreground">Safety & Hygiene How-To's</h3>
-                  {hasFullAccess ? (
-                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs">
-                      8 Available
-                    </Badge>
-                  ) : (
-                    <Badge className="bg-slate-100 text-slate-600 border-slate-300 text-xs">
-                      8 Locked
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Step-by-step practical demonstrations and industry best practices.
-                </p>
-              </div>
+      {/* Progress summary (if any progress) */}
+      {completedVideos > 0 && (
+        <Card className="border-border/50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">Overall progress</span>
+              <span className="text-sm text-muted-foreground tabular-nums">{completedVideos}/{totalVideos} videos</span>
             </div>
-
-            {/* Feature Badges */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-border/50">
-              <div className="text-center">
-                <div className="w-3 h-3 bg-emerald-500 rounded-full mx-auto mb-2" />
-                <span className="text-sm text-muted-foreground">HACCP-Based</span>
-              </div>
-              <div className="text-center">
-                <div className="w-3 h-3 bg-blue-500 rounded-full mx-auto mb-2" />
-                <span className="text-sm text-muted-foreground">Self-Paced</span>
-              </div>
-              <div className="text-center">
-                <div className="w-3 h-3 bg-purple-500 rounded-full mx-auto mb-2" />
-                <span className="text-sm text-muted-foreground">Industry Standard</span>
-              </div>
-              <div className="text-center">
-                <div className="w-3 h-3 bg-yellow-500 rounded-full mx-auto mb-2" />
-                <span className="text-sm text-muted-foreground">Certified</span>
-              </div>
-            </div>
+            <Progress value={progressPercentage} className="h-2" />
           </CardContent>
         </Card>
-      </motion.div>
+      )}
 
-      {/* Dynamic Status Cards Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Completion Certificate - For completed users */}
-        {isCompleted && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <Card className="border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-green-50 shadow-lg h-full">
-              <CardContent className="p-6 space-y-4">
-                <div className="text-center space-y-4">
-                  <div className="w-14 h-14 bg-emerald-500 rounded-2xl flex items-center justify-center mx-auto">
-                    <Award className="h-7 w-7 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-emerald-900">🎉 Training Completed!</h3>
-                    <p className="text-emerald-700 text-sm mt-1">Congratulations! You've earned your Local Cooks certification.</p>
-                  </div>
-                  
-                  {/* Celebratory elements */}
-                  <div className="flex justify-center items-center gap-2 py-2">
-                    <motion.div
-                      animate={{ rotate: [0, 15, -15, 0], scale: [1, 1.1, 1] }}
-                      transition={{ duration: 2, repeat: Infinity, repeatType: "reverse" }}
-                      className="text-xl"
-                    >
-                      🏆
-                    </motion.div>
-                    <Badge className="bg-emerald-200 text-emerald-800 border-emerald-400 px-3 py-1 font-semibold">
-                      <BadgeCheck className="h-4 w-4 mr-1" />
-                      Local Cooks Certified
-                    </Badge>
-                    <motion.div
-                      animate={{ rotate: [0, -15, 15, 0], scale: [1, 1.1, 1] }}
-                      transition={{ duration: 2, repeat: Infinity, repeatType: "reverse", delay: 0.5 }}
-                      className="text-xl"
-                    >
-                      🎊
-                    </motion.div>
-                  </div>
-                  
-                  <div className="bg-emerald-100 rounded-xl p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="text-left">
-                        <p className="font-semibold text-emerald-800 text-sm">Certificate Available</p>
-                        <p className="text-xs text-emerald-600">Download your Local Cooks certification</p>
-                      </div>
-                      <Button 
-                        size="sm"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                        onClick={downloadCertificate}
-                        disabled={isDownloading}
-                      >
-                        <Download className="h-4 w-4 mr-1.5" />
-                        {isDownloading ? 'Downloading...' : 'Download'}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        {/* Official Certificate Card - For completed users */}
-        {isCompleted && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
-            <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg h-full">
-              <CardContent className="p-6 space-y-4">
-                <div className="text-center space-y-4">
-                  <div className="w-14 h-14 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto">
-                    <Shield className="h-7 w-7 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-blue-900">🎓 Get Your Official Certificate</h3>
-                    <p className="text-blue-700 text-sm mt-1">Complete your certification with a FREE official Food Safety certificate from SkillsPass NL.</p>
-                  </div>
-                  
-                  <div className="bg-blue-100 rounded-xl p-4 space-y-3">
-                    <div className="text-left space-y-2">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Trophy className="h-4 w-4 text-blue-600" />
-                        <p className="font-semibold text-blue-800 text-sm">Why Get This Official Certificate:</p>
-                      </div>
-                      <div className="space-y-1.5 text-xs text-blue-700">
-                        <div className="flex items-start gap-2">
-                          <span className="bg-blue-200 text-blue-800 rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold flex-shrink-0">✓</span>
-                          <span>Recognized by employers & health authorities</span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="bg-blue-200 text-blue-800 rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold flex-shrink-0">✓</span>
-                          <span>100% FREE certification - no hidden costs</span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="bg-blue-200 text-blue-800 rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold flex-shrink-0">✓</span>
-                          <span>Lifetime digital certificate access</span>
-                        </div>
-                      </div>
-                    </div>
-                    <Button 
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold"
-                      onClick={() => window.open('https://skillspassnl.com', '_blank', 'noopener,noreferrer')}
-                    >
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      Get Your FREE Official Certificate
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        {/* Application Required - For limited users who can apply */}
-        {!hasFullAccess && safeTrainingAccess?.applicationInfo?.canApply && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <Card className="border-2 border-yellow-200 bg-gradient-to-br from-yellow-50 to-orange-50 shadow-lg h-full">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-yellow-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <FileText className="h-6 w-6 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-yellow-900">Application Required</h3>
-                    <p className="text-yellow-800 text-sm mt-1">{safeTrainingAccess.applicationInfo.message}</p>
-                  </div>
-                </div>
-                <Button 
-                  asChild
-                  className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold"
-                >
-                  <Link href="/dashboard?view=applications&action=new">
-                    <FileText className="h-4 w-4 mr-2" />
-                    Submit Application Now
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        {/* Application Status - For users with pending applications */}
-        {!hasFullAccess && safeTrainingAccess?.applicationInfo?.message && !safeTrainingAccess?.applicationInfo?.canApply && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg h-full">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Clock className="h-6 w-6 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-blue-900">Application Status</h3>
-                    <p className="text-blue-800 text-sm mt-1">{safeTrainingAccess.applicationInfo.message}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        {/* Full Access Welcome - For approved users not yet completed */}
-        {hasFullAccess && !isCompleted && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <Card className="border-2 border-emerald-200 bg-gradient-to-br from-blue-50 to-emerald-50 shadow-lg h-full">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <CheckCircle className="h-6 w-6 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-emerald-900">Full Access Granted!</h3>
-                    <p className="text-emerald-800 text-sm mt-1">Your application has been approved. Access all 22 training videos and earn your certification.</p>
-                  </div>
-                </div>
-                
-                {/* Progress indicator */}
-                {completedVideos > 0 && (
-                  <div className="bg-white/60 rounded-xl p-4 space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium text-emerald-900">Your Progress</span>
-                      <span className="text-emerald-700">{completedVideos} of {totalVideos} videos</span>
-                    </div>
-                    <div className="w-full h-2 bg-emerald-100 rounded-full overflow-hidden">
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-emerald-500 to-blue-500 rounded-full"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${progressPercentage}%` }}
-                        transition={{ duration: 0.8, ease: "easeOut" }}
-                      />
-                    </div>
+      {/* Modules overview */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Training Modules</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* Food Safety Basics */}
+            <div className="p-4 rounded-lg border border-border/50 bg-muted/20 space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium text-sm text-foreground">Food Safety Basics</h3>
+                {hasFullAccess ? (
+                  <Badge variant="outline" className="text-xs">14 videos</Badge>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <Badge variant="outline" className="text-xs">1 free</Badge>
+                    <Badge variant="secondary" className="text-xs"><Lock className="h-2.5 w-2.5 mr-0.5" />13 locked</Badge>
                   </div>
                 )}
-                
-                <div className="bg-white/60 rounded-xl p-4 space-y-2">
-                  <h4 className="font-semibold text-emerald-900 flex items-center gap-2 text-sm">
-                    <span className="text-green-600">🔓</span>
-                    Your Access Includes:
-                  </h4>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="flex items-center gap-2 text-emerald-700">
-                      <CheckCircle className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
-                      <span>All 22 Videos</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-emerald-700">
-                      <CheckCircle className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
-                      <span>Progress Tracking</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-emerald-700">
-                      <CheckCircle className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
-                      <span>Both Modules</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-emerald-700">
-                      <CheckCircle className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
-                      <span>Certificate</span>
-                    </div>
-                  </div>
+              </div>
+              <p className="text-xs text-muted-foreground">HACCP principles, contamination prevention, and food handling fundamentals.</p>
+            </div>
+
+            {/* Safety & Hygiene */}
+            <div className="p-4 rounded-lg border border-border/50 bg-muted/20 space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium text-sm text-foreground">Safety &amp; Hygiene How-To&apos;s</h3>
+                {hasFullAccess ? (
+                  <Badge variant="outline" className="text-xs">8 videos</Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-xs"><Lock className="h-2.5 w-2.5 mr-0.5" />8 locked</Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">Practical demonstrations and industry best practices.</p>
+            </div>
+          </div>
+
+          {/* Feature tags */}
+          <div className="flex flex-wrap gap-2 pt-3 border-t border-border/50">
+            <Badge variant="outline" className="text-xs font-normal">HACCP-Based</Badge>
+            <Badge variant="outline" className="text-xs font-normal">Self-Paced</Badge>
+            <Badge variant="outline" className="text-xs font-normal">Industry Standard</Badge>
+            <Badge variant="outline" className="text-xs font-normal">Certificate Included</Badge>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Status cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        
+        {/* Completed: Certificate download */}
+        {isCompleted && (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Award className="h-5 w-5 text-primary" />
                 </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+                <div>
+                  <h3 className="font-semibold text-sm">Training Completed</h3>
+                  <p className="text-xs text-muted-foreground">You&apos;ve earned your Local Cooks certification</p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-background border border-border/50">
+                <div>
+                  <p className="text-sm font-medium">Local Cooks Certificate</p>
+                  <p className="text-xs text-muted-foreground">PDF download</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={downloadCertificate} disabled={isDownloading}>
+                  <Download className="h-3.5 w-3.5 mr-1.5" />
+                  {isDownloading ? 'Downloading...' : 'Download'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
-        {/* Community Card - For approved users not yet completed */}
+        {/* Completed: Official certificate CTA */}
+        {isCompleted && (
+          <Card className="border-border/50">
+            <CardContent className="p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
+                  <ExternalLink className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm">Official SkillsPass Certificate</h3>
+                  <p className="text-xs text-muted-foreground">Free, recognized by employers and health authorities</p>
+                </div>
+              </div>
+              <div className="space-y-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2"><CheckCircle className="h-3 w-3 text-primary flex-shrink-0" />Recognized certification</div>
+                <div className="flex items-center gap-2"><CheckCircle className="h-3 w-3 text-primary flex-shrink-0" />100% free, no hidden costs</div>
+                <div className="flex items-center gap-2"><CheckCircle className="h-3 w-3 text-primary flex-shrink-0" />Lifetime digital access</div>
+              </div>
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => window.open('https://skillspassnl.com', '_blank', 'noopener,noreferrer')}
+              >
+                <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                Get Official Certificate
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Limited: Application required */}
+        {!hasFullAccess && safeTrainingAccess?.applicationInfo?.canApply && (
+          <Card className="border-warning/30 bg-warning/5">
+            <CardContent className="p-5 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center">
+                  <FileText className="h-5 w-5 text-warning" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm">Application Required</h3>
+                  <p className="text-xs text-muted-foreground">{safeTrainingAccess.applicationInfo.message}</p>
+                </div>
+              </div>
+              <Button asChild className="w-full">
+                <Link href="/dashboard?view=applications&action=new">
+                  <FileText className="h-3.5 w-3.5 mr-1.5" />
+                  Submit Application
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Limited: Application pending */}
+        {!hasFullAccess && safeTrainingAccess?.applicationInfo?.message && !safeTrainingAccess?.applicationInfo?.canApply && (
+          <Card className="border-border/50">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
+                  <FileText className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm">Application Status</h3>
+                  <p className="text-xs text-muted-foreground">{safeTrainingAccess.applicationInfo.message}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Full access: Welcome + progress */}
         {hasFullAccess && !isCompleted && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
-            <Card className="border-2 border-rose-200 bg-gradient-to-br from-rose-50 to-pink-50 shadow-lg h-full">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-rose-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Users className="h-6 w-6 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-rose-900">Join Our Community</h3>
-                    <p className="text-rose-800 text-sm mt-1">Connect with fellow culinary professionals and grow your network.</p>
-                  </div>
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <CheckCircle className="h-5 w-5 text-primary" />
                 </div>
-                <div className="bg-white/60 rounded-xl p-4 space-y-2">
-                  <h4 className="font-semibold text-rose-900 flex items-center gap-2 text-sm">
-                    <span className="text-rose-600">🤝</span>
-                    Community Benefits:
-                  </h4>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="flex items-center gap-2 text-rose-700">
-                      <Star className="h-3.5 w-3.5 text-rose-600 flex-shrink-0" />
-                      <span>Professional Network</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-rose-700">
-                      <Star className="h-3.5 w-3.5 text-rose-600 flex-shrink-0" />
-                      <span>Industry Insights</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-rose-700">
-                      <Star className="h-3.5 w-3.5 text-rose-600 flex-shrink-0" />
-                      <span>Career Opportunities</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-rose-700">
-                      <Star className="h-3.5 w-3.5 text-rose-600 flex-shrink-0" />
-                      <span>Peer Support</span>
-                    </div>
-                  </div>
+                <div>
+                  <h3 className="font-semibold text-sm">Full Access Granted</h3>
+                  <p className="text-xs text-muted-foreground">Access all 22 training videos and earn your certification</p>
                 </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+              </div>
+              
+              {completedVideos > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Progress</span>
+                    <span className="font-medium tabular-nums">{completedVideos}/{totalVideos}</span>
+                  </div>
+                  <Progress value={progressPercentage} className="h-1.5" />
+                </div>
+              )}
+              
+              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />All 22 videos</div>
+                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />Progress tracking</div>
+                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />Both modules</div>
+                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />Certificate</div>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
-        {/* Sample Access Card - For limited users */}
+        {/* Limited: Sample access info */}
         {!hasFullAccess && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
-            <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg h-full">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <GraduationCap className="h-6 w-6 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-blue-900">Welcome to Your Food Safety Journey!</h3>
-                    <p className="text-blue-800 text-sm mt-1">Experience our comprehensive training with a sample video, then unlock the complete curriculum.</p>
-                  </div>
+          <Card className="border-border/50">
+            <CardContent className="p-5 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
+                  <BookOpen className="h-5 w-5 text-muted-foreground" />
                 </div>
-                <div className="bg-white/60 rounded-xl p-4 space-y-2">
-                  <h4 className="font-semibold text-blue-900 flex items-center gap-2 text-sm">
-                    <span className="text-blue-600">📚</span>
-                    Full Training Includes:
-                  </h4>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="flex items-center gap-2 text-blue-700">
-                      <Star className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-                      <span>22 Training Videos</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-blue-700">
-                      <Star className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-                      <span>2 Comprehensive Modules</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-blue-700">
-                      <Star className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-                      <span>Completion Certificate</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-blue-700">
-                      <Star className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-                      <span>Lifetime Access</span>
-                    </div>
-                  </div>
+                <div>
+                  <h3 className="font-semibold text-sm">Sample Access</h3>
+                  <p className="text-xs text-muted-foreground">Preview the first video, then apply for full access</p>
                 </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />22 training videos</div>
+                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />2 modules</div>
+                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />Certificate</div>
+                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />Lifetime access</div>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
 
-      {/* Action Button */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="text-center space-y-4"
-      >
-        {!hasFullAccess ? (
-          <div className="space-y-3">
-            <Button
-              size="lg"
-              onClick={() => setViewMode('player')}
-              className="bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-700 hover:to-blue-700 text-white font-bold px-8 py-3 text-base rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
-            >
-              <Play className="h-5 w-5 mr-2" />
-              Start with Sample Video
-              <ArrowRight className="h-5 w-5 ml-2" />
-            </Button>
-            <p className="text-sm text-muted-foreground">
-              Try our introduction video, then submit your application for full access
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <Button
-              size="lg"
-              onClick={() => setViewMode('player')}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold px-8 py-3 text-base rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
-            >
-              <Play className="h-5 w-5 mr-2" />
-              {isCompleted ? 'Review Training Materials' : 'Continue Your Training'}
-              <ArrowRight className="h-5 w-5 ml-2" />
-            </Button>
-            <p className="text-sm text-muted-foreground">
-              {isCompleted 
-                ? 'Access all videos and materials anytime'
-                : 'Continue where you left off and track your progress'
-              }
-            </p>
-          </div>
-        )}
-      </motion.div>
+      {/* Action button */}
+      <div className="text-center space-y-2">
+        <Button size="lg" onClick={() => setViewMode('player')} className="gap-2">
+          <Play className="h-4 w-4" />
+          {!hasFullAccess
+            ? 'Start with Sample Video'
+            : isCompleted
+            ? 'Review Training'
+            : completedVideos > 0
+            ? 'Continue Training'
+            : 'Start Training'}
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          {!hasFullAccess
+            ? 'Preview the introduction video, then apply for full access'
+            : isCompleted
+            ? 'Rewatch any video at your convenience'
+            : 'Pick up where you left off'}
+        </p>
+      </div>
     </div>
   );
 }

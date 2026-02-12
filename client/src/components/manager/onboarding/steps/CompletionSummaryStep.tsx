@@ -373,8 +373,8 @@ export default function CompletionSummaryStep() {
                     disabled={isCompletingOnboarding}
                     className={cn(
                         "h-12 px-8 text-base font-medium shadow-sm hover:shadow-md transition-all duration-200",
-                        isFullyReady && "bg-emerald-600 hover:bg-emerald-700",
-                        isOnboardingComplete && isLicensePending && "bg-amber-600 hover:bg-amber-700"
+                        isFullyReady && "bg-success text-success-foreground hover:bg-success/90",
+                        isOnboardingComplete && isLicensePending && ""
                     )}
                 >
                     {isCompletingOnboarding ? (

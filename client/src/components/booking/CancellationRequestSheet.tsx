@@ -125,7 +125,7 @@ export function CancellationRequestSheet({
                 </div>
               </div>
               <div className="flex items-center gap-2 pt-1">
-                <Badge variant="outline" className="text-[11px] bg-amber-100 text-amber-700 border-amber-300">
+                <Badge variant="warning" className="text-[11px]">
                   <Clock className="h-3 w-3 mr-1" />
                   Manager Review Required
                 </Badge>

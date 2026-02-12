@@ -77,7 +77,7 @@ export default function Success() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
             >
-              <Badge className="mb-4 bg-green-100 text-green-800 border-green-200 px-4 py-1.5">
+              <Badge variant="success" className="mb-4 px-4 py-1.5">
                 <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
                 Application Received
               </Badge>
