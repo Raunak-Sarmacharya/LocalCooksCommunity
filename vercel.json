@@ -22,7 +22,7 @@
       "has": [
         {
           "type": "host",
-          "value": "^(?!admin\\.|localcooks\\.ca$).*"
+          "value": "^(?!admin\\.|dev-admin\\.|dev\\.localcooks|localcooks\\.ca$).*"
         }
       ],
       "destination": "https://admin.localcooks.ca/admin/login",
@@ -33,7 +33,7 @@
       "has": [
         {
           "type": "host",
-          "value": "^(?!admin\\.|localcooks\\.ca$).*"
+          "value": "^(?!admin\\.|dev-admin\\.|dev\\.localcooks|localcooks\\.ca$).*"
         }
       ],
       "destination": "https://admin.localcooks.ca/admin",
@@ -44,7 +44,7 @@
       "has": [
         {
           "type": "host",
-          "value": "^(?!chef\\.|localcooks\\.ca$).*"
+          "value": "^(?!chef\\.|dev-chef\\.|dev\\.localcooks|localcooks\\.ca$).*"
         }
       ],
       "destination": "https://chef.localcooks.ca/apply",
@@ -55,7 +55,7 @@
       "has": [
         {
           "type": "host",
-          "value": "^(?!chef\\.|localcooks\\.ca$).*"
+          "value": "^(?!chef\\.|dev-chef\\.|dev\\.localcooks|localcooks\\.ca$).*"
         }
       ],
       "destination": "https://chef.localcooks.ca/dashboard",
@@ -66,7 +66,7 @@
       "has": [
         {
           "type": "host",
-          "value": "^(?!chef\\.|localcooks\\.ca$).*"
+          "value": "^(?!chef\\.|dev-chef\\.|dev\\.localcooks|localcooks\\.ca$).*"
         }
       ],
       "destination": "https://chef.localcooks.ca/book-kitchen",
@@ -77,7 +77,7 @@
       "has": [
         {
           "type": "host",
-          "value": "^(?!kitchen\\.|localcooks\\.ca$).*"
+          "value": "^(?!kitchen\\.|dev-kitchen\\.|dev\\.localcooks|localcooks\\.ca$).*"
         }
       ],
       "destination": "https://kitchen.localcooks.ca/portal",
@@ -88,7 +88,7 @@
       "has": [
         {
           "type": "host",
-          "value": "^(?!kitchen\\.|admin\\.|localcooks\\.ca$).*"
+          "value": "^(?!kitchen\\.|admin\\.|dev-kitchen\\.|dev-admin\\.|dev\\.localcooks|localcooks\\.ca$).*"
         }
       ],
       "destination": "https://kitchen.localcooks.ca/manager",
