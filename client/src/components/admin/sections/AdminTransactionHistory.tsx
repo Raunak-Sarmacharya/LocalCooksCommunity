@@ -1150,7 +1150,7 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
         <CardContent className="space-y-4">
           {/* Status Tabs */}
           <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="w-full">
-            <TabsList className="w-full flex flex-wrap gap-1 h-auto p-1">
+            <TabsList className="w-full gap-1">
               <TabsTrigger value="all" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
                 All <Badge variant="count" className="ml-1">{counts.all}</Badge>
               </TabsTrigger>

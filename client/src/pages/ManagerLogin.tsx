@@ -9,7 +9,7 @@ import { auth } from "@/lib/firebase";
 import { sendEmailVerification } from "firebase/auth";
 // WelcomeScreen removed - managers use ManagerOnboardingWizard instead
 import { motion } from "framer-motion";
-import { Building2, LogIn, UserPlus } from "lucide-react";
+import { Building2, Loader2, LogIn, UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, Redirect } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -247,7 +247,7 @@ export default function ManagerLogin() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-2" />
           <p className="text-sm text-gray-600">{loadingText}</p>
         </div>
       </div>

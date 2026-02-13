@@ -1,4 +1,4 @@
-import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, ArrowLeft, CreditCard } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, ArrowLeft, CreditCard, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
@@ -503,7 +503,7 @@ export default function BookingConfirmationPage() {
           <div className="max-w-4xl mx-auto px-4">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-4" />
                 <p className="text-gray-600">Loading kitchen information...</p>
               </div>
             </div>
@@ -805,7 +805,7 @@ export default function BookingConfirmationPage() {
                 >
                   {createBooking.isPending || isRedirectingToCheckout ? (
                     <span className="flex items-center justify-center gap-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <Loader2 className="h-4 w-4 animate-spin" />
                       {isRedirectingToCheckout ? 'Redirecting to checkout...' : 'Booking...'}
                     </span>
                   ) : grandTotal > 0 ? (

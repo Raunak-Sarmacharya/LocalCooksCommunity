@@ -15,6 +15,7 @@ import {
     Clock,
     Download,
     ExternalLink,
+    Loader2,
     FileText,
     GraduationCap,
     Play,
@@ -244,7 +245,7 @@ export default function MicrolearningOverview() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
         <div className="text-center space-y-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-emerald-500 border-t-transparent mx-auto"></div>
+          <Loader2 className="h-12 w-12 animate-spin text-muted-foreground mx-auto" />
           <p className="text-slate-600 font-medium">Loading your training overview...</p>
           <p className="text-slate-500 text-sm">
             {loading ? 'Authenticating...' : 

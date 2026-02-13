@@ -4,7 +4,7 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { MapPin, Share2, CheckCircle, Clock, XCircle, AlertCircle, FileText, ArrowRight } from "lucide-react";
+import { MapPin, Share2, CheckCircle, Clock, XCircle, AlertCircle, FileText, ArrowRight, Loader2 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useEffect } from "react";
 import { motion } from "framer-motion";
@@ -163,7 +163,7 @@ export default function ShareProfile() {
         <main className="flex-1 pt-20 sm:pt-24 lg:pt-28 pb-12">
           <div className="container mx-auto px-4 py-8 max-w-7xl">
             <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+              <Loader2 className="h-12 w-12 animate-spin text-muted-foreground inline-block" />
               <p className="text-gray-600 mt-4">Loading locations...</p>
             </div>
           </div>
@@ -288,7 +288,7 @@ export default function ShareProfile() {
                       >
                         {shareProfile.isPending ? (
                           <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
                             Sharing...
                           </>
                         ) : (

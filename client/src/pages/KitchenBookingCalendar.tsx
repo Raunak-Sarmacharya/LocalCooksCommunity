@@ -1,4 +1,4 @@
-import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, Lock, FileText } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, Lock, FileText, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
@@ -885,7 +885,7 @@ export default function KitchenBookingCalendar() {
           {/* Loading State */}
           {isLoadingKitchens && (
             <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+              <Loader2 className="h-12 w-12 animate-spin text-muted-foreground inline-block" />
               <p className="text-gray-600 mt-4">Loading kitchens...</p>
             </div>
           )}
@@ -1156,7 +1156,7 @@ export default function KitchenBookingCalendar() {
                     {isLoadingAddons && (
                       <div className="rounded-xl shadow-sm border border-border bg-background p-6">
                         <div className="flex items-center gap-3">
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                           <span className="text-muted-foreground">Loading available add-ons...</span>
                         </div>
                       </div>
@@ -1314,7 +1314,7 @@ export default function KitchenBookingCalendar() {
                       {selectedLocationId && isLoadingApplication && (
                         <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl">
                           <div className="text-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#F51042] mx-auto mb-2"></div>
+                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-2" />
                             <p className="text-sm text-gray-600">Checking application status...</p>
                           </div>
                         </div>
@@ -1381,7 +1381,7 @@ export default function KitchenBookingCalendar() {
 
                         {isLoadingSlots ? (
                           <div className="text-center py-8 sm:py-12">
-                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground inline-block" />
                             <p className="text-sm sm:text-base text-gray-600 mt-3">Loading time slots...</p>
                           </div>
                         ) : allSlots.length === 0 ? (

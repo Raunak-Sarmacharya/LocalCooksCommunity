@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, CheckCircle, Mail } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Loader2, Mail } from 'lucide-react';
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 
@@ -199,7 +199,7 @@ const UnsubscribePage: React.FC = () => {
               >
                 {isSubmitting ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     Processing...
                   </>
                 ) : (

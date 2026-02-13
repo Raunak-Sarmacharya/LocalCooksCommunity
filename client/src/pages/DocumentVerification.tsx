@@ -11,6 +11,7 @@ import {
   ChefHat,
   Clock,
   FileText,
+  Loader2,
   Shield,
   XCircle
 } from "lucide-react";
@@ -92,7 +93,7 @@ export default function DocumentVerification() {
         <main className="flex-grow container max-w-6xl mx-auto px-4 pt-28 pb-8">
           <div className="flex justify-center items-center py-12">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mx-auto mb-4"></div>
+              <Loader2 className="h-12 w-12 animate-spin text-muted-foreground mx-auto mb-4" />
               <p className="text-gray-600 font-medium">Loading your documents...</p>
             </div>
           </div>

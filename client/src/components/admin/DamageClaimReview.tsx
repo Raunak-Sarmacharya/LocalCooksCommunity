@@ -615,7 +615,7 @@ export function DamageClaimReview() {
 
       {/* Status Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex-wrap h-auto gap-1">
+        <TabsList className="w-full gap-1">
           <TabsTrigger value="under_review">
             Under Review {statusCounts['under_review'] ? `(${statusCounts['under_review']})` : ''}
           </TabsTrigger>

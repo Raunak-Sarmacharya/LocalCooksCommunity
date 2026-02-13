@@ -2,7 +2,7 @@ import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
 import MicrolearningModule from '@/components/microlearning/MicrolearningModule';
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { ChevronLeft, Home } from 'lucide-react';
+import { ChevronLeft, Home, Loader2 } from 'lucide-react';
 import React from 'react';
 import { Link, useLocation } from 'wouter';
 
@@ -24,7 +24,7 @@ export default function MicrolearningPlayer() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }

@@ -311,7 +311,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
 
       {/* Step Navigation - Notion-style Tabs */}
       <Tabs value={activeStep} onValueChange={(value) => goToStep(value as WizardStep)} className="w-full">
-        <TabsList className="w-full h-auto p-1 bg-slate-100/60 dark:bg-slate-800/40 rounded-lg border border-slate-200/50 dark:border-slate-700/50 grid grid-cols-3 gap-1">
+        <TabsList className="w-full p-1 bg-slate-100/60 dark:bg-slate-800/40 rounded-lg border border-slate-200/50 dark:border-slate-700/50 gap-1">
           {WIZARD_STEPS.map((step, index) => {
             const isActive = step.id === activeStep;
             const isCompleted = completedSteps.has(step.id);

@@ -425,7 +425,7 @@ export function OverstayPenaltiesTable() {
         <CardContent className="space-y-4">
           {/* View Type Tabs */}
           <Tabs value={viewType} onValueChange={(v) => setViewType(v as PenaltyViewType)} className="w-full">
-            <TabsList className="w-full flex flex-wrap gap-1 h-auto p-1">
+            <TabsList className="w-full gap-1">
               <TabsTrigger value="all" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
                 All
                 <Badge variant="count" className="ml-1">{penalties.length}</Badge>

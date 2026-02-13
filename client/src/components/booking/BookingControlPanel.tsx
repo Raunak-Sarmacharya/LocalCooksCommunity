@@ -3,6 +3,8 @@ import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building
 import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
 import { useQuery } from "@tanstack/react-query";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
@@ -666,32 +668,19 @@ export default function BookingControlPanel({
         </div>
 
         {/* View Type Tabs */}
-        <div className="flex gap-1 mb-4 bg-gray-50 p-1 rounded-lg">
-          {[
-            { key: "upcoming" as ViewType, label: "Upcoming", count: upcomingBookings.length },
-            { key: "past" as ViewType, label: "Past", count: pastBookings.length },
-            { key: "all" as ViewType, label: "All", count: allBookings.length },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setViewType(tab.key)}
-              className={`flex-1 px-4 py-2.5 text-sm font-semibold rounded-md transition-all ${
-                viewType === tab.key
-                  ? "bg-white text-blue-600 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-white/50"
-              }`}
-            >
-              <span className="block">{tab.label}</span>
-              {tab.count > 0 && (
-                <span className={`text-xs font-medium ${
-                  viewType === tab.key ? "text-blue-500" : "text-gray-500"
-                }`}>
-                  ({tab.count})
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        <Tabs value={viewType} onValueChange={(v) => setViewType(v as ViewType)} className="w-full mb-4">
+          <TabsList className="w-full">
+            <TabsTrigger value="upcoming" className="flex-1 gap-2">
+              Upcoming <Badge variant="count" className="ml-1">{upcomingBookings.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="past" className="flex-1 gap-2">
+              Past <Badge variant="count" className="ml-1">{pastBookings.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="all" className="flex-1 gap-2">
+              All <Badge variant="count" className="ml-1">{allBookings.length}</Badge>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
         {/* Status Filter */}
         <div className="flex gap-2 flex-wrap">

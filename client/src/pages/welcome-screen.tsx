@@ -11,6 +11,7 @@ import {
     FileText,
     GraduationCap,
     HeartHandshake,
+    Loader2,
     Rocket,
     Upload
 } from 'lucide-react';
@@ -252,7 +253,7 @@ export default function WelcomeScreen({ onComplete, onContinue }: WelcomeScreenP
                   >
                     {isCompleting ? (
                       <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent mr-2"></div>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
                         Setting up your account...
                       </>
                     ) : (

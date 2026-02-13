@@ -277,7 +277,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
 
                 <div className="p-6">
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                        <TabsList className="w-full flex flex-wrap gap-1 h-auto p-1 mb-6">
+                        <TabsList className="w-full gap-1 mb-6">
                             <TabsTrigger value="setup" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">Docs</TabsTrigger>
                             <TabsTrigger value="branding" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">Kitchen</TabsTrigger>
                             <TabsTrigger value="notifications" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">

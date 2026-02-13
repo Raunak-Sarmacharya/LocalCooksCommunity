@@ -785,7 +785,7 @@ export default function ChefNotificationCenter() {
         {/* Filter tabs */}
         <div className="px-4 py-2 border-b bg-muted/50" role="navigation" aria-label="Notification filters">
           <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
-            <TabsList className="w-full flex gap-1 h-auto p-1" aria-label="Filter notifications by status">
+            <TabsList className="w-full gap-1" aria-label="Filter notifications by status">
               <TabsTrigger value="all" className="flex-1 text-xs px-2 py-1.5">All</TabsTrigger>
               <TabsTrigger value="unread" className="flex-1 text-xs px-2 py-1.5">Unread</TabsTrigger>
               <TabsTrigger value="read" className="flex-1 text-xs px-2 py-1.5">Read</TabsTrigger>

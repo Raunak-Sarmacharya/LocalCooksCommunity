@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast, createBookingDateTime, getNowInTimezone } from "@/utils/timezone-utils";
@@ -919,47 +921,38 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         )}
 
         {/* Filter Tabs */}
-        <div className="flex gap-4 mb-6 border-b overflow-x-auto">
-          {[
-            { key: 'all', label: 'All Bookings' },
-            { key: 'upcoming', label: 'Upcoming' },
-            { key: 'past', label: 'Past' },
-            { key: 'pending', label: 'Pending' },
-            { key: 'cancelled', label: 'Cancelled' },
-          ].map((filter) => {
-            // Calculate counts considering location filter
-            const baseBookings = locationFilter === 'all'
-              ? bookings
-              : bookings.filter((b: Booking) => b.locationName === locationFilter);
+        <Tabs value={statusFilter} onValueChange={setStatusFilter} className="w-full mb-6">
+          <TabsList className="w-full gap-1">
+            {[
+              { key: 'all', label: 'All' },
+              { key: 'upcoming', label: 'Upcoming' },
+              { key: 'past', label: 'Past' },
+              { key: 'pending', label: 'Pending' },
+              { key: 'cancelled', label: 'Cancelled' },
+            ].map((filter) => {
+              const baseBookings = locationFilter === 'all'
+                ? bookings
+                : bookings.filter((b: Booking) => b.locationName === locationFilter);
 
-            let count = 0;
-            if (filter.key === 'all') {
-              count = baseBookings.length;
-            } else if (filter.key === 'upcoming') {
-              count = upcomingBookings.filter((b: Booking) => locationFilter === 'all' || b.locationName === locationFilter).length;
-            } else if (filter.key === 'past') {
-              count = pastBookings.filter((b: Booking) => locationFilter === 'all' || b.locationName === locationFilter).length;
-            } else {
-              count = baseBookings.filter((b: Booking) => b.status === filter.key).length;
-            }
+              let count = 0;
+              if (filter.key === 'all') {
+                count = baseBookings.length;
+              } else if (filter.key === 'upcoming') {
+                count = upcomingBookings.filter((b: Booking) => locationFilter === 'all' || b.locationName === locationFilter).length;
+              } else if (filter.key === 'past') {
+                count = pastBookings.filter((b: Booking) => locationFilter === 'all' || b.locationName === locationFilter).length;
+              } else {
+                count = baseBookings.filter((b: Booking) => b.status === filter.key).length;
+              }
 
-            return (
-              <button
-                key={filter.key}
-                onClick={() => setStatusFilter(filter.key)}
-                className={`px-4 py-2 font-medium whitespace-nowrap transition-colors ${statusFilter === filter.key
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-                  }`}
-              >
-                {filter.label}
-                <span className="ml-2 text-sm">
-                  ({count})
-                </span>
-              </button>
-            );
-          })}
-        </div>
+              return (
+                <TabsTrigger key={filter.key} value={filter.key} className="flex-1 text-xs sm:text-sm px-2 py-1.5">
+                  {filter.label} <Badge variant="count" className="ml-1">{count}</Badge>
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+        </Tabs>
 
         {/* Bookings List */}
         {isLoading ? (

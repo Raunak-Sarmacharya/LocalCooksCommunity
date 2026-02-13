@@ -228,7 +228,7 @@ export default function EscalatedPenalties() {
 
       {/* Status Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex-wrap h-auto gap-1">
+        <TabsList className="w-full gap-1">
           <TabsTrigger value="escalated">
             Escalated {tabCounts['escalated'] ? `(${tabCounts['escalated']})` : ''}
           </TabsTrigger>

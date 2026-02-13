@@ -1269,69 +1269,29 @@ export function DamageClaimQueue() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className={cn("cursor-pointer transition-colors", activeTab === "drafts" && "ring-2 ring-primary")} onClick={() => setActiveTab("drafts")}>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-gray-500" />
-              <div>
-                <p className="text-2xl font-bold">{draftClaims.length}</p>
-                <p className="text-xs text-muted-foreground">Drafts</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className={cn("cursor-pointer transition-colors", activeTab === "pending" && "ring-2 ring-primary")} onClick={() => setActiveTab("pending")}>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-yellow-500" />
-              <div>
-                <p className="text-2xl font-bold">{pendingClaims.length}</p>
-                <p className="text-xs text-muted-foreground">Pending</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className={cn("cursor-pointer transition-colors", activeTab === "action" && "ring-2 ring-primary")} onClick={() => setActiveTab("action")}>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-orange-500" />
-              <div>
-                <p className="text-2xl font-bold">{actionRequiredClaims.length}</p>
-                <p className="text-xs text-muted-foreground">Action Required</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className={cn("cursor-pointer transition-colors", activeTab === "resolved" && "ring-2 ring-primary")} onClick={() => setActiveTab("resolved")}>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-500" />
-              <div>
-                <p className="text-2xl font-bold">{resolvedClaims.length}</p>
-                <p className="text-xs text-muted-foreground">Resolved</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Search */}
-      <div className="flex items-center gap-4">
+      {/* Search + Tabs */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
         <Input
           placeholder="Search claims..."
           value={globalFilter}
           onChange={(e) => setGlobalFilter(e.target.value)}
           className="max-w-sm"
         />
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="hidden md:block">
-          <TabsList className="flex gap-1 h-auto p-1">
-            <TabsTrigger value="action" className="text-xs lg:text-sm px-2 lg:px-3 py-1.5">Action</TabsTrigger>
-            <TabsTrigger value="drafts" className="text-xs lg:text-sm px-2 lg:px-3 py-1.5">Drafts</TabsTrigger>
-            <TabsTrigger value="pending" className="text-xs lg:text-sm px-2 lg:px-3 py-1.5">Pending</TabsTrigger>
-            <TabsTrigger value="resolved" className="text-xs lg:text-sm px-2 lg:px-3 py-1.5">Resolved</TabsTrigger>
-            <TabsTrigger value="all" className="text-xs lg:text-sm px-2 lg:px-3 py-1.5">All</TabsTrigger>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
+          <TabsList className="gap-1">
+            <TabsTrigger value="action" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">
+              Action <Badge variant="count" className="ml-1">{actionRequiredClaims.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="drafts" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">
+              Drafts <Badge variant="count" className="ml-1">{draftClaims.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="pending" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">
+              Pending <Badge variant="count" className="ml-1">{pendingClaims.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="resolved" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">
+              Resolved <Badge variant="count" className="ml-1">{resolvedClaims.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="all" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">All</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
