@@ -1801,41 +1801,17 @@ export default function ChefLanding() {
                 ))}
               </div>
             ) : !kitchensLoading ? (
-              /* Placeholder - Coming Soon Cards */
               <FadeInSection delay={1}>
-                <div className="grid md:grid-cols-3 gap-6 mb-16">
-                  {[
-                    { title: "Downtown Kitchen", area: "St. John's Downtown" },
-                    { title: "East End Kitchen", area: "East End, St. John's" },
-                    { title: "West Side Kitchen", area: "West Side, St. John's" }
-                  ].map((item, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: i * 0.1 }}
-                      whileHover={{ y: -4 }}
-                    >
-                      <Card className="h-64 border-0 rounded-2xl shadow-lg bg-white overflow-hidden">
-                        <div className="h-36 bg-gradient-to-br from-[#FFE8DD] via-[#FFF5F0] to-white flex items-center justify-center relative">
-                          <div className="w-14 h-14 bg-gradient-to-br from-[#F51042]/15 to-[#FF6B6B]/10 rounded-xl flex items-center justify-center">
-                            <Building2 className="h-7 w-7 text-[#F51042]" />
-                          </div>
-                          <div className="absolute top-3 right-3 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full">
-                            Coming Soon
-                          </div>
-                        </div>
-                        <div className="p-4">
-                          <h3 className="text-lg md:text-xl font-bold text-[#1A1A1A] mb-0.5">{item.title}</h3>
-                          <p className="text-sm text-[#6B6B6B] flex items-center gap-1.5">
-                            <span className="text-[#F51042]">📍</span>
-                            {item.area}
-                          </p>
-                        </div>
-                      </Card>
-                    </motion.div>
-                  ))}
+                <div className="flex justify-center mb-16">
+                  <div className="bg-white/15 backdrop-blur-md rounded-2xl border border-white/20 px-8 py-10 text-center max-w-md">
+                    <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center mx-auto mb-4">
+                      <Building2 className="h-7 w-7 text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">Partner Kitchens Coming Soon</h3>
+                    <p className="text-sm text-white/80 leading-relaxed">
+                      We're onboarding certified commercial kitchens in St. John's. Check back soon for available spaces.
+                    </p>
+                  </div>
                 </div>
               </FadeInSection>
             ) : null}
