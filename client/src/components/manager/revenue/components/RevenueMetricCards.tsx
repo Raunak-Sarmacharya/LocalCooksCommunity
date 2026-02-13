@@ -175,7 +175,7 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                     <MetricCardSkeleton />
                     <MetricCardSkeleton />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                     <MetricCardSkeleton />
                     <MetricCardSkeleton />
                     <MetricCardSkeleton />
@@ -241,7 +241,7 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                         <BarChart3 className="h-4 w-4 text-slate-600" />
                         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Revenue Breakdown</h3>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                         {/* Tax Collected */}
                         <div className="space-y-1">
                             <div className="flex items-center gap-1.5">

@@ -1533,15 +1533,15 @@ export default function ChefBookingsView({
               <TabsTrigger value="upcoming" className="gap-2">
                 <CalendarDays className="h-4 w-4" />
                 Upcoming
-                <Badge variant="secondary" className="ml-1">{upcomingBookings.length}</Badge>
+                <Badge variant="count" className="ml-1">{upcomingBookings.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="past" className="gap-2">
                 Past
-                <Badge variant="secondary" className="ml-1">{pastBookings.length}</Badge>
+                <Badge variant="count" className="ml-1">{pastBookings.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="all" className="gap-2">
                 All
-                <Badge variant="secondary" className="ml-1">{allBookings.length}</Badge>
+                <Badge variant="count" className="ml-1">{allBookings.length}</Badge>
               </TabsTrigger>
             </TabsList>
           </Tabs>

@@ -1152,25 +1152,25 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
           <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="w-full">
             <TabsList className="w-full flex flex-wrap gap-1 h-auto p-1">
               <TabsTrigger value="all" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                All <Badge variant="secondary" className="ml-1">{counts.all}</Badge>
+                All <Badge variant="count" className="ml-1">{counts.all}</Badge>
               </TabsTrigger>
               <TabsTrigger value="succeeded" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                Completed <Badge variant="secondary" className="ml-1">{counts.succeeded}</Badge>
+                Completed <Badge variant="count" className="ml-1">{counts.succeeded}</Badge>
               </TabsTrigger>
               <TabsTrigger value="refunded" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                Refunded <Badge variant="secondary" className="ml-1">{counts.refunded}</Badge>
+                Refunded <Badge variant="count" className="ml-1">{counts.refunded}</Badge>
               </TabsTrigger>
               <TabsTrigger value="pending" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                Pending <Badge variant="secondary" className="ml-1">{counts.pending}</Badge>
+                Pending <Badge variant="count" className="ml-1">{counts.pending}</Badge>
               </TabsTrigger>
               {counts.failed > 0 && (
                 <TabsTrigger value="failed" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                  Failed <Badge variant="secondary" className="ml-1">{counts.failed}</Badge>
+                  Failed <Badge variant="count" className="ml-1">{counts.failed}</Badge>
                 </TabsTrigger>
               )}
               {counts.canceled > 0 && (
                 <TabsTrigger value="canceled" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                  No Charge <Badge variant="secondary" className="ml-1">{counts.canceled}</Badge>
+                  No Charge <Badge variant="count" className="ml-1">{counts.canceled}</Badge>
                 </TabsTrigger>
               )}
             </TabsList>

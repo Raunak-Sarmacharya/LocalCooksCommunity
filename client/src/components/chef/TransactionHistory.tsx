@@ -491,27 +491,27 @@ export function TransactionHistory() {
             <TabsList className="w-full flex flex-wrap gap-1 h-auto p-1">
               <TabsTrigger value="all" className="flex-1 min-w-[70px] text-xs sm:text-sm px-2 py-1.5">
                 All
-                <Badge variant="secondary" className="ml-1">{transactions.length}</Badge>
+                <Badge variant="count" className="ml-1">{transactions.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="succeeded" className="flex-1 min-w-[70px] text-xs sm:text-sm px-2 py-1.5">
                 <span className="hidden sm:inline">Completed</span>
                 <span className="sm:hidden">Done</span>
-                <Badge variant="secondary" className="ml-1">{succeededTx.length}</Badge>
+                <Badge variant="count" className="ml-1">{succeededTx.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="refunded" className="flex-1 min-w-[70px] text-xs sm:text-sm px-2 py-1.5">
                 <span className="hidden sm:inline">Refunded</span>
                 <span className="sm:hidden">Refund</span>
-                <Badge variant="secondary" className="ml-1">{refundedTx.length}</Badge>
+                <Badge variant="count" className="ml-1">{refundedTx.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="pending" className="flex-1 min-w-[70px] text-xs sm:text-sm px-2 py-1.5">
                 Pending
-                <Badge variant="secondary" className="ml-1">{pendingTx.length}</Badge>
+                <Badge variant="count" className="ml-1">{pendingTx.length}</Badge>
               </TabsTrigger>
               {canceledTx.length > 0 && (
                 <TabsTrigger value="canceled" className="flex-1 min-w-[70px] text-xs sm:text-sm px-2 py-1.5">
                   <span className="hidden sm:inline">No Charge</span>
                   <span className="sm:hidden">Void</span>
-                  <Badge variant="secondary" className="ml-1">{canceledTx.length}</Badge>
+                  <Badge variant="count" className="ml-1">{canceledTx.length}</Badge>
                 </TabsTrigger>
               )}
             </TabsList>

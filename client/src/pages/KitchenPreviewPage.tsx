@@ -837,7 +837,7 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
                 >
                   <Wrench className="w-4 h-4 mr-2" />
                   Equipment
-                  <Badge variant="secondary" className="ml-2 text-[10px] px-1.5">
+                  <Badge variant="count" className="ml-2">
                     {includedCount + rentalCount}
                   </Badge>
                 </TabsTrigger>
@@ -849,7 +849,7 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
                 >
                   <Package className="w-4 h-4 mr-2" />
                   Storage
-                  <Badge variant="secondary" className="ml-2 text-[10px] px-1.5">
+                  <Badge variant="count" className="ml-2">
                     {storageCount}
                   </Badge>
                 </TabsTrigger>
@@ -1500,7 +1500,7 @@ export default function KitchenPreviewPage() {
                   <h2 className="font-semibold text-foreground text-sm">
                     Select Kitchen
                   </h2>
-                  <Badge variant="secondary" className="ml-auto text-[10px]">
+                  <Badge variant="count" className="ml-auto">
                     {kitchens.length}
                   </Badge>
                 </div>

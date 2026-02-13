@@ -1356,7 +1356,7 @@ export function DamageClaimQueue() {
               {activeTab === "pending" && <><Clock className="w-5 h-5 text-yellow-500" /> Pending Response</>}
               {activeTab === "resolved" && <><CheckCircle className="w-5 h-5 text-green-500" /> Resolved</>}
               {activeTab === "all" && <>All Claims</>}
-              <Badge variant="secondary" className="ml-2">{filteredClaims.length}</Badge>
+              <Badge variant="count" className="ml-2">{filteredClaims.length}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>

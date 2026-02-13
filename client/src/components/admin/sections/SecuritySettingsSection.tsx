@@ -439,7 +439,7 @@ export function SecuritySettingsSection() {
           Reset to Defaults
         </Button>
         {hasChanges && (
-          <Badge variant="secondary" className="ml-2">
+          <Badge variant="count" className="ml-2">
             Unsaved changes
           </Badge>
         )}

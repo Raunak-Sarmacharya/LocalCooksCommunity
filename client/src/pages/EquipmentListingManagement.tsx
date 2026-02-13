@@ -469,7 +469,7 @@ function EquipmentListingContent({
                         <Collapsible key={category.id} open={expandedCategories.includes(category.id)} onOpenChange={() => toggleCategory(category.id)}>
                           <CollapsibleTrigger asChild>
                             <Button variant="ghost" className="w-full justify-between p-3 h-auto font-medium hover:bg-muted/50">
-                              <span className="flex items-center gap-2"><CategoryIcon iconName={category.iconName} className="h-4 w-4 text-muted-foreground" />{category.name}<Badge variant="secondary" className="ml-2">{category.items.length}</Badge></span>
+                              <span className="flex items-center gap-2"><CategoryIcon iconName={category.iconName} className="h-4 w-4 text-muted-foreground" />{category.name}<Badge variant="count" className="ml-2">{category.items.length}</Badge></span>
                               {expandedCategories.includes(category.id) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                             </Button>
                           </CollapsibleTrigger>

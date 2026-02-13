@@ -101,7 +101,7 @@ export function IssuesAndRefunds() {
         <TabsList className="grid w-full grid-cols-2 rounded-xl bg-muted p-1 mb-6">
           <TabsTrigger 
             value="damage-claims" 
-            className="flex items-center gap-2 rounded-lg data-[state=active]:bg-white"
+            className="flex items-center gap-2 rounded-lg data-[state=active]:bg-background"
           >
             <FileText className="h-4 w-4" />
             <span>Damage Claims</span>
@@ -111,14 +111,14 @@ export function IssuesAndRefunds() {
               </Badge>
             )}
             {pendingDamageClaims === 0 && totalDamageClaims > 0 && (
-              <Badge variant="secondary" className="ml-1">
+              <Badge variant="count" className="ml-1">
                 {totalDamageClaims}
               </Badge>
             )}
           </TabsTrigger>
           <TabsTrigger 
             value="overstay-penalties" 
-            className="flex items-center gap-2 rounded-lg data-[state=active]:bg-white"
+            className="flex items-center gap-2 rounded-lg data-[state=active]:bg-background"
           >
             <Clock className="h-4 w-4" />
             <span>Overstay Penalties</span>
@@ -128,7 +128,7 @@ export function IssuesAndRefunds() {
               </Badge>
             )}
             {pendingPenalties === 0 && totalPenalties > 0 && (
-              <Badge variant="secondary" className="ml-1">
+              <Badge variant="count" className="ml-1">
                 {totalPenalties}
               </Badge>
             )}

@@ -21,6 +21,8 @@ const badgeVariants = cva(
           "border-warning/30 text-warning bg-warning/10",
         info:
           "border-info/30 text-info bg-info/10",
+        count:
+          "border-transparent bg-foreground/[0.06] text-muted-foreground font-medium text-[10px] px-1.5 py-0",
       },
     },
     defaultVariants: {

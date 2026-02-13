@@ -737,14 +737,14 @@ export function PendingStorageCheckouts() {
                 <Clock className="h-4 w-4" />
                 Pending Review
                 {pendingCheckouts.length > 0 && (
-                  <Badge variant="secondary" className="ml-1">{pendingCheckouts.length}</Badge>
+                  <Badge variant="count" className="ml-1">{pendingCheckouts.length}</Badge>
                 )}
               </TabsTrigger>
               <TabsTrigger value="history" className="gap-2">
                 <CheckCircle className="h-4 w-4" />
                 History
                 {checkoutHistory.length > 0 && (
-                  <Badge variant="secondary" className="ml-1">{checkoutHistory.length}</Badge>
+                  <Badge variant="count" className="ml-1">{checkoutHistory.length}</Badge>
                 )}
               </TabsTrigger>
             </TabsList>

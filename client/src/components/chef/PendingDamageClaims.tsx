@@ -878,22 +878,22 @@ export function PendingDamageClaims() {
             <TabsList className="w-full flex flex-wrap gap-1 h-auto p-1">
               <TabsTrigger value="all" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
                 All
-                <Badge variant="secondary" className="ml-1">{claims.length}</Badge>
+                <Badge variant="count" className="ml-1">{claims.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="pending" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
                 <span className="hidden sm:inline">Pending</span>
                 <span className="sm:hidden">Pend</span>
-                <Badge variant="secondary" className="ml-1">{pendingClaims.length}</Badge>
+                <Badge variant="count" className="ml-1">{pendingClaims.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="in_progress" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
                 <span className="hidden sm:inline">In Progress</span>
                 <span className="sm:hidden">Active</span>
-                <Badge variant="secondary" className="ml-1">{inProgressClaims.length}</Badge>
+                <Badge variant="count" className="ml-1">{inProgressClaims.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="resolved" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
                 <span className="hidden sm:inline">Resolved</span>
                 <span className="sm:hidden">Done</span>
-                <Badge variant="secondary" className="ml-1">{resolvedClaims.length}</Badge>
+                <Badge variant="count" className="ml-1">{resolvedClaims.length}</Badge>
               </TabsTrigger>
             </TabsList>
           </Tabs>

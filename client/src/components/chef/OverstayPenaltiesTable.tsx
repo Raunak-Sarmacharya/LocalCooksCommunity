@@ -428,15 +428,15 @@ export function OverstayPenaltiesTable() {
             <TabsList className="w-full flex flex-wrap gap-1 h-auto p-1">
               <TabsTrigger value="all" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
                 All
-                <Badge variant="secondary" className="ml-1">{penalties.length}</Badge>
+                <Badge variant="count" className="ml-1">{penalties.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="pending" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
                 Pending
-                <Badge variant="secondary" className="ml-1">{pendingPenalties.length}</Badge>
+                <Badge variant="count" className="ml-1">{pendingPenalties.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="resolved" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
                 Resolved
-                <Badge variant="secondary" className="ml-1">{resolvedPenalties.length}</Badge>
+                <Badge variant="count" className="ml-1">{resolvedPenalties.length}</Badge>
               </TabsTrigger>
             </TabsList>
           </Tabs>
