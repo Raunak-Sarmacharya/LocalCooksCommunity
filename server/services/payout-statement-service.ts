@@ -1,6 +1,5 @@
-// @ts-ignore - pdfkit doesn't have type definitions
 import PDFDocument from 'pdfkit';
-import type { Pool } from '@neondatabase/serverless';
+import type { Pool } from 'pg';
 import Stripe from 'stripe';
 
 /**
