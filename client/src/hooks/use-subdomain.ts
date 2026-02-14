@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { SubdomainType } from '@shared/subdomain-utils';
-import { getSubdomainFromHostname } from '@shared/subdomain-utils';
+import { getSubdomainFromHostname, getSubdomainUrlForEnvironment } from '@shared/subdomain-utils';
 
 /**
  * Hook to detect the current subdomain
@@ -27,16 +27,14 @@ export function useSubdomain(): SubdomainType {
 
 /**
  * Hook to get the base URL for the current subdomain
+ * Automatically detects dev vs prod environment from hostname
  * @returns The base URL
  */
 export function useSubdomainUrl(): string {
   const subdomain = useSubdomain();
   const baseDomain = 'localcooks.ca';
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
 
-  if (!subdomain || subdomain === 'main') {
-    return `https://${baseDomain}`;
-  }
-
-  return `https://${subdomain}.${baseDomain}`;
+  return getSubdomainUrlForEnvironment(subdomain, hostname, baseDomain);
 }
 

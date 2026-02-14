@@ -40,19 +40,25 @@ export function getSubdomainFromHostname(hostname: string): SubdomainType {
     }
   }
 
-  // Handle production subdomains
+  // Handle production and dev subdomains
   // For 'chef.localcooks.ca', parts would be ['chef', 'localcooks', 'ca']
+  // For 'dev-chef.localcooks.ca', parts would be ['dev-chef', 'localcooks', 'ca']
   // For 'localcooks.ca', parts would be ['localcooks', 'ca']
   if (parts.length >= 3) {
     const subdomain = parts[0].toLowerCase();
     
     switch (subdomain) {
       case 'chef':
+      case 'dev-chef':
         return 'chef';
       case 'kitchen':
+      case 'dev-kitchen':
         return 'kitchen';
       case 'admin':
+      case 'dev-admin':
         return 'admin';
+      case 'dev':
+        return 'main';
       default:
         return null; // Unknown subdomain, treat as main
     }
@@ -73,6 +79,42 @@ export function getSubdomainUrl(subdomainType: SubdomainType, baseDomain: string
     return `https://${baseDomain}`;
   }
   return `https://${subdomainType}.${baseDomain}`;
+}
+
+/**
+ * Check if the current hostname is a dev environment subdomain
+ * @param hostname - The hostname to check
+ * @returns true if hostname is a dev-* subdomain
+ */
+export function isDevSubdomain(hostname: string): boolean {
+  if (!hostname) return false;
+  const hostWithoutPort = hostname.split(':')[0];
+  const parts = hostWithoutPort.split('.');
+  if (parts.length >= 3) {
+    return parts[0].toLowerCase().startsWith('dev');
+  }
+  return false;
+}
+
+/**
+ * Get the subdomain URL for the correct environment (prod or dev)
+ * @param subdomainType - The subdomain type
+ * @param hostname - Current hostname to detect dev vs prod
+ * @param baseDomain - The base domain
+ * @returns The full URL with correct subdomain prefix
+ */
+export function getSubdomainUrlForEnvironment(
+  subdomainType: SubdomainType,
+  hostname: string,
+  baseDomain: string = 'localcooks.ca'
+): string {
+  const isDev = isDevSubdomain(hostname);
+  const prefix = isDev ? 'dev-' : '';
+
+  if (!subdomainType || subdomainType === 'main') {
+    return isDev ? `https://dev.${baseDomain}` : `https://${baseDomain}`;
+  }
+  return `https://${prefix}${subdomainType}.${baseDomain}`;
 }
 
 /**

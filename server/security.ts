@@ -118,6 +118,11 @@ function getCorsOrigins(): (string | RegExp)[] {
     'https://chef.localcooks.ca',
     'https://kitchen.localcooks.ca',
     'https://admin.localcooks.ca',
+    // Dev environment subdomains (Vercel Preview deployment)
+    'https://dev.localcooks.ca',
+    'https://dev-chef.localcooks.ca',
+    'https://dev-kitchen.localcooks.ca',
+    'https://dev-admin.localcooks.ca',
     // Vercel preview deployments
     /^https:\/\/local-cooks-community.*\.vercel\.app$/,
   ];

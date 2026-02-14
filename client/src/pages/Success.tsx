@@ -236,10 +236,10 @@ export default function Success() {
             <p className="text-sm text-muted-foreground">
               Questions? Contact us at{" "}
               <a 
-                href="mailto:support@localcooks.ca" 
+                href="mailto:support@localcook.shop" 
                 className="text-primary hover:underline font-medium"
               >
-                support@localcooks.ca
+                support@localcook.shop
               </a>
             </p>
           </motion.div>

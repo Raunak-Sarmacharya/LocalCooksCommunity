@@ -119,10 +119,10 @@ const contactMethods = [
   {
     icon: Mail,
     title: "Email Support",
-    description: "support@localcooks.ca",
+    description: "support@localcook.shop",
     action: "Send Email",
     available: true,
-    href: "mailto:support@localcooks.ca",
+    href: "mailto:support@localcook.shop",
   },
   {
     icon: Phone,

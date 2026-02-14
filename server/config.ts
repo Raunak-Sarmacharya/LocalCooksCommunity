@@ -25,11 +25,12 @@ type SubdomainType = 'kitchen' | 'chef' | 'admin' | 'main';
  * getAppBaseUrl('kitchen') // => 'http://kitchen.localhost:5001'
  */
 export function getAppBaseUrl(subdomain: SubdomainType = 'main'): string {
-    const isDevelopment = process.env.NODE_ENV === 'development';
+    const isDev = process.env.NODE_ENV === 'development';
+    const isVercel = !!process.env.VERCEL;
+    const isVercelPreview = process.env.VERCEL_ENV === 'preview';
 
-    if (isDevelopment) {
-        // Development: Use subdomain-based localhost URLs
-        // Port 5001 is the dev server port for subdomain routing
+    // Local development (not on Vercel) — use localhost
+    if (isDev && !isVercel) {
         const port = process.env.PORT || '5001';
         
         if (subdomain === 'main' || !subdomain) {
@@ -40,14 +41,15 @@ export function getAppBaseUrl(subdomain: SubdomainType = 'main'): string {
         return `http://${subdomain}.localhost:${port}`;
     }
 
-    // Production: Use the configured base domain with subdomain prefix
+    // Vercel (Preview or Production)
     const baseDomain = process.env.APP_BASE_DOMAIN || 'localcooks.ca';
+    const prefix = isVercelPreview ? 'dev-' : '';
 
     if (subdomain === 'main' || !subdomain) {
-        return `https://${baseDomain}`;
+        return isVercelPreview ? `https://dev.${baseDomain}` : `https://${baseDomain}`;
     }
 
-    return `https://${subdomain}.${baseDomain}`;
+    return `https://${prefix}${subdomain}.${baseDomain}`;
 }
 
 /**

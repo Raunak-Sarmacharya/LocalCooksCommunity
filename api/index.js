@@ -1972,15 +1972,13 @@ __export(db_exports, {
   db: () => db,
   pool: () => pool
 });
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import ws from "ws";
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 var pool, db;
 var init_db = __esm({
   "server/db.ts"() {
     "use strict";
     init_schema();
-    neonConfig.webSocketConstructor = ws;
     if (!process.env.DATABASE_URL) {
       throw new Error(
         "DATABASE_URL must be set. Did you forget to provision a database?"
@@ -18279,8 +18277,10 @@ var init_api_response = __esm({
 
 // server/config.ts
 function getAppBaseUrl(subdomain = "main") {
-  const isDevelopment = process.env.NODE_ENV === "development";
-  if (isDevelopment) {
+  const isDev = process.env.NODE_ENV === "development";
+  const isVercel3 = !!process.env.VERCEL;
+  const isVercelPreview = process.env.VERCEL_ENV === "preview";
+  if (isDev && !isVercel3) {
     const port = process.env.PORT || "5001";
     if (subdomain === "main" || !subdomain) {
       return `http://localhost:${port}`;
@@ -18288,10 +18288,11 @@ function getAppBaseUrl(subdomain = "main") {
     return `http://${subdomain}.localhost:${port}`;
   }
   const baseDomain = process.env.APP_BASE_DOMAIN || "localcooks.ca";
+  const prefix = isVercelPreview ? "dev-" : "";
   if (subdomain === "main" || !subdomain) {
-    return `https://${baseDomain}`;
+    return isVercelPreview ? `https://dev.${baseDomain}` : `https://${baseDomain}`;
   }
-  return `https://${subdomain}.${baseDomain}`;
+  return `https://${prefix}${subdomain}.${baseDomain}`;
 }
 var init_config = __esm({
   "server/config.ts"() {
@@ -34250,6 +34251,11 @@ function getCorsOrigins() {
     "https://chef.localcooks.ca",
     "https://kitchen.localcooks.ca",
     "https://admin.localcooks.ca",
+    // Dev environment subdomains (Vercel Preview deployment)
+    "https://dev.localcooks.ca",
+    "https://dev-chef.localcooks.ca",
+    "https://dev-kitchen.localcooks.ca",
+    "https://dev-admin.localcooks.ca",
     // Vercel preview deployments
     /^https:\/\/local-cooks-community.*\.vercel\.app$/
   ];
@@ -39278,11 +39284,16 @@ function getSubdomainFromHostname(hostname) {
     const subdomain = parts[0].toLowerCase();
     switch (subdomain) {
       case "chef":
+      case "dev-chef":
         return "chef";
       case "kitchen":
+      case "dev-kitchen":
         return "kitchen";
       case "admin":
+      case "dev-admin":
         return "admin";
+      case "dev":
+        return "main";
       default:
         return null;
     }

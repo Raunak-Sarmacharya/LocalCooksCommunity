@@ -106,8 +106,8 @@ export default function ApplyToKitchen() {
       <div className="text-center text-sm text-muted-foreground py-4">
         <p>
           Need help? Contact us at{" "}
-          <a href="mailto:support@localcooks.ca" className="text-primary hover:underline">
-            support@localcooks.ca
+          <a href="mailto:support@localcook.shop" className="text-primary hover:underline">
+            support@localcook.shop
           </a>
         </p>
       </div>
