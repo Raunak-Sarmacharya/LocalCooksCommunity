@@ -1012,7 +1012,7 @@ export default function Terms() {
               <p className="mb-4"><strong>Users should first attempt to resolve disputes directly with each other</strong> through Platform messaging or direct communication.</p>
 
               <h3 className="text-xl font-semibold mt-6 mb-3">16.2 Platform-Assisted Resolution</h3>
-              <p className="mb-4"><strong>If direct resolution fails, Users may request Platform assistance</strong> by contacting Local Cooks Support (support@localcooks.ca).</p>
+              <p className="mb-4"><strong>If direct resolution fails, Users may request Platform assistance</strong> by contacting Local Cooks Support (support@localcook.shop).</p>
               <p className="mb-4"><strong>Platform-Assisted Resolution process:</strong></p>
               <ol className="list-decimal pl-6 mb-4">
                 <li><strong>Submission:</strong> User submits dispute with description, supporting evidence, and desired resolution</li>
@@ -1102,7 +1102,7 @@ export default function Terms() {
               {/* SECTION 18 */}
               <h2 className="text-2xl font-bold mt-8 mb-4">18. TERMINATION</h2>
               <h3 className="text-xl font-semibold mt-6 mb-3">18.1 User Termination</h3>
-              <p className="mb-4"><strong>You may terminate your account at any time</strong> by contacting Local Cooks Support (support@localcooks.ca) or through your account settings.</p>
+              <p className="mb-4"><strong>You may terminate your account at any time</strong> by contacting Local Cooks Support (support@localcook.shop) or through your account settings.</p>
               <p className="mb-4"><strong>Before termination:</strong></p>
               <ul className="list-disc pl-6 mb-4">
                 <li>Complete or cancel all active Bookings</li>
@@ -1208,7 +1208,7 @@ export default function Terms() {
                 <p className="mb-2"><strong>Local Cooks Inc.</strong></p>
                 <p className="mb-2">St. John&apos;s, Newfoundland and Labrador, Canada</p>
                 <p className="mb-2"><strong>General Inquiries:</strong> info@localcooks.ca</p>
-                <p className="mb-2"><strong>Support:</strong> support@localcooks.ca</p>
+                <p className="mb-2"><strong>Support:</strong> support@localcook.shop</p>
                 <p className="mb-2"><strong>Legal:</strong> legal@localcooks.ca</p>
                 <p className="mb-2"><strong>Privacy:</strong> privacy@localcooks.ca</p>
               </div>
