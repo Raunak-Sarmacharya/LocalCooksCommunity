@@ -1,5 +1,6 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import SEOHead from "@/components/SEO/SEOHead";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import FadeInSection from "@/components/ui/FadeInSection";
@@ -365,6 +366,36 @@ export default function KitchenLanding() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <SEOHead
+        title="For Kitchen Owners — Turn Idle Hours Into Revenue"
+        description="List your commercial kitchen on LocalCooks and earn revenue from idle hours. Automated booking, Stripe payouts, compliance management, and damage protection. Serving St. John's, Newfoundland."
+        canonicalUrl="/"
+        keywords={[
+          "list commercial kitchen", "kitchen rental income", "rent out kitchen St Johns",
+          "commercial kitchen marketplace", "kitchen sharing platform", "idle kitchen revenue",
+          "kitchen booking platform", "commissary kitchen NL", "commercial kitchen Newfoundland",
+          "kitchen owner income", "localcooks kitchen", "rent kitchen space",
+        ]}
+        showLocalBusiness
+        breadcrumbs={[
+          { name: "LocalCooks", url: "https://www.localcooks.ca/" },
+          { name: "For Kitchen Owners", url: "https://kitchen.localcooks.ca/" },
+        ]}
+        faq={[
+          { question: "What types of kitchens can I list on LocalCooks?", answer: "We welcome any inspected, commercial-grade kitchen space — restaurants with downtime, church kitchens, commissary spaces, or dedicated facilities. If your kitchen has a valid operating permit and commercial-grade equipment, it's a perfect fit." },
+          { question: "How much can I earn by listing my kitchen?", answer: "Earnings vary based on your kitchen's size, equipment, and availability. You set your own hourly or daily rates. Many partners generate significant monthly revenue from their idle hours. Weekly payouts via Stripe." },
+          { question: "Do I control who uses my kitchen?", answer: "Absolutely. You review every chef's profile, proposed concept, and rental history before accepting any booking. You always have final say over who cooks in your space." },
+          { question: "How does scheduling work?", answer: "Your business always comes first. Block out the days and hours you need, and list only your available time slots. Our booking system prevents conflicts automatically." },
+        ]}
+        siteNavigation={[
+          { name: "List Your Kitchen", description: "Turn idle commercial kitchen hours into revenue with automated booking", url: "https://kitchen.localcooks.ca/" },
+          { name: "For Chefs", description: "Launch your food business with commercial kitchen access and compliance support", url: "https://chef.localcooks.ca/" },
+          { name: "Book a Kitchen", description: "Browse and book commercial kitchens in St. John's, Newfoundland", url: "https://chef.localcooks.ca/book-kitchen" },
+          { name: "Order Food", description: "Order authentic homemade meals from local chefs in St. John's", url: "https://localcook.shop/app/index.php" },
+          { name: "Blog", description: "Stories about local chefs, food trends, and community updates", url: "https://www.localcooks.ca/blog" },
+          { name: "Contact", description: "Get in touch with LocalCooks for questions or partnerships", url: "https://www.localcooks.ca/contact" },
+        ]}
+      />
       <Header />
       
       <main className="flex-grow">

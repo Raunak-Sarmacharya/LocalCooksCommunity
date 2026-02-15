@@ -1,5 +1,6 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import SEOHead from "@/components/SEO/SEOHead";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
@@ -957,6 +958,36 @@ export default function ChefLanding() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <SEOHead
+        title="For Chefs — Launch Your Food Business"
+        description="Turn your cooking talent into a scalable food business. Zero platform fees during trial, commercial kitchen access, compliance management, weekly payouts via Stripe. Join LocalCooks in St. John's, Newfoundland."
+        canonicalUrl="/"
+        keywords={[
+          "become a chef", "home chef St Johns", "food business Newfoundland",
+          "commercial kitchen rental", "chef platform Canada", "local chef near me",
+          "start food business NL", "home cook compliance", "kitchen booking",
+          "food delivery NL", "localcooks chef", "cook from home Newfoundland",
+        ]}
+        showLocalBusiness
+        breadcrumbs={[
+          { name: "LocalCooks", url: "https://www.localcooks.ca/" },
+          { name: "For Chefs", url: "https://chef.localcooks.ca/" },
+        ]}
+        faq={[
+          { question: "How do I rent a commercial kitchen in St. John's?", answer: "Sign up on LocalCooks, browse available commercial kitchens in St. John's, compare amenities and pricing, then book your time slot. Our platform handles scheduling, compliance, and payments." },
+          { question: "What do I need to become a home-based chef in Newfoundland?", answer: "You need a valid food handler's certificate, appropriate business registration, and access to a compliant commercial kitchen. LocalCooks helps you manage all compliance requirements including document verification and kitchen certifications." },
+          { question: "How much does it cost to use LocalCooks?", answer: "Signing up is free. Kitchen rental rates vary by facility and time slot. LocalCooks provides transparent pricing with no hidden fees. You can compare kitchens and view all costs before booking." },
+          { question: "Can I list my commercial kitchen on LocalCooks?", answer: "Yes! Kitchen owners can list their commercial kitchen facilities on LocalCooks. Apply through our kitchen manager portal at kitchen.localcooks.ca to get started with listing your space." },
+        ]}
+        siteNavigation={[
+          { name: "Apply as Chef", description: "Join LocalCooks — get approved in 24 hours, keep 100% during trial", url: "https://chef.localcooks.ca/apply" },
+          { name: "Book a Kitchen", description: "Browse and book commercial kitchens in St. John's, Newfoundland", url: "https://chef.localcooks.ca/book-kitchen" },
+          { name: "Compare Kitchens", description: "Compare commercial kitchen facilities, amenities, and pricing", url: "https://chef.localcooks.ca/compare-kitchens" },
+          { name: "For Kitchen Owners", description: "Turn idle commercial kitchen hours into revenue with automated booking", url: "https://kitchen.localcooks.ca/" },
+          { name: "Order Food", description: "Order authentic homemade meals from local chefs in St. John's", url: "https://localcook.shop/app/index.php" },
+          { name: "Blog", description: "Stories about local chefs, food trends, and community updates", url: "https://www.localcooks.ca/blog" },
+        ]}
+      />
       <Header />
 
       <main className="flex-grow">

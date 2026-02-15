@@ -5,6 +5,7 @@ import HeroSection from "@/components/home/HeroSection";
 import HowItWorksSection from "@/components/home/HowItWorksSection";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import SEOHead from "@/components/SEO/SEOHead";
 import StatusEmailTest from "@/components/test/StatusEmailTest";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useEffect, useState, useCallback } from "react";
@@ -79,6 +80,19 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">
+      <SEOHead
+        title="The Operating System for Local Food Businesses"
+        description="Launch and grow your food business with LocalCooks. Commercial kitchen booking, compliance management, payment processing, and delivery infrastructure — all in one platform. Serving St. John's, Newfoundland."
+        showLocalBusiness
+        siteNavigation={[
+          { name: "For Chefs", description: "Launch your food business with commercial kitchen access and compliance support", url: "https://chef.localcooks.ca/" },
+          { name: "For Kitchen Owners", description: "Turn idle commercial kitchen hours into revenue with automated booking", url: "https://kitchen.localcooks.ca/" },
+          { name: "Book a Kitchen", description: "Browse and book commercial kitchens in St. John's, Newfoundland", url: "https://chef.localcooks.ca/book-kitchen" },
+          { name: "Order Food", description: "Order authentic homemade meals from local chefs in St. John's", url: "https://localcook.shop/app/index.php" },
+          { name: "Blog", description: "Stories about local chefs, food trends, and community updates", url: "https://www.localcooks.ca/blog" },
+          { name: "Contact", description: "Get in touch with LocalCooks for questions or partnerships", url: "https://www.localcooks.ca/contact" },
+        ]}
+      />
       <Header />
       <main className="flex-grow">
         <HeroSection />

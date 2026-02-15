@@ -1,25 +1,179 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en-CA" prefix="og: http://ogp.me/ns#">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=5"
+    />
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-  <meta name="theme-color" content="#f51042" />
-  <meta name="description" content="Local Cooks - Discover authentic homemade meals from passionate local chefs. Local Cooks. Local Company. Local Community." />
-  <title>Local Cooks | Homemade Meals from Local Chefs</title>
-  <link rel="icon" type="image/png" href="/favicon.png" />
-  <link rel="shortcut icon" type="image/png" href="/favicon.png" />
-  <link rel="icon" type="image/png" href="/favicon.png" />
-  <link rel="apple-touch-icon" type="image/png" href="/favicon.png" />
-</head>
+    <!-- Primary Meta Tags (generic brand defaults — SEOHead component overrides per-page) -->
+    <title>
+      LocalCooks | The Operating System for Local Food Businesses in St. John's,
+      NL
+    </title>
+    <meta
+      name="title"
+      content="LocalCooks | The Operating System for Local Food Businesses in St. John's, NL"
+    />
+    <meta
+      name="description"
+      content="Launch and grow your food business with LocalCooks. Commercial kitchen booking, compliance management, payment processing, and delivery infrastructure — all in one platform. Serving St. John's, Newfoundland."
+    />
+    <meta name="application-name" content="LocalCooks" />
+    <meta
+      name="keywords"
+      content="local cooks, home chefs, commercial kitchen rental, kitchen booking, food business, St Johns Newfoundland, home chef compliance, food delivery NL, local chef near me, kitchen rental St Johns, food business Newfoundland, commercial kitchen NL, chef platform Canada, localcooks, rent kitchen"
+    />
+    <meta name="author" content="LocalCooks" />
+    <meta
+      name="robots"
+      content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+    />
+    <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="bingbot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
 
-<body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.tsx"></script>
-  <!-- Tidio Live Chat: Script loaded dynamically by TidioController only for authenticated chef users -->
-  <!-- Google Places API is now proxied through the server for security - no client-side script needed -->
-  <!-- This is a replit script which adds a banner on the top of the page when opened in development mode outside the replit environment
+    <!-- Google Search Console: Domain verified via Namecheap DNS (no meta tag needed) -->
+
+    <!-- Geo Tags for Local SEO -->
+    <meta name="geo.region" content="CA-NL" />
+    <meta name="geo.placename" content="St. John's, Newfoundland and Labrador, Canada" />
+    <meta name="geo.position" content="47.5615;-52.7126" />
+    <meta name="ICBM" content="47.5615, -52.7126" />
+
+    <!-- Canonical URL & Hreflang: REMOVED from static HTML.
+         SEOHead component injects correct per-subdomain canonical + hreflang at runtime.
+         A wrong static canonical (e.g. chef.localcooks.ca on kitchen.localcooks.ca) is
+         worse than no canonical — it tells Google to de-index the page. -->
+
+    <!-- Theme & PWA -->
+    <meta name="theme-color" content="#f51042" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="LocalCooks" />
+
+    <!-- Open Graph / Facebook Meta Tags (brand-generic defaults — SEOHead overrides per-page) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="LocalCooks" />
+    <meta
+      property="og:title"
+      content="LocalCooks | The Operating System for Local Food Businesses"
+    />
+    <meta
+      property="og:description"
+      content="Launch and grow your food business with LocalCooks. Commercial kitchen booking, compliance, payments, & delivery — all in one platform."
+    />
+    <meta property="og:image" content="https://www.localcooks.ca/chef.png" />
+    <meta
+      property="og:image:alt"
+      content="LocalCooks platform — kitchen booking, compliance, and payments for local chefs"
+    />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en_CA" />
+
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@localcooksnfld" />
+    <meta
+      name="twitter:title"
+      content="LocalCooks | The Operating System for Local Food Businesses"
+    />
+    <meta
+      name="twitter:description"
+      content="Launch and grow your food business with LocalCooks. Kitchen booking, compliance, payments, and delivery — all in one platform."
+    />
+    <meta name="twitter:image" content="https://www.localcooks.ca/chef.png" />
+    <meta
+      name="twitter:image:alt"
+      content="LocalCooks platform — kitchen booking, compliance, and payments for local chefs"
+    />
+
+    <!-- Favicon & Icons -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon.png" />
+    <link rel="shortcut icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+
+    <!-- Preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- DNS Prefetch for Third-Party Services -->
+    <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+    <link rel="dns-prefetch" href="https://www.google-analytics.com" />
+
+    <!-- Structured Data: Organization (brand-level, valid across ALL subdomains) -->
+    <!-- Per-page schemas (WebSite, WebPage, BreadcrumbList, FAQPage, SiteNavigationElement)
+         are injected by the SEOHead React component with correct subdomain-aware URLs. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FoodEstablishment",
+      "@id": "https://www.localcooks.ca/#organization",
+      "name": "LocalCooks",
+      "alternateName": "Local Cooks",
+      "description": "LocalCooks is the operating system for local food businesses in St. John's, Newfoundland. Commercial kitchen booking, compliance, payments, and delivery infrastructure for home-based chefs.",
+      "url": "https://www.localcooks.ca",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://www.localcooks.ca/logo-lc.png",
+        "width": 512,
+        "height": 512
+      },
+      "image": [
+        "https://www.localcooks.ca/chef.png",
+        "https://www.localcooks.ca/logo-lc.png"
+      ],
+      "telephone": "+1-709-631-8480",
+      "email": "admin@localcook.shop",
+      "address": {
+        "@type": "PostalAddress",
+        "addressLocality": "St. John's",
+        "addressRegion": "NL",
+        "addressCountry": "CA"
+      },
+      "geo": {
+        "@type": "GeoCoordinates",
+        "latitude": 47.5615,
+        "longitude": -52.7126
+      },
+      "areaServed": {
+        "@type": "City",
+        "name": "St. John's",
+        "@id": "https://www.wikidata.org/wiki/Q2126"
+      },
+      "servesCuisine": ["Homemade", "International", "Indian", "Asian", "Caribbean", "Middle Eastern", "Latin American", "European", "African"],
+      "priceRange": "$$",
+      "currenciesAccepted": "CAD",
+      "paymentAccepted": "Credit Card, Debit Card",
+      "openingHoursSpecification": [{
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+        "opens": "09:00",
+        "closes": "21:00"
+      }],
+      "sameAs": [
+        "https://www.facebook.com/LocalCooks",
+        "https://www.instagram.com/localcooksnfld/",
+        "https://www.linkedin.com/company/local-cooks"
+      ]
+    }
+    </script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <!-- Tidio Live Chat: Script loaded dynamically by TidioController only for authenticated chef users -->
+    <!-- Google Places API is now proxied through the server for security - no client-side script needed -->
+    <!-- This is a replit script which adds a banner on the top of the page when opened in development mode outside the replit environment
   <script type="text/javascript" src="https://replit.com/public/js/replit-dev-banner.js"></script> -->
-</body>
-
+  </body>
 </html>

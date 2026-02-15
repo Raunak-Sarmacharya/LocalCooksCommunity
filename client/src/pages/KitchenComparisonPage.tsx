@@ -4,6 +4,7 @@ import { useChefApprovedKitchens, useChefKitchenApplicationsStatus } from "@/hoo
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
+import SEOHead from "@/components/SEO/SEOHead";
 import { motion } from "framer-motion";
 import {
   Building2,
@@ -1040,6 +1041,15 @@ export default function KitchenComparisonPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-blue-50 relative overflow-hidden">
+      <SEOHead
+        title="Compare Kitchens — Find Your Perfect Space"
+        description="Compare commercial kitchens in St. John's, Newfoundland side by side. View amenities, equipment, pricing, and availability to find the perfect kitchen space for your food business."
+        canonicalUrl="/compare-kitchens"
+        breadcrumbs={[
+          { name: "LocalCooks", url: "https://chef.localcooks.ca/" },
+          { name: "Compare Kitchens", url: "https://chef.localcooks.ca/compare-kitchens" },
+        ]}
+      />
       <AnimatedBackgroundOrbs />
       <Header />
       <main className="flex-1 pt-20 sm:pt-24 lg:pt-28 pb-12 relative z-10">

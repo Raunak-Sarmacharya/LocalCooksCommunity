@@ -1,5 +1,6 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import SEOHead from "@/components/SEO/SEOHead";
 import { motion } from "framer-motion";
 import { useEffect } from "react";
 
@@ -11,6 +12,15 @@ export default function Privacy() {
 
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">
+      <SEOHead
+        title="Privacy Policy"
+        description="LocalCooks privacy policy. Learn how we collect, use, and protect your personal information on our commercial kitchen booking and chef services platform."
+        canonicalUrl="/privacy"
+        breadcrumbs={[
+          { name: "LocalCooks", url: "https://www.localcooks.ca/" },
+          { name: "Privacy Policy", url: "https://chef.localcooks.ca/privacy" },
+        ]}
+      />
       <Header />
       <main className="flex-grow pt-28 pb-16">
         <motion.div

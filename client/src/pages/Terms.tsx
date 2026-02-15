@@ -1,5 +1,6 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import SEOHead from "@/components/SEO/SEOHead";
 import { motion } from "framer-motion";
 import { useEffect } from "react";
 
@@ -10,6 +11,15 @@ export default function Terms() {
 
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">
+      <SEOHead
+        title="Terms of Service"
+        description="LocalCooks platform terms of service. Review the terms and conditions for using LocalCooks commercial kitchen booking, chef services, and payment processing."
+        canonicalUrl="/terms"
+        breadcrumbs={[
+          { name: "LocalCooks", url: "https://www.localcooks.ca/" },
+          { name: "Terms of Service", url: "https://chef.localcooks.ca/terms" },
+        ]}
+      />
       <Header />
       <main className="flex-grow pt-28 pb-16">
         <motion.div
