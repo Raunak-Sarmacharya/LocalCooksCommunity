@@ -11,7 +11,7 @@
       "memory": 1024,
       "maxDuration": 30
     },
-    "api/sitemap.ts": {
+    "api/sitemap.js": {
       "maxDuration": 10
     }
   },
