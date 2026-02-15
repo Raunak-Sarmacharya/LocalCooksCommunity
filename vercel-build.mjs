@@ -41,10 +41,8 @@ if (!fs.existsSync('api')) {
 // esbuild automatically handles .ts files and resolves .js extensions in imports to .ts source files
 runCommand('npx esbuild server/index.ts --bundle --platform=node --packages=external --format=esm --outfile=api/index.js --external:vite --external:rollup');
 
-// Compile standalone Vercel serverless functions (TypeScript → JavaScript)
-// These are NOT part of the Express server bundle — they run as independent Vercel functions
-console.log('Compiling standalone serverless functions...');
-runCommand('npx esbuild api/sitemap.ts --bundle --platform=node --packages=external --format=esm --outfile=api/sitemap.js');
+// Note: api/sitemap.ts is left as-is — Vercel compiles .ts files in api/ directory natively
+// We don't bundle it because it imports @vercel/node types which aren't in dependencies
 
 // 4. Copy static assets
 console.log('Copying static assets...');
