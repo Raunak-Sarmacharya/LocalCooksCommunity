@@ -27177,7 +27177,7 @@ async function generatePayoutStatementPDF(managerId, managerName, managerEmail, 
       let leftY = 120;
       doc.fontSize(14).font("Helvetica-Bold").text("Local Cooks Community", 50, leftY);
       leftY += 18;
-      doc.fontSize(10).font("Helvetica").text("support@localcooks.ca", 50, leftY);
+      doc.fontSize(10).font("Helvetica").text("support@localcook.shop", 50, leftY);
       leftY += 30;
       doc.fontSize(12).font("Helvetica-Bold").text("Pay To:", 50, leftY);
       leftY += 18;
@@ -27258,7 +27258,7 @@ async function generatePayoutStatementPDF(managerId, managerName, managerEmail, 
         { align: "center", width: doc.page.width - 100 }
       );
       doc.text(
-        "For questions, contact support@localcooks.ca",
+        "For questions, contact support@localcook.shop",
         50,
         footerY + 15,
         { align: "center", width: doc.page.width - 100 }

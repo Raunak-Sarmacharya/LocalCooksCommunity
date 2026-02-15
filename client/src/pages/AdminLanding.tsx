@@ -1,5 +1,6 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import SEOHead from "@/components/SEO/SEOHead";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import GradientHero from "@/components/ui/GradientHero";
@@ -84,6 +85,11 @@ export default function AdminLanding() {
 
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">
+      <SEOHead
+        title="Admin Dashboard"
+        description="LocalCooks platform administration. Manage applications, users, locations, and system settings."
+        noIndex
+      />
       <Header />
       <main className="flex-grow">
         {/* Admin-Specific Hero Section */}

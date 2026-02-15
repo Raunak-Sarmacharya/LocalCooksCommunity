@@ -1,0 +1,62 @@
+# LocalCooks Community Platform - robots.txt
+# https://chef.localcooks.ca / https://kitchen.localcooks.ca / https://admin.localcooks.ca
+
+User-agent: *
+Allow: /
+
+# Sitemap locations (dynamic, served via Vercel serverless function)
+Sitemap: https://chef.localcooks.ca/sitemap.xml
+Sitemap: https://kitchen.localcooks.ca/sitemap.xml
+
+# Allow all major crawlers with specific directives
+User-agent: Googlebot
+Allow: /
+Disallow: /api/
+
+User-agent: Bingbot
+Allow: /
+Disallow: /api/
+
+User-agent: Slurp
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+# Block API routes (JSON responses, not HTML)
+Disallow: /api/
+
+# Block admin portal entirely (noIndex also set via SEOHead)
+Disallow: /admin/
+Disallow: /admin
+
+# Block manager/dashboard internal routes
+Disallow: /manager/
+Disallow: /dashboard/
+
+# Block authentication and internal routes
+Disallow: /auth-test
+Disallow: /admin-test
+Disallow: /email-action
+Disallow: /forgot-password
+Disallow: /password-reset
+Disallow: /verify-email
+Disallow: /email-verification-test
+Disallow: /welcome-test
+Disallow: /reset-welcome
+Disallow: /debug-welcome
+Disallow: /chef-setup
+Disallow: /manager-setup
+Disallow: /document-verification
+Disallow: /microlearning
+Disallow: /unsubscribe
+Disallow: /payment-success
+Disallow: /share-profile
+Disallow: /stripe-connect
+
+# Allow important static assets
+Allow: /favicon.png
+Allow: /favicon.ico
+
+# Crawl-delay for polite crawling
+Crawl-delay: 1

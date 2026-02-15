@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  STATIC SITEMAP FALLBACK
+  The live sitemap is served dynamically via /api/sitemap (see vercel.json rewrite).
+  This file exists as a build-time fallback only.
+  The dynamic sitemap includes kitchen listings from the database.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
+                            http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+
+  <!-- Chef Landing (Homepage for chef subdomain) -->
+  <url>
+    <loc>https://chef.localcooks.ca/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en-CA" href="https://chef.localcooks.ca/" />
+    <image:image>
+      <image:loc>https://www.localcooks.ca/chef.png</image:loc>
+      <image:title>LocalCooks — Launch your food business with commercial kitchen access</image:title>
+    </image:image>
+  </url>
+
+  <!-- Kitchen Landing (Homepage for kitchen subdomain) -->
+  <url>
+    <loc>https://kitchen.localcooks.ca/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en-CA" href="https://kitchen.localcooks.ca/" />
+  </url>
+
+  <!-- Chef Application -->
+  <url>
+    <loc>https://chef.localcooks.ca/apply</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en-CA" href="https://chef.localcooks.ca/apply" />
+  </url>
+
+  <!-- Book a Kitchen -->
+  <url>
+    <loc>https://chef.localcooks.ca/book-kitchen</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en-CA" href="https://chef.localcooks.ca/book-kitchen" />
+  </url>
+
+  <!-- Compare Kitchens -->
+  <url>
+    <loc>https://chef.localcooks.ca/compare-kitchens</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en-CA" href="https://chef.localcooks.ca/compare-kitchens" />
+  </url>
+
+  <!-- Terms of Service -->
+  <url>
+    <loc>https://chef.localcooks.ca/terms</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+    <xhtml:link rel="alternate" hreflang="en-CA" href="https://chef.localcooks.ca/terms" />
+  </url>
+
+  <!-- Privacy Policy -->
+  <url>
+    <loc>https://chef.localcooks.ca/privacy</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+    <xhtml:link rel="alternate" hreflang="en-CA" href="https://chef.localcooks.ca/privacy" />
+  </url>
+
+  <!-- Main LocalCooks Website -->
+  <url>
+    <loc>https://www.localcooks.ca/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en-CA" href="https://www.localcooks.ca/" />
+  </url>
+
+</urlset>

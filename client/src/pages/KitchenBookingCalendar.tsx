@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import SEOHead from "@/components/SEO/SEOHead";
 import { useToast } from "@/hooks/use-toast";
 import BookingControlPanel from "@/components/booking/BookingControlPanel";
 import { StorageSelection } from "@/components/booking/StorageSelection";
@@ -873,6 +874,15 @@ export default function KitchenBookingCalendar() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
+      <SEOHead
+        title="Book a Kitchen — Commercial Kitchen Booking"
+        description="Browse and book available commercial kitchens in St. John's, Newfoundland. View real-time availability, compare amenities, and reserve your time slot instantly on LocalCooks."
+        canonicalUrl="/book-kitchen"
+        breadcrumbs={[
+          { name: "LocalCooks", url: "https://chef.localcooks.ca/" },
+          { name: "Book a Kitchen", url: "https://chef.localcooks.ca/book-kitchen" },
+        ]}
+      />
       <Header />
       <main className="flex-1 pt-20 sm:pt-24 lg:pt-28 pb-8 sm:pb-12">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-7xl">

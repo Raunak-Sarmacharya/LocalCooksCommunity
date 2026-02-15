@@ -5,6 +5,7 @@ import PersonalInfoForm from "@/components/application/PersonalInfoForm";
 import ProgressIndicator from "@/components/application/ProgressIndicator";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import SEOHead from "@/components/SEO/SEOHead";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -212,6 +213,15 @@ export default function ApplicationForm() {
   return (
     <ApplicationFormProvider>
       <div className="min-h-screen flex flex-col bg-light-gray relative">
+        <SEOHead
+          title="Apply as Chef — Join LocalCooks"
+          description="Apply to join LocalCooks as a chef. Get approved in 24 hours, access commercial kitchens, handle compliance, and start earning with weekly Stripe payouts in St. John's, Newfoundland."
+          canonicalUrl="/apply"
+          breadcrumbs={[
+            { name: "LocalCooks", url: "https://chef.localcooks.ca/" },
+            { name: "Apply as Chef", url: "https://chef.localcooks.ca/apply" },
+          ]}
+        />
         <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
         <Header />
         <main className="flex-grow pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-16 relative z-10">

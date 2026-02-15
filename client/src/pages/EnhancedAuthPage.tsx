@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, Redirect } from "wouter";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
+import SEOHead from "@/components/SEO/SEOHead";
 
 export default function EnhancedAuthPage() {
   const [location, setLocation] = useLocation();
@@ -345,6 +346,15 @@ export default function EnhancedAuthPage() {
   // Show the main auth form
   return (
     <>
+      <SEOHead
+        title="Sign In or Register — Join LocalCooks"
+        description="Create your LocalCooks account or sign in to access commercial kitchen booking, manage your food business, and connect with the local food community in St. John's, Newfoundland."
+        canonicalUrl="/auth"
+        breadcrumbs={[
+          { name: "LocalCooks", url: "https://chef.localcooks.ca/" },
+          { name: "Sign In", url: "https://chef.localcooks.ca/auth" },
+        ]}
+      />
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
