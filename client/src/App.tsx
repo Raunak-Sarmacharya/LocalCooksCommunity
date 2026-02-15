@@ -3,6 +3,7 @@ import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/use-auth";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { HelmetProvider } from "react-helmet-async";
 import { lazy, Suspense, useEffect } from "react";
 import { Route, Switch, useLocation } from "wouter";
 import { auth } from "./lib/firebase";
@@ -594,18 +595,20 @@ function RadixBodyCleanupProvider({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <CustomAlertsProvider>
-          <TooltipProvider>
-            <RadixBodyCleanupProvider>
-              <SonnerToaster />
-              <Router />
-            </RadixBodyCleanupProvider>
-          </TooltipProvider>
-        </CustomAlertsProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <HelmetProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <CustomAlertsProvider>
+            <TooltipProvider>
+              <RadixBodyCleanupProvider>
+                <SonnerToaster />
+                <Router />
+              </RadixBodyCleanupProvider>
+            </TooltipProvider>
+          </CustomAlertsProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </HelmetProvider>
   );
 }
 
