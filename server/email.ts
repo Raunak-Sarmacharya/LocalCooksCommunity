@@ -1,4 +1,4 @@
-import { logger } from "./logger";
+import { logger } from "./logger.js";
 import nodemailer from 'nodemailer';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
