@@ -1,10 +1,14 @@
-// Simple structured logger wrapper
-// LOW-2: Detect production via VERCEL_ENV as well as NODE_ENV
-const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+// Enterprise structured logger
+// Uses VERCEL_ENV to differentiate deployment targets:
+//   - VERCEL_ENV='production' (main branch → chef.localcooks.ca): info suppressed, warn/error/operational always log
+//   - VERCEL_ENV='preview' (dev branch → dev-chef.localcooks.ca): all levels log
+//   - Local dev (no VERCEL_ENV): all levels log
+const isVercelProduction = process.env.VERCEL_ENV === 'production';
+const isLocalDev = process.env.NODE_ENV === 'development' && !process.env.VERCEL;
 
 export const logger = {
     info: (msg: string, data?: object) => {
-        if (!isProd) console.log(`[INFO] ${msg}`, data || '');
+        if (!isVercelProduction) console.log(`[INFO] ${msg}`, data || '');
     },
     warn: (msg: string, data?: object) => {
         console.warn(`[WARN] ${msg}`, data || '');
@@ -13,10 +17,11 @@ export const logger = {
         console.error(`[ERROR] ${msg}`, error);
     },
     debug: (msg: string, data?: object) => {
-        if (!isProd) console.log(`[DEBUG] ${msg}`, data || '');
+        if (isLocalDev) console.log(`[DEBUG] ${msg}`, data || '');
     },
-    // Operational: always logs in both dev and prod (for critical business events)
+    // Operational: ALWAYS logs regardless of environment
+    // Use for critical business events (webhooks, payments, bookings)
     operational: (msg: string, data?: object) => {
-        console.log(`[OP] ${msg}`, data || '');
+        console.log(`[OPS] ${msg}`, data || '');
     }
 };

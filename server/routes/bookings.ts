@@ -3109,7 +3109,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
         const piObj = typeof session.payment_intent === 'object' ? session.payment_intent : null;
         const fallbackIsManualCapture = piObj?.status === 'requires_capture';
         const fallbackPaymentStatus = fallbackIsManualCapture ? 'authorized' : 'paid';
-        if (!booking && session.payment_status === 'paid' && session.metadata?.type === 'kitchen_booking') {
+        if (!booking && (session.payment_status === 'paid' || fallbackIsManualCapture) && session.metadata?.type === 'kitchen_booking') {
             console.log(`[Fallback] Webhook may have failed - creating booking from session ${sessionId}`);
             
             const metadata = session.metadata;
