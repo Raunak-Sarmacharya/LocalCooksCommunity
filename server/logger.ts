@@ -4,7 +4,7 @@ const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV =
 
 export const logger = {
     info: (msg: string, data?: object) => {
-        if (!isProd) console.log(`[INFO] ${msg}`, data || '');
+        console.log(`[INFO] ${msg}`, data || '');
     },
     warn: (msg: string, data?: object) => {
         console.warn(`[WARN] ${msg}`, data || '');
