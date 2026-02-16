@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Kitchens Management Component
  * Manages kitchen photos, descriptions, and gallery images
@@ -114,7 +115,7 @@ function KitchenGalleryImages({
         description: "Gallery images updated successfully",
       });
     } catch (error: any) {
-      console.error('Gallery images update error:', error);
+      logger.error('Gallery images update error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to update gallery images",
@@ -142,7 +143,7 @@ function KitchenGalleryImages({
         body: JSON.stringify({ fileUrl: imageUrl }),
       });
     } catch (error) {
-      console.error('Error deleting file from R2:', error);
+      logger.error('Error deleting file from R2:', error);
     }
   };
 
@@ -165,7 +166,7 @@ function KitchenGalleryImages({
         body: JSON.stringify({ fileUrl: oldUrl }),
       });
     } catch (error) {
-      console.error('Error deleting old file from R2:', error);
+      logger.error('Error deleting old file from R2:', error);
     }
   };
 
@@ -309,7 +310,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
         description: "Kitchen description updated successfully",
       });
     } catch (error: any) {
-      console.error('Kitchen description update error:', error);
+      logger.error('Kitchen description update error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to update kitchen description",
@@ -369,7 +370,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
       setNewKitchenDescription('');
       setShowCreateKitchen(false);
     } catch (error: any) {
-      console.error('Kitchen creation error:', error);
+      logger.error('Kitchen creation error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to create kitchen",
@@ -431,7 +432,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
         description: imageUrl ? "Kitchen image updated successfully" : "Kitchen image removed",
       });
     } catch (error: any) {
-      console.error('Kitchen image update error:', error);
+      logger.error('Kitchen image update error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to update kitchen image",

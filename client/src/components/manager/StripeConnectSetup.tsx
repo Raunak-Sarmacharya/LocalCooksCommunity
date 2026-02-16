@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Stripe Connect Setup Component
  * 
@@ -79,7 +80,7 @@ export default function StripeConnectSetup() {
           return response.json();
         }
       } catch (error) {
-        console.error('Error fetching service fee rate:', error);
+        logger.error('Error fetching service fee rate:', error);
       }
       // Default to 5% if unable to fetch
       return { rate: 0.05, percentage: '5.00' };
@@ -94,7 +95,7 @@ export default function StripeConnectSetup() {
     const channel = new BroadcastChannel('stripe_onboarding_channel');
     
     channel.onmessage = async (event) => {
-      console.log('Received broadcast message:', event.data);
+      logger.info('Received broadcast message:', event.data);
       if (event.data?.type === 'STRIPE_SETUP_COMPLETE') {
         // Force refetch queries and wait for completion
         await queryClient.refetchQueries({ queryKey: ['/api/user/profile'] });
@@ -142,7 +143,7 @@ export default function StripeConnectSetup() {
         // Only refresh if tab was hidden for at least 3 seconds (user likely went to Stripe)
         const wasHiddenLongEnough = Date.now() - lastHiddenTime > 3000;
         if (wasHiddenLongEnough && hasStripeAccount && !isOnboardingComplete) {
-          console.log('[Stripe] Tab visible again, checking status...');
+          logger.info('[Stripe] Tab visible again, checking status...');
           queryClient.invalidateQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
         }
       }

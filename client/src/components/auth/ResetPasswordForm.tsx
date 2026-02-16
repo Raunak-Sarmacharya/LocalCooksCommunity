@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { verifyPasswordResetCode } from "firebase/auth";
 import { AnimatePresence, motion } from "framer-motion";
@@ -64,14 +65,14 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
     // Determine if this is a Firebase reset (oobCode) or legacy reset (token)
     setIsFirebaseReset(!!oobCode);
     
-    console.log('🔧 ResetPasswordForm useEffect:', { oobCode: !!oobCode, token: !!token, email });
+    logger.info('🔧 ResetPasswordForm useEffect:', { oobCode: !!oobCode, token: !!token, email });
     
     // Don't show error immediately - give time for props to be set
     if (!oobCode && !token) {
       // Add a small delay to ensure props are properly set from URL params
       const timeoutId = setTimeout(() => {
         if (!oobCode && !token) {
-          console.log('❌ No reset codes found after timeout');
+          logger.info('❌ No reset codes found after timeout');
           setErrorMessage("No reset code provided. Please request a new password reset link.");
         }
       }, 500);
@@ -83,14 +84,14 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
     if (oobCode) {
       const verifyCode = async () => {
         try {
-          console.log('🔍 Verifying Firebase reset code to extract email...');
+          logger.info('🔍 Verifying Firebase reset code to extract email...');
           const emailFromCode = await verifyPasswordResetCode(auth, oobCode);
-          console.log('✅ Successfully verified reset code for email:', emailFromCode);
+          logger.info('✅ Successfully verified reset code for email:', emailFromCode);
           setVerifiedEmail(emailFromCode);
           // Clear any previous error messages
           setErrorMessage(null);
         } catch (error: any) {
-          console.error('❌ Failed to verify reset code:', error);
+          logger.error('❌ Failed to verify reset code:', error);
           if (error.code === 'auth/invalid-action-code') {
             setErrorMessage("This password reset link has expired or is invalid. Please request a new password reset from the login page.");
           } else if (error.code === 'auth/expired-action-code') {
@@ -138,7 +139,7 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
         throw new Error('No reset code or token provided');
       }
 
-      console.log('🔄 Password reset attempt:', { 
+      logger.info('🔄 Password reset attempt:', { 
         endpoint, 
         isFirebaseReset, 
         hasOobCode: !!oobCode, 
@@ -158,7 +159,7 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
       const responseData = await response.json();
 
       if (!response.ok) {
-        console.error('❌ Password reset failed:', responseData);
+        logger.error('❌ Password reset failed:', responseData);
         
         // Handle specific error types more gracefully
         if (responseData.message?.includes('invalid-action-code') || responseData.message?.includes('Invalid or expired')) {
@@ -170,13 +171,13 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
         }
       }
 
-      console.log('✅ Password reset successful');
+      logger.info('✅ Password reset successful');
       setFormState('success');
       if (onSuccess) {
         setTimeout(onSuccess, 1500); // Shorter delay for better UX
       }
     } catch (error: any) {
-      console.error('❌ Password reset error:', error);
+      logger.error('❌ Password reset error:', error);
       setFormState('error');
       setErrorMessage(error.message || 'An unexpected error occurred. Please try again.');
     }

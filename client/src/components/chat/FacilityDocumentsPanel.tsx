@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FileText, Paperclip, Loader2, Eye, ChevronsUpDown } from 'lucide-react';
@@ -78,7 +79,7 @@ export default function FacilityDocumentsPanel({ locationId, onAttachDocuments }
         }
         return documents;
       } catch (error) {
-        console.error('Error fetching facility documents:', error);
+        logger.error('Error fetching facility documents:', error);
         return [];
       }
     },
@@ -115,7 +116,7 @@ export default function FacilityDocumentsPanel({ locationId, onAttachDocuments }
         window.open(document.url, '_blank');
       }
     } catch (error) {
-      console.error('Error getting presigned URL:', error);
+      logger.error('Error getting presigned URL:', error);
       // Fallback to original URL
       window.open(document.url, '_blank');
     }

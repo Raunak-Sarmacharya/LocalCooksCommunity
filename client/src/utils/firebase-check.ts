@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { auth } from '@/lib/firebase';
 import { fetchSignInMethodsForEmail } from 'firebase/auth';
 
@@ -19,16 +20,16 @@ export async function checkEmailExistsInFirebase(email: string): Promise<{
       };
     }
 
-    console.log(`🔍 Client-side Firebase check for: ${email}`);
+    logger.info(`🔍 Client-side Firebase check for: ${email}`);
     
     // Use fetchSignInMethodsForEmail to check if email exists
     const signInMethods = await fetchSignInMethodsForEmail(auth, email);
     
     const exists = signInMethods.length > 0;
     
-    console.log(`🔥 Client-side Firebase result: ${exists ? 'EXISTS' : 'NOT FOUND'}`);
+    logger.info(`🔥 Client-side Firebase result: ${exists ? 'EXISTS' : 'NOT FOUND'}`);
     if (exists) {
-      console.log(`🔥 Sign-in methods: ${signInMethods.join(', ')}`);
+      logger.info(`🔥 Sign-in methods: ${signInMethods.join(', ')}`);
     }
     
     return {
@@ -36,7 +37,7 @@ export async function checkEmailExistsInFirebase(email: string): Promise<{
       methods: signInMethods,
     };
   } catch (error: any) {
-    console.error('🔥 Client-side Firebase check error:', error.message);
+    logger.error('🔥 Client-side Firebase check error:', error.message);
     
     // Firebase returns specific error codes
     if (error.code === 'auth/invalid-email') {

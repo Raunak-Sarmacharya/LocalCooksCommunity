@@ -60,6 +60,7 @@ import { deleteConversation } from "../chat-service";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 import { getPresignedUrl, deleteFromR2 } from "../r2-storage";
 import { logger } from "../logger";
+import * as Sentry from '@sentry/node';
 import { errorResponse } from "../api-response";
 import { notificationService } from "../services/notification.service";
 import { getAppBaseUrl } from "../config";
@@ -376,7 +377,7 @@ router.get(
             }
           }
         } catch {
-          console.log(
+          logger.info(
             "[Invoice] Could not fetch original storage dates from transaction, using current dates",
           );
         }
@@ -398,7 +399,7 @@ router.get(
         } else {
           // Fallback: No metadata found. This indicates older bookings without proper metadata.
           // Log warning so we can identify bookings that may show extended storage incorrectly.
-          console.warn(
+          logger.warn(
             `[Invoice] No original storage dates found in payment metadata for storage booking ${sr.id}, using current dates (may include extensions)`,
           );
         }
@@ -857,7 +858,7 @@ router.get(
       const managerId = req.neonUser!.id;
       const { startDate, endDate, period } = req.query;
 
-      console.log("[Revenue Charts] Request params:", {
+      logger.info("[Revenue Charts] Request params:", {
         managerId,
         startDate,
         endDate,
@@ -880,7 +881,7 @@ router.get(
 
         // If payment_transactions returns empty, fallback to booking tables
         if (!data || data.length === 0) {
-          console.log(
+          logger.info(
             "[Revenue Charts] payment_transactions empty, falling back to booking tables",
           );
           const { getRevenueByDate } = await import(
@@ -893,13 +894,13 @@ router.get(
             endDate as string,
           );
         } else {
-          console.log(
+          logger.info(
             "[Revenue Charts] Using payment_transactions data (Stripe source)",
           );
         }
       } catch (v2Error) {
         // Fallback to legacy method if payment_transactions fails
-        console.warn(
+        logger.warn(
           "[Revenue Charts] Falling back to booking tables:",
           v2Error,
         );
@@ -914,13 +915,13 @@ router.get(
         );
       }
 
-      console.log("[Revenue Charts] Returning data:", {
+      logger.info("[Revenue Charts] Returning data:", {
         count: data?.length || 0,
         data,
       });
       res.json({ data, period: period || "daily" });
     } catch (error) {
-      console.error("[Revenue Charts] Error:", error);
+      logger.error("[Revenue Charts] Error:", error);
       return errorResponse(res, error);
     }
   },
@@ -1085,7 +1086,7 @@ router.put(
             });
           }
         } catch (notifError) {
-          console.error(
+          logger.error(
             "[Cancellation Request] Notification error:",
             notifError,
           );
@@ -1128,7 +1129,7 @@ router.put(
             });
           }
         } catch (notifError) {
-          console.error(
+          logger.error(
             "[Cancellation Request] Notification error:",
             notifError,
           );
@@ -1141,7 +1142,7 @@ router.put(
         });
       }
     } catch (error) {
-      console.error("[Cancellation Request] Error:", error);
+      logger.error("[Cancellation Request] Error:", error);
       return errorResponse(res, error);
     }
   },
@@ -1235,7 +1236,7 @@ router.put(
           const { syncStorageItemStatusInKitchenBooking } = await import("./bookings");
           await syncStorageItemStatusInKitchenBooking(storageBookingId, "cancelled");
         } catch (syncErr) {
-          console.error("[Storage Cancellation] JSONB sync error:", syncErr);
+          logger.error("[Storage Cancellation] JSONB sync error:", syncErr);
         }
 
         // Notify chef
@@ -1255,7 +1256,7 @@ router.put(
             });
           }
         } catch (notifError) {
-          console.error(
+          logger.error(
             "[Storage Cancellation Request] Notification error:",
             notifError,
           );
@@ -1285,7 +1286,7 @@ router.put(
           const { syncStorageItemStatusInKitchenBooking } = await import("./bookings");
           await syncStorageItemStatusInKitchenBooking(storageBookingId, "confirmed");
         } catch (syncErr) {
-          console.error("[Storage Cancellation] JSONB sync error:", syncErr);
+          logger.error("[Storage Cancellation] JSONB sync error:", syncErr);
         }
 
         // Notify chef
@@ -1305,7 +1306,7 @@ router.put(
             });
           }
         } catch (notifError) {
-          console.error(
+          logger.error(
             "[Storage Cancellation Request] Notification error:",
             notifError,
           );
@@ -1319,7 +1320,7 @@ router.put(
         });
       }
     } catch (error) {
-      console.error("[Storage Cancellation Request] Error:", error);
+      logger.error("[Storage Cancellation Request] Error:", error);
       return errorResponse(res, error);
     }
   },
@@ -1605,7 +1606,7 @@ router.post(
         transferReversalId: refund.transferReversalId,
       });
     } catch (error: any) {
-      console.error("[Refund] Error processing refund:", error);
+      logger.error("[Refund] Error processing refund:", error);
       return errorResponse(res, error);
     }
   },
@@ -1622,7 +1623,7 @@ router.post(
   requireFirebaseAuthWithUser,
   requireManager,
   async (req: Request, res: Response) => {
-    console.log(
+    logger.info(
       "[Stripe Connect] Create request received for manager:",
       req.neonUser?.id,
     );
@@ -1645,7 +1646,7 @@ router.post(
         : (userResult as any)[0];
 
       if (!userRow) {
-        console.error("[Stripe Connect] User not found for ID:", managerId);
+        logger.error("[Stripe Connect] User not found for ID:", managerId);
         return res.status(404).json({ error: "User not found" });
       }
 
@@ -1689,7 +1690,7 @@ router.post(
       }
 
       // Case 2: No account, create one
-      console.log(
+      logger.info(
         "[Stripe Connect] Creating new account for email:",
         user.email,
       );
@@ -1709,7 +1710,7 @@ router.post(
 
       return res.json({ url: link.url });
     } catch (error) {
-      console.error("[Stripe Connect] Error in create route:", error);
+      logger.error("[Stripe Connect] Error in create route:", error);
       return errorResponse(res, error);
     }
   },
@@ -1756,7 +1757,7 @@ router.get(
       );
       return res.json({ url: link.url });
     } catch (error) {
-      console.error("[Stripe Connect] Error in onboarding-link route:", error);
+      logger.error("[Stripe Connect] Error in onboarding-link route:", error);
       return errorResponse(res, error);
     }
   },
@@ -1813,7 +1814,7 @@ router.get(
         return res.json({ url: link.url, requiresOnboarding: true });
       }
     } catch (error) {
-      console.error("[Stripe Connect] Error in dashboard-link route:", error);
+      logger.error("[Stripe Connect] Error in dashboard-link route:", error);
       return errorResponse(res, error);
     }
   },
@@ -1923,7 +1924,7 @@ router.get(
           },
         });
       } catch (stripeError: any) {
-        console.error("Error fetching Stripe account status:", stripeError);
+        logger.error("Error fetching Stripe account status:", stripeError);
         // Fallback to DB status if Stripe API fails
         res.json({
           connected: true,
@@ -2008,7 +2009,7 @@ router.post(
       const managerId = req.neonUser!.id;
       const { limit = 100, onlyUnsynced = true } = req.body;
 
-      console.log(`[Stripe Sync] Starting sync for manager ${managerId}...`);
+      logger.info(`[Stripe Sync] Starting sync for manager ${managerId}...`);
 
       // First, backfill payment_transactions from existing bookings that don't have records
       const { backfillPaymentTransactionsFromBookings } = await import(
@@ -2020,7 +2021,7 @@ router.post(
         { limit },
       );
 
-      console.log(`[Stripe Sync] Backfill complete:`, backfillResult);
+      logger.info(`[Stripe Sync] Backfill complete:`, backfillResult);
 
       // Then sync existing payment_transactions with Stripe amounts
       const { syncExistingPaymentTransactionsFromStripe } = await import(
@@ -2035,7 +2036,7 @@ router.post(
         },
       );
 
-      console.log(`[Stripe Sync] Stripe sync complete:`, syncResult);
+      logger.info(`[Stripe Sync] Stripe sync complete:`, syncResult);
 
       res.json({
         success: true,
@@ -2044,7 +2045,7 @@ router.post(
         message: `Backfilled ${backfillResult.created} transactions, synced ${syncResult.synced} with Stripe`,
       });
     } catch (error) {
-      console.error("[Stripe Sync] Error:", error);
+      logger.error("[Stripe Sync] Error:", error);
       return errorResponse(res, error);
     }
   },
@@ -2113,7 +2114,7 @@ router.get(
         _raw: process.env.NODE_ENV === "development" ? balance : undefined,
       });
     } catch (error) {
-      console.error("[Stripe Balance] Error fetching balance:", error);
+      logger.error("[Stripe Balance] Error fetching balance:", error);
       return errorResponse(res, error);
     }
   },
@@ -2395,7 +2396,7 @@ router.get(
       const kitchens = await kitchenService.getKitchensByLocationId(locationId);
       res.json(kitchens);
     } catch (error: any) {
-      console.error("Error fetching kitchen settings:", error);
+      logger.error("Error fetching kitchen settings:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to fetch kitchen settings" });
@@ -2439,7 +2440,7 @@ router.post(
 
       res.status(201).json(created);
     } catch (error: any) {
-      console.error("Error creating kitchen:", error);
+      logger.error("Error creating kitchen:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to create kitchen" });
@@ -2484,7 +2485,7 @@ router.put(
             await deleteFromR2(kitchen.imageUrl);
           }
         } catch (e) {
-          console.error("Failed to delete old image:", e);
+          logger.error("Failed to delete old image:", e);
         }
       }
 
@@ -2494,7 +2495,7 @@ router.put(
       );
       res.json(updated);
     } catch (error: any) {
-      console.error("Error updating kitchen image:", error);
+      logger.error("Error updating kitchen image:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to update kitchen image" });
@@ -2540,7 +2541,7 @@ router.put(
           try {
             await deleteFromR2(removedUrl);
           } catch (e) {
-            console.error("Failed to delete removed gallery image:", e);
+            logger.error("Failed to delete removed gallery image:", e);
           }
         }
       } else if (method === "reorder" && Array.isArray(imageUrl)) {
@@ -2560,7 +2561,7 @@ router.put(
       const updated = await kitchenService.getKitchenById(kitchenId);
       res.json(updated);
     } catch (error: any) {
-      console.error("Error updating gallery:", error);
+      logger.error("Error updating gallery:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to update gallery" });
@@ -2600,7 +2601,7 @@ router.put(
 
       res.json(updated);
     } catch (error: any) {
-      console.error("Error updating kitchen details:", error);
+      logger.error("Error updating kitchen details:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to update kitchen details" });
@@ -2645,7 +2646,7 @@ router.delete(
         try {
           await deleteFromR2(imageUrl);
         } catch (e) {
-          console.error(`Failed to delete kitchen image ${imageUrl}:`, e);
+          logger.error(`Failed to delete kitchen image ${imageUrl}:`, e);
         }
       }
 
@@ -2656,7 +2657,7 @@ router.delete(
             try {
               await deleteFromR2(img);
             } catch (e) {
-              console.error(`Failed to delete gallery image ${img}:`, e);
+              logger.error(`Failed to delete gallery image ${img}:`, e);
             }
           }),
         );
@@ -2664,7 +2665,7 @@ router.delete(
 
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Error deleting kitchen:", error);
+      logger.error("Error deleting kitchen:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to delete kitchen" });
@@ -2714,7 +2715,7 @@ router.get(
             : null,
       });
     } catch (error: any) {
-      console.error("Error getting kitchen pricing:", error);
+      logger.error("Error getting kitchen pricing:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to get kitchen pricing" });
@@ -2828,7 +2829,7 @@ router.put(
         ...pricing,
       });
 
-      console.log(
+      logger.info(
         `✅ Kitchen ${kitchenId} pricing updated by manager ${user.id}`,
       );
 
@@ -2836,7 +2837,7 @@ router.put(
       // routes.ts comment said: "updateKitchenPricing already returns hourlyRate in dollars, no need to convert again"
       res.json(updated);
     } catch (error: any) {
-      console.error("Error updating kitchen pricing:", error);
+      logger.error("Error updating kitchen pricing:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to update kitchen pricing" });
@@ -2896,7 +2897,7 @@ router.put(
 
       res.json(updated);
     } catch (error: any) {
-      console.error("Error setting availability:", error);
+      logger.error("Error setting availability:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to set availability" });
@@ -2940,7 +2941,7 @@ router.get(
 
       res.json(bookings);
     } catch (error: any) {
-      console.error("Error fetching bookings:", error);
+      logger.error("Error fetching bookings:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to fetch bookings" });
@@ -3014,7 +3015,7 @@ router.get(
         })),
       });
     } catch (error) {
-      console.error(`[Manager Profile v2] Error:`, error);
+      logger.error(`[Manager Profile v2] Error:`, error);
       return errorResponse(res, error);
     }
   },
@@ -3167,7 +3168,7 @@ router.get(
 
       res.json({ applications: formatted, accessCount: accessRecords.length });
     } catch (error: any) {
-      console.error("Error getting apps:", error);
+      logger.error("Error getting apps:", error);
       res.status(500).json({ error: error.message });
     }
   },
@@ -3491,7 +3492,7 @@ router.get(
           };
         }
       } catch (err) {
-        console.error("Error fetching payment transaction:", err);
+        logger.error("Error fetching payment transaction:", err);
       }
 
       // Calculate correct kitchen price from hourly rate and duration
@@ -3528,7 +3529,7 @@ router.get(
         paymentTransaction,
       });
     } catch (e: any) {
-      console.error("Error fetching booking details:", e);
+      logger.error("Error fetching booking details:", e);
       res
         .status(500)
         .json({ error: e.message || "Failed to fetch booking details" });
@@ -3546,6 +3547,9 @@ router.put(
       const user = req.neonUser!;
       const id = parseInt(req.params.id);
       const { status, storageActions, equipmentActions, refundOnCancel } = req.body;
+
+      // Child logger: every log in this handler automatically includes booking/manager context
+      const bLog = logger.child({ bookingId: id, managerId: user.id, targetStatus: status });
       // storageActions is an optional array of { storageBookingId: number, action: 'confirmed' | 'cancelled' }
       // equipmentActions is an optional array of { equipmentBookingId: number, action: 'confirmed' | 'cancelled' }
       // When provided, each booking is handled individually instead of inheriting the kitchen booking status
@@ -3974,7 +3978,11 @@ router.put(
             logger.warn(`[Manager] Could not update payment_transactions after capture:`, ptErr);
           }
         } catch (captureError: any) {
-          logger.error(`[Manager] PARTIAL CAPTURE ENGINE: Failed for booking ${id}:`, captureError);
+          bLog.error(`[Manager] PARTIAL CAPTURE ENGINE: Failed for booking ${id}:`, captureError);
+          Sentry.captureException(captureError, {
+            tags: { component: 'partial_capture_engine', bookingId: String(id) },
+            extra: { managerId: user.id, paymentIntentId: bookingPaymentIntentId },
+          });
           return res.status(500).json({
             error: "Failed to capture payment. The authorization may have expired. Please contact the chef to re-book.",
             details: captureError.message,
@@ -4360,10 +4368,14 @@ router.put(
             }
           }
         } catch (refundError: any) {
-          logger.error(
+          bLog.error(
             `[Manager] Failed to process refund for booking ${id}:`,
             refundError,
           );
+          Sentry.captureException(refundError, {
+            tags: { component: 'unified_refund_engine', bookingId: String(id) },
+            extra: { managerId: user.id, paymentIntentId: bookingPaymentIntentId },
+          });
           // Continue - booking status is updated, refund can be retried manually from Revenue Dashboard
         }
       }
@@ -4477,7 +4489,7 @@ router.put(
                 await sendSMS(chefPhone, smsContent);
               }
             } catch (smsError) {
-              console.error(
+              logger.error(
                 "Error sending confirmation SMS to chef:",
                 smsError,
               );
@@ -4529,7 +4541,7 @@ router.put(
                 endTime: booking.endTime,
               });
             } catch (notifError) {
-              console.error(
+              logger.error(
                 "Error creating confirmation notification:",
                 notifError,
               );
@@ -4576,7 +4588,7 @@ router.put(
                 await sendSMS(chefPhone, smsContent);
               }
             } catch (smsError) {
-              console.error(
+              logger.error(
                 "Error sending cancellation SMS to chef:",
                 smsError,
               );
@@ -4603,7 +4615,7 @@ router.put(
                 cancelledBy: "manager",
               });
             } catch (notifError) {
-              console.error(
+              logger.error(
                 "Error creating cancellation notification:",
                 notifError,
               );
@@ -4611,7 +4623,7 @@ router.put(
           }
         }
       } catch (emailError) {
-        console.error(
+        logger.error(
           "Error sending booking status change emails:",
           emailError,
         );
@@ -4659,7 +4671,11 @@ router.put(
 
       res.json(responseData);
     } catch (e: any) {
-      console.error("Error updating booking status:", e);
+      logger.error("Error updating booking status:", e);
+      Sentry.captureException(e, {
+        tags: { component: 'manager_booking_status' },
+        extra: { bookingId: req.params.id },
+      });
       res
         .status(500)
         .json({ error: e.message || "Failed to update booking status" });
@@ -4770,7 +4786,7 @@ router.put(
   requireFirebaseAuthWithUser,
   requireManager,
   async (req: Request, res: Response) => {
-    console.log(
+    logger.info(
       "[PUT] /api/manager/locations/:locationId/cancellation-policy hit",
       {
         locationId: req.params.locationId,
@@ -4785,7 +4801,7 @@ router.put(
       const locationIdNum = parseInt(locationId);
 
       if (isNaN(locationIdNum) || locationIdNum <= 0) {
-        console.error("[PUT] Invalid locationId:", locationId);
+        logger.error("[PUT] Invalid locationId:", locationId);
         return res.status(400).json({ error: "Invalid location ID" });
       }
 
@@ -4803,7 +4819,7 @@ router.put(
         customOnboardingLink,
       } = req.body;
 
-      console.log("[PUT] Request body:", {
+      logger.info("[PUT] Request body:", {
         cancellationPolicyHours,
         cancellationPolicyMessage,
         defaultDailyBookingLimit,
@@ -4891,7 +4907,7 @@ router.put(
       const location = locationResults[0];
 
       if (!location) {
-        console.error("[PUT] Location not found or access denied:", {
+        logger.error("[PUT] Location not found or access denied:", {
           locationId: locationIdNum,
           managerId: user.id,
           userRole: user.role,
@@ -4901,7 +4917,7 @@ router.put(
           .json({ error: "Location not found or access denied" });
       }
 
-      console.log("[PUT] Location verified:", {
+      logger.info("[PUT] Location verified:", {
         locationId: location.id,
         locationName: location.name,
         managerId: location.managerId,
@@ -4945,7 +4961,7 @@ router.put(
           notificationEmail && notificationEmail.trim() !== ""
             ? notificationEmail.trim()
             : null;
-        console.log("[PUT] Setting notificationEmail:", {
+        logger.info("[PUT] Setting notificationEmail:", {
           raw: notificationEmail,
           processed: (updates as any).notificationEmail,
           oldEmail: oldNotificationEmail,
@@ -4962,7 +4978,7 @@ router.put(
             });
           }
           (updates as any).notificationPhone = normalized;
-          console.log("[PUT] Setting notificationPhone:", {
+          logger.info("[PUT] Setting notificationPhone:", {
             raw: notificationPhone,
             normalized: normalized,
           });
@@ -5021,7 +5037,7 @@ router.put(
         (updates as any).logoUrl = processedLogoUrl;
         // Also set it using the database column name directly as a fallback
         (updates as any).logo_url = processedLogoUrl;
-        console.log("[PUT] Setting logoUrl:", {
+        logger.info("[PUT] Setting logoUrl:", {
           raw: logoUrl,
           processed: processedLogoUrl,
           type: typeof processedLogoUrl,
@@ -5037,7 +5053,7 @@ router.put(
             : null;
         (updates as any).brandImageUrl = processedBrandImageUrl;
         (updates as any).brand_image_url = processedBrandImageUrl;
-        console.log("[PUT] Setting brandImageUrl:", {
+        logger.info("[PUT] Setting brandImageUrl:", {
           raw: brandImageUrl,
           processed: processedBrandImageUrl,
         });
@@ -5045,7 +5061,7 @@ router.put(
       if (timezone !== undefined) {
         // Timezone is locked to Newfoundland - always enforce DEFAULT_TIMEZONE
         (updates as any).timezone = DEFAULT_TIMEZONE;
-        console.log("[PUT] Setting timezone (locked to Newfoundland):", {
+        logger.info("[PUT] Setting timezone (locked to Newfoundland):", {
           raw: timezone,
           processed: DEFAULT_TIMEZONE,
           note: "Timezone is locked and cannot be changed",
@@ -5054,7 +5070,7 @@ router.put(
       if (description !== undefined) {
         (updates as any).description =
           description && description.trim() !== "" ? description.trim() : null;
-        console.log("[PUT] Setting description:", {
+        logger.info("[PUT] Setting description:", {
           raw: description,
           processed: (updates as any).description,
         });
@@ -5064,24 +5080,24 @@ router.put(
           customOnboardingLink && customOnboardingLink.trim() !== ""
             ? customOnboardingLink.trim()
             : null;
-        console.log("[PUT] Setting customOnboardingLink:", {
+        logger.info("[PUT] Setting customOnboardingLink:", {
           raw: customOnboardingLink,
           processed: (updates as any).customOnboardingLink,
         });
       }
 
-      console.log(
+      logger.info(
         "[PUT] Final updates object before DB update:",
         JSON.stringify(updates, null, 2),
       );
-      console.log("[PUT] Updates keys:", Object.keys(updates));
-      console.log("[PUT] Updates object has logoUrl?", "logoUrl" in updates);
-      console.log(
+      logger.info("[PUT] Updates keys:", Object.keys(updates));
+      logger.info("[PUT] Updates object has logoUrl?", "logoUrl" in updates);
+      logger.info(
         "[PUT] Updates object logoUrl value:",
         (updates as any).logoUrl,
       );
-      console.log("[PUT] Updates object has logo_url?", "logo_url" in updates);
-      console.log(
+      logger.info("[PUT] Updates object has logo_url?", "logo_url" in updates);
+      logger.info(
         "[PUT] Updates object logo_url value:",
         (updates as any).logo_url,
       );
@@ -5092,25 +5108,25 @@ router.put(
         .where(eq(locations.id, locationIdNum))
         .returning();
 
-      console.log(
+      logger.info(
         "[PUT] Updated location from DB (full object):",
         JSON.stringify(updatedResults[0], null, 2),
       );
-      console.log(
+      logger.info(
         "[PUT] Updated location logoUrl (camelCase):",
         (updatedResults[0] as any).logoUrl,
       );
-      console.log(
+      logger.info(
         "[PUT] Updated location logo_url (snake_case):",
         (updatedResults[0] as any).logo_url,
       );
-      console.log(
+      logger.info(
         "[PUT] Updated location all keys:",
         Object.keys(updatedResults[0] || {}),
       );
 
       if (!updatedResults || updatedResults.length === 0) {
-        console.error(
+        logger.error(
           "[PUT] Cancellation policy update failed: No location returned from DB",
           {
             locationId: locationIdNum,
@@ -5125,7 +5141,7 @@ router.put(
       }
 
       const updated = updatedResults[0];
-      console.log("[PUT] Location settings updated successfully:", {
+      logger.info("[PUT] Location settings updated successfully:", {
         locationId: updated.id,
         cancellationPolicyHours: updated.cancellationPolicyHours,
         defaultDailyBookingLimit: updated.defaultDailyBookingLimit,
@@ -5144,13 +5160,13 @@ router.put(
         const savedValue =
           updated.defaultDailyBookingLimit ??
           (updated as any).default_daily_booking_limit;
-        console.log("[PUT] ✅ Verified defaultDailyBookingLimit save:", {
+        logger.info("[PUT] ✅ Verified defaultDailyBookingLimit save:", {
           requested: defaultDailyBookingLimit,
           saved: savedValue,
           match: savedValue === defaultDailyBookingLimit,
         });
         if (savedValue !== defaultDailyBookingLimit) {
-          console.error(
+          logger.error(
             "[PUT] ❌ WARNING: defaultDailyBookingLimit mismatch!",
             {
               requested: defaultDailyBookingLimit,
@@ -5206,11 +5222,11 @@ router.put(
             locationId: locationIdNum,
           });
           await sendEmail(emailContent);
-          console.log(
+          logger.info(
             `✅ Location notification email change notification sent to: ${response.notificationEmail}`,
           );
         } catch (emailError) {
-          console.error(
+          logger.error(
             "Error sending location email change notification:",
             emailError,
           );
@@ -5218,13 +5234,13 @@ router.put(
         }
       }
 
-      console.log(
+      logger.info(
         "[PUT] Sending response with notificationEmail:",
         response.notificationEmail,
       );
       res.status(200).json(response);
     } catch (error: any) {
-      console.error("Error updating cancellation policy:", error);
+      logger.error("Error updating cancellation policy:", error);
       res
         .status(500)
         .json({
@@ -5245,7 +5261,7 @@ router.get(
 
       const locations = await locationService.getLocationsByManagerId(user.id);
 
-      console.log(
+      logger.info(
         "[GET] /api/manager/locations - Raw locations from DB:",
         locations.map((loc) => ({
           id: loc.id,
@@ -5333,7 +5349,7 @@ router.get(
       }));
 
       // Log to verify logoUrl is included in response
-      console.log(
+      logger.info(
         "[GET] /api/manager/locations - Mapped locations:",
         mappedLocations.map((loc) => ({
           id: loc.id,
@@ -5345,7 +5361,7 @@ router.get(
 
       res.json(mappedLocations);
     } catch (error: any) {
-      console.error("Error fetching locations:", error);
+      logger.error("Error fetching locations:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to fetch locations" });
@@ -5377,11 +5393,11 @@ router.post(
         kitchenTermsUrl,
       } = req.body;
 
-      console.log(
+      logger.info(
         "[POST /locations] Request body:",
         JSON.stringify(req.body, null, 2),
       );
-      console.log("[POST /locations] kitchenTermsUrl:", kitchenTermsUrl);
+      logger.info("[POST /locations] kitchenTermsUrl:", kitchenTermsUrl);
 
       if (!name || !address) {
         return res.status(400).json({ error: "Name and address are required" });
@@ -5416,7 +5432,7 @@ router.post(
         normalizedContactPhone = normalized;
       }
 
-      console.log("Creating location for manager:", {
+      logger.info("Creating location for manager:", {
         managerId: user.id,
         name,
         address,
@@ -5471,8 +5487,8 @@ router.post(
 
       res.status(201).json(mappedLocation);
     } catch (error: any) {
-      console.error("Error creating location:", error);
-      console.error("Error details:", error.message, error.stack);
+      logger.error("Error creating location:", error);
+      logger.error("Error details:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to create location" });
@@ -5621,18 +5637,18 @@ router.put(
         }
       }
 
-      console.log(`💾 Updating location ${locationId} with:`, updates);
+      logger.info(`💾 Updating location ${locationId} with:`, updates);
 
       const updated = await locationService.updateLocation({
         id: locationId,
         ...updates,
       });
       if (!updated) {
-        console.error(`❌ Location ${locationId} not found in database`);
+        logger.error(`❌ Location ${locationId} not found in database`);
         return res.status(404).json({ error: "Location not found" });
       }
 
-      console.log(`✅ Location ${locationId} updated successfully`);
+      logger.info(`✅ Location ${locationId} updated successfully`);
 
       // Send email to admin when manager uploads a new kitchen license
       if (kitchenLicenseUrl && updates.kitchenLicenseStatus === "pending") {
@@ -5704,8 +5720,8 @@ router.put(
 
       return res.json(mappedLocation);
     } catch (error: any) {
-      console.error("❌ Error updating location:", error);
-      console.error("Error stack:", error.stack);
+      logger.error("❌ Error updating location:", error);
+      logger.error("Error stack:", error.stack);
       res
         .status(500)
         .json({ error: error.message || "Failed to update location" });
@@ -5723,7 +5739,7 @@ router.post(
       const user = req.neonUser!;
       const { skipped } = req.body;
 
-      console.log(
+      logger.info(
         `[POST] /api/manager/complete-onboarding - User: ${user.id}, skipped: ${skipped}`,
       );
 
@@ -5740,7 +5756,7 @@ router.post(
 
       res.json({ success: true, user: updatedUser });
     } catch (error: any) {
-      console.error("Error completing manager onboarding:", error);
+      logger.error("Error completing manager onboarding:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to complete onboarding" });
@@ -5762,7 +5778,7 @@ router.post(
         return res.status(400).json({ error: "stepId is required" });
       }
 
-      console.log(
+      logger.info(
         `[POST] /api/manager/onboarding/step - User: ${user.id}, stepId: ${stepId}, locationId: ${locationId}`,
       );
 
@@ -5794,7 +5810,7 @@ router.post(
         stepsCompleted: (updatedUser as any).managerOnboardingStepsCompleted,
       });
     } catch (error: any) {
-      console.error("Error tracking onboarding step:", error);
+      logger.error("Error tracking onboarding step:", error);
       res
         .status(500)
         .json({ error: error.message || "Failed to track onboarding step" });

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle } from "lucide-react";
@@ -57,7 +58,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
         'Authorization': `Bearer ${token}`,
       };
     } catch (error) {
-      console.error('Error getting Firebase token:', error);
+      logger.error('Error getting Firebase token:', error);
     }
   }
   // Fallback to localStorage token if Firebase auth is not available
@@ -108,7 +109,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       try {
         const headers = await getAuthHeaders();
         const headersObj = headers as Record<string, string>;
-        console.log('📋 ManagerBookingsPanel: Fetching bookings', {
+        logger.info('📋 ManagerBookingsPanel: Fetching bookings', {
           hasAuth: !!headersObj.Authorization
         });
 
@@ -117,19 +118,19 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           credentials: "include",
         });
 
-        console.log('📋 ManagerBookingsPanel: Response status:', response.status);
+        logger.info('📋 ManagerBookingsPanel: Response status:', response.status);
 
         if (!response.ok) {
           let errorMessage = 'Failed to fetch bookings';
           try {
             const errorData = await response.json();
             errorMessage = errorData.message || errorData.error || errorMessage;
-            console.error('❌ ManagerBookingsPanel: Error response:', errorData);
+            logger.error('❌ ManagerBookingsPanel: Error response:', errorData);
           } catch (jsonError) {
             try {
               const text = await response.text();
               errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
-              console.error('❌ ManagerBookingsPanel: Error text:', text);
+              logger.error('❌ ManagerBookingsPanel: Error text:', text);
             } catch (textError) {
               errorMessage = `Server returned ${response.status} ${response.statusText}`;
             }
@@ -146,14 +147,14 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           data = text ? JSON.parse(text) : [];
         }
 
-        console.log(`✅ ManagerBookingsPanel: Received ${Array.isArray(data) ? data.length : 0} bookings`);
+        logger.info(`✅ ManagerBookingsPanel: Received ${Array.isArray(data) ? data.length : 0} bookings`);
         if (Array.isArray(data) && data.length > 0) {
-          console.log('📋 ManagerBookingsPanel: Sample booking:', data[0]);
+          logger.info('📋 ManagerBookingsPanel: Sample booking:', data[0]);
         }
 
         return data;
       } catch (error) {
-        console.error('❌ ManagerBookingsPanel: Fetch error:', error);
+        logger.error('❌ ManagerBookingsPanel: Fetch error:', error);
         throw error;
       }
     },
@@ -331,7 +332,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       const actionData = await fetchBookingDetailsForAction(booking.id);
       setBookingForAction(actionData);
     } catch (error: any) {
-      console.error('Error fetching booking details for action sheet:', error);
+      logger.error('Error fetching booking details for action sheet:', error);
       toast({
         title: "Error",
         description: "Failed to load booking details. Please try again.",
@@ -627,7 +628,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       };
       setBookingForManagement(mgmt);
     } catch (error: any) {
-      console.error('Error fetching management details:', error);
+      logger.error('Error fetching management details:', error);
       toast({ title: "Error", description: "Failed to load booking details.", variant: "destructive" });
       setManagementSheetOpen(false);
     }

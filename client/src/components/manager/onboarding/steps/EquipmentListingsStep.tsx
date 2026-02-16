@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Equipment Listings Step - Onboarding
  * 
@@ -177,7 +178,7 @@ export default function EquipmentListingsStep() {
         }
         successCount++;
       } catch (error) {
-        console.error('Error creating equipment listing:', error);
+        logger.error('Error creating equipment listing:', error);
         errorCount++;
       }
     }

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useMemo } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
@@ -86,7 +87,7 @@ export function StorageExtensionDialog({
           return response.json();
         }
       } catch (error) {
-        console.error('Error fetching extension preview:', error);
+        logger.error('Error fetching extension preview:', error);
       }
       return null;
     },

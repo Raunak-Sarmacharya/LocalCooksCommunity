@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import twilio from 'twilio';
 
 // SMS configuration
@@ -13,9 +14,9 @@ const getSMSConfig = () => {
     if (!authToken) missing.push('TWILIO_AUTH_TOKEN');
     if (!fromNumber) missing.push('TWILIO_PHONE_NUMBER');
     
-    console.warn('⚠️ Twilio configuration is missing. SMS functionality will be disabled.');
-    console.warn(`   Missing variables: ${missing.join(', ')}`);
-    console.warn('   Please set these environment variables to enable SMS functionality.');
+    logger.warn('⚠️ Twilio configuration is missing. SMS functionality will be disabled.');
+    logger.warn(`   Missing variables: ${missing.join(', ')}`);
+    logger.warn('   Please set these environment variables to enable SMS functionality.');
     return null;
   }
 
@@ -23,7 +24,7 @@ const getSMSConfig = () => {
   // For Canada: +1NXXNXXXXXX (e.g., +14161234567)
   // For US: +1NXXNXXXXXX (e.g., +12125551234)
   if (!fromNumber.startsWith('+')) {
-    console.warn(`⚠️ TWILIO_PHONE_NUMBER should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US). Current value: ${fromNumber}`);
+    logger.warn(`⚠️ TWILIO_PHONE_NUMBER should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US). Current value: ${fromNumber}`);
   }
   
   // Check if it's a Canadian number (starts with +1 and area code 2-9)
@@ -31,7 +32,7 @@ const getSMSConfig = () => {
     const areaCode = fromNumber.substring(2, 5);
     const firstDigit = parseInt(areaCode[0]);
     if (firstDigit >= 2 && firstDigit <= 9) {
-      console.log(`✅ Twilio phone number detected as North American (US/Canada): ${fromNumber}`);
+      logger.info(`✅ Twilio phone number detected as North American (US/Canada): ${fromNumber}`);
     }
   }
 
@@ -61,7 +62,7 @@ export const formatPhoneNumber = (phone: string | null | undefined): string | nu
     if (digitsAfterPlus.length >= 1 && digitsAfterPlus.length <= 15 && /^\d+$/.test(digitsAfterPlus)) {
       return cleaned;
     }
-    console.warn(`⚠️ Invalid E.164 format (must be + followed by 1-15 digits): ${phone}`);
+    logger.warn(`⚠️ Invalid E.164 format (must be + followed by 1-15 digits): ${phone}`);
     return null;
   }
   
@@ -87,16 +88,16 @@ export const formatPhoneNumber = (phone: string | null | undefined): string | nu
     if (firstDigit >= 2 && firstDigit <= 9 && fourthDigit >= 2 && fourthDigit <= 9) {
       return `+1${digitsOnly}`;
     } else {
-      console.warn(`⚠️ Invalid North American phone number format: ${phone}`);
-      console.warn('   Area code and exchange code must start with digits 2-9');
+      logger.warn(`⚠️ Invalid North American phone number format: ${phone}`);
+      logger.warn('   Area code and exchange code must start with digits 2-9');
       return null;
     }
   }
   
   // If we can't format it, return null
-  console.warn(`⚠️ Could not format phone number: ${phone} (digits only: ${digitsOnly}, length: ${digitsOnly.length})`);
-  console.warn('   Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US)');
-  console.warn('   Or 10-digit North American numbers (e.g., 4161234567 for Canada, 2125551234 for US)');
+  logger.warn(`⚠️ Could not format phone number: ${phone} (digits only: ${digitsOnly}, length: ${digitsOnly.length})`);
+  logger.warn('   Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US)');
+  logger.warn('   Or 10-digit North American numbers (e.g., 4161234567 for Canada, 2125551234 for US)');
   return null;
 };
 
@@ -112,7 +113,7 @@ export const sendSMS = async (
     const config = getSMSConfig();
     
     if (!config) {
-      console.warn('⚠️ SMS not sent - Twilio configuration missing');
+      logger.warn('⚠️ SMS not sent - Twilio configuration missing');
       return false;
     }
 
@@ -120,15 +121,15 @@ export const sendSMS = async (
     const formattedPhone = formatPhoneNumber(to);
     
     if (!formattedPhone) {
-      console.error(`❌ SMS not sent - Invalid phone number: ${to}`);
-      console.error('   Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US)');
-      console.error('   Or 10-digit North American numbers (e.g., 4161234567 for Canada, 2125551234 for US)');
+      logger.error(`❌ SMS not sent - Invalid phone number: ${to}`);
+      logger.error('   Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US)');
+      logger.error('   Or 10-digit North American numbers (e.g., 4161234567 for Canada, 2125551234 for US)');
       return false;
     }
 
     // Validate message length (Twilio has a 1600 character limit for single SMS)
     if (message.length > 1600) {
-      console.warn(`⚠️ SMS message is ${message.length} characters (limit: 1600). Message will be split into multiple parts.`);
+      logger.warn(`⚠️ SMS message is ${message.length} characters (limit: 1600). Message will be split into multiple parts.`);
     }
 
     // Initialize Twilio client
@@ -137,8 +138,8 @@ export const sendSMS = async (
     // Validate from number format
     const formattedFrom = formatPhoneNumber(config.fromNumber);
     if (!formattedFrom) {
-      console.error(`❌ SMS not sent - Invalid TWILIO_PHONE_NUMBER format: ${config.fromNumber}`);
-      console.error('   TWILIO_PHONE_NUMBER must be in E.164 format (e.g., +1234567890)');
+      logger.error(`❌ SMS not sent - Invalid TWILIO_PHONE_NUMBER format: ${config.fromNumber}`);
+      logger.error('   TWILIO_PHONE_NUMBER must be in E.164 format (e.g., +1234567890)');
       return false;
     }
 
@@ -151,7 +152,7 @@ export const sendSMS = async (
 
     const duration = Date.now() - startTime;
     
-    console.log(`✅ SMS sent successfully:`, {
+    logger.info(`✅ SMS sent successfully:`, {
       to: formattedPhone,
       messageSid: messageResult.sid,
       status: messageResult.status,
@@ -183,44 +184,44 @@ export const sendSMS = async (
       errorDetails.twilioMoreInfo = (error as any).moreInfo;
     }
 
-    console.error(`❌ SMS sending failed:`, errorDetails);
+    logger.error(`❌ SMS sending failed:`, errorDetails);
 
     // Log specific Twilio error codes for easier debugging
     if (error && typeof error === 'object' && 'code' in error) {
       const twilioCode = (error as any).code;
       switch (twilioCode) {
         case 21211:
-          console.error('   → Invalid phone number format. Ensure phone numbers are in E.164 format (e.g., +1234567890)');
+          logger.error('   → Invalid phone number format. Ensure phone numbers are in E.164 format (e.g., +1234567890)');
           break;
         case 21212:
-          console.error('   → Invalid phone number. The number provided is not a valid phone number.');
+          logger.error('   → Invalid phone number. The number provided is not a valid phone number.');
           break;
         case 21408:
-          console.error('   → Permission denied. Check your Twilio account permissions.');
+          logger.error('   → Permission denied. Check your Twilio account permissions.');
           break;
         case 21608:
-          console.error('   → Unsubscribed recipient. The recipient has opted out of receiving messages.');
+          logger.error('   → Unsubscribed recipient. The recipient has opted out of receiving messages.');
           break;
         case 21610:
-          console.error('   → Invalid "from" phone number. Check TWILIO_PHONE_NUMBER is correct and verified in Twilio.');
+          logger.error('   → Invalid "from" phone number. Check TWILIO_PHONE_NUMBER is correct and verified in Twilio.');
           break;
         case 21614:
-          console.error('   → "To" number is not a valid mobile number.');
+          logger.error('   → "To" number is not a valid mobile number.');
           break;
         case 30003:
-          console.error('   → Unreachable destination. The phone number may be invalid or unreachable.');
+          logger.error('   → Unreachable destination. The phone number may be invalid or unreachable.');
           break;
         case 30004:
-          console.error('   → Message blocked. The message may be blocked by carrier or Twilio.');
+          logger.error('   → Message blocked. The message may be blocked by carrier or Twilio.');
           break;
         case 30005:
-          console.error('   → Unknown destination. The destination number is not recognized.');
+          logger.error('   → Unknown destination. The destination number is not recognized.');
           break;
         case 30006:
-          console.error('   → Landline or unreachable. The number may be a landline that cannot receive SMS.');
+          logger.error('   → Landline or unreachable. The number may be a landline that cannot receive SMS.');
           break;
         default:
-          console.error(`   → Twilio error code: ${twilioCode}. Check Twilio documentation for details.`);
+          logger.error(`   → Twilio error code: ${twilioCode}. Check Twilio documentation for details.`);
       }
     }
 

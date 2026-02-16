@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import nodemailer from 'nodemailer';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
@@ -45,7 +46,7 @@ let loadAttempted = false;
 
         if (timezoneUtils && timezoneUtils.createBookingDateTime) {
           createBookingDateTimeImpl = timezoneUtils.createBookingDateTime;
-          console.log(`Successfully loaded timezone-utils from: ${timezoneUtilsUrl}`);
+          logger.info(`Successfully loaded timezone-utils from: ${timezoneUtilsUrl}`);
           return;
         }
       } catch {
@@ -54,9 +55,9 @@ let loadAttempted = false;
       }
     }
 
-    console.warn('Failed to load timezone-utils from any path, using fallback implementation');
+    logger.warn('Failed to load timezone-utils from any path, using fallback implementation');
   } catch (error) {
-    console.error('Error during timezone-utils initialization:', error);
+    logger.error('Error during timezone-utils initialization:', error);
   }
 })();
 
@@ -132,7 +133,7 @@ const getEmailConfig = (): EmailConfig => {
   const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 
   if (forceDirectSMTP && isProduction) {
-    console.log('🔄 Forcing direct SMTP connection (bypassing MailChannels)');
+    logger.info('🔄 Forcing direct SMTP connection (bypassing MailChannels)');
   }
 
   return {
@@ -158,7 +159,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       const now = Date.now();
 
       if (lastSent && (now - lastSent) < DUPLICATE_PREVENTION_WINDOW) {
-        console.log(`Preventing duplicate email for tracking ID: ${options.trackingId} (sent ${now - lastSent}ms ago)`);
+        logger.info(`Preventing duplicate email for tracking ID: ${options.trackingId} (sent ${now - lastSent}ms ago)`);
         return true; // Return true to avoid breaking existing code
       }
 
@@ -176,14 +177,14 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
 
     // Check if email configuration is available
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.error('Email configuration is missing. Please set EMAIL_USER and EMAIL_PASS environment variables.');
+      logger.error('Email configuration is missing. Please set EMAIL_USER and EMAIL_PASS environment variables.');
       return false;
     }
 
     const config = getEmailConfig();
     const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 
-    console.log('📧 COMPREHENSIVE EMAIL SEND INITIATED:', {
+    logger.info('📧 COMPREHENSIVE EMAIL SEND INITIATED:', {
       to: content.to,
       subject: content.subject,
       emailType: content.subject.includes('Application') ? '🎯 APPLICATION_EMAIL' : '📝 SYSTEM_EMAIL',
@@ -222,16 +223,16 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
           transporter.verify((error: any, success: any) => {
             clearTimeout(timeout);
             if (error) {
-              console.error('SMTP connection verification failed:', error);
+              logger.error('SMTP connection verification failed:', error);
               reject(error);
             } else {
-              console.log('SMTP connection verified successfully');
+              logger.info('SMTP connection verified successfully');
               resolve(success);
             }
           });
         });
       } catch (verifyError) {
-        console.error('Failed to verify SMTP connection:', verifyError);
+        logger.error('Failed to verify SMTP connection:', verifyError);
         // Continue anyway, as some providers might not support verification
       }
     }
@@ -283,7 +284,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
 
     while (attempts < maxAttempts) {
       attempts++;
-      console.log(`📧 Attempt ${attempts}/${maxAttempts} sending email to ${content.to}`);
+      logger.info(`📧 Attempt ${attempts}/${maxAttempts} sending email to ${content.to}`);
 
       try {
         const emailPromise = transporter.sendMail(mailOptions);
@@ -294,10 +295,10 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
         info = await Promise.race([emailPromise, timeoutPromise]);
 
         // If successful, break out of retry loop
-        console.log(`✅ Email sent successfully on attempt ${attempts}`);
+        logger.info(`✅ Email sent successfully on attempt ${attempts}`);
         break;
       } catch (attemptError) {
-        console.warn(`⚠️ Attempt ${attempts} failed for ${content.to}:`, attemptError instanceof Error ? attemptError.message : String(attemptError));
+        logger.warn(`⚠️ Attempt ${attempts} failed for ${content.to}:`, attemptError instanceof Error ? attemptError.message : String(attemptError));
 
         if (attempts >= maxAttempts) {
           throw attemptError; // Re-throw on final attempt
@@ -309,7 +310,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     }
 
     const executionTime = Date.now() - startTime;
-    console.log('Email sent successfully:', {
+    logger.info('Email sent successfully:', {
       messageId: (info as any).messageId,
       accepted: (info as any).accepted,
       rejected: (info as any).rejected,
@@ -329,7 +330,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     return true;
   } catch (error) {
     const executionTime = Date.now() - startTime;
-    console.error('Error sending email:', {
+    logger.error('Error sending email:', {
       error: error instanceof Error ? error.message : error,
       executionTime: `${executionTime}ms`,
       to: content.to,
@@ -339,12 +340,12 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     });
 
     if (error instanceof Error) {
-      console.error('Error details:', error.message);
+      logger.error('Error details:', error.message);
       if ('code' in error) {
-        console.error('Error code:', (error as any).code);
+        logger.error('Error code:', (error as any).code);
       }
       if ('responseCode' in error) {
-        console.error('SMTP Response code:', (error as any).responseCode);
+        logger.error('SMTP Response code:', (error as any).responseCode);
       }
     }
 
@@ -353,7 +354,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       try {
         transporter.close();
       } catch (closeError) {
-        console.error('Error closing transporter:', closeError);
+        logger.error('Error closing transporter:', closeError);
       }
     }
 
@@ -666,7 +667,7 @@ const generateCalendarUrl = (
         return `https://calendar.google.com/calendar/render?${genericParams.toString()}`;
     }
   } catch (error) {
-    console.error('Error generating calendar URL:', error);
+    logger.error('Error generating calendar URL:', error);
     // Return a fallback Google Calendar URL if there's an error
     return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&location=${encodeURIComponent(location)}`;
   }

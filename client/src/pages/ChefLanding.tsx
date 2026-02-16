@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
@@ -889,9 +890,9 @@ export default function ChefLanding() {
         if (!response.ok) throw new Error("Failed to fetch");
         const data = await response.json();
         // Log the actual data received from API (works in production too)
-        console.log("[ChefLanding] API Response - Locations data:", data);
+        logger.info("[ChefLanding] API Response - Locations data:", data);
         if (Array.isArray(data) && data.length > 0) {
-          console.log("[ChefLanding] First location sample:", {
+          logger.info("[ChefLanding] First location sample:", {
             id: data[0].id,
             name: data[0].name,
             featuredKitchenImage: data[0].featuredKitchenImage,
@@ -900,7 +901,7 @@ export default function ChefLanding() {
         }
         return Array.isArray(data) ? data : [];
       } catch (error) {
-        console.error("Error fetching locations:", error);
+        logger.error("Error fetching locations:", error);
         return [];
       }
     },
@@ -911,7 +912,7 @@ export default function ChefLanding() {
   // Use locations data directly (same structure as preview page)
   const uniqueLocations = useMemo(() => {
     if (!locations || locations.length === 0) {
-      console.log("[ChefLanding] No locations data available");
+      logger.info("[ChefLanding] No locations data available");
       return [];
     }
     // Locations already come with normalized URLs from the API
@@ -920,7 +921,7 @@ export default function ChefLanding() {
       const mainImage = loc.featuredKitchenImage || null;
 
       // Always log in production to debug
-      console.log(`[ChefLanding] Processing Location ${loc.id} (${loc.name}):`, {
+      logger.info(`[ChefLanding] Processing Location ${loc.id} (${loc.name}):`, {
         featuredKitchenImage: loc.featuredKitchenImage,
         mainImage: mainImage,
         logoUrl: loc.logoUrl,
@@ -938,7 +939,7 @@ export default function ChefLanding() {
         description: loc.description || null
       };
     });
-    console.log(`[ChefLanding] Processed ${mapped.length} locations`);
+    logger.info(`[ChefLanding] Processed ${mapped.length} locations`);
     return mapped;
   }, [locations]);
 

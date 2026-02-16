@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -508,7 +509,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                             setNewKitchenName('');
                                                             setNewKitchenDescription('');
                                                             setShowCreateKitchen(false);
-                                                        } catch (e) { console.error(e); } finally { setIsCreatingKitchen(false); }
+                                                        } catch (e) { logger.error("Failed to create kitchen", e); } finally { setIsCreatingKitchen(false); }
                                                     }}
                                                     status={isCreatingKitchen ? "loading" : "idle"}
                                                     labels={{ idle: "Create", loading: "Creating", success: "Created" }}

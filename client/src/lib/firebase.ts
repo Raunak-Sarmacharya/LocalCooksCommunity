@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
@@ -25,7 +26,7 @@ if (isFirebaseConfigured) {
   auth = getAuth(app);
   db = getFirestore(app);
 } else {
-  console.warn('Firebase is not configured. Google authentication will be disabled.');
+  logger.warn('Firebase is not configured. Google authentication will be disabled.');
 }
 
 export { auth, db };

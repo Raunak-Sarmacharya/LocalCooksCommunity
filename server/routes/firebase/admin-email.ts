@@ -1,3 +1,4 @@
+import { logger } from "../../logger";
 import { Router, Request, Response } from 'express';
 import { requireFirebaseAuthWithUser, requireAdmin } from '../../firebase-auth-middleware';
 import { db } from '../../db';
@@ -9,7 +10,7 @@ const router = Router();
 // 🔥 Admin Flexible Email Endpoint (Firebase Auth + Admin Role)
 router.post('/admin/send-company-email', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-        console.log(`🔥 POST /api/admin/send-company-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+        logger.info(`🔥 POST /api/admin/send-company-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
 
         const {
             emailType = 'general', // 'promotional', 'general', 'announcement', 'newsletter'
@@ -37,7 +38,7 @@ router.post('/admin/send-company-email', requireFirebaseAuthWithUser, requireAdm
         // Validate required fields
         const messageContent = customMessage || message;
         if (!messageContent || messageContent.length < 10) {
-            console.log('🔥 Company email request - Invalid message:', {
+            logger.info('🔥 Company email request - Invalid message:', {
                 customMessage: customMessage?.substring(0, 50),
                 message: message?.substring(0, 50),
                 messageLength: messageContent?.length
@@ -47,7 +48,7 @@ router.post('/admin/send-company-email', requireFirebaseAuthWithUser, requireAdm
 
         // For promotional emails, require promo code
         if (emailType === 'promotional' && !promoCode) {
-            console.log('🔥 Company email request - Missing promo code for promotional email');
+            logger.info('🔥 Company email request - Missing promo code for promotional email');
             return res.status(400).json({ error: 'Promo code is required for promotional emails' });
         }
 
@@ -67,7 +68,7 @@ router.post('/admin/send-company-email', requireFirebaseAuthWithUser, requireAdm
                     );
                 targetEmails = result.map(row => row.email as string);
             } catch (error) {
-                console.error('🔥 Error fetching user emails:', error);
+                logger.error('🔥 Error fetching user emails:', error);
                 return res.status(500).json({ error: 'Failed to fetch user emails' });
             }
         } else if (emailMode === 'custom' && recipients) {
@@ -79,11 +80,11 @@ router.post('/admin/send-company-email', requireFirebaseAuthWithUser, requireAdm
 
         // Validate that we have at least one email
         if (targetEmails.length === 0) {
-            console.log('🔥 Company email request - No valid email addresses provided');
+            logger.info('🔥 Company email request - No valid email addresses provided');
             return res.status(400).json({ error: 'At least one email address is required' });
         }
 
-        console.log(`🔥 Admin ${req.neonUser?.username} sending ${emailType} email to ${targetEmails.length} recipient(s)`);
+        logger.info(`🔥 Admin ${req.neonUser?.username} sending ${emailType} email to ${targetEmails.length} recipient(s)`);
 
         // Import the email functions
         const { sendEmail, generatePromoCodeEmail } = await import('../../email');
@@ -142,16 +143,16 @@ router.post('/admin/send-company-email', requireFirebaseAuthWithUser, requireAdm
                 });
 
                 if (emailSent) {
-                    console.log(`🔥 ${emailType} email sent successfully to ${targetEmail}`);
+                    logger.info(`🔥 ${emailType} email sent successfully to ${targetEmail}`);
                     results.push({ email: targetEmail, status: 'success' });
                     successCount++;
                 } else {
-                    console.error(`🔥 Failed to send ${emailType} email to ${targetEmail}`);
+                    logger.error(`🔥 Failed to send ${emailType} email to ${targetEmail}`);
                     results.push({ email: targetEmail, status: 'failed', error: 'Email sending failed' });
                     failureCount++;
                 }
             } catch (error) {
-                console.error(`🔥 Error sending ${emailType} email to ${targetEmail}:`, error);
+                logger.error(`🔥 Error sending ${emailType} email to ${targetEmail}:`, error);
                 results.push({ email: targetEmail, status: 'failed', error: error instanceof Error ? error.message : 'Unknown error' });
                 failureCount++;
             }
@@ -178,7 +179,7 @@ router.post('/admin/send-company-email', requireFirebaseAuthWithUser, requireAdm
             });
         }
     } catch (error) {
-        console.error('🔥 Error sending company email:', error);
+        logger.error('🔥 Error sending company email:', error);
         res.status(500).json({
             error: 'Internal server error',
             message: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -189,7 +190,7 @@ router.post('/admin/send-company-email', requireFirebaseAuthWithUser, requireAdm
 // 🔥 Admin Promo Email Endpoint (Firebase Auth + Admin Role) - Backward Compatibility
 router.post('/admin/send-promo-email', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-        console.log(`🔥 POST /api/admin/send-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+        logger.info(`🔥 POST /api/admin/send-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
 
         const {
             email,
@@ -223,24 +224,24 @@ router.post('/admin/send-promo-email', requireFirebaseAuthWithUser, requireAdmin
         // Validate required fields based on email mode
         if (emailMode === 'custom') {
             if (!customEmails || !Array.isArray(customEmails) || customEmails.length === 0) {
-                console.log('Promo email request - Missing custom emails');
+                logger.info('Promo email request - Missing custom emails');
                 return res.status(400).json({ error: 'At least one email address is required' });
             }
         } else {
             if (!email) {
-                console.log('Promo email request - Missing email');
+                logger.info('Promo email request - Missing email');
                 return res.status(400).json({ error: 'Email is required' });
             }
         }
 
         // Promo code is now optional - if empty, it will be a general company email
         if (promoCode && promoCode.length > 0 && promoCode.length < 3) {
-            console.log('🔥 Promo email request - Invalid promo code length');
+            logger.info('🔥 Promo email request - Invalid promo code length');
             return res.status(400).json({ error: 'Promo code must be at least 3 characters long if provided' });
         }
 
         if (!messageContent || messageContent.length < 10) {
-            console.log('Promo email request - Invalid message:', {
+            logger.info('Promo email request - Invalid message:', {
                 customMessage: customMessage?.substring(0, 50),
                 message: message?.substring(0, 50),
                 messageContent: messageContent?.substring(0, 50)
@@ -287,7 +288,7 @@ router.post('/admin/send-promo-email', requireFirebaseAuthWithUser, requireAdmin
 
         // Determine target emails
         const targetEmails = emailMode === 'custom' ? customEmails : [email];
-        console.log(`🔥 Admin ${req.neonUser?.username} sending promo email to ${targetEmails.length} recipient(s) with code: ${promoCode}`);
+        logger.info(`🔥 Admin ${req.neonUser?.username} sending promo email to ${targetEmails.length} recipient(s) with code: ${promoCode}`);
 
         // Import the email functions
         const { sendEmail, generatePromoCodeEmail } = await import('../../email');
@@ -397,16 +398,16 @@ router.post('/admin/send-promo-email', requireFirebaseAuthWithUser, requireAdmin
                 });
 
                 if (emailSent) {
-                    console.log(`🔥 Promo email sent successfully to ${targetEmail} with code ${promoCode}`);
+                    logger.info(`🔥 Promo email sent successfully to ${targetEmail} with code ${promoCode}`);
                     results.push({ email: targetEmail, status: 'success' });
                     successCount++;
                 } else {
-                    console.error(`🔥 Failed to send promo email to ${targetEmail}`);
+                    logger.error(`🔥 Failed to send promo email to ${targetEmail}`);
                     results.push({ email: targetEmail, status: 'failed', error: 'Email sending failed' });
                     failureCount++;
                 }
             } catch (error) {
-                console.error(`🔥 Error sending promo email to ${targetEmail}:`, error);
+                logger.error(`🔥 Error sending promo email to ${targetEmail}:`, error);
                 results.push({ email: targetEmail, status: 'failed', error: error instanceof Error ? error.message : 'Unknown error' });
                 failureCount++;
             }
@@ -435,7 +436,7 @@ router.post('/admin/send-promo-email', requireFirebaseAuthWithUser, requireAdmin
         }
 
     } catch (error) {
-        console.error('🔥 Error sending promo email:', error);
+        logger.error('🔥 Error sending promo email:', error);
         return res.status(500).json({
             error: 'Internal server error',
             message: 'An error occurred while sending the promo code email'
@@ -446,7 +447,7 @@ router.post('/admin/send-promo-email', requireFirebaseAuthWithUser, requireAdmin
 // 🔥 Test Promo Email Endpoint (Firebase Auth + Admin Role)
 router.post('/admin/test-promo-email', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-        console.log(`🔥 POST /api/admin/test-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+        logger.info(`🔥 POST /api/admin/test-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
 
         const {
             email,
@@ -472,7 +473,7 @@ router.post('/admin/test-promo-email', requireFirebaseAuthWithUser, requireAdmin
         // Handle both customMessage and message fields
         const messageContent = customMessage || message;
 
-        console.log(`🔥 Admin ${req.neonUser?.username} testing promo email`);
+        logger.info(`🔥 Admin ${req.neonUser?.username} testing promo email`);
 
         // Import the email functions
         const { sendEmail, generatePromoCodeEmail } = await import('../../email');
@@ -576,7 +577,7 @@ router.post('/admin/test-promo-email', requireFirebaseAuthWithUser, requireAdmin
         }
 
     } catch (error) {
-        console.error('🔥 Error sending test promo email:', error);
+        logger.error('🔥 Error sending test promo email:', error);
         return res.status(500).json({
             error: 'Internal server error',
             message: 'An error occurred while testing promo email'
@@ -588,7 +589,7 @@ router.post('/admin/test-promo-email', requireFirebaseAuthWithUser, requireAdmin
 router.post('/admin/preview-promo-email', requireFirebaseAuthWithUser, requireAdmin,
     async (req: Request, res: Response) => {
         try {
-            console.log(`🔥 POST /api/admin/preview-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+            logger.info(`🔥 POST /api/admin/preview-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
 
             const {
                 promoCode,
@@ -623,7 +624,7 @@ router.post('/admin/preview-promo-email', requireFirebaseAuthWithUser, requireAd
                 });
             }
 
-            console.log(`🔥 Admin ${req.neonUser?.username} previewing promo email`);
+            logger.info(`🔥 Admin ${req.neonUser?.username} previewing promo email`);
 
             // Import the email functions
             const { generatePromoCodeEmail } = await import('../../email');
@@ -726,7 +727,7 @@ router.post('/admin/preview-promo-email', requireFirebaseAuthWithUser, requireAd
             return res.status(200).send(emailContent.html || '<p>No HTML content generated</p>');
 
         } catch (error) {
-            console.error('🔥 Error generating promo email preview:', error);
+            logger.error('🔥 Error generating promo email preview:', error);
             return res.status(500).json({
                 error: 'Internal server error',
                 message: 'An error occurred while generating email preview'

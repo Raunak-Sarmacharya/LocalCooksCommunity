@@ -86,9 +86,9 @@ export class BookingService {
                     grantedBy: kitchenApplication.reviewedBy || data.chefId,
                     grantedAt: new Date(),
                 }).onConflictDoNothing();
-                console.log(`✅ [BookingService] Auto-created chef_location_access for chef ${data.chefId} at location ${kitchen.locationId}`);
+                logger.info(`✅ [BookingService] Auto-created chef_location_access for chef ${data.chefId} at location ${kitchen.locationId}`);
             } catch (err) {
-                console.error('[BookingService] Error auto-creating chef_location_access:', err);
+                logger.error('[BookingService] Error auto-creating chef_location_access:', err);
             }
         }
 

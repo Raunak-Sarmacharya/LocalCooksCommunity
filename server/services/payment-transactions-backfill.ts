@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 /**
  * Payment Transactions Backfill Service
  * 
@@ -58,7 +59,7 @@ export async function backfillPaymentTransactionsFromBookings(
       LIMIT ${limit}
     `);
 
-    console.log(`[Backfill] Found ${kitchenBookingsResult.rows.length} kitchen bookings to backfill`);
+    logger.info(`[Backfill] Found ${kitchenBookingsResult.rows.length} kitchen bookings to backfill`);
 
     // Process kitchen bookings
     for (const booking of kitchenBookingsResult.rows as any[]) {
@@ -89,7 +90,7 @@ export async function backfillPaymentTransactionsFromBookings(
 
         result.created++;
       } catch (error: any) {
-        console.error(`[Backfill] Error creating payment_transaction for kitchen booking ${booking.id}:`, error);
+        logger.error(`[Backfill] Error creating payment_transaction for kitchen booking ${booking.id}:`, error);
         result.errors.push({
           bookingId: booking.id,
           bookingType: 'kitchen',
@@ -122,7 +123,7 @@ export async function backfillPaymentTransactionsFromBookings(
       LIMIT ${limit}
     `);
 
-    console.log(`[Backfill] Found ${storageBookingsResult.rows.length} storage bookings to backfill`);
+    logger.info(`[Backfill] Found ${storageBookingsResult.rows.length} storage bookings to backfill`);
 
     // Process storage bookings
     for (const booking of storageBookingsResult.rows as any[]) {
@@ -152,7 +153,7 @@ export async function backfillPaymentTransactionsFromBookings(
 
         result.created++;
       } catch (error: any) {
-        console.error(`[Backfill] Error creating payment_transaction for storage booking ${booking.id}:`, error);
+        logger.error(`[Backfill] Error creating payment_transaction for storage booking ${booking.id}:`, error);
         result.errors.push({
           bookingId: booking.id,
           bookingType: 'storage',
@@ -185,7 +186,7 @@ export async function backfillPaymentTransactionsFromBookings(
       LIMIT ${limit}
     `);
 
-    console.log(`[Backfill] Found ${equipmentBookingsResult.rows.length} equipment bookings to backfill`);
+    logger.info(`[Backfill] Found ${equipmentBookingsResult.rows.length} equipment bookings to backfill`);
 
     // Process equipment bookings
     for (const booking of equipmentBookingsResult.rows as any[]) {
@@ -215,7 +216,7 @@ export async function backfillPaymentTransactionsFromBookings(
 
         result.created++;
       } catch (error: any) {
-        console.error(`[Backfill] Error creating payment_transaction for equipment booking ${booking.id}:`, error);
+        logger.error(`[Backfill] Error creating payment_transaction for equipment booking ${booking.id}:`, error);
         result.errors.push({
           bookingId: booking.id,
           bookingType: 'equipment',
@@ -224,11 +225,11 @@ export async function backfillPaymentTransactionsFromBookings(
       }
     }
 
-    console.log(`[Backfill] Complete: ${result.created} created, ${result.errors.length} errors`);
+    logger.info(`[Backfill] Complete: ${result.created} created, ${result.errors.length} errors`);
 
     return result;
   } catch (error: any) {
-    console.error('[Backfill] Error backfilling payment transactions:', error);
+    logger.error('[Backfill] Error backfilling payment transactions:', error);
     throw error;
   }
 }

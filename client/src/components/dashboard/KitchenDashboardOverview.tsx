@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -268,12 +269,12 @@ export default function KitchenDashboardOverview({
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[Overview] Failed to fetch revenue metrics:', response.status, errorText);
+        logger.error('[Overview] Failed to fetch revenue metrics:', response.status, errorText);
         throw new Error('Failed to fetch revenue metrics');
       }
       
       const data = await response.json();
-      console.log('[Overview] Revenue metrics received:', data);
+      logger.info('[Overview] Revenue metrics received:', data);
       return data;
     },
     enabled: !!firebaseUser,
@@ -285,7 +286,7 @@ export default function KitchenDashboardOverview({
   // Handle errors using useEffect (React Query v5 doesn't support onError)
   useEffect(() => {
     if (revenueError) {
-      console.error('[Overview] Revenue metrics query error:', revenueError);
+      logger.error('[Overview] Revenue metrics query error:', revenueError);
     }
   }, [revenueError]);
 

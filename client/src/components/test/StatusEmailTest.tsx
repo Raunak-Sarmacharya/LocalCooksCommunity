@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,7 +57,7 @@ export default function StatusEmailTest() {
   const testEmailMutation = useMutation({
     mutationFn: async (data: { status: string; email: string; fullName: string }) => {
       try {
-        console.log("Testing status change email with:", data);
+        logger.info("Testing status change email with:", data);
         const response = await apiRequest(
           "POST",
           "/api/test-status-email",
@@ -64,7 +65,7 @@ export default function StatusEmailTest() {
         );
         return response.json();
       } catch (error) {
-        console.error("Error testing status email:", error);
+        logger.error("Error testing status email:", error);
         throw error;
       }
     },
@@ -95,7 +96,7 @@ export default function StatusEmailTest() {
   const testVerificationEmailMutation = useMutation({
     mutationFn: async (data: { fullName: string; email: string; phone: string }) => {
       try {
-        console.log("Testing full verification email with:", data);
+        logger.info("Testing full verification email with:", data);
         const response = await apiRequest(
           "POST",
           "/api/test-verification-email",
@@ -103,7 +104,7 @@ export default function StatusEmailTest() {
         );
         return response.json();
       } catch (error) {
-        console.error("Error testing verification email:", error);
+        logger.error("Error testing verification email:", error);
         throw error;
       }
     },

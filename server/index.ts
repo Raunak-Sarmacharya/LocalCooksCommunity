@@ -1,10 +1,16 @@
+// CRITICAL: Sentry must be imported BEFORE all other modules for auto-instrumentation
+import './instrument.js';
 import 'dotenv/config';
+import { logger } from './logger.js';
 import express, { NextFunction, type Request, Response } from "express";
+import * as Sentry from '@sentry/node';
 import { initializeFirebaseAdmin } from "./firebase-setup.js";
 import { registerFirebaseRoutes } from "./firebase-routes.js";
 import { registerRoutes } from "./routes.js";
 import { log, serveStatic, setupVite } from "./vite.js";
 import { registerSecurityMiddleware } from "./security.js";
+import { pinoInstance } from "./logger.js";
+import pinoHttp from 'pino-http';
 
 const app = express();
 // Set environment explicitly to match NODE_ENV
@@ -25,36 +31,42 @@ registerSecurityMiddleware(app);
 // Initialize Firebase Admin SDK
 initializeFirebaseAdmin();
 
-// Request logging middleware
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
-      log(logLine);
-    }
-  });
-
-  next();
-});
+// Structured request logging via pino-http
+// Replaces the old manual request logger with structured JSON output
+// Only logs /api/* requests (skips static assets and Vite HMR)
+const isLocalDev = process.env.NODE_ENV === 'development' && !process.env.VERCEL;
+app.use(pinoHttp({
+  logger: pinoInstance,
+  // Only log API requests, skip static assets
+  autoLogging: {
+    ignore: (req) => !req.url?.startsWith('/api'),
+  },
+  // Custom log level based on response status code
+  customLogLevel: (_req, res, err) => {
+    if (res.statusCode >= 500 || err) return 'error';
+    if (res.statusCode >= 400) return 'warn';
+    return 'info';
+  },
+  // Attach useful request metadata to each log line
+  customProps: (req) => ({
+    userAgent: req.headers['user-agent'],
+    ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress,
+  }),
+  // Redact sensitive headers from logs
+  serializers: {
+    req: (req) => ({
+      method: req.method,
+      url: req.url,
+      // Do NOT log authorization or cookie headers
+    }),
+    res: (res) => ({
+      statusCode: res.statusCode,
+    }),
+  },
+  // Use quiet mode in local dev (pino-pretty handles formatting)
+  // In production, let pino-http output standard structured logs
+  quietReqLogger: isLocalDev,
+}));
 
 // Track if routes have been initialized
 let routesInitialized = false;
@@ -72,6 +84,10 @@ const initPromise = (async () => {
     // ✅ FIREBASE AUTH ONLY - Modern JWT-based authentication (registered after specific routes)
     registerFirebaseRoutes(app);
 
+    // Sentry error handler — MUST be before our custom error handler
+    // Captures all Express errors and sends them to Sentry with full context
+    Sentry.setupExpressErrorHandler(app);
+
     // Error handling middleware — MED-5: Sanitize error messages in production
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
@@ -84,8 +100,8 @@ const initPromise = (async () => {
         : message;
 
       res.status(status).json({ message: safeMessage });
-      // Always log full error server-side
-      console.error(`[Error ${status}]`, err);
+      // Structured error logging via Pino (replaces console.error)
+      pinoInstance.error({ err, statusCode: status, path: _req.path }, `Express error handler [${status}]`);
     });
 
     routesInitialized = true;
@@ -113,7 +129,7 @@ const initPromise = (async () => {
       });
     }
   } catch (error) {
-    console.error('Failed to register routes:', error);
+    logger.error('Failed to register routes:', error);
     throw error;
   }
 })();

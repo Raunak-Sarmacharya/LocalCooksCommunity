@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
@@ -179,7 +180,7 @@ export function ImageWithReplace({
                 alt={alt}
                 className={cn('w-full h-full object-cover', !aspectRatio && className)}
                 onError={(e) => {
-                  console.error('Image failed to load:', {
+                  logger.error('Image failed to load:', {
                     originalUrl: imageUrl,
                     resolvedUrl: imageSrc,
                     error: 'Image load failed'
@@ -187,7 +188,7 @@ export function ImageWithReplace({
 
                   // If presigned URL failed, try the original URL directly
                   if (imageSrc !== imageUrl && imageUrl) {
-                    console.log('Retrying with original URL:', imageUrl);
+                    logger.info('Retrying with original URL:', imageUrl);
                     setImageSrc(imageUrl);
                     setError(null);
                   } else {

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { 
   Package, Plus, Check, Loader2, Pencil, Trash2, Search,
   Thermometer, Snowflake, Grid3X3, DollarSign, PlusCircle, SearchX,
@@ -236,7 +237,7 @@ function StorageListingContent({
       const data = await apiGet(`/manager/locations/${selectedLocationId}/overstay-penalty-defaults`);
       setLocationDefaults(data.locationDefaults);
     } catch (error: any) {
-      console.error('Failed to load location defaults:', error);
+      logger.error('Failed to load location defaults:', error);
     }
   };
 
@@ -391,7 +392,7 @@ function StorageListingContent({
         });
         successCount++;
       } catch (error) {
-        console.error('Error creating storage listing:', error);
+        logger.error('Error creating storage listing:', error);
       }
     }
     setIsSaving(false);

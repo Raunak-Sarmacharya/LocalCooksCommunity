@@ -8,6 +8,170 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// server/logger.ts
+import pino from "pino";
+import * as Sentry2 from "@sentry/node";
+function getLogLevel() {
+  if (isVercelProduction2) return "warn";
+  if (isVercelPreview) return "info";
+  if (isLocalDev) return "debug";
+  return "info";
+}
+function getTransport() {
+  if (isLocalDev) {
+    return {
+      target: "pino-pretty",
+      options: {
+        colorize: true,
+        translateTime: "HH:MM:ss.l",
+        ignore: "pid,hostname",
+        customLevels: "operational:35",
+        customColors: "operational:bgCyan",
+        useOnlyCustomProps: false
+      }
+    };
+  }
+  return void 0;
+}
+function logOperational(instance, msg, data) {
+  if (data) {
+    instance.operational(data, msg);
+  } else {
+    instance.operational(msg);
+  }
+}
+var isVercelProduction2, isVercelPreview, isLocalDev, customLevels, pinoLogger, logger, pinoInstance;
+var init_logger = __esm({
+  "server/logger.ts"() {
+    "use strict";
+    isVercelProduction2 = process.env.VERCEL_ENV === "production";
+    isVercelPreview = process.env.VERCEL_ENV === "preview";
+    isLocalDev = process.env.NODE_ENV === "development" && !process.env.VERCEL;
+    customLevels = { operational: 35 };
+    pinoLogger = pino({
+      level: getLogLevel(),
+      customLevels,
+      // Ensure our custom level is included when filtering
+      useOnlyCustomLevels: false,
+      // In production/preview, use raw JSON (no transport = direct stdout)
+      // In local dev, use pino-pretty for human-readable output
+      transport: getTransport(),
+      // Base fields attached to every log line
+      base: {
+        env: process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
+        region: process.env.VERCEL_REGION || void 0
+      },
+      // Format the level as a string label instead of a number
+      formatters: {
+        level(label) {
+          return { level: label };
+        }
+      },
+      // ISO timestamp for structured log aggregation
+      timestamp: pino.stdTimeFunctions.isoTime
+    });
+    logger = {
+      info(msg, ...args) {
+        if (args.length === 0) {
+          pinoLogger.info(msg);
+        } else if (args.length === 1 && typeof args[0] === "object" && args[0] !== null && !(args[0] instanceof Error)) {
+          pinoLogger.info(args[0], msg);
+        } else {
+          pinoLogger.info({ args }, msg);
+        }
+      },
+      warn(msg, ...args) {
+        if (args.length === 0) {
+          pinoLogger.warn(msg);
+        } else if (args.length === 1 && typeof args[0] === "object" && args[0] !== null && !(args[0] instanceof Error)) {
+          pinoLogger.warn(args[0], msg);
+        } else {
+          pinoLogger.warn({ args }, msg);
+        }
+      },
+      error(msg, error) {
+        if (error instanceof Error) {
+          pinoLogger.error({ err: error }, msg);
+          Sentry2.addBreadcrumb({
+            category: "logger",
+            message: msg,
+            level: "error",
+            data: { errorMessage: error.message }
+          });
+        } else if (error && typeof error === "object") {
+          pinoLogger.error(error, msg);
+        } else if (error) {
+          pinoLogger.error({ detail: String(error) }, msg);
+        } else {
+          pinoLogger.error(msg);
+        }
+      },
+      debug(msg, ...args) {
+        if (args.length === 0) {
+          pinoLogger.debug(msg);
+        } else if (args.length === 1 && typeof args[0] === "object" && args[0] !== null && !(args[0] instanceof Error)) {
+          pinoLogger.debug(args[0], msg);
+        } else {
+          pinoLogger.debug({ args }, msg);
+        }
+      },
+      operational(msg, data) {
+        if (isVercelProduction2) {
+          if (data) {
+            console.log(JSON.stringify({ level: "operational", time: (/* @__PURE__ */ new Date()).toISOString(), msg, ...data }));
+          } else {
+            console.log(JSON.stringify({ level: "operational", time: (/* @__PURE__ */ new Date()).toISOString(), msg }));
+          }
+        } else {
+          logOperational(pinoLogger, msg, data);
+        }
+      },
+      fatal(msg, data) {
+        if (data) {
+          pinoLogger.fatal(data, msg);
+        } else {
+          pinoLogger.fatal(msg);
+        }
+        Sentry2.captureMessage(msg, "fatal");
+      },
+      /**
+       * Create a child logger with bound context fields.
+       * Every log from the child automatically includes these fields.
+       * 
+       * Usage:
+       *   const reqLog = logger.child({ requestId, userId, bookingId });
+       *   reqLog.info('Processing booking');
+       *   // → {"level":"info","requestId":"abc","userId":42,"bookingId":183,"msg":"Processing booking"}
+       */
+      child(bindings) {
+        const childPino = pinoLogger.child(bindings);
+        return {
+          info: (msg, data) => data ? childPino.info(data, msg) : childPino.info(msg),
+          warn: (msg, data) => data ? childPino.warn(data, msg) : childPino.warn(msg),
+          error: (msg, error) => {
+            if (error instanceof Error) {
+              childPino.error({ err: error }, msg);
+            } else if (error && typeof error === "object") {
+              childPino.error(error, msg);
+            } else {
+              childPino.error(msg);
+            }
+          },
+          debug: (msg, data) => data ? childPino.debug(data, msg) : childPino.debug(msg),
+          operational: (msg, data) => {
+            if (isVercelProduction2) {
+              console.log(JSON.stringify({ level: "operational", time: (/* @__PURE__ */ new Date()).toISOString(), msg, ...bindings, ...data }));
+            } else {
+              logOperational(childPino, msg, data);
+            }
+          }
+        };
+      }
+    };
+    pinoInstance = pinoLogger;
+  }
+});
+
 // server/firebase-setup.ts
 var firebase_setup_exports = {};
 __export(firebase_setup_exports, {
@@ -25,7 +189,7 @@ function initializeFirebaseAdmin() {
   }
   try {
     if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-      console.log("\u{1F525} Initializing Firebase Admin with service account credentials...");
+      logger.info("\u{1F525} Initializing Firebase Admin with service account credentials...");
       try {
         firebaseAdmin = initializeApp({
           credential: cert({
@@ -35,28 +199,28 @@ function initializeFirebaseAdmin() {
           }),
           projectId: process.env.FIREBASE_PROJECT_ID
         });
-        console.log("\u2705 Firebase Admin initialized with service account for project:", process.env.FIREBASE_PROJECT_ID);
+        logger.info("\u2705 Firebase Admin initialized with service account for project:", process.env.FIREBASE_PROJECT_ID);
         return firebaseAdmin;
       } catch (error) {
-        console.error("\u274C Failed to initialize Firebase Admin with service account:", error.message);
+        logger.error("\u274C Failed to initialize Firebase Admin with service account:", error.message);
       }
     }
     if (!process.env.VITE_FIREBASE_PROJECT_ID) {
-      console.warn("Firebase Admin not configured - Firebase auth verification will be disabled (missing both service account and VITE_FIREBASE_PROJECT_ID)");
+      logger.warn("Firebase Admin not configured - Firebase auth verification will be disabled (missing both service account and VITE_FIREBASE_PROJECT_ID)");
       return null;
     }
     try {
       firebaseAdmin = initializeApp({
         projectId: process.env.VITE_FIREBASE_PROJECT_ID
       });
-      console.log("\u{1F525} Firebase Admin initialized with default credentials for project:", process.env.VITE_FIREBASE_PROJECT_ID);
+      logger.info("\u{1F525} Firebase Admin initialized with default credentials for project:", process.env.VITE_FIREBASE_PROJECT_ID);
     } catch (error) {
-      console.log("\u{1F525} Firebase Admin initialization failed, will rely on client-side checks:", error.message || "Unknown error");
+      logger.info("\u{1F525} Firebase Admin initialization failed, will rely on client-side checks:", error.message || "Unknown error");
       return null;
     }
     return firebaseAdmin;
   } catch (error) {
-    console.error("\u274C Failed to initialize Firebase Admin:", error);
+    logger.error("\u274C Failed to initialize Firebase Admin:", error);
     return null;
   }
 }
@@ -64,13 +228,13 @@ async function verifyFirebaseToken(token) {
   try {
     const app2 = initializeFirebaseAdmin();
     if (!app2) {
-      console.warn("Firebase Admin not initialized - cannot verify token");
+      logger.warn("Firebase Admin not initialized - cannot verify token");
       return null;
     }
     const decodedToken = await getAuth(app2).verifyIdToken(token);
     return decodedToken;
   } catch (error) {
-    console.error("Error verifying Firebase token:", error);
+    logger.error("Error verifying Firebase token:", error);
     return null;
   }
 }
@@ -81,17 +245,17 @@ async function getFirebaseUserByEmail(email) {
   try {
     const app2 = initializeFirebaseAdmin();
     if (!app2) {
-      console.warn("Firebase Admin not initialized - cannot get user by email");
+      logger.warn("Firebase Admin not initialized - cannot get user by email");
       return null;
     }
     const userRecord = await getAuth(app2).getUserByEmail(email);
     return userRecord;
   } catch (error) {
     if (error.code === "auth/user-not-found") {
-      console.log(`Firebase user not found for email: ${email}`);
+      logger.info(`Firebase user not found for email: ${email}`);
       return null;
     }
-    console.error("Error getting Firebase user by email:", error);
+    logger.error("Error getting Firebase user by email:", error);
     return null;
   }
 }
@@ -99,6 +263,7 @@ var firebaseAdmin;
 var init_firebase_setup = __esm({
   "server/firebase-setup.ts"() {
     "use strict";
+    init_logger();
     firebaseAdmin = null;
   }
 });
@@ -2107,33 +2272,6 @@ var init_domain_error = __esm({
   }
 });
 
-// server/logger.ts
-var isProd, logger;
-var init_logger = __esm({
-  "server/logger.ts"() {
-    "use strict";
-    isProd = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
-    logger = {
-      info: (msg, data) => {
-        if (!isProd) console.log(`[INFO] ${msg}`, data || "");
-      },
-      warn: (msg, data) => {
-        console.warn(`[WARN] ${msg}`, data || "");
-      },
-      error: (msg, error) => {
-        console.error(`[ERROR] ${msg}`, error);
-      },
-      debug: (msg, data) => {
-        if (!isProd) console.log(`[DEBUG] ${msg}`, data || "");
-      },
-      // Operational: always logs in both dev and prod (for critical business events)
-      operational: (msg, data) => {
-        console.log(`[OP] ${msg}`, data || "");
-      }
-    };
-  }
-});
-
 // server/services/overstay-defaults-service.ts
 var overstay_defaults_service_exports = {};
 __export(overstay_defaults_service_exports, {
@@ -2154,7 +2292,7 @@ async function getOverstayPlatformDefaults() {
       maxPenaltyDays: maxDaysSetting ? parseInt(maxDaysSetting.value) : DEFAULTS.maxPenaltyDays
     };
   } catch (error) {
-    console.error("[OverstayDefaultsService] Error fetching platform defaults:", error);
+    logger.error("[OverstayDefaultsService] Error fetching platform defaults:", error);
     return DEFAULTS;
   }
 }
@@ -2176,7 +2314,7 @@ async function getOverstayLocationDefaults(locationId) {
       policyText: location.overstayPolicyText
     };
   } catch (error) {
-    console.error("[OverstayDefaultsService] Error fetching location defaults:", error);
+    logger.error("[OverstayDefaultsService] Error fetching location defaults:", error);
     return { gracePeriodDays: null, penaltyRate: null, maxPenaltyDays: null, policyText: null };
   }
 }
@@ -2218,6 +2356,7 @@ var DEFAULTS;
 var init_overstay_defaults_service = __esm({
   "server/services/overstay-defaults-service.ts"() {
     "use strict";
+    init_logger();
     init_db();
     init_schema();
     DEFAULTS = {
@@ -3143,17 +3282,17 @@ async function getFeeConfig() {
       useStripePlatformPricing: settingsMap.get("use_stripe_platform_pricing") === "true"
     };
     if (config.stripePercentageFee < 0 || config.stripePercentageFee > 1) {
-      console.warn("Invalid stripe_percentage_fee, using default");
+      logger.warn("Invalid stripe_percentage_fee, using default");
       config.stripePercentageFee = DEFAULT_FEE_CONFIG.stripePercentageFee;
     }
     if (config.platformCommissionRate < 0 || config.platformCommissionRate > 1) {
-      console.warn("Invalid platform_commission_rate, using default");
+      logger.warn("Invalid platform_commission_rate, using default");
       config.platformCommissionRate = DEFAULT_FEE_CONFIG.platformCommissionRate;
     }
     feeConfigCache = { config, timestamp: Date.now() };
     return config;
   } catch (error) {
-    console.error("Error fetching fee config from database, using defaults:", error);
+    logger.error("Error fetching fee config from database, using defaults:", error);
     return DEFAULT_FEE_CONFIG;
   }
 }
@@ -3266,6 +3405,7 @@ var DEFAULT_FEE_CONFIG, feeConfigCache, CACHE_TTL_MS, FEE_CONFIG;
 var init_stripe_checkout_fee_service = __esm({
   "server/services/stripe-checkout-fee-service.ts"() {
     "use strict";
+    init_logger();
     init_db();
     init_schema();
     DEFAULT_FEE_CONFIG = {
@@ -3588,7 +3728,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
       WHERE pt.payment_intent_id = ${paymentIntentId}
     `);
     if (transactionResult.rows.length === 0) {
-      console.warn(`[Stripe Sync] No payment transaction found for PaymentIntent ${paymentIntentId}`);
+      logger.warn(`[Stripe Sync] No payment transaction found for PaymentIntent ${paymentIntentId}`);
       return;
     }
     const transaction = transactionResult.rows[0];
@@ -3596,7 +3736,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
     const bookingType = transaction.booking_type;
     const ptMetadata = transaction.metadata ? typeof transaction.metadata === "string" ? JSON.parse(transaction.metadata) : transaction.metadata : {};
     if (ptMetadata.partialCapture) {
-      console.log(`[Stripe Sync] Skipping booking table sync for partially captured PaymentIntent ${paymentIntentId} \u2014 capture engine already set correct values`);
+      logger.info(`[Stripe Sync] Skipping booking table sync for partially captured PaymentIntent ${paymentIntentId} \u2014 capture engine already set correct values`);
       return;
     }
     if (bookingType === "bundle") {
@@ -3702,9 +3842,9 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
         `);
       }
     }
-    console.log(`[Stripe Sync] Synced Stripe amounts to ${bookingType} booking(s) for PaymentIntent ${paymentIntentId}`);
+    logger.info(`[Stripe Sync] Synced Stripe amounts to ${bookingType} booking(s) for PaymentIntent ${paymentIntentId}`);
   } catch (error) {
-    console.error(`[Stripe Sync] Error syncing Stripe amounts to bookings for ${paymentIntentId}:`, error);
+    logger.error(`[Stripe Sync] Error syncing Stripe amounts to bookings for ${paymentIntentId}:`, error);
   }
 }
 async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options) {
@@ -3731,7 +3871,7 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options
     }
   }
   if (!getStripePaymentAmounts2) {
-    console.error("[Stripe Sync] Failed to import stripe-service from all paths:", importPaths);
+    logger.error("[Stripe Sync] Failed to import stripe-service from all paths:", importPaths);
     throw new Error(`Cannot import stripe-service from any path. Last error: ${lastError?.message || "Unknown"}`);
   }
   const limit = options?.limit || 1e3;
@@ -3767,7 +3907,7 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options
       LIMIT ${limit}
     `);
     const transactions = result.rows;
-    console.log(`[Stripe Sync] Found ${transactions.length} payment transactions to sync for manager ${managerId}`);
+    logger.info(`[Stripe Sync] Found ${transactions.length} payment transactions to sync for manager ${managerId}`);
     let synced = 0;
     let failed = 0;
     const errors = [];
@@ -3786,11 +3926,11 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options
             managerConnectAccountId = managerResult.rows[0].stripe_connect_account_id;
           }
         } catch (error) {
-          console.warn(`[Stripe Sync] Could not fetch manager Connect account:`, error);
+          logger.warn(`[Stripe Sync] Could not fetch manager Connect account:`, error);
         }
         const stripeAmounts = await getStripePaymentAmounts2(paymentIntentId, managerConnectAccountId);
         if (!stripeAmounts) {
-          console.warn(`[Stripe Sync] Could not fetch Stripe amounts for ${paymentIntentId}`);
+          logger.warn(`[Stripe Sync] Could not fetch Stripe amounts for ${paymentIntentId}`);
           failed++;
           errors.push({ paymentIntentId, error: "Could not fetch Stripe amounts" });
           continue;
@@ -3804,17 +3944,17 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options
         }, db2);
         await syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2);
         synced++;
-        console.log(`[Stripe Sync] Synced transaction ${transaction.id} (PaymentIntent: ${paymentIntentId})`);
+        logger.info(`[Stripe Sync] Synced transaction ${transaction.id} (PaymentIntent: ${paymentIntentId})`);
       } catch (error) {
-        console.error(`[Stripe Sync] Error syncing transaction ${transaction.id} (${paymentIntentId}):`, error);
+        logger.error(`[Stripe Sync] Error syncing transaction ${transaction.id} (${paymentIntentId}):`, error);
         failed++;
         errors.push({ paymentIntentId, error: error.message || "Unknown error" });
       }
     }
-    console.log(`[Stripe Sync] Completed: ${synced} synced, ${failed} failed`);
+    logger.info(`[Stripe Sync] Completed: ${synced} synced, ${failed} failed`);
     return { synced, failed, errors };
   } catch (error) {
-    console.error(`[Stripe Sync] Error syncing existing transactions:`, error);
+    logger.error(`[Stripe Sync] Error syncing existing transactions:`, error);
     throw error;
   }
 }
@@ -4066,7 +4206,7 @@ async function syncStripeFees(db2, managerId, limit = 100) {
         },
         db2
       );
-      console.log(`[Stripe Sync] \u2705 Synced transaction ${transactionId}: fee=${stripeProcessingFee} cents`);
+      logger.info(`[Stripe Sync] \u2705 Synced transaction ${transactionId}: fee=${stripeProcessingFee} cents`);
       synced++;
       await new Promise((resolve) => setTimeout(resolve, 100));
     } catch (error) {
@@ -4250,6 +4390,7 @@ async function getAdminPaymentTransactions(db2, filters) {
 var init_payment_transactions_service = __esm({
   "server/services/payment-transactions-service.ts"() {
     "use strict";
+    init_logger();
   }
 });
 
@@ -4377,7 +4518,7 @@ async function createPaymentIntent(params) {
       amount: paymentIntent.amount
     };
   } catch (error) {
-    console.error("Error creating PaymentIntent:", error);
+    logger.error("Error creating PaymentIntent:", error);
     throw new Error(`Failed to create payment intent: ${error.message}`);
   }
 }
@@ -4396,7 +4537,7 @@ async function confirmPaymentIntent(paymentIntentId, paymentMethodId) {
       amount: paymentIntent.amount
     };
   } catch (error) {
-    console.error("Error confirming PaymentIntent:", error);
+    logger.error("Error confirming PaymentIntent:", error);
     throw new Error(`Failed to confirm payment intent: ${error.message}`);
   }
 }
@@ -4416,7 +4557,7 @@ async function getPaymentIntent(paymentIntentId) {
     if (error.code === "resource_missing") {
       return null;
     }
-    console.error("Error retrieving PaymentIntent:", error);
+    logger.error("Error retrieving PaymentIntent:", error);
     throw new Error(`Failed to retrieve payment intent: ${error.message}`);
   }
 }
@@ -4429,7 +4570,7 @@ async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId)
       expand: ["latest_charge"]
     });
     if (!paymentIntent.latest_charge) {
-      console.warn(`[Stripe] No charge found for PaymentIntent ${paymentIntentId}`);
+      logger.warn(`[Stripe] No charge found for PaymentIntent ${paymentIntentId}`);
       return null;
     }
     const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
@@ -4452,7 +4593,7 @@ async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId)
         stripeNetAmount = stripeAmount - stripeProcessingFee;
       }
     } else {
-      console.log(`[Stripe] balance_transaction not immediately available for ${paymentIntentId}, retrying in 2s...`);
+      logger.info(`[Stripe] balance_transaction not immediately available for ${paymentIntentId}, retrying in 2s...`);
       await new Promise((resolve) => setTimeout(resolve, 2e3));
       const retryCharge = await stripe.charges.retrieve(chargeId);
       if (retryCharge.balance_transaction) {
@@ -4465,9 +4606,9 @@ async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId)
         } else {
           stripeNetAmount = stripeAmount - stripeProcessingFee;
         }
-        console.log(`[Stripe] \u2705 Retry successful - got actual fee: ${stripeProcessingFee} cents`);
+        logger.info(`[Stripe] \u2705 Retry successful - got actual fee: ${stripeProcessingFee} cents`);
       } else {
-        console.log(`[Stripe] balance_transaction still not available for ${paymentIntentId} - charge.updated webhook will sync fees`);
+        logger.info(`[Stripe] balance_transaction still not available for ${paymentIntentId} - charge.updated webhook will sync fees`);
         stripeProcessingFee = 0;
         if (managerConnectAccountId && paymentIntent.application_fee_amount) {
           stripePlatformFee = paymentIntent.application_fee_amount;
@@ -4483,7 +4624,7 @@ async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId)
       chargeId
     };
   } catch (error) {
-    console.error(`[Stripe] Error fetching payment amounts for ${paymentIntentId}:`, error);
+    logger.error(`[Stripe] Error fetching payment amounts for ${paymentIntentId}:`, error);
     return null;
   }
 }
@@ -4507,7 +4648,7 @@ async function capturePaymentIntent(paymentIntentId, amountToCapture, applicatio
       amount: paymentIntent.amount
     };
   } catch (error) {
-    console.error("Error capturing PaymentIntent:", error);
+    logger.error("Error capturing PaymentIntent:", error);
     throw new Error(`Failed to capture payment intent: ${error.message}`);
   }
 }
@@ -4524,7 +4665,7 @@ async function cancelPaymentIntent(paymentIntentId) {
       amount: paymentIntent.amount
     };
   } catch (error) {
-    console.error("Error canceling PaymentIntent:", error);
+    logger.error("Error canceling PaymentIntent:", error);
     throw new Error(`Failed to cancel payment intent: ${error.message}`);
   }
 }
@@ -4570,7 +4711,7 @@ async function createRefund(paymentIntentId, amount, reason = "requested_by_cust
       charge: refundChargeId
     };
   } catch (error) {
-    console.error("Error creating refund:", error);
+    logger.error("Error creating refund:", error);
     throw new Error(`Failed to create refund: ${error.message}`);
   }
 }
@@ -4640,7 +4781,7 @@ async function reverseTransferAndRefund(paymentIntentId, amount, reason = "reque
       transferReversalId: reversal.id
     };
   } catch (error) {
-    console.error("Error reversing transfer and refunding:", error);
+    logger.error("Error reversing transfer and refunding:", error);
     throw new Error(`Failed to reverse transfer and refund: ${error.message}`);
   }
 }
@@ -4660,7 +4801,7 @@ async function verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedAm
     const amountToCompare = storedExpectedAmount !== null ? storedExpectedAmount : expectedAmount;
     const amountDifference = Math.abs(paymentIntent.amount - amountToCompare);
     if (amountDifference > 5) {
-      console.error("Payment amount mismatch:", {
+      logger.error("Payment amount mismatch:", {
         paymentIntentAmount: paymentIntent.amount,
         expectedAmount: amountToCompare,
         storedExpectedAmount,
@@ -4680,7 +4821,7 @@ async function verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedAm
     }
     return { valid: true, status: paymentIntent.status };
   } catch (error) {
-    console.error("Error verifying PaymentIntent:", error);
+    logger.error("Error verifying PaymentIntent:", error);
     if (error.code === "resource_missing") {
       return { valid: false, status: "not_found", error: "Payment intent not found" };
     }
@@ -4691,9 +4832,10 @@ var stripeSecretKey, stripe;
 var init_stripe_service = __esm({
   "server/services/stripe-service.ts"() {
     "use strict";
+    init_logger();
     stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {
-      console.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
+      logger.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
     }
     stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
       apiVersion: "2025-12-15.clover"
@@ -4909,6 +5051,7 @@ var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION
 var init_email = __esm({
   "server/email.ts"() {
     "use strict";
+    init_logger();
     createBookingDateTimeImpl = createBookingDateTimeFallback;
     loadAttempted = false;
     (async () => {
@@ -4935,16 +5078,16 @@ var init_email = __esm({
             const timezoneUtils = await import(timezoneUtilsUrl);
             if (timezoneUtils && timezoneUtils.createBookingDateTime) {
               createBookingDateTimeImpl = timezoneUtils.createBookingDateTime;
-              console.log(`Successfully loaded timezone-utils from: ${timezoneUtilsUrl}`);
+              logger.info(`Successfully loaded timezone-utils from: ${timezoneUtilsUrl}`);
               return;
             }
           } catch {
             continue;
           }
         }
-        console.warn("Failed to load timezone-utils from any path, using fallback implementation");
+        logger.warn("Failed to load timezone-utils from any path, using fallback implementation");
       } catch (error) {
-        console.error("Error during timezone-utils initialization:", error);
+        logger.error("Error during timezone-utils initialization:", error);
       }
     })();
     recentEmails = /* @__PURE__ */ new Map();
@@ -4986,7 +5129,7 @@ var init_email = __esm({
       const forceDirectSMTP = process.env.FORCE_DIRECT_SMTP === "true";
       const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
       if (forceDirectSMTP && isProduction2) {
-        console.log("\u{1F504} Forcing direct SMTP connection (bypassing MailChannels)");
+        logger.info("\u{1F504} Forcing direct SMTP connection (bypassing MailChannels)");
       }
       return {
         host: process.env.EMAIL_HOST || "smtp.hostinger.com",
@@ -5006,7 +5149,7 @@ var init_email = __esm({
           const lastSent = recentEmails.get(options.trackingId);
           const now = Date.now();
           if (lastSent && now - lastSent < DUPLICATE_PREVENTION_WINDOW) {
-            console.log(`Preventing duplicate email for tracking ID: ${options.trackingId} (sent ${now - lastSent}ms ago)`);
+            logger.info(`Preventing duplicate email for tracking ID: ${options.trackingId} (sent ${now - lastSent}ms ago)`);
             return true;
           }
           recentEmails.set(options.trackingId, now);
@@ -5018,12 +5161,12 @@ var init_email = __esm({
           }
         }
         if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-          console.error("Email configuration is missing. Please set EMAIL_USER and EMAIL_PASS environment variables.");
+          logger.error("Email configuration is missing. Please set EMAIL_USER and EMAIL_PASS environment variables.");
           return false;
         }
         const config = getEmailConfig();
         const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
-        console.log("\u{1F4E7} COMPREHENSIVE EMAIL SEND INITIATED:", {
+        logger.info("\u{1F4E7} COMPREHENSIVE EMAIL SEND INITIATED:", {
           to: content.to,
           subject: content.subject,
           emailType: content.subject.includes("Application") ? "\u{1F3AF} APPLICATION_EMAIL" : "\u{1F4DD} SYSTEM_EMAIL",
@@ -5056,16 +5199,16 @@ var init_email = __esm({
               transporter.verify((error, success) => {
                 clearTimeout(timeout);
                 if (error) {
-                  console.error("SMTP connection verification failed:", error);
+                  logger.error("SMTP connection verification failed:", error);
                   reject(error);
                 } else {
-                  console.log("SMTP connection verified successfully");
+                  logger.info("SMTP connection verified successfully");
                   resolve(success);
                 }
               });
             });
           } catch (verifyError) {
-            console.error("Failed to verify SMTP connection:", verifyError);
+            logger.error("Failed to verify SMTP connection:", verifyError);
           }
         }
         const domain = getDomainFromEmail(config.auth.user);
@@ -5109,17 +5252,17 @@ var init_email = __esm({
         const maxAttempts = 2;
         while (attempts < maxAttempts) {
           attempts++;
-          console.log(`\u{1F4E7} Attempt ${attempts}/${maxAttempts} sending email to ${content.to}`);
+          logger.info(`\u{1F4E7} Attempt ${attempts}/${maxAttempts} sending email to ${content.to}`);
           try {
             const emailPromise = transporter.sendMail(mailOptions);
             const timeoutPromise = new Promise((_, reject) => {
               setTimeout(() => reject(new Error("Email sending timeout - exceeded 25 seconds")), 25e3);
             });
             info = await Promise.race([emailPromise, timeoutPromise]);
-            console.log(`\u2705 Email sent successfully on attempt ${attempts}`);
+            logger.info(`\u2705 Email sent successfully on attempt ${attempts}`);
             break;
           } catch (attemptError) {
-            console.warn(`\u26A0\uFE0F Attempt ${attempts} failed for ${content.to}:`, attemptError instanceof Error ? attemptError.message : String(attemptError));
+            logger.warn(`\u26A0\uFE0F Attempt ${attempts} failed for ${content.to}:`, attemptError instanceof Error ? attemptError.message : String(attemptError));
             if (attempts >= maxAttempts) {
               throw attemptError;
             }
@@ -5127,7 +5270,7 @@ var init_email = __esm({
           }
         }
         const executionTime = Date.now() - startTime;
-        console.log("Email sent successfully:", {
+        logger.info("Email sent successfully:", {
           messageId: info.messageId,
           accepted: info.accepted,
           rejected: info.rejected,
@@ -5144,7 +5287,7 @@ var init_email = __esm({
         return true;
       } catch (error) {
         const executionTime = Date.now() - startTime;
-        console.error("Error sending email:", {
+        logger.error("Error sending email:", {
           error: error instanceof Error ? error.message : error,
           executionTime: `${executionTime}ms`,
           to: content.to,
@@ -5153,19 +5296,19 @@ var init_email = __esm({
           isProduction: process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production"
         });
         if (error instanceof Error) {
-          console.error("Error details:", error.message);
+          logger.error("Error details:", error.message);
           if ("code" in error) {
-            console.error("Error code:", error.code);
+            logger.error("Error code:", error.code);
           }
           if ("responseCode" in error) {
-            console.error("SMTP Response code:", error.responseCode);
+            logger.error("SMTP Response code:", error.responseCode);
           }
         }
         if (transporter && typeof transporter.close === "function") {
           try {
             transporter.close();
           } catch (closeError) {
-            console.error("Error closing transporter:", closeError);
+            logger.error("Error closing transporter:", closeError);
           }
         }
         return false;
@@ -5377,7 +5520,7 @@ var init_email = __esm({
             return `https://calendar.google.com/calendar/render?${genericParams.toString()}`;
         }
       } catch (error) {
-        console.error("Error generating calendar URL:", error);
+        logger.error("Error generating calendar URL:", error);
         return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&location=${encodeURIComponent(location)}`;
       }
     };
@@ -11406,7 +11549,7 @@ async function getDamageClaimLimits() {
       claimSubmissionDeadlineDays: submissionDeadlineSetting ? parseInt(submissionDeadlineSetting.value) : DEFAULTS2.claimSubmissionDeadlineDays
     };
   } catch (error) {
-    console.error("[DamageClaimLimitsService] Error fetching limits:", error);
+    logger.error("[DamageClaimLimitsService] Error fetching limits:", error);
     return DEFAULTS2;
   }
 }
@@ -11464,7 +11607,7 @@ async function getStorageCheckoutSettings() {
       extendedClaimWindowHours: extendedWindowSetting ? parseInt(extendedWindowSetting.value) : STORAGE_CHECKOUT_DEFAULTS.extendedClaimWindowHours
     };
   } catch (error) {
-    console.error("[DamageClaimLimitsService] Error fetching storage checkout settings:", error);
+    logger.error("[DamageClaimLimitsService] Error fetching storage checkout settings:", error);
     return STORAGE_CHECKOUT_DEFAULTS;
   }
 }
@@ -11475,6 +11618,7 @@ var DEFAULTS2, STORAGE_CHECKOUT_DEFAULTS, damageClaimLimitsService;
 var init_damage_claim_limits_service = __esm({
   "server/services/damage-claim-limits-service.ts"() {
     "use strict";
+    init_logger();
     init_db();
     init_schema();
     DEFAULTS2 = {
@@ -13232,6 +13376,7 @@ var UserService, userService;
 var init_user_service = __esm({
   "server/domains/users/user.service.ts"() {
     "use strict";
+    init_logger();
     init_user_repository();
     init_schema();
     init_db();
@@ -13374,7 +13519,7 @@ var init_user_service = __esm({
             totalOwedCents: penaltyTotal + claimTotal
           };
         } catch (error) {
-          console.error(`[UserService] Error checking obligations for user ${userId}:`, error);
+          logger.error(`[UserService] Error checking obligations for user ${userId}:`, error);
           return { hasObligations: false, overstayPenalties: 0, damageClaims: 0, totalOwedCents: 0 };
         }
       }
@@ -13389,10 +13534,10 @@ var init_user_service = __esm({
           const managedLocations = await tx.select().from(locations).where(eq6(locations.managerId, id));
           if (managedLocations.length > 0) {
             await tx.update(locations).set({ managerId: null }).where(eq6(locations.managerId, id));
-            console.log(`Removed manager ${id} from ${managedLocations.length} locations`);
+            logger.info(`Removed manager ${id} from ${managedLocations.length} locations`);
           }
           await tx.delete(users).where(eq6(users.id, id));
-          console.log(`Deleted user ${id}`);
+          logger.info(`Deleted user ${id}`);
         });
       }
     };
@@ -13401,6 +13546,7 @@ var init_user_service = __esm({
 });
 
 // server/firebase-auth-middleware.ts
+import * as Sentry3 from "@sentry/node";
 async function requireFirebaseAuthWithUser(req, res, next) {
   try {
     if (res.headersSent) {
@@ -13440,18 +13586,22 @@ async function requireFirebaseAuthWithUser(req, res, next) {
       uid: neonUser.firebaseUid || void 0
       // Support legacy code that uses .uid
     };
-    console.log(`\u{1F504} Auth translation: Firebase UID ${req.firebaseUser.uid} \u2192 Neon User ID ${neonUser.id}`, {
-      role: neonUser.role,
-      isChef: neonUser.isChef,
-      isManager: neonUser.isManager
+    Sentry3.setUser({
+      id: String(neonUser.id),
+      email: req.firebaseUser.email,
+      username: neonUser.username || void 0,
+      data: {
+        role: neonUser.role,
+        firebaseUid: req.firebaseUser.uid
+      }
     });
     next();
   } catch (error) {
     if (res.headersSent) {
-      console.error("Firebase auth with user verification error (response already sent):", error);
+      logger.error("Firebase auth with user verification error (response already sent):", error);
       return;
     }
-    console.error("Firebase auth with user verification error:", error);
+    logger.error("Firebase auth with user verification error:", error);
     return res.status(500).json({
       error: "Internal server error",
       message: "Authentication verification failed"
@@ -13484,7 +13634,7 @@ async function optionalFirebaseAuth(req, res, next) {
     }
     next();
   } catch (error) {
-    console.error("Optional Firebase auth error:", error);
+    logger.error("Optional Firebase auth error:", error);
     next();
   }
 }
@@ -13527,6 +13677,7 @@ function requireManager(req, res, next) {
 var init_firebase_auth_middleware = __esm({
   "server/firebase-auth-middleware.ts"() {
     "use strict";
+    init_logger();
     init_firebase_setup();
     init_user_service();
   }
@@ -13626,10 +13777,10 @@ async function uploadToR2(file, userId, folder = "documents") {
     } else {
       publicUrl = `https://${config.accountId}.r2.cloudflarestorage.com/${config.bucketName}/${key}`;
     }
-    console.log(`\u2705 File uploaded to R2: ${key} -> ${publicUrl}`);
+    logger.info(`\u2705 File uploaded to R2: ${key} -> ${publicUrl}`);
     return publicUrl;
   } catch (error) {
-    console.error("\u274C Error uploading to R2:", error);
+    logger.error("\u274C Error uploading to R2:", error);
     throw new Error(`Failed to upload file to R2: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
 }
@@ -13643,13 +13794,13 @@ async function deleteFromR2(fileUrl) {
         const urlParam = urlObj2.searchParams.get("url");
         if (urlParam) {
           actualFileUrl = decodeURIComponent(urlParam);
-          console.log(`\u{1F50D} Extracted R2 URL from proxy: ${actualFileUrl}`);
+          logger.info(`\u{1F50D} Extracted R2 URL from proxy: ${actualFileUrl}`);
         } else {
-          console.error("\u274C Proxy URL missing url parameter:", fileUrl);
+          logger.error("\u274C Proxy URL missing url parameter:", fileUrl);
           return false;
         }
       } catch (urlError) {
-        console.error("\u274C Error parsing proxy URL:", urlError);
+        logger.error("\u274C Error parsing proxy URL:", urlError);
         return false;
       }
     }
@@ -13672,10 +13823,10 @@ async function deleteFromR2(fileUrl) {
     }
     key = key.replace(/^\/+|\/+$/g, "");
     if (!key || key.length === 0) {
-      console.error(`\u274C Invalid key extracted from URL: ${fileUrl} -> ${actualFileUrl}`);
+      logger.error(`\u274C Invalid key extracted from URL: ${fileUrl} -> ${actualFileUrl}`);
       return false;
     }
-    console.log("\u{1F50D} R2 Delete Debug:", {
+    logger.info("\u{1F50D} R2 Delete Debug:", {
       originalUrl: fileUrl,
       actualFileUrl,
       extractedKey: key,
@@ -13689,10 +13840,10 @@ async function deleteFromR2(fileUrl) {
       Key: key
     });
     await client.send(command);
-    console.log(`\u2705 File deleted from R2: ${key}`);
+    logger.info(`\u2705 File deleted from R2: ${key}`);
     return true;
   } catch (error) {
-    console.error("\u274C Error deleting from R2:", {
+    logger.error("\u274C Error deleting from R2:", {
       error: error instanceof Error ? error.message : "Unknown error",
       fileUrl,
       stack: error instanceof Error ? error.stack : void 0
@@ -13750,17 +13901,17 @@ async function getPresignedUrl(fileUrl, expiresIn = 3600) {
       if (err.name === "NotFound" || err.$metadata?.httpStatusCode === 404) {
         if (key.startsWith("documents/") && (key.includes("foodSafetyLicenseFile") || key.includes("foodEstablishmentCert"))) {
           const remappedKey = key.replace("documents/", "kitchen-applications/");
-          console.log(`[R2 Storage] Key ${key} not found. Checking remapped: ${remappedKey}`);
+          logger.info(`[R2 Storage] Key ${key} not found. Checking remapped: ${remappedKey}`);
           try {
             await client.send(new HeadObjectCommand({ Bucket: config.bucketName, Key: remappedKey }));
             key = remappedKey;
-            console.log(`[R2 Storage] Using remapped key: ${key}`);
+            logger.info(`[R2 Storage] Using remapped key: ${key}`);
           } catch (_remapError) {
-            console.log(`[R2 Storage] Remapped key also not found: ${remappedKey}`);
+            logger.info(`[R2 Storage] Remapped key also not found: ${remappedKey}`);
           }
         }
       } else {
-        console.warn(`[R2 Storage] Warning: HeadObject validation failed for ${key}:`, err.message);
+        logger.warn(`[R2 Storage] Warning: HeadObject validation failed for ${key}:`, err.message);
       }
     }
     const command = new GetObjectCommand({
@@ -13770,7 +13921,7 @@ async function getPresignedUrl(fileUrl, expiresIn = 3600) {
     const presignedUrl = await getSignedUrl(client, command, { expiresIn });
     return presignedUrl;
   } catch (error) {
-    console.error("\u274C Error generating presigned URL:", {
+    logger.error("\u274C Error generating presigned URL:", {
       error: error instanceof Error ? error.message : "Unknown error",
       fileUrl,
       stack: error instanceof Error ? error.stack : void 0
@@ -13786,6 +13937,7 @@ var s3Client;
 var init_r2_storage = __esm({
   "server/r2-storage.ts"() {
     "use strict";
+    init_logger();
     s3Client = null;
   }
 });
@@ -13795,7 +13947,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 function getUploadsDir() {
-  if (isVercel) {
+  if (isVercel2) {
     return "/tmp/uploads/documents";
   }
   return path.join(process.cwd(), "uploads", "documents");
@@ -13809,14 +13961,15 @@ function ensureUploadsDirExists() {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
-var isVercel, isProduction, useCloudStorage, uploadsDir, diskStorage, memoryStorage, fileFilter, upload, uploadToBlob, getFileUrl;
+var isVercel2, isProduction, useCloudStorage, uploadsDir, diskStorage, memoryStorage, fileFilter, upload, uploadToBlob, getFileUrl;
 var init_fileUpload = __esm({
   "server/fileUpload.ts"() {
     "use strict";
+    init_logger();
     init_r2_storage();
-    isVercel = !!process.env.VERCEL;
+    isVercel2 = !!process.env.VERCEL;
     isProduction = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
-    useCloudStorage = isR2Configured() || isProduction || isVercel;
+    useCloudStorage = isR2Configured() || isProduction || isVercel2;
     uploadsDir = getUploadsDir();
     diskStorage = multer.diskStorage({
       destination: (req, file, cb) => {
@@ -13850,11 +14003,11 @@ var init_fileUpload = __esm({
       if (allowedMimes.includes(file.mimetype)) {
         cb(null, true);
       } else {
-        console.log(`[FileUpload] Rejected file with mimetype: ${file.mimetype}`);
+        logger.info(`[FileUpload] Rejected file with mimetype: ${file.mimetype}`);
         cb(new Error("Invalid file type. Only PDF, JPG, JPEG, PNG, WebP, DOC, and DOCX files are allowed."));
       }
     };
-    console.log(` File Upload Config: R2 configured = ${isR2Configured()}, using ${useCloudStorage ? "memory (R2)" : "disk (local)"} storage`);
+    logger.info(` File Upload Config: R2 configured = ${isR2Configured()}, using ${useCloudStorage ? "memory (R2)" : "disk (local)"} storage`);
     upload = multer({
       storage: useCloudStorage ? memoryStorage : diskStorage,
       limits: {
@@ -13866,19 +14019,19 @@ var init_fileUpload = __esm({
     uploadToBlob = async (file, userId, folder = "documents") => {
       try {
         const r2Available = isR2Configured();
-        console.log(`\u{1F4E6} uploadToBlob: R2 configured = ${r2Available}, file has buffer = ${!!file.buffer}, file has path = ${!!file.path}`);
+        logger.info(`\u{1F4E6} uploadToBlob: R2 configured = ${r2Available}, file has buffer = ${!!file.buffer}, file has path = ${!!file.path}`);
         if (r2Available) {
-          console.log(`\u2601\uFE0F Uploading to Cloudflare R2...`);
+          logger.info(`\u2601\uFE0F Uploading to Cloudflare R2...`);
           const url = await uploadToR2(file, userId, folder);
-          console.log(`\u2705 R2 upload complete: ${url}`);
+          logger.info(`\u2705 R2 upload complete: ${url}`);
           return url;
         } else {
-          console.log(`\u{1F4C1} R2 not configured, using local storage`);
+          logger.info(`\u{1F4C1} R2 not configured, using local storage`);
           const filename = file.filename || `${userId}_${Date.now()}_${file.originalname}`;
           return getFileUrl(filename);
         }
       } catch (error) {
-        console.error("\u274C Error uploading file:", error);
+        logger.error("\u274C Error uploading file:", error);
         throw new Error("Failed to upload file to cloud storage");
       }
     };
@@ -14059,7 +14212,7 @@ async function getManagerPhone(location, managerId, pool3) {
     if (normalized) {
       return normalized;
     }
-    console.warn(`\u26A0\uFE0F Location notification phone is invalid format: ${phone}`);
+    logger.warn(`\u26A0\uFE0F Location notification phone is invalid format: ${phone}`);
   }
   if (!phone && managerId) {
     try {
@@ -14070,10 +14223,10 @@ async function getManagerPhone(location, managerId, pool3) {
         if (normalized) {
           return normalized;
         }
-        console.warn(`\u26A0\uFE0F Manager application phone is invalid format: ${phone}`);
+        logger.warn(`\u26A0\uFE0F Manager application phone is invalid format: ${phone}`);
       }
     } catch (error) {
-      console.warn("Could not retrieve manager phone from application:", error);
+      logger.warn("Could not retrieve manager phone from application:", error);
     }
   }
   return null;
@@ -14088,10 +14241,10 @@ async function getChefPhone(chefId, pool3) {
       if (normalized) {
         return normalized;
       }
-      console.warn(`\u26A0\uFE0F Chef application phone is invalid format: ${phone}`);
+      logger.warn(`\u26A0\uFE0F Chef application phone is invalid format: ${phone}`);
     }
   } catch (error) {
-    console.warn("Could not retrieve chef phone from application:", error);
+    logger.warn("Could not retrieve chef phone from application:", error);
   }
   return null;
 }
@@ -14102,6 +14255,7 @@ function normalizePhoneForStorage(phone) {
 var init_phone_utils = __esm({
   "server/phone-utils.ts"() {
     "use strict";
+    init_logger();
     init_phone_validation();
     init_db();
     init_schema();
@@ -14188,6 +14342,7 @@ var LocationRepository;
 var init_location_repository = __esm({
   "server/domains/locations/location.repository.ts"() {
     "use strict";
+    init_logger();
     init_db();
     init_schema();
     init_domain_error();
@@ -14200,7 +14355,7 @@ var init_location_repository = __esm({
           const [location] = await db.select().from(locations).where(eq12(locations.id, id)).limit(1);
           return location || null;
         } catch (error) {
-          console.error(`[LocationRepository] Error finding location by ID ${id}:`, error);
+          logger.error(`[LocationRepository] Error finding location by ID ${id}:`, error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to find location",
@@ -14216,7 +14371,7 @@ var init_location_repository = __esm({
           const results = await db.select().from(locations).where(eq12(locations.managerId, managerId)).orderBy(desc7(locations.createdAt));
           return results;
         } catch (error) {
-          console.error(`[LocationRepository] Error finding locations by manager ${managerId}:`, error);
+          logger.error(`[LocationRepository] Error finding locations by manager ${managerId}:`, error);
           throw new DomainError(
             LocationErrorCodes.NO_MANAGER_ASSIGNED,
             "Failed to find locations",
@@ -14255,7 +14410,7 @@ var init_location_repository = __esm({
           }).returning();
           return location;
         } catch (error) {
-          console.error("[LocationRepository] Error creating location:", error);
+          logger.error("[LocationRepository] Error creating location:", error);
           throw new DomainError(
             LocationErrorCodes.INVALID_ADDRESS,
             "Failed to create location",
@@ -14294,7 +14449,7 @@ var init_location_repository = __esm({
           }).where(eq12(locations.id, id)).returning();
           return location || null;
         } catch (error) {
-          console.error(`[LocationRepository] Error updating location ${id}:`, error);
+          logger.error(`[LocationRepository] Error updating location ${id}:`, error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to update location",
@@ -14316,7 +14471,7 @@ var init_location_repository = __esm({
           }).where(eq12(locations.id, dto.locationId)).returning();
           return location || null;
         } catch (error) {
-          console.error(`[LocationRepository] Error verifying kitchen license for location ${dto.locationId}:`, error);
+          logger.error(`[LocationRepository] Error verifying kitchen license for location ${dto.locationId}:`, error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to verify kitchen license",
@@ -14332,7 +14487,7 @@ var init_location_repository = __esm({
           const [location] = await db.update(locations).set({ kitchenLicenseUrl: licenseUrl }).where(eq12(locations.id, locationId)).returning();
           return location || null;
         } catch (error) {
-          console.error(`[LocationRepository] Error updating kitchen license URL for location ${locationId}:`, error);
+          logger.error(`[LocationRepository] Error updating kitchen license URL for location ${locationId}:`, error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to update kitchen license URL",
@@ -14348,7 +14503,7 @@ var init_location_repository = __esm({
           const results = await db.select().from(locations).orderBy(desc7(locations.createdAt));
           return results;
         } catch (error) {
-          console.error("[LocationRepository] Error finding all locations:", error);
+          logger.error("[LocationRepository] Error finding all locations:", error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to find locations",
@@ -14366,7 +14521,7 @@ var init_location_repository = __esm({
           ).limit(1);
           return result.length > 0;
         } catch (error) {
-          console.error(`[LocationRepository] Error checking name existence ${name}:`, error);
+          logger.error(`[LocationRepository] Error checking name existence ${name}:`, error);
           return false;
         }
       }
@@ -14378,7 +14533,7 @@ var init_location_repository = __esm({
           const results = await db.select({ id: locations.id }).from(locations).where(eq12(locations.managerId, managerId));
           return results.length;
         } catch (error) {
-          console.error(`[LocationRepository] Error counting locations by manager ${managerId}:`, error);
+          logger.error(`[LocationRepository] Error counting locations by manager ${managerId}:`, error);
           return 0;
         }
       }
@@ -14390,7 +14545,7 @@ var init_location_repository = __esm({
           const [requirements] = await db.select().from(locationRequirements).where(eq12(locationRequirements.locationId, locationId));
           return requirements || null;
         } catch (error) {
-          console.error(`[LocationRepository] Error finding requirements for location ${locationId}:`, error);
+          logger.error(`[LocationRepository] Error finding requirements for location ${locationId}:`, error);
           return null;
         }
       }
@@ -14418,7 +14573,7 @@ var init_location_repository = __esm({
             return created;
           }
         } catch (error) {
-          console.error(`[LocationRepository] Error upserting requirements for location ${locationId}:`, error);
+          logger.error(`[LocationRepository] Error upserting requirements for location ${locationId}:`, error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to update location requirements",
@@ -14433,7 +14588,7 @@ var init_location_repository = __esm({
         try {
           await db.delete(locations).where(eq12(locations.id, id));
         } catch (error) {
-          console.error(`[LocationRepository] Error deleting location ${id}:`, error);
+          logger.error(`[LocationRepository] Error deleting location ${id}:`, error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to delete location",
@@ -14539,7 +14694,7 @@ async function initializeConversation(applicationData) {
     const adminDb2 = await getAdminDb();
     const [location] = await db.select({ managerId: locations.managerId }).from(locations).where(eq13(locations.id, applicationData.locationId)).limit(1);
     if (!location || !location.managerId) {
-      console.error("Location not found or has no manager");
+      logger.error("Location not found or has no manager");
       return null;
     }
     const managerId = location.managerId;
@@ -14560,7 +14715,7 @@ async function initializeConversation(applicationData) {
     await db.update(chefKitchenApplications).set({ chat_conversation_id: conversationRef.id }).where(eq13(chefKitchenApplications.id, applicationData.id));
     return conversationRef.id;
   } catch (error) {
-    console.error("Error initializing conversation:", error);
+    logger.error("Error initializing conversation:", error);
     return null;
   }
 }
@@ -14605,7 +14760,7 @@ async function sendSystemNotification(conversationId, eventType, data) {
         return createdAt && now - createdAt.getTime() < 1e4;
       });
       if (isDuplicate) {
-        console.log(`[CHAT] Skipping duplicate system message: "${content.substring(0, 30)}..."`);
+        logger.info(`[CHAT] Skipping duplicate system message: "${content.substring(0, 30)}..."`);
         return;
       }
     }
@@ -14621,7 +14776,7 @@ async function sendSystemNotification(conversationId, eventType, data) {
       lastMessageAt: FieldValue.serverTimestamp()
     });
   } catch (error) {
-    console.error("Error sending system notification:", error);
+    logger.error("Error sending system notification:", error);
   }
 }
 async function getUnreadCounts(userId, role) {
@@ -14635,7 +14790,7 @@ async function getUnreadCounts(userId, role) {
     }).get();
     return snapshot.data().totalUnread || 0;
   } catch (error) {
-    console.error("Error getting unread counts:", error);
+    logger.error("Error getting unread counts:", error);
     return 0;
   }
 }
@@ -14654,9 +14809,9 @@ async function deleteConversation(conversationId) {
       await batch.commit();
     }
     await adminDb2.collection("conversations").doc(conversationId).delete();
-    console.log(`Successfully deleted conversation ${conversationId} and all its messages`);
+    logger.info(`Successfully deleted conversation ${conversationId} and all its messages`);
   } catch (error) {
-    console.error("Error deleting conversation:", error);
+    logger.error("Error deleting conversation:", error);
     throw error;
   }
 }
@@ -14664,7 +14819,7 @@ async function notifyTierTransition(applicationId, fromTier, toTier, reason) {
   try {
     const [application] = await db.select().from(chefKitchenApplications).where(eq13(chefKitchenApplications.id, applicationId)).limit(1);
     if (!application) {
-      console.error("Application not found for tier transition notification");
+      logger.error("Application not found for tier transition notification");
       return;
     }
     let conversationId = application.chat_conversation_id;
@@ -14675,7 +14830,7 @@ async function notifyTierTransition(applicationId, fromTier, toTier, reason) {
         locationId: application.locationId
       });
       if (!conversationId) {
-        console.error("Failed to initialize conversation for tier transition");
+        logger.error("Failed to initialize conversation for tier transition");
         return;
       }
     }
@@ -14691,13 +14846,14 @@ async function notifyTierTransition(applicationId, fromTier, toTier, reason) {
       await sendSystemNotification(conversationId, eventType, { reason });
     }
   } catch (error) {
-    console.error("Error notifying tier transition:", error);
+    logger.error("Error notifying tier transition:", error);
   }
 }
 var adminDb;
 var init_chat_service = __esm({
   "server/chat-service.ts"() {
     "use strict";
+    init_logger();
     init_firebase_setup();
     init_db();
     init_schema();
@@ -14716,6 +14872,7 @@ var LocationService, locationService;
 var init_location_service = __esm({
   "server/domains/locations/location.service.ts"() {
     "use strict";
+    init_logger();
     init_db();
     init_schema();
     init_location_repository();
@@ -14747,7 +14904,7 @@ var init_location_service = __esm({
           if (error instanceof DomainError) {
             throw error;
           }
-          console.error("[LocationService] Error creating location:", error);
+          logger.error("[LocationService] Error creating location:", error);
           throw new DomainError(
             LocationErrorCodes.INVALID_ADDRESS,
             "Failed to create location",
@@ -14788,7 +14945,7 @@ var init_location_service = __esm({
           if (error instanceof DomainError) {
             throw error;
           }
-          console.error("[LocationService] Error updating location:", error);
+          logger.error("[LocationService] Error updating location:", error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to update location",
@@ -14833,7 +14990,7 @@ var init_location_service = __esm({
           }
           return updated;
         } catch (error) {
-          console.error("[LocationService] Error verifying kitchen license:", error);
+          logger.error("[LocationService] Error verifying kitchen license:", error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to verify kitchen license",
@@ -14864,7 +15021,7 @@ var init_location_service = __esm({
           }
           return updated;
         } catch (error) {
-          console.error("[LocationService] Error updating kitchen license URL:", error);
+          logger.error("[LocationService] Error updating kitchen license URL:", error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to update kitchen license URL",
@@ -14890,7 +15047,7 @@ var init_location_service = __esm({
           if (error instanceof DomainError) {
             throw error;
           }
-          console.error("[LocationService] Error getting location by ID:", error);
+          logger.error("[LocationService] Error getting location by ID:", error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to get location",
@@ -14905,7 +15062,7 @@ var init_location_service = __esm({
         try {
           return await this.locationRepo.findByManagerId(managerId);
         } catch (error) {
-          console.error("[LocationService] Error getting locations by manager:", error);
+          logger.error("[LocationService] Error getting locations by manager:", error);
           throw new DomainError(
             LocationErrorCodes.NO_MANAGER_ASSIGNED,
             "Failed to get locations",
@@ -14920,7 +15077,7 @@ var init_location_service = __esm({
         try {
           return await this.locationRepo.findAll();
         } catch (error) {
-          console.error("[LocationService] Error getting all locations:", error);
+          logger.error("[LocationService] Error getting all locations:", error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to get locations",
@@ -14982,7 +15139,7 @@ var init_location_service = __esm({
             updatedAt: /* @__PURE__ */ new Date()
           };
         } catch (error) {
-          console.error(`[LocationService] Error getting requirements for location ${locationId}:`, error);
+          logger.error(`[LocationService] Error getting requirements for location ${locationId}:`, error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to get location requirements",
@@ -15000,7 +15157,7 @@ var init_location_service = __esm({
           return requirements;
         } catch (error) {
           if (error instanceof DomainError) throw error;
-          console.error(`[LocationService] Error upserting requirements for location ${locationId}:`, error);
+          logger.error(`[LocationService] Error upserting requirements for location ${locationId}:`, error);
           throw new DomainError(
             LocationErrorCodes.LOCATION_NOT_FOUND,
             "Failed to update location requirements",
@@ -15017,14 +15174,14 @@ var init_location_service = __esm({
           if (locationApps.length > 0) {
             const { deleteConversation: deleteConversation2 } = await Promise.resolve().then(() => (init_chat_service(), chat_service_exports));
             const cleanupPromises = locationApps.filter((app2) => app2.conversationId).map(
-              (app2) => deleteConversation2(app2.conversationId).catch((err) => console.error(`Failed to delete conversation ${app2.conversationId}:`, err))
+              (app2) => deleteConversation2(app2.conversationId).catch((err) => logger.error(`Failed to delete conversation ${app2.conversationId}:`, err))
             );
             await Promise.all(cleanupPromises);
-            console.log(`[LocationService] Cleaned up ${cleanupPromises.length} conversations for deleted location ${id}`);
+            logger.info(`[LocationService] Cleaned up ${cleanupPromises.length} conversations for deleted location ${id}`);
           }
           await this.locationRepo.delete(id);
         } catch (error) {
-          console.error("[LocationService] Error deleting location:", error);
+          logger.error("[LocationService] Error deleting location:", error);
           throw error;
         }
       }
@@ -15039,6 +15196,7 @@ var KitchenRepository;
 var init_kitchen_repository = __esm({
   "server/domains/kitchens/kitchen.repository.ts"() {
     "use strict";
+    init_logger();
     init_db();
     init_schema();
     init_domain_error();
@@ -15068,7 +15226,7 @@ var init_kitchen_repository = __esm({
           const [kitchen] = await db.select().from(kitchens).where(eq15(kitchens.id, id)).limit(1);
           return kitchen ? this.mapToDTO(kitchen) : null;
         } catch (error) {
-          console.error(`[KitchenRepository] Error finding kitchen by ID ${id}:`, error);
+          logger.error(`[KitchenRepository] Error finding kitchen by ID ${id}:`, error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to find kitchen",
@@ -15084,7 +15242,7 @@ var init_kitchen_repository = __esm({
           const results = await db.select().from(kitchens).where(eq15(kitchens.locationId, locationId)).orderBy(desc8(kitchens.createdAt));
           return results.map((k) => this.mapToDTO(k));
         } catch (error) {
-          console.error(`[KitchenRepository] Error finding kitchens by location ${locationId}:`, error);
+          logger.error(`[KitchenRepository] Error finding kitchens by location ${locationId}:`, error);
           throw new DomainError(
             KitchenErrorCodes.LOCATION_NOT_FOUND,
             "Failed to find kitchens",
@@ -15105,7 +15263,7 @@ var init_kitchen_repository = __esm({
           ).orderBy(desc8(kitchens.createdAt));
           return results.map((k) => this.mapToDTO(k));
         } catch (error) {
-          console.error(`[KitchenRepository] Error finding active kitchens by location ${locationId}:`, error);
+          logger.error(`[KitchenRepository] Error finding active kitchens by location ${locationId}:`, error);
           throw new DomainError(
             KitchenErrorCodes.LOCATION_NOT_FOUND,
             "Failed to find kitchens",
@@ -15121,7 +15279,7 @@ var init_kitchen_repository = __esm({
           const results = await db.select().from(kitchens).where(eq15(kitchens.isActive, true)).orderBy(desc8(kitchens.createdAt));
           return results.map((k) => this.mapToDTO(k));
         } catch (error) {
-          console.error("[KitchenRepository] Error finding all active kitchens:", error);
+          logger.error("[KitchenRepository] Error finding all active kitchens:", error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to find kitchens",
@@ -15151,7 +15309,7 @@ var init_kitchen_repository = __esm({
           }).returning();
           return this.mapToDTO(kitchen);
         } catch (error) {
-          console.error("[KitchenRepository] Error creating kitchen:", error);
+          logger.error("[KitchenRepository] Error creating kitchen:", error);
           throw new DomainError(
             KitchenErrorCodes.INVALID_PRICING,
             "Failed to create kitchen",
@@ -15181,7 +15339,7 @@ var init_kitchen_repository = __esm({
           }).where(eq15(kitchens.id, id)).returning();
           return kitchen ? this.mapToDTO(kitchen) : null;
         } catch (error) {
-          console.error(`[KitchenRepository] Error updating kitchen ${id}:`, error);
+          logger.error(`[KitchenRepository] Error updating kitchen ${id}:`, error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to update kitchen",
@@ -15197,7 +15355,7 @@ var init_kitchen_repository = __esm({
           const [kitchen] = await db.update(kitchens).set({ isActive: true }).where(eq15(kitchens.id, id)).returning();
           return kitchen ? this.mapToDTO(kitchen) : null;
         } catch (error) {
-          console.error(`[KitchenRepository] Error activating kitchen ${id}:`, error);
+          logger.error(`[KitchenRepository] Error activating kitchen ${id}:`, error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to activate kitchen",
@@ -15213,7 +15371,7 @@ var init_kitchen_repository = __esm({
           const [kitchen] = await db.update(kitchens).set({ isActive: false }).where(eq15(kitchens.id, id)).returning();
           return kitchen ? this.mapToDTO(kitchen) : null;
         } catch (error) {
-          console.error(`[KitchenRepository] Error deactivating kitchen ${id}:`, error);
+          logger.error(`[KitchenRepository] Error deactivating kitchen ${id}:`, error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to deactivate kitchen",
@@ -15235,7 +15393,7 @@ var init_kitchen_repository = __esm({
           ).limit(1);
           return result.length > 0;
         } catch (error) {
-          console.error(`[KitchenRepository] Error checking name existence for location ${locationId}:`, error);
+          logger.error(`[KitchenRepository] Error checking name existence for location ${locationId}:`, error);
           return false;
         }
       }
@@ -15247,7 +15405,7 @@ var init_kitchen_repository = __esm({
           const [kitchen] = await db.update(kitchens).set({ imageUrl }).where(eq15(kitchens.id, id)).returning();
           return kitchen ? this.mapToDTO(kitchen) : null;
         } catch (error) {
-          console.error(`[KitchenRepository] Error updating image for kitchen ${id}:`, error);
+          logger.error(`[KitchenRepository] Error updating image for kitchen ${id}:`, error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to update kitchen image",
@@ -15263,7 +15421,7 @@ var init_kitchen_repository = __esm({
           const [kitchen] = await db.update(kitchens).set({ galleryImages }).where(eq15(kitchens.id, id)).returning();
           return kitchen ? this.mapToDTO(kitchen) : null;
         } catch (error) {
-          console.error(`[KitchenRepository] Error updating gallery for kitchen ${id}:`, error);
+          logger.error(`[KitchenRepository] Error updating gallery for kitchen ${id}:`, error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to update kitchen gallery",
@@ -15279,7 +15437,7 @@ var init_kitchen_repository = __esm({
           const results = await db.select().from(kitchens).orderBy(desc8(kitchens.createdAt));
           return results.map((k) => this.mapToDTO(k));
         } catch (error) {
-          console.error("[KitchenRepository] Error finding all kitchens:", error);
+          logger.error("[KitchenRepository] Error finding all kitchens:", error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to find kitchens",
@@ -15311,7 +15469,7 @@ var init_kitchen_repository = __esm({
             } : void 0
           }));
         } catch (error) {
-          console.error("[KitchenRepository] Error finding kitchens with location:", error);
+          logger.error("[KitchenRepository] Error finding kitchens with location:", error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to find kitchens with location",
@@ -15326,7 +15484,7 @@ var init_kitchen_repository = __esm({
         try {
           await db.delete(kitchens).where(eq15(kitchens.id, id));
         } catch (error) {
-          console.error(`[KitchenRepository] Error deleting kitchen ${id}:`, error);
+          logger.error(`[KitchenRepository] Error deleting kitchen ${id}:`, error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to delete kitchen",
@@ -15356,7 +15514,7 @@ var init_kitchen_repository = __esm({
           ).orderBy(kitchenDateOverrides.specificDate);
           return results.map((o) => this.mapOverrideToDTO(o));
         } catch (error) {
-          console.error(`[KitchenRepository] Error finding overrides for kitchen ${kitchenId}:`, error);
+          logger.error(`[KitchenRepository] Error finding overrides for kitchen ${kitchenId}:`, error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to find overrides", 500);
         }
       }
@@ -15365,7 +15523,7 @@ var init_kitchen_repository = __esm({
           const [override] = await db.select().from(kitchenDateOverrides).where(eq15(kitchenDateOverrides.id, id)).limit(1);
           return override ? this.mapOverrideToDTO(override) : null;
         } catch (error) {
-          console.error(`[KitchenRepository] Error finding override ${id}:`, error);
+          logger.error(`[KitchenRepository] Error finding override ${id}:`, error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to find override", 500);
         }
       }
@@ -15381,7 +15539,7 @@ var init_kitchen_repository = __esm({
           }).returning();
           return this.mapOverrideToDTO(override);
         } catch (error) {
-          console.error(`[KitchenRepository] Error creating override:`, error);
+          logger.error(`[KitchenRepository] Error creating override:`, error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to create override", 500);
         }
       }
@@ -15396,7 +15554,7 @@ var init_kitchen_repository = __esm({
           }).where(eq15(kitchenDateOverrides.id, id)).returning();
           return override ? this.mapOverrideToDTO(override) : null;
         } catch (error) {
-          console.error(`[KitchenRepository] Error updating override ${id}:`, error);
+          logger.error(`[KitchenRepository] Error updating override ${id}:`, error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to update override", 500);
         }
       }
@@ -15404,7 +15562,7 @@ var init_kitchen_repository = __esm({
         try {
           await db.delete(kitchenDateOverrides).where(eq15(kitchenDateOverrides.id, id));
         } catch (error) {
-          console.error(`[KitchenRepository] Error deleting override ${id}:`, error);
+          logger.error(`[KitchenRepository] Error deleting override ${id}:`, error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to delete override", 500);
         }
       }
@@ -15415,7 +15573,7 @@ var init_kitchen_repository = __esm({
         try {
           return await db.select().from(kitchenAvailability).where(eq15(kitchenAvailability.kitchenId, kitchenId));
         } catch (error) {
-          console.error(`[KitchenRepository] Error finding availability for kitchen ${kitchenId}:`, error);
+          logger.error(`[KitchenRepository] Error finding availability for kitchen ${kitchenId}:`, error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to find availability", 500);
         }
       }
@@ -15430,7 +15588,7 @@ var init_kitchen_repository = __esm({
           ).limit(1);
           return override ? this.mapOverrideToDTO(override) : null;
         } catch (error) {
-          console.error(`[KitchenRepository] Error finding override for date:`, error);
+          logger.error(`[KitchenRepository] Error finding override for date:`, error);
           return null;
         }
       }
@@ -15443,6 +15601,7 @@ var KitchenService, kitchenService;
 var init_kitchen_service = __esm({
   "server/domains/kitchens/kitchen.service.ts"() {
     "use strict";
+    init_logger();
     init_kitchen_repository();
     init_domain_error();
     init_input_validator();
@@ -15470,7 +15629,7 @@ var init_kitchen_service = __esm({
           if (error instanceof DomainError) {
             throw error;
           }
-          console.error("[KitchenService] Error creating kitchen:", error);
+          logger.error("[KitchenService] Error creating kitchen:", error);
           throw new DomainError(
             KitchenErrorCodes.INVALID_PRICING,
             `Failed to create kitchen: ${error.message || "Unknown error"}`,
@@ -15522,7 +15681,7 @@ var init_kitchen_service = __esm({
           if (error instanceof DomainError) {
             throw error;
           }
-          console.error("[KitchenService] Error updating kitchen:", error);
+          logger.error("[KitchenService] Error updating kitchen:", error);
           throw new DomainError(
             KitchenErrorCodes.INVALID_PRICING,
             "Failed to update kitchen",
@@ -15563,7 +15722,7 @@ var init_kitchen_service = __esm({
           if (error instanceof DomainError) {
             throw error;
           }
-          console.error("[KitchenService] Error activating kitchen:", error);
+          logger.error("[KitchenService] Error activating kitchen:", error);
           throw new DomainError(
             KitchenErrorCodes.INVALID_PRICING,
             "Failed to activate kitchen",
@@ -15604,7 +15763,7 @@ var init_kitchen_service = __esm({
           if (error instanceof DomainError) {
             throw error;
           }
-          console.error("[KitchenService] Error deactivating kitchen:", error);
+          logger.error("[KitchenService] Error deactivating kitchen:", error);
           throw new DomainError(
             KitchenErrorCodes.INVALID_PRICING,
             "Failed to deactivate kitchen",
@@ -15638,7 +15797,7 @@ var init_kitchen_service = __esm({
           if (error instanceof DomainError) {
             throw error;
           }
-          console.error("[KitchenService] Error updating kitchen image:", error);
+          logger.error("[KitchenService] Error updating kitchen image:", error);
           throw new DomainError(
             KitchenErrorCodes.INVALID_PRICING,
             "Failed to update kitchen image",
@@ -15672,7 +15831,7 @@ var init_kitchen_service = __esm({
           if (error instanceof DomainError) {
             throw error;
           }
-          console.error("[KitchenService] Error updating kitchen gallery:", error);
+          logger.error("[KitchenService] Error updating kitchen gallery:", error);
           throw new DomainError(
             KitchenErrorCodes.INVALID_PRICING,
             "Failed to update kitchen gallery",
@@ -15698,7 +15857,7 @@ var init_kitchen_service = __esm({
           if (error instanceof DomainError) {
             throw error;
           }
-          console.error("[KitchenService] Error getting kitchen by ID:", error);
+          logger.error("[KitchenService] Error getting kitchen by ID:", error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to get kitchen",
@@ -15717,7 +15876,7 @@ var init_kitchen_service = __esm({
             return await this.kitchenRepo.findByLocationId(locationId);
           }
         } catch (error) {
-          console.error("[KitchenService] Error getting kitchens by location:", error);
+          logger.error("[KitchenService] Error getting kitchens by location:", error);
           throw new DomainError(
             KitchenErrorCodes.LOCATION_NOT_FOUND,
             "Failed to get kitchens",
@@ -15732,7 +15891,7 @@ var init_kitchen_service = __esm({
         try {
           return await this.kitchenRepo.findAllActive();
         } catch (error) {
-          console.error("[KitchenService] Error getting all active kitchens:", error);
+          logger.error("[KitchenService] Error getting all active kitchens:", error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to get kitchens",
@@ -15747,7 +15906,7 @@ var init_kitchen_service = __esm({
         try {
           return await this.kitchenRepo.findAll();
         } catch (error) {
-          console.error("[KitchenService] Error getting all kitchens:", error);
+          logger.error("[KitchenService] Error getting all kitchens:", error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to get kitchens",
@@ -15762,7 +15921,7 @@ var init_kitchen_service = __esm({
         try {
           return await this.kitchenRepo.findAllWithLocation();
         } catch (error) {
-          console.error("[KitchenService] Error getting all kitchens with location:", error);
+          logger.error("[KitchenService] Error getting all kitchens with location:", error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to get kitchens with location",
@@ -15781,7 +15940,7 @@ var init_kitchen_service = __esm({
           if (error instanceof DomainError) {
             throw error;
           }
-          console.error("[KitchenService] Error deleting kitchen:", error);
+          logger.error("[KitchenService] Error deleting kitchen:", error);
           throw new DomainError(
             KitchenErrorCodes.KITCHEN_NOT_FOUND,
             "Failed to delete kitchen",
@@ -15798,7 +15957,7 @@ var init_kitchen_service = __esm({
           return await this.kitchenRepo.findOverrides(kitchenId, start, end);
         } catch (error) {
           if (error instanceof DomainError) throw error;
-          console.error("[KitchenService] Error getting overrides:", error);
+          logger.error("[KitchenService] Error getting overrides:", error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to get overrides", 500);
         }
       }
@@ -15808,7 +15967,7 @@ var init_kitchen_service = __esm({
           return await this.kitchenRepo.createOverride(dto);
         } catch (error) {
           if (error instanceof DomainError) throw error;
-          console.error("[KitchenService] Error creating override:", error);
+          logger.error("[KitchenService] Error creating override:", error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to create override", 500);
         }
       }
@@ -15823,7 +15982,7 @@ var init_kitchen_service = __esm({
           return updated;
         } catch (error) {
           if (error instanceof DomainError) throw error;
-          console.error("[KitchenService] Error updating override:", error);
+          logger.error("[KitchenService] Error updating override:", error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to update override", 500);
         }
       }
@@ -15831,7 +15990,7 @@ var init_kitchen_service = __esm({
         try {
           await this.kitchenRepo.deleteOverride(id);
         } catch (error) {
-          console.error("[KitchenService] Error deleting override:", error);
+          logger.error("[KitchenService] Error deleting override:", error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to delete override", 500);
         }
       }
@@ -15842,7 +16001,7 @@ var init_kitchen_service = __esm({
         try {
           return this.kitchenRepo.findAvailability(kitchenId);
         } catch (error) {
-          console.error("[KitchenService] Error getting availability:", error);
+          logger.error("[KitchenService] Error getting availability:", error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to get availability", 500);
         }
       }
@@ -15850,7 +16009,7 @@ var init_kitchen_service = __esm({
         try {
           return this.kitchenRepo.findOverrideForDate(kitchenId, date2);
         } catch (error) {
-          console.error("[KitchenService] Error getting override for date:", error);
+          logger.error("[KitchenService] Error getting override for date:", error);
           throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, "Failed to get override", 500);
         }
       }
@@ -15977,6 +16136,7 @@ var router8, user_default;
 var init_user = __esm({
   "server/routes/user.ts"() {
     "use strict";
+    init_logger();
     init_user_service();
     init_firebase_auth_middleware();
     init_email();
@@ -15987,7 +16147,7 @@ var init_user = __esm({
         let user = req.neonUser;
         const firebaseEmailVerified = req.firebaseUser?.email_verified;
         if (firebaseEmailVerified && !user.isVerified) {
-          console.log(`\u{1F4E7} Updating is_verified for user ${user.id} - Firebase email verified (profile fetch)`);
+          logger.info(`\u{1F4E7} Updating is_verified for user ${user.id} - Firebase email verified (profile fetch)`);
           const updatedUser = await userService.updateUser(user.id, { isVerified: true });
           if (updatedUser) {
             user = updatedUser;
@@ -15999,23 +16159,23 @@ var init_user = __esm({
         };
         res.json(responseUser);
       } catch (error) {
-        console.error("Error fetching user profile:", error);
+        logger.error("Error fetching user profile:", error);
         res.status(500).json({ error: "Failed to fetch user profile" });
       }
     });
     router8.post("/seen-welcome", requireFirebaseAuthWithUser, async (req, res) => {
       try {
         const user = req.neonUser;
-        console.log(`\u{1F389} Marking welcome screen as seen for user ${user.id}`);
+        logger.info(`\u{1F389} Marking welcome screen as seen for user ${user.id}`);
         await userService.updateUser(user.id, { has_seen_welcome: true });
         res.json({ success: true });
       } catch (error) {
-        console.error("Error setting has_seen_welcome:", error);
+        logger.error("Error setting has_seen_welcome:", error);
         res.status(500).json({ error: "Internal server error" });
       }
     });
     router8.post("/logout", async (req, res) => {
-      console.log("\u{1F6AA} Logout request received (Firebase Auth is stateless)");
+      logger.info("\u{1F6AA} Logout request received (Firebase Auth is stateless)");
       res.json({ success: true, message: "Logged out successfully" });
     });
     router8.post("/sync", requireFirebaseAuthWithUser, async (req, res) => {
@@ -16023,7 +16183,7 @@ var init_user = __esm({
         let user = req.neonUser;
         const firebaseEmailVerified = req.firebaseUser?.email_verified;
         if (firebaseEmailVerified && !user.isVerified) {
-          console.log(`\u{1F4E7} Updating is_verified for user ${user.id} - Firebase email verified`);
+          logger.info(`\u{1F4E7} Updating is_verified for user ${user.id} - Firebase email verified`);
           const updatedUser = await userService.updateUser(user.id, { isVerified: true });
           if (updatedUser) {
             user = updatedUser;
@@ -16031,7 +16191,7 @@ var init_user = __esm({
         }
         res.json(user);
       } catch (error) {
-        console.error("Error syncing user:", error);
+        logger.error("Error syncing user:", error);
         res.status(500).json({ error: "Failed to sync user" });
       }
     });
@@ -16039,14 +16199,14 @@ var init_user = __esm({
       try {
         const user = req.neonUser;
         const { selectedPaths } = req.body;
-        console.log(`\u{1F393} Marking chef onboarding complete for user ${user.id}, paths: ${JSON.stringify(selectedPaths)}`);
+        logger.info(`\u{1F393} Marking chef onboarding complete for user ${user.id}, paths: ${JSON.stringify(selectedPaths)}`);
         await userService.updateUser(user.id, {
           chefOnboardingCompleted: true,
           chefOnboardingPaths: selectedPaths || []
         });
         res.json({ success: true });
       } catch (error) {
-        console.error("Error marking chef onboarding complete:", error);
+        logger.error("Error marking chef onboarding complete:", error);
         res.status(500).json({ error: "Failed to mark onboarding complete" });
       }
     });
@@ -16058,10 +16218,10 @@ var init_user = __esm({
           return res.status(400).json({ error: "Valid password (min 8 characters) is required" });
         }
         await userService.updateUser(user.id, { password: newPassword });
-        console.log(`[sync-password] Password synced to Neon for user ${user.id} (${user.username})`);
+        logger.info(`[sync-password] Password synced to Neon for user ${user.id} (${user.username})`);
         res.json({ success: true });
       } catch (error) {
-        console.error("[sync-password] Error syncing password:", error);
+        logger.error("[sync-password] Error syncing password:", error);
         res.status(500).json({ error: "Failed to sync password" });
       }
     });
@@ -16070,15 +16230,15 @@ var init_user = __esm({
         let user = req.neonUser;
         const firebaseEmailVerified = req.firebaseUser?.email_verified;
         const firebaseDisplayName = req.firebaseUser?.name;
-        console.log(`\u{1F504} SYNC VERIFICATION STATUS for user ${user.id} (${user.username})`);
-        console.log(`   - Firebase email_verified: ${firebaseEmailVerified}`);
-        console.log(`   - Database isVerified: ${user.isVerified}`);
-        console.log(`   - Welcome email already sent: ${user.welcomeEmailSentAt ? "YES" : "NO"}`);
+        logger.info(`\u{1F504} SYNC VERIFICATION STATUS for user ${user.id} (${user.username})`);
+        logger.info(`   - Firebase email_verified: ${firebaseEmailVerified}`);
+        logger.info(`   - Database isVerified: ${user.isVerified}`);
+        logger.info(`   - Welcome email already sent: ${user.welcomeEmailSentAt ? "YES" : "NO"}`);
         let welcomeEmailSent = false;
         let verificationUpdated = false;
         if (firebaseEmailVerified) {
           if (!user.isVerified) {
-            console.log(`\u{1F4E7} Updating is_verified for user ${user.id} - Firebase email verified`);
+            logger.info(`\u{1F4E7} Updating is_verified for user ${user.id} - Firebase email verified`);
             const updatedUser = await userService.updateUser(user.id, { isVerified: true });
             if (updatedUser) {
               user = updatedUser;
@@ -16086,7 +16246,7 @@ var init_user = __esm({
             }
           }
           if (!user.welcomeEmailSentAt) {
-            console.log(`\u{1F4E7} SENDING WELCOME EMAIL to newly verified user: ${user.username}`);
+            logger.info(`\u{1F4E7} SENDING WELCOME EMAIL to newly verified user: ${user.username}`);
             try {
               const displayName = firebaseDisplayName || user.username.split("@")[0];
               const welcomeEmail = generateWelcomeEmail({
@@ -16102,18 +16262,18 @@ var init_user = __esm({
                   welcomeEmailSentAt: /* @__PURE__ */ new Date()
                 });
                 welcomeEmailSent = true;
-                console.log(`\u2705 Welcome email sent successfully to ${user.username}`);
+                logger.info(`\u2705 Welcome email sent successfully to ${user.username}`);
               } else {
-                console.error(`\u274C Failed to send welcome email to ${user.username} - sendEmail returned false`);
+                logger.error(`\u274C Failed to send welcome email to ${user.username} - sendEmail returned false`);
               }
             } catch (emailError) {
-              console.error(`\u274C Error sending welcome email to ${user.username}:`, emailError);
+              logger.error(`\u274C Error sending welcome email to ${user.username}:`, emailError);
             }
           } else {
-            console.log(`\u2139\uFE0F Welcome email already sent at ${user.welcomeEmailSentAt} - skipping duplicate`);
+            logger.info(`\u2139\uFE0F Welcome email already sent at ${user.welcomeEmailSentAt} - skipping duplicate`);
           }
         } else {
-          console.log(`\u26A0\uFE0F Firebase email not verified - no action taken`);
+          logger.info(`\u26A0\uFE0F Firebase email not verified - no action taken`);
         }
         res.json({
           success: true,
@@ -16126,7 +16286,7 @@ var init_user = __esm({
           welcomeEmailPreviouslySent: !!user.welcomeEmailSentAt && !welcomeEmailSent
         });
       } catch (error) {
-        console.error("\u274C Error in sync-verification-status:", error);
+        logger.error("\u274C Error in sync-verification-status:", error);
         res.status(500).json({
           error: "Failed to sync verification status",
           details: error instanceof Error ? error.message : "Unknown error"
@@ -16139,16 +16299,16 @@ var init_user = __esm({
         if (!email) {
           return res.status(400).json({ error: "Email is required" });
         }
-        console.log(`\u{1F504} PUBLIC VERIFY-EMAIL-COMPLETE for email: ${email}`);
+        logger.info(`\u{1F504} PUBLIC VERIFY-EMAIL-COMPLETE for email: ${email}`);
         const firebaseUser = await getFirebaseUserByEmail(email);
         if (!firebaseUser) {
-          console.log(`\u274C Firebase user not found for email: ${email}`);
+          logger.info(`\u274C Firebase user not found for email: ${email}`);
           return res.status(404).json({ error: "User not found in Firebase" });
         }
-        console.log(`   - Firebase emailVerified: ${firebaseUser.emailVerified}`);
-        console.log(`   - Firebase UID: ${firebaseUser.uid}`);
+        logger.info(`   - Firebase emailVerified: ${firebaseUser.emailVerified}`);
+        logger.info(`   - Firebase UID: ${firebaseUser.uid}`);
         if (!firebaseUser.emailVerified) {
-          console.log(`\u26A0\uFE0F Firebase email NOT verified for: ${email}`);
+          logger.info(`\u26A0\uFE0F Firebase email NOT verified for: ${email}`);
           return res.status(400).json({
             error: "Email not verified in Firebase",
             firebaseVerified: false
@@ -16156,22 +16316,22 @@ var init_user = __esm({
         }
         const user = await userService.getUserByUsername(email);
         if (!user) {
-          console.log(`\u274C User not found in Neon DB for email: ${email}`);
+          logger.info(`\u274C User not found in Neon DB for email: ${email}`);
           return res.status(404).json({ error: "User not found in database" });
         }
-        console.log(`   - Neon user ID: ${user.id}`);
-        console.log(`   - Neon isVerified: ${user.isVerified}`);
-        console.log(`   - Welcome email already sent: ${user.welcomeEmailSentAt ? "YES" : "NO"}`);
+        logger.info(`   - Neon user ID: ${user.id}`);
+        logger.info(`   - Neon isVerified: ${user.isVerified}`);
+        logger.info(`   - Welcome email already sent: ${user.welcomeEmailSentAt ? "YES" : "NO"}`);
         let verificationUpdated = false;
         let welcomeEmailSent = false;
         if (!user.isVerified) {
-          console.log(`\u{1F4E7} Updating is_verified for user ${user.id}`);
+          logger.info(`\u{1F4E7} Updating is_verified for user ${user.id}`);
           await userService.updateUser(user.id, { isVerified: true });
           verificationUpdated = true;
         }
         if (!user.welcomeEmailSentAt) {
-          console.log(`\u{1F4E7} SENDING WELCOME EMAIL to newly verified user: ${email}`);
-          console.log(`\u{1F4E7} Email configuration check:`, {
+          logger.info(`\u{1F4E7} SENDING WELCOME EMAIL to newly verified user: ${email}`);
+          logger.info(`\u{1F4E7} Email configuration check:`, {
             hasEmailUser: !!process.env.EMAIL_USER,
             hasEmailPass: !!process.env.EMAIL_PASS,
             hasEmailFrom: !!process.env.EMAIL_FROM,
@@ -16183,7 +16343,7 @@ var init_user = __esm({
             email,
             role: user.role
           });
-          console.log(`\u{1F4E7} Generated welcome email:`, {
+          logger.info(`\u{1F4E7} Generated welcome email:`, {
             to: welcomeEmail.to,
             subject: welcomeEmail.subject,
             hasHtml: !!welcomeEmail.html,
@@ -16195,38 +16355,38 @@ var init_user = __esm({
           let lastError = null;
           for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
-              console.log(`\u{1F4E7} Welcome email attempt ${attempt}/${MAX_RETRIES} for ${email}`);
+              logger.info(`\u{1F4E7} Welcome email attempt ${attempt}/${MAX_RETRIES} for ${email}`);
               const emailResult = await sendEmail(welcomeEmail, {
                 trackingId: `welcome_verified_public_${user.id}_${Date.now()}_attempt${attempt}`
               });
               if (emailResult) {
                 await userService.updateUser(user.id, { welcomeEmailSentAt: /* @__PURE__ */ new Date() });
                 welcomeEmailSent = true;
-                console.log(`\u2705 Welcome email sent successfully to ${email} on attempt ${attempt}`);
+                logger.info(`\u2705 Welcome email sent successfully to ${email} on attempt ${attempt}`);
                 break;
               } else {
-                console.error(`\u274C sendEmail returned false for ${email} on attempt ${attempt}`);
+                logger.error(`\u274C sendEmail returned false for ${email} on attempt ${attempt}`);
                 lastError = new Error("sendEmail returned false");
               }
             } catch (emailError) {
               lastError = emailError instanceof Error ? emailError : new Error(String(emailError));
-              console.error(`\u274C Error sending welcome email to ${email} on attempt ${attempt}:`, {
+              logger.error(`\u274C Error sending welcome email to ${email} on attempt ${attempt}:`, {
                 error: lastError.message,
                 stack: lastError.stack
               });
             }
             if (attempt < MAX_RETRIES) {
               const backoffMs = Math.pow(2, attempt - 1) * 1e3;
-              console.log(`\u23F3 Waiting ${backoffMs}ms before retry...`);
+              logger.info(`\u23F3 Waiting ${backoffMs}ms before retry...`);
               await new Promise((resolve) => setTimeout(resolve, backoffMs));
             }
           }
           if (!welcomeEmailSent) {
-            console.error(`\u274C CRITICAL: All ${MAX_RETRIES} attempts to send welcome email failed for ${email}`);
-            console.error(`\u274C Last error:`, lastError?.message || "Unknown error");
+            logger.error(`\u274C CRITICAL: All ${MAX_RETRIES} attempts to send welcome email failed for ${email}`);
+            logger.error(`\u274C Last error:`, lastError?.message || "Unknown error");
           }
         } else {
-          console.log(`\u2139\uFE0F Welcome email already sent at ${user.welcomeEmailSentAt} - skipping`);
+          logger.info(`\u2139\uFE0F Welcome email already sent at ${user.welcomeEmailSentAt} - skipping`);
         }
         res.json({
           success: true,
@@ -16246,7 +16406,7 @@ var init_user = __esm({
           }
         });
       } catch (error) {
-        console.error("\u274C Error in verify-email-complete:", error);
+        logger.error("\u274C Error in verify-email-complete:", error);
         res.status(500).json({
           error: "Failed to complete email verification",
           details: error instanceof Error ? error.message : "Unknown error"
@@ -16280,6 +16440,7 @@ var router9, GOOGLE_PLACES_API_KEY, rateLimitMap, RATE_LIMIT_WINDOW_MS, RATE_LIM
 var init_places = __esm({
   "server/routes/places.ts"() {
     "use strict";
+    init_logger();
     router9 = Router9();
     GOOGLE_PLACES_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
     rateLimitMap = /* @__PURE__ */ new Map();
@@ -16308,7 +16469,7 @@ var init_places = __esm({
           });
         }
         if (!GOOGLE_PLACES_API_KEY) {
-          console.error("[Places API] GOOGLE_MAPS_API_KEY is not configured");
+          logger.error("[Places API] GOOGLE_MAPS_API_KEY is not configured");
           return res.status(500).json({
             error: "Server Configuration Error",
             message: "Places API is not configured"
@@ -16322,7 +16483,7 @@ var init_places = __esm({
         const response = await fetch(url.toString());
         const data = await response.json();
         if (data.status === "REQUEST_DENIED") {
-          console.error("[Places API] Request denied:", data.error_message);
+          logger.error("[Places API] Request denied:", data.error_message);
           return res.status(403).json({
             error: "API Error",
             message: "Places API request was denied"
@@ -16341,7 +16502,7 @@ var init_places = __esm({
           predictions
         });
       } catch (error) {
-        console.error("[Places API] Autocomplete error:", error);
+        logger.error("[Places API] Autocomplete error:", error);
         res.status(500).json({
           error: "Internal Server Error",
           message: "Failed to fetch address suggestions"
@@ -16365,7 +16526,7 @@ var init_places = __esm({
           });
         }
         if (!GOOGLE_PLACES_API_KEY) {
-          console.error("[Places API] GOOGLE_MAPS_API_KEY is not configured");
+          logger.error("[Places API] GOOGLE_MAPS_API_KEY is not configured");
           return res.status(500).json({
             error: "Server Configuration Error",
             message: "Places API is not configured"
@@ -16378,7 +16539,7 @@ var init_places = __esm({
         const response = await fetch(url.toString());
         const data = await response.json();
         if (data.status === "REQUEST_DENIED") {
-          console.error("[Places API] Request denied:", data.error_message);
+          logger.error("[Places API] Request denied:", data.error_message);
           return res.status(403).json({
             error: "API Error",
             message: "Places API request was denied"
@@ -16399,7 +16560,7 @@ var init_places = __esm({
           }
         });
       } catch (error) {
-        console.error("[Places API] Details error:", error);
+        logger.error("[Places API] Details error:", error);
         res.status(500).json({
           error: "Internal Server Error",
           message: "Failed to fetch place details"
@@ -16422,6 +16583,7 @@ var router10, appRepo, appService, userRepo, userService2, applications_default;
 var init_applications = __esm({
   "server/routes/applications.ts"() {
     "use strict";
+    init_logger();
     init_schema();
     init_fileUpload();
     init_email();
@@ -16453,7 +16615,7 @@ var init_applications = __esm({
                 try {
                   fs4.unlinkSync(file.path);
                 } catch (e) {
-                  console.error("Error cleaning up file:", e);
+                  logger.error("Error cleaning up file:", e);
                 }
               });
             }
@@ -16467,7 +16629,7 @@ var init_applications = __esm({
                 try {
                   fs4.unlinkSync(file.path);
                 } catch (e) {
-                  console.error("Error cleaning up file:", e);
+                  logger.error("Error cleaning up file:", e);
                 }
               });
             }
@@ -16491,12 +16653,12 @@ var init_applications = __esm({
             foodSafetyLicenseUrl: void 0,
             foodEstablishmentCertUrl: void 0
           };
-          console.log("=== APPLICATION SUBMISSION WITH DOCUMENTS ===");
+          logger.info("=== APPLICATION SUBMISSION WITH DOCUMENTS ===");
           const files = req.files;
           if (files) {
             const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
             if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
-              console.log("\u{1F4C4} Uploading food safety license file...");
+              logger.info("\u{1F4C4} Uploading food safety license file...");
               if (isProduction2) {
                 applicationData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.neonUser.id);
               } else {
@@ -16504,7 +16666,7 @@ var init_applications = __esm({
               }
             }
             if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
-              console.log("\u{1F4C4} Uploading food establishment cert file...");
+              logger.info("\u{1F4C4} Uploading food establishment cert file...");
               if (isProduction2) {
                 applicationData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.neonUser.id);
               } else {
@@ -16519,7 +16681,7 @@ var init_applications = __esm({
             applicationData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
           }
           const application = await appService.submitApplication(applicationData);
-          console.log("\u2705 Application created successfully:", {
+          logger.info("\u2705 Application created successfully:", {
             id: application.id,
             hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl)
           });
@@ -16545,12 +16707,12 @@ var init_applications = __esm({
               }
             }
           } catch (emailError) {
-            console.error("Error sending new application email:", emailError);
+            logger.error("Error sending new application email:", emailError);
           }
-          console.log("=== APPLICATION SUBMISSION COMPLETE ===");
+          logger.info("=== APPLICATION SUBMISSION COMPLETE ===");
           return res.status(201).json(application);
         } catch (error) {
-          console.error("Error creating application:", error);
+          logger.error("Error creating application:", error);
           if (req.files) {
             const files = req.files;
             Object.values(files).flat().forEach((file) => {
@@ -16559,7 +16721,7 @@ var init_applications = __esm({
                   fs4.unlinkSync(file.path);
                 }
               } catch (e) {
-                console.error("Error cleaning up file:", e);
+                logger.error("Error cleaning up file:", e);
               }
             });
           }
@@ -16583,7 +16745,7 @@ var init_applications = __esm({
           if (isNaN(id)) {
             return res.status(400).json({ message: "Invalid application ID" });
           }
-          console.log(`\u{1F4DD} PATCH /api/applications/${id}/documents - User ${req.neonUser.id} updating documents`);
+          logger.info(`\u{1F4DD} PATCH /api/applications/${id}/documents - User ${req.neonUser.id} updating documents`);
           const application = await appService.getApplicationById(id);
           if (!application) {
             return res.status(404).json({ message: "Application not found" });
@@ -16597,7 +16759,7 @@ var init_applications = __esm({
           const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
           if (files) {
             if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
-              console.log("\u{1F4C4} Uploading food safety license file...");
+              logger.info("\u{1F4C4} Uploading food safety license file...");
               if (isProduction2) {
                 foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.neonUser.id, "documents");
               } else {
@@ -16605,7 +16767,7 @@ var init_applications = __esm({
               }
             }
             if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
-              console.log("\u{1F4C4} Uploading food establishment cert file...");
+              logger.info("\u{1F4C4} Uploading food establishment cert file...");
               if (isProduction2) {
                 foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.neonUser.id, "documents");
               } else {
@@ -16629,7 +16791,7 @@ var init_applications = __esm({
           }
           res.json(updatedApplication);
         } catch (error) {
-          console.error("Error updating application documents:", error);
+          logger.error("Error updating application documents:", error);
           res.status(500).json({
             error: "Failed to update application documents",
             message: error instanceof Error ? error.message : "Unknown error"
@@ -16648,7 +16810,7 @@ var init_applications = __esm({
         const applications4 = await appService.getAllApplications();
         return res.status(200).json(applications4);
       } catch (error) {
-        console.error("Error fetching applications:", error);
+        logger.error("Error fetching applications:", error);
         if (error instanceof DomainError) {
           return res.status(error.statusCode).json({ message: error.message });
         }
@@ -16664,7 +16826,7 @@ var init_applications = __esm({
         const applications4 = await appService.getApplicationsByUserId(userId);
         return res.status(200).json(applications4);
       } catch (error) {
-        console.error("Error fetching user applications:", error);
+        logger.error("Error fetching user applications:", error);
         if (error instanceof DomainError) {
           return res.status(error.statusCode).json({ message: error.message });
         }
@@ -16680,7 +16842,7 @@ var init_applications = __esm({
         const application = await appService.getApplicationById(id);
         return res.status(200).json(application);
       } catch (error) {
-        console.error("Error fetching application:", error);
+        logger.error("Error fetching application:", error);
         if (error instanceof DomainError) {
           return res.status(error.statusCode).json({ message: error.message });
         }
@@ -16723,11 +16885,11 @@ var init_applications = __esm({
             });
           }
         } catch (emailError) {
-          console.error("Error sending status change email:", emailError);
+          logger.error("Error sending status change email:", emailError);
         }
         return res.status(200).json(updatedApplication);
       } catch (error) {
-        console.error("Error updating application status:", error);
+        logger.error("Error updating application status:", error);
         if (error instanceof DomainError) {
           return res.status(error.statusCode).json({ message: error.message });
         }
@@ -16757,11 +16919,11 @@ var init_applications = __esm({
             });
           }
         } catch (emailError) {
-          console.error("Error sending cancellation email:", emailError);
+          logger.error("Error sending cancellation email:", emailError);
         }
         return res.status(200).json(updatedApplication);
       } catch (error) {
-        console.error("Error cancelling application:", error);
+        logger.error("Error cancelling application:", error);
         if (error instanceof DomainError) {
           return res.status(error.statusCode).json({ message: error.message });
         }
@@ -16804,7 +16966,7 @@ var init_applications = __esm({
         if (updatedApplication.foodSafetyLicenseStatus === "approved" && (!updatedApplication.foodEstablishmentCertUrl || updatedApplication.foodEstablishmentCertStatus === "approved")) {
           if (updatedApplication.userId) {
             await userService2.verifyUser(updatedApplication.userId, true);
-            console.log(`User ${updatedApplication.userId} has been fully verified`);
+            logger.info(`User ${updatedApplication.userId} has been fully verified`);
             try {
               if (updatedApplication.email && updatedApplication.fullName && updatedApplication.phone) {
                 const emailContent = generateFullVerificationEmail({
@@ -16815,10 +16977,10 @@ var init_applications = __esm({
                 await sendEmail(emailContent, {
                   trackingId: `full_verification_${updatedApplication.id}_${Date.now()}`
                 });
-                console.log(`\u2705 Full verification email with login credentials sent to ${updatedApplication.email}`);
+                logger.info(`\u2705 Full verification email with login credentials sent to ${updatedApplication.email}`);
               }
             } catch (emailError) {
-              console.error("\u274C Error sending full verification email:", emailError);
+              logger.error("\u274C Error sending full verification email:", emailError);
             }
           }
         }
@@ -16847,11 +17009,11 @@ var init_applications = __esm({
             }
           }
         } catch (notifError) {
-          console.error("Error creating license notification:", notifError);
+          logger.error("Error creating license notification:", notifError);
         }
         return res.status(200).json(updatedApplication);
       } catch (error) {
-        console.error("Error updating application document verification:", error);
+        logger.error("Error updating application document verification:", error);
         if (error instanceof DomainError) {
           return res.status(error.statusCode).json({ message: error.message });
         }
@@ -16901,7 +17063,7 @@ function normalizeImageUrl(url, req) {
   if (url.startsWith("/")) {
     const origin = getOrigin();
     if (!origin || origin === "://") {
-      console.warn(`[normalizeImageUrl] Could not determine host for URL: ${url}`);
+      logger.warn(`[normalizeImageUrl] Could not determine host for URL: ${url}`);
       return url;
     }
     return `${origin}${url}`;
@@ -16911,6 +17073,7 @@ function normalizeImageUrl(url, req) {
 var init_utils = __esm({
   "server/routes/utils.ts"() {
     "use strict";
+    init_logger();
   }
 });
 
@@ -16925,6 +17088,7 @@ var router11, locationRepository2, locationService3, kitchenRepository2, kitchen
 var init_locations = __esm({
   "server/routes/locations.ts"() {
     "use strict";
+    init_logger();
     init_firebase_auth_middleware();
     init_utils();
     init_schema();
@@ -16991,7 +17155,7 @@ var init_locations = __esm({
         });
         res.json(publicLocations);
       } catch (error) {
-        console.error("Error fetching public locations:", error);
+        logger.error("Error fetching public locations:", error);
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
@@ -17071,7 +17235,7 @@ var init_locations = __esm({
         }).filter(Boolean);
         res.json(publicKitchens);
       } catch (error) {
-        console.error("Error fetching public kitchens:", error);
+        logger.error("Error fetching public kitchens:", error);
         res.status(500).json({ error: "Failed to fetch kitchens" });
       }
     });
@@ -17142,7 +17306,7 @@ var init_locations = __esm({
           isLicenseApproved
         });
       } catch (error) {
-        console.error("Error fetching location details:", error);
+        logger.error("Error fetching location details:", error);
         if (error instanceof DomainError) {
           return res.status(error.statusCode).json({ error: error.message });
         }
@@ -17158,7 +17322,7 @@ var init_locations = __esm({
         const requirements = await locationService3.getLocationRequirementsWithDefaults(locationId);
         res.json(requirements);
       } catch (error) {
-        console.error("Error getting location requirements:", error);
+        logger.error("Error getting location requirements:", error);
         res.status(500).json({ error: "Failed to get requirements" });
       }
     });
@@ -17180,7 +17344,7 @@ var init_locations = __esm({
           const requirements = await locationService3.getLocationRequirementsWithDefaults(locationId);
           res.json(requirements);
         } catch (error) {
-          console.error("Error getting location requirements:", error);
+          logger.error("Error getting location requirements:", error);
           res.status(500).json({ error: "Failed to get requirements" });
         }
       }
@@ -17203,7 +17367,7 @@ var init_locations = __esm({
           const parseResult = updateLocationRequirementsSchema.safeParse(req.body);
           if (!parseResult.success) {
             const validationError = fromZodError4(parseResult.error);
-            console.error("\u274C Validation error updating location requirements:", validationError.message);
+            logger.error("\u274C Validation error updating location requirements:", validationError.message);
             return res.status(400).json({
               error: "Validation error",
               message: validationError.message,
@@ -17212,10 +17376,10 @@ var init_locations = __esm({
           }
           const updates = parseResult.data;
           const requirements = await locationService3.upsertLocationRequirements(locationId, updates);
-          console.log(`\u2705 Location requirements updated for location ${locationId} by manager ${user.id} `);
+          logger.info(`\u2705 Location requirements updated for location ${locationId} by manager ${user.id} `);
           res.json({ success: true, requirements });
         } catch (error) {
-          console.error("\u274C Error updating location requirements:", error);
+          logger.error("\u274C Error updating location requirements:", error);
           res.status(500).json({
             error: "Failed to update requirements",
             message: error instanceof Error ? error.message : "Unknown error"
@@ -17275,7 +17439,7 @@ async function submitToAlwaysFoodSafe(submission) {
       message: data.message || "Completion submitted successfully"
     };
   } catch (error) {
-    console.error("Always Food Safe API submission failed:", error);
+    logger.error("Always Food Safe API submission failed:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred"
@@ -17288,6 +17452,7 @@ function isAlwaysFoodSafeConfigured() {
 var init_alwaysFoodSafeAPI = __esm({
   "server/alwaysFoodSafeAPI.ts"() {
     "use strict";
+    init_logger();
   }
 });
 
@@ -17301,6 +17466,7 @@ var router12, hasApprovedApplication, microlearning_default;
 var init_microlearning = __esm({
   "server/routes/microlearning.ts"() {
     "use strict";
+    init_logger();
     init_user_service();
     init_microlearning_service();
     init_application_service();
@@ -17311,7 +17477,7 @@ var init_microlearning = __esm({
         const applications4 = await applicationService.getApplicationsByUserId(userId);
         return applications4.some((app2) => app2.status === "approved");
       } catch (error) {
-        console.error("Error checking application status:", error);
+        logger.error("Error checking application status:", error);
         return false;
       }
     };
@@ -17338,7 +17504,7 @@ var init_microlearning = __esm({
           isAdmin
         });
       } catch (error) {
-        console.error("Error fetching microlearning progress:", error);
+        logger.error("Error fetching microlearning progress:", error);
         res.status(500).json({ message: "Failed to fetch progress" });
       }
     });
@@ -17374,7 +17540,7 @@ var init_microlearning = __esm({
           isAdmin
         });
       } catch (error) {
-        console.error("Error fetching microlearning progress:", error);
+        logger.error("Error fetching microlearning progress:", error);
         res.status(500).json({ message: "Failed to fetch progress" });
       }
     });
@@ -17423,7 +17589,7 @@ var init_microlearning = __esm({
           message: "Progress updated successfully"
         });
       } catch (error) {
-        console.error("Error updating video progress:", error);
+        logger.error("Error updating video progress:", error);
         res.status(500).json({ message: "Failed to update progress" });
       }
     });
@@ -17503,7 +17669,7 @@ var init_microlearning = __esm({
               videoProgress: videoProgress2
             });
           } catch (afsError) {
-            console.error("Always Food Safe API error:", afsError);
+            logger.error("Always Food Safe API error:", afsError);
           }
         }
         res.json({
@@ -17515,7 +17681,7 @@ var init_microlearning = __esm({
           certificateUrl: alwaysFoodSafeResult?.certificateUrl
         });
       } catch (error) {
-        console.error("Error completing microlearning:", error);
+        logger.error("Error completing microlearning:", error);
         res.status(500).json({ message: "Failed to complete microlearning" });
       }
     });
@@ -17540,7 +17706,7 @@ var init_microlearning = __esm({
         }
         res.json(completion);
       } catch (error) {
-        console.error("Error getting microlearning completion status:", error);
+        logger.error("Error getting microlearning completion status:", error);
         res.status(500).json({ message: "Failed to get completion status" });
       }
     });
@@ -17569,7 +17735,7 @@ var init_microlearning = __esm({
           message: "Certificate for skillpass.nl food safety training preparation - Complete your official certification at skillpass.nl"
         });
       } catch (error) {
-        console.error("Error generating certificate:", error);
+        logger.error("Error generating certificate:", error);
         res.status(500).json({ message: "Failed to generate certificate" });
       }
     });
@@ -17593,10 +17759,11 @@ function isAllowedR2Url(url) {
     return false;
   }
 }
-var router13, isVercel2, files_default;
+var router13, isVercel3, files_default;
 var init_files = __esm({
   "server/routes/files.ts"() {
     "use strict";
+    init_logger();
     init_r2_storage();
     init_fileUpload();
     init_firebase_auth_middleware();
@@ -17616,7 +17783,7 @@ var init_files = __esm({
               try {
                 fs5.unlinkSync(req.file.path);
               } catch (e) {
-                console.error("Error cleaning up file:", e);
+                logger.error("Error cleaning up file:", e);
               }
             }
             return res.status(401).json({ error: "Not authenticated" });
@@ -17635,12 +17802,12 @@ var init_files = __esm({
             type: req.file.mimetype
           });
         } catch (error) {
-          console.error("File upload error:", error);
+          logger.error("File upload error:", error);
           if (req.file && req.file.path) {
             try {
               fs5.unlinkSync(req.file.path);
             } catch (e) {
-              console.error("Error cleaning up file:", e);
+              logger.error("Error cleaning up file:", e);
             }
           }
           return res.status(500).json({
@@ -17660,13 +17827,13 @@ var init_files = __esm({
         const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
         const isDevelopment = process.env.NODE_ENV === "development" || !isProduction2 && !process.env.VERCEL_ENV;
         if (isDevelopment) {
-          console.log("\u{1F4BB} Development mode: Returning original URL without presigned URL");
+          logger.info("\u{1F4BB} Development mode: Returning original URL without presigned URL");
           return res.json({ url: imageUrl });
         }
         if (isProduction2) {
           try {
             if (!isR2Configured()) {
-              console.warn("R2 not configured, returning original URL");
+              logger.warn("R2 not configured, returning original URL");
               return res.json({ url: imageUrl });
             }
             const isPublic = imageUrl.includes("/public/") || imageUrl.includes("/kitchens/");
@@ -17674,12 +17841,12 @@ var init_files = __esm({
               if (!user) {
                 return res.status(401).json({ error: "Not authenticated" });
               }
-              console.log(`\u2705 Presigned URL request from authenticated user: ${user.id} (${user.role || "no role"})`);
+              logger.info(`\u2705 Presigned URL request from authenticated user: ${user.id} (${user.role || "no role"})`);
             }
             const presignedUrl = await getPresignedUrl(imageUrl, 3600);
             return res.json({ url: presignedUrl });
           } catch (error) {
-            console.error("Error generating presigned URL, falling back to original URL:", {
+            logger.error("Error generating presigned URL, falling back to original URL:", {
               error: error instanceof Error ? error.message : "Unknown error",
               imageUrl
             });
@@ -17688,7 +17855,7 @@ var init_files = __esm({
         }
         return res.json({ url: imageUrl });
       } catch (error) {
-        console.error("Error in presigned URL endpoint:", error);
+        logger.error("Error in presigned URL endpoint:", error);
         return res.status(500).json({
           error: "Failed to generate presigned URL",
           details: error instanceof Error ? error.message : "Unknown error"
@@ -17705,17 +17872,17 @@ var init_files = __esm({
         const isPublicPath = decodedPath.includes("public/") || decodedPath.includes("kitchens/");
         const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i.test(decodedPath);
         const isPublic = isPublicPath || isImageFile;
-        console.log(`[R2 Images Proxy] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}, path: ${decodedPath}`);
+        logger.info(`[R2 Images Proxy] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}, path: ${decodedPath}`);
         if (!isPublic && !req.neonUser) {
-          console.log(`[R2 Images Proxy] Unauthorized access attempt for protected file: ${decodedPath}`);
+          logger.info(`[R2 Images Proxy] Unauthorized access attempt for protected file: ${decodedPath}`);
           return res.status(401).send("Authentication required for protected files");
         }
         const fullR2Url = `https://files.localcooks.ca/${decodedPath}`;
-        console.log(`[R2 Images Proxy] Request for: ${decodedPath} (user: ${req.neonUser?.id || "anonymous"}, role: ${req.neonUser?.role || "none"})`);
+        logger.info(`[R2 Images Proxy] Request for: ${decodedPath} (user: ${req.neonUser?.id || "anonymous"}, role: ${req.neonUser?.role || "none"})`);
         const presignedUrl = await getPresignedUrl(fullR2Url);
         res.redirect(307, presignedUrl);
       } catch (error) {
-        console.error("[R2 Images Proxy] Error:", error);
+        logger.error("[R2 Images Proxy] Error:", error);
         res.status(404).send("File not found or access denied");
       }
     });
@@ -17727,29 +17894,29 @@ var init_files = __esm({
           const isImage = /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i.test(filename);
           const folder = isImage ? "images" : "documents";
           targetUrl = `https://files.localcooks.ca/${folder}/${filename}`;
-          console.log(`[R2 Proxy] Resolved filename "${filename}" to: ${targetUrl}`);
+          logger.info(`[R2 Proxy] Resolved filename "${filename}" to: ${targetUrl}`);
         } else if (url && typeof url === "string") {
           targetUrl = url;
         } else {
           return res.status(400).send("Missing url or filename parameter");
         }
         if (!isAllowedR2Url(targetUrl)) {
-          console.warn(`[R2 Proxy] SSRF blocked: ${targetUrl}`);
+          logger.warn(`[R2 Proxy] SSRF blocked: ${targetUrl}`);
           return res.status(400).send("Invalid URL domain");
         }
         const isPublicPath = targetUrl.includes("/public/") || targetUrl.includes("/kitchens/");
         const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i.test(targetUrl);
         const isPublic = isPublicPath || isImageFile;
-        console.log(`[R2 Proxy] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
+        logger.info(`[R2 Proxy] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
         if (!isPublic && !req.neonUser) {
-          console.log(`[R2 Proxy] Unauthorized access attempt for protected file: ${targetUrl}`);
+          logger.info(`[R2 Proxy] Unauthorized access attempt for protected file: ${targetUrl}`);
           return res.status(401).send("Authentication required for protected files");
         }
-        console.log(`[R2 Proxy] Request for: ${targetUrl} (user: ${req.neonUser?.id || "anonymous"}, role: ${req.neonUser?.role || "none"}, public: ${isPublic})`);
+        logger.info(`[R2 Proxy] Request for: ${targetUrl} (user: ${req.neonUser?.id || "anonymous"}, role: ${req.neonUser?.role || "none"}, public: ${isPublic})`);
         const presignedUrl = await getPresignedUrl(targetUrl);
         res.redirect(307, presignedUrl);
       } catch (error) {
-        console.error("[R2 Proxy] Error:", error);
+        logger.error("[R2 Proxy] Error:", error);
         res.status(500).send("Failed to proxy image");
       }
     });
@@ -17762,21 +17929,21 @@ var init_files = __esm({
         const isPublicPath = url.includes("/public/") || url.includes("/kitchens/");
         const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i.test(url);
         const isPublic = isPublicPath || isImageFile;
-        console.log(`[R2 Presigned] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
+        logger.info(`[R2 Presigned] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
         if (!isPublic && !req.neonUser) {
-          console.log(`[R2 Presigned] Unauthorized access attempt for protected file: ${url}`);
+          logger.info(`[R2 Presigned] Unauthorized access attempt for protected file: ${url}`);
           return res.status(401).json({ error: "Not authenticated" });
         }
-        console.log(`[R2 Presigned] Request for: ${url} (user: ${req.neonUser?.id || "anonymous"}, role: ${req.neonUser?.role || "none"}, public: ${isPublic})`);
+        logger.info(`[R2 Presigned] Request for: ${url} (user: ${req.neonUser?.id || "anonymous"}, role: ${req.neonUser?.role || "none"}, public: ${isPublic})`);
         const presignedUrl = await getPresignedUrl(url);
         return res.json({ url: presignedUrl });
       } catch (error) {
-        console.error("[R2 Presigned] Error:", error);
+        logger.error("[R2 Presigned] Error:", error);
         res.status(500).json({ error: "Failed to generate presigned URL" });
       }
     });
-    isVercel2 = !!process.env.VERCEL;
-    if (!isVercel2) {
+    isVercel3 = !!process.env.VERCEL;
+    if (!isVercel3) {
       router13.use("/documents", express.static(path2.join(process.cwd(), "uploads/documents")));
     }
     router13.get("/documents/:filename", optionalFirebaseAuth, async (req, res) => {
@@ -17798,18 +17965,18 @@ var init_files = __esm({
               }
             }
           } catch (error) {
-            console.error("Error verifying query token:", error);
+            logger.error("Error verifying query token:", error);
           }
         }
         const filename = req.params.filename;
         if (!userId) {
-          console.log("[FILE ACCESS] Authentication failed for:", filename);
+          logger.info("[FILE ACCESS] Authentication failed for:", filename);
           return res.status(401).json({
             message: "Not authenticated",
             hint: "Files must be accessed with authentication. Use the presigned URL endpoint or include an auth token."
           });
         }
-        console.log("[FILE ACCESS] Authenticated user:", userId, "role:", userRole, "accessing:", filename);
+        logger.info("[FILE ACCESS] Authenticated user:", userId, "role:", userRole, "accessing:", filename);
         const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
         if (filename.startsWith("http://") || filename.startsWith("https://")) {
           if (isProduction2) {
@@ -17825,7 +17992,7 @@ var init_files = __esm({
                 return res.redirect(presignedUrl);
               }
             } catch (error) {
-              console.error("Error generating presigned URL:", error);
+              logger.error("Error generating presigned URL:", error);
               return res.status(500).json({ message: "Error accessing file" });
             }
           }
@@ -17861,11 +18028,11 @@ var init_files = __esm({
               )
             ).limit(1);
             if (kitchenMatch) {
-              console.log(`[FILE ACCESS] Public access granted for kitchen image: ${filename}`);
+              logger.info(`[FILE ACCESS] Public access granted for kitchen image: ${filename}`);
               isPublicAccess = true;
             }
           } catch (dbError) {
-            console.error("Error checking public access:", dbError);
+            logger.error("Error checking public access:", dbError);
           }
         }
         if (!isOwner && !isAdminOrManager && !isPublicAccess) {
@@ -17891,10 +18058,10 @@ var init_files = __esm({
             try {
               const fakeUrl = `https://r2.localcooks.com/documents/${filename}`;
               const presignedUrl = await getPresignedUrl2(fakeUrl, 3600);
-              console.log(`[FILE ACCESS] Redirecting to R2 for: ${filename}`);
+              logger.info(`[FILE ACCESS] Redirecting to R2 for: ${filename}`);
               return res.redirect(307, presignedUrl);
             } catch (r2Error) {
-              console.error("[FILE ACCESS] R2 fallback failed:", r2Error);
+              logger.error("[FILE ACCESS] R2 fallback failed:", r2Error);
               return res.status(404).json({ message: "File not found" });
             }
           } else {
@@ -17902,7 +18069,7 @@ var init_files = __esm({
           }
         }
       } catch (error) {
-        console.error("Error serving file:", error);
+        logger.error("Error serving file:", error);
         return res.status(500).json({ message: "Internal server error" });
       }
     });
@@ -17930,6 +18097,7 @@ var getSMSConfig, formatPhoneNumber, sendSMS, generateManagerBookingSMS, generat
 var init_sms = __esm({
   "server/sms.ts"() {
     "use strict";
+    init_logger();
     getSMSConfig = () => {
       const accountSid = process.env.TWILIO_ACCOUNT_SID;
       const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -17939,19 +18107,19 @@ var init_sms = __esm({
         if (!accountSid) missing.push("TWILIO_ACCOUNT_SID");
         if (!authToken) missing.push("TWILIO_AUTH_TOKEN");
         if (!fromNumber) missing.push("TWILIO_PHONE_NUMBER");
-        console.warn("\u26A0\uFE0F Twilio configuration is missing. SMS functionality will be disabled.");
-        console.warn(`   Missing variables: ${missing.join(", ")}`);
-        console.warn("   Please set these environment variables to enable SMS functionality.");
+        logger.warn("\u26A0\uFE0F Twilio configuration is missing. SMS functionality will be disabled.");
+        logger.warn(`   Missing variables: ${missing.join(", ")}`);
+        logger.warn("   Please set these environment variables to enable SMS functionality.");
         return null;
       }
       if (!fromNumber.startsWith("+")) {
-        console.warn(`\u26A0\uFE0F TWILIO_PHONE_NUMBER should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US). Current value: ${fromNumber}`);
+        logger.warn(`\u26A0\uFE0F TWILIO_PHONE_NUMBER should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US). Current value: ${fromNumber}`);
       }
       if (fromNumber.startsWith("+1") && fromNumber.length === 12) {
         const areaCode = fromNumber.substring(2, 5);
         const firstDigit = parseInt(areaCode[0]);
         if (firstDigit >= 2 && firstDigit <= 9) {
-          console.log(`\u2705 Twilio phone number detected as North American (US/Canada): ${fromNumber}`);
+          logger.info(`\u2705 Twilio phone number detected as North American (US/Canada): ${fromNumber}`);
         }
       }
       return {
@@ -17970,7 +18138,7 @@ var init_sms = __esm({
         if (digitsAfterPlus.length >= 1 && digitsAfterPlus.length <= 15 && /^\d+$/.test(digitsAfterPlus)) {
           return cleaned;
         }
-        console.warn(`\u26A0\uFE0F Invalid E.164 format (must be + followed by 1-15 digits): ${phone}`);
+        logger.warn(`\u26A0\uFE0F Invalid E.164 format (must be + followed by 1-15 digits): ${phone}`);
         return null;
       }
       const digitsOnly = cleaned.replace(/\D/g, "");
@@ -17985,14 +18153,14 @@ var init_sms = __esm({
         if (firstDigit >= 2 && firstDigit <= 9 && fourthDigit >= 2 && fourthDigit <= 9) {
           return `+1${digitsOnly}`;
         } else {
-          console.warn(`\u26A0\uFE0F Invalid North American phone number format: ${phone}`);
-          console.warn("   Area code and exchange code must start with digits 2-9");
+          logger.warn(`\u26A0\uFE0F Invalid North American phone number format: ${phone}`);
+          logger.warn("   Area code and exchange code must start with digits 2-9");
           return null;
         }
       }
-      console.warn(`\u26A0\uFE0F Could not format phone number: ${phone} (digits only: ${digitsOnly}, length: ${digitsOnly.length})`);
-      console.warn("   Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US)");
-      console.warn("   Or 10-digit North American numbers (e.g., 4161234567 for Canada, 2125551234 for US)");
+      logger.warn(`\u26A0\uFE0F Could not format phone number: ${phone} (digits only: ${digitsOnly}, length: ${digitsOnly.length})`);
+      logger.warn("   Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US)");
+      logger.warn("   Or 10-digit North American numbers (e.g., 4161234567 for Canada, 2125551234 for US)");
       return null;
     };
     sendSMS = async (to, message, options) => {
@@ -18000,24 +18168,24 @@ var init_sms = __esm({
       try {
         const config = getSMSConfig();
         if (!config) {
-          console.warn("\u26A0\uFE0F SMS not sent - Twilio configuration missing");
+          logger.warn("\u26A0\uFE0F SMS not sent - Twilio configuration missing");
           return false;
         }
         const formattedPhone = formatPhoneNumber(to);
         if (!formattedPhone) {
-          console.error(`\u274C SMS not sent - Invalid phone number: ${to}`);
-          console.error("   Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US)");
-          console.error("   Or 10-digit North American numbers (e.g., 4161234567 for Canada, 2125551234 for US)");
+          logger.error(`\u274C SMS not sent - Invalid phone number: ${to}`);
+          logger.error("   Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US)");
+          logger.error("   Or 10-digit North American numbers (e.g., 4161234567 for Canada, 2125551234 for US)");
           return false;
         }
         if (message.length > 1600) {
-          console.warn(`\u26A0\uFE0F SMS message is ${message.length} characters (limit: 1600). Message will be split into multiple parts.`);
+          logger.warn(`\u26A0\uFE0F SMS message is ${message.length} characters (limit: 1600). Message will be split into multiple parts.`);
         }
         const client = twilio(config.accountSid, config.authToken);
         const formattedFrom = formatPhoneNumber(config.fromNumber);
         if (!formattedFrom) {
-          console.error(`\u274C SMS not sent - Invalid TWILIO_PHONE_NUMBER format: ${config.fromNumber}`);
-          console.error("   TWILIO_PHONE_NUMBER must be in E.164 format (e.g., +1234567890)");
+          logger.error(`\u274C SMS not sent - Invalid TWILIO_PHONE_NUMBER format: ${config.fromNumber}`);
+          logger.error("   TWILIO_PHONE_NUMBER must be in E.164 format (e.g., +1234567890)");
           return false;
         }
         const messageResult = await client.messages.create({
@@ -18027,7 +18195,7 @@ var init_sms = __esm({
           to: formattedPhone
         });
         const duration = Date.now() - startTime;
-        console.log(`\u2705 SMS sent successfully:`, {
+        logger.info(`\u2705 SMS sent successfully:`, {
           to: formattedPhone,
           messageSid: messageResult.sid,
           status: messageResult.status,
@@ -18053,42 +18221,42 @@ var init_sms = __esm({
           errorDetails.twilioStatus = error.status;
           errorDetails.twilioMoreInfo = error.moreInfo;
         }
-        console.error(`\u274C SMS sending failed:`, errorDetails);
+        logger.error(`\u274C SMS sending failed:`, errorDetails);
         if (error && typeof error === "object" && "code" in error) {
           const twilioCode = error.code;
           switch (twilioCode) {
             case 21211:
-              console.error("   \u2192 Invalid phone number format. Ensure phone numbers are in E.164 format (e.g., +1234567890)");
+              logger.error("   \u2192 Invalid phone number format. Ensure phone numbers are in E.164 format (e.g., +1234567890)");
               break;
             case 21212:
-              console.error("   \u2192 Invalid phone number. The number provided is not a valid phone number.");
+              logger.error("   \u2192 Invalid phone number. The number provided is not a valid phone number.");
               break;
             case 21408:
-              console.error("   \u2192 Permission denied. Check your Twilio account permissions.");
+              logger.error("   \u2192 Permission denied. Check your Twilio account permissions.");
               break;
             case 21608:
-              console.error("   \u2192 Unsubscribed recipient. The recipient has opted out of receiving messages.");
+              logger.error("   \u2192 Unsubscribed recipient. The recipient has opted out of receiving messages.");
               break;
             case 21610:
-              console.error('   \u2192 Invalid "from" phone number. Check TWILIO_PHONE_NUMBER is correct and verified in Twilio.');
+              logger.error('   \u2192 Invalid "from" phone number. Check TWILIO_PHONE_NUMBER is correct and verified in Twilio.');
               break;
             case 21614:
-              console.error('   \u2192 "To" number is not a valid mobile number.');
+              logger.error('   \u2192 "To" number is not a valid mobile number.');
               break;
             case 30003:
-              console.error("   \u2192 Unreachable destination. The phone number may be invalid or unreachable.");
+              logger.error("   \u2192 Unreachable destination. The phone number may be invalid or unreachable.");
               break;
             case 30004:
-              console.error("   \u2192 Message blocked. The message may be blocked by carrier or Twilio.");
+              logger.error("   \u2192 Message blocked. The message may be blocked by carrier or Twilio.");
               break;
             case 30005:
-              console.error("   \u2192 Unknown destination. The destination number is not recognized.");
+              logger.error("   \u2192 Unknown destination. The destination number is not recognized.");
               break;
             case 30006:
-              console.error("   \u2192 Landline or unreachable. The number may be a landline that cannot receive SMS.");
+              logger.error("   \u2192 Landline or unreachable. The number may be a landline that cannot receive SMS.");
               break;
             default:
-              console.error(`   \u2192 Twilio error code: ${twilioCode}. Check Twilio documentation for details.`);
+              logger.error(`   \u2192 Twilio error code: ${twilioCode}. Check Twilio documentation for details.`);
           }
         }
         return false;
@@ -18266,21 +18434,22 @@ var init_timezone_utils = __esm({
 // server/api-response.ts
 function errorResponse(res, error, statusCode = 500) {
   const message = process.env.NODE_ENV === "production" ? "An unexpected error occurred" : error?.message || "Unknown error";
-  console.error("[API Error]", error);
+  logger.error("[API Error]", error);
   return res.status(statusCode).json({ error: message });
 }
 var init_api_response = __esm({
   "server/api-response.ts"() {
     "use strict";
+    init_logger();
   }
 });
 
 // server/config.ts
 function getAppBaseUrl(subdomain = "main") {
   const isDev = process.env.NODE_ENV === "development";
-  const isVercel3 = !!process.env.VERCEL;
-  const isVercelPreview = process.env.VERCEL_ENV === "preview";
-  if (isDev && !isVercel3) {
+  const isVercel4 = !!process.env.VERCEL;
+  const isVercelPreview2 = process.env.VERCEL_ENV === "preview";
+  if (isDev && !isVercel4) {
     const port = process.env.PORT || "5001";
     if (subdomain === "main" || !subdomain) {
       return `http://localhost:${port}`;
@@ -18288,9 +18457,9 @@ function getAppBaseUrl(subdomain = "main") {
     return `http://${subdomain}.localhost:${port}`;
   }
   const baseDomain = process.env.APP_BASE_DOMAIN || "localcooks.ca";
-  const prefix = isVercelPreview ? "dev-" : "";
+  const prefix = isVercelPreview2 ? "dev-" : "";
   if (subdomain === "main" || !subdomain) {
-    return isVercelPreview ? `https://dev.${baseDomain}` : `https://${baseDomain}`;
+    return isVercelPreview2 ? `https://dev.${baseDomain}` : `https://${baseDomain}`;
   }
   return `https://${prefix}${subdomain}.${baseDomain}`;
 }
@@ -18871,7 +19040,7 @@ async function getKitchenPricing(kitchenId) {
       taxRatePercent: kitchen.taxRatePercent ? parseFloat(kitchen.taxRatePercent) : null
     };
   } catch (error) {
-    console.error("Error getting kitchen pricing:", error);
+    logger.error("Error getting kitchen pricing:", error);
     throw error;
   }
 }
@@ -18904,7 +19073,7 @@ async function calculateKitchenBookingPrice(kitchenId, startTime, endTime) {
       // New field
     };
   } catch (error) {
-    console.error("Error calculating kitchen booking price:", error);
+    logger.error("Error calculating kitchen booking price:", error);
     throw error;
   }
 }
@@ -18920,7 +19089,7 @@ async function getServiceFeeRate() {
     }
     return rate;
   } catch (error) {
-    console.error("Error getting service fee rate from platform_settings:", error);
+    logger.error("Error getting service fee rate from platform_settings:", error);
     return 0.05;
   }
 }
@@ -18943,6 +19112,7 @@ function calculateTotalWithFees(basePriceCents, serviceFeeCents = 0, damageDepos
 var init_pricing_service = __esm({
   "server/services/pricing-service.ts"() {
     "use strict";
+    init_logger();
     init_db();
     init_schema();
   }
@@ -19157,9 +19327,9 @@ var init_booking_service = __esm({
               grantedBy: kitchenApplication.reviewedBy || data.chefId,
               grantedAt: /* @__PURE__ */ new Date()
             }).onConflictDoNothing();
-            console.log(`\u2705 [BookingService] Auto-created chef_location_access for chef ${data.chefId} at location ${kitchen.locationId}`);
+            logger.info(`\u2705 [BookingService] Auto-created chef_location_access for chef ${data.chefId} at location ${kitchen.locationId}`);
           } catch (err) {
-            console.error("[BookingService] Error auto-creating chef_location_access:", err);
+            logger.error("[BookingService] Error auto-creating chef_location_access:", err);
           }
         }
         const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents);
@@ -19764,6 +19934,7 @@ var ChefService, chefService;
 var init_chef_service = __esm({
   "server/domains/users/chef.service.ts"() {
     "use strict";
+    init_logger();
     init_chef_repository();
     init_user_service();
     init_location_service();
@@ -19849,9 +20020,9 @@ var init_chef_service = __esm({
                 grantedBy: kitchenApplication.reviewedBy || chefId,
                 grantedAt: /* @__PURE__ */ new Date()
               }).onConflictDoNothing();
-              console.log(`\u2705 Auto-created chef_location_access for chef ${chefId} at location ${locationId}`);
+              logger.info(`\u2705 Auto-created chef_location_access for chef ${chefId} at location ${locationId}`);
             } catch (err) {
-              console.error("Error auto-creating chef_location_access:", err);
+              logger.error("Error auto-creating chef_location_access:", err);
             }
             return {
               hasApplication: true,
@@ -20123,14 +20294,14 @@ import { sql as sql10 } from "drizzle-orm";
 async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endDate, locationId) {
   try {
     if (managerId === void 0 || managerId === null || isNaN(managerId)) {
-      console.error("[Revenue Service V2] Invalid managerId:", managerId);
+      logger.error("[Revenue Service V2] Invalid managerId:", managerId);
       throw new Error("Invalid manager ID");
     }
     const params = [managerId];
     if (locationId) {
       params.push(locationId);
     }
-    console.log("[Revenue Service V2] getRevenueMetricsFromTransactions params:", { managerId, locationId, startDate, endDate });
+    logger.info("[Revenue Service V2] getRevenueMetricsFromTransactions params:", { managerId, locationId, startDate, endDate });
     const tableCheck = await db2.execute(sql10`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
@@ -20140,7 +20311,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     `);
     const tableExists = tableCheck.rows[0]?.table_exists;
     if (!tableExists) {
-      console.log("[Revenue Service V2] payment_transactions table does not exist, will fallback to legacy method");
+      logger.info("[Revenue Service V2] payment_transactions table does not exist, will fallback to legacy method");
       throw new Error("payment_transactions table does not exist");
     }
     const managerIdParam = sql10`${managerId}`;
@@ -20152,7 +20323,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
         AND (pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')
     `);
     const transactionCount = parseInt(countCheck.rows[0]?.count || "0");
-    console.log(`[Revenue Service V2] Found ${transactionCount} payment_transactions for manager ${managerId}`);
+    logger.info(`[Revenue Service V2] Found ${transactionCount} payment_transactions for manager ${managerId}`);
     const bookingCountCheck = await db2.execute(sql10`
       SELECT 
         COUNT(DISTINCT kb.id) as total_bookings,
@@ -20172,13 +20343,13 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     `);
     const totalBookings = parseInt(bookingCountCheck.rows[0]?.total_bookings || "0");
     const bookingsWithTransactions = parseInt(bookingCountCheck.rows[0]?.bookings_with_transactions || "0");
-    console.log(`[Revenue Service V2] Booking coverage: ${bookingsWithTransactions}/${totalBookings} bookings have payment_transactions`);
+    logger.info(`[Revenue Service V2] Booking coverage: ${bookingsWithTransactions}/${totalBookings} bookings have payment_transactions`);
     if (transactionCount === 0) {
-      console.log("[Revenue Service V2] No payment_transactions found, falling back to legacy method");
+      logger.info("[Revenue Service V2] No payment_transactions found, falling back to legacy method");
       throw new Error("No payment_transactions found for manager");
     }
     if (totalBookings > 0 && bookingsWithTransactions < totalBookings) {
-      console.log(`[Revenue Service V2] Incomplete payment_transactions coverage (${bookingsWithTransactions}/${totalBookings}), falling back to legacy method`);
+      logger.info(`[Revenue Service V2] Incomplete payment_transactions coverage (${bookingsWithTransactions}/${totalBookings}), falling back to legacy method`);
       throw new Error("Incomplete payment_transactions coverage");
     }
     const metricsTimezoneResult = await db2.execute(sql10`
@@ -20349,7 +20520,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     const kitchenTax = kitchenTaxRow.calculated_tax_amount != null ? parseInt(String(kitchenTaxRow.calculated_tax_amount)) : 0;
     const storageTax = storageTaxRow.storage_tax_amount != null ? parseInt(String(storageTaxRow.storage_tax_amount)) : 0;
     const combinedTaxAmount = kitchenTax + storageTax;
-    console.log("[Revenue Service V2] Tax breakdown:", {
+    logger.info("[Revenue Service V2] Tax breakdown:", {
       kitchenTax,
       storageTax,
       combinedTaxAmount,
@@ -20361,7 +20532,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       completed_net_revenue: kitchenTaxRow.completed_net_revenue,
       tax_rate_percent: kitchenTaxRow.tax_rate_percent
     };
-    console.log("[Revenue Service V2] Query result:", {
+    logger.info("[Revenue Service V2] Query result:", {
       managerId,
       startDate: startDate ? typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0] : "none",
       endDate: endDate ? typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0] : "none",
@@ -20400,7 +20571,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     const taxAmount = actualTaxAmount;
     const netRevenue = totalRevenue - taxAmount - stripeFee;
     const effectiveCompletedPayments = Math.max(0, completedPayments - refundedAmount);
-    console.log("[Revenue Service V2] Fee breakdown:", {
+    logger.info("[Revenue Service V2] Fee breakdown:", {
       grossRevenueRaw,
       refundedAmount,
       totalRevenue,
@@ -20436,10 +20607,10 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       cancelledBookingCount: isNaN(cancelledBookingCount) ? 0 : cancelledBookingCount,
       refundedAmount: isNaN(refundedAmount) ? 0 : refundedAmount
     };
-    console.log("[Revenue Service V2] Final metrics:", metrics);
+    logger.info("[Revenue Service V2] Final metrics:", metrics);
     return metrics;
   } catch (error) {
-    console.error("Error getting revenue metrics from transactions:", error);
+    logger.error("Error getting revenue metrics from transactions:", error);
     throw error;
   }
 }
@@ -20508,7 +20679,7 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
       GROUP BY l.id, l.name
       ORDER BY total_revenue DESC
     `);
-    console.log(`[Revenue Service V2] Revenue by location: ${result.rows.length} locations found`);
+    logger.info(`[Revenue Service V2] Revenue by location: ${result.rows.length} locations found`);
     return result.rows.map((row) => {
       const parseNumeric = (value) => {
         if (!value) return 0;
@@ -20530,7 +20701,7 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
       };
     });
   } catch (error) {
-    console.error("Error getting revenue by location from transactions:", error);
+    logger.error("Error getting revenue by location from transactions:", error);
     throw error;
   }
 }
@@ -20612,7 +20783,7 @@ async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDa
       )
       ORDER BY date ASC
     `);
-    console.log(`[Revenue Service V2] Revenue by date: ${result.rows.length} dates found`);
+    logger.info(`[Revenue Service V2] Revenue by date: ${result.rows.length} dates found`);
     return result.rows.map((row) => {
       const parseNumeric = (value) => {
         if (!value) return 0;
@@ -20629,13 +20800,14 @@ async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDa
       };
     });
   } catch (error) {
-    console.error("Error getting revenue by date from transactions:", error);
+    logger.error("Error getting revenue by date from transactions:", error);
     throw error;
   }
 }
 var init_revenue_service_v2 = __esm({
   "server/services/revenue-service-v2.ts"() {
     "use strict";
+    init_logger();
   }
 });
 
@@ -20652,7 +20824,7 @@ __export(revenue_service_exports, {
 import { sql as sql11 } from "drizzle-orm";
 function calculateManagerRevenue(totalRevenue, serviceFeeRate) {
   if (serviceFeeRate < 0 || serviceFeeRate > 1) {
-    console.warn(`Invalid service fee rate: ${serviceFeeRate}, using 0`);
+    logger.warn(`Invalid service fee rate: ${serviceFeeRate}, using 0`);
     return totalRevenue;
   }
   const managerRate = 1 - serviceFeeRate;
@@ -20683,7 +20855,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       JOIN locations l ON k.location_id = l.id
       WHERE l.manager_id = ${managerId}
     `);
-    console.log("[Revenue Service] Debug - Manager bookings:", {
+    logger.info("[Revenue Service] Debug - Manager bookings:", {
       managerId,
       debug: debugQuery.rows[0],
       locationId,
@@ -20790,7 +20962,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       JOIN locations l ON k.location_id = l.id
       ${pendingWhereClause}
     `);
-    console.log("[Revenue Service] Pending payments query result:", {
+    logger.info("[Revenue Service] Pending payments query result:", {
       managerId,
       locationId,
       pendingCount: pendingResult.rows[0]?.pending_count_all || 0,
@@ -20825,24 +20997,24 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     `);
     const pendingRow = pendingResult.rows[0] || {};
     const allPendingPayments = typeof pendingRow.pending_payments_all === "string" ? parseInt(pendingRow.pending_payments_all) || 0 : pendingRow.pending_payments_all ? parseInt(String(pendingRow.pending_payments_all)) : 0;
-    console.log("[Revenue Service] Pending payments result:", {
+    logger.info("[Revenue Service] Pending payments result:", {
       allPendingPayments,
       pendingCount: pendingRow.pending_count_all || 0,
       rawValue: pendingRow.pending_payments_all
     });
     const completedRow = completedResult.rows[0] || {};
     const allCompletedPayments = typeof completedRow.completed_payments_all === "string" ? parseInt(completedRow.completed_payments_all) || 0 : completedRow.completed_payments_all ? parseInt(String(completedRow.completed_payments_all)) : 0;
-    console.log("[Revenue Service] Main query result count:", result.rows.length);
+    logger.info("[Revenue Service] Main query result count:", result.rows.length);
     if (result.rows.length > 0) {
       const dbgRow = result.rows[0];
-      console.log("[Revenue Service] Main query result:", {
+      logger.info("[Revenue Service] Main query result:", {
         total_revenue: dbgRow.total_revenue,
         platform_fee: dbgRow.platform_fee,
         booking_count: dbgRow.booking_count
       });
     }
     if (result.rows.length === 0) {
-      console.log("[Revenue Service] No bookings in date range, checking for payments outside date range...");
+      logger.info("[Revenue Service] No bookings in date range, checking for payments outside date range...");
       const pendingFeeResult = await db2.execute(sql11`
         SELECT 
           COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
@@ -20903,7 +21075,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
         `);
         actualStripeFeeFromDb = parseInt(feeResult.rows[0]?.total_stripe_fee || "0") || 0;
       } catch (feeError) {
-        console.warn("[Revenue Service] Could not fetch actual Stripe fees:", feeError);
+        logger.warn("[Revenue Service] Could not fetch actual Stripe fees:", feeError);
       }
       const estimatedStripeFee = actualStripeFeeFromDb > 0 ? actualStripeFeeFromDb : 0;
       const taxAmount2 = pendingTaxAmount + completedTaxAmount;
@@ -20927,7 +21099,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       };
     }
     const row = result.rows[0];
-    console.log("[Revenue Service] Query result:", {
+    logger.info("[Revenue Service] Query result:", {
       total_revenue: row.total_revenue,
       platform_fee: row.platform_fee,
       booking_count: row.booking_count,
@@ -21023,13 +21195,13 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       if (storedStripeFee > 0) {
         actualStripeFee = storedStripeFee;
         stripeFeeSource = "stripe";
-        console.log(`[Revenue Service] Using actual Stripe fees from payment_transactions: ${actualStripeFee} cents`);
+        logger.info(`[Revenue Service] Using actual Stripe fees from payment_transactions: ${actualStripeFee} cents`);
       } else {
         actualStripeFee = 0;
-        console.log(`[Revenue Service] No stored Stripe fees found - fees will sync via charge.updated webhook`);
+        logger.info(`[Revenue Service] No stored Stripe fees found - fees will sync via charge.updated webhook`);
       }
     } catch (error) {
-      console.warn("[Revenue Service] Error fetching Stripe fees from payment_transactions:", error);
+      logger.warn("[Revenue Service] Error fetching Stripe fees from payment_transactions:", error);
       actualStripeFee = 0;
     }
     const grossTaxAmount = pendingTaxAmount2 + completedTaxAmount2;
@@ -21057,7 +21229,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       const effectiveTaxRow = effectiveTaxResult.rows[0] || {};
       effectiveTaxAmount = typeof effectiveTaxRow.effective_tax === "string" ? parseInt(effectiveTaxRow.effective_tax) || 0 : effectiveTaxRow.effective_tax ? parseInt(String(effectiveTaxRow.effective_tax)) : 0;
     } catch (error) {
-      console.warn("[Revenue Service] Error calculating effective tax amount:", error);
+      logger.warn("[Revenue Service] Error calculating effective tax amount:", error);
     }
     const taxAmount = effectiveTaxAmount > 0 ? effectiveTaxAmount : grossTaxAmount;
     const effectiveGrossRevenue = totalRevenueWithAllPayments - refundedAmount;
@@ -21082,14 +21254,14 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       refundedAmount
     };
   } catch (error) {
-    console.error("Error getting revenue metrics:", error);
+    logger.error("Error getting revenue metrics:", error);
     throw error;
   }
 }
 async function getRevenueByLocation(managerId, db2, startDate, endDate) {
   try {
     if (managerId === void 0 || managerId === null || isNaN(managerId)) {
-      console.error("[Revenue Service] Invalid managerId:", managerId);
+      logger.error("[Revenue Service] Invalid managerId:", managerId);
       throw new Error("Invalid manager ID");
     }
     const managerIdParam = sql11`${managerId}`;
@@ -21144,21 +21316,21 @@ async function getRevenueByLocation(managerId, db2, startDate, endDate) {
       };
     });
   } catch (error) {
-    console.error("Error getting revenue by location:", error);
+    logger.error("Error getting revenue by location:", error);
     throw error;
   }
 }
 async function getRevenueByDate(managerId, db2, startDate, endDate) {
   try {
     if (managerId === void 0 || managerId === null || isNaN(managerId)) {
-      console.error("[Revenue Service] Invalid managerId:", managerId);
+      logger.error("[Revenue Service] Invalid managerId:", managerId);
       throw new Error("Invalid manager ID");
     }
     const start = typeof startDate === "string" ? startDate : startDate ? startDate.toISOString().split("T")[0] : null;
     const end = typeof endDate === "string" ? endDate : endDate ? endDate.toISOString().split("T")[0] : null;
     const managerIdParam = sql11`${managerId}`;
     if (!start || !end) {
-      console.warn("[Revenue Service] Missing date parameters for getRevenueByDate");
+      logger.warn("[Revenue Service] Missing date parameters for getRevenueByDate");
     }
     const startParam = start ? sql11`${start}::date` : sql11`CURRENT_DATE - INTERVAL '30 days'`;
     const endParam = end ? sql11`${end}::date` : sql11`CURRENT_DATE`;
@@ -21196,7 +21368,7 @@ async function getRevenueByDate(managerId, db2, startDate, endDate) {
       GROUP BY DATE(kb.booking_date AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone})
       ORDER BY date ASC
     `);
-    console.log("[Revenue Service] Revenue by date query:", {
+    logger.info("[Revenue Service] Revenue by date query:", {
       managerId,
       start,
       end,
@@ -21216,7 +21388,7 @@ async function getRevenueByDate(managerId, db2, startDate, endDate) {
       };
     });
   } catch (error) {
-    console.error("Error getting revenue by date:", error);
+    logger.error("Error getting revenue by date:", error);
     throw error;
   }
 }
@@ -21518,13 +21690,13 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
     const pagedTransactions = allTransactions.slice(offset, offset + limit);
     return { transactions: pagedTransactions, total };
   } catch (error) {
-    console.error("Error getting transaction history:", error);
+    logger.error("Error getting transaction history:", error);
     throw error;
   }
 }
 async function getCompleteRevenueMetrics(managerId, db2, startDate, endDate, locationId) {
   try {
-    console.log("[Revenue Service] getCompleteRevenueMetrics called:", {
+    logger.info("[Revenue Service] getCompleteRevenueMetrics called:", {
       managerId,
       startDate,
       endDate,
@@ -21533,13 +21705,13 @@ async function getCompleteRevenueMetrics(managerId, db2, startDate, endDate, loc
     try {
       const { getRevenueMetricsFromTransactions: getRevenueMetricsFromTransactions2 } = await Promise.resolve().then(() => (init_revenue_service_v2(), revenue_service_v2_exports));
       const metrics = await getRevenueMetricsFromTransactions2(managerId, db2, startDate, endDate, locationId);
-      console.log("[Revenue Service] Using payment_transactions for revenue metrics");
+      logger.info("[Revenue Service] Using payment_transactions for revenue metrics");
       return metrics;
     } catch (error) {
-      console.warn("[Revenue Service] Failed to use payment_transactions, falling back to booking tables:", error);
+      logger.warn("[Revenue Service] Failed to use payment_transactions, falling back to booking tables:", error);
     }
     const kitchenMetrics = await getRevenueMetrics(managerId, db2, startDate, endDate, locationId);
-    console.log("[Revenue Service] Kitchen metrics:", kitchenMetrics);
+    logger.info("[Revenue Service] Kitchen metrics:", kitchenMetrics);
     const whereConditions = [sql11`l.manager_id = ${managerId}`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
@@ -21633,16 +21805,17 @@ async function getCompleteRevenueMetrics(managerId, db2, startDate, endDate, loc
       cancelledBookingCount: isNaN(kitchenMetrics.cancelledBookingCount) ? 0 : kitchenMetrics.cancelledBookingCount,
       refundedAmount: isNaN(kitchenMetrics.refundedAmount) ? 0 : kitchenMetrics.refundedAmount
     };
-    console.log("[Revenue Service] Final complete metrics:", finalMetrics);
+    logger.info("[Revenue Service] Final complete metrics:", finalMetrics);
     return finalMetrics;
   } catch (error) {
-    console.error("Error getting complete revenue metrics:", error);
+    logger.error("Error getting complete revenue metrics:", error);
     throw error;
   }
 }
 var init_revenue_service = __esm({
   "server/services/revenue-service.ts"() {
     "use strict";
+    init_logger();
   }
 });
 
@@ -21689,7 +21862,7 @@ async function createConnectAccount(params) {
     });
     return { accountId: account.id };
   } catch (error) {
-    console.error("Error creating Stripe Connect account:", error);
+    logger.error("Error creating Stripe Connect account:", error);
     throw new Error(`Failed to create Connect account: ${error.message}`);
   }
 }
@@ -21706,7 +21879,7 @@ async function createAccountLink(accountId, refreshUrl, returnUrl) {
     });
     return { url: accountLink.url };
   } catch (error) {
-    console.error("Error creating account link:", error);
+    logger.error("Error creating account link:", error);
     throw new Error(`Failed to create account link: ${error.message}`);
   }
 }
@@ -21723,7 +21896,7 @@ async function createAccountUpdateLink(accountId, refreshUrl, returnUrl) {
     });
     return { url: accountLink.url };
   } catch (error) {
-    console.error("Error creating account update link:", error);
+    logger.error("Error creating account update link:", error);
     throw new Error(`Failed to create account update link: ${error.message}`);
   }
 }
@@ -21735,7 +21908,7 @@ async function isAccountReady(accountId) {
     const account = await stripe4.accounts.retrieve(accountId);
     return account.charges_enabled === true && account.payouts_enabled === true;
   } catch (error) {
-    console.error("Error checking account readiness:", error);
+    logger.error("Error checking account readiness:", error);
     return false;
   }
 }
@@ -21762,7 +21935,7 @@ async function getAccountStatus(accountId) {
       }
     };
   } catch (error) {
-    console.error("Error retrieving account status:", error);
+    logger.error("Error retrieving account status:", error);
     throw new Error(`Failed to retrieve account status: ${error.message}`);
   }
 }
@@ -21777,7 +21950,7 @@ async function getAccount(accountId) {
     if (error.code === "resource_missing") {
       return null;
     }
-    console.error("Error retrieving account:", error);
+    logger.error("Error retrieving account:", error);
     throw new Error(`Failed to retrieve account: ${error.message}`);
   }
 }
@@ -21796,7 +21969,7 @@ async function getPayouts(accountId, limit = 100) {
     );
     return payouts.data;
   } catch (error) {
-    console.error("Error retrieving payouts:", error);
+    logger.error("Error retrieving payouts:", error);
     throw new Error(`Failed to retrieve payouts: ${error.message}`);
   }
 }
@@ -21816,7 +21989,7 @@ async function getPayout(accountId, payoutId) {
     if (error.code === "resource_missing") {
       return null;
     }
-    console.error("Error retrieving payout:", error);
+    logger.error("Error retrieving payout:", error);
     throw new Error(`Failed to retrieve payout: ${error.message}`);
   }
 }
@@ -21853,7 +22026,7 @@ async function getBalanceTransactions(accountId, startDate, endDate, limit = 100
     );
     return transactions.data;
   } catch (error) {
-    console.error("Error retrieving balance transactions:", error);
+    logger.error("Error retrieving balance transactions:", error);
     throw new Error(`Failed to retrieve balance transactions: ${error.message}`);
   }
 }
@@ -21867,7 +22040,7 @@ async function getAccountBalance(accountId) {
     });
     return balance;
   } catch (error) {
-    console.error("Error retrieving balance:", error);
+    logger.error("Error retrieving balance:", error);
     throw new Error(`Failed to retrieve balance: ${error.message}`);
   }
 }
@@ -21879,7 +22052,7 @@ async function createDashboardLoginLink(accountId) {
     const loginLink = await stripe4.accounts.createLoginLink(accountId);
     return { url: loginLink.url };
   } catch (error) {
-    console.error("Error creating dashboard login link:", error);
+    logger.error("Error creating dashboard login link:", error);
     throw new Error(`Failed to create dashboard login link: ${error.message}`);
   }
 }
@@ -21887,9 +22060,10 @@ var stripeSecretKey4, stripe4;
 var init_stripe_connect_service = __esm({
   "server/services/stripe-connect-service.ts"() {
     "use strict";
+    init_logger();
     stripeSecretKey4 = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey4) {
-      console.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
+      logger.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
     }
     stripe4 = stripeSecretKey4 ? new Stripe4(stripeSecretKey4, {
       apiVersion: "2025-12-15.clover"
@@ -22022,10 +22196,10 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
         stripeTotalAmount = parseInt(String(paymentTransaction.amount)) || 0;
         stripePlatformFee = parseInt(String(paymentTransaction.serviceFee)) || 0;
         stripeBaseAmount = parseInt(String(paymentTransaction.baseAmount)) || 0;
-        console.log(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, base=${stripeBaseAmount}, platformFee=${stripePlatformFee}`);
+        logger.info(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, base=${stripeBaseAmount}, platformFee=${stripePlatformFee}`);
       }
     } catch (error) {
-      console.warn("[Invoice] Could not fetch payment transaction, will calculate fees:", error);
+      logger.warn("[Invoice] Could not fetch payment transaction, will calculate fees:", error);
     }
   }
   let totalAmount = 0;
@@ -22083,7 +22257,7 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
           hourlyRate = kitchenRate / 100;
           kitchenAmount = kitchenRate * durationHours / 100;
         } catch (e) {
-          console.error("Error recalculating kitchen price", e);
+          logger.error("Error recalculating kitchen price", e);
         }
       }
       if (kitchenAmount > 0) {
@@ -22102,7 +22276,7 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
         });
       }
     } catch (error) {
-      console.error("Error in kitchen price calculation:", error);
+      logger.error("Error in kitchen price calculation:", error);
     }
   }
   if (storageBookings2 && storageBookings2.length > 0) {
@@ -22144,7 +22318,7 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
           });
         }
       } catch (e) {
-        console.error("[Invoice] Error processing storage booking:", e);
+        logger.error("[Invoice] Error processing storage booking:", e);
       }
     }
   }
@@ -22187,7 +22361,7 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
   if (stripeTotalAmount > 0) {
     const diff = Math.abs(subtotalWithTaxCents - stripeTotalAmount);
     if (diff > 1) {
-      console.warn(`[Invoice] MISMATCH: Calculated total (${subtotalWithTaxCents}) differs from Stripe captured amount (${stripeTotalAmount}) by ${diff} cents. Items: ${items.length}, Subtotal: ${subtotalCents}, Tax: ${taxCents}`);
+      logger.warn(`[Invoice] MISMATCH: Calculated total (${subtotalWithTaxCents}) differs from Stripe captured amount (${stripeTotalAmount}) by ${diff} cents. Items: ${items.length}, Subtotal: ${subtotalCents}, Tax: ${taxCents}`);
     }
   }
   const platformFeeCents = Math.round(platformFee * 100);
@@ -22205,10 +22379,10 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
           actualPlatformFee: stripeData.stripePlatformFee / 100,
           dataSource: "stripe"
         };
-        console.log(`[Invoice] Using Stripe BalanceTransaction data: processingFee=${stripeDataForManager.stripeProcessingFee}, netPayout=${stripeDataForManager.stripeNetPayout}, platformFee=${stripeDataForManager.actualPlatformFee}`);
+        logger.info(`[Invoice] Using Stripe BalanceTransaction data: processingFee=${stripeDataForManager.stripeProcessingFee}, netPayout=${stripeDataForManager.stripeNetPayout}, platformFee=${stripeDataForManager.actualPlatformFee}`);
       }
     } catch (error) {
-      console.warn("[Invoice] Could not fetch Stripe payment amounts, will use calculated values:", error);
+      logger.warn("[Invoice] Could not fetch Stripe payment amounts, will use calculated values:", error);
     }
   }
   return new Promise((resolve, reject) => {
@@ -22651,7 +22825,7 @@ async function generateDamageClaimInvoicePDF(claim, options) {
         managerRevenueCents = parseInt(String(transaction.managerRevenue || "0")) || 0;
       }
     } catch (error) {
-      console.warn("[DamageClaimInvoice] Could not fetch Stripe fees:", error);
+      logger.warn("[DamageClaimInvoice] Could not fetch Stripe fees:", error);
     }
   }
   return new Promise(async (resolve, reject) => {
@@ -22758,6 +22932,7 @@ async function generateDamageClaimInvoicePDF(claim, options) {
 var init_invoice_service = __esm({
   "server/services/invoice-service.ts"() {
     "use strict";
+    init_logger();
     init_db();
     init_schema();
     init_stripe_service();
@@ -22784,7 +22959,7 @@ async function requireChef(req, res, next) {
   req.neonUser.role === "chef" || // role is 'chef'
   req.neonUser.role === "admin";
   if (!hasChefAccess) {
-    console.log(`[requireChef] Access denied for user ${req.neonUser.id}:`, {
+    logger.info(`[requireChef] Access denied for user ${req.neonUser.id}:`, {
       role: req.neonUser.role,
       isChef: req.neonUser.isChef
     });
@@ -22870,10 +23045,10 @@ async function requireNoUnpaidPenalties(req, res, next) {
       parts.push(`${response.damageClaims.totalCount} damage claim(s)`);
     }
     response.message = `You have ${parts.join(" and ")} totaling ${response.totalOwed}. Please resolve these to continue using the portal.`;
-    console.log(`[requireNoUnpaidPenalties] Chef ${chefId} blocked: ${parts.join(" and ")}, $${(grandTotal / 100).toFixed(2)} owed`);
+    logger.info(`[requireNoUnpaidPenalties] Chef ${chefId} blocked: ${parts.join(" and ")}, $${(grandTotal / 100).toFixed(2)} owed`);
     return res.status(403).json(response);
   } catch (error) {
-    console.error("[requireNoUnpaidPenalties] Error checking obligations:", error);
+    logger.error("[requireNoUnpaidPenalties] Error checking obligations:", error);
     next();
   }
 }
@@ -22905,13 +23080,14 @@ async function requirePortalUser(req, res, next) {
       status: "no_application"
     });
   } catch (error) {
-    console.error("Error in requirePortalUser middleware:", error);
+    logger.error("Error in requirePortalUser middleware:", error);
     return res.status(401).json({ error: "Authentication failed" });
   }
 }
 var init_middleware = __esm({
   "server/routes/middleware.ts"() {
     "use strict";
+    init_logger();
     init_db();
     init_schema();
   }
@@ -23401,13 +23577,13 @@ async function createPendingCheckoutSession(params) {
     if (!session.url) {
       throw new Error("Failed to create checkout session URL");
     }
-    console.log(`[Stripe Checkout] Created pending checkout session ${session.id} for kitchen ${bookingData.kitchenId}`);
+    logger.info(`[Stripe Checkout] Created pending checkout session ${session.id} for kitchen ${bookingData.kitchenId}`);
     return {
       sessionId: session.id,
       sessionUrl: session.url
     };
   } catch (error) {
-    console.error("Error creating Stripe Checkout session:", error);
+    logger.error("Error creating Stripe Checkout session:", error);
     throw new Error(`Failed to create checkout session: ${error.message}`);
   }
 }
@@ -23438,7 +23614,7 @@ async function createCheckoutSession(params) {
   }
   const estimatedStripeFee = Math.round(bookingPriceInCents * 0.029 + 30);
   if (platformFeeInCents > 0 && platformFeeInCents < estimatedStripeFee) {
-    console.warn(
+    logger.warn(
       `[Stripe Checkout] Platform fee (${platformFeeInCents} cents) is less than estimated Stripe fee (${estimatedStripeFee} cents). Platform may lose money on this transaction.`
     );
   }
@@ -23515,7 +23691,7 @@ async function createCheckoutSession(params) {
       sessionUrl: session.url
     };
   } catch (error) {
-    console.error("Error creating Stripe Checkout session:", error);
+    logger.error("Error creating Stripe Checkout session:", error);
     throw new Error(`Failed to create checkout session: ${error.message}`);
   }
 }
@@ -23523,9 +23699,10 @@ var stripeSecretKey5, stripe5;
 var init_stripe_checkout_service = __esm({
   "server/services/stripe-checkout-service.ts"() {
     "use strict";
+    init_logger();
     stripeSecretKey5 = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey5) {
-      console.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
+      logger.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
     }
     stripe5 = stripeSecretKey5 ? new Stripe5(stripeSecretKey5, {
       apiVersion: "2025-12-15.clover"
@@ -24652,7 +24829,7 @@ var init_bookings = __esm({
             kitchen_id: (booking.kitchenId || "").toString()
           }
         });
-        console.warn(`[DEPRECATED] Legacy /bookings/checkout endpoint used for booking ${bookingId}`);
+        logger.warn(`[DEPRECATED] Legacy /bookings/checkout endpoint used for booking ${bookingId}`);
         res.json({
           sessionUrl: checkoutSession.sessionUrl,
           sessionId: checkoutSession.sessionId,
@@ -24663,7 +24840,7 @@ var init_bookings = __esm({
           }
         });
       } catch (error) {
-        console.error("Error creating checkout session:", error);
+        logger.error("Error creating checkout session:", error);
         res.status(500).json({
           error: error.message || "Failed to create checkout session"
         });
@@ -24674,7 +24851,7 @@ var init_bookings = __esm({
         const storageBookings2 = await bookingService.getStorageBookingsByChef(req.neonUser.id);
         res.json(storageBookings2);
       } catch (error) {
-        console.error("Error fetching storage bookings:", error);
+        logger.error("Error fetching storage bookings:", error);
         res.status(500).json({ error: "Failed to fetch storage bookings" });
       }
     });
@@ -24683,7 +24860,7 @@ var init_bookings = __esm({
         const equipmentBookings2 = await bookingService.getEquipmentBookingsByChef(req.neonUser.id);
         res.json(equipmentBookings2);
       } catch (error) {
-        console.error("Error fetching equipment bookings:", error);
+        logger.error("Error fetching equipment bookings:", error);
         res.status(500).json({ error: "Failed to fetch equipment bookings" });
       }
     });
@@ -24713,7 +24890,7 @@ var init_bookings = __esm({
         });
         res.json(expiringBookings);
       } catch (error) {
-        console.error("Error fetching expiring storage bookings:", error);
+        logger.error("Error fetching expiring storage bookings:", error);
         res.status(500).json({ error: error.message || "Failed to fetch expiring storage bookings" });
       }
     });
@@ -24732,7 +24909,7 @@ var init_bookings = __esm({
         }
         res.json(booking);
       } catch (error) {
-        console.error("Error fetching storage booking:", error);
+        logger.error("Error fetching storage booking:", error);
         res.status(500).json({ error: error.message || "Failed to fetch storage booking" });
       }
     });
@@ -24819,7 +24996,7 @@ var init_bookings = __esm({
         );
         res.json({ success: true, action: "cancelled", message: "Storage booking cancelled." });
       } catch (error) {
-        console.error("Error cancelling storage booking:", error);
+        logger.error("Error cancelling storage booking:", error);
         res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel storage booking" });
       }
     });
@@ -24828,11 +25005,11 @@ var init_bookings = __esm({
         const cronSecret = process.env.CRON_SECRET;
         const authHeader = req.headers.authorization;
         if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-          console.warn("[Cron] Unauthorized cron job attempt");
+          logger.warn("[Cron] Unauthorized cron job attempt");
           return res.status(401).json({ error: "Unauthorized" });
         }
-        console.log("[Cron] Starting daily scheduled tasks...");
-        console.log("[Cron] Task 1: Detecting overstays...");
+        logger.info("[Cron] Starting daily scheduled tasks...");
+        logger.info("[Cron] Task 1: Detecting overstays...");
         const overstayResults = await overstayPenaltyService.detectOverstays();
         const overstaySummary = {
           total: overstayResults.length,
@@ -24840,15 +25017,15 @@ var init_bookings = __esm({
           pendingReview: overstayResults.filter((r) => r.status === "pending_review").length,
           totalCalculatedPenalty: overstayResults.reduce((sum, r) => sum + r.calculatedPenaltyCents, 0)
         };
-        console.log("[Cron] Overstay detection complete:", overstaySummary);
-        console.log("[Cron] Task 2: Processing expired damage claims...");
+        logger.info("[Cron] Overstay detection complete:", overstaySummary);
+        logger.info("[Cron] Task 2: Processing expired damage claims...");
         const expiredClaimResults = await damageClaimService.processExpiredClaims();
         const claimSummary = {
           total: expiredClaimResults.length,
           autoApproved: expiredClaimResults.filter((r) => r.action === "auto_approved").length
         };
-        console.log("[Cron] Expired claims processing complete:", claimSummary);
-        console.log("[Cron] Task 3: Cancelling expired payment authorizations...");
+        logger.info("[Cron] Expired claims processing complete:", claimSummary);
+        logger.info("[Cron] Task 3: Cancelling expired payment authorizations...");
         const authExpiryResults = await processExpiredAuthorizations();
         const authExpirySummary = {
           total: authExpiryResults.length,
@@ -24857,8 +25034,8 @@ var init_bookings = __esm({
           kitchenBookings: authExpiryResults.filter((r) => r.type === "kitchen_booking").length,
           storageExtensions: authExpiryResults.filter((r) => r.type === "storage_extension").length
         };
-        console.log("[Cron] Expired authorizations processing complete:", authExpirySummary);
-        console.log("[Cron] Task 4: Auto-clearing expired storage checkout reviews...");
+        logger.info("[Cron] Expired authorizations processing complete:", authExpirySummary);
+        logger.info("[Cron] Task 4: Auto-clearing expired storage checkout reviews...");
         const { processExpiredCheckoutReviews: processExpiredCheckoutReviews2 } = await Promise.resolve().then(() => (init_storage_checkout_service(), storage_checkout_service_exports));
         const checkoutAutoClearResults = await processExpiredCheckoutReviews2();
         const checkoutAutoClearSummary = {
@@ -24866,11 +25043,11 @@ var init_bookings = __esm({
           cleared: checkoutAutoClearResults.cleared,
           errors: checkoutAutoClearResults.errors
         };
-        console.log("[Cron] Storage checkout auto-clear complete:", checkoutAutoClearSummary);
-        console.log("[Cron] Task 5: Auto-accepting expired cancellation requests...");
+        logger.info("[Cron] Storage checkout auto-clear complete:", checkoutAutoClearSummary);
+        logger.info("[Cron] Task 5: Auto-accepting expired cancellation requests...");
         const cancellationAutoAcceptResults = await processExpiredCancellationRequests();
-        console.log("[Cron] Cancellation request auto-accept complete:", cancellationAutoAcceptResults);
-        console.log("[Cron] All daily scheduled tasks complete");
+        logger.info("[Cron] Cancellation request auto-accept complete:", cancellationAutoAcceptResults);
+        logger.info("[Cron] All daily scheduled tasks complete");
         res.json({
           success: true,
           message: `Daily tasks complete: ${overstayResults.length} overstays detected, ${expiredClaimResults.length} expired claims processed, ${authExpiryResults.length} expired authorizations cancelled, ${checkoutAutoClearResults.cleared} checkout reviews auto-cleared, ${cancellationAutoAcceptResults.accepted} cancellation requests auto-accepted`,
@@ -24908,7 +25085,7 @@ var init_bookings = __esm({
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Failed to run daily tasks";
-        console.error("[Cron] Error running daily tasks:", error);
+        logger.error("[Cron] Error running daily tasks:", error);
         res.status(500).json({ error: errorMessage });
       }
     });
@@ -24920,7 +25097,7 @@ var init_bookings = __esm({
         if (!isAdmin && (!cronSecret || authHeader !== `Bearer ${cronSecret}`)) {
           return res.status(401).json({ error: "Unauthorized" });
         }
-        console.warn("[DEPRECATED] Old penalty endpoint called - use /detect-overstays instead");
+        logger.warn("[DEPRECATED] Old penalty endpoint called - use /detect-overstays instead");
         const results = await overstayPenaltyService.detectOverstays();
         res.json({
           success: true,
@@ -24930,7 +25107,7 @@ var init_bookings = __esm({
           deprecationWarning: "This endpoint is deprecated. Use POST /api/detect-overstays instead."
         });
       } catch (error) {
-        console.error("Error processing overstayer penalties:", error);
+        logger.error("Error processing overstayer penalties:", error);
         res.status(500).json({ error: error.message || "Failed to process overstayer penalties" });
       }
     });
@@ -25017,7 +25194,7 @@ var init_bookings = __esm({
           currency: "CAD"
         });
       } catch (error) {
-        console.error("Error calculating extension preview:", error);
+        logger.error("Error calculating extension preview:", error);
         res.status(500).json({ error: error.message || "Failed to calculate extension preview" });
       }
     });
@@ -25141,7 +25318,7 @@ var init_bookings = __esm({
             tax_rate_percent: taxRatePercent.toString()
           }
         });
-        console.log(`[Storage Extension Checkout] Created pending checkout session ${checkoutSession.sessionId} - extension will be created in webhook`);
+        logger.info(`[Storage Extension Checkout] Created pending checkout session ${checkoutSession.sessionId} - extension will be created in webhook`);
         res.json({
           sessionUrl: checkoutSession.sessionUrl,
           sessionId: checkoutSession.sessionId,
@@ -25161,7 +25338,7 @@ var init_bookings = __esm({
           }
         });
       } catch (error) {
-        console.error("Error creating storage extension checkout:", error);
+        logger.error("Error creating storage extension checkout:", error);
         res.status(500).json({ error: error.message || "Failed to create storage extension checkout" });
       }
     });
@@ -25205,7 +25382,7 @@ var init_bookings = __esm({
         }
         res.json(extensions);
       } catch (error) {
-        console.error("Error fetching chef's pending storage extensions:", error);
+        logger.error("Error fetching chef's pending storage extensions:", error);
         res.status(500).json({ error: error.message || "Failed to fetch pending extensions" });
       }
     });
@@ -25257,7 +25434,7 @@ var init_bookings = __esm({
             stripePaymentIntentId: paymentIntentId,
             updatedAt: /* @__PURE__ */ new Date()
           }).where(eq29(pendingStorageExtensions2.id, extensionId));
-          console.log(`[Storage Extension Sync] Updated extension ${extensionId} to 'paid' status`);
+          logger.info(`[Storage Extension Sync] Updated extension ${extensionId} to 'paid' status`);
           return res.json({
             success: true,
             message: "Extension status synced - now awaiting manager approval",
@@ -25280,7 +25457,7 @@ var init_bookings = __esm({
           sessionStatus: session.status
         });
       } catch (error) {
-        console.error("Error syncing storage extension:", error);
+        logger.error("Error syncing storage extension:", error);
         res.status(500).json({ error: error.message || "Failed to sync extension" });
       }
     });
@@ -25331,7 +25508,7 @@ var init_bookings = __esm({
           message: `Storage booking extended successfully to ${newEndDateObj.toLocaleDateString()}`
         });
       } catch (error) {
-        console.error("Error extending storage booking:", error);
+        logger.error("Error extending storage booking:", error);
         res.status(500).json({ error: error.message || "Failed to extend storage booking" });
       }
     });
@@ -25360,7 +25537,7 @@ var init_bookings = __esm({
           message: "Checkout request submitted successfully. The manager will verify and approve your checkout."
         });
       } catch (error) {
-        console.error("Error requesting storage checkout:", error);
+        logger.error("Error requesting storage checkout:", error);
         res.status(500).json({ error: error.message || "Failed to request checkout" });
       }
     });
@@ -25386,7 +25563,7 @@ var init_bookings = __esm({
           message: "Photos added to checkout request successfully."
         });
       } catch (error) {
-        console.error("Error adding checkout photos:", error);
+        logger.error("Error adding checkout photos:", error);
         res.status(500).json({ error: error.message || "Failed to add checkout photos" });
       }
     });
@@ -25410,7 +25587,7 @@ var init_bookings = __esm({
         }
         res.json(status);
       } catch (error) {
-        console.error("Error getting checkout status:", error);
+        logger.error("Error getting checkout status:", error);
         res.status(500).json({ error: error.message || "Failed to get checkout status" });
       }
     });
@@ -25437,7 +25614,7 @@ var init_bookings = __esm({
           equipmentBookings: equipmentBookings2
         });
       } catch (error) {
-        console.error("Error fetching booking details:", error);
+        logger.error("Error fetching booking details:", error);
         res.status(500).json({ error: error.message || "Failed to fetch booking details" });
       }
     });
@@ -25587,7 +25764,7 @@ var init_bookings = __esm({
             };
           }
         } catch (err) {
-          console.error("Error fetching payment transaction:", err);
+          logger.error("Error fetching payment transaction:", err);
         }
         const hourlyRate = booking.hourlyRate ? parseFloat(booking.hourlyRate.toString()) : 0;
         const durationHours = booking.durationHours ? parseFloat(booking.durationHours.toString()) : 0;
@@ -25611,7 +25788,7 @@ var init_bookings = __esm({
           paymentTransaction
         });
       } catch (error) {
-        console.error("Error fetching booking details:", error);
+        logger.error("Error fetching booking details:", error);
         res.status(500).json({ error: error.message || "Failed to fetch booking details" });
       }
     });
@@ -25678,7 +25855,7 @@ var init_bookings = __esm({
               }
             }
           } catch {
-            console.log("[Invoice] Could not fetch original storage dates from transaction, using current dates");
+            logger.info("[Invoice] Could not fetch original storage dates from transaction, using current dates");
           }
         }
         const storageBookingsForInvoice = storageBookings2.map((sb) => {
@@ -25711,7 +25888,7 @@ var init_bookings = __esm({
         res.setHeader("Content-Length", pdfBuffer.length);
         res.send(pdfBuffer);
       } catch (error) {
-        console.error("Error generating invoice:", error);
+        logger.error("Error generating invoice:", error);
         res.status(500).json({ error: error.message || "Failed to generate invoice" });
       }
     });
@@ -25802,7 +25979,7 @@ var init_bookings = __esm({
         res.setHeader("Content-Length", pdfBuffer.length);
         res.send(pdfBuffer);
       } catch (error) {
-        console.error("Error generating storage invoice:", error);
+        logger.error("Error generating storage invoice:", error);
         res.status(500).json({ error: error.message || "Failed to generate storage invoice" });
       }
     });
@@ -25895,7 +26072,7 @@ var init_bookings = __esm({
         );
         res.json({ success: true, action: "cancelled", message: "Booking cancelled." });
       } catch (error) {
-        console.error("Error cancelling booking:", error);
+        logger.error("Error cancelling booking:", error);
         res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel booking" });
       }
     });
@@ -25929,7 +26106,7 @@ var init_bookings = __esm({
                 totalPriceCents += storagePrice;
               }
             } catch (error) {
-              console.error("Error calculating storage price:", error);
+              logger.error("Error calculating storage price:", error);
             }
           }
         }
@@ -25966,14 +26143,14 @@ var init_bookings = __esm({
             }
           }
         } catch (error) {
-          console.error(`Error fetching kitchen/manager details for payment ${kitchenId}:`, error);
+          logger.error(`Error fetching kitchen/manager details for payment ${kitchenId}:`, error);
         }
         const taxCents = Math.round(totalPriceCents * taxRatePercent / 100);
         const totalWithTaxCents = totalPriceCents + taxCents;
         const { calculateCheckoutFeesAsync: calculateCheckoutFeesAsync2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
         const feeCalculation = await calculateCheckoutFeesAsync2(totalWithTaxCents);
         const applicationFeeAmountCents = feeCalculation.useStripePlatformPricing ? void 0 : feeCalculation.totalPlatformFeeInCents;
-        console.log(`[Payment] Creating intent: Subtotal=${totalPriceCents}, Tax=${taxCents} (${taxRatePercent}%), Total=${totalWithTaxCents}, Expected=${expectedAmountCents}, PlatformFee=${applicationFeeAmountCents ?? "Stripe Platform Pricing"}, ManagerReceives=${feeCalculation.managerReceivesInCents}, UseStripePricing=${feeCalculation.useStripePlatformPricing}`);
+        logger.info(`[Payment] Creating intent: Subtotal=${totalPriceCents}, Tax=${taxCents} (${taxRatePercent}%), Total=${totalWithTaxCents}, Expected=${expectedAmountCents}, PlatformFee=${applicationFeeAmountCents ?? "Stripe Platform Pricing"}, ManagerReceives=${feeCalculation.managerReceivesInCents}, UseStripePricing=${feeCalculation.useStripePlatformPricing}`);
         const metadata = {
           kitchenId: String(kitchenId),
           chefId: String(chefId),
@@ -26025,7 +26202,7 @@ var init_bookings = __esm({
           }
         });
       } catch (error) {
-        console.error("Error creating payment intent:", error);
+        logger.error("Error creating payment intent:", error);
         res.status(500).json({ error: error.message || "Failed to create payment intent" });
       }
     });
@@ -26047,7 +26224,7 @@ var init_bookings = __esm({
           status: confirmed.status
         });
       } catch (error) {
-        console.error("Error confirming payment:", error);
+        logger.error("Error confirming payment:", error);
         res.status(500).json({
           error: "Failed to confirm payment",
           message: error.message
@@ -26068,7 +26245,7 @@ var init_bookings = __esm({
           status: paymentIntent.status
         });
       } catch (error) {
-        console.error("Error getting payment intent status:", error);
+        logger.error("Error getting payment intent status:", error);
         res.status(500).json({
           error: "Failed to get payment intent status",
           message: error.message
@@ -26107,7 +26284,7 @@ var init_bookings = __esm({
           message: "Payment intent cancelled. Note: For captured payments, use refunds instead."
         });
       } catch (error) {
-        console.error("Error canceling payment intent:", error);
+        logger.error("Error canceling payment intent:", error);
         res.status(500).json({
           error: "Failed to cancel payment intent",
           message: error.message
@@ -26191,7 +26368,7 @@ var init_bookings = __esm({
         if (selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0) {
           effectiveDurationHours = Math.max(selectedSlots.length, minimumBookingHours);
           totalPriceCents = Math.round(kitchenPricing.hourlyRateCents * effectiveDurationHours);
-          console.log(`[Checkout] Staggered slots pricing: ${selectedSlots.length} slots, effective ${effectiveDurationHours} hours, $${(totalPriceCents / 100).toFixed(2)}`);
+          logger.info(`[Checkout] Staggered slots pricing: ${selectedSlots.length} slots, effective ${effectiveDurationHours} hours, $${(totalPriceCents / 100).toFixed(2)}`);
         } else {
           effectiveDurationHours = kitchenPricing.durationHours;
           totalPriceCents = kitchenPricing.totalPriceCents;
@@ -26224,7 +26401,7 @@ var init_bookings = __esm({
                 });
               }
             } catch (error) {
-              console.error("Error calculating storage price:", error);
+              logger.error("Error calculating storage price:", error);
             }
           }
         }
@@ -26242,7 +26419,7 @@ var init_bookings = __esm({
                 });
               }
             } catch (error) {
-              console.error(`Error calculating equipment price for listing ${equipmentListingId}:`, error);
+              logger.error(`Error calculating equipment price for listing ${equipmentListingId}:`, error);
             }
           }
         }
@@ -26289,7 +26466,7 @@ var init_bookings = __esm({
             taxLabel
           }
         });
-        console.log(`[Checkout] Created pending checkout session ${checkoutSession.sessionId} - booking will be created in webhook`);
+        logger.info(`[Checkout] Created pending checkout session ${checkoutSession.sessionId} - booking will be created in webhook`);
         res.json({
           sessionUrl: checkoutSession.sessionUrl,
           sessionId: checkoutSession.sessionId,
@@ -26300,7 +26477,7 @@ var init_bookings = __esm({
           }
         });
       } catch (error) {
-        console.error("Error creating booking checkout:", error);
+        logger.error("Error creating booking checkout:", error);
         res.status(500).json({ error: error.message || "Failed to create booking checkout" });
       }
     });
@@ -26308,7 +26485,7 @@ var init_bookings = __esm({
       try {
         const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser.id;
-        console.log(`[Booking Route] Received booking request with selectedEquipmentIds: ${JSON.stringify(selectedEquipmentIds)}`);
+        logger.info(`[Booking Route] Received booking request with selectedEquipmentIds: ${JSON.stringify(selectedEquipmentIds)}`);
         const kitchenDetails = await kitchenService.getKitchenById(kitchenId);
         const kitchenLocationId1 = kitchenDetails.locationId;
         if (!kitchenLocationId1) {
@@ -26349,9 +26526,9 @@ var init_bookings = __esm({
             const minWindow = location.minimumBookingWindowHours ?? location.minimum_booking_window_hours;
             if (minWindow !== null && minWindow !== void 0) {
               minimumBookingWindowHours = Number(minWindow);
-              console.log(`[Booking Window] Using location minimum booking window: ${minimumBookingWindowHours} hours for kitchen ${kitchenId}`);
+              logger.info(`[Booking Window] Using location minimum booking window: ${minimumBookingWindowHours} hours for kitchen ${kitchenId}`);
             } else {
-              console.log(`[Booking Window] Location has no minimum booking window set, using default: 1 hour`);
+              logger.info(`[Booking Window] Location has no minimum booking window set, using default: 1 hour`);
             }
           }
         }
@@ -26381,7 +26558,7 @@ var init_bookings = __esm({
           paymentIntentStatus = paymentIntent.status;
         }
         const storageIds = selectedStorageIds && selectedStorageIds.length > 0 ? selectedStorageIds : selectedStorage && Array.isArray(selectedStorage) ? selectedStorage.map((s) => s.storageListingId).filter(Boolean) : [];
-        console.log(`[Booking Route] Received booking request with selectedStorage: ${JSON.stringify(selectedStorage)}, extracted storageIds: ${JSON.stringify(storageIds)}`);
+        logger.info(`[Booking Route] Received booking request with selectedStorage: ${JSON.stringify(selectedStorage)}, extracted storageIds: ${JSON.stringify(storageIds)}`);
         const booking = await bookingService.createKitchenBooking({
           kitchenId,
           chefId,
@@ -26433,7 +26610,7 @@ var init_bookings = __esm({
               }, db);
             }
           } catch (ptError) {
-            console.warn(`[Booking Route] Could not create payment_transactions record for booking ${booking.id}:`, ptError);
+            logger.warn(`[Booking Route] Could not create payment_transactions record for booking ${booking.id}:`, ptError);
           }
         }
         try {
@@ -26456,11 +26633,11 @@ var init_bookings = __esm({
             await sendEmail2(chefEmail, { trackingId: `booking_${booking.id}_chef` });
           }
         } catch (emailError) {
-          console.error("Error sending booking emails:", emailError);
+          logger.error("Error sending booking emails:", emailError);
         }
         res.status(201).json(booking);
       } catch (error) {
-        console.error("Error creating booking:", error);
+        logger.error("Error creating booking:", error);
         res.status(500).json({ error: error.message || "Failed to create booking" });
       }
     });
@@ -26468,7 +26645,7 @@ var init_bookings = __esm({
       try {
         const { sessionId } = req.params;
         const chefId = req.neonUser.id;
-        console.log(`[by-session] Request received for session ${sessionId}, chefId=${chefId}`);
+        logger.info(`[by-session] Request received for session ${sessionId}, chefId=${chefId}`);
         if (!sessionId) {
           return res.status(400).json({ error: "Session ID is required" });
         }
@@ -26483,9 +26660,9 @@ var init_bookings = __esm({
           session = await stripe6.checkout.sessions.retrieve(sessionId, {
             expand: ["payment_intent"]
           });
-          console.log(`[by-session] Retrieved Stripe session: payment_status=${session.payment_status}, metadata_type=${session.metadata?.type}`);
+          logger.info(`[by-session] Retrieved Stripe session: payment_status=${session.payment_status}, metadata_type=${session.metadata?.type}`);
         } catch (stripeError) {
-          console.error(`[by-session] Failed to retrieve Stripe session ${sessionId}:`, stripeError.message);
+          logger.error(`[by-session] Failed to retrieve Stripe session ${sessionId}:`, stripeError.message);
           return res.status(404).json({ error: "Invalid or expired session ID" });
         }
         let paymentIntentId;
@@ -26497,13 +26674,13 @@ var init_bookings = __esm({
         if (!paymentIntentId) {
           return res.status(404).json({ error: "Payment intent not found for session" });
         }
-        console.log(`[by-session] Looking for booking with paymentIntentId=${paymentIntentId}, chefId=${chefId}`);
+        logger.info(`[by-session] Looking for booking with paymentIntentId=${paymentIntentId}, chefId=${chefId}`);
         const [bookingByIntent] = await db.select().from(kitchenBookings).where(eq29(kitchenBookings.paymentIntentId, paymentIntentId)).limit(1);
         let booking = bookingByIntent;
         if (bookingByIntent) {
-          console.log(`[by-session] Found booking ${bookingByIntent.id} with chef_id=${bookingByIntent.chefId}, requested chefId=${chefId}`);
+          logger.info(`[by-session] Found booking ${bookingByIntent.id} with chef_id=${bookingByIntent.chefId}, requested chefId=${chefId}`);
           if (bookingByIntent.chefId !== chefId) {
-            console.log(`[by-session] Chef mismatch - booking belongs to chef ${bookingByIntent.chefId}, not ${chefId}`);
+            logger.info(`[by-session] Chef mismatch - booking belongs to chef ${bookingByIntent.chefId}, not ${chefId}`);
             return res.status(403).json({ error: "This booking does not belong to you" });
           }
           const [kitchen2] = await db.select({ name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq29(kitchens.id, bookingByIntent.kitchenId)).limit(1);
@@ -26512,13 +26689,13 @@ var init_bookings = __esm({
             kitchenName: kitchen2?.name || "Kitchen"
           });
         } else {
-          console.log(`[by-session] No booking found with paymentIntentId=${paymentIntentId}`);
+          logger.info(`[by-session] No booking found with paymentIntentId=${paymentIntentId}`);
         }
         const piObj = typeof session.payment_intent === "object" ? session.payment_intent : null;
         const fallbackIsManualCapture = piObj?.status === "requires_capture";
         const fallbackPaymentStatus = fallbackIsManualCapture ? "authorized" : "paid";
-        if (!booking && session.payment_status === "paid" && session.metadata?.type === "kitchen_booking") {
-          console.log(`[Fallback] Webhook may have failed - creating booking from session ${sessionId}`);
+        if (!booking && (session.payment_status === "paid" || fallbackIsManualCapture) && session.metadata?.type === "kitchen_booking") {
+          logger.info(`[Fallback] Webhook may have failed - creating booking from session ${sessionId}`);
           const metadata = session.metadata;
           const kitchenIdFromMeta = parseInt(metadata.kitchen_id);
           const chefIdFromMeta = parseInt(metadata.chef_id);
@@ -26532,7 +26709,7 @@ var init_bookings = __esm({
           const selectedSlots = metadata.selected_slots ? JSON.parse(metadata.selected_slots) : [];
           const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
           const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
-          console.log(`[Fallback] Creating booking for kitchen ${kitchenIdFromMeta}, chef ${chefIdFromMeta}`);
+          logger.info(`[Fallback] Creating booking for kitchen ${kitchenIdFromMeta}, chef ${chefIdFromMeta}`);
           const totalPriceCents = parseInt(metadata.total_price_cents || "0");
           const hourlyRateCents = parseInt(metadata.hourly_rate_cents || "0");
           const durationHours = parseFloat(metadata.duration_hours || "1");
@@ -26561,7 +26738,7 @@ var init_bookings = __esm({
             throw new Error("Failed to create booking");
           }
           const newBooking = directBooking;
-          console.log(`[Fallback] Created booking ${newBooking.id} from session ${sessionId}`);
+          logger.info(`[Fallback] Created booking ${newBooking.id} from session ${sessionId}`);
           try {
             const { createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
             const [kitchen2] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq29(kitchens.id, kitchenIdFromMeta)).limit(1);
@@ -26588,11 +26765,11 @@ var init_bookings = __esm({
                     created_via: "fallback_endpoint"
                   }
                 }, db);
-                console.log(`[Fallback] Created payment_transactions for booking ${newBooking.id}`);
+                logger.info(`[Fallback] Created payment_transactions for booking ${newBooking.id}`);
               }
             }
           } catch (ptError) {
-            console.warn(`[Fallback] Could not create payment_transactions:`, ptError);
+            logger.warn(`[Fallback] Could not create payment_transactions:`, ptError);
           }
           try {
             const [kitchen2] = await db.select({ name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq29(kitchens.id, kitchenIdFromMeta)).limit(1);
@@ -26626,7 +26803,7 @@ var init_bookings = __esm({
                     bookingId: newBooking.id
                   });
                   await sendEmail2(managerEmail);
-                  console.log(`[Fallback] Sent manager notification for booking ${newBooking.id}`);
+                  logger.info(`[Fallback] Sent manager notification for booking ${newBooking.id}`);
                 }
                 const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
                 await notificationService2.notifyNewBooking({
@@ -26642,12 +26819,12 @@ var init_bookings = __esm({
               }
             }
           } catch (notifyError) {
-            console.error(`[Fallback] Error sending notifications:`, notifyError);
+            logger.error(`[Fallback] Error sending notifications:`, notifyError);
           }
           [booking] = await db.select().from(kitchenBookings).where(eq29(kitchenBookings.id, newBooking.id)).limit(1);
         }
         if (!booking) {
-          console.error(`[by-session] CRITICAL: No booking created for session ${sessionId}`, {
+          logger.error(`[by-session] CRITICAL: No booking created for session ${sessionId}`, {
             paymentStatus: session.payment_status,
             metadataType: session.metadata?.type,
             hasMetadata: !!session.metadata,
@@ -26668,14 +26845,14 @@ var init_bookings = __esm({
           kitchenName: kitchen?.name || "Kitchen"
         });
       } catch (error) {
-        console.error("Error fetching booking by session:", error);
+        logger.error("Error fetching booking by session:", error);
         res.status(500).json({ error: error.message || "Failed to fetch booking" });
       }
     });
     router14.get("/chef/bookings", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        console.log(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
+        logger.info(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
         const bookings = await bookingService.getKitchenBookingsByChef(chefId);
         const { lazyExpireKitchenBookingAuth: lazyExpireKitchenBookingAuth2 } = await Promise.resolve().then(() => (init_auth_expiry_service(), auth_expiry_service_exports));
         for (const b of bookings) {
@@ -26697,7 +26874,7 @@ var init_bookings = __esm({
         }
         res.json(bookings);
       } catch (error) {
-        console.error("Error fetching bookings:", error);
+        logger.error("Error fetching bookings:", error);
         res.status(500).json({ error: "Failed to fetch bookings" });
       }
     });
@@ -26929,7 +27106,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db2, options) 
       ORDER BY kb.created_at DESC
       LIMIT ${limit}
     `);
-    console.log(`[Backfill] Found ${kitchenBookingsResult.rows.length} kitchen bookings to backfill`);
+    logger.info(`[Backfill] Found ${kitchenBookingsResult.rows.length} kitchen bookings to backfill`);
     for (const booking of kitchenBookingsResult.rows) {
       try {
         const totalPrice = parseInt(booking.total_price || "0");
@@ -26956,7 +27133,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db2, options) 
         }, db2);
         result.created++;
       } catch (error) {
-        console.error(`[Backfill] Error creating payment_transaction for kitchen booking ${booking.id}:`, error);
+        logger.error(`[Backfill] Error creating payment_transaction for kitchen booking ${booking.id}:`, error);
         result.errors.push({
           bookingId: booking.id,
           bookingType: "kitchen",
@@ -26986,7 +27163,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db2, options) 
       ORDER BY sb.created_at DESC
       LIMIT ${limit}
     `);
-    console.log(`[Backfill] Found ${storageBookingsResult.rows.length} storage bookings to backfill`);
+    logger.info(`[Backfill] Found ${storageBookingsResult.rows.length} storage bookings to backfill`);
     for (const booking of storageBookingsResult.rows) {
       try {
         const totalPrice = parseInt(booking.total_price || "0");
@@ -27012,7 +27189,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db2, options) 
         }, db2);
         result.created++;
       } catch (error) {
-        console.error(`[Backfill] Error creating payment_transaction for storage booking ${booking.id}:`, error);
+        logger.error(`[Backfill] Error creating payment_transaction for storage booking ${booking.id}:`, error);
         result.errors.push({
           bookingId: booking.id,
           bookingType: "storage",
@@ -27042,7 +27219,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db2, options) 
       ORDER BY eb.created_at DESC
       LIMIT ${limit}
     `);
-    console.log(`[Backfill] Found ${equipmentBookingsResult.rows.length} equipment bookings to backfill`);
+    logger.info(`[Backfill] Found ${equipmentBookingsResult.rows.length} equipment bookings to backfill`);
     for (const booking of equipmentBookingsResult.rows) {
       try {
         const totalPrice = parseInt(booking.total_price || "0");
@@ -27068,7 +27245,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db2, options) 
         }, db2);
         result.created++;
       } catch (error) {
-        console.error(`[Backfill] Error creating payment_transaction for equipment booking ${booking.id}:`, error);
+        logger.error(`[Backfill] Error creating payment_transaction for equipment booking ${booking.id}:`, error);
         result.errors.push({
           bookingId: booking.id,
           bookingType: "equipment",
@@ -27076,16 +27253,17 @@ async function backfillPaymentTransactionsFromBookings(managerId, db2, options) 
         });
       }
     }
-    console.log(`[Backfill] Complete: ${result.created} created, ${result.errors.length} errors`);
+    logger.info(`[Backfill] Complete: ${result.created} created, ${result.errors.length} errors`);
     return result;
   } catch (error) {
-    console.error("[Backfill] Error backfilling payment transactions:", error);
+    logger.error("[Backfill] Error backfilling payment transactions:", error);
     throw error;
   }
 }
 var init_payment_transactions_backfill = __esm({
   "server/services/payment-transactions-backfill.ts"() {
     "use strict";
+    init_logger();
     init_payment_transactions_service();
   }
 });
@@ -27105,7 +27283,7 @@ async function generatePayoutStatementPDF(managerId, managerName, managerEmail, 
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     serviceFeeRate = await getServiceFeeRate2();
   } catch (error) {
-    console.error("Error getting service fee rate for payout statement:", error);
+    logger.error("Error getting service fee rate for payout statement:", error);
   }
   bookings.forEach((booking) => {
     const totalPrice = (booking.totalPrice || booking.total_price || 0) / 100;
@@ -27272,6 +27450,7 @@ async function generatePayoutStatementPDF(managerId, managerName, managerEmail, 
 var init_payout_statement_service = __esm({
   "server/services/payout-statement-service.ts"() {
     "use strict";
+    init_logger();
   }
 });
 
@@ -27509,7 +27688,7 @@ var init_manager = __esm({
                 }
               }
             } catch {
-              console.log(
+              logger.info(
                 "[Invoice] Could not fetch original storage dates from transaction, using current dates"
               );
             }
@@ -27526,7 +27705,7 @@ var init_manager = __esm({
                 _originalDays: originalDates.days
               };
             } else {
-              console.warn(
+              logger.warn(
                 `[Invoice] No original storage dates found in payment metadata for storage booking ${sr.id}, using current dates (may include extensions)`
               );
             }
@@ -27863,7 +28042,7 @@ var init_manager = __esm({
         try {
           const managerId = req.neonUser.id;
           const { startDate, endDate, period } = req.query;
-          console.log("[Revenue Charts] Request params:", {
+          logger.info("[Revenue Charts] Request params:", {
             managerId,
             startDate,
             endDate,
@@ -27879,7 +28058,7 @@ var init_manager = __esm({
               endDate
             );
             if (!data || data.length === 0) {
-              console.log(
+              logger.info(
                 "[Revenue Charts] payment_transactions empty, falling back to booking tables"
               );
               const { getRevenueByDate: getRevenueByDate2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
@@ -27890,12 +28069,12 @@ var init_manager = __esm({
                 endDate
               );
             } else {
-              console.log(
+              logger.info(
                 "[Revenue Charts] Using payment_transactions data (Stripe source)"
               );
             }
           } catch (v2Error) {
-            console.warn(
+            logger.warn(
               "[Revenue Charts] Falling back to booking tables:",
               v2Error
             );
@@ -27907,13 +28086,13 @@ var init_manager = __esm({
               endDate
             );
           }
-          console.log("[Revenue Charts] Returning data:", {
+          logger.info("[Revenue Charts] Returning data:", {
             count: data?.length || 0,
             data
           });
           res.json({ data, period: period || "daily" });
         } catch (error) {
-          console.error("[Revenue Charts] Error:", error);
+          logger.error("[Revenue Charts] Error:", error);
           return errorResponse(res, error);
         }
       }
@@ -28020,7 +28199,7 @@ var init_manager = __esm({
                 });
               }
             } catch (notifError) {
-              console.error(
+              logger.error(
                 "[Cancellation Request] Notification error:",
                 notifError
               );
@@ -28051,7 +28230,7 @@ var init_manager = __esm({
                 });
               }
             } catch (notifError) {
-              console.error(
+              logger.error(
                 "[Cancellation Request] Notification error:",
                 notifError
               );
@@ -28063,7 +28242,7 @@ var init_manager = __esm({
             });
           }
         } catch (error) {
-          console.error("[Cancellation Request] Error:", error);
+          logger.error("[Cancellation Request] Error:", error);
           return errorResponse(res, error);
         }
       }
@@ -28119,7 +28298,7 @@ var init_manager = __esm({
               const { syncStorageItemStatusInKitchenBooking: syncStorageItemStatusInKitchenBooking2 } = await Promise.resolve().then(() => (init_bookings(), bookings_exports));
               await syncStorageItemStatusInKitchenBooking2(storageBookingId, "cancelled");
             } catch (syncErr) {
-              console.error("[Storage Cancellation] JSONB sync error:", syncErr);
+              logger.error("[Storage Cancellation] JSONB sync error:", syncErr);
             }
             try {
               if (booking.chefId) {
@@ -28134,7 +28313,7 @@ var init_manager = __esm({
                 });
               }
             } catch (notifError) {
-              console.error(
+              logger.error(
                 "[Storage Cancellation Request] Notification error:",
                 notifError
               );
@@ -28156,7 +28335,7 @@ var init_manager = __esm({
               const { syncStorageItemStatusInKitchenBooking: syncStorageItemStatusInKitchenBooking2 } = await Promise.resolve().then(() => (init_bookings(), bookings_exports));
               await syncStorageItemStatusInKitchenBooking2(storageBookingId, "confirmed");
             } catch (syncErr) {
-              console.error("[Storage Cancellation] JSONB sync error:", syncErr);
+              logger.error("[Storage Cancellation] JSONB sync error:", syncErr);
             }
             try {
               if (booking.chefId) {
@@ -28171,7 +28350,7 @@ var init_manager = __esm({
                 });
               }
             } catch (notifError) {
-              console.error(
+              logger.error(
                 "[Storage Cancellation Request] Notification error:",
                 notifError
               );
@@ -28183,7 +28362,7 @@ var init_manager = __esm({
             });
           }
         } catch (error) {
-          console.error("[Storage Cancellation Request] Error:", error);
+          logger.error("[Storage Cancellation Request] Error:", error);
           return errorResponse(res, error);
         }
       }
@@ -28373,7 +28552,7 @@ var init_manager = __esm({
             transferReversalId: refund.transferReversalId
           });
         } catch (error) {
-          console.error("[Refund] Error processing refund:", error);
+          logger.error("[Refund] Error processing refund:", error);
           return errorResponse(res, error);
         }
       }
@@ -28383,7 +28562,7 @@ var init_manager = __esm({
       requireFirebaseAuthWithUser,
       requireManager,
       async (req, res) => {
-        console.log(
+        logger.info(
           "[Stripe Connect] Create request received for manager:",
           req.neonUser?.id
         );
@@ -28398,7 +28577,7 @@ var init_manager = __esm({
         `);
           const userRow = userResult.rows ? userResult.rows[0] : userResult[0];
           if (!userRow) {
-            console.error("[Stripe Connect] User not found for ID:", managerId);
+            logger.error("[Stripe Connect] User not found for ID:", managerId);
             return res.status(404).json({ error: "User not found" });
           }
           const user = {
@@ -28432,7 +28611,7 @@ var init_manager = __esm({
               return res.json({ url: link2.url });
             }
           }
-          console.log(
+          logger.info(
             "[Stripe Connect] Creating new account for email:",
             user.email
           );
@@ -28447,7 +28626,7 @@ var init_manager = __esm({
           const link = await createAccountLink2(accountId, refreshUrl, returnUrl);
           return res.json({ url: link.url });
         } catch (error) {
-          console.error("[Stripe Connect] Error in create route:", error);
+          logger.error("[Stripe Connect] Error in create route:", error);
           return errorResponse(res, error);
         }
       }
@@ -28481,7 +28660,7 @@ var init_manager = __esm({
           );
           return res.json({ url: link.url });
         } catch (error) {
-          console.error("[Stripe Connect] Error in onboarding-link route:", error);
+          logger.error("[Stripe Connect] Error in onboarding-link route:", error);
           return errorResponse(res, error);
         }
       }
@@ -28523,7 +28702,7 @@ var init_manager = __esm({
             return res.json({ url: link.url, requiresOnboarding: true });
           }
         } catch (error) {
-          console.error("[Stripe Connect] Error in dashboard-link route:", error);
+          logger.error("[Stripe Connect] Error in dashboard-link route:", error);
           return errorResponse(res, error);
         }
       }
@@ -28605,7 +28784,7 @@ var init_manager = __esm({
               }
             });
           } catch (stripeError) {
-            console.error("Error fetching Stripe account status:", stripeError);
+            logger.error("Error fetching Stripe account status:", stripeError);
             res.json({
               connected: true,
               hasAccount: true,
@@ -28659,14 +28838,14 @@ var init_manager = __esm({
         try {
           const managerId = req.neonUser.id;
           const { limit = 100, onlyUnsynced = true } = req.body;
-          console.log(`[Stripe Sync] Starting sync for manager ${managerId}...`);
+          logger.info(`[Stripe Sync] Starting sync for manager ${managerId}...`);
           const { backfillPaymentTransactionsFromBookings: backfillPaymentTransactionsFromBookings2 } = await Promise.resolve().then(() => (init_payment_transactions_backfill(), payment_transactions_backfill_exports));
           const backfillResult = await backfillPaymentTransactionsFromBookings2(
             managerId,
             db,
             { limit }
           );
-          console.log(`[Stripe Sync] Backfill complete:`, backfillResult);
+          logger.info(`[Stripe Sync] Backfill complete:`, backfillResult);
           const { syncExistingPaymentTransactionsFromStripe: syncExistingPaymentTransactionsFromStripe2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
           const syncResult = await syncExistingPaymentTransactionsFromStripe2(
             managerId,
@@ -28676,7 +28855,7 @@ var init_manager = __esm({
               onlyUnsynced
             }
           );
-          console.log(`[Stripe Sync] Stripe sync complete:`, syncResult);
+          logger.info(`[Stripe Sync] Stripe sync complete:`, syncResult);
           res.json({
             success: true,
             backfill: backfillResult,
@@ -28684,7 +28863,7 @@ var init_manager = __esm({
             message: `Backfilled ${backfillResult.created} transactions, synced ${syncResult.synced} with Stripe`
           });
         } catch (error) {
-          console.error("[Stripe Sync] Error:", error);
+          logger.error("[Stripe Sync] Error:", error);
           return errorResponse(res, error);
         }
       }
@@ -28726,7 +28905,7 @@ var init_manager = __esm({
             _raw: process.env.NODE_ENV === "development" ? balance : void 0
           });
         } catch (error) {
-          console.error("[Stripe Balance] Error fetching balance:", error);
+          logger.error("[Stripe Balance] Error fetching balance:", error);
           return errorResponse(res, error);
         }
       }
@@ -28932,7 +29111,7 @@ var init_manager = __esm({
           const kitchens3 = await kitchenService.getKitchensByLocationId(locationId);
           res.json(kitchens3);
         } catch (error) {
-          console.error("Error fetching kitchen settings:", error);
+          logger.error("Error fetching kitchen settings:", error);
           res.status(500).json({ error: error.message || "Failed to fetch kitchen settings" });
         }
       }
@@ -28967,7 +29146,7 @@ var init_manager = __esm({
           });
           res.status(201).json(created);
         } catch (error) {
-          console.error("Error creating kitchen:", error);
+          logger.error("Error creating kitchen:", error);
           res.status(500).json({ error: error.message || "Failed to create kitchen" });
         }
       }
@@ -28998,7 +29177,7 @@ var init_manager = __esm({
                 await deleteFromR22(kitchen.imageUrl);
               }
             } catch (e) {
-              console.error("Failed to delete old image:", e);
+              logger.error("Failed to delete old image:", e);
             }
           }
           const updated = await kitchenService.updateKitchenImage(
@@ -29007,7 +29186,7 @@ var init_manager = __esm({
           );
           res.json(updated);
         } catch (error) {
-          console.error("Error updating kitchen image:", error);
+          logger.error("Error updating kitchen image:", error);
           res.status(500).json({ error: error.message || "Failed to update kitchen image" });
         }
       }
@@ -29042,7 +29221,7 @@ var init_manager = __esm({
               try {
                 await deleteFromR22(removedUrl);
               } catch (e) {
-                console.error("Failed to delete removed gallery image:", e);
+                logger.error("Failed to delete removed gallery image:", e);
               }
             }
           } else if (method === "reorder" && Array.isArray(imageUrl)) {
@@ -29052,7 +29231,7 @@ var init_manager = __esm({
           const updated = await kitchenService.getKitchenById(kitchenId);
           res.json(updated);
         } catch (error) {
-          console.error("Error updating gallery:", error);
+          logger.error("Error updating gallery:", error);
           res.status(500).json({ error: error.message || "Failed to update gallery" });
         }
       }
@@ -29084,7 +29263,7 @@ var init_manager = __esm({
           });
           res.json(updated);
         } catch (error) {
-          console.error("Error updating kitchen details:", error);
+          logger.error("Error updating kitchen details:", error);
           res.status(500).json({ error: error.message || "Failed to update kitchen details" });
         }
       }
@@ -29115,7 +29294,7 @@ var init_manager = __esm({
             try {
               await deleteFromR22(imageUrl);
             } catch (e) {
-              console.error(`Failed to delete kitchen image ${imageUrl}:`, e);
+              logger.error(`Failed to delete kitchen image ${imageUrl}:`, e);
             }
           }
           if (galleryImages.length > 0) {
@@ -29124,14 +29303,14 @@ var init_manager = __esm({
                 try {
                   await deleteFromR22(img);
                 } catch (e) {
-                  console.error(`Failed to delete gallery image ${img}:`, e);
+                  logger.error(`Failed to delete gallery image ${img}:`, e);
                 }
               })
             );
           }
           res.json({ success: true });
         } catch (error) {
-          console.error("Error deleting kitchen:", error);
+          logger.error("Error deleting kitchen:", error);
           res.status(500).json({ error: error.message || "Failed to delete kitchen" });
         }
       }
@@ -29171,7 +29350,7 @@ var init_manager = __esm({
             taxRatePercent: kitchen.taxRatePercent !== void 0 && kitchen.taxRatePercent !== null ? Number(kitchen.taxRatePercent) : null
           });
         } catch (error) {
-          console.error("Error getting kitchen pricing:", error);
+          logger.error("Error getting kitchen pricing:", error);
           res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
         }
       }
@@ -29244,12 +29423,12 @@ var init_manager = __esm({
             id: kitchenId,
             ...pricing
           });
-          console.log(
+          logger.info(
             `\u2705 Kitchen ${kitchenId} pricing updated by manager ${user.id}`
           );
           res.json(updated);
         } catch (error) {
-          console.error("Error updating kitchen pricing:", error);
+          logger.error("Error updating kitchen pricing:", error);
           res.status(500).json({ error: error.message || "Failed to update kitchen pricing" });
         }
       }
@@ -29280,7 +29459,7 @@ var init_manager = __esm({
           });
           res.json(updated);
         } catch (error) {
-          console.error("Error setting availability:", error);
+          logger.error("Error setting availability:", error);
           res.status(500).json({ error: error.message || "Failed to set availability" });
         }
       }
@@ -29313,7 +29492,7 @@ var init_manager = __esm({
           }
           res.json(bookings);
         } catch (error) {
-          console.error("Error fetching bookings:", error);
+          logger.error("Error fetching bookings:", error);
           res.status(500).json({ error: error.message || "Failed to fetch bookings" });
         }
       }
@@ -29361,7 +29540,7 @@ var init_manager = __esm({
             }))
           });
         } catch (error) {
-          console.error(`[Manager Profile v2] Error:`, error);
+          logger.error(`[Manager Profile v2] Error:`, error);
           return errorResponse(res, error);
         }
       }
@@ -29461,7 +29640,7 @@ var init_manager = __esm({
           const accessRecords = await db.select().from(portalUserLocationAccess).where(inArray8(portalUserLocationAccess.locationId, locationIds));
           res.json({ applications: formatted, accessCount: accessRecords.length });
         } catch (error) {
-          console.error("Error getting apps:", error);
+          logger.error("Error getting apps:", error);
           res.status(500).json({ error: error.message });
         }
       }
@@ -29703,7 +29882,7 @@ var init_manager = __esm({
               };
             }
           } catch (err) {
-            console.error("Error fetching payment transaction:", err);
+            logger.error("Error fetching payment transaction:", err);
           }
           const hourlyRate = booking.hourlyRate ? parseFloat(booking.hourlyRate.toString()) : 0;
           const durationHours = booking.durationHours ? parseFloat(booking.durationHours.toString()) : 0;
@@ -29734,7 +29913,7 @@ var init_manager = __esm({
             paymentTransaction
           });
         } catch (e) {
-          console.error("Error fetching booking details:", e);
+          logger.error("Error fetching booking details:", e);
           res.status(500).json({ error: e.message || "Failed to fetch booking details" });
         }
       }
@@ -30340,7 +30519,7 @@ var init_manager = __esm({
                     await sendSMS(chefPhone, smsContent);
                   }
                 } catch (smsError) {
-                  console.error(
+                  logger.error(
                     "Error sending confirmation SMS to chef:",
                     smsError
                   );
@@ -30384,7 +30563,7 @@ var init_manager = __esm({
                     endTime: booking.endTime
                   });
                 } catch (notifError) {
-                  console.error(
+                  logger.error(
                     "Error creating confirmation notification:",
                     notifError
                   );
@@ -30422,7 +30601,7 @@ var init_manager = __esm({
                     await sendSMS(chefPhone, smsContent);
                   }
                 } catch (smsError) {
-                  console.error(
+                  logger.error(
                     "Error sending cancellation SMS to chef:",
                     smsError
                   );
@@ -30443,7 +30622,7 @@ var init_manager = __esm({
                     cancelledBy: "manager"
                   });
                 } catch (notifError) {
-                  console.error(
+                  logger.error(
                     "Error creating cancellation notification:",
                     notifError
                   );
@@ -30451,7 +30630,7 @@ var init_manager = __esm({
               }
             }
           } catch (emailError) {
-            console.error(
+            logger.error(
               "Error sending booking status change emails:",
               emailError
             );
@@ -30483,7 +30662,7 @@ var init_manager = __esm({
           }
           res.json(responseData);
         } catch (e) {
-          console.error("Error updating booking status:", e);
+          logger.error("Error updating booking status:", e);
           res.status(500).json({ error: e.message || "Failed to update booking status" });
         }
       }
@@ -30576,7 +30755,7 @@ var init_manager = __esm({
       requireFirebaseAuthWithUser,
       requireManager,
       async (req, res) => {
-        console.log(
+        logger.info(
           "[PUT] /api/manager/locations/:locationId/cancellation-policy hit",
           {
             locationId: req.params.locationId,
@@ -30588,7 +30767,7 @@ var init_manager = __esm({
           const { locationId } = req.params;
           const locationIdNum = parseInt(locationId);
           if (isNaN(locationIdNum) || locationIdNum <= 0) {
-            console.error("[PUT] Invalid locationId:", locationId);
+            logger.error("[PUT] Invalid locationId:", locationId);
             return res.status(400).json({ error: "Invalid location ID" });
           }
           const {
@@ -30604,7 +30783,7 @@ var init_manager = __esm({
             description,
             customOnboardingLink
           } = req.body;
-          console.log("[PUT] Request body:", {
+          logger.info("[PUT] Request body:", {
             cancellationPolicyHours,
             cancellationPolicyMessage,
             defaultDailyBookingLimit,
@@ -30651,14 +30830,14 @@ var init_manager = __esm({
           );
           const location = locationResults[0];
           if (!location) {
-            console.error("[PUT] Location not found or access denied:", {
+            logger.error("[PUT] Location not found or access denied:", {
               locationId: locationIdNum,
               managerId: user.id,
               userRole: user.role
             });
             return res.status(404).json({ error: "Location not found or access denied" });
           }
-          console.log("[PUT] Location verified:", {
+          logger.info("[PUT] Location verified:", {
             locationId: location.id,
             locationName: location.name,
             managerId: location.managerId
@@ -30684,7 +30863,7 @@ var init_manager = __esm({
               return res.status(400).json({ error: "Invalid email format" });
             }
             updates.notificationEmail = notificationEmail && notificationEmail.trim() !== "" ? notificationEmail.trim() : null;
-            console.log("[PUT] Setting notificationEmail:", {
+            logger.info("[PUT] Setting notificationEmail:", {
               raw: notificationEmail,
               processed: updates.notificationEmail,
               oldEmail: oldNotificationEmail
@@ -30699,7 +30878,7 @@ var init_manager = __esm({
                 });
               }
               updates.notificationPhone = normalized;
-              console.log("[PUT] Setting notificationPhone:", {
+              logger.info("[PUT] Setting notificationPhone:", {
                 raw: notificationPhone,
                 normalized
               });
@@ -30739,7 +30918,7 @@ var init_manager = __esm({
             const processedLogoUrl = logoUrl && logoUrl.trim() !== "" ? logoUrl.trim() : null;
             updates.logoUrl = processedLogoUrl;
             updates.logo_url = processedLogoUrl;
-            console.log("[PUT] Setting logoUrl:", {
+            logger.info("[PUT] Setting logoUrl:", {
               raw: logoUrl,
               processed: processedLogoUrl,
               type: typeof processedLogoUrl,
@@ -30751,14 +30930,14 @@ var init_manager = __esm({
             const processedBrandImageUrl = brandImageUrl && brandImageUrl.trim() !== "" ? brandImageUrl.trim() : null;
             updates.brandImageUrl = processedBrandImageUrl;
             updates.brand_image_url = processedBrandImageUrl;
-            console.log("[PUT] Setting brandImageUrl:", {
+            logger.info("[PUT] Setting brandImageUrl:", {
               raw: brandImageUrl,
               processed: processedBrandImageUrl
             });
           }
           if (timezone !== void 0) {
             updates.timezone = DEFAULT_TIMEZONE;
-            console.log("[PUT] Setting timezone (locked to Newfoundland):", {
+            logger.info("[PUT] Setting timezone (locked to Newfoundland):", {
               raw: timezone,
               processed: DEFAULT_TIMEZONE,
               note: "Timezone is locked and cannot be changed"
@@ -30766,52 +30945,52 @@ var init_manager = __esm({
           }
           if (description !== void 0) {
             updates.description = description && description.trim() !== "" ? description.trim() : null;
-            console.log("[PUT] Setting description:", {
+            logger.info("[PUT] Setting description:", {
               raw: description,
               processed: updates.description
             });
           }
           if (customOnboardingLink !== void 0) {
             updates.customOnboardingLink = customOnboardingLink && customOnboardingLink.trim() !== "" ? customOnboardingLink.trim() : null;
-            console.log("[PUT] Setting customOnboardingLink:", {
+            logger.info("[PUT] Setting customOnboardingLink:", {
               raw: customOnboardingLink,
               processed: updates.customOnboardingLink
             });
           }
-          console.log(
+          logger.info(
             "[PUT] Final updates object before DB update:",
             JSON.stringify(updates, null, 2)
           );
-          console.log("[PUT] Updates keys:", Object.keys(updates));
-          console.log("[PUT] Updates object has logoUrl?", "logoUrl" in updates);
-          console.log(
+          logger.info("[PUT] Updates keys:", Object.keys(updates));
+          logger.info("[PUT] Updates object has logoUrl?", "logoUrl" in updates);
+          logger.info(
             "[PUT] Updates object logoUrl value:",
             updates.logoUrl
           );
-          console.log("[PUT] Updates object has logo_url?", "logo_url" in updates);
-          console.log(
+          logger.info("[PUT] Updates object has logo_url?", "logo_url" in updates);
+          logger.info(
             "[PUT] Updates object logo_url value:",
             updates.logo_url
           );
           const updatedResults = await db.update(locations).set(updates).where(eq30(locations.id, locationIdNum)).returning();
-          console.log(
+          logger.info(
             "[PUT] Updated location from DB (full object):",
             JSON.stringify(updatedResults[0], null, 2)
           );
-          console.log(
+          logger.info(
             "[PUT] Updated location logoUrl (camelCase):",
             updatedResults[0].logoUrl
           );
-          console.log(
+          logger.info(
             "[PUT] Updated location logo_url (snake_case):",
             updatedResults[0].logo_url
           );
-          console.log(
+          logger.info(
             "[PUT] Updated location all keys:",
             Object.keys(updatedResults[0] || {})
           );
           if (!updatedResults || updatedResults.length === 0) {
-            console.error(
+            logger.error(
               "[PUT] Cancellation policy update failed: No location returned from DB",
               {
                 locationId: locationIdNum,
@@ -30823,7 +31002,7 @@ var init_manager = __esm({
             });
           }
           const updated = updatedResults[0];
-          console.log("[PUT] Location settings updated successfully:", {
+          logger.info("[PUT] Location settings updated successfully:", {
             locationId: updated.id,
             cancellationPolicyHours: updated.cancellationPolicyHours,
             defaultDailyBookingLimit: updated.defaultDailyBookingLimit,
@@ -30833,13 +31012,13 @@ var init_manager = __esm({
           });
           if (defaultDailyBookingLimit !== void 0) {
             const savedValue = updated.defaultDailyBookingLimit ?? updated.default_daily_booking_limit;
-            console.log("[PUT] \u2705 Verified defaultDailyBookingLimit save:", {
+            logger.info("[PUT] \u2705 Verified defaultDailyBookingLimit save:", {
               requested: defaultDailyBookingLimit,
               saved: savedValue,
               match: savedValue === defaultDailyBookingLimit
             });
             if (savedValue !== defaultDailyBookingLimit) {
-              console.error(
+              logger.error(
                 "[PUT] \u274C WARNING: defaultDailyBookingLimit mismatch!",
                 {
                   requested: defaultDailyBookingLimit,
@@ -30869,23 +31048,23 @@ var init_manager = __esm({
                 locationId: locationIdNum
               });
               await sendEmail(emailContent);
-              console.log(
+              logger.info(
                 `\u2705 Location notification email change notification sent to: ${response.notificationEmail}`
               );
             } catch (emailError) {
-              console.error(
+              logger.error(
                 "Error sending location email change notification:",
                 emailError
               );
             }
           }
-          console.log(
+          logger.info(
             "[PUT] Sending response with notificationEmail:",
             response.notificationEmail
           );
           res.status(200).json(response);
         } catch (error) {
-          console.error("Error updating cancellation policy:", error);
+          logger.error("Error updating cancellation policy:", error);
           res.status(500).json({
             error: error.message || "Failed to update cancellation policy"
           });
@@ -30900,7 +31079,7 @@ var init_manager = __esm({
         try {
           const user = req.neonUser;
           const locations5 = await locationService.getLocationsByManagerId(user.id);
-          console.log(
+          logger.info(
             "[GET] /api/manager/locations - Raw locations from DB:",
             locations5.map((loc) => ({
               id: loc.id,
@@ -30937,7 +31116,7 @@ var init_manager = __esm({
             kitchenTermsUrl: loc.kitchenTermsUrl || loc.kitchen_terms_url || null,
             kitchenTermsUploadedAt: loc.kitchenTermsUploadedAt || loc.kitchen_terms_uploaded_at || null
           }));
-          console.log(
+          logger.info(
             "[GET] /api/manager/locations - Mapped locations:",
             mappedLocations.map((loc) => ({
               id: loc.id,
@@ -30948,7 +31127,7 @@ var init_manager = __esm({
           );
           res.json(mappedLocations);
         } catch (error) {
-          console.error("Error fetching locations:", error);
+          logger.error("Error fetching locations:", error);
           res.status(500).json({ error: error.message || "Failed to fetch locations" });
         }
       }
@@ -30973,11 +31152,11 @@ var init_manager = __esm({
             kitchenLicenseExpiry,
             kitchenTermsUrl
           } = req.body;
-          console.log(
+          logger.info(
             "[POST /locations] Request body:",
             JSON.stringify(req.body, null, 2)
           );
-          console.log("[POST /locations] kitchenTermsUrl:", kitchenTermsUrl);
+          logger.info("[POST /locations] kitchenTermsUrl:", kitchenTermsUrl);
           if (!name || !address) {
             return res.status(400).json({ error: "Name and address are required" });
           }
@@ -31001,7 +31180,7 @@ var init_manager = __esm({
             }
             normalizedContactPhone = normalized;
           }
-          console.log("Creating location for manager:", {
+          logger.info("Creating location for manager:", {
             managerId: user.id,
             name,
             address,
@@ -31036,8 +31215,8 @@ var init_manager = __esm({
           };
           res.status(201).json(mappedLocation);
         } catch (error) {
-          console.error("Error creating location:", error);
-          console.error("Error details:", error.message, error.stack);
+          logger.error("Error creating location:", error);
+          logger.error("Error details:", error);
           res.status(500).json({ error: error.message || "Failed to create location" });
         }
       }
@@ -31142,16 +31321,16 @@ var init_manager = __esm({
               updates.kitchenTermsUploadedAt = /* @__PURE__ */ new Date();
             }
           }
-          console.log(`\u{1F4BE} Updating location ${locationId} with:`, updates);
+          logger.info(`\u{1F4BE} Updating location ${locationId} with:`, updates);
           const updated = await locationService.updateLocation({
             id: locationId,
             ...updates
           });
           if (!updated) {
-            console.error(`\u274C Location ${locationId} not found in database`);
+            logger.error(`\u274C Location ${locationId} not found in database`);
             return res.status(404).json({ error: "Location not found" });
           }
-          console.log(`\u2705 Location ${locationId} updated successfully`);
+          logger.info(`\u2705 Location ${locationId} updated successfully`);
           if (kitchenLicenseUrl && updates.kitchenLicenseStatus === "pending") {
             try {
               const { generateKitchenLicenseSubmittedAdminEmail: generateKitchenLicenseSubmittedAdminEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
@@ -31194,8 +31373,8 @@ var init_manager = __esm({
           };
           return res.json(mappedLocation);
         } catch (error) {
-          console.error("\u274C Error updating location:", error);
-          console.error("Error stack:", error.stack);
+          logger.error("\u274C Error updating location:", error);
+          logger.error("Error stack:", error.stack);
           res.status(500).json({ error: error.message || "Failed to update location" });
         }
       }
@@ -31208,7 +31387,7 @@ var init_manager = __esm({
         try {
           const user = req.neonUser;
           const { skipped } = req.body;
-          console.log(
+          logger.info(
             `[POST] /api/manager/complete-onboarding - User: ${user.id}, skipped: ${skipped}`
           );
           const updatedUser = await managerService.updateOnboarding(user.id, {
@@ -31220,7 +31399,7 @@ var init_manager = __esm({
           }
           res.json({ success: true, user: updatedUser });
         } catch (error) {
-          console.error("Error completing manager onboarding:", error);
+          logger.error("Error completing manager onboarding:", error);
           res.status(500).json({ error: error.message || "Failed to complete onboarding" });
         }
       }
@@ -31236,7 +31415,7 @@ var init_manager = __esm({
           if (stepId === void 0) {
             return res.status(400).json({ error: "stepId is required" });
           }
-          console.log(
+          logger.info(
             `[POST] /api/manager/onboarding/step - User: ${user.id}, stepId: ${stepId}, locationId: ${locationId}`
           );
           const currentSteps = user.managerOnboardingStepsCompleted || {};
@@ -31256,7 +31435,7 @@ var init_manager = __esm({
             stepsCompleted: updatedUser.managerOnboardingStepsCompleted
           });
         } catch (error) {
-          console.error("Error tracking onboarding step:", error);
+          logger.error("Error tracking onboarding step:", error);
           res.status(500).json({ error: error.message || "Failed to track onboarding step" });
         }
       }
@@ -33532,6 +33711,7 @@ var router18, kitchens_default;
 var init_kitchens = __esm({
   "server/routes/kitchens.ts"() {
     "use strict";
+    init_logger();
     init_db();
     init_middleware();
     init_utils();
@@ -33573,10 +33753,10 @@ var init_kitchens = __esm({
             // Also set snake_case for compatibility
           };
         });
-        console.log(`[API] /api/chef/kitchens - Returning ${normalizedKitchens.length} active kitchens (all locations for marketing)`);
+        logger.info(`[API] /api/chef/kitchens - Returning ${normalizedKitchens.length} active kitchens (all locations for marketing)`);
         res.json(normalizedKitchens);
       } catch (error) {
-        console.error("Error fetching kitchens:", error);
+        logger.error("Error fetching kitchens:", error);
         res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
       }
     });
@@ -33598,7 +33778,7 @@ var init_kitchens = __esm({
         if (error.statusCode === 404) {
           return res.status(404).json({ error: "Kitchen not found" });
         }
-        console.error("Error getting kitchen pricing:", error);
+        logger.error("Error getting kitchen pricing:", error);
         res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
       }
     });
@@ -33620,7 +33800,7 @@ var init_kitchens = __esm({
         if (error.statusCode === 404) {
           return res.status(404).json({ error: error.message });
         }
-        console.error("Error getting kitchen policy:", error);
+        logger.error("Error getting kitchen policy:", error);
         res.status(500).json({ error: error.message || "Failed to get kitchen policy" });
       }
     });
@@ -33662,15 +33842,15 @@ var init_kitchens = __esm({
                 locationId
               });
               await sendEmail(emailContent);
-              console.log(`\u2705 Chef profile request notification sent to manager: ${managerEmail}`);
+              logger.info(`\u2705 Chef profile request notification sent to manager: ${managerEmail}`);
             }
           } catch (emailError) {
-            console.error("Error sending chef profile request notification:", emailError);
+            logger.error("Error sending chef profile request notification:", emailError);
           }
         }
         res.status(201).json(profile);
       } catch (error) {
-        console.error("Error sharing chef profile:", error);
+        logger.error("Error sharing chef profile:", error);
         res.status(500).json({ error: error.message || "Failed to share profile" });
       }
     });
@@ -33692,7 +33872,7 @@ var init_kitchens = __esm({
         );
         res.json(profiles);
       } catch (error) {
-        console.error("Error getting chef profiles:", error);
+        logger.error("Error getting chef profiles:", error);
         res.status(500).json({ error: error.message || "Failed to get profiles" });
       }
     });
@@ -33711,7 +33891,7 @@ var init_kitchens = __esm({
         const slotsInfo = await bookingService.getAllTimeSlotsWithBookingInfo(kitchenId, bookingDate);
         res.json(slotsInfo);
       } catch (error) {
-        console.error("Error fetching time slots:", error);
+        logger.error("Error fetching time slots:", error);
         res.status(500).json({
           error: "Failed to fetch time slots",
           message: error.message
@@ -33730,12 +33910,12 @@ var init_kitchens = __esm({
         if (isNaN(bookingDate.getTime())) {
           return res.status(400).json({ error: "Invalid date format" });
         }
-        console.log(`\u{1F50D} Fetching available slots for kitchen ${kitchenId} on ${date2}`);
+        logger.info(`\u{1F50D} Fetching available slots for kitchen ${kitchenId} on ${date2}`);
         const slots = await bookingService.getAvailableTimeSlots(kitchenId, bookingDate);
-        console.log(`\u2705 Returning ${slots.length} available slots`);
+        logger.info(`\u2705 Returning ${slots.length} available slots`);
         res.json(slots);
       } catch (error) {
-        console.error("Error fetching available slots:", error);
+        logger.error("Error fetching available slots:", error);
         res.status(500).json({
           error: "Failed to fetch available slots",
           message: error.message
@@ -33771,7 +33951,7 @@ var init_kitchens = __esm({
           applicationPhone: latestApp?.phone || null
         });
       } catch (error) {
-        console.error("[Chef Profile] GET error:", error);
+        logger.error("[Chef Profile] GET error:", error);
         res.status(500).json({ error: error.message || "Failed to fetch chef profile" });
       }
     });
@@ -33812,7 +33992,7 @@ var init_kitchens = __esm({
           displayName: finalProfile.displayName || null
         });
       } catch (error) {
-        console.error("[Chef Profile] PUT error:", error);
+        logger.error("[Chef Profile] PUT error:", error);
         res.status(500).json({ error: error.message || "Failed to update chef profile" });
       }
     });
@@ -33830,6 +34010,7 @@ var router19, equipment_default;
 var init_equipment = __esm({
   "server/routes/equipment.ts"() {
     "use strict";
+    init_logger();
     init_firebase_auth_middleware();
     init_middleware();
     init_inventory_service();
@@ -33855,7 +34036,7 @@ var init_equipment = __esm({
         const listings = await inventoryService.getEquipmentListingsByKitchen(kitchenId);
         res.json(listings);
       } catch (error) {
-        console.error("Error getting equipment listings:", error);
+        logger.error("Error getting equipment listings:", error);
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
       }
     });
@@ -33881,7 +34062,7 @@ var init_equipment = __esm({
         }
         res.json(listing);
       } catch (error) {
-        console.error("Error getting equipment listing:", error);
+        logger.error("Error getting equipment listing:", error);
         res.status(500).json({ error: error.message || "Failed to get equipment listing" });
       }
     });
@@ -33916,10 +34097,10 @@ var init_equipment = __esm({
           kitchenId: parseInt(kitchenId),
           ...listingData
         });
-        console.log(`\u2705 Equipment listing created by manager ${user.id}`);
+        logger.info(`\u2705 Equipment listing created by manager ${user.id}`);
         res.status(201).json(created);
       } catch (error) {
-        console.error("Error creating equipment listing:", error);
+        logger.error("Error creating equipment listing:", error);
         res.status(500).json({ error: error.message || "Failed to create equipment listing" });
       }
     });
@@ -33944,10 +34125,10 @@ var init_equipment = __esm({
           return res.status(403).json({ error: "Access denied to this listing" });
         }
         const updated = await inventoryService.updateEquipmentListing(listingId, req.body);
-        console.log(`\u2705 Equipment listing ${listingId} updated by manager ${user.id}`);
+        logger.info(`\u2705 Equipment listing ${listingId} updated by manager ${user.id}`);
         res.json(updated);
       } catch (error) {
-        console.error("Error updating equipment listing:", error);
+        logger.error("Error updating equipment listing:", error);
         res.status(500).json({ error: error.message || "Failed to update equipment listing" });
       }
     });
@@ -33972,10 +34153,10 @@ var init_equipment = __esm({
           return res.status(403).json({ error: "Access denied to this listing" });
         }
         await inventoryService.deleteEquipmentListing(listingId);
-        console.log(`\u2705 Equipment listing ${listingId} deleted by manager ${user.id}`);
+        logger.info(`\u2705 Equipment listing ${listingId} deleted by manager ${user.id}`);
         res.json({ success: true });
       } catch (error) {
-        console.error("Error deleting equipment listing:", error);
+        logger.error("Error deleting equipment listing:", error);
         res.status(500).json({ error: error.message || "Failed to delete equipment listing" });
       }
     });
@@ -33991,14 +34172,14 @@ var init_equipment = __esm({
         );
         const includedEquipment = visibleListings.filter((l) => l.availabilityType === "included");
         const rentalEquipment = visibleListings.filter((l) => l.availabilityType === "rental");
-        console.log(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
+        logger.info(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
         res.json({
           all: visibleListings,
           included: includedEquipment,
           rental: rentalEquipment
         });
       } catch (error) {
-        console.error("Error getting equipment listings for chef:", error);
+        logger.error("Error getting equipment listings for chef:", error);
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
       }
     });
@@ -34016,6 +34197,7 @@ var router20, storage_listings_default;
 var init_storage_listings = __esm({
   "server/routes/storage-listings.ts"() {
     "use strict";
+    init_logger();
     init_firebase_auth_middleware();
     init_middleware();
     init_inventory_service();
@@ -34042,7 +34224,7 @@ var init_storage_listings = __esm({
         const listings = await inventoryService.getStorageListingsByKitchen(kitchenId);
         res.json(listings);
       } catch (error) {
-        console.error("Error getting storage listings:", error);
+        logger.error("Error getting storage listings:", error);
         res.status(500).json({ error: error.message || "Failed to get storage listings" });
       }
     });
@@ -34068,7 +34250,7 @@ var init_storage_listings = __esm({
         }
         res.json(listing);
       } catch (error) {
-        console.error("Error getting storage listing:", error);
+        logger.error("Error getting storage listing:", error);
         res.status(500).json({ error: error.message || "Failed to get storage listing" });
       }
     });
@@ -34107,10 +34289,10 @@ var init_storage_listings = __esm({
           // Auto-activate manager-created listings
           isActive: true
         });
-        console.log(`\u2705 Storage listing created by manager ${user.id}`);
+        logger.info(`\u2705 Storage listing created by manager ${user.id}`);
         res.status(201).json(created);
       } catch (error) {
-        console.error("Error creating storage listing:", error);
+        logger.error("Error creating storage listing:", error);
         res.status(500).json({ error: error.message || "Failed to create storage listing" });
       }
     });
@@ -34135,10 +34317,10 @@ var init_storage_listings = __esm({
           return res.status(403).json({ error: "Access denied to this listing" });
         }
         const updated = await inventoryService.updateStorageListing(listingId, req.body);
-        console.log(`\u2705 Storage listing ${listingId} updated by manager ${user.id}`);
+        logger.info(`\u2705 Storage listing ${listingId} updated by manager ${user.id}`);
         res.json(updated);
       } catch (error) {
-        console.error("Error updating storage listing:", error);
+        logger.error("Error updating storage listing:", error);
         res.status(500).json({ error: error.message || "Failed to update storage listing" });
       }
     });
@@ -34163,10 +34345,10 @@ var init_storage_listings = __esm({
           return res.status(403).json({ error: "Access denied to this listing" });
         }
         await inventoryService.deleteStorageListing(listingId);
-        console.log(`\u2705 Storage listing ${listingId} deleted by manager ${user.id}`);
+        logger.info(`\u2705 Storage listing ${listingId} deleted by manager ${user.id}`);
         res.json({ success: true });
       } catch (error) {
-        console.error("Error deleting storage listing:", error);
+        logger.error("Error deleting storage listing:", error);
         res.status(500).json({ error: error.message || "Failed to delete storage listing" });
       }
     });
@@ -34180,10 +34362,10 @@ var init_storage_listings = __esm({
         const visibleListings = allListings.filter(
           (listing) => (listing.status === "approved" || listing.status === "active") && listing.isActive === true
         );
-        console.log(`[API] /api/chef/kitchens/${kitchenId}/storage-listings - Returning ${visibleListings.length} visible listings (out of ${allListings.length} total)`);
+        logger.info(`[API] /api/chef/kitchens/${kitchenId}/storage-listings - Returning ${visibleListings.length} visible listings (out of ${allListings.length} total)`);
         res.json(visibleListings);
       } catch (error) {
-        console.error("Error getting storage listings for chef:", error);
+        logger.error("Error getting storage listings for chef:", error);
         res.status(500).json({ error: error.message || "Failed to get storage listings" });
       }
     });
@@ -34231,7 +34413,7 @@ async function loadRateLimitConfig() {
     };
     lastConfigFetch = now;
   } catch (error) {
-    console.log("[Security] Using default rate limits (DB config not available)");
+    logger.info("[Security] Using default rate limits (DB config not available)");
   }
   return cachedConfig;
 }
@@ -34316,6 +34498,7 @@ function registerSecurityMiddleware(app2) {
           "https://widget-v4.tidiochat.com",
           "wss://*.tidiochat.com",
           "https://files.localcooks.ca",
+          "https://*.ingest.us.sentry.io",
           ...isProduction2 ? ["https://*.localcooks.ca"] : ["http://localhost:*", "ws://localhost:*"]
         ],
         frameSrc: [
@@ -34411,12 +34594,13 @@ function registerSecurityMiddleware(app2) {
     validate: false
   });
   app2.use("/api/webhooks", webhookLimiter);
-  console.log(`[Security] Helmet, CORS, and Rate Limiting configured (env: ${isProduction2 ? "production" : "development"})`);
+  logger.info(`[Security] Helmet, CORS, and Rate Limiting configured (env: ${isProduction2 ? "production" : "development"})`);
 }
 var DEFAULT_RATE_LIMITS, cachedConfig, lastConfigFetch, CONFIG_CACHE_TTL;
 var init_security = __esm({
   "server/security.ts"() {
     "use strict";
+    init_logger();
     init_db();
     DEFAULT_RATE_LIMITS = {
       globalWindowMs: 15 * 60 * 1e3,
@@ -34471,7 +34655,7 @@ async function getFirestoreDisplayNames(firebaseUids) {
       }
     });
   } catch (error) {
-    console.error("Error fetching Firestore display names:", error);
+    logger.error("Error fetching Firestore display names:", error);
   }
   return nameMap;
 }
@@ -34492,6 +34676,7 @@ var firestoreDb, router21, handleAdminDamageClaimDecision, admin_default;
 var init_admin = __esm({
   "server/routes/admin.ts"() {
     "use strict";
+    init_logger();
     init_db();
     init_user_service();
     init_firebase_auth_middleware();
@@ -34547,7 +34732,7 @@ var init_admin = __esm({
         }
         res.json({ users: filteredUsers });
       } catch (error) {
-        console.error("Error fetching users:", error);
+        logger.error("Error fetching users:", error);
         res.status(500).json({ error: "Failed to fetch users" });
       }
     });
@@ -34594,7 +34779,7 @@ var init_admin = __esm({
         })).filter((m) => m.bookingCount > 0 || m.totalRevenue > 0);
         res.json({ managers, total: managers.length });
       } catch (error) {
-        console.error("Error getting all managers revenue:", error);
+        logger.error("Error getting all managers revenue:", error);
         res.status(500).json({ error: error.message || "Failed to get all managers revenue" });
       }
     });
@@ -34641,7 +34826,7 @@ var init_admin = __esm({
           }
         });
       } catch (error) {
-        console.error("Error getting platform overview:", error);
+        logger.error("Error getting platform overview:", error);
         res.status(500).json({ error: error.message || "Failed to get platform overview" });
       }
     });
@@ -34690,7 +34875,7 @@ var init_admin = __esm({
           }))
         });
       } catch (error) {
-        console.error("Error getting manager revenue details:", error);
+        logger.error("Error getting manager revenue details:", error);
         res.status(500).json({ error: error.message || "Failed to get manager revenue details" });
       }
     });
@@ -34713,11 +34898,11 @@ var init_admin = __esm({
         try {
           const location = await locationService.getLocationById(locationId);
           if (!location) {
-            console.warn(`\u26A0\uFE0F Location ${locationId} not found for email notification`);
+            logger.warn(`\u26A0\uFE0F Location ${locationId} not found for email notification`);
           } else {
             const chef = await userService.getUser(chefId);
             if (!chef) {
-              console.warn(`\u26A0\uFE0F Chef ${chefId} not found for email notification`);
+              logger.warn(`\u26A0\uFE0F Chef ${chefId} not found for email notification`);
             } else {
               try {
                 const chefEmail = generateChefLocationAccessApprovedEmail({
@@ -34727,19 +34912,19 @@ var init_admin = __esm({
                   locationId
                 });
                 await sendEmail(chefEmail);
-                console.log(`\u2705 Chef location access granted email sent to chef: ${chef.username}`);
+                logger.info(`\u2705 Chef location access granted email sent to chef: ${chef.username}`);
               } catch (emailError) {
-                console.error("Error sending chef access email:", emailError);
-                console.error("Chef email error details:", emailError instanceof Error ? emailError.message : emailError);
+                logger.error("Error sending chef access email:", emailError);
+                logger.error("Chef email error details:", emailError instanceof Error ? emailError.message : emailError);
               }
             }
           }
         } catch (emailError) {
-          console.error("Error sending chef access emails:", emailError);
+          logger.error("Error sending chef access emails:", emailError);
         }
         res.status(201).json(access);
       } catch (error) {
-        console.error("Error granting chef location access:", error);
+        logger.error("Error granting chef location access:", error);
         res.status(500).json({ error: error.message || "Failed to grant access" });
       }
     });
@@ -34761,24 +34946,24 @@ var init_admin = __esm({
         await chefService.revokeLocationAccess(chefId, locationId);
         res.json({ success: true });
       } catch (error) {
-        console.error("Error revoking chef location access:", error);
+        logger.error("Error revoking chef location access:", error);
         res.status(500).json({ error: error.message || "Failed to revoke access" });
       }
     });
     router21.get("/chef-location-access", async (req, res) => {
       try {
-        console.log("[Admin Chef Access] GET request received");
+        logger.info("[Admin Chef Access] GET request received");
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
-        console.log("[Admin Chef Access] Auth check:", { hasSession: !!sessionUser, hasFirebase: !!isFirebaseAuth });
+        logger.info("[Admin Chef Access] Auth check:", { hasSession: !!sessionUser, hasFirebase: !!isFirebaseAuth });
         if (!sessionUser && !isFirebaseAuth) {
-          console.log("[Admin Chef Access] Not authenticated");
+          logger.info("[Admin Chef Access] Not authenticated");
           return res.status(401).json({ error: "Not authenticated" });
         }
         const user = isFirebaseAuth ? req.neonUser : sessionUser;
-        console.log("[Admin Chef Access] User:", { id: user.id, role: user.role });
+        logger.info("[Admin Chef Access] User:", { id: user.id, role: user.role });
         if (user.role !== "admin") {
-          console.log("[Admin Chef Access] Not admin");
+          logger.info("[Admin Chef Access] Not admin");
           return res.status(403).json({ error: "Admin access required" });
         }
         const allUsers = await db.select({
@@ -34792,17 +34977,17 @@ var init_admin = __esm({
           const isChef = u.isChef ?? u.is_chef;
           return role === "chef" || isChef === true;
         });
-        console.log(`[Admin Chef Access] Total users: ${allUsers.length}, Found ${chefs.length} chefs in database`);
+        logger.info(`[Admin Chef Access] Total users: ${allUsers.length}, Found ${chefs.length} chefs in database`);
         const allLocations = await db.select().from(locations);
-        console.log(`[Admin Chef Access] Found ${allLocations.length} locations`);
+        logger.info(`[Admin Chef Access] Found ${allLocations.length} locations`);
         let allAccess = [];
         try {
           allAccess = await db.select().from(chefLocationAccess);
-          console.log(`[Admin Chef Access] Found ${allAccess.length} location access records`);
+          logger.info(`[Admin Chef Access] Found ${allAccess.length} location access records`);
         } catch (error) {
-          console.error(`[Admin Chef Access] Error querying chef_location_access table:`, error.message);
+          logger.error(`[Admin Chef Access] Error querying chef_location_access table:`, error.message);
           if (error.message?.includes("does not exist") || error.message?.includes("relation") || error.code === "42P01") {
-            console.log(`[Admin Chef Access] Table doesn't exist yet, returning empty access`);
+            logger.info(`[Admin Chef Access] Table doesn't exist yet, returning empty access`);
             allAccess = [];
           } else {
             throw error;
@@ -34835,11 +35020,11 @@ var init_admin = __esm({
             accessibleLocations
           };
         });
-        console.log(`[Admin Chef Access] Returning ${response.length} chefs with location access info`);
+        logger.info(`[Admin Chef Access] Returning ${response.length} chefs with location access info`);
         res.json(response);
       } catch (error) {
-        console.error("[Admin Chef Access] Error:", error);
-        console.error("[Admin Chef Access] Error stack:", error.stack);
+        logger.error("[Admin Chef Access] Error:", error);
+        logger.error("[Admin Chef Access] Error stack:", error.stack);
         res.status(500).json({ error: error.message || "Failed to get access" });
       }
     });
@@ -34885,15 +35070,15 @@ var init_admin = __esm({
             password
           });
           await sendEmail(welcomeEmail);
-          console.log(`\u2705 Welcome email with credentials sent to manager: ${managerEmail}`);
+          logger.info(`\u2705 Welcome email with credentials sent to manager: ${managerEmail}`);
         } catch (emailError) {
-          console.error("Error sending manager welcome email:", emailError);
-          console.error("Email error details:", emailError instanceof Error ? emailError.message : emailError);
+          logger.error("Error sending manager welcome email:", emailError);
+          logger.error("Email error details:", emailError instanceof Error ? emailError.message : emailError);
         }
         res.status(201).json({ success: true, managerId: manager.id });
       } catch (error) {
-        console.error("Error creating manager:", error);
-        console.error("Error details:", error.message, error.stack);
+        logger.error("Error creating manager:", error);
+        logger.error("Error details:", error);
         res.status(500).json({ error: error.message || "Failed to create manager" });
       }
     });
@@ -34986,7 +35171,7 @@ var init_admin = __esm({
         });
         return res.json(verifiedManagers);
       } catch (error) {
-        console.error("Error fetching managers:", error);
+        logger.error("Error fetching managers:", error);
         res.status(500).json({ error: error.message || "Failed to fetch managers" });
       }
     });
@@ -35029,7 +35214,7 @@ var init_admin = __esm({
         }));
         res.json(licenses);
       } catch (error) {
-        console.error("Error fetching location licenses:", error);
+        logger.error("Error fetching location licenses:", error);
         res.status(500).json({ error: error.message || "Failed to fetch location licenses" });
       }
     });
@@ -35059,7 +35244,7 @@ var init_admin = __esm({
         }));
         res.json(formatted);
       } catch (error) {
-        console.error("Error fetching pending licenses:", error);
+        logger.error("Error fetching pending licenses:", error);
         res.status(500).json({ error: error.message || "Failed to fetch pending licenses" });
       }
     });
@@ -35113,7 +35298,7 @@ var init_admin = __esm({
                 await sendEmail(approvalEmail, {
                   trackingId: `kitchen_license_approved_${locationId}_${Date.now()}`
                 });
-                console.log(`\u2705 Sent kitchen license approval email to manager: ${managerEmail}`);
+                logger.info(`\u2705 Sent kitchen license approval email to manager: ${managerEmail}`);
               } else if (status === "rejected") {
                 const rejectionEmail = generateKitchenLicenseRejectedEmail({
                   managerEmail,
@@ -35124,16 +35309,16 @@ var init_admin = __esm({
                 await sendEmail(rejectionEmail, {
                   trackingId: `kitchen_license_rejected_${locationId}_${Date.now()}`
                 });
-                console.log(`\u2705 Sent kitchen license rejection email to manager: ${managerEmail}`);
+                logger.info(`\u2705 Sent kitchen license rejection email to manager: ${managerEmail}`);
               }
             }
           }
         } catch (emailError) {
-          console.error("Error sending kitchen license status email:", emailError);
+          logger.error("Error sending kitchen license status email:", emailError);
         }
         res.json({ message: "License status updated successfully" });
       } catch (error) {
-        console.error("Error updating license status:", error);
+        logger.error("Error updating license status:", error);
         res.status(500).json({ error: error.message || "Failed to update license status" });
       }
     });
@@ -35153,7 +35338,7 @@ var init_admin = __esm({
         }));
         res.json(mappedLocations);
       } catch (error) {
-        console.error("Error fetching locations:", error);
+        logger.error("Error fetching locations:", error);
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
@@ -35205,7 +35390,7 @@ var init_admin = __esm({
         };
         res.status(201).json(mappedLocation);
       } catch (error) {
-        console.error("Error creating location:", error);
+        logger.error("Error creating location:", error);
         res.status(500).json({ error: error.message || "Failed to create location" });
       }
     });
@@ -35223,7 +35408,7 @@ var init_admin = __esm({
         const allKitchens = await kitchenService.getAllKitchensWithLocation();
         res.json(allKitchens);
       } catch (error) {
-        console.error("Error fetching all kitchens:", error);
+        logger.error("Error fetching all kitchens:", error);
         res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
       }
     });
@@ -35245,7 +35430,7 @@ var init_admin = __esm({
         const kitchens3 = await kitchenService.getKitchensByLocationId(locationId);
         res.json(kitchens3);
       } catch (error) {
-        console.error("Error fetching kitchens:", error);
+        logger.error("Error fetching kitchens:", error);
         res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
       }
     });
@@ -35284,7 +35469,7 @@ var init_admin = __esm({
         });
         res.status(201).json(kitchen);
       } catch (error) {
-        console.error("Error creating kitchen:", error);
+        logger.error("Error creating kitchen:", error);
         if (error.code === "23503") {
           return res.status(400).json({ error: "The selected location does not exist or is invalid." });
         }
@@ -35357,7 +35542,7 @@ var init_admin = __esm({
         };
         return res.json(mappedLocation);
       } catch (error) {
-        console.error("Error updating location:", error);
+        logger.error("Error updating location:", error);
         res.status(500).json({ error: error.message || "Failed to update location" });
       }
     });
@@ -35379,7 +35564,7 @@ var init_admin = __esm({
         await locationService.deleteLocation(locationId);
         res.json({ success: true, message: "Location deleted successfully" });
       } catch (error) {
-        console.error("Error deleting location:", error);
+        logger.error("Error deleting location:", error);
         res.status(500).json({ error: error.message || "Failed to delete location" });
       }
     });
@@ -35468,7 +35653,7 @@ var init_admin = __esm({
                     await sendEmail(email);
                   }
                 } catch (emailError) {
-                  console.error(`Error sending email to chef ${chefId}:`, emailError);
+                  logger.error(`Error sending email to chef ${chefId}:`, emailError);
                 }
               }
               if (location?.managerId) {
@@ -35486,17 +35671,17 @@ var init_admin = __esm({
                     await sendEmail(email);
                   }
                 } catch (emailError) {
-                  console.error(`Error sending email to manager:`, emailError);
+                  logger.error(`Error sending email to manager:`, emailError);
                 }
               }
             }
           } catch (emailError) {
-            console.error("Error sending kitchen settings change emails:", emailError);
+            logger.error("Error sending kitchen settings change emails:", emailError);
           }
         }
         res.json(updated);
       } catch (error) {
-        console.error("Error updating kitchen:", error);
+        logger.error("Error updating kitchen:", error);
         res.status(500).json({ error: error.message || "Failed to update kitchen" });
       }
     });
@@ -35518,7 +35703,7 @@ var init_admin = __esm({
         await kitchenService.deleteKitchen(kitchenId);
         res.json({ success: true, message: "Kitchen deleted successfully" });
       } catch (error) {
-        console.error("Error deleting kitchen:", error);
+        logger.error("Error deleting kitchen:", error);
         res.status(500).json({ error: error.message || "Failed to delete kitchen" });
       }
     });
@@ -35595,7 +35780,7 @@ var init_admin = __esm({
         };
         res.json(response);
       } catch (error) {
-        console.error("Error updating manager:", error);
+        logger.error("Error updating manager:", error);
         res.status(500).json({ error: error.message || "Failed to update manager" });
       }
     });
@@ -35627,14 +35812,14 @@ var init_admin = __esm({
         await userService.deleteUser(managerId);
         res.json({ success: true, message: "Manager deleted successfully" });
       } catch (error) {
-        console.error("Error deleting manager:", error);
+        logger.error("Error deleting manager:", error);
         res.status(500).json({ error: error.message || "Failed to delete manager" });
       }
     });
     router21.post("/test-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
-        console.log(`POST /api/admin/test-email - User ID: ${user.id}`);
+        logger.info(`POST /api/admin/test-email - User ID: ${user.id}`);
         const {
           email,
           subject,
@@ -35649,7 +35834,7 @@ var init_admin = __esm({
         if (!email) {
           return res.status(400).json({ error: "Email is required" });
         }
-        console.log("Test email request - Validation passed, generating test email");
+        logger.info("Test email request - Validation passed, generating test email");
         const emailContent = generatePromoCodeEmail({
           email,
           promoCode: "TEST123",
@@ -35743,21 +35928,21 @@ var init_admin = __esm({
           trackingId: `test_email_${email}_${Date.now()}`
         });
         if (emailSent) {
-          console.log(`Test email sent successfully to ${email}`);
+          logger.info(`Test email sent successfully to ${email}`);
           res.json({
             success: true,
             message: "Test email sent successfully",
             recipient: email
           });
         } else {
-          console.error(`Failed to send test email to ${email}`);
+          logger.error(`Failed to send test email to ${email}`);
           res.status(500).json({
             error: "Failed to send email",
             message: "Email service unavailable"
           });
         }
       } catch (error) {
-        console.error("Error sending test email:", error);
+        logger.error("Error sending test email:", error);
         res.status(500).json({
           error: "Internal server error",
           message: error instanceof Error ? error.message : "Unknown error"
@@ -35767,7 +35952,7 @@ var init_admin = __esm({
     router21.post("/send-promo-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
-        console.log(`POST /api/admin/send-promo-email - User ID: ${user.id}`);
+        logger.info(`POST /api/admin/send-promo-email - User ID: ${user.id}`);
         const {
           email,
           customEmails,
@@ -35856,7 +36041,7 @@ var init_admin = __esm({
               failureCount++;
             }
           } catch (error) {
-            console.error(`Error sending promo email to ${targetEmail}:`, error);
+            logger.error(`Error sending promo email to ${targetEmail}:`, error);
             results.push({ email: targetEmail, status: "failed", error: error instanceof Error ? error.message : "Unknown error" });
             failureCount++;
           }
@@ -35875,7 +36060,7 @@ var init_admin = __esm({
           });
         }
       } catch (error) {
-        console.error("Error sending promo email:", error);
+        logger.error("Error sending promo email:", error);
         res.status(500).json({
           error: "Internal server error",
           message: error instanceof Error ? error.message : "Unknown error"
@@ -35915,7 +36100,7 @@ var init_admin = __esm({
           }
         });
       } catch (error) {
-        console.error("Error fetching fee config:", error);
+        logger.error("Error fetching fee config:", error);
         res.status(500).json({
           error: "Failed to fetch fee configuration",
           message: error instanceof Error ? error.message : "Unknown error"
@@ -36008,7 +36193,7 @@ var init_admin = __esm({
           });
         }
         clearFeeConfigCache();
-        console.log(`[AUDIT] Fee config updated by admin ${user.id} (${user.username}):`, updates);
+        logger.info(`[AUDIT] Fee config updated by admin ${user.id} (${user.username}):`, updates);
         const newConfig = await getFeeConfig();
         res.json({
           success: true,
@@ -36023,7 +36208,7 @@ var init_admin = __esm({
           }
         });
       } catch (error) {
-        console.error("Error updating fee config:", error);
+        logger.error("Error updating fee config:", error);
         res.status(500).json({
           error: "Failed to update fee configuration",
           message: error instanceof Error ? error.message : "Unknown error"
@@ -36042,7 +36227,7 @@ var init_admin = __esm({
           }
         });
       } catch (error) {
-        console.error("Error fetching cancellation config:", error);
+        logger.error("Error fetching cancellation config:", error);
         res.status(500).json({ error: "Failed to fetch cancellation configuration" });
       }
     });
@@ -36075,14 +36260,14 @@ var init_admin = __esm({
             updatedAt: /* @__PURE__ */ new Date()
           }
         });
-        console.log(`[AUDIT] Cancellation auto-accept hours updated to ${hours} by admin ${user.id} (${user.username})`);
+        logger.info(`[AUDIT] Cancellation auto-accept hours updated to ${hours} by admin ${user.id} (${user.username})`);
         res.json({
           success: true,
           message: hours === 0 ? "Cancellation auto-accept disabled. Managers must manually respond to all requests." : `Cancellation requests will be auto-accepted after ${hours} hour${hours !== 1 ? "s" : ""} if the manager does not respond.`,
           config: { autoAcceptHours: hours }
         });
       } catch (error) {
-        console.error("Error updating cancellation config:", error);
+        logger.error("Error updating cancellation config:", error);
         res.status(500).json({ error: "Failed to update cancellation configuration" });
       }
     });
@@ -36138,7 +36323,7 @@ var init_admin = __esm({
           } : null
         });
       } catch (error) {
-        console.error("Error simulating fees:", error);
+        logger.error("Error simulating fees:", error);
         res.status(500).json({
           error: "Failed to simulate fees",
           message: error instanceof Error ? error.message : "Unknown error"
@@ -36148,17 +36333,17 @@ var init_admin = __esm({
     router21.post("/sync-stripe-fees", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const { managerId, limit = 100 } = req.body;
-        console.log("[Admin] Starting Stripe fee sync...", { managerId, limit });
+        logger.info("[Admin] Starting Stripe fee sync...", { managerId, limit });
         const { syncStripeFees: syncStripeFees2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
         const result = await syncStripeFees2(db, managerId, limit);
-        console.log("[Admin] Stripe fee sync completed:", result);
+        logger.info("[Admin] Stripe fee sync completed:", result);
         res.json({
           success: true,
           message: `Synced ${result.synced} transactions, ${result.failed} failed`,
           ...result
         });
       } catch (error) {
-        console.error("Error syncing Stripe fees:", error);
+        logger.error("Error syncing Stripe fees:", error);
         res.status(500).json({
           error: "Failed to sync Stripe fees",
           message: error instanceof Error ? error.message : "Unknown error"
@@ -36171,7 +36356,7 @@ var init_admin = __esm({
         const defaults = damageClaimLimitsService.getDefaultLimits();
         res.json({ limits, defaults });
       } catch (error) {
-        console.error("Error fetching damage claim limits:", error);
+        logger.error("Error fetching damage claim limits:", error);
         res.status(500).json({ error: "Failed to fetch damage claim limits" });
       }
     });
@@ -36252,14 +36437,14 @@ var init_admin = __esm({
           });
         }
         const newLimits = await damageClaimLimitsService.getDamageClaimLimits();
-        console.log("[Admin] Updated damage claim limits:", newLimits);
+        logger.info("[Admin] Updated damage claim limits:", newLimits);
         res.json({
           success: true,
           message: `Updated ${updates.length} damage claim limit(s)`,
           limits: newLimits
         });
       } catch (error) {
-        console.error("Error updating damage claim limits:", error);
+        logger.error("Error updating damage claim limits:", error);
         res.status(500).json({ error: "Failed to update damage claim limits" });
       }
     });
@@ -36269,7 +36454,7 @@ var init_admin = __esm({
         const defaults = damageClaimLimitsService.getDefaultStorageCheckoutSettings();
         res.json({ settings, defaults });
       } catch (error) {
-        console.error("Error fetching storage checkout settings:", error);
+        logger.error("Error fetching storage checkout settings:", error);
         res.status(500).json({ error: "Failed to fetch storage checkout settings" });
       }
     });
@@ -36314,14 +36499,14 @@ var init_admin = __esm({
           });
         }
         const newSettings = await damageClaimLimitsService.getStorageCheckoutSettings();
-        console.log("[Admin] Updated storage checkout settings:", newSettings);
+        logger.info("[Admin] Updated storage checkout settings:", newSettings);
         res.json({
           success: true,
           message: `Updated ${updates.length} storage checkout setting(s)`,
           settings: newSettings
         });
       } catch (error) {
-        console.error("Error updating storage checkout settings:", error);
+        logger.error("Error updating storage checkout settings:", error);
         res.status(500).json({ error: "Failed to update storage checkout settings" });
       }
     });
@@ -36387,7 +36572,7 @@ var init_admin = __esm({
         }
         res.json({ claims });
       } catch (error) {
-        console.error("Error fetching damage claims:", error);
+        logger.error("Error fetching damage claims:", error);
         res.status(500).json({ error: "Failed to fetch damage claims" });
       }
     });
@@ -36404,7 +36589,7 @@ var init_admin = __esm({
         const history = await damageClaimService.getClaimHistory(claimId);
         res.json({ claim, history });
       } catch (error) {
-        console.error("Error fetching damage claim:", error);
+        logger.error("Error fetching damage claim:", error);
         res.status(500).json({ error: "Failed to fetch damage claim" });
       }
     });
@@ -36439,7 +36624,7 @@ var init_admin = __esm({
           message: `Claim ${decision === "reject" ? "rejected" : "approved"}`
         });
       } catch (error) {
-        console.error("Error processing admin decision:", error);
+        logger.error("Error processing admin decision:", error);
         res.status(500).json({ error: "Failed to process decision" });
       }
     };
@@ -36465,7 +36650,7 @@ var init_admin = __esm({
           chargeId: result.chargeId
         });
       } catch (error) {
-        console.error("Error charging damage claim:", error);
+        logger.error("Error charging damage claim:", error);
         res.status(500).json({ error: "Failed to charge damage claim" });
       }
     });
@@ -36486,7 +36671,7 @@ var init_admin = __esm({
           }
         });
       } catch (error) {
-        console.error("Error fetching overstay settings:", error);
+        logger.error("Error fetching overstay settings:", error);
         res.status(500).json({ error: "Failed to fetch overstay settings" });
       }
     });
@@ -36542,13 +36727,13 @@ var init_admin = __esm({
         }
         const { getOverstayPlatformDefaults: getOverstayPlatformDefaults2 } = await Promise.resolve().then(() => (init_overstay_defaults_service(), overstay_defaults_service_exports));
         const newDefaults = await getOverstayPlatformDefaults2();
-        console.log("[Admin] Updated overstay settings:", newDefaults);
+        logger.info("[Admin] Updated overstay settings:", newDefaults);
         res.json({
           success: true,
           message: `Updated ${updates.length} overstay setting(s)`
         });
       } catch (error) {
-        console.error("Error updating overstay settings:", error);
+        logger.error("Error updating overstay settings:", error);
         res.status(500).json({ error: "Failed to update overstay settings" });
       }
     });
@@ -36622,7 +36807,7 @@ var init_admin = __esm({
           }
         });
       } catch (error) {
-        console.error("Error fetching escalated penalties:", error);
+        logger.error("Error fetching escalated penalties:", error);
         res.status(500).json({ error: "Failed to fetch escalated penalties" });
       }
     });
@@ -36633,7 +36818,7 @@ var init_admin = __esm({
         `);
         res.json(result.rows);
       } catch (error) {
-        console.error("[Admin Transactions] Error fetching locations:", error);
+        logger.error("[Admin Transactions] Error fetching locations:", error);
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
@@ -36845,8 +37030,8 @@ var init_admin = __esm({
         }));
         res.json({ transactions: formattedTransactions, total });
       } catch (error) {
-        console.error("[Admin Transactions] Error:", error?.message || error);
-        if (error?.stack) console.error("[Admin Transactions] Stack:", error.stack);
+        logger.error("[Admin Transactions] Error:", error?.message || error);
+        if (error?.stack) logger.error("[Admin Transactions] Stack:", error.stack);
         res.status(500).json({ error: "Failed to fetch transactions", detail: error?.message || String(error) });
       }
     });
@@ -36931,7 +37116,7 @@ var init_admin = __esm({
         const total = parseInt(countResult.rows[0]?.total || "0");
         res.json({ overstayPenalties: result.rows, total });
       } catch (error) {
-        console.error("[Admin Overstay Penalties] Error:", error?.message || error);
+        logger.error("[Admin Overstay Penalties] Error:", error?.message || error);
         res.status(500).json({ error: "Failed to fetch overstay penalties" });
       }
     });
@@ -36959,7 +37144,7 @@ var init_admin = __esm({
         `);
         res.json({ history: result.rows });
       } catch (error) {
-        console.error("[Admin Overstay History] Error:", error?.message || error);
+        logger.error("[Admin Overstay History] Error:", error?.message || error);
         res.status(500).json({ error: "Failed to fetch overstay history" });
       }
     });
@@ -37035,7 +37220,7 @@ var init_admin = __esm({
         const total = parseInt(countResult.rows[0]?.total || "0");
         res.json({ damageClaims: result.rows, total });
       } catch (error) {
-        console.error("[Admin Damage Claims History] Error:", error?.message || error);
+        logger.error("[Admin Damage Claims History] Error:", error?.message || error);
         res.status(500).json({ error: "Failed to fetch damage claims" });
       }
     });
@@ -37063,7 +37248,7 @@ var init_admin = __esm({
         `);
         res.json({ history: result.rows });
       } catch (error) {
-        console.error("[Admin Damage Claim History] Error:", error?.message || error);
+        logger.error("[Admin Damage Claim History] Error:", error?.message || error);
         res.status(500).json({ error: "Failed to fetch damage claim history" });
       }
     });
@@ -37093,7 +37278,7 @@ var init_admin = __esm({
         `);
         res.json({ evidence: result.rows });
       } catch (error) {
-        console.error("[Admin Damage Evidence] Error:", error?.message || error);
+        logger.error("[Admin Damage Evidence] Error:", error?.message || error);
         res.status(500).json({ error: "Failed to fetch evidence" });
       }
     });
@@ -37104,7 +37289,7 @@ var init_admin = __esm({
         const defaults = getDefaultRateLimits2();
         res.json({ current, defaults });
       } catch (error) {
-        console.error("[Admin Security] Error fetching rate limits:", error?.message || error);
+        logger.error("[Admin Security] Error fetching rate limits:", error?.message || error);
         res.status(500).json({ error: "Failed to fetch rate limit settings" });
       }
     });
@@ -37142,10 +37327,10 @@ var init_admin = __esm({
             `);
         }
         invalidateRateLimitCache2();
-        console.log(`[Admin Security] Rate limits updated by admin ${req.neonUser?.id}: ${updates.map((u) => `${u.key}=${u.value}`).join(", ")}`);
+        logger.info(`[Admin Security] Rate limits updated by admin ${req.neonUser?.id}: ${updates.map((u) => `${u.key}=${u.value}`).join(", ")}`);
         res.json({ success: true, updated: updates.length, settings: Object.fromEntries(updates.map((u) => [u.key, u.value])) });
       } catch (error) {
-        console.error("[Admin Security] Error updating rate limits:", error?.message || error);
+        logger.error("[Admin Security] Error updating rate limits:", error?.message || error);
         res.status(500).json({ error: "Failed to update rate limit settings" });
       }
     });
@@ -37453,7 +37638,7 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
       }
     }
     const metadata = expandedSession.metadata || {};
-    logger.info(`[Webhook] Checkout session metadata:`, {
+    logger.operational(`[Webhook] Checkout session metadata:`, {
       sessionId: session.id,
       metadataType: metadata.type,
       allMetadata: metadata
@@ -37521,7 +37706,7 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
         const selectedSlots = metadata.selected_slots ? JSON.parse(metadata.selected_slots) : [];
         const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
         const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
-        logger.info(`[Webhook] Creating booking from metadata for kitchen ${kitchenId}, chef ${chefId}`, {
+        logger.operational(`[Webhook] Creating booking from metadata for kitchen ${kitchenId}, chef ${chefId}`, {
           sessionId: session.id,
           paymentIntentId,
           bookingDate: bookingDate.toISOString(),
@@ -37570,7 +37755,7 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
               paymentStatus: directBooking.paymentStatus,
               paymentIntentId: directBooking.paymentIntentId
             };
-            logger.info(`[Webhook] Created booking ${directBooking.id} via direct DB insert`);
+            logger.operational(`[Webhook] Created booking ${directBooking.id} via direct DB insert`);
           } else {
             throw new Error("Direct DB insert returned no result");
           }
@@ -37590,7 +37775,7 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
           logger.error(`[Webhook] CRITICAL: No booking was created for session ${session.id}`);
           throw new Error("No booking was created");
         }
-        logger.info(`[Webhook] Created booking ${booking.id} from checkout session ${session.id}`);
+        logger.operational(`[Webhook] Created booking ${booking.id} from checkout session ${session.id}`);
         const [verifiedBooking] = await db.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq34(kitchenBookings.id, booking.id)).limit(1);
         if (!verifiedBooking) {
           logger.error(`[Webhook] CRITICAL: Booking ${booking.id} was not persisted to database! Session: ${session.id}`);
@@ -37988,7 +38173,7 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
   }
 }
 async function updateStorageBookingStripeIds(storageBookingId, chefId, stripeCustomerId, stripePaymentMethodId) {
-  console.log(`\u{1F512} [OFF-SESSION] updateStorageBookingStripeIds called:`, {
+  logger.info(`\u{1F512} [OFF-SESSION] updateStorageBookingStripeIds called:`, {
     storageBookingId,
     chefId,
     stripeCustomerId: stripeCustomerId || "UNDEFINED",
@@ -39094,12 +39279,12 @@ var init_webhooks = __esm({
     init_notification_service();
     router22 = Router22();
     router22.post("/stripe", async (req, res) => {
-      logger.info(`[Webhook] Received Stripe webhook request`);
+      logger.operational(`[Webhook] Received Stripe webhook request`);
       try {
         const sig = req.headers["stripe-signature"];
         const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
         const stripeSecretKey6 = process.env.STRIPE_SECRET_KEY;
-        logger.info(`[Webhook] Request details:`, {
+        logger.operational(`[Webhook] Request details:`, {
           hasSignature: !!sig,
           hasWebhookSecret: !!webhookSecret,
           bodyType: typeof req.body,
@@ -39126,7 +39311,7 @@ var init_webhooks = __esm({
         }
         let event;
         const rawBody = Buffer.isBuffer(req.body) ? req.body : typeof req.body === "string" ? req.body : JSON.stringify(req.body);
-        logger.info(`[Webhook] Raw body prepared, length: ${rawBody.length}`);
+        logger.operational(`[Webhook] Raw body prepared, length: ${rawBody.length}`);
         if (webhookSecret && sig) {
           try {
             event = stripe6.webhooks.constructEvent(
@@ -39362,6 +39547,7 @@ var router23, portal_auth_default;
 var init_portal_auth = __esm({
   "server/routes/portal-auth.ts"() {
     "use strict";
+    init_logger();
     init_db();
     init_schema();
     init_user_service();
@@ -39376,27 +39562,27 @@ var init_portal_auth = __esm({
         if (!username || !password) {
           return res.status(400).json({ error: "Username and password are required" });
         }
-        console.log("Portal user login attempt for:", username);
+        logger.info("Portal user login attempt for:", username);
         const portalUser = await userService.getUserByUsername(username);
         if (!portalUser) {
-          console.log("Portal user not found:", username);
+          logger.info("Portal user not found:", username);
           return res.status(401).json({ error: "Incorrect username or password" });
         }
         const isPortalUser = portalUser.isPortalUser || portalUser.is_portal_user;
         if (!isPortalUser) {
-          console.log("User is not a portal user:", username);
+          logger.info("User is not a portal user:", username);
           return res.status(403).json({ error: "Not authorized - portal user access required" });
         }
         const passwordMatches = await comparePasswords(password, portalUser.password);
         if (!passwordMatches) {
-          console.log("Password mismatch for portal user:", username);
+          logger.info("Password mismatch for portal user:", username);
           return res.status(401).json({ error: "Incorrect username or password" });
         }
         const subdomain = getSubdomainFromHeaders(req.headers);
         const isChef = portalUser.isChef || portalUser.is_chef || false;
         const isManager = portalUser.isManager || portalUser.is_manager || false;
         if (!isRoleAllowedForSubdomain(portalUser.role, subdomain, isPortalUser || false, isChef, isManager)) {
-          console.log(`Portal user ${username} attempted login from wrong subdomain: ${subdomain}`);
+          logger.info(`Portal user ${username} attempted login from wrong subdomain: ${subdomain}`);
           return res.status(403).json({
             error: "Access denied. Portal users must login from the kitchen subdomain.",
             requiredSubdomain: "kitchen"
@@ -39417,7 +39603,7 @@ var init_portal_auth = __esm({
               }
               return null;
             } catch (error) {
-              console.error("Error fetching portal user location:", error);
+              logger.error("Error fetching portal user location:", error);
               return null;
             }
           };
@@ -39433,16 +39619,16 @@ var init_portal_auth = __esm({
             }
           });
         } catch (tokenError) {
-          console.error("Error creating custom token:", tokenError);
+          logger.error("Error creating custom token:", tokenError);
           return res.status(500).json({ error: "Failed to create authentication token" });
         }
       } catch (error) {
-        console.error("Portal login error:", error);
+        logger.error("Portal login error:", error);
         res.status(500).json({ error: error.message || "Portal login failed" });
       }
     });
     router23.post("/portal-register", async (req, res) => {
-      console.log("[Routes] /api/portal-register called");
+      logger.info("[Routes] /api/portal-register called");
       try {
         const { username, password, locationId, fullName, email, phone, company } = req.body;
         if (!username || !password || !locationId || !fullName || !email || !phone) {
@@ -39484,7 +39670,7 @@ var init_portal_auth = __esm({
             )
           );
         } catch (dbError) {
-          console.error("Error checking existing applications:", dbError);
+          logger.error("Error checking existing applications:", dbError);
           if (dbError.message && dbError.message.includes("does not exist")) {
             return res.status(500).json({
               error: "Database migration required. Please run the migration to create portal_user_applications table.",
@@ -39519,7 +39705,7 @@ var init_portal_auth = __esm({
             status: "inReview"
           }).returning();
         } catch (dbError) {
-          console.error("Error creating application:", dbError);
+          logger.error("Error creating application:", dbError);
           if (dbError.message && dbError.message.includes("does not exist")) {
             return res.status(500).json({
               error: "Database migration required. Please run the migration to create portal_user_applications table.",
@@ -39564,12 +39750,12 @@ Please log in to your manager dashboard to review and approve this application.`
                   html: `<h2>New Portal User Application</h2><p><strong>Location:</strong> ${location.name}</p><p><strong>Applicant Name:</strong> ${fullName}</p><p><strong>Email:</strong> ${email}</p><p><strong>Phone:</strong> ${phone}</p>${company ? `<p><strong>Company:</strong> ${company}</p>` : ""}<p>Please log in to your manager dashboard to review and approve this application.</p>`
                 };
                 await sendEmail2(emailContent);
-                console.log(`\u2705 Portal user application notification sent to manager: ${managerEmail}`);
+                logger.info(`\u2705 Portal user application notification sent to manager: ${managerEmail}`);
               } else {
-                console.log("\u26A0\uFE0F No manager email found for location - skipping email notification");
+                logger.info("\u26A0\uFE0F No manager email found for location - skipping email notification");
               }
             } catch (emailError) {
-              console.error("Error sending application notification email:", emailError);
+              logger.error("Error sending application notification email:", emailError);
             }
             res.status(201).json({
               token: customToken,
@@ -39587,11 +39773,11 @@ Please log in to your manager dashboard to review and approve this application.`
             });
           })();
         } catch (tokenError) {
-          console.error("Error creating token after registration:", tokenError);
+          logger.error("Error creating token after registration:", tokenError);
           return res.status(500).json({ error: "Registration successful but login failed. Please try logging in." });
         }
       } catch (error) {
-        console.error("Portal registration error:", error);
+        logger.error("Portal registration error:", error);
         res.status(500).json({ error: error.message || "Portal registration failed" });
       }
     });
@@ -39610,6 +39796,7 @@ var router24, portal_default;
 var init_portal = __esm({
   "server/routes/portal.ts"() {
     "use strict";
+    init_logger();
     init_db();
     init_schema();
     init_middleware();
@@ -39647,7 +39834,7 @@ var init_portal = __esm({
           awaitingApproval: false
         });
       } catch (error) {
-        console.error("Error getting portal application status:", error);
+        logger.error("Error getting portal application status:", error);
         res.status(500).json({ error: error.message || "Failed to get application status" });
       }
     });
@@ -39673,7 +39860,7 @@ var init_portal = __esm({
           slug
         });
       } catch (error) {
-        console.error("Error fetching portal user location:", error);
+        logger.error("Error fetching portal user location:", error);
         res.status(500).json({ error: error.message || "Failed to fetch location" });
       }
     });
@@ -39699,7 +39886,7 @@ var init_portal = __esm({
           slug
         }]);
       } catch (error) {
-        console.error("Error fetching portal user location:", error);
+        logger.error("Error fetching portal user location:", error);
         res.status(500).json({ error: error.message || "Failed to fetch location" });
       }
     });
@@ -39728,7 +39915,7 @@ var init_portal = __esm({
           logoUrl: location.logoUrl || location.logo_url || null
         });
       } catch (error) {
-        console.error("Error fetching portal location:", error);
+        logger.error("Error fetching portal location:", error);
         res.status(500).json({ error: error.message || "Failed to fetch location" });
       }
     });
@@ -39759,7 +39946,7 @@ var init_portal = __esm({
         }));
         res.json(publicKitchens);
       } catch (error) {
-        console.error("Error fetching portal kitchens:", error);
+        logger.error("Error fetching portal kitchens:", error);
         res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
       }
     });
@@ -39791,7 +39978,7 @@ var init_portal = __esm({
         const slots = await bookingService.getAvailableSlots(kitchenId, date2);
         res.json({ slots });
       } catch (error) {
-        console.error("Error fetching portal availability:", error);
+        logger.error("Error fetching portal availability:", error);
         res.status(500).json({ error: error.message || "Failed to fetch availability" });
       }
     });
@@ -39907,7 +40094,7 @@ var init_portal = __esm({
               bookingId: booking.id
             });
             await sendEmail2(managerEmail);
-            console.log(`\u2705 Portal booking notification email sent to manager: ${notificationEmail}`);
+            logger.info(`\u2705 Portal booking notification email sent to manager: ${notificationEmail}`);
           }
           if (bookingEmail) {
             const portalUserEmail = generateBookingRequestEmail3({
@@ -39922,10 +40109,10 @@ var init_portal = __esm({
               locationName
             });
             await sendEmail2(portalUserEmail);
-            console.log(`\u2705 Portal booking confirmation email sent to user: ${bookingEmail}`);
+            logger.info(`\u2705 Portal booking confirmation email sent to user: ${bookingEmail}`);
           }
         } catch (error) {
-          console.error("Error sending booking notifications:", error);
+          logger.error("Error sending booking notifications:", error);
         }
         res.status(201).json({
           success: true,
@@ -39939,7 +40126,7 @@ var init_portal = __esm({
           message: "Booking submitted successfully."
         });
       } catch (error) {
-        console.error("Error creating portal booking:", error);
+        logger.error("Error creating portal booking:", error);
         res.status(500).json({ error: error.message || "Failed to create booking" });
       }
     });
@@ -39959,6 +40146,7 @@ var router25, chef_default;
 var init_chef = __esm({
   "server/routes/chef.ts"() {
     "use strict";
+    init_logger();
     init_inventory_service();
     init_location_service();
     init_kitchen_service();
@@ -39971,7 +40159,7 @@ var init_chef = __esm({
     init_schema();
     router25 = Router25();
     router25.post("/stripe-connect/create", requireChef, async (req, res) => {
-      console.log("[Chef Stripe Connect] Create request received for chef:", req.neonUser?.id);
+      logger.info("[Chef Stripe Connect] Create request received for chef:", req.neonUser?.id);
       try {
         const chefId = req.neonUser.id;
         const userResult = await db.execute(sql20`
@@ -39982,7 +40170,7 @@ var init_chef = __esm({
         `);
         const userRow = userResult.rows ? userResult.rows[0] : userResult[0];
         if (!userRow) {
-          console.error("[Chef Stripe Connect] User not found for ID:", chefId);
+          logger.error("[Chef Stripe Connect] User not found for ID:", chefId);
           return res.status(404).json({ error: "User not found" });
         }
         const user = {
@@ -40003,7 +40191,7 @@ var init_chef = __esm({
             return res.json({ url: link2.url });
           }
         }
-        console.log("[Chef Stripe Connect] Creating new account for email:", user.email);
+        logger.info("[Chef Stripe Connect] Creating new account for email:", user.email);
         const { accountId } = await createConnectAccount2({
           managerId: chefId,
           // Using managerId field for consistency with service
@@ -40014,7 +40202,7 @@ var init_chef = __esm({
         const link = await createAccountLink2(accountId, refreshUrl, returnUrl);
         return res.json({ url: link.url });
       } catch (error) {
-        console.error("[Chef Stripe Connect] Error in create route:", error);
+        logger.error("[Chef Stripe Connect] Error in create route:", error);
         return errorResponse(res, error);
       }
     });
@@ -40038,7 +40226,7 @@ var init_chef = __esm({
         const link = await createAccountLink2(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
         return res.json({ url: link.url });
       } catch (error) {
-        console.error("[Chef Stripe Connect] Error in onboarding-link route:", error);
+        logger.error("[Chef Stripe Connect] Error in onboarding-link route:", error);
         return errorResponse(res, error);
       }
     });
@@ -40068,7 +40256,7 @@ var init_chef = __esm({
           return res.json({ url: link.url, requiresOnboarding: true });
         }
       } catch (error) {
-        console.error("[Chef Stripe Connect] Error in dashboard-link route:", error);
+        logger.error("[Chef Stripe Connect] Error in dashboard-link route:", error);
         return errorResponse(res, error);
       }
     });
@@ -40107,14 +40295,14 @@ var init_chef = __esm({
         );
         const includedEquipment = visibleListings.filter((l) => l.availabilityType === "included");
         const rentalEquipment = visibleListings.filter((l) => l.availabilityType === "rental");
-        console.log(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings (chef.ts) - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
+        logger.info(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings (chef.ts) - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
         res.json({
           all: visibleListings,
           included: includedEquipment,
           rental: rentalEquipment
         });
       } catch (error) {
-        console.error("Error getting equipment listings for chef:", error);
+        logger.error("Error getting equipment listings for chef:", error);
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
       }
     });
@@ -40128,7 +40316,7 @@ var init_chef = __esm({
         const locationsWithKitchens = allLocations.filter(
           (location) => locationIdsWithKitchens.has(location.id)
         );
-        console.log(`[API] /api/chef/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);
+        logger.info(`[API] /api/chef/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);
         const { normalizeImageUrl: normalizeImageUrl2 } = await Promise.resolve().then(() => (init_utils(), utils_exports));
         const normalizedLocations = locationsWithKitchens.map((location) => ({
           ...location,
@@ -40137,7 +40325,7 @@ var init_chef = __esm({
         }));
         res.json(normalizedLocations);
       } catch (error) {
-        console.error("Error fetching locations:", error);
+        logger.error("Error fetching locations:", error);
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
@@ -40243,7 +40431,7 @@ var init_chef = __esm({
         res.setHeader("Content-Disposition", `attachment; filename="storage-invoice-${storageBookingId}.pdf"`);
         res.send(pdfBuffer);
       } catch (error) {
-        console.error("[Chef Invoice] Error downloading storage invoice:", error);
+        logger.error("[Chef Invoice] Error downloading storage invoice:", error);
         return errorResponse(res, error);
       }
     });
@@ -40369,7 +40557,7 @@ var init_chef = __esm({
         res.setHeader("Content-Disposition", `attachment; filename="overstay-invoice-${overstayRecordId}.pdf"`);
         res.send(pdfBuffer);
       } catch (error) {
-        console.error("[Chef Invoice] Error downloading overstay invoice:", error);
+        logger.error("[Chef Invoice] Error downloading overstay invoice:", error);
         return errorResponse(res, error);
       }
     });
@@ -40435,7 +40623,7 @@ var init_chef = __esm({
         }));
         res.json({ transactions: formattedTransactions, total });
       } catch (error) {
-        console.error("[Chef Transactions] Error:", error);
+        logger.error("[Chef Transactions] Error:", error);
         return errorResponse(res, error);
       }
     });
@@ -40443,12 +40631,72 @@ var init_chef = __esm({
   }
 });
 
+// server/instrument.ts
+import "dotenv/config";
+import * as Sentry from "@sentry/node";
+var isVercelProduction = process.env.VERCEL_ENV === "production";
+var isVercel = !!process.env.VERCEL;
+var sentryDsn = process.env.SENTRY_DSN;
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    // Environment tagging — maps to Sentry's environment filter
+    environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "development",
+    // Release tracking — Vercel sets VERCEL_GIT_COMMIT_SHA automatically
+    release: process.env.VERCEL_GIT_COMMIT_SHA || void 0,
+    // Attach request headers + IP for user context
+    sendDefaultPii: true,
+    // Performance: 100% in dev/preview, 20% in production (tune as traffic grows)
+    tracesSampleRate: isVercelProduction ? 0.2 : 1,
+    // Profile 10% of traced transactions in production for CPU/memory insights
+    profilesSampleRate: isVercelProduction ? 0.1 : 1,
+    // Scrub sensitive data from breadcrumbs and events
+    beforeSend(event) {
+      if (event.request?.headers) {
+        delete event.request.headers["authorization"];
+        delete event.request.headers["cookie"];
+      }
+      return event;
+    },
+    // Filter out noisy, non-actionable errors
+    ignoreErrors: [
+      // Network interruptions (not bugs)
+      "ECONNRESET",
+      "ECONNREFUSED",
+      "ETIMEDOUT",
+      "EPIPE",
+      // Client disconnects mid-request (serverless cold starts, browser navigations)
+      "aborted",
+      // Rate limiter rejections (expected behavior, not errors)
+      "Too many requests"
+    ],
+    // Tag every event with deployment metadata
+    initialScope: {
+      tags: {
+        "vercel.env": process.env.VERCEL_ENV || "local",
+        "vercel.region": process.env.VERCEL_REGION || "unknown"
+      }
+    },
+    // Serverless-optimized: flush events before function timeout
+    // Vercel functions have 30s max duration
+    ...isVercel ? {
+      enableTracing: true
+    } : {}
+  });
+}
+
 // server/index.ts
+init_logger();
 init_firebase_setup();
 import "dotenv/config";
 import express3 from "express";
+import * as Sentry4 from "@sentry/node";
+
+// server/firebase-routes.ts
+init_logger();
 
 // server/routes/firebase/applications.ts
+init_logger();
 init_schema();
 init_firebase_auth_middleware();
 init_fileUpload();
@@ -40470,13 +40718,13 @@ router.post(
   async (req, res) => {
     try {
       const userId = req.neonUser.id;
-      console.log(`\u{1F4DD} POST /api/firebase/applications - User ${userId} submitting application`);
+      logger.info(`\u{1F4DD} POST /api/firebase/applications - User ${userId} submitting application`);
       const { userId: _clientUserId, ...bodyWithoutUserId } = req.body;
       const parsedData = insertApplicationSchema.safeParse(bodyWithoutUserId);
       if (!parsedData.success) {
         cleanupUploadedFiles(req);
         const validationError = fromZodError(parsedData.error);
-        console.error("\u274C Validation error:", validationError.details);
+        logger.error("\u274C Validation error:", validationError.details);
         return res.status(400).json({
           error: "Validation error",
           message: validationError.message,
@@ -40498,29 +40746,29 @@ router.post(
       const files = req.files;
       if (files) {
         if (files.foodSafetyLicense?.[0]) {
-          console.log("\u{1F4C4} Uploading food safety license file to R2...");
+          logger.info("\u{1F4C4} Uploading food safety license file to R2...");
           try {
             applicationData.foodSafetyLicenseUrl = await uploadToBlob(
               files.foodSafetyLicense[0],
               userId,
               "documents"
             );
-            console.log(`\u2705 Food safety license uploaded: ${applicationData.foodSafetyLicenseUrl}`);
+            logger.info(`\u2705 Food safety license uploaded: ${applicationData.foodSafetyLicenseUrl}`);
           } catch (uploadError) {
-            console.error("\u274C Failed to upload food safety license:", uploadError);
+            logger.error("\u274C Failed to upload food safety license:", uploadError);
           }
         }
         if (files.foodEstablishmentCert?.[0]) {
-          console.log("\u{1F4C4} Uploading food establishment cert file to R2...");
+          logger.info("\u{1F4C4} Uploading food establishment cert file to R2...");
           try {
             applicationData.foodEstablishmentCertUrl = await uploadToBlob(
               files.foodEstablishmentCert[0],
               userId,
               "documents"
             );
-            console.log(`\u2705 Food establishment cert uploaded: ${applicationData.foodEstablishmentCertUrl}`);
+            logger.info(`\u2705 Food establishment cert uploaded: ${applicationData.foodEstablishmentCertUrl}`);
           } catch (uploadError) {
-            console.error("\u274C Failed to upload food establishment cert:", uploadError);
+            logger.error("\u274C Failed to upload food establishment cert:", uploadError);
           }
         }
       }
@@ -40531,7 +40779,7 @@ router.post(
         applicationData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
       }
       const application = await applicationService.submitApplication(applicationData);
-      console.log("\u2705 Application created successfully:", {
+      logger.info("\u2705 Application created successfully:", {
         id: application.id,
         userId: application.userId,
         hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl)
@@ -40539,7 +40787,7 @@ router.post(
       await sendApplicationEmail(application);
       res.status(201).json(application);
     } catch (error) {
-      console.error("\u274C Error creating application:", error);
+      logger.error("\u274C Error creating application:", error);
       cleanupUploadedFiles(req);
       if (error instanceof DomainError) {
         return res.status(error.statusCode).json({
@@ -40568,7 +40816,7 @@ router.patch(
       if (isNaN(applicationId)) {
         return res.status(400).json({ error: "Invalid application ID" });
       }
-      console.log(`\u{1F4DD} PATCH /api/firebase/applications/${applicationId}/documents - User ${userId}`);
+      logger.info(`\u{1F4DD} PATCH /api/firebase/applications/${applicationId}/documents - User ${userId}`);
       const application = await applicationService.getApplicationById(applicationId);
       if (application.userId !== userId) {
         return res.status(403).json({ error: "Access denied" });
@@ -40582,30 +40830,30 @@ router.patch(
       const updates = {};
       if (files) {
         if (files.foodSafetyLicense?.[0]) {
-          console.log("\u{1F4C4} Uploading food safety license file to R2...");
+          logger.info("\u{1F4C4} Uploading food safety license file to R2...");
           try {
             updates.foodSafetyLicenseUrl = await uploadToBlob(
               files.foodSafetyLicense[0],
               userId,
               "documents"
             );
-            console.log(`\u2705 Food safety license uploaded: ${updates.foodSafetyLicenseUrl}`);
+            logger.info(`\u2705 Food safety license uploaded: ${updates.foodSafetyLicenseUrl}`);
           } catch (uploadError) {
-            console.error("\u274C Failed to upload food safety license:", uploadError);
+            logger.error("\u274C Failed to upload food safety license:", uploadError);
             return res.status(500).json({ error: "Failed to upload food safety license" });
           }
         }
         if (files.foodEstablishmentCert?.[0]) {
-          console.log("\u{1F4C4} Uploading food establishment cert file to R2...");
+          logger.info("\u{1F4C4} Uploading food establishment cert file to R2...");
           try {
             updates.foodEstablishmentCertUrl = await uploadToBlob(
               files.foodEstablishmentCert[0],
               userId,
               "documents"
             );
-            console.log(`\u2705 Food establishment cert uploaded: ${updates.foodEstablishmentCertUrl}`);
+            logger.info(`\u2705 Food establishment cert uploaded: ${updates.foodEstablishmentCertUrl}`);
           } catch (uploadError) {
-            console.error("\u274C Failed to upload food establishment cert:", uploadError);
+            logger.error("\u274C Failed to upload food establishment cert:", uploadError);
             return res.status(500).json({ error: "Failed to upload food establishment cert" });
           }
         }
@@ -40620,14 +40868,14 @@ router.patch(
         return res.status(400).json({ error: "No documents provided for update" });
       }
       const updatedApplication = await applicationService.updateDocuments(applicationId, updates);
-      console.log("\u2705 Application documents updated:", {
+      logger.info("\u2705 Application documents updated:", {
         id: updatedApplication.id,
         foodSafetyLicenseUrl: updatedApplication.foodSafetyLicenseUrl,
         foodEstablishmentCertUrl: updatedApplication.foodEstablishmentCertUrl
       });
       res.json(updatedApplication);
     } catch (error) {
-      console.error("\u274C Error updating application documents:", error);
+      logger.error("\u274C Error updating application documents:", error);
       cleanupUploadedFiles(req);
       if (error instanceof DomainError) {
         return res.status(error.statusCode).json({
@@ -40652,9 +40900,9 @@ router.patch(
       if (isNaN(applicationId)) {
         return res.status(400).json({ error: "Invalid application ID" });
       }
-      console.log(`\u{1F4DD} PATCH /api/firebase/applications/${applicationId}/cancel - User ${userId}`);
+      logger.info(`\u{1F4DD} PATCH /api/firebase/applications/${applicationId}/cancel - User ${userId}`);
       const updatedApplication = await applicationService.cancelApplication(applicationId, userId);
-      console.log("\u2705 Application cancelled:", { id: updatedApplication.id });
+      logger.info("\u2705 Application cancelled:", { id: updatedApplication.id });
       try {
         if (updatedApplication.email) {
           const emailContent = generateStatusChangeEmail({
@@ -40667,11 +40915,11 @@ router.patch(
           });
         }
       } catch (emailError) {
-        console.error("Error sending cancellation email:", emailError);
+        logger.error("Error sending cancellation email:", emailError);
       }
       res.json(updatedApplication);
     } catch (error) {
-      console.error("\u274C Error cancelling application:", error);
+      logger.error("\u274C Error cancelling application:", error);
       if (error instanceof DomainError) {
         return res.status(error.statusCode).json({
           error: error.code,
@@ -40694,7 +40942,7 @@ function cleanupUploadedFiles(req) {
           fs2.unlinkSync(file.path);
         }
       } catch (e) {
-        console.error("Error cleaning up file:", e);
+        logger.error("Error cleaning up file:", e);
       }
     });
   }
@@ -40721,12 +40969,13 @@ async function sendApplicationEmail(application) {
       });
     }
   } catch (emailError) {
-    console.error("Error sending application email:", emailError);
+    logger.error("Error sending application email:", emailError);
   }
 }
 var applicationsRouter = router;
 
 // server/routes/firebase/admin-email.ts
+init_logger();
 init_firebase_auth_middleware();
 init_db();
 init_schema();
@@ -40735,7 +40984,7 @@ import { and as and5, isNotNull, ne } from "drizzle-orm";
 var router2 = Router2();
 router2.post("/admin/send-company-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    console.log(`\u{1F525} POST /api/admin/send-company-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+    logger.info(`\u{1F525} POST /api/admin/send-company-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
     const {
       emailType = "general",
       // 'promotional', 'general', 'announcement', 'newsletter'
@@ -40762,7 +41011,7 @@ router2.post("/admin/send-company-email", requireFirebaseAuthWithUser, requireAd
     } = req.body;
     const messageContent = customMessage || message;
     if (!messageContent || messageContent.length < 10) {
-      console.log("\u{1F525} Company email request - Invalid message:", {
+      logger.info("\u{1F525} Company email request - Invalid message:", {
         customMessage: customMessage?.substring(0, 50),
         message: message?.substring(0, 50),
         messageLength: messageContent?.length
@@ -40770,7 +41019,7 @@ router2.post("/admin/send-company-email", requireFirebaseAuthWithUser, requireAd
       return res.status(400).json({ error: "Message content is required (minimum 10 characters)" });
     }
     if (emailType === "promotional" && !promoCode) {
-      console.log("\u{1F525} Company email request - Missing promo code for promotional email");
+      logger.info("\u{1F525} Company email request - Missing promo code for promotional email");
       return res.status(400).json({ error: "Promo code is required for promotional emails" });
     }
     let targetEmails = [];
@@ -40784,7 +41033,7 @@ router2.post("/admin/send-company-email", requireFirebaseAuthWithUser, requireAd
         );
         targetEmails = result.map((row) => row.email);
       } catch (error) {
-        console.error("\u{1F525} Error fetching user emails:", error);
+        logger.error("\u{1F525} Error fetching user emails:", error);
         return res.status(500).json({ error: "Failed to fetch user emails" });
       }
     } else if (emailMode === "custom" && recipients) {
@@ -40794,10 +41043,10 @@ router2.post("/admin/send-company-email", requireFirebaseAuthWithUser, requireAd
       return res.status(400).json({ error: "Invalid email mode or recipients" });
     }
     if (targetEmails.length === 0) {
-      console.log("\u{1F525} Company email request - No valid email addresses provided");
+      logger.info("\u{1F525} Company email request - No valid email addresses provided");
       return res.status(400).json({ error: "At least one email address is required" });
     }
-    console.log(`\u{1F525} Admin ${req.neonUser?.username} sending ${emailType} email to ${targetEmails.length} recipient(s)`);
+    logger.info(`\u{1F525} Admin ${req.neonUser?.username} sending ${emailType} email to ${targetEmails.length} recipient(s)`);
     const { sendEmail: sendEmail2, generatePromoCodeEmail: generatePromoCodeEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
     const results = [];
     let successCount = 0;
@@ -40847,16 +41096,16 @@ router2.post("/admin/send-company-email", requireFirebaseAuthWithUser, requireAd
           trackingId: `promo_email_${targetEmail}_${Date.now()}`
         });
         if (emailSent) {
-          console.log(`\u{1F525} ${emailType} email sent successfully to ${targetEmail}`);
+          logger.info(`\u{1F525} ${emailType} email sent successfully to ${targetEmail}`);
           results.push({ email: targetEmail, status: "success" });
           successCount++;
         } else {
-          console.error(`\u{1F525} Failed to send ${emailType} email to ${targetEmail}`);
+          logger.error(`\u{1F525} Failed to send ${emailType} email to ${targetEmail}`);
           results.push({ email: targetEmail, status: "failed", error: "Email sending failed" });
           failureCount++;
         }
       } catch (error) {
-        console.error(`\u{1F525} Error sending ${emailType} email to ${targetEmail}:`, error);
+        logger.error(`\u{1F525} Error sending ${emailType} email to ${targetEmail}:`, error);
         results.push({ email: targetEmail, status: "failed", error: error instanceof Error ? error.message : "Unknown error" });
         failureCount++;
       }
@@ -40881,7 +41130,7 @@ router2.post("/admin/send-company-email", requireFirebaseAuthWithUser, requireAd
       });
     }
   } catch (error) {
-    console.error("\u{1F525} Error sending company email:", error);
+    logger.error("\u{1F525} Error sending company email:", error);
     res.status(500).json({
       error: "Internal server error",
       message: error instanceof Error ? error.message : "Unknown error occurred"
@@ -40890,7 +41139,7 @@ router2.post("/admin/send-company-email", requireFirebaseAuthWithUser, requireAd
 });
 router2.post("/admin/send-promo-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    console.log(`\u{1F525} POST /api/admin/send-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+    logger.info(`\u{1F525} POST /api/admin/send-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
     const {
       email,
       customEmails,
@@ -40919,21 +41168,21 @@ router2.post("/admin/send-promo-email", requireFirebaseAuthWithUser, requireAdmi
     const messageContent = customMessage || message;
     if (emailMode === "custom") {
       if (!customEmails || !Array.isArray(customEmails) || customEmails.length === 0) {
-        console.log("Promo email request - Missing custom emails");
+        logger.info("Promo email request - Missing custom emails");
         return res.status(400).json({ error: "At least one email address is required" });
       }
     } else {
       if (!email) {
-        console.log("Promo email request - Missing email");
+        logger.info("Promo email request - Missing email");
         return res.status(400).json({ error: "Email is required" });
       }
     }
     if (promoCode && promoCode.length > 0 && promoCode.length < 3) {
-      console.log("\u{1F525} Promo email request - Invalid promo code length");
+      logger.info("\u{1F525} Promo email request - Invalid promo code length");
       return res.status(400).json({ error: "Promo code must be at least 3 characters long if provided" });
     }
     if (!messageContent || messageContent.length < 10) {
-      console.log("Promo email request - Invalid message:", {
+      logger.info("Promo email request - Invalid message:", {
         customMessage: customMessage?.substring(0, 50),
         message: message?.substring(0, 50),
         messageContent: messageContent?.substring(0, 50)
@@ -40971,7 +41220,7 @@ router2.post("/admin/send-promo-email", requireFirebaseAuthWithUser, requireAdmi
       });
     }
     const targetEmails = emailMode === "custom" ? customEmails : [email];
-    console.log(`\u{1F525} Admin ${req.neonUser?.username} sending promo email to ${targetEmails.length} recipient(s) with code: ${promoCode}`);
+    logger.info(`\u{1F525} Admin ${req.neonUser?.username} sending promo email to ${targetEmails.length} recipient(s) with code: ${promoCode}`);
     const { sendEmail: sendEmail2, generatePromoCodeEmail: generatePromoCodeEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
     const results = [];
     let successCount = 0;
@@ -41072,16 +41321,16 @@ router2.post("/admin/send-promo-email", requireFirebaseAuthWithUser, requireAdmi
           trackingId: `promo_custom_${targetEmail}_${promoCode}_${Date.now()}`
         });
         if (emailSent) {
-          console.log(`\u{1F525} Promo email sent successfully to ${targetEmail} with code ${promoCode}`);
+          logger.info(`\u{1F525} Promo email sent successfully to ${targetEmail} with code ${promoCode}`);
           results.push({ email: targetEmail, status: "success" });
           successCount++;
         } else {
-          console.error(`\u{1F525} Failed to send promo email to ${targetEmail}`);
+          logger.error(`\u{1F525} Failed to send promo email to ${targetEmail}`);
           results.push({ email: targetEmail, status: "failed", error: "Email sending failed" });
           failureCount++;
         }
       } catch (error) {
-        console.error(`\u{1F525} Error sending promo email to ${targetEmail}:`, error);
+        logger.error(`\u{1F525} Error sending promo email to ${targetEmail}:`, error);
         results.push({ email: targetEmail, status: "failed", error: error instanceof Error ? error.message : "Unknown error" });
         failureCount++;
       }
@@ -41107,7 +41356,7 @@ router2.post("/admin/send-promo-email", requireFirebaseAuthWithUser, requireAdmi
       });
     }
   } catch (error) {
-    console.error("\u{1F525} Error sending promo email:", error);
+    logger.error("\u{1F525} Error sending promo email:", error);
     return res.status(500).json({
       error: "Internal server error",
       message: "An error occurred while sending the promo code email"
@@ -41116,7 +41365,7 @@ router2.post("/admin/send-promo-email", requireFirebaseAuthWithUser, requireAdmi
 });
 router2.post("/admin/test-promo-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    console.log(`\u{1F525} POST /api/admin/test-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+    logger.info(`\u{1F525} POST /api/admin/test-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
     const {
       email,
       promoCode,
@@ -41138,7 +41387,7 @@ router2.post("/admin/test-promo-email", requireFirebaseAuthWithUser, requireAdmi
       promoCodeStyling
     } = req.body;
     const messageContent = customMessage || message;
-    console.log(`\u{1F525} Admin ${req.neonUser?.username} testing promo email`);
+    logger.info(`\u{1F525} Admin ${req.neonUser?.username} testing promo email`);
     const { sendEmail: sendEmail2, generatePromoCodeEmail: generatePromoCodeEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
     const emailContent = generatePromoCodeEmail3({
       email: email || "test@example.com",
@@ -41234,7 +41483,7 @@ router2.post("/admin/test-promo-email", requireFirebaseAuthWithUser, requireAdmi
       });
     }
   } catch (error) {
-    console.error("\u{1F525} Error sending test promo email:", error);
+    logger.error("\u{1F525} Error sending test promo email:", error);
     return res.status(500).json({
       error: "Internal server error",
       message: "An error occurred while testing promo email"
@@ -41247,7 +41496,7 @@ router2.post(
   requireAdmin,
   async (req, res) => {
     try {
-      console.log(`\u{1F525} POST /api/admin/preview-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+      logger.info(`\u{1F525} POST /api/admin/preview-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
       const {
         promoCode,
         customMessage,
@@ -41276,7 +41525,7 @@ router2.post(
           message: "Promo code and message are required for preview"
         });
       }
-      console.log(`\u{1F525} Admin ${req.neonUser?.username} previewing promo email`);
+      logger.info(`\u{1F525} Admin ${req.neonUser?.username} previewing promo email`);
       const { generatePromoCodeEmail: generatePromoCodeEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
       const emailContent = generatePromoCodeEmail3({
         email: "preview@example.com",
@@ -41374,7 +41623,7 @@ router2.post(
       res.setHeader("Content-Type", "text/html");
       return res.status(200).send(emailContent.html || "<p>No HTML content generated</p>");
     } catch (error) {
-      console.error("\u{1F525} Error generating promo email preview:", error);
+      logger.error("\u{1F525} Error generating promo email preview:", error);
       return res.status(500).json({
         error: "Internal server error",
         message: "An error occurred while generating email preview"
@@ -41385,6 +41634,7 @@ router2.post(
 var adminEmailRouter = router2;
 
 // server/routes/firebase/dashboard.ts
+init_logger();
 init_firebase_auth_middleware();
 init_application_service();
 init_microlearning_service();
@@ -41409,14 +41659,14 @@ router3.get("/firebase/dashboard", requireFirebaseAuthWithUser, async (req, res)
       microlearningProgress
     });
   } catch (error) {
-    console.error("Error getting dashboard data:", error);
+    logger.error("Error getting dashboard data:", error);
     res.status(500).json({ error: "Failed to get dashboard data" });
   }
 });
 router3.get("/firebase/applications/my", requireFirebaseAuthWithUser, async (req, res) => {
   try {
     const userId = req.neonUser.id;
-    console.log(`\u{1F4CB} GET /api/firebase/applications/my - User ${userId}`);
+    logger.info(`\u{1F4CB} GET /api/firebase/applications/my - User ${userId}`);
     const applications4 = await applicationService.getApplicationsByUserId(userId);
     const transformed = applications4.map((app2) => ({
       ...app2,
@@ -41429,7 +41679,7 @@ router3.get("/firebase/applications/my", requireFirebaseAuthWithUser, async (req
     }));
     res.json(transformed);
   } catch (error) {
-    console.error("Error getting user applications:", error);
+    logger.error("Error getting user applications:", error);
     res.status(500).json({ error: "Failed to get applications" });
   }
 });
@@ -41441,6 +41691,7 @@ init_firebase_auth_middleware();
 import { Router as Router4 } from "express";
 
 // server/upload-handler.ts
+init_logger();
 init_fileUpload();
 init_r2_storage();
 import fs3 from "fs";
@@ -41452,7 +41703,7 @@ async function handleFileUpload(req, res) {
         try {
           fs3.unlinkSync(req.file.path);
         } catch (e) {
-          console.error("Error cleaning up file:", e);
+          logger.error("Error cleaning up file:", e);
         }
       }
       res.status(401).json({ error: "Not authenticated" });
@@ -41466,20 +41717,20 @@ async function handleFileUpload(req, res) {
     let fileName;
     const folder = req.file.fieldname === "profileImage" ? "profiles" : req.file.fieldname === "image" ? "images" : "documents";
     const r2Available = isR2Configured();
-    console.log(`\u{1F4E6} handleFileUpload: R2 configured = ${r2Available}`);
+    logger.info(`\u{1F4E6} handleFileUpload: R2 configured = ${r2Available}`);
     if (r2Available) {
       try {
-        console.log(`\u2601\uFE0F Uploading to Cloudflare R2 (folder: ${folder})...`);
+        logger.info(`\u2601\uFE0F Uploading to Cloudflare R2 (folder: ${folder})...`);
         fileUrl = await uploadToBlob(req.file, userId, folder);
         fileName = fileUrl.split("/").pop() || req.file.originalname;
-        console.log(`\u2705 R2 upload complete: ${fileUrl}`);
+        logger.info(`\u2705 R2 upload complete: ${fileUrl}`);
       } catch (error) {
-        console.error("\u274C Error uploading to R2:", error);
+        logger.error("\u274C Error uploading to R2:", error);
         if (req.file.path) {
           try {
             fs3.unlinkSync(req.file.path);
           } catch (e) {
-            console.error("Error cleaning up file:", e);
+            logger.error("Error cleaning up file:", e);
           }
         }
         res.status(500).json({
@@ -41489,7 +41740,7 @@ async function handleFileUpload(req, res) {
         return;
       }
     } else {
-      console.log(`\u{1F4C1} R2 not configured, using local storage`);
+      logger.info(`\u{1F4C1} R2 not configured, using local storage`);
       fileUrl = getFileUrl(req.file.filename || `${userId}_${Date.now()}_${req.file.originalname}`);
       fileName = req.file.filename || req.file.originalname;
     }
@@ -41501,12 +41752,12 @@ async function handleFileUpload(req, res) {
       type: req.file.mimetype
     });
   } catch (error) {
-    console.error("File upload error:", error);
+    logger.error("File upload error:", error);
     if (req.file && req.file.path) {
       try {
         fs3.unlinkSync(req.file.path);
       } catch (e) {
-        console.error("Error cleaning up file:", e);
+        logger.error("Error cleaning up file:", e);
       }
     }
     res.status(500).json({
@@ -41546,6 +41797,7 @@ router5.get("/firebase-health", (req, res) => {
 var healthRouter = router5;
 
 // server/routes/firebase/platform.ts
+init_logger();
 init_firebase_auth_middleware();
 init_db();
 init_schema();
@@ -41567,7 +41819,7 @@ router6.get("/platform-settings/stripe-fees", async (req, res) => {
       platformCommissionDisplay: `${(config.platformCommissionRate * 100).toFixed(1)}%`
     });
   } catch (error) {
-    console.error("Error getting Stripe fee config:", error);
+    logger.error("Error getting Stripe fee config:", error);
     return res.json({
       stripePercentageFee: 0.029,
       stripeFlatFeeCents: 30,
@@ -41602,7 +41854,7 @@ router6.get("/platform-settings/service-fee-rate", async (req, res) => {
       description: "Platform service fee rate as decimal (e.g., 0.05 for 5%). Admin configurable."
     });
   } catch (error) {
-    console.error("Error getting service fee rate:", error);
+    logger.error("Error getting service fee rate:", error);
     res.status(500).json({
       error: "Failed to get service fee rate",
       message: error instanceof Error ? error.message : "Unknown error"
@@ -41633,7 +41885,7 @@ router6.get("/admin/platform-settings/service-fee-rate", requireFirebaseAuthWith
       description: "Platform service fee rate as decimal (e.g., 0.05 for 5%). Admin configurable."
     });
   } catch (error) {
-    console.error("Error getting service fee rate:", error);
+    logger.error("Error getting service fee rate:", error);
     res.status(500).json({
       error: "Failed to get service fee rate",
       message: error instanceof Error ? error.message : "Unknown error"
@@ -41688,7 +41940,7 @@ router6.put("/admin/platform-settings/service-fee-rate", requireFirebaseAuthWith
       });
     }
   } catch (error) {
-    console.error("Error updating service fee rate:", error);
+    logger.error("Error updating service fee rate:", error);
     res.status(500).json({
       error: "Failed to update service fee rate",
       message: error instanceof Error ? error.message : "Unknown error"
@@ -41711,7 +41963,7 @@ router6.get("/platform-settings/overstay-penalties", async (req, res) => {
       description: "Platform default overstay penalty settings. Managers can override per storage listing."
     });
   } catch (error) {
-    console.error("Error getting overstay penalty defaults:", error);
+    logger.error("Error getting overstay penalty defaults:", error);
     return res.json({
       gracePeriodDays: 3,
       penaltyRate: 0.1,
@@ -41751,7 +42003,7 @@ router6.get("/admin/platform-settings/overstay-penalties", requireFirebaseAuthWi
       }
     });
   } catch (error) {
-    console.error("Error getting overstay penalty settings:", error);
+    logger.error("Error getting overstay penalty settings:", error);
     res.status(500).json({ error: "Failed to get overstay penalty settings" });
   }
 });
@@ -41810,13 +42062,14 @@ router6.put("/admin/platform-settings/overstay-penalties", requireFirebaseAuthWi
       results
     });
   } catch (error) {
-    console.error("Error updating overstay penalty defaults:", error);
+    logger.error("Error updating overstay penalty defaults:", error);
     res.status(500).json({ error: "Failed to update overstay penalty defaults" });
   }
 });
 var platformRouter = router6;
 
 // server/routes/firebase/kitchen-applications.ts
+init_logger();
 init_fileUpload();
 init_firebase_auth_middleware();
 init_db();
@@ -41825,6 +42078,7 @@ import { Router as Router7 } from "express";
 import { fromZodError as fromZodError2 } from "zod-validation-error";
 
 // server/domains/applications/chef-application.service.ts
+init_logger();
 init_db();
 init_schema();
 import { eq as eq11, and as and7, desc as desc6, inArray as inArray3, getTableColumns } from "drizzle-orm";
@@ -41844,7 +42098,7 @@ var ChefApplicationService = class {
         }
       }).from(chefKitchenApplications).leftJoin(users, eq11(chefKitchenApplications.chefId, users.id)).where(eq11(chefKitchenApplications.locationId, locationId)).orderBy(desc6(chefKitchenApplications.createdAt));
     } catch (error) {
-      console.error("[ChefApplicationService] Error fetching applications by location:", error);
+      logger.error("[ChefApplicationService] Error fetching applications by location:", error);
       throw error;
     }
   }
@@ -41871,7 +42125,7 @@ var ChefApplicationService = class {
         // Ensure full location object is passed
       }));
     } catch (error) {
-      console.error("[ChefApplicationService] Error fetching chef applications:", error);
+      logger.error("[ChefApplicationService] Error fetching chef applications:", error);
       throw error;
     }
   }
@@ -41889,7 +42143,7 @@ var ChefApplicationService = class {
       }).where(eq11(chefKitchenApplications.id, applicationId)).returning();
       return updatedApp;
     } catch (error) {
-      console.error("[ChefApplicationService] Error updating application status:", error);
+      logger.error("[ChefApplicationService] Error updating application status:", error);
       throw error;
     }
   }
@@ -41912,7 +42166,7 @@ var ChefApplicationService = class {
       }).returning();
       return newAccess;
     } catch (error) {
-      console.error("[ChefApplicationService] Error granting location access:", error);
+      logger.error("[ChefApplicationService] Error granting location access:", error);
       if (error.code === "23505") return null;
       throw error;
     }
@@ -41928,7 +42182,7 @@ var ChefApplicationService = class {
       )).limit(1);
       return application;
     } catch (error) {
-      console.error("[ChefApplicationService] Error fetching chef application:", error);
+      logger.error("[ChefApplicationService] Error fetching chef application:", error);
       throw error;
     }
   }
@@ -41955,7 +42209,7 @@ var ChefApplicationService = class {
         }
       }).from(chefKitchenApplications).leftJoin(users, eq11(chefKitchenApplications.chefId, users.id)).leftJoin(locations, eq11(chefKitchenApplications.locationId, locations.id)).where(inArray3(chefKitchenApplications.locationId, locationIds)).orderBy(desc6(chefKitchenApplications.createdAt));
     } catch (error) {
-      console.error("[ChefApplicationService] Error fetching manager applications:", error);
+      logger.error("[ChefApplicationService] Error fetching manager applications:", error);
       throw error;
     }
   }
@@ -41992,7 +42246,7 @@ var ChefApplicationService = class {
         managerId: app2.location.managerId
       }));
     } catch (error) {
-      console.error("[ChefApplicationService] Error fetching approved kitchens:", error);
+      logger.error("[ChefApplicationService] Error fetching approved kitchens:", error);
       throw error;
     }
   }
@@ -42050,7 +42304,7 @@ var ChefApplicationService = class {
           };
       }
     } catch (error) {
-      console.error("[ChefApplicationService] Error checking application status:", error);
+      logger.error("[ChefApplicationService] Error checking application status:", error);
       return {
         hasApplication: false,
         status: null,
@@ -42089,7 +42343,7 @@ var ChefApplicationService = class {
       }).returning();
       return created;
     } catch (error) {
-      console.error("[ChefApplicationService] Error creating/updating application:", error);
+      logger.error("[ChefApplicationService] Error creating/updating application:", error);
       throw error;
     }
   }
@@ -42111,7 +42365,7 @@ var ChefApplicationService = class {
       }).where(eq11(chefKitchenApplications.id, applicationId)).returning();
       return cancelled;
     } catch (error) {
-      console.error("[ChefApplicationService] Error cancelling application:", error);
+      logger.error("[ChefApplicationService] Error cancelling application:", error);
       throw error;
     }
   }
@@ -42130,7 +42384,7 @@ var ChefApplicationService = class {
       }
       return updated;
     } catch (error) {
-      console.error("[ChefApplicationService] Error updating application documents:", error);
+      logger.error("[ChefApplicationService] Error updating application documents:", error);
       throw error;
     }
   }
@@ -42142,7 +42396,7 @@ var ChefApplicationService = class {
       const [application] = await db.select().from(chefKitchenApplications).where(eq11(chefKitchenApplications.id, applicationId)).limit(1);
       return application;
     } catch (error) {
-      console.error("[ChefApplicationService] Error getting application by ID:", error);
+      logger.error("[ChefApplicationService] Error getting application by ID:", error);
       throw error;
     }
   }
@@ -42178,7 +42432,7 @@ var ChefApplicationService = class {
       const [updated] = await db.update(chefKitchenApplications).set(setData).where(eq11(chefKitchenApplications.id, applicationId)).returning();
       return updated;
     } catch (error) {
-      console.error("[ChefApplicationService] Error updating application tier:", error);
+      logger.error("[ChefApplicationService] Error updating application tier:", error);
       throw error;
     }
   }
@@ -42210,7 +42464,7 @@ router7.post(
   requireFirebaseAuthWithUser,
   async (req, res) => {
     try {
-      console.log(`\u{1F373} POST /api/firebase/chef/kitchen-applications - Chef ${req.neonUser.id} submitting kitchen application`);
+      logger.info(`\u{1F373} POST /api/firebase/chef/kitchen-applications - Chef ${req.neonUser.id} submitting kitchen application`);
       const filesArray = req.files;
       const files = {};
       if (filesArray) {
@@ -42228,17 +42482,17 @@ router7.post(
         if (files["foodSafetyLicenseFile"]?.[0]) {
           try {
             foodSafetyLicenseUrl = await uploadToBlob(files["foodSafetyLicenseFile"][0], req.neonUser.id, "documents");
-            console.log(`\u2705 Uploaded food safety license: ${foodSafetyLicenseUrl}`);
+            logger.info(`\u2705 Uploaded food safety license: ${foodSafetyLicenseUrl}`);
           } catch (uploadError) {
-            console.error("\u274C Failed to upload food safety license:", uploadError);
+            logger.error("\u274C Failed to upload food safety license:", uploadError);
           }
         }
         if (files["foodEstablishmentCertFile"]?.[0]) {
           try {
             foodEstablishmentCertUrl = await uploadToBlob(files["foodEstablishmentCertFile"][0], req.neonUser.id, "documents");
-            console.log(`\u2705 Uploaded food establishment cert: ${foodEstablishmentCertUrl}`);
+            logger.info(`\u2705 Uploaded food establishment cert: ${foodEstablishmentCertUrl}`);
           } catch (uploadError) {
-            console.error("\u274C Failed to upload food establishment cert:", uploadError);
+            logger.error("\u274C Failed to upload food establishment cert:", uploadError);
           }
         }
         const tierFileFields = [
@@ -42253,9 +42507,9 @@ router7.post(
             try {
               const url = await uploadToBlob(files[field][0], req.neonUser.id, "documents");
               tierFileUrls[field] = url;
-              console.log(`\u2705 Uploaded ${field}: ${url}`);
+              logger.info(`\u2705 Uploaded ${field}: ${url}`);
             } catch (uploadError) {
-              console.error(`\u274C Failed to upload ${field}:`, uploadError);
+              logger.error(`\u274C Failed to upload ${field}:`, uploadError);
             }
           }
         }
@@ -42264,13 +42518,13 @@ router7.post(
       if (req.body.customFieldsData) {
         try {
           customFieldsData = typeof req.body.customFieldsData === "string" ? JSON.parse(req.body.customFieldsData) : req.body.customFieldsData;
-          console.log("\u2705 Parsed customFieldsData:", JSON.stringify(customFieldsData));
+          logger.info("\u2705 Parsed customFieldsData:", JSON.stringify(customFieldsData));
         } catch (error) {
-          console.error("Error parsing customFieldsData:", error);
+          logger.error("Error parsing customFieldsData:", error);
           customFieldsData = void 0;
         }
       } else {
-        console.log("\u26A0\uFE0F No customFieldsData in request body");
+        logger.info("\u26A0\uFE0F No customFieldsData in request body");
       }
       if (files) {
         const customFileFields = Object.keys(files).filter((key) => key.startsWith("customFile_"));
@@ -42280,13 +42534,13 @@ router7.post(
           if (file) {
             try {
               const url = await uploadToBlob(file, req.neonUser.id, "documents");
-              console.log(`\u2705 Uploaded custom field file ${fieldId}: ${url}`);
+              logger.info(`\u2705 Uploaded custom field file ${fieldId}: ${url}`);
               if (!customFieldsData) {
                 customFieldsData = {};
               }
               customFieldsData[fieldId] = url;
             } catch (uploadError) {
-              console.error(`\u274C Failed to upload custom field file ${fieldId}:`, uploadError);
+              logger.error(`\u274C Failed to upload custom field file ${fieldId}:`, uploadError);
             }
           }
         }
@@ -42299,7 +42553,7 @@ router7.post(
             tierData = { ...tierData, tierFiles: tierFileUrls };
           }
         } catch (error) {
-          console.error("Error parsing tier_data:", error);
+          logger.error("Error parsing tier_data:", error);
         }
       }
       const locationId = parseInt(req.body.locationId);
@@ -42357,7 +42611,7 @@ router7.post(
         try {
           businessInfo = typeof req.body.businessDescription === "string" ? JSON.parse(req.body.businessDescription) : req.body.businessDescription;
         } catch (error) {
-          console.error("Error parsing businessDescription:", error);
+          logger.error("Error parsing businessDescription:", error);
           businessInfo = {};
         }
       }
@@ -42611,7 +42865,7 @@ router7.post(
       const parsedData = insertChefKitchenApplicationSchema.safeParse(formData);
       if (!parsedData.success) {
         const validationError = fromZodError2(parsedData.error);
-        console.log("\u274C Validation failed:", validationError.details);
+        logger.info("\u274C Validation failed:", validationError.details);
         return res.status(400).json({
           error: "Validation error",
           message: validationError.message,
@@ -42628,14 +42882,14 @@ router7.post(
         // [FIX] Explicitly set customFieldsData from formData (not from Zod which may have empty default)
         customFieldsData: formData.customFieldsData || parsedData.data.customFieldsData || {}
       };
-      console.log("\u{1F4E6} Application data being saved:", {
+      logger.info("\u{1F4E6} Application data being saved:", {
         hasCustomFieldsData: !!applicationData.customFieldsData && Object.keys(applicationData.customFieldsData).length > 0,
         customFieldsData: applicationData.customFieldsData,
         formDataCustomFields: formData.customFieldsData,
         parsedDataCustomFields: parsedData.data.customFieldsData
       });
       const application = await chefApplicationService.createApplication(applicationData);
-      console.log(`\u2705 Kitchen application created/updated: Chef ${req.neonUser.id} \u2192 Location ${parsedData.data.locationId}, ID: ${application.id}`);
+      logger.info(`\u2705 Kitchen application created/updated: Chef ${req.neonUser.id} \u2192 Location ${parsedData.data.locationId}, ID: ${application.id}`);
       try {
         if (location.managerId) {
           await notificationService.notifyNewApplication({
@@ -42647,7 +42901,7 @@ router7.post(
           });
         }
       } catch (notifError) {
-        console.error("Error creating application notification:", notifError);
+        logger.error("Error creating application notification:", notifError);
       }
       try {
         if (location.notificationEmail && location.managerId) {
@@ -42662,10 +42916,10 @@ router7.post(
           await sendEmail(managerEmailContent, {
             trackingId: `kitchen_app_new_${application.id}_${Date.now()}`
           });
-          console.log(`\u2705 Sent new kitchen application email to manager: ${location.notificationEmail}`);
+          logger.info(`\u2705 Sent new kitchen application email to manager: ${location.notificationEmail}`);
         }
       } catch (emailError) {
-        console.error("Error sending new kitchen application email to manager:", emailError);
+        logger.error("Error sending new kitchen application email to manager:", emailError);
       }
       res.status(201).json({
         success: true,
@@ -42674,7 +42928,7 @@ router7.post(
         isResubmission: application.createdAt < application.updatedAt
       });
     } catch (error) {
-      console.error("Error creating kitchen application:", error);
+      logger.error("Error creating kitchen application:", error);
       res.status(500).json({
         error: "Failed to submit kitchen application",
         message: error instanceof Error ? error.message : "Unknown error"
@@ -42688,7 +42942,7 @@ router7.get("/firebase/chef/kitchen-applications", requireFirebaseAuthWithUser, 
     const applications4 = await chefApplicationService.getChefApplications(chefId);
     res.json(applications4);
   } catch (error) {
-    console.error("Error getting chef kitchen applications:", error);
+    logger.error("Error getting chef kitchen applications:", error);
     res.status(500).json({ error: "Failed to get kitchen applications" });
   }
 });
@@ -42721,7 +42975,7 @@ router7.get("/firebase/chef/kitchen-applications/location/:locationId", requireF
       } : null
     });
   } catch (error) {
-    console.error("Error getting chef kitchen application:", error);
+    logger.error("Error getting chef kitchen application:", error);
     res.status(500).json({ error: "Failed to get kitchen application" });
   }
 });
@@ -42734,7 +42988,7 @@ router7.get("/firebase/chef/kitchen-access-status/:locationId", requireFirebaseA
     const accessStatus = await chefApplicationService.getApplicationStatus(req.neonUser.id, locationId);
     res.json(accessStatus);
   } catch (error) {
-    console.error("Error getting kitchen access status:", error);
+    logger.error("Error getting kitchen access status:", error);
     res.status(500).json({ error: "Failed to get kitchen access status" });
   }
 });
@@ -42743,7 +42997,7 @@ router7.get("/firebase/chef/approved-kitchens", requireFirebaseAuthWithUser, asy
     const approvedKitchens = await chefApplicationService.getApprovedKitchens(req.neonUser.id);
     res.json(approvedKitchens);
   } catch (error) {
-    console.error("Error getting approved kitchens:", error);
+    logger.error("Error getting approved kitchens:", error);
     res.status(500).json({ error: "Failed to get approved kitchens" });
   }
 });
@@ -42760,7 +43014,7 @@ router7.patch("/firebase/chef/kitchen-applications/:id/cancel", requireFirebaseA
       message: "Application cancelled successfully"
     });
   } catch (error) {
-    console.error("Error cancelling kitchen application:", error);
+    logger.error("Error cancelling kitchen application:", error);
     res.status(500).json({
       error: "Failed to cancel application",
       message: error instanceof Error ? error.message : "Unknown error"
@@ -42793,14 +43047,14 @@ router7.patch(
           try {
             updateData.foodSafetyLicenseUrl = await uploadToBlob(files["foodSafetyLicenseFile"][0], req.neonUser.id, "documents");
           } catch (uploadError) {
-            console.error("\u274C Failed to upload food safety license:", uploadError);
+            logger.error("\u274C Failed to upload food safety license:", uploadError);
           }
         }
         if (files["foodEstablishmentCertFile"]?.[0]) {
           try {
             updateData.foodEstablishmentCertUrl = await uploadToBlob(files["foodEstablishmentCertFile"][0], req.neonUser.id, "documents");
           } catch (uploadError) {
-            console.error("\u274C Failed to upload food establishment cert:", uploadError);
+            logger.error("\u274C Failed to upload food establishment cert:", uploadError);
           }
         }
       }
@@ -42811,7 +43065,7 @@ router7.patch(
         message: "Documents updated successfully. They will be reviewed by the manager."
       });
     } catch (error) {
-      console.error("Error updating kitchen application documents:", error);
+      logger.error("Error updating kitchen application documents:", error);
       res.status(500).json({
         error: "Failed to update documents",
         message: error instanceof Error ? error.message : "Unknown error"
@@ -42825,7 +43079,7 @@ router7.get("/manager/kitchen-applications", requireFirebaseAuthWithUser, requir
     const applications4 = await chefApplicationService.getApplicationsForManager(user.id);
     res.json(applications4);
   } catch (error) {
-    console.error("Error getting kitchen applications for manager:", error);
+    logger.error("Error getting kitchen applications for manager:", error);
     res.status(500).json({ error: "Failed to get applications" });
   }
 });
@@ -42843,7 +43097,7 @@ router7.get("/manager/kitchen-applications/location/:locationId", requireFirebas
     const applications4 = await chefApplicationService.getApplicationsByLocation(locationId);
     res.json(applications4);
   } catch (error) {
-    console.error("Error getting kitchen applications for location:", error);
+    logger.error("Error getting kitchen applications for location:", error);
     res.status(500).json({ error: "Failed to get applications" });
   }
 });
@@ -42882,7 +43136,7 @@ router7.patch("/manager/kitchen-applications/:id/status", requireFirebaseAuthWit
         tierData
       ) || updatedApplication;
     }
-    console.log(`\u2705 Application ${applicationId} ${status} by Manager ${user.id}`);
+    logger.info(`\u2705 Application ${applicationId} ${status} by Manager ${user.id}`);
     if (status === "approved" && updatedApplication) {
       try {
         await notificationService.notifyApplicationApproved({
@@ -42893,7 +43147,7 @@ router7.patch("/manager/kitchen-applications/:id/status", requireFirebaseAuthWit
           chefEmail: application.email || ""
         });
       } catch (notifError) {
-        console.error("Error creating application approval notification:", notifError);
+        logger.error("Error creating application approval notification:", notifError);
       }
       try {
         if (application.email) {
@@ -42909,7 +43163,7 @@ router7.patch("/manager/kitchen-applications/:id/status", requireFirebaseAuthWit
             await sendEmail(step1Email, {
               trackingId: `kitchen_app_step1_approved_${application.id}_${Date.now()}`
             });
-            console.log(`\u2705 Sent step 1 approval email to chef: ${application.email} (Tier ${approvalTier})`);
+            logger.info(`\u2705 Sent step 1 approval email to chef: ${application.email} (Tier ${approvalTier})`);
           } else {
             const approvalEmail = generateKitchenApplicationApprovedEmail({
               chefEmail: application.email,
@@ -42919,11 +43173,11 @@ router7.patch("/manager/kitchen-applications/:id/status", requireFirebaseAuthWit
             await sendEmail(approvalEmail, {
               trackingId: `kitchen_app_approved_${application.id}_${Date.now()}`
             });
-            console.log(`\u2705 Sent full approval email to chef: ${application.email} (Tier ${approvalTier})`);
+            logger.info(`\u2705 Sent full approval email to chef: ${application.email} (Tier ${approvalTier})`);
           }
         }
       } catch (emailError) {
-        console.error("Error sending kitchen application approval email:", emailError);
+        logger.error("Error sending kitchen application approval email:", emailError);
       }
       try {
         if (application.chefId) {
@@ -42935,7 +43189,7 @@ router7.patch("/manager/kitchen-applications/:id/status", requireFirebaseAuthWit
           });
         }
       } catch (notifError) {
-        console.error("Error creating chef application approval notification:", notifError);
+        logger.error("Error creating chef application approval notification:", notifError);
       }
     }
     if (status === "rejected" && updatedApplication) {
@@ -42951,10 +43205,10 @@ router7.patch("/manager/kitchen-applications/:id/status", requireFirebaseAuthWit
           await sendEmail(rejectionEmail, {
             trackingId: `kitchen_app_rejected_${application.id}_${Date.now()}`
           });
-          console.log(`\u2705 Sent kitchen application rejection email to chef: ${application.email}`);
+          logger.info(`\u2705 Sent kitchen application rejection email to chef: ${application.email}`);
         }
       } catch (emailError) {
-        console.error("Error sending kitchen application rejection email:", emailError);
+        logger.error("Error sending kitchen application rejection email:", emailError);
       }
       try {
         if (application.chefId) {
@@ -42967,7 +43221,7 @@ router7.patch("/manager/kitchen-applications/:id/status", requireFirebaseAuthWit
           });
         }
       } catch (notifError) {
-        console.error("Error creating chef application rejection notification:", notifError);
+        logger.error("Error creating chef application rejection notification:", notifError);
       }
     }
     if (status === "approved" && updatedApplication) {
@@ -43000,13 +43254,13 @@ router7.patch("/manager/kitchen-applications/:id/status", requireFirebaseAuthWit
                 grantedBy: req.neonUser.id,
                 grantedAt: /* @__PURE__ */ new Date()
               });
-              console.log(`\u2705 Granted chef ${application.chefId} access to location ${application.locationId} (Requirements Met)`);
+              logger.info(`\u2705 Granted chef ${application.chefId} access to location ${application.locationId} (Requirements Met)`);
             }
           } catch (accessError) {
-            console.error("Error granting chef access:", accessError);
+            logger.error("Error granting chef access:", accessError);
           }
         } else {
-          console.log(`\u2139\uFE0F Chef ${application.chefId} at Tier ${currentTier} but missing requirements: ${validation.missingRequirements.join(", ")}`);
+          logger.info(`\u2139\uFE0F Chef ${application.chefId} at Tier ${currentTier} but missing requirements: ${validation.missingRequirements.join(", ")}`);
         }
       }
     }
@@ -43016,7 +43270,7 @@ router7.patch("/manager/kitchen-applications/:id/status", requireFirebaseAuthWit
       message: `Application ${status} successfully`
     });
   } catch (error) {
-    console.error("Error updating kitchen application status:", error);
+    logger.error("Error updating kitchen application status:", error);
     res.status(500).json({
       error: "Failed to update application status",
       message: error instanceof Error ? error.message : "Unknown error"
@@ -43066,7 +43320,7 @@ router7.patch("/manager/kitchen-applications/:id/verify-documents", requireFireb
       message: "Document verification updated"
     });
   } catch (error) {
-    console.error("Error verifying kitchen application documents:", error);
+    logger.error("Error verifying kitchen application documents:", error);
     res.status(500).json({
       error: "Failed to verify documents",
       message: error instanceof Error ? error.message : "Unknown error"
@@ -43114,7 +43368,7 @@ router7.patch("/manager/kitchen-applications/:id/tier", requireFirebaseAuthWithU
       message: `Application advanced to Tier ${parsed.data.current_tier}`
     });
   } catch (error) {
-    console.error("Error updating application tier:", error);
+    logger.error("Error updating application tier:", error);
     res.status(500).json({
       error: "Failed to update application tier",
       message: error instanceof Error ? error.message : "Unknown error"
@@ -43125,7 +43379,7 @@ var kitchenApplicationsRouter = router7;
 
 // server/firebase-routes.ts
 function registerFirebaseRoutes(app2) {
-  console.log("\u{1F525} Registering Firebase Routes (Modular)...");
+  logger.info("\u{1F525} Registering Firebase Routes (Modular)...");
   const apiPrefix = "/api";
   app2.use(apiPrefix, applicationsRouter);
   app2.use(apiPrefix, adminEmailRouter);
@@ -43134,10 +43388,11 @@ function registerFirebaseRoutes(app2) {
   app2.use(apiPrefix, healthRouter);
   app2.use(apiPrefix, platformRouter);
   app2.use(apiPrefix, kitchenApplicationsRouter);
-  console.log("\u2705 All Firebase modules registered.");
+  logger.info("\u2705 All Firebase modules registered.");
 }
 
 // server/routes.ts
+init_logger();
 init_email();
 init_firebase_setup();
 init_firebase_auth_middleware();
@@ -43145,12 +43400,18 @@ init_user_repository();
 init_user_service();
 import { createServer } from "http";
 async function registerRoutes(app2) {
-  console.log("[Routes] Registering all routes including chef-kitchen-access and portal user routes...");
+  logger.info("[Routes] Registering all routes including chef-kitchen-access and portal user routes...");
+  app2.get("/api/sentry-test", (_req, _res) => {
+    throw new Error("Sentry test error \u2014 if you see this in Sentry, it works!");
+  });
+  app2.get("/api/sentry-test/trace", (_req, res) => {
+    res.json({ ok: true, message: "Sentry trace generated. Check Sentry Performance tab." });
+  });
   app2.use(optionalFirebaseAuth);
   app2.use("/api/user", (await Promise.resolve().then(() => (init_user(), user_exports))).default);
   app2.use("/api/places", (await Promise.resolve().then(() => (init_places(), places_exports))).default);
   app2.post("/api/logout", (req, res) => {
-    console.log("\u{1F6AA} Logout request received (Firebase Auth is stateless)");
+    logger.info("\u{1F6AA} Logout request received (Firebase Auth is stateless)");
     res.json({ success: true, message: "Logged out successfully" });
   });
   const userRouter = (await Promise.resolve().then(() => (init_user(), user_exports))).default;
@@ -43182,7 +43443,7 @@ async function registerRoutes(app2) {
         has_seen_welcome: user.has_seen_welcome
       });
     } catch (error) {
-      console.error("[API] Error getting user:", error);
+      logger.error("[API] Error getting user:", error);
       res.status(500).json({ error: "Failed to get user info" });
     }
   });
@@ -43191,7 +43452,7 @@ async function registerRoutes(app2) {
       let user = req.neonUser;
       const firebaseEmailVerified = req.firebaseUser?.email_verified;
       if (firebaseEmailVerified && !user.isVerified) {
-        console.log(`\u{1F4E7} Updating is_verified for user ${user.id} - Firebase email verified`);
+        logger.info(`\u{1F4E7} Updating is_verified for user ${user.id} - Firebase email verified`);
         const updatedUser = await userService3.updateUser(user.id, { isVerified: true });
         if (updatedUser) {
           user = updatedUser;
@@ -43200,7 +43461,7 @@ async function registerRoutes(app2) {
       if (firebaseEmailVerified && user.isVerified && !user.welcomeEmailSentAt) {
         try {
           const { sendEmail: sendEmail2, generateWelcomeEmail: generateWelcomeEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-          console.log(`\u{1F4E7} Sending welcome email to newly verified user: ${user.username}`);
+          logger.info(`\u{1F4E7} Sending welcome email to newly verified user: ${user.username}`);
           const welcomeEmail = generateWelcomeEmail2({
             fullName: req.firebaseUser?.name || user.username.split("@")[0],
             email: user.username,
@@ -43211,15 +43472,15 @@ async function registerRoutes(app2) {
           });
           if (emailResult) {
             await userService3.updateUser(user.id, { welcomeEmailSentAt: /* @__PURE__ */ new Date() });
-            console.log(`\u2705 Welcome email sent successfully to ${user.username}`);
+            logger.info(`\u2705 Welcome email sent successfully to ${user.username}`);
           }
         } catch (emailError) {
-          console.error("\u274C Error sending welcome email on sync verification:", emailError);
+          logger.error("\u274C Error sending welcome email on sync verification:", emailError);
         }
       }
       res.json(user);
     } catch (error) {
-      console.error("Error syncing user:", error);
+      logger.error("Error syncing user:", error);
       res.status(500).json({ error: "Failed to sync user" });
     }
   });
@@ -43240,21 +43501,21 @@ async function registerRoutes(app2) {
       }
       const existingByUid = await userService3.getUserByFirebaseUid(uid);
       if (existingByUid) {
-        console.log(`\u2705 User already exists with Firebase UID ${uid}, returning existing user`);
+        logger.info(`\u2705 User already exists with Firebase UID ${uid}, returning existing user`);
         return res.json(existingByUid);
       }
       const existingByUsername = await userService3.getUserByUsername(email);
       if (existingByUsername) {
         if (!existingByUsername.firebaseUid) {
-          console.log(`\u{1F517} Linking Firebase UID ${uid} to existing Neon user ${existingByUsername.id}`);
+          logger.info(`\u{1F517} Linking Firebase UID ${uid} to existing Neon user ${existingByUsername.id}`);
           const updatedUser = await userService3.updateUser(existingByUsername.id, {
             firebaseUid: uid,
             isVerified: decodedToken.email_verified || existingByUsername.isVerified
           });
           return res.json(updatedUser || existingByUsername);
         } else if (existingByUsername.firebaseUid !== uid) {
-          console.log(`\u26A0\uFE0F User ${email} exists with different Firebase UID. Old: ${existingByUsername.firebaseUid}, New: ${uid}`);
-          console.log(`\u{1F504} Updating Firebase UID to new account (user may have re-registered in Firebase)`);
+          logger.info(`\u26A0\uFE0F User ${email} exists with different Firebase UID. Old: ${existingByUsername.firebaseUid}, New: ${uid}`);
+          logger.info(`\u{1F504} Updating Firebase UID to new account (user may have re-registered in Firebase)`);
           const updatedUser = await userService3.updateUser(existingByUsername.id, {
             firebaseUid: uid,
             isVerified: decodedToken.email_verified || false
@@ -43264,7 +43525,7 @@ async function registerRoutes(app2) {
         }
         return res.json(existingByUsername);
       }
-      console.log(`\u{1F4DD} Creating new user: ${email} with role: ${role || "user"}`);
+      logger.info(`\u{1F4DD} Creating new user: ${email} with role: ${role || "user"}`);
       const finalRole = role || "user";
       const newUser = await userService3.createUser({
         username: email,
@@ -43280,7 +43541,7 @@ async function registerRoutes(app2) {
         const { eq: eq38 } = await import("drizzle-orm");
         const displayName = otherData.displayName || email.split("@")[0];
         if (decodedToken.email_verified) {
-          console.log(`\u{1F4E7} Sending welcome email to VERIFIED new ${finalRole}: ${email}`);
+          logger.info(`\u{1F4E7} Sending welcome email to VERIFIED new ${finalRole}: ${email}`);
           const welcomeEmail = generateWelcomeEmail2({
             fullName: displayName,
             email,
@@ -43291,12 +43552,12 @@ async function registerRoutes(app2) {
           });
           if (welcomeSent) {
             await userService3.updateUser(newUser.id, { welcomeEmailSentAt: /* @__PURE__ */ new Date() });
-            console.log(`\u2705 Welcome email sent to new ${finalRole}: ${email}`);
+            logger.info(`\u2705 Welcome email sent to new ${finalRole}: ${email}`);
           } else {
-            console.log(`\u274C Failed to send welcome email to ${email}`);
+            logger.info(`\u274C Failed to send welcome email to ${email}`);
           }
         } else {
-          console.log(`\u2139\uFE0F Skipping welcome email for UNVERIFIED new ${finalRole}: ${email} - will be sent after verification`);
+          logger.info(`\u2139\uFE0F Skipping welcome email for UNVERIFIED new ${finalRole}: ${email} - will be sent after verification`);
         }
         const admins = await db2.select({ username: users5.username }).from(users5).where(eq38(users5.role, "admin"));
         for (const admin2 of admins) {
@@ -43312,16 +43573,16 @@ async function registerRoutes(app2) {
               trackingId: `new_user_admin_${admin2.username}_${Date.now()}`
             });
             if (adminSent) {
-              console.log(`\u2705 Admin notification sent to ${admin2.username} about new ${finalRole} registration`);
+              logger.info(`\u2705 Admin notification sent to ${admin2.username} about new ${finalRole} registration`);
             }
           }
         }
       } catch (emailError) {
-        console.error("\u274C Error sending registration emails:", emailError);
+        logger.error("\u274C Error sending registration emails:", emailError);
       }
       res.status(201).json(newUser);
     } catch (error) {
-      console.error("Error registering user:", error);
+      logger.error("Error registering user:", error);
       if (error.message?.includes("already taken") || error.code === "23505") {
         return res.status(409).json({
           error: "Email already registered",
@@ -43407,7 +43668,7 @@ async function registerRoutes(app2) {
         trackingId: `unsubscribe_${email}_${Date.now()}`
       });
       if (!emailSent) {
-        console.error("Failed to send unsubscribe notification email");
+        logger.error("Failed to send unsubscribe notification email");
         return res.status(500).json({
           success: false,
           message: "Failed to process unsubscribe request"
@@ -43480,13 +43741,13 @@ async function registerRoutes(app2) {
       await sendEmail(userConfirmationContent, {
         trackingId: `unsubscribe_confirmation_${email}_${Date.now()}`
       });
-      console.log(`\u2705 Unsubscribe request processed for: ${email}`);
+      logger.info(`\u2705 Unsubscribe request processed for: ${email}`);
       res.json({
         success: true,
         message: "Unsubscribe request processed successfully"
       });
     } catch (error) {
-      console.error("Error processing unsubscribe request:", error);
+      logger.error("Error processing unsubscribe request:", error);
       res.status(500).json({
         success: false,
         message: "Internal server error"
@@ -43510,6 +43771,7 @@ async function registerRoutes(app2) {
 }
 
 // server/vite.ts
+init_logger();
 import express2 from "express";
 import fs6 from "fs";
 import { nanoid } from "nanoid";
@@ -43521,7 +43783,7 @@ function log(message, source = "express") {
     second: "2-digit",
     hour12: true
   });
-  console.log(`${formattedTime} [${source}] ${message}`);
+  logger.info(`${formattedTime} [${source}] ${message}`);
 }
 async function setupVite(app2, server) {
   const { createLogger, createServer: createViteServer } = await import("vite");
@@ -43588,6 +43850,8 @@ function serveStatic(app2) {
 
 // server/index.ts
 init_security();
+init_logger();
+import pinoHttp from "pino-http";
 var app = express3();
 app.set("env", process.env.NODE_ENV || "development");
 app.post("/api/webhooks/stripe", express3.raw({ type: "application/json" }));
@@ -43595,30 +43859,39 @@ app.use(express3.json({ limit: "12mb" }));
 app.use(express3.urlencoded({ limit: "12mb", extended: true }));
 registerSecurityMiddleware(app);
 initializeFirebaseAdmin();
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path4 = req.path;
-  let capturedJsonResponse = void 0;
-  const originalResJson = res.json;
-  res.json = function(bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path4.startsWith("/api")) {
-      let logLine = `${req.method} ${path4} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "\u2026";
-      }
-      log(logLine);
-    }
-  });
-  next();
-});
+var isLocalDev2 = process.env.NODE_ENV === "development" && !process.env.VERCEL;
+app.use(pinoHttp({
+  logger: pinoInstance,
+  // Only log API requests, skip static assets
+  autoLogging: {
+    ignore: (req) => !req.url?.startsWith("/api")
+  },
+  // Custom log level based on response status code
+  customLogLevel: (_req, res, err) => {
+    if (res.statusCode >= 500 || err) return "error";
+    if (res.statusCode >= 400) return "warn";
+    return "info";
+  },
+  // Attach useful request metadata to each log line
+  customProps: (req) => ({
+    userAgent: req.headers["user-agent"],
+    ip: req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress
+  }),
+  // Redact sensitive headers from logs
+  serializers: {
+    req: (req) => ({
+      method: req.method,
+      url: req.url
+      // Do NOT log authorization or cookie headers
+    }),
+    res: (res) => ({
+      statusCode: res.statusCode
+    })
+  },
+  // Use quiet mode in local dev (pino-pretty handles formatting)
+  // In production, let pino-http output standard structured logs
+  quietReqLogger: isLocalDev2
+}));
 var routesInitialized = false;
 var initPromise = (async () => {
   if (routesInitialized) return;
@@ -43626,13 +43899,14 @@ var initPromise = (async () => {
     log("[INIT] Starting route registration...");
     await registerRoutes(app);
     registerFirebaseRoutes(app);
+    Sentry4.setupExpressErrorHandler(app);
     app.use((err, _req, res, _next) => {
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";
       const isProduction2 = process.env.NODE_ENV === "production" || !!process.env.VERCEL;
       const safeMessage = isProduction2 && status >= 500 ? "An unexpected error occurred. Please try again later." : message;
       res.status(status).json({ message: safeMessage });
-      console.error(`[Error ${status}]`, err);
+      pinoInstance.error({ err, statusCode: status, path: _req.path }, `Express error handler [${status}]`);
     });
     routesInitialized = true;
     log("[ROUTES] All routes registered successfully");
@@ -43652,7 +43926,7 @@ var initPromise = (async () => {
       });
     }
   } catch (error) {
-    console.error("Failed to register routes:", error);
+    logger.error("Failed to register routes:", error);
     throw error;
   }
 })();

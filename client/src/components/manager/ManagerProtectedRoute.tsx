@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -45,7 +46,7 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
           authMethod: 'firebase'
         };
       } catch (error) {
-        console.error('ManagerProtectedRoute - Firebase auth error:', error);
+        logger.error('ManagerProtectedRoute - Firebase auth error:', error);
         return null;
       }
     },
@@ -74,7 +75,7 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
         if (!response.ok) return [];
         return response.json();
       } catch (error) {
-        console.error('ManagerProtectedRoute - Error fetching locations:', error);
+        logger.error('ManagerProtectedRoute - Error fetching locations:', error);
         return [];
       }
     },
@@ -93,7 +94,7 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   
   const isManager = user?.role === 'manager' || user?.isManager;
 
-  console.log('ManagerProtectedRoute - Firebase auth state:', {
+  logger.info('ManagerProtectedRoute - Firebase auth state:', {
     loading,
     authPhase,
     isAuthInProgress,
@@ -137,13 +138,13 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
 
   // Redirect to login if no user found (only after loading is complete)
   if (!user) {
-    console.log('ManagerProtectedRoute - No user found, redirecting to login');
+    logger.info('ManagerProtectedRoute - No user found, redirecting to login');
     return <Redirect to="/manager/login" />;
   }
 
   // Redirect if user is not a manager (only after loading is complete)
   if (!isManager) {
-    console.log('ManagerProtectedRoute - User is not a manager, redirecting');
+    logger.info('ManagerProtectedRoute - User is not a manager, redirecting');
     return <Redirect to="/" />;
   }
 
@@ -167,7 +168,7 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   const isOnSetupPage = location === '/manager/setup' || location.startsWith('/manager/setup');
   
   if (needsOnboarding && !isOnSetupPage) {
-    console.log('ManagerProtectedRoute - New manager needs onboarding, redirecting to setup');
+    logger.info('ManagerProtectedRoute - New manager needs onboarding, redirecting to setup');
     return <Redirect to="/manager/setup" />;
   }
 

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { auth } from './firebase';
 
 export class APIClient {
@@ -19,7 +20,7 @@ export class APIClient {
       const token = await auth.currentUser.getIdToken();
       return token;
     } catch (error) {
-      console.error('Error getting Firebase auth token:', error);
+      logger.error('Error getting Firebase auth token:', error);
       return null;
     }
   }
@@ -148,7 +149,7 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
       };
     }
   } catch (error) {
-    console.error('Error getting Firebase token:', error);
+    logger.error('Error getting Firebase token:', error);
   }
   return {
     'Content-Type': 'application/json',

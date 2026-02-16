@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Application Requirements Wizard
  * Enterprise-grade step-by-step configuration for chef application requirements
@@ -229,7 +230,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
     
     // Only trigger save if step actually changed and we have unsaved changes
     if (prevStepRef.current !== null && prevStepRef.current !== activeStep && hasUnsavedChanges) {
-      console.log('[ApplicationRequirementsWizard] Auto-saving on step change');
+      logger.info('[ApplicationRequirementsWizard] Auto-saving on step change');
       handleSave();
     }
     

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -78,7 +79,7 @@ export default function TrainingOverviewPanel({ className, viewMode: controlledV
 
         return await response.json();
       } catch (error) {
-        console.error("Error fetching training access:", error);
+        logger.error("Error fetching training access:", error);
         return {
           accessLevel: 'limited',
           hasApprovedApplication: false,
@@ -122,7 +123,7 @@ export default function TrainingOverviewPanel({ className, viewMode: controlledV
 
         return await response.json();
       } catch (error) {
-        console.error("Error fetching microlearning completion:", error);
+        logger.error("Error fetching microlearning completion:", error);
         return null;
       }
     },
@@ -201,7 +202,7 @@ export default function TrainingOverviewPanel({ className, viewMode: controlledV
         type: "success"
       });
     } catch (error) {
-      console.error('Error downloading certificate:', error);
+      logger.error('Error downloading certificate:', error);
       showAlert({
         title: "Download Failed",
         description: "Failed to download certificate. Please try again.",

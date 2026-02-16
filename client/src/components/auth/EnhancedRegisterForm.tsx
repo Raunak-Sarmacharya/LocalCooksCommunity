@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -82,10 +83,10 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     try {
       // SECURITY FIX: Removed email existence check to prevent enumeration attacks
       // Users should attempt registration directly, and Firebase will handle duplicate detection
-      console.log(`🔒 Proceeding with registration for: ${data.email} (security: no pre-check)`);
+      logger.info(`🔒 Proceeding with registration for: ${data.email} (security: no pre-check)`);
 
       // Step 2: Proceed with Firebase registration
-      console.log(`✅ Proceeding with Firebase registration: ${data.email}`);
+      logger.info(`✅ Proceeding with Firebase registration: ${data.email}`);
 
       await Promise.all([
         signup(data.email, data.password, data.displayName),
@@ -93,10 +94,10 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       ]);
 
       // Firebase verification email is sent automatically by useFirebaseAuth.signup()
-      console.log('✅ Registration successful - Firebase email verification handled automatically');
+      logger.info('✅ Registration successful - Firebase email verification handled automatically');
 
       // Step 3: Show email verification screen
-      console.log('✅ Registration successful, showing verification screen');
+      logger.info('✅ Registration successful, showing verification screen');
       setAuthState('success');
       setShowLoadingOverlay(false);
 
@@ -180,7 +181,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
             if (response.ok) {
               // User profile is available, sync is complete
-              console.log('✅ User profile available, registration complete');
+              logger.info('✅ User profile available, registration complete');
               break;
             }
           }
@@ -192,7 +193,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       }
 
       if (attempts >= maxAttempts) {
-        console.warn('⚠️ Registration sync timeout, but proceeding anyway');
+        logger.warn('⚠️ Registration sync timeout, but proceeding anyway');
       }
 
       setAuthState('success');
@@ -210,7 +211,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       // 1. Set hasAttemptedLogin to true
       // 2. Refresh user data via React Query
       // 3. The useEffect will detect the authenticated manager and redirect
-      console.log('🎯 Google registration complete - calling onSuccess to trigger parent redirect');
+      logger.info('🎯 Google registration complete - calling onSuccess to trigger parent redirect');
       if (onSuccess) onSuccess();
 
     } catch (e: any) {
@@ -248,7 +249,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
       if (currentUser) {
         // User is still signed in, send verification directly
-        console.log('📧 Resending Firebase verification email...');
+        logger.info('📧 Resending Firebase verification email...');
         const hostname = window.location.hostname;
         const isLocalhost = hostname === 'localhost' ||
           hostname === '127.0.0.1' ||
@@ -283,22 +284,22 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
             }
           }
 
-          console.log(`📧 Using redirect URL: ${redirectUrl}`);
+          logger.info(`📧 Using redirect URL: ${redirectUrl}`);
           await sendEmailVerification(currentUser, {
             url: redirectUrl,
             handleCodeInApp: false,
           });
         }
-        console.log('✅ Firebase verification email resent successfully');
+        logger.info('✅ Firebase verification email resent successfully');
       } else {
         // User is signed out - they need to use the "resend" flow
         // which requires them to enter their email again
-        console.log('⚠️ User is signed out - cannot resend verification email directly');
-        console.log('📧 User should check their inbox or try registering again');
+        logger.info('⚠️ User is signed out - cannot resend verification email directly');
+        logger.info('📧 User should check their inbox or try registering again');
         // Don't throw - just log. The email was already sent during registration.
       }
     } catch (error: any) {
-      console.error('❌ Failed to resend Firebase verification email:', error);
+      logger.error('❌ Failed to resend Firebase verification email:', error);
       throw error; // Re-throw so EmailVerificationScreen can show error
     }
   };

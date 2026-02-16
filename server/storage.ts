@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import { applications, locationRequirements, microlearningCompletions, users, videoProgress, type Application, type InsertApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDocumentVerification, type User } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { db } from "./db";
@@ -102,7 +103,7 @@ export class MemStorage implements IStorage {
       stripeCustomerId: null,
     };
     this.users.set(adminUser.id, adminUser);
-    console.log("Development: Default admin user created (username: admin, password: localcooks)");
+    logger.info("Development: Default admin user created (username: admin, password: localcooks)");
   }
 
   // User-related methods
@@ -405,7 +406,7 @@ export class MemStorage implements IStorage {
         .set({ has_seen_welcome: true })
         .where(eq(users.id, id));
     } catch (error) {
-      console.error('Error setting has_seen_welcome:', error);
+      logger.error('Error setting has_seen_welcome:', error);
       throw new Error('Failed to set has_seen_welcome');
     }
   }
@@ -419,13 +420,13 @@ export class DatabaseStorage implements IStorage {
   async getUser(id: number): Promise<User | undefined> {
     try {
       if (!process.env.DATABASE_URL) {
-        console.error('DATABASE_URL not configured');
+        logger.error('DATABASE_URL not configured');
         throw new Error('Database not configured');
       }
       const [user] = await db.select().from(users).where(eq(users.id, id));
       return user || undefined;
     } catch (error) {
-      console.error('Error in getUser:', error);
+      logger.error('Error in getUser:', error);
       throw error;
     }
   }
@@ -433,13 +434,13 @@ export class DatabaseStorage implements IStorage {
   async getUserByUsername(username: string): Promise<User | undefined> {
     try {
       if (!process.env.DATABASE_URL) {
-        console.error('DATABASE_URL not configured');
+        logger.error('DATABASE_URL not configured');
         throw new Error('Database not configured');
       }
       const [user] = await db.select().from(users).where(eq(users.username, username));
       return user || undefined;
     } catch (error) {
-      console.error('Error in getUserByUsername:', error);
+      logger.error('Error in getUserByUsername:', error);
       throw error;
     }
   }
@@ -450,7 +451,7 @@ export class DatabaseStorage implements IStorage {
       const [user] = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid));
       return user || undefined;
     } catch (error) {
-      console.error('Error getting user by firebase_uid:', error);
+      logger.error('Error getting user by firebase_uid:', error);
       return undefined;
     }
   }
@@ -465,7 +466,7 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return updated || undefined;
     } catch (error) {
-      console.error('Error updating user firebase_uid:', error);
+      logger.error('Error updating user firebase_uid:', error);
       return undefined;
     }
   }
@@ -513,7 +514,7 @@ export class DatabaseStorage implements IStorage {
           .returning();
         return user;
       } catch (error) {
-        console.error('Error creating user with firebase_uid:', error);
+        logger.error('Error creating user with firebase_uid:', error);
         throw error;
       }
     }
@@ -521,9 +522,9 @@ export class DatabaseStorage implements IStorage {
     // Fallback to schema-based insert without firebase_uid
     // CRITICAL: Don't default to 'chef' - role must be explicitly provided
     if (!insertUser.role) {
-      console.error(`❌ CRITICAL ERROR: No role provided to createUser (fallback) in storage.ts!`);
-      console.error(`   - Username: ${insertUser.username}`);
-      console.error(`   - This should not happen - role should always be provided`);
+      logger.error(`❌ CRITICAL ERROR: No role provided to createUser (fallback) in storage.ts!`);
+      logger.error(`   - Username: ${insertUser.username}`);
+      logger.error(`   - This should not happen - role should always be provided`);
       throw new Error('Role is required when creating a user. This is a programming error.');
     }
 
@@ -784,7 +785,7 @@ export class DatabaseStorage implements IStorage {
         .set({ has_seen_welcome: true })
         .where(eq(users.id, id));
     } catch (error) {
-      console.error('Error setting has_seen_welcome:', error);
+      logger.error('Error setting has_seen_welcome:', error);
       throw new Error('Failed to set has_seen_welcome');
     }
   }
@@ -799,7 +800,7 @@ export class DatabaseStorage implements IStorage {
         .where(eq(locationRequirements.locationId, locationId));
       return requirements || undefined;
     } catch (error) {
-      console.error('Error fetching location requirements:', error);
+      logger.error('Error fetching location requirements:', error);
       return undefined;
     }
   }

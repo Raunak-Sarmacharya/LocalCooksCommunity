@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 /**
  * Payout Processing Service
  * 
@@ -134,7 +135,7 @@ export async function processManagerPayout(
     // Actual payout creation should be done through Stripe Dashboard or API
     // when you want to trigger immediate payouts
 
-    console.log(`Manager ${managerId} has $${availableBalance / 100} available for payout`);
+    logger.info(`Manager ${managerId} has $${availableBalance / 100} available for payout`);
 
     return {
       managerId,
@@ -143,7 +144,7 @@ export async function processManagerPayout(
       amount: availableBalance / 100,
     };
   } catch (error: any) {
-    console.error(`Error processing payout for manager ${managerId}:`, error);
+    logger.error(`Error processing payout for manager ${managerId}:`, error);
     return {
       managerId,
       accountId: '',
@@ -187,7 +188,7 @@ export async function processWeeklyPayouts(
 
     return results;
   } catch (error: any) {
-    console.error('Error processing weekly payouts:', error);
+    logger.error('Error processing weekly payouts:', error);
     throw error;
   }
 }
@@ -234,7 +235,7 @@ export async function getPayoutSummary(db: any): Promise<{
           managersWithBalance++;
         }
       } catch (error) {
-        console.error(`Error getting balance for manager ${manager.id}:`, error);
+        logger.error(`Error getting balance for manager ${manager.id}:`, error);
       }
     }
 
@@ -251,7 +252,7 @@ export async function getPayoutSummary(db: any): Promise<{
       managersWithBalance,
     };
   } catch (error: any) {
-    console.error('Error getting payout summary:', error);
+    logger.error('Error getting payout summary:', error);
     throw error;
   }
 }

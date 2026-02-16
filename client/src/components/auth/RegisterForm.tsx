@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import {
     Form,
@@ -105,7 +106,7 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: Regist
           try {
             await signInWithGoogle(true);
           } catch (e: any) {
-            console.log('❌ GOOGLE REGISTER ERROR:', e.message);
+            logger.info('❌ GOOGLE REGISTER ERROR:', e.message);
             
             // Handle Google registration errors with user-friendly messages
             if (e.message.includes('popup-closed-by-user')) {

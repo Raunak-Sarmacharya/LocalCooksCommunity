@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -347,7 +348,7 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
         setAccessLevel('full');
       }
     } catch (error) {
-      console.error('Failed to load progress:', error);
+      logger.error('Failed to load progress:', error);
       if (user?.role === 'admin') setAccessLevel('full');
     } finally {
       setIsLoading(false);
@@ -390,7 +391,7 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
         });
       }
     } catch (error) {
-      console.error('Failed to update progress:', error);
+      logger.error('Failed to update progress:', error);
     }
   };
 
@@ -450,7 +451,7 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
         showAlert({ title: "Error", description: errorData.message || 'Failed to confirm completion.', type: "error" });
       }
     } catch (error) {
-      console.error('Failed to confirm completion:', error);
+      logger.error('Failed to confirm completion:', error);
       showAlert({ title: "Network Error", description: "Please check your connection and try again.", type: "error" });
     } finally {
       setIsSubmitting(false);
@@ -754,7 +755,7 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
                         document.body.removeChild(a);
                       }
                     } catch (err) {
-                      console.error('Certificate download error:', err);
+                      logger.error('Certificate download error:', err);
                     }
                   }}
                 >

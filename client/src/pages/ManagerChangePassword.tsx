@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -74,7 +75,7 @@ export default function ManagerChangePassword() {
         }
         return response.json();
       } catch (error) {
-        console.error('Error fetching user profile:', error);
+        logger.error('Error fetching user profile:', error);
         throw error;
       }
     },
@@ -112,7 +113,7 @@ export default function ManagerChangePassword() {
       try {
         await reauthenticateWithCredential(currentFirebaseUser, credential);
       } catch (reauthError: any) {
-        console.error('Reauthentication failed:', reauthError);
+        logger.error('Reauthentication failed:', reauthError);
         
         // Provide user-friendly error messages for common reauthentication errors
         if (reauthError.code === 'auth/wrong-password' || reauthError.code === 'auth/invalid-credential') {
@@ -143,7 +144,7 @@ export default function ManagerChangePassword() {
           body: JSON.stringify({ newPassword: data.newPassword }),
         });
       } catch (syncError) {
-        console.warn('Failed to sync password to database:', syncError);
+        logger.warn('Failed to sync password to database:', syncError);
       }
       
       // Step 4: Mark welcome as seen (password changed) via API
@@ -158,7 +159,7 @@ export default function ManagerChangePassword() {
           credentials: 'include',
         });
       } catch (seenError) {
-        console.warn('Failed to mark welcome as seen:', seenError);
+        logger.warn('Failed to mark welcome as seen:', seenError);
         // Non-blocking - continue with success flow
       }
       
@@ -172,7 +173,7 @@ export default function ManagerChangePassword() {
       window.location.href = '/manager/dashboard';
       
     } catch (error: any) {
-      console.error('Password change error:', error);
+      logger.error('Password change error:', error);
       
       // Handle Firebase-specific errors with user-friendly messages
       let errorMessage = error.message || 'Failed to change password';

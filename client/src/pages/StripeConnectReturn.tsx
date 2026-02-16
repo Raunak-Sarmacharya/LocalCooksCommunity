@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Stripe Connect Return Page
  * 
@@ -81,7 +82,7 @@ export default function StripeConnectReturn() {
               channel.postMessage({ type: 'STRIPE_SETUP_COMPLETE' });
               channel.close();
             } catch (e) {
-              console.log('BroadcastChannel not supported or failed:', e);
+              logger.info('BroadcastChannel not supported or failed:', e);
             }
 
             // Start auto-redirect countdown
@@ -89,11 +90,11 @@ export default function StripeConnectReturn() {
           } else {
             // Sync failed but Stripe setup might still be complete
             setSyncStatus('success');
-            console.warn('Sync API call failed, but Stripe reported success');
+            logger.warn('Sync API call failed, but Stripe reported success');
             startAutoRedirect();
           }
         } catch (error) {
-          console.error('Error syncing Stripe status:', error);
+          logger.error('Error syncing Stripe status:', error);
           // Still show success since Stripe redirected with success=true
           setSyncStatus('success');
           startAutoRedirect();

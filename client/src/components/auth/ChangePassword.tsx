@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -41,10 +42,10 @@ async function syncPasswordToNeon(newPassword: string): Promise<void> {
       body: JSON.stringify({ newPassword }),
     });
     if (!res.ok) {
-      console.warn('[sync-password] Failed to sync password to database:', await res.text());
+      logger.warn('[sync-password] Failed to sync password to database:', await res.text());
     }
   } catch (err) {
-    console.warn('[sync-password] Non-blocking error syncing password to database:', err);
+    logger.warn('[sync-password] Non-blocking error syncing password to database:', err);
   }
 }
 
@@ -154,7 +155,7 @@ function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
       try {
         await reauthenticateWithCredential(currentFirebaseUser, credential);
       } catch (reauthError: any) {
-        console.error('Reauthentication failed:', reauthError);
+        logger.error('Reauthentication failed:', reauthError);
         if (reauthError.code === 'auth/wrong-password' || reauthError.code === 'auth/invalid-credential') {
           throw new Error("Current password is incorrect");
         } else if (reauthError.code === 'auth/too-many-requests') {
@@ -179,7 +180,7 @@ function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
       form.reset();
       onSuccess?.();
     } catch (error: any) {
-      console.error('Password change error:', error);
+      logger.error('Password change error:', error);
       let errorMessage = error.message || 'Failed to change password';
       if (error.code === 'auth/weak-password') {
         errorMessage = "Password is too weak. Use at least 8 characters with a mix of letters, numbers, and symbols.";
@@ -305,7 +306,7 @@ function SetPasswordForm({
       form.reset();
       onSuccess?.();
     } catch (error: any) {
-      console.error('Set password error:', error);
+      logger.error('Set password error:', error);
       let errorMessage = error.message || 'Failed to set password';
       if (error.code === 'auth/weak-password') {
         errorMessage = "Password is too weak. Use at least 8 characters with a mix of letters, numbers, and symbols.";

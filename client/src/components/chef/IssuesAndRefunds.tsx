@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Issues & Refunds Component
  * 
@@ -34,7 +35,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       };
     }
   } catch (error) {
-    console.error('Error getting Firebase token:', error);
+    logger.error('Error getting Firebase token:', error);
   }
   return {
     'Content-Type': 'application/json',

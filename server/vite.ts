@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import express, { type Express } from "express";
 import fs from "fs";
 import { type Server } from "http";
@@ -14,7 +15,7 @@ export function log(message: string, source = "express") {
     hour12: true,
   });
 
-  console.log(`${formattedTime} [${source}] ${message}`);
+  logger.info(`${formattedTime} [${source}] ${message}`);
 }
 
 export async function setupVite(app: Express, server: Server) {

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 async function throwIfResNotOk(res: Response) {
@@ -31,7 +32,7 @@ export async function apiRequest(
   data?: unknown | undefined,
   customHeaders?: Record<string, string>
 ): Promise<Response> {
-  console.log(`Making ${method} request to ${url}`, data);
+  logger.info(`Making ${method} request to ${url}`, data);
 
   // SECURITY FIX: Get user ID from current Firebase auth with localStorage fallback
   // This prevents using stale user IDs while maintaining functionality
@@ -48,11 +49,11 @@ export async function apiRequest(
           defaultHeaders['Authorization'] = `Bearer ${token}`;
         }
       } catch (tokenError) {
-        console.error('Failed to get Firebase token for request:', tokenError);
+        logger.error('Failed to get Firebase token for request:', tokenError);
       }
     }
   } catch (error) {
-    console.error('Error getting current Firebase user:', error);
+    logger.error('Error getting current Firebase user:', error);
   }
 
   const headers: Record<string, string> = {
@@ -68,14 +69,14 @@ export async function apiRequest(
     credentials: "include",
   });
 
-  console.log(`Response from ${url}:`, {
+  logger.info(`Response from ${url}:`, {
     status: res.status,
     statusText: res.statusText
   });
 
   // Handle authentication error specifically
   if (res.status === 401) {
-    console.error('Authentication error detected, user is not logged in');
+    logger.error('Authentication error detected, user is not logged in');
     const error = new Error('Authentication required');
     (error as any).response = { error: 'Authentication required' };
     (error as any).status = 401;
@@ -107,12 +108,12 @@ export const getQueryFn: <T>(options: {
               defaultHeaders['Authorization'] = `Bearer ${token}`;
             }
           } catch (tokenError) {
-            console.error('Failed to get Firebase token for query:', tokenError);
+            logger.error('Failed to get Firebase token for query:', tokenError);
           }
         }
         // Removed insecure X-User-ID fallback
       } catch (error) {
-        console.error('Error getting current Firebase user:', error);
+        logger.error('Error getting current Firebase user:', error);
       }
 
       const res = await fetch(queryKey[0] as string, {

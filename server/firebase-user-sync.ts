@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import { User } from '@shared/schema';
 import { userService } from './domains/users/user.service';
 
@@ -41,12 +42,12 @@ export async function syncFirebaseUserToNeon(params: {
   const isGoogleUser = emailVerified === true;
   const isUserVerified = isGoogleUser; // Only Google users are pre-verified
 
-  console.log(`🔄 SYNC TO NEON: Firebase UID ${uid} → Neon database`);
-  console.log(`   - Email: ${email}`);
-  console.log(`   - Email Verified (Firebase): ${emailVerified}`);
-  console.log(`   - Is Google User: ${isGoogleUser}`);
-  console.log(`   - Setting is_verified: ${isUserVerified}`);
-  console.log(`   - Role: ${role}`);
+  logger.info(`🔄 SYNC TO NEON: Firebase UID ${uid} → Neon database`);
+  logger.info(`   - Email: ${email}`);
+  logger.info(`   - Email Verified (Firebase): ${emailVerified}`);
+  logger.info(`   - Is Google User: ${isGoogleUser}`);
+  logger.info(`   - Setting is_verified: ${isUserVerified}`);
+  logger.info(`   - Role: ${role}`);
 
   if (!email) {
     throw new Error('Email is required for user sync');
@@ -56,7 +57,7 @@ export async function syncFirebaseUserToNeon(params: {
     // Check if user already exists by Firebase UID
     const existingUser = await userService.getUserByFirebaseUid(uid);
     if (existingUser) {
-      console.log(`✅ EXISTING USER FOUND: ${existingUser.id} (${existingUser.username})`);
+      logger.info(`✅ EXISTING USER FOUND: ${existingUser.id} (${existingUser.username})`);
       return existingUser;
     }
 
@@ -66,31 +67,31 @@ export async function syncFirebaseUserToNeon(params: {
     let isManager = false;
 
     // Log the role received for debugging
-    console.log(`🔍 Role received in syncFirebaseUserToNeon: "${role}"`);
+    logger.info(`🔍 Role received in syncFirebaseUserToNeon: "${role}"`);
 
     // CRITICAL: Don't default to 'chef' - this causes admins/managers to be created as chefs
     if (!role || role === 'null' || role === 'undefined') {
-      console.error(`❌ ERROR: No role provided in syncFirebaseUserToNeon during registration. Cannot create user without role.`);
-      console.error(`   - Received role value: ${role}`);
-      console.error(`   - This should not happen - role should be detected from URL path in frontend`);
+      logger.error(`❌ ERROR: No role provided in syncFirebaseUserToNeon during registration. Cannot create user without role.`);
+      logger.error(`   - Received role value: ${role}`);
+      logger.error(`   - This should not happen - role should be detected from URL path in frontend`);
       throw new Error('Role is required for user registration. Please register from the appropriate page (admin, manager, or chef).');
     }
 
     if (role === 'admin') {
       finalRole = 'admin';
       isChef = true;
-      console.log(`🎯 Admin role assignment: role="admin" → isChef=true (admin has full access)`);
+      logger.info(`🎯 Admin role assignment: role="admin" → isChef=true (admin has full access)`);
     } else if (role === 'manager') {
       finalRole = 'manager';
       isManager = true;
-      console.log(`🎯 Manager role assignment: role="manager" → isManager=true`);
+      logger.info(`🎯 Manager role assignment: role="manager" → isManager=true`);
     } else if (role === 'chef') {
       finalRole = 'chef';
       isChef = true;
-      console.log(`🎯 Chef role assignment: role="chef" → isChef=true`);
+      logger.info(`🎯 Chef role assignment: role="chef" → isChef=true`);
     } else {
       // Unknown role value - don't default, throw error
-      console.error(`❌ ERROR: Unknown role value "${role}" in syncFirebaseUserToNeon`);
+      logger.error(`❌ ERROR: Unknown role value "${role}" in syncFirebaseUserToNeon`);
       throw new Error(`Invalid role: ${role}. Valid roles are: admin, manager, chef`);
     }
 
@@ -110,22 +111,22 @@ export async function syncFirebaseUserToNeon(params: {
       managerProfileData: {},
     };
 
-    console.log(`➕ CREATING NEW USER with data:`, userData);
+    logger.info(`➕ CREATING NEW USER with data:`, userData);
     const newUser = await userService.createUser({
       ...userData,
       has_seen_welcome: hasSeenWelcome
     });
-    console.log(`✅ USER CREATED: ${newUser.id} (${newUser.username})`);
-    console.log(`   - is_verified in DB: ${(newUser as any).isVerified}`);
-    console.log(`   - has_seen_welcome in DB: ${(newUser as any).has_seen_welcome} (admins/managers skip welcome screen)`);
+    logger.info(`✅ USER CREATED: ${newUser.id} (${newUser.username})`);
+    logger.info(`   - is_verified in DB: ${(newUser as any).isVerified}`);
+    logger.info(`   - has_seen_welcome in DB: ${(newUser as any).has_seen_welcome} (admins/managers skip welcome screen)`);
 
     // Handle email notifications based on user type
     if (!isGoogleUser && email) {
-      console.log(`📧 Email/password user - Firebase will handle verification email for ${email}`);
+      logger.info(`📧 Email/password user - Firebase will handle verification email for ${email}`);
       // Firebase's sendEmailVerification() will be called from the frontend
       // Welcome email will be sent after verification via /api/sync-verification-status
     } else if (isGoogleUser && email) {
-      console.log(`📧 SENDING WELCOME EMAIL for Google user: ${email}`);
+      logger.info(`📧 SENDING WELCOME EMAIL for Google user: ${email}`);
       try {
         // ENTERPRISE: Send welcome email for Google users since they don't get verification emails
         // Mark welcomeEmailSentAt for idempotency
@@ -143,12 +144,12 @@ export async function syncFirebaseUserToNeon(params: {
         if (emailSent) {
           // ENTERPRISE: Mark welcome email as sent with timestamp (idempotency)
           await userService.updateUser(newUser.id, { welcomeEmailSentAt: new Date() });
-          console.log(`✅ Welcome email sent to Google user: ${email}`);
+          logger.info(`✅ Welcome email sent to Google user: ${email}`);
         } else {
-          console.error(`❌ Failed to send welcome email to Google user: ${email}`);
+          logger.error(`❌ Failed to send welcome email to Google user: ${email}`);
         }
       } catch (emailError) {
-        console.error('❌ Error sending welcome email to Google user:', emailError);
+        logger.error('❌ Error sending welcome email to Google user:', emailError);
         // Don't fail user creation if email fails
       }
     }
@@ -178,17 +179,17 @@ export async function syncFirebaseUserToNeon(params: {
           await sendEmail(adminEmail, {
             trackingId: `new_user_admin_notify_${admin.username}_${Date.now()}`
           });
-          console.log(`✅ Admin notification sent to ${admin.username} about new ${finalRole} registration`);
+          logger.info(`✅ Admin notification sent to ${admin.username} about new ${finalRole} registration`);
         }
       }
     } catch (adminNotifyError) {
-      console.error('❌ Error sending admin notification for new user:', adminNotifyError);
+      logger.error('❌ Error sending admin notification for new user:', adminNotifyError);
       // Don't fail user creation if admin notification fails
     }
 
     return newUser;
   } catch (error) {
-    console.error('❌ Error in syncFirebaseUserToNeon:', error);
+    logger.error('❌ Error in syncFirebaseUserToNeon:', error);
     throw error;
   }
 }
@@ -203,7 +204,7 @@ export async function getNeonUserIdFromFirebaseUid(firebaseUid: string): Promise
     const user = await userService.getUserByFirebaseUid(firebaseUid);
     return user ? user.id : null;
   } catch (error) {
-    console.error('❌ Error getting Neon user ID from Firebase UID:', error);
+    logger.error('❌ Error getting Neon user ID from Firebase UID:', error);
     return null;
   }
 }
@@ -222,7 +223,7 @@ export async function ensureNeonUserExists(userData: FirebaseUserData): Promise<
       role: userData.role
     });
   } catch (error) {
-    console.error('❌ Error ensuring Neon user exists:', error);
+    logger.error('❌ Error ensuring Neon user exists:', error);
     return null;
   }
 } 

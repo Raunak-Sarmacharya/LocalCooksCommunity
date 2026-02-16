@@ -8,6 +8,11 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_STORAGE_BUCKET: string;
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID: string;
   readonly VITE_FIREBASE_APP_ID: string;
+
+  // Sentry (Error Tracking & Performance)
+  readonly VITE_SENTRY_DSN: string;
+  readonly VITE_VERCEL_ENV: string;
+  readonly VITE_VERCEL_GIT_COMMIT_SHA: string;
 }
 
 interface ImportMeta {

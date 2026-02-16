@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 /**
  * Unified File Upload Handler
  * 
@@ -25,7 +26,7 @@ export async function handleFileUpload(req: Request, res: Response): Promise<voi
         try {
           fs.unlinkSync((req.file as any).path);
         } catch (e) {
-          console.error('Error cleaning up file:', e);
+          logger.error('Error cleaning up file:', e);
         }
       }
       res.status(401).json({ error: "Not authenticated" });
@@ -47,24 +48,24 @@ export async function handleFileUpload(req: Request, res: Response): Promise<voi
 
     // Use Cloudflare R2 when configured (works in both production and development)
     const r2Available = isR2Configured();
-    console.log(`📦 handleFileUpload: R2 configured = ${r2Available}`);
+    logger.info(`📦 handleFileUpload: R2 configured = ${r2Available}`);
 
     if (r2Available) {
       // Upload to Cloudflare R2
       try {
-        console.log(`☁️ Uploading to Cloudflare R2 (folder: ${folder})...`);
+        logger.info(`☁️ Uploading to Cloudflare R2 (folder: ${folder})...`);
         fileUrl = await uploadToBlob(req.file, userId, folder);
         // Extract filename from URL for response
         fileName = fileUrl.split('/').pop() || req.file.originalname;
-        console.log(`✅ R2 upload complete: ${fileUrl}`);
+        logger.info(`✅ R2 upload complete: ${fileUrl}`);
       } catch (error) {
-        console.error('❌ Error uploading to R2:', error);
+        logger.error('❌ Error uploading to R2:', error);
         // Clean up uploaded file on error
         if ((req.file as any).path) {
           try {
             fs.unlinkSync((req.file as any).path);
           } catch (e) {
-            console.error('Error cleaning up file:', e);
+            logger.error('Error cleaning up file:', e);
           }
         }
         res.status(500).json({ 
@@ -75,7 +76,7 @@ export async function handleFileUpload(req: Request, res: Response): Promise<voi
       }
     } else {
       // Fallback: Use local storage (only when R2 is not configured)
-      console.log(`📁 R2 not configured, using local storage`);
+      logger.info(`📁 R2 not configured, using local storage`);
       fileUrl = getFileUrl(req.file.filename || `${userId}_${Date.now()}_${req.file.originalname}`);
       fileName = req.file.filename || req.file.originalname;
     }
@@ -89,14 +90,14 @@ export async function handleFileUpload(req: Request, res: Response): Promise<voi
       type: req.file.mimetype
     });
   } catch (error) {
-    console.error("File upload error:", error);
+    logger.error("File upload error:", error);
     
     // Clean up uploaded file on error (development only)
     if (req.file && (req.file as any).path) {
       try {
         fs.unlinkSync((req.file as any).path);
       } catch (e) {
-        console.error('Error cleaning up file:', e);
+        logger.error('Error cleaning up file:', e);
       }
     }
     
@@ -123,7 +124,7 @@ export async function handleMultipleFileUpload(req: Request, res: Response): Pro
             try {
               fs.unlinkSync((file as any).path);
             } catch (e) {
-              console.error('Error cleaning up file:', e);
+              logger.error('Error cleaning up file:', e);
             }
           }
         });
@@ -142,7 +143,7 @@ export async function handleMultipleFileUpload(req: Request, res: Response): Pro
 
     // Use Cloudflare R2 when configured (works in both production and development)
     const r2Available = isR2Configured();
-    console.log(`📦 handleMultipleFileUpload: R2 configured = ${r2Available}`);
+    logger.info(`📦 handleMultipleFileUpload: R2 configured = ${r2Available}`);
 
     // Process each file
     for (const [fieldname, fileArray] of Object.entries(files)) {
@@ -154,21 +155,21 @@ export async function handleMultipleFileUpload(req: Request, res: Response): Pro
 
         try {
           if (r2Available) {
-            console.log(`☁️ Uploading ${fieldname} to R2...`);
+            logger.info(`☁️ Uploading ${fieldname} to R2...`);
             uploadedFiles[fieldname] = await uploadToBlob(file, userId, folder);
-            console.log(`✅ ${fieldname} uploaded: ${uploadedFiles[fieldname]}`);
+            logger.info(`✅ ${fieldname} uploaded: ${uploadedFiles[fieldname]}`);
           } else {
             uploadedFiles[fieldname] = getFileUrl(file.filename || `${userId}_${Date.now()}_${file.originalname}`);
           }
         } catch (error) {
-          console.error(`Error uploading ${fieldname}:`, error);
+          logger.error(`Error uploading ${fieldname}:`, error);
           // Clean up uploaded files on error
           Object.values(files).flat().forEach(f => {
             if ((f as any).path) {
               try {
                 fs.unlinkSync((f as any).path);
               } catch (e) {
-                console.error('Error cleaning up file:', e);
+                logger.error('Error cleaning up file:', e);
               }
             }
           });
@@ -186,7 +187,7 @@ export async function handleMultipleFileUpload(req: Request, res: Response): Pro
       files: uploadedFiles
     });
   } catch (error) {
-    console.error("Multiple file upload error:", error);
+    logger.error("Multiple file upload error:", error);
     
     // Clean up uploaded files on error
     if (req.files) {
@@ -196,7 +197,7 @@ export async function handleMultipleFileUpload(req: Request, res: Response): Pro
           try {
             fs.unlinkSync((file as any).path);
           } catch (e) {
-            console.error('Error cleaning up file:', e);
+            logger.error('Error cleaning up file:', e);
           }
         }
       });

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, AlertCircle, MessageCircle } from 'lucide-react';
@@ -157,7 +158,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
                 failedLocationIds.current.add(conv.locationId);
               }
             } catch (error) {
-              console.error(`Error fetching location ${conv.locationId}:`, error);
+              logger.error(`Error fetching location ${conv.locationId}:`, error);
               locations[conv.locationId] = `Location #${conv.locationId}`;
               failedLocationIds.current.add(conv.locationId);
             }
@@ -169,7 +170,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
         setLocationNames(prev => ({ ...prev, ...locations }));
         setPartnerNames(prev => ({ ...prev, ...partners }));
       } catch (err) {
-        console.error('Error in fetchApplicationDetails:', err);
+        logger.error('Error in fetchApplicationDetails:', err);
       }
     };
 

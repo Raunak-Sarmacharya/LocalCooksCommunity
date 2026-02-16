@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Stripe Connect Refresh Page
  * 
@@ -78,7 +79,7 @@ export default function StripeConnectRefresh() {
           throw new Error('No onboarding URL returned');
         }
       } catch (error) {
-        console.error('Error generating new Stripe link:', error);
+        logger.error('Error generating new Stripe link:', error);
         setStatus('error');
         setErrorMessage(error instanceof Error ? error.message : 'Failed to continue setup');
       }

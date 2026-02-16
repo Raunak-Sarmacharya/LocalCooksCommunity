@@ -1,3 +1,4 @@
+import { logger } from "../../logger";
 import { Router, Request, Response } from 'express';
 import { requireFirebaseAuthWithUser, requireAdmin } from '../../firebase-auth-middleware';
 import { db } from '../../db';
@@ -25,7 +26,7 @@ router.get('/platform-settings/stripe-fees', async (req: Request, res: Response)
             platformCommissionDisplay: `${(config.platformCommissionRate * 100).toFixed(1)}%`,
         });
     } catch (error) {
-        console.error('Error getting Stripe fee config:', error);
+        logger.error('Error getting Stripe fee config:', error);
         // Return defaults on error
         return res.json({
             stripePercentageFee: 0.029,
@@ -70,7 +71,7 @@ router.get('/platform-settings/service-fee-rate', async (req: Request, res: Resp
             description: 'Platform service fee rate as decimal (e.g., 0.05 for 5%). Admin configurable.',
         });
     } catch (error) {
-        console.error('Error getting service fee rate:', error);
+        logger.error('Error getting service fee rate:', error);
         res.status(500).json({
             error: 'Failed to get service fee rate',
             message: error instanceof Error ? error.message : 'Unknown error'
@@ -111,7 +112,7 @@ router.get('/admin/platform-settings/service-fee-rate', requireFirebaseAuthWithU
             description: 'Platform service fee rate as decimal (e.g., 0.05 for 5%). Admin configurable.',
         });
     } catch (error) {
-        console.error('Error getting service fee rate:', error);
+        logger.error('Error getting service fee rate:', error);
         res.status(500).json({
             error: 'Failed to get service fee rate',
             message: error instanceof Error ? error.message : 'Unknown error'
@@ -191,7 +192,7 @@ router.put('/admin/platform-settings/service-fee-rate', requireFirebaseAuthWithU
             });
         }
     } catch (error) {
-        console.error('Error updating service fee rate:', error);
+        logger.error('Error updating service fee rate:', error);
         res.status(500).json({
             error: 'Failed to update service fee rate',
             message: error instanceof Error ? error.message : 'Unknown error'
@@ -233,7 +234,7 @@ router.get('/platform-settings/overstay-penalties', async (req: Request, res: Re
             description: 'Platform default overstay penalty settings. Managers can override per storage listing.',
         });
     } catch (error) {
-        console.error('Error getting overstay penalty defaults:', error);
+        logger.error('Error getting overstay penalty defaults:', error);
         // Return defaults on error
         return res.json({
             gracePeriodDays: 3,
@@ -292,7 +293,7 @@ router.get('/admin/platform-settings/overstay-penalties', requireFirebaseAuthWit
             },
         });
     } catch (error) {
-        console.error('Error getting overstay penalty settings:', error);
+        logger.error('Error getting overstay penalty settings:', error);
         res.status(500).json({ error: 'Failed to get overstay penalty settings' });
     }
 });
@@ -365,7 +366,7 @@ router.put('/admin/platform-settings/overstay-penalties', requireFirebaseAuthWit
             results,
         });
     } catch (error) {
-        console.error('Error updating overstay penalty defaults:', error);
+        logger.error('Error updating overstay penalty defaults:', error);
         res.status(500).json({ error: 'Failed to update overstay penalty defaults' });
     }
 });

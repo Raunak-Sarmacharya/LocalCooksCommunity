@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { useChefApprovedKitchens, useChefKitchenApplicationsStatus } from "@/hooks/use-chef-kitchen-applications";
@@ -134,7 +135,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       };
     }
   } catch (error) {
-    console.error("Error getting Firebase token:", error);
+    logger.error("Error getting Firebase token:", error);
   }
   return {};
 }
@@ -195,7 +196,7 @@ export default function KitchenComparisonPage() {
   );
   const approvedLocationIds = new Set(approvedLocations.map((loc) => loc.id));
 
-  console.log('[KitchenComparisonPage] Approved location IDs:', Array.from(approvedLocationIds));
+  logger.info('[KitchenComparisonPage] Approved location IDs:', Array.from(approvedLocationIds));
 
   // Get pending applications (inReview status)
   const pendingApplications = applications.filter((a) => a.status === "inReview");
@@ -233,7 +234,7 @@ export default function KitchenComparisonPage() {
       }
 
       const kitchens = await response.json();
-      console.log('[KitchenComparisonPage] Fetched kitchens:', kitchens.length, 'kitchens');
+      logger.info('[KitchenComparisonPage] Fetched kitchens:', kitchens.length, 'kitchens');
 
       // Filter kitchens to only include those from approved locations
       const filtered = (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
@@ -241,7 +242,7 @@ export default function KitchenComparisonPage() {
         return approvedLocationIds.has(locationId);
       });
 
-      console.log('[KitchenComparisonPage] Filtered to approved locations:', filtered.length, 'kitchens');
+      logger.info('[KitchenComparisonPage] Filtered to approved locations:', filtered.length, 'kitchens');
 
       return filtered.map((k: any) => {
         const locationId = k.locationId ?? k.location_id;
@@ -289,7 +290,7 @@ export default function KitchenComparisonPage() {
       }
 
       const kitchens = await response.json();
-      console.log('[KitchenComparisonPage] Fetched kitchens for available to apply:', kitchens.length, 'kitchens');
+      logger.info('[KitchenComparisonPage] Fetched kitchens for available to apply:', kitchens.length, 'kitchens');
 
       // Filter to locations chef hasn't applied to yet
       const notAppliedLocationIds = (publicLocations || [])
@@ -361,7 +362,7 @@ export default function KitchenComparisonPage() {
             };
           }
         } catch (error) {
-          console.error(`Failed to fetch equipment for kitchen ${k.id}:`, error);
+          logger.error(`Failed to fetch equipment for kitchen ${k.id}:`, error);
         }
 
         // Fetch storage listings
@@ -391,7 +392,7 @@ export default function KitchenComparisonPage() {
             }));
           }
         } catch (error) {
-          console.error(`Failed to fetch storage for kitchen ${k.id}:`, error);
+          logger.error(`Failed to fetch storage for kitchen ${k.id}:`, error);
         }
 
         return {
@@ -428,7 +429,7 @@ export default function KitchenComparisonPage() {
       }
 
       const kitchens = await response.json();
-      console.log('[KitchenComparisonPage] Fetched kitchens for pending locations:', kitchens.length, 'kitchens');
+      logger.info('[KitchenComparisonPage] Fetched kitchens for pending locations:', kitchens.length, 'kitchens');
 
       // Filter to locations with pending applications
       return (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
@@ -480,7 +481,7 @@ export default function KitchenComparisonPage() {
       }
 
       const kitchens = await response.json();
-      console.log('[KitchenComparisonPage] Fetched kitchens for rejected locations:', kitchens.length, 'kitchens');
+      logger.info('[KitchenComparisonPage] Fetched kitchens for rejected locations:', kitchens.length, 'kitchens');
 
       // Filter to locations with rejected/cancelled applications
       return (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
@@ -559,7 +560,7 @@ export default function KitchenComparisonPage() {
             };
           }
         } catch (error) {
-          console.error(`Failed to fetch equipment for kitchen ${kitchen.id}:`, error);
+          logger.error(`Failed to fetch equipment for kitchen ${kitchen.id}:`, error);
         }
 
         // Fetch storage
@@ -589,7 +590,7 @@ export default function KitchenComparisonPage() {
             }));
           }
         } catch (error) {
-          console.error(`Failed to fetch storage for kitchen ${kitchen.id}:`, error);
+          logger.error(`Failed to fetch storage for kitchen ${kitchen.id}:`, error);
         }
 
         return {
@@ -666,7 +667,7 @@ export default function KitchenComparisonPage() {
               };
             }
           } catch (error) {
-            console.error(`Failed to fetch equipment for kitchen ${kitchen.id}:`, error);
+            logger.error(`Failed to fetch equipment for kitchen ${kitchen.id}:`, error);
           }
 
           // Fetch storage listings
@@ -696,7 +697,7 @@ export default function KitchenComparisonPage() {
               }));
             }
           } catch (error) {
-            console.error(`Failed to fetch storage for kitchen ${kitchen.id}:`, error);
+            logger.error(`Failed to fetch storage for kitchen ${kitchen.id}:`, error);
           }
 
           return {
@@ -707,7 +708,7 @@ export default function KitchenComparisonPage() {
             storage,
           };
         } catch (error) {
-          console.error(`Failed to fetch data for kitchen ${kitchen.id}:`, error);
+          logger.error(`Failed to fetch data for kitchen ${kitchen.id}:`, error);
           return kitchen;
         }
       });
@@ -776,7 +777,7 @@ export default function KitchenComparisonPage() {
     };
   }).filter((loc) => loc.kitchens.length > 0);
 
-  console.log('[KitchenComparisonPage] Approved locations with kitchens:', approvedLocationsWithKitchens.length);
+  logger.info('[KitchenComparisonPage] Approved locations with kitchens:', approvedLocationsWithKitchens.length);
 
   // Group pending application kitchens by location
   const pendingApplicationLocations: (LocationWithKitchens & { isApproved: boolean; applicationStatus?: string })[] =
@@ -859,7 +860,7 @@ export default function KitchenComparisonPage() {
     ...availableToApplyLocations,
   ];
 
-  console.log('[KitchenComparisonPage] All locations with kitchens:', {
+  logger.info('[KitchenComparisonPage] All locations with kitchens:', {
     approved: approvedLocationsWithKitchens.length,
     pending: pendingApplicationLocations.length,
     rejected: rejectedApplicationLocations.length,
@@ -921,12 +922,12 @@ export default function KitchenComparisonPage() {
     // Find the application for this location
     const application = applications.find((a) => a.locationId === location.id);
     if (!application) {
-      console.error('No application found for location:', location.id);
+      logger.error('No application found for location:', location.id);
       return;
     }
 
     if (!user) {
-      console.error('No user found');
+      logger.error('No user found');
       return;
     }
 
@@ -975,7 +976,7 @@ export default function KitchenComparisonPage() {
         const managerId = managerIdVal ? Number(managerIdVal) : 0;
 
         if (!managerId) {
-          console.error("Manager ID missing from application or location", { appLocation: appWithManager.location, location });
+          logger.error("Manager ID missing from application or location", { appLocation: appWithManager.location, location });
           toast.error("Cannot start chat: Manager information missing");
           setIsCreatingChat(false);
           return;
@@ -997,7 +998,7 @@ export default function KitchenComparisonPage() {
         setShowChatDialog(true);
       }
     } catch (error) {
-      console.error("Failed to open conversation:", error);
+      logger.error("Failed to open conversation:", error);
       toast.error("Failed to start conversation");
     } finally {
       setIsCreatingChat(false);

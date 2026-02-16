@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import React, { useState, useMemo } from "react";
 import { Info, Plus, CheckCircle, Loader2, Search, Package, Thermometer, Snowflake, Check, PlusCircle, SearchX, ChevronDown, ChevronUp, X, DollarSign, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -226,7 +227,7 @@ export default function StorageListingsStep() {
         if (!response.ok) throw new Error("Failed to create storage listing");
         successCount++;
       } catch (error) {
-        console.error('Error creating storage listing:', error);
+        logger.error('Error creating storage listing:', error);
         errorCount++;
       }
     }

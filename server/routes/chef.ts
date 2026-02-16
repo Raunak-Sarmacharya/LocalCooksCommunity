@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import { Router, Request, Response } from "express";
 import { inventoryService } from "../domains/inventory/inventory.service";
 import { locationService } from "../domains/locations/location.service";
@@ -23,7 +24,7 @@ const router = Router();
 
 // Create Stripe Connect account for chef
 router.post("/stripe-connect/create", requireChef, async (req: Request, res: Response) => {
-    console.log('[Chef Stripe Connect] Create request received for chef:', req.neonUser?.id);
+    logger.info('[Chef Stripe Connect] Create request received for chef:', req.neonUser?.id);
     try {
         const chefId = req.neonUser!.id;
 
@@ -38,7 +39,7 @@ router.post("/stripe-connect/create", requireChef, async (req: Request, res: Res
         const userRow = userResult.rows ? userResult.rows[0] : (userResult as any)[0];
 
         if (!userRow) {
-            console.error('[Chef Stripe Connect] User not found for ID:', chefId);
+            logger.error('[Chef Stripe Connect] User not found for ID:', chefId);
             return res.status(404).json({ error: "User not found" });
         }
 
@@ -67,7 +68,7 @@ router.post("/stripe-connect/create", requireChef, async (req: Request, res: Res
         }
 
         // Case 2: No account, create one
-        console.log('[Chef Stripe Connect] Creating new account for email:', user.email);
+        logger.info('[Chef Stripe Connect] Creating new account for email:', user.email);
         const { accountId } = await createConnectAccount({
             managerId: chefId, // Using managerId field for consistency with service
             email: user.email,
@@ -83,7 +84,7 @@ router.post("/stripe-connect/create", requireChef, async (req: Request, res: Res
         return res.json({ url: link.url });
 
     } catch (error) {
-        console.error('[Chef Stripe Connect] Error in create route:', error);
+        logger.error('[Chef Stripe Connect] Error in create route:', error);
         return errorResponse(res, error);
     }
 });
@@ -113,7 +114,7 @@ router.get("/stripe-connect/onboarding-link", requireChef, async (req: Request, 
         const link = await createAccountLink(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
         return res.json({ url: link.url });
     } catch (error) {
-        console.error('[Chef Stripe Connect] Error in onboarding-link route:', error);
+        logger.error('[Chef Stripe Connect] Error in onboarding-link route:', error);
         return errorResponse(res, error);
     }
 });
@@ -153,7 +154,7 @@ router.get("/stripe-connect/dashboard-link", requireChef, async (req: Request, r
         }
 
     } catch (error) {
-        console.error('[Chef Stripe Connect] Error in dashboard-link route:', error);
+        logger.error('[Chef Stripe Connect] Error in dashboard-link route:', error);
         return errorResponse(res, error);
     }
 });
@@ -223,7 +224,7 @@ router.get("/kitchens/:kitchenId/equipment-listings", requireChef, async (req: R
         const includedEquipment = visibleListings.filter((l: any) => l.availabilityType === 'included');
         const rentalEquipment = visibleListings.filter((l: any) => l.availabilityType === 'rental');
 
-        console.log(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings (chef.ts) - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
+        logger.info(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings (chef.ts) - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
 
         // Return categorized format expected by frontend
         res.json({
@@ -232,7 +233,7 @@ router.get("/kitchens/:kitchenId/equipment-listings", requireChef, async (req: R
             rental: rentalEquipment
         });
     } catch (error: any) {
-        console.error("Error getting equipment listings for chef:", error);
+        logger.error("Error getting equipment listings for chef:", error);
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
     }
 });
@@ -253,7 +254,7 @@ router.get("/locations", requireChef, async (req: Request, res: Response) => {
             locationIdsWithKitchens.has(location.id)
         );
 
-        console.log(`[API] /api/chef/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);
+        logger.info(`[API] /api/chef/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);
 
         const { normalizeImageUrl } = await import('./utils');
         const normalizedLocations = locationsWithKitchens.map((location: any) => ({
@@ -264,7 +265,7 @@ router.get("/locations", requireChef, async (req: Request, res: Response) => {
 
         res.json(normalizedLocations);
     } catch (error: any) {
-        console.error("Error fetching locations:", error);
+        logger.error("Error fetching locations:", error);
         res.status(500).json({ error: "Failed to fetch locations" });
     }
 });
@@ -409,7 +410,7 @@ router.get("/invoices/storage/:storageBookingId", requireChef, async (req: Reque
         res.setHeader('Content-Disposition', `attachment; filename="storage-invoice-${storageBookingId}.pdf"`);
         res.send(pdfBuffer);
     } catch (error) {
-        console.error('[Chef Invoice] Error downloading storage invoice:', error);
+        logger.error('[Chef Invoice] Error downloading storage invoice:', error);
         return errorResponse(res, error);
     }
 });
@@ -596,7 +597,7 @@ router.get("/invoices/overstay/:overstayRecordId", requireChef, async (req: Requ
         res.setHeader('Content-Disposition', `attachment; filename="overstay-invoice-${overstayRecordId}.pdf"`);
         res.send(pdfBuffer);
     } catch (error) {
-        console.error('[Chef Invoice] Error downloading overstay invoice:', error);
+        logger.error('[Chef Invoice] Error downloading overstay invoice:', error);
         return errorResponse(res, error);
     }
 });
@@ -685,7 +686,7 @@ router.get("/transactions", requireChef, async (req: Request, res: Response) => 
 
         res.json({ transactions: formattedTransactions, total });
     } catch (error) {
-        console.error('[Chef Transactions] Error:', error);
+        logger.error('[Chef Transactions] Error:', error);
         return errorResponse(res, error);
     }
 });

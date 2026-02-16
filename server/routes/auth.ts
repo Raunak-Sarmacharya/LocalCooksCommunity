@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import { Router, Request, Response } from "express";
 import crypto from 'crypto';
 import { db } from '../db';
@@ -57,18 +58,18 @@ router.post("/send-verification-email", async (req: Request, res: Response) => {
     });
 
     if (emailSent) {
-      console.log(`Email verification sent to ${email}`);
+      logger.info(`Email verification sent to ${email}`);
       return res.status(200).json({
         message: "Verification email sent successfully"
       });
     } else {
-      console.error(`Failed to send verification email to ${email}`);
+      logger.error(`Failed to send verification email to ${email}`);
       return res.status(500).json({
         message: "Error sending verification email. Please try again later."
       });
     }
   } catch (error) {
-    console.error("Error sending verification email:", error);
+    logger.error("Error sending verification email:", error);
     return res.status(500).json({
       message: "Internal server error. Please try again later."
     });
@@ -120,7 +121,7 @@ router.get("/verify-email", async (req: Request, res: Response) => {
       .delete(emailVerificationTokens)
       .where(eq(emailVerificationTokens.token, token));
 
-    console.log(`Email verified successfully: ${email}`);
+    logger.info(`Email verified successfully: ${email}`);
 
     // ENTERPRISE: Send welcome email ONLY if not already sent (idempotency check)
     // This prevents duplicate welcome emails if user verifies through multiple paths
@@ -141,20 +142,20 @@ router.get("/verify-email", async (req: Request, res: Response) => {
             .update(users)
             .set({ welcomeEmailSentAt: new Date() })
             .where(eq(users.username, email));
-          console.log(`✅ Welcome email sent to verified user: ${email}`);
+          logger.info(`✅ Welcome email sent to verified user: ${email}`);
         }
       } catch (error) {
-        console.error("Error sending welcome email in legacy verification:", error);
+        logger.error("Error sending welcome email in legacy verification:", error);
       }
     } else {
-      console.log(`ℹ️ Welcome email already sent to ${email} - skipping duplicate`);
+      logger.info(`ℹ️ Welcome email already sent to ${email} - skipping duplicate`);
     }
 
     // Redirect to success page
     return res.redirect(`${getWebsiteUrl()}/auth?verified=true`);
 
   } catch (error) {
-    console.error("Error in email verification:", error);
+    logger.error("Error in email verification:", error);
     return res.status(500).json({
       message: "Internal server error. Please try again later."
     });
@@ -173,7 +174,7 @@ router.post('/seen-welcome', async (req, res) => {
     await storage.setUserHasSeenWelcome(user.id);
     res.json({ success: true });
   } catch (error) {
-    console.error('Error setting has_seen_welcome:', error);
+    logger.error('Error setting has_seen_welcome:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

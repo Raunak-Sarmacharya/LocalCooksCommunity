@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import {
   collection,
   doc,
@@ -54,7 +55,7 @@ export async function createConversation(
     // First check if a conversation already exists for this application
     const existingConversation = await getConversationForApplication(applicationId);
     if (existingConversation) {
-      console.log('Using existing conversation:', existingConversation.id);
+      logger.info('Using existing conversation:', existingConversation.id);
 
       // If the existing conversation is missing IDs (legacy data), update it
       const updates: any = {};
@@ -66,7 +67,7 @@ export async function createConversation(
       }
 
       if (Object.keys(updates).length > 0) {
-        console.log('Healing existing conversation with missing IDs:', updates);
+        logger.info('Healing existing conversation with missing IDs:', updates);
         const conversationRef = doc(db, 'conversations', existingConversation.id);
         await updateDoc(conversationRef, updates);
       }
@@ -85,10 +86,10 @@ export async function createConversation(
       unreadManagerCount: 0,
     });
 
-    console.log('Created new conversation:', conversationRef.id);
+    logger.info('Created new conversation:', conversationRef.id);
     return conversationRef.id;
   } catch (error) {
-    console.error('Error creating conversation:', error);
+    logger.error('Error creating conversation:', error);
     throw error;
   }
 }
@@ -107,7 +108,7 @@ export async function getConversation(conversationId: string): Promise<Conversat
       ...conversationDoc.data(),
     } as Conversation;
   } catch (error) {
-    console.error('Error getting conversation:', error);
+    logger.error('Error getting conversation:', error);
     throw error;
   }
 }
@@ -132,7 +133,7 @@ export async function getConversationForApplication(applicationId: number): Prom
       ...doc.data(),
     } as Conversation;
   } catch (error) {
-    console.error('Error getting conversation for application:', error);
+    logger.error('Error getting conversation for application:', error);
     throw error;
   }
 }
@@ -171,11 +172,11 @@ export async function sendMessage(
     try {
       await currentUser.getIdToken(); // Ensure valid token without forcing refresh
     } catch (authError) {
-      console.error('Auth token error:', authError);
+      logger.error('Auth token error:', authError);
       throw new Error('Authentication failed. Please refresh the page and try again.');
     }
 
-    console.log('Creating message document...', {
+    logger.info('Creating message document...', {
       conversationId,
       senderId,
       senderRole,
@@ -200,7 +201,7 @@ export async function sendMessage(
       }
     );
 
-    console.log('Message document created:', messageRef.id);
+    logger.info('Message document created:', messageRef.id);
 
     // Update conversation's lastMessageAt and unread counts
     const conversationRef = doc(db, 'conversations', conversationId);
@@ -208,7 +209,7 @@ export async function sendMessage(
     // Get current conversation to read current unread counts atomically
     const conversation = await getConversation(conversationId);
     if (!conversation) {
-      console.warn('Conversation not found, but message was created:', conversationId);
+      logger.warn('Conversation not found, but message was created:', conversationId);
       // Message was created, but conversation update might fail - that's okay
       return messageRef.id;
     }
@@ -227,27 +228,27 @@ export async function sendMessage(
     // Self-healing: Update managerId or chefId if missing/incorrect on the conversation
     // This fixes legacy conversations where managerId might be 0 or undefined
     if (senderRole === 'manager' && (!conversation.managerId || conversation.managerId !== senderId)) {
-      console.log('Self-healing managerId on conversation:', conversationId, 'from', conversation.managerId, 'to', senderId);
+      logger.info('Self-healing managerId on conversation:', conversationId, 'from', conversation.managerId, 'to', senderId);
       updateData.managerId = senderId;
     }
     if (senderRole === 'chef' && (!conversation.chefId || conversation.chefId !== senderId)) {
-      console.log('Self-healing chefId on conversation:', conversationId, 'from', conversation.chefId, 'to', senderId);
+      logger.info('Self-healing chefId on conversation:', conversationId, 'from', conversation.chefId, 'to', senderId);
       updateData.chefId = senderId;
     }
 
-    console.log('Updating conversation:', updateData);
+    logger.info('Updating conversation:', updateData);
     await updateDoc(conversationRef, updateData);
-    console.log('Conversation updated successfully');
+    logger.info('Conversation updated successfully');
 
     // Note: Notifications are handled by Firebase Cloud Function (onNewChatMessage)
     // which triggers on Firestore message creation and uses the actual sender's name from the database
 
     return messageRef.id;
   } catch (error) {
-    console.error('Error sending message:', error);
+    logger.error('Error sending message:', error);
     // Log more details about the error
     if (error instanceof Error) {
-      console.error('Error details:', {
+      logger.error('Error details:', {
         message: error.message,
         stack: error.stack,
         name: error.name,
@@ -284,7 +285,7 @@ export async function sendSystemMessage(
 
     return messageRef.id;
   } catch (error) {
-    console.error('Error sending system message:', error);
+    logger.error('Error sending system message:', error);
     throw error;
   }
 }
@@ -310,7 +311,7 @@ export async function getMessages(
       } as ChatMessage))
       .reverse(); // Reverse to show oldest first
   } catch (error) {
-    console.error('Error getting messages:', error);
+    logger.error('Error getting messages:', error);
     throw error;
   }
 }
@@ -345,11 +346,11 @@ export function subscribeToMessages(
         })
         .reverse(); // Reverse to show oldest first
 
-      console.log('Calling callback with', messages.length, 'messages');
+      logger.info('Calling callback with', messages.length, 'messages');
       callback(messages);
     },
     (error) => {
-      console.error('Error subscribing to messages:', error);
+      logger.error('Error subscribing to messages:', error);
       if (onError) {
         onError(error);
       }
@@ -396,7 +397,7 @@ export async function markAsRead(
     }
     await updateDoc(conversationRef, updateData);
   } catch (error) {
-    console.error('Error marking messages as read:', error);
+    logger.error('Error marking messages as read:', error);
     throw error;
   }
 }
@@ -427,7 +428,7 @@ export async function uploadChatFile(
     const data = await response.json();
     return data.url;
   } catch (error) {
-    console.error('Error uploading chat file:', error);
+    logger.error('Error uploading chat file:', error);
     throw error;
   }
 }
@@ -455,7 +456,7 @@ export async function getAllConversations(
     try {
       await currentUser.getIdToken(); // Ensure valid token without forcing refresh
     } catch (authError) {
-      console.error('Auth token error:', authError);
+      logger.error('Auth token error:', authError);
       throw new Error('Authentication failed. Please refresh the page and try again.');
     }
 
@@ -517,10 +518,10 @@ export async function getAllConversations(
 
     return uniqueConversations;
   } catch (error) {
-    console.error('Error getting conversations:', error);
+    logger.error('Error getting conversations:', error);
     // Log more details about the error
     if (error instanceof Error) {
-      console.error('Error details:', {
+      logger.error('Error details:', {
         message: error.message,
         stack: error.stack,
         name: error.name,
@@ -557,7 +558,7 @@ export async function getUnreadCount(
 
     return totalUnread;
   } catch (error) {
-    console.error('Error getting unread count:', error);
+    logger.error('Error getting unread count:', error);
     return 0;
   }
 }
@@ -579,12 +580,12 @@ export async function ensureConversationManagerId(
       const data = conversationSnap.data();
       // If managerId is missing or 0 or incorrect, update it
       if (!data.managerId || data.managerId !== managerId) {
-        console.log(`[ChatService] Healing conversation ${conversationId}: Updating managerId from ${data.managerId} to ${managerId}`);
+        logger.info(`[ChatService] Healing conversation ${conversationId}: Updating managerId from ${data.managerId} to ${managerId}`);
         await updateDoc(conversationRef, { managerId });
       }
     }
   } catch (error) {
-    console.error('[ChatService] Error verifying conversation managerId:', error);
+    logger.error('[ChatService] Error verifying conversation managerId:', error);
     // Don't throw, just log - this is a background repair operation
   }
 }

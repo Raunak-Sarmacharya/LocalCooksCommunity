@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 /**
  * Revenue Service V2 - Using Payment Transactions
  * 
@@ -23,7 +24,7 @@ export async function getRevenueMetricsFromTransactions(
     // Build WHERE clause
     // Ensure managerId is valid
     if (managerId === undefined || managerId === null || isNaN(managerId)) {
-        console.error('[Revenue Service V2] Invalid managerId:', managerId);
+        logger.error('[Revenue Service V2] Invalid managerId:', managerId);
         throw new Error('Invalid manager ID');
     }
 
@@ -33,7 +34,7 @@ export async function getRevenueMetricsFromTransactions(
       params.push(locationId);
     }
 
-    console.log('[Revenue Service V2] getRevenueMetricsFromTransactions params:', { managerId, locationId, startDate, endDate });
+    logger.info('[Revenue Service V2] getRevenueMetricsFromTransactions params:', { managerId, locationId, startDate, endDate });
 
     // First, check if payment_transactions table exists and has data for this manager
     const tableCheck = await db.execute(sql`
@@ -47,7 +48,7 @@ export async function getRevenueMetricsFromTransactions(
     const tableExists = tableCheck.rows[0]?.table_exists;
 
     if (!tableExists) {
-      console.log('[Revenue Service V2] payment_transactions table does not exist, will fallback to legacy method');
+      logger.info('[Revenue Service V2] payment_transactions table does not exist, will fallback to legacy method');
       throw new Error('payment_transactions table does not exist');
     }
 
@@ -64,7 +65,7 @@ export async function getRevenueMetricsFromTransactions(
     `);
 
     const transactionCount = parseInt(countCheck.rows[0]?.count || '0');
-    console.log(`[Revenue Service V2] Found ${transactionCount} payment_transactions for manager ${managerId}`);
+    logger.info(`[Revenue Service V2] Found ${transactionCount} payment_transactions for manager ${managerId}`);
 
     // Check how many bookings have payment_transactions vs total bookings
     // If not all bookings have payment_transactions, we should fall back to legacy method
@@ -91,18 +92,18 @@ export async function getRevenueMetricsFromTransactions(
     const totalBookings = parseInt(bookingCountCheck.rows[0]?.total_bookings || '0');
     const bookingsWithTransactions = parseInt(bookingCountCheck.rows[0]?.bookings_with_transactions || '0');
 
-    console.log(`[Revenue Service V2] Booking coverage: ${bookingsWithTransactions}/${totalBookings} bookings have payment_transactions`);
+    logger.info(`[Revenue Service V2] Booking coverage: ${bookingsWithTransactions}/${totalBookings} bookings have payment_transactions`);
 
     // If no transactions found, throw error to trigger fallback
     if (transactionCount === 0) {
-      console.log('[Revenue Service V2] No payment_transactions found, falling back to legacy method');
+      logger.info('[Revenue Service V2] No payment_transactions found, falling back to legacy method');
       throw new Error('No payment_transactions found for manager');
     }
 
     // If not all bookings have payment_transactions, fall back to legacy method
     // This ensures we don't miss bookings that don't have payment_transactions yet
     if (totalBookings > 0 && bookingsWithTransactions < totalBookings) {
-      console.log(`[Revenue Service V2] Incomplete payment_transactions coverage (${bookingsWithTransactions}/${totalBookings}), falling back to legacy method`);
+      logger.info(`[Revenue Service V2] Incomplete payment_transactions coverage (${bookingsWithTransactions}/${totalBookings}), falling back to legacy method`);
       throw new Error('Incomplete payment_transactions coverage');
     }
 
@@ -308,7 +309,7 @@ export async function getRevenueMetricsFromTransactions(
     const storageTax = storageTaxRow.storage_tax_amount != null ? parseInt(String(storageTaxRow.storage_tax_amount)) : 0;
     const combinedTaxAmount = kitchenTax + storageTax;
     
-    console.log('[Revenue Service V2] Tax breakdown:', {
+    logger.info('[Revenue Service V2] Tax breakdown:', {
       kitchenTax,
       storageTax,
       combinedTaxAmount,
@@ -324,7 +325,7 @@ export async function getRevenueMetricsFromTransactions(
     };
 
     // Log the actual values returned for debugging
-    console.log('[Revenue Service V2] Query result:', {
+    logger.info('[Revenue Service V2] Query result:', {
       managerId,
       startDate: startDate ? (typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0]) : 'none',
       endDate: endDate ? (typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0]) : 'none',
@@ -394,7 +395,7 @@ export async function getRevenueMetricsFromTransactions(
     // This ensures "In Your Account" metric reflects actual available funds
     const effectiveCompletedPayments = Math.max(0, completedPayments - refundedAmount);
     
-    console.log('[Revenue Service V2] Fee breakdown:', {
+    logger.info('[Revenue Service V2] Fee breakdown:', {
       grossRevenueRaw,
       refundedAmount,
       totalRevenue,
@@ -430,10 +431,10 @@ export async function getRevenueMetricsFromTransactions(
       refundedAmount: isNaN(refundedAmount) ? 0 : refundedAmount,
     };
 
-    console.log('[Revenue Service V2] Final metrics:', metrics);
+    logger.info('[Revenue Service V2] Final metrics:', metrics);
     return metrics;
   } catch (error) {
-    console.error('Error getting revenue metrics from transactions:', error);
+    logger.error('Error getting revenue metrics from transactions:', error);
     throw error;
   }
 }
@@ -522,7 +523,7 @@ export async function getRevenueByLocationFromTransactions(
       ORDER BY total_revenue DESC
     `);
 
-    console.log(`[Revenue Service V2] Revenue by location: ${result.rows.length} locations found`);
+    logger.info(`[Revenue Service V2] Revenue by location: ${result.rows.length} locations found`);
 
     return result.rows.map((row: any) => {
       const parseNumeric = (value: any): number => {
@@ -547,7 +548,7 @@ export async function getRevenueByLocationFromTransactions(
       };
     });
   } catch (error) {
-    console.error('Error getting revenue by location from transactions:', error);
+    logger.error('Error getting revenue by location from transactions:', error);
     throw error;
   }
 }
@@ -658,7 +659,7 @@ export async function getRevenueByDateFromTransactions(
       ORDER BY date ASC
     `);
 
-    console.log(`[Revenue Service V2] Revenue by date: ${result.rows.length} dates found`);
+    logger.info(`[Revenue Service V2] Revenue by date: ${result.rows.length} dates found`);
 
     return result.rows.map((row: any) => {
       const parseNumeric = (value: any): number => {
@@ -676,7 +677,7 @@ export async function getRevenueByDateFromTransactions(
       };
     });
   } catch (error) {
-    console.error('Error getting revenue by date from transactions:', error);
+    logger.error('Error getting revenue by date from transactions:', error);
     throw error;
   }
 }

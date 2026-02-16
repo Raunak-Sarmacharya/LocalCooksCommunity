@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -54,7 +55,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       };
     }
   } catch (error) {
-    console.error('Error getting Firebase token:', error);
+    logger.error('Error getting Firebase token:', error);
   }
   return {};
 }
@@ -202,8 +203,8 @@ export function useKitchenBookings() {
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Failed to fetch kitchens. Status:', response.status);
-        console.error('❌ Error response:', errorText);
+        logger.error('❌ Failed to fetch kitchens. Status:', response.status);
+        logger.error('❌ Error response:', errorText);
         throw new Error(`Failed to fetch kitchens: ${response.status} ${response.statusText}`);
       }
       

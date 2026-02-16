@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { auth } from '@/lib/firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
@@ -15,7 +16,7 @@ export interface UserExistenceResult {
  */
 export async function checkUserExistsForGoogleAuth(): Promise<UserExistenceResult> {
   try {
-    console.log('🔍 Starting Google user existence check...');
+    logger.info('🔍 Starting Google user existence check...');
     
     // Create a temporary Google sign-in to get user info
     const provider = new GoogleAuthProvider();
@@ -39,7 +40,7 @@ export async function checkUserExistsForGoogleAuth(): Promise<UserExistenceResul
       };
     }
     
-    console.log(`🔍 Checking if user exists in backend: ${email}`);
+    logger.info(`🔍 Checking if user exists in backend: ${email}`);
     
     // Check if user exists in our backend system using /api/user/profile
     const token = await user.getIdToken();
@@ -52,7 +53,7 @@ export async function checkUserExistsForGoogleAuth(): Promise<UserExistenceResul
     
     if (response.ok) {
       // User exists in backend - they can sign in
-      console.log('✅ User exists in backend - can sign in');
+      logger.info('✅ User exists in backend - can sign in');
       return {
         exists: true,
         email,
@@ -61,7 +62,7 @@ export async function checkUserExistsForGoogleAuth(): Promise<UserExistenceResul
       };
     } else if (response.status === 404) {
       // User doesn't exist in backend - they need to register
-      console.log('❌ User does not exist in backend - needs to register');
+      logger.info('❌ User does not exist in backend - needs to register');
       // Sign out the temporary user
       await auth.signOut();
       return {
@@ -72,7 +73,7 @@ export async function checkUserExistsForGoogleAuth(): Promise<UserExistenceResul
       };
     } else {
       // Some other error
-      console.error('❌ Error checking user existence:', response.status);
+      logger.error('❌ Error checking user existence:', response.status);
       await auth.signOut();
       return {
         exists: false,
@@ -84,13 +85,13 @@ export async function checkUserExistsForGoogleAuth(): Promise<UserExistenceResul
     }
     
   } catch (error: any) {
-    console.error('❌ Error in Google user existence check:', error);
+    logger.error('❌ Error in Google user existence check:', error);
     
     // Make sure to sign out any temporary session
     try {
       await auth.signOut();
     } catch (signOutError) {
-      console.error('Error signing out:', signOutError);
+      logger.error('Error signing out:', signOutError);
     }
     
     // Handle specific Firebase errors
@@ -122,7 +123,7 @@ export async function checkUserExistsForGoogleAuth(): Promise<UserExistenceResul
  */
 export async function checkUserExistsByEmail(email: string): Promise<UserExistenceResult> {
   // SECURITY FIX: Always return that email is available to prevent enumeration
-  console.log(`🔒 Email existence check requested for: ${email} (security: always available)`);
+  logger.info(`🔒 Email existence check requested for: ${email} (security: always available)`);
   
   return {
     exists: false,

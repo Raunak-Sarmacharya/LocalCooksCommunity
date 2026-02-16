@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 /**
  * Platform Overstay Defaults Service
  * 
@@ -58,7 +59,7 @@ export async function getOverstayPlatformDefaults(): Promise<OverstayPlatformDef
       maxPenaltyDays: maxDaysSetting ? parseInt(maxDaysSetting.value) : DEFAULTS.maxPenaltyDays,
     };
   } catch (error) {
-    console.error('[OverstayDefaultsService] Error fetching platform defaults:', error);
+    logger.error('[OverstayDefaultsService] Error fetching platform defaults:', error);
     return DEFAULTS;
   }
 }
@@ -91,7 +92,7 @@ export async function getOverstayLocationDefaults(locationId: number): Promise<O
       policyText: location.overstayPolicyText,
     };
   } catch (error) {
-    console.error('[OverstayDefaultsService] Error fetching location defaults:', error);
+    logger.error('[OverstayDefaultsService] Error fetching location defaults:', error);
     return { gracePeriodDays: null, penaltyRate: null, maxPenaltyDays: null, policyText: null };
   }
 }

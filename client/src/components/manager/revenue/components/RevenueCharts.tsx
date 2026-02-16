@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Revenue Charts Component
  * 
@@ -103,13 +104,13 @@ interface RevenueTrendChartProps {
 
 export function RevenueTrendChart({ data, isLoading }: RevenueTrendChartProps) {
     const chartData = useMemo(() => {
-        console.log('[RevenueTrendChart] Raw data:', data);
+        logger.info('[RevenueTrendChart] Raw data:', data);
         const mapped = data.map(item => ({
             date: formatChartDate(item.date),
             totalRevenue: centsToDollars(item.totalRevenue),
             managerRevenue: centsToDollars(item.managerRevenue),
         }));
-        console.log('[RevenueTrendChart] Mapped chartData:', mapped);
+        logger.info('[RevenueTrendChart] Mapped chartData:', mapped);
         return mapped;
     }, [data])
 

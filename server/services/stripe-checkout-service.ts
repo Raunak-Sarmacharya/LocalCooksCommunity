@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 /**
  * Stripe Checkout Service
  * 
@@ -14,7 +15,7 @@ import Stripe from 'stripe';
 // Initialize Stripe client
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 if (!stripeSecretKey) {
-  console.warn('⚠️ STRIPE_SECRET_KEY not found in environment variables');
+  logger.warn('⚠️ STRIPE_SECRET_KEY not found in environment variables');
 }
 
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
@@ -302,14 +303,14 @@ export async function createPendingCheckoutSession(
       throw new Error('Failed to create checkout session URL');
     }
 
-    console.log(`[Stripe Checkout] Created pending checkout session ${session.id} for kitchen ${bookingData.kitchenId}`);
+    logger.info(`[Stripe Checkout] Created pending checkout session ${session.id} for kitchen ${bookingData.kitchenId}`);
 
     return {
       sessionId: session.id,
       sessionUrl: session.url,
     };
   } catch (error: any) {
-    console.error('Error creating Stripe Checkout session:', error);
+    logger.error('Error creating Stripe Checkout session:', error);
     throw new Error(`Failed to create checkout session: ${error.message}`);
   }
 }
@@ -357,7 +358,7 @@ export async function createCheckoutSession(
   // Warn if platform fee is too low to cover Stripe processing fees
   const estimatedStripeFee = Math.round(bookingPriceInCents * 0.029 + 30);
   if (platformFeeInCents > 0 && platformFeeInCents < estimatedStripeFee) {
-    console.warn(
+    logger.warn(
       `[Stripe Checkout] Platform fee (${platformFeeInCents} cents) is less than estimated Stripe fee (${estimatedStripeFee} cents). Platform may lose money on this transaction.`
     );
   }
@@ -463,7 +464,7 @@ export async function createCheckoutSession(
       sessionUrl: session.url,
     };
   } catch (error: any) {
-    console.error('Error creating Stripe Checkout session:', error);
+    logger.error('Error creating Stripe Checkout session:', error);
     throw new Error(`Failed to create checkout session: ${error.message}`);
   }
 }

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useRef, useEffect } from 'react';
 import { X, Loader2, Info, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -111,7 +112,7 @@ export default function ChatPanel({
         }
       }
     } catch (error) {
-      console.error('Failed to send message:', error);
+      logger.error('Failed to send message:', error);
     }
   };
 

@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 /**
  * Stripe Checkout Fee Calculation Service
  * 
@@ -109,11 +110,11 @@ export async function getFeeConfig(): Promise<FeeConfig> {
 
     // Validate configuration
     if (config.stripePercentageFee < 0 || config.stripePercentageFee > 1) {
-      console.warn('Invalid stripe_percentage_fee, using default');
+      logger.warn('Invalid stripe_percentage_fee, using default');
       config.stripePercentageFee = DEFAULT_FEE_CONFIG.stripePercentageFee;
     }
     if (config.platformCommissionRate < 0 || config.platformCommissionRate > 1) {
-      console.warn('Invalid platform_commission_rate, using default');
+      logger.warn('Invalid platform_commission_rate, using default');
       config.platformCommissionRate = DEFAULT_FEE_CONFIG.platformCommissionRate;
     }
 
@@ -122,7 +123,7 @@ export async function getFeeConfig(): Promise<FeeConfig> {
 
     return config;
   } catch (error) {
-    console.error('Error fetching fee config from database, using defaults:', error);
+    logger.error('Error fetching fee config from database, using defaults:', error);
     return DEFAULT_FEE_CONFIG;
   }
 }

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import React, { useMemo, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import {
@@ -211,15 +212,15 @@ export default function CompletionSummaryStep() {
                     });
 
                     if (response.ok) {
-                        console.log('[CompletionSummary] ✅ Onboarding marked as complete');
+                        logger.info('[CompletionSummary] ✅ Onboarding marked as complete');
                         // Invalidate user profile cache so useOnboardingStatus sees the update
                         await queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
                     } else {
-                        console.error('[CompletionSummary] Failed to mark onboarding complete:', response.status);
+                        logger.error('[CompletionSummary] Failed to mark onboarding complete:', response.status);
                     }
                 }
             } catch (error) {
-                console.error('[CompletionSummary] Error marking onboarding complete:', error);
+                logger.error('[CompletionSummary] Error marking onboarding complete:', error);
             } finally {
                 setIsCompletingOnboarding(false);
             }

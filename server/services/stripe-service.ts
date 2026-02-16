@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 /**
  * Stripe Service
  * 
@@ -13,7 +14,7 @@ import Stripe from 'stripe';
 // Initialize Stripe client
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 if (!stripeSecretKey) {
-  console.warn('⚠️ STRIPE_SECRET_KEY not found in environment variables');
+  logger.warn('⚠️ STRIPE_SECRET_KEY not found in environment variables');
 }
 
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
@@ -224,7 +225,7 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       amount: paymentIntent.amount,
     };
   } catch (error: any) {
-    console.error('Error creating PaymentIntent:', error);
+    logger.error('Error creating PaymentIntent:', error);
     throw new Error(`Failed to create payment intent: ${error.message}`);
   }
 }
@@ -252,7 +253,7 @@ export async function confirmPaymentIntent(
       amount: paymentIntent.amount,
     };
   } catch (error: any) {
-    console.error('Error confirming PaymentIntent:', error);
+    logger.error('Error confirming PaymentIntent:', error);
     throw new Error(`Failed to confirm payment intent: ${error.message}`);
   }
 }
@@ -278,7 +279,7 @@ export async function getPaymentIntent(paymentIntentId: string): Promise<Payment
     if (error.code === 'resource_missing') {
       return null;
     }
-    console.error('Error retrieving PaymentIntent:', error);
+    logger.error('Error retrieving PaymentIntent:', error);
     throw new Error(`Failed to retrieve payment intent: ${error.message}`);
   }
 }
@@ -308,7 +309,7 @@ export async function getStripePaymentAmounts(
     });
 
     if (!paymentIntent.latest_charge) {
-      console.warn(`[Stripe] No charge found for PaymentIntent ${paymentIntentId}`);
+      logger.warn(`[Stripe] No charge found for PaymentIntent ${paymentIntentId}`);
       return null;
     }
 
@@ -376,7 +377,7 @@ export async function getStripePaymentAmounts(
       // The charge.updated webhook will sync actual fees when balance_transaction becomes available
       // 
       // Retry logic: wait briefly and retry once for balance_transaction
-      console.log(`[Stripe] balance_transaction not immediately available for ${paymentIntentId}, retrying in 2s...`);
+      logger.info(`[Stripe] balance_transaction not immediately available for ${paymentIntentId}, retrying in 2s...`);
       
       await new Promise(resolve => setTimeout(resolve, 2000));
       
@@ -401,11 +402,11 @@ export async function getStripePaymentAmounts(
           stripeNetAmount = stripeAmount - stripeProcessingFee;
         }
         
-        console.log(`[Stripe] ✅ Retry successful - got actual fee: ${stripeProcessingFee} cents`);
+        logger.info(`[Stripe] ✅ Retry successful - got actual fee: ${stripeProcessingFee} cents`);
       } else {
         // Still not available - leave fees as 0, charge.updated webhook will sync later
         // This is the enterprise-grade approach: never estimate, always use actual data
-        console.log(`[Stripe] balance_transaction still not available for ${paymentIntentId} - charge.updated webhook will sync fees`);
+        logger.info(`[Stripe] balance_transaction still not available for ${paymentIntentId} - charge.updated webhook will sync fees`);
         stripeProcessingFee = 0; // Will be synced by charge.updated webhook
         
         // If using Connect, we can still get the platform fee from the payment intent
@@ -425,7 +426,7 @@ export async function getStripePaymentAmounts(
       chargeId,
     };
   } catch (error: any) {
-    console.error(`[Stripe] Error fetching payment amounts for ${paymentIntentId}:`, error);
+    logger.error(`[Stripe] Error fetching payment amounts for ${paymentIntentId}:`, error);
     return null;
   }
 }
@@ -481,7 +482,7 @@ export async function capturePaymentIntent(
       amount: paymentIntent.amount,
     };
   } catch (error: any) {
-    console.error('Error capturing PaymentIntent:', error);
+    logger.error('Error capturing PaymentIntent:', error);
     throw new Error(`Failed to capture payment intent: ${error.message}`);
   }
 }
@@ -516,7 +517,7 @@ export async function cancelPaymentIntent(paymentIntentId: string): Promise<Paym
       amount: paymentIntent.amount,
     };
   } catch (error: any) {
-    console.error('Error canceling PaymentIntent:', error);
+    logger.error('Error canceling PaymentIntent:', error);
     throw new Error(`Failed to cancel payment intent: ${error.message}`);
   }
 }
@@ -606,7 +607,7 @@ export async function createRefund(
       charge: refundChargeId,
     };
   } catch (error: any) {
-    console.error('Error creating refund:', error);
+    logger.error('Error creating refund:', error);
     throw new Error(`Failed to create refund: ${error.message}`);
   }
 }
@@ -760,7 +761,7 @@ export async function reverseTransferAndRefund(
       transferReversalId: reversal.id,
     };
   } catch (error: any) {
-    console.error('Error reversing transfer and refunding:', error);
+    logger.error('Error reversing transfer and refunding:', error);
     throw new Error(`Failed to reverse transfer and refund: ${error.message}`);
   }
 }
@@ -801,7 +802,7 @@ export async function verifyPaymentIntentForBooking(
     // Allow small rounding differences (up to 5 cents) due to service fee calculations
     const amountDifference = Math.abs(paymentIntent.amount - amountToCompare);
     if (amountDifference > 5) {
-      console.error('Payment amount mismatch:', {
+      logger.error('Payment amount mismatch:', {
         paymentIntentAmount: paymentIntent.amount,
         expectedAmount: amountToCompare,
         storedExpectedAmount,
@@ -827,7 +828,7 @@ export async function verifyPaymentIntentForBooking(
 
     return { valid: true, status: paymentIntent.status };
   } catch (error: any) {
-    console.error('Error verifying PaymentIntent:', error);
+    logger.error('Error verifying PaymentIntent:', error);
     if (error.code === 'resource_missing') {
       return { valid: false, status: 'not_found', error: 'Payment intent not found' };
     }

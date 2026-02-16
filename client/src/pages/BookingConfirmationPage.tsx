@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, ArrowLeft, CreditCard, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -185,7 +186,7 @@ export default function BookingConfirmationPage() {
           }
         }
       } catch (error) {
-        console.error('Error fetching kitchen data:', error);
+        logger.error('Error fetching kitchen data:', error);
       } finally {
         if (!isCancelled) {
           setIsLoadingAddons(false);

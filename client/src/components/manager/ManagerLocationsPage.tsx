@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Building2, Search, Filter, RefreshCw } from "lucide-react";
@@ -36,7 +37,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
         'Authorization': `Bearer ${freshToken}`,
       };
     } catch (error) {
-      console.error('Error getting Firebase token:', error);
+      logger.error('Error getting Firebase token:', error);
     }
   }
 

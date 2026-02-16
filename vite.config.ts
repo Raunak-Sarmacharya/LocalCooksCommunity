@@ -1,5 +1,6 @@
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import react from "@vitejs/plugin-react";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import path from "path";
 import { defineConfig } from "vite";
 
@@ -13,6 +14,23 @@ export default defineConfig({
           await import("@replit/vite-plugin-cartographer").then((m) =>
             m.cartographer(),
           ),
+        ]
+      : []),
+    // Sentry source map upload — only runs during Vercel builds when SENTRY_AUTH_TOKEN is set
+    // Uploads source maps to Sentry for readable stack traces, then deletes them from the bundle
+    ...(process.env.SENTRY_AUTH_TOKEN
+      ? [
+          sentryVitePlugin({
+            org: process.env.SENTRY_ORG,
+            project: process.env.SENTRY_PROJECT,
+            authToken: process.env.SENTRY_AUTH_TOKEN,
+            release: {
+              name: process.env.VERCEL_GIT_COMMIT_SHA,
+            },
+            sourcemaps: {
+              filesToDeleteAfterUpload: ['./dist/public/assets/*.map'],
+            },
+          }),
         ]
       : []),
   ],
@@ -119,6 +137,8 @@ export default defineConfig({
     },
     chunkSizeWarningLimit: 1000,
     target: 'esnext',
-    sourcemap: false
+    // Source maps: enabled when SENTRY_AUTH_TOKEN is present (Sentry uploads them then deletes)
+    // Disabled otherwise to keep bundle size small
+    sourcemap: !!process.env.SENTRY_AUTH_TOKEN
   },
 });

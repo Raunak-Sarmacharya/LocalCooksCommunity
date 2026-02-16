@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChefKitchenApplication } from "@shared/schema";
 import { useFirebaseAuth } from "./use-auth";
@@ -46,7 +47,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       };
     }
   } catch (error) {
-    console.error("Error getting Firebase token:", error);
+    logger.error("Error getting Firebase token:", error);
   }
   return {};
 }

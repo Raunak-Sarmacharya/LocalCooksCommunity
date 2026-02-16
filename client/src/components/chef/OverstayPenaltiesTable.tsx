@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Overstay Penalties Table Component
  * 
@@ -96,7 +97,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       };
     }
   } catch (error) {
-    console.error('Error getting Firebase token:', error);
+    logger.error('Error getting Firebase token:', error);
   }
   return {
     'Content-Type': 'application/json',

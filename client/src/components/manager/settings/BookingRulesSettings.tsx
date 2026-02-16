@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Booking Rules Settings Component
  * Manages cancellation policy, booking limits, minimum window, and overstay penalties
@@ -93,7 +94,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
         setMinimumBookingHours(mapped[0].minimumBookingHours);
       }
     } catch (error) {
-      console.error('Error fetching kitchens:', error);
+      logger.error('Error fetching kitchens:', error);
     } finally {
       setIsLoadingKitchens(false);
     }
@@ -148,7 +149,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
       setOverstayMaxPenaltyDays(data.locationDefaults.maxPenaltyDays);
       setOverstayPolicyText(data.locationDefaults.policyText || '');
     } catch (error: any) {
-      console.error('Error fetching overstay penalty defaults:', error);
+      logger.error('Error fetching overstay penalty defaults:', error);
     } finally {
       setIsLoadingPenaltyDefaults(false);
     }
@@ -221,7 +222,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
         description: "Overstay penalty defaults updated successfully",
       });
     } catch (error: any) {
-      console.error('Error saving overstay penalty defaults:', error);
+      logger.error('Error saving overstay penalty defaults:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to save overstay penalty settings",
@@ -286,7 +287,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
 
       setTermsFile(null);
     } catch (error: any) {
-      console.error('Terms upload error:', error);
+      logger.error('Terms upload error:', error);
       toast({
         title: "Upload Failed",
         description: error.message || "Failed to upload terms",

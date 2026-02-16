@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Redirect, useLocation } from "wouter";
@@ -37,10 +38,10 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
         }
         
         const userData = await response.json();
-        console.log('AdminProtectedRoute - Firebase user data:', userData);
+        logger.info('AdminProtectedRoute - Firebase user data:', userData);
         return userData;
       } catch (error) {
-        console.error('AdminProtectedRoute - Firebase auth error:', error);
+        logger.error('AdminProtectedRoute - Firebase auth error:', error);
         return null;
       }
     },
@@ -58,7 +59,7 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
   const isAdmin = user?.role === 'admin';
 
   // Debug logging
-  console.log('AdminProtectedRoute - Firebase auth state:', {
+  logger.info('AdminProtectedRoute - Firebase auth state:', {
     loading,
     hasFirebaseUser: !!firebaseUser,
     hasProfileUser: !!user,
@@ -70,7 +71,7 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
 
   // Show loading while checking Firebase authentication
   if (loading) {
-    console.log('AdminProtectedRoute - Loading Firebase auth...', {
+    logger.info('AdminProtectedRoute - Loading Firebase auth...', {
       firebaseLoading,
       hasFirebaseUser: !!firebaseUser,
       profileLoading
@@ -88,7 +89,7 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
 
   // If there's an error, show it
   if (error) {
-    console.log('AdminProtectedRoute - Auth error:', error);
+    logger.info('AdminProtectedRoute - Auth error:', error);
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
@@ -105,7 +106,7 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
   }
 
   if (!user) {
-    console.log('AdminProtectedRoute - No Firebase user found, redirecting to admin login', {
+    logger.info('AdminProtectedRoute - No Firebase user found, redirecting to admin login', {
       firebaseUser,
       firebaseLoading
     });
@@ -114,12 +115,12 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
 
   // Check if user has admin role
   if (!isAdmin) {
-    console.log('AdminProtectedRoute - User is not an admin, redirecting to login. User role:', user.role);
-    console.log('AdminProtectedRoute - Full user object:', user);
+    logger.info('AdminProtectedRoute - User is not an admin, redirecting to login. User role:', user.role);
+    logger.info('AdminProtectedRoute - Full user object:', user);
     return <Redirect to="/admin/login" />;
   }
 
-  console.log('AdminProtectedRoute - Admin access granted for user:', {
+  logger.info('AdminProtectedRoute - Admin access granted for user:', {
     username: user.username || user.displayName || user.email,
     role: user.role,
     authMethod: 'firebase'

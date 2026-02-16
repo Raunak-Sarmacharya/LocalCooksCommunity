@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import { Router, Request, Response } from "express";
 
 import { requireFirebaseAuthWithUser, requireManager } from "../firebase-auth-middleware";
@@ -36,7 +37,7 @@ router.get("/manager/kitchens/:kitchenId/storage-listings", requireFirebaseAuthW
         const listings = await inventoryService.getStorageListingsByKitchen(kitchenId);
         res.json(listings);
     } catch (error: any) {
-        console.error("Error getting storage listings:", error);
+        logger.error("Error getting storage listings:", error);
         res.status(500).json({ error: error.message || "Failed to get storage listings" });
     }
 });
@@ -68,7 +69,7 @@ router.get("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, 
 
         res.json(listing);
     } catch (error: any) {
-        console.error("Error getting storage listing:", error);
+        logger.error("Error getting storage listing:", error);
         res.status(500).json({ error: error.message || "Failed to get storage listing" });
     }
 });
@@ -128,10 +129,10 @@ router.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireMan
             isActive: true,
         });
 
-        console.log(`✅ Storage listing created by manager ${user.id}`);
+        logger.info(`✅ Storage listing created by manager ${user.id}`);
         res.status(201).json(created);
     } catch (error: any) {
-        console.error("Error creating storage listing:", error);
+        logger.error("Error creating storage listing:", error);
         res.status(500).json({ error: error.message || "Failed to create storage listing" });
     }
 });
@@ -163,10 +164,10 @@ router.put("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, 
 
         const updated = await inventoryService.updateStorageListing(listingId, req.body);
 
-        console.log(`✅ Storage listing ${listingId} updated by manager ${user.id}`);
+        logger.info(`✅ Storage listing ${listingId} updated by manager ${user.id}`);
         res.json(updated);
     } catch (error: any) {
-        console.error("Error updating storage listing:", error);
+        logger.error("Error updating storage listing:", error);
         res.status(500).json({ error: error.message || "Failed to update storage listing" });
     }
 });
@@ -198,10 +199,10 @@ router.delete("/manager/storage-listings/:listingId", requireFirebaseAuthWithUse
 
         await inventoryService.deleteStorageListing(listingId);
 
-        console.log(`✅ Storage listing ${listingId} deleted by manager ${user.id}`);
+        logger.info(`✅ Storage listing ${listingId} deleted by manager ${user.id}`);
         res.json({ success: true });
     } catch (error: any) {
-        console.error("Error deleting storage listing:", error);
+        logger.error("Error deleting storage listing:", error);
         res.status(500).json({ error: error.message || "Failed to delete storage listing" });
     }
 });
@@ -228,11 +229,11 @@ router.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req
             listing.isActive === true
         );
 
-        console.log(`[API] /api/chef/kitchens/${kitchenId}/storage-listings - Returning ${visibleListings.length} visible listings (out of ${allListings.length} total)`);
+        logger.info(`[API] /api/chef/kitchens/${kitchenId}/storage-listings - Returning ${visibleListings.length} visible listings (out of ${allListings.length} total)`);
 
         res.json(visibleListings);
     } catch (error: any) {
-        console.error("Error getting storage listings for chef:", error);
+        logger.error("Error getting storage listings for chef:", error);
         res.status(500).json({ error: error.message || "Failed to get storage listings" });
     }
 });

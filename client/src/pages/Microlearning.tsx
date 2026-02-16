@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import React from 'react';
@@ -10,12 +11,12 @@ export default function Microlearning() {
   // Redirect to the new overview page or login
   React.useEffect(() => {
     if (!loading) {
-      console.log('🔄 Microlearning: Redirecting user:', !!user);
+      logger.info('🔄 Microlearning: Redirecting user:', !!user);
       if (!user) {
         navigate('/auth');
       } else {
         // Redirect to the new overview page immediately to avoid white screen
-        console.log('🔄 Microlearning: Redirecting to overview page');
+        logger.info('🔄 Microlearning: Redirecting to overview page');
         navigate('/microlearning/overview');
       }
     }

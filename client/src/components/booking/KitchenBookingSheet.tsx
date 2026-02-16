@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -331,7 +332,7 @@ export default function KitchenBookingSheet({
       await Promise.all(promises);
       setDateAvailability(availability);
     } catch (error) {
-      console.error('Error loading month availability:', error);
+      logger.error('Error loading month availability:', error);
     } finally {
       setIsLoadingAvailability(false);
     }
@@ -445,7 +446,7 @@ export default function KitchenBookingSheet({
         });
       }
     } catch (error) {
-      console.error("Error loading slots:", error);
+      logger.error("Error loading slots:", error);
       setAllSlots([]);
       toast({
         title: "Error",
@@ -502,7 +503,7 @@ export default function KitchenBookingSheet({
         setEquipmentListings({ all: [], included: [], rental: [] });
       }
     } catch (error) {
-      console.error('Error fetching kitchen addons:', error);
+      logger.error('Error fetching kitchen addons:', error);
       setStorageListings([]);
       setEquipmentListings({ all: [], included: [], rental: [] });
     } finally {
@@ -561,7 +562,7 @@ export default function KitchenBookingSheet({
       await fetchKitchenAddons(kitchen.id, authHeader);
       setCurrentStep('addons');
     } catch (error) {
-      console.error('Error fetching kitchen data:', error);
+      logger.error('Error fetching kitchen data:', error);
       setKitchenPricing({ hourlyRate: null, currency: 'CAD', minimumBookingHours: 0 });
     }
   };

@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import { initializeApp, cert, type App } from 'firebase-admin/app';
 import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
 
@@ -11,7 +12,7 @@ export function initializeFirebaseAdmin() {
   try {
     // Check if Firebase Admin is configured using service account credentials (preferred for production)
     if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-      console.log('🔥 Initializing Firebase Admin with service account credentials...');
+      logger.info('🔥 Initializing Firebase Admin with service account credentials...');
 
       try {
         firebaseAdmin = initializeApp({
@@ -22,17 +23,17 @@ export function initializeFirebaseAdmin() {
           }),
           projectId: process.env.FIREBASE_PROJECT_ID,
         });
-        console.log('✅ Firebase Admin initialized with service account for project:', process.env.FIREBASE_PROJECT_ID);
+        logger.info('✅ Firebase Admin initialized with service account for project:', process.env.FIREBASE_PROJECT_ID);
         return firebaseAdmin;
       } catch (error: any) {
-        console.error('❌ Failed to initialize Firebase Admin with service account:', error.message);
+        logger.error('❌ Failed to initialize Firebase Admin with service account:', error.message);
         // Fall through to try basic initialization
       }
     }
 
     // Fallback: Check if Firebase Admin is configured using VITE variables
     if (!process.env.VITE_FIREBASE_PROJECT_ID) {
-      console.warn('Firebase Admin not configured - Firebase auth verification will be disabled (missing both service account and VITE_FIREBASE_PROJECT_ID)');
+      logger.warn('Firebase Admin not configured - Firebase auth verification will be disabled (missing both service account and VITE_FIREBASE_PROJECT_ID)');
       return null;
     }
 
@@ -41,15 +42,15 @@ export function initializeFirebaseAdmin() {
       firebaseAdmin = initializeApp({
         projectId: process.env.VITE_FIREBASE_PROJECT_ID,
       });
-      console.log('🔥 Firebase Admin initialized with default credentials for project:', process.env.VITE_FIREBASE_PROJECT_ID);
+      logger.info('🔥 Firebase Admin initialized with default credentials for project:', process.env.VITE_FIREBASE_PROJECT_ID);
     } catch (error: any) {
-      console.log('🔥 Firebase Admin initialization failed, will rely on client-side checks:', error.message || 'Unknown error');
+      logger.info('🔥 Firebase Admin initialization failed, will rely on client-side checks:', error.message || 'Unknown error');
       return null;
     }
 
     return firebaseAdmin;
   } catch (error) {
-    console.error('❌ Failed to initialize Firebase Admin:', error);
+    logger.error('❌ Failed to initialize Firebase Admin:', error);
     return null;
   }
 }
@@ -58,14 +59,14 @@ export async function verifyFirebaseToken(token: string): Promise<DecodedIdToken
   try {
     const app = initializeFirebaseAdmin();
     if (!app) {
-      console.warn('Firebase Admin not initialized - cannot verify token');
+      logger.warn('Firebase Admin not initialized - cannot verify token');
       return null;
     }
 
     const decodedToken = await getAuth(app).verifyIdToken(token);
     return decodedToken;
   } catch (error) {
-    console.error('Error verifying Firebase token:', error);
+    logger.error('Error verifying Firebase token:', error);
     return null;
   }
 }
@@ -85,7 +86,7 @@ export async function getFirebaseUserByEmail(email: string) {
   try {
     const app = initializeFirebaseAdmin();
     if (!app) {
-      console.warn('Firebase Admin not initialized - cannot get user by email');
+      logger.warn('Firebase Admin not initialized - cannot get user by email');
       return null;
     }
 
@@ -93,10 +94,10 @@ export async function getFirebaseUserByEmail(email: string) {
     return userRecord;
   } catch (error: any) {
     if (error.code === 'auth/user-not-found') {
-      console.log(`Firebase user not found for email: ${email}`);
+      logger.info(`Firebase user not found for email: ${email}`);
       return null;
     }
-    console.error('Error getting Firebase user by email:', error);
+    logger.error('Error getting Firebase user by email:', error);
     return null;
   }
 }

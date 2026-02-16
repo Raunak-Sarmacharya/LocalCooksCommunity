@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -110,7 +111,7 @@ export default function AddressAutocomplete({
         }
       } catch (error) {
         if ((error as Error).name !== 'AbortError') {
-          console.error('Error fetching predictions:', error);
+          logger.error('Error fetching predictions:', error);
           setPredictions([]);
           setIsOpen(false);
         }
@@ -161,7 +162,7 @@ export default function AddressAutocomplete({
         onChange(place.description);
       }
     } catch (error) {
-      console.error('Error fetching place details:', error);
+      logger.error('Error fetching place details:', error);
       // Fallback to description
       setInputValue(place.description);
       onChange(place.description);

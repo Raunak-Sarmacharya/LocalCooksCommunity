@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Plus, Users, Edit, Trash2, Loader2, MapPin, ChefHat, Building2, Mail, MoreHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
@@ -38,7 +39,7 @@ export default function AdminManageLocations() {
       queryClient.clear();
       navigate('/admin');
     } catch (error) {
-      console.error('Logout error:', error);
+      logger.error('Logout error:', error);
       navigate('/admin');
     }
   };
@@ -91,7 +92,7 @@ export default function AdminManageLocations() {
         const token = await currentFirebaseUser.getIdToken();
         headers['Authorization'] = `Bearer ${token}`;
       } catch (error) {
-        console.error('Error getting Firebase token:', error);
+        logger.error('Error getting Firebase token:', error);
       }
     }
 
@@ -107,11 +108,11 @@ export default function AdminManageLocations() {
         headers,
       });
 
-      console.log('📍 Locations API response status:', response.status);
+      logger.info('📍 Locations API response status:', response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("❌ Failed to load locations:", response.status, response.statusText, errorText);
+        logger.error("❌ Failed to load locations:", response.status, response.statusText, errorText);
         toast.error("Error", {
           description: `Failed to load locations: ${response.status} ${response.statusText}`
         });
@@ -125,11 +126,11 @@ export default function AdminManageLocations() {
         data = await response.json();
       } else {
         const text = await response.text();
-        console.warn('📍 Response was not JSON, got text:', text.substring(0, 200));
+        logger.warn('📍 Response was not JSON, got text:', text.substring(0, 200));
         try {
           data = JSON.parse(text);
         } catch (e) {
-          console.error('📍 Failed to parse response as JSON:', e);
+          logger.error('📍 Failed to parse response as JSON:', e);
           toast.error("Error", {
             description: "Invalid response format from server"
           });
@@ -137,22 +138,22 @@ export default function AdminManageLocations() {
         }
       }
 
-      console.log('📍 Raw locations response:', data);
-      console.log('📍 Response is array?', Array.isArray(data));
-      console.log('📍 Response length:', data?.length);
+      logger.info('📍 Raw locations response:', data);
+      logger.info('📍 Response is array?', Array.isArray(data));
+      logger.info('📍 Response length:', data?.length);
 
       if (!Array.isArray(data)) {
-        console.error('📍 Response is not an array! Got:', typeof data, data);
+        logger.error('📍 Response is not an array! Got:', typeof data, data);
         toast.error("Error", {
           description: "Server returned invalid data format"
         });
         return;
       }
 
-      console.log(`✅ Loaded ${data.length} locations`);
+      logger.info(`✅ Loaded ${data.length} locations`);
       setLocations(data);
     } catch (error: any) {
-      console.error("❌ Error loading locations:", error);
+      logger.error("❌ Error loading locations:", error);
       toast.error("Error", {
         description: error.message || "Failed to load locations"
       });
@@ -169,12 +170,12 @@ export default function AdminManageLocations() {
         headers,
       });
 
-      console.log('👥 Managers API response status:', response.status);
+      logger.info('👥 Managers API response status:', response.status);
 
       if (!response.ok) {
-        console.error("❌ Failed to load managers:", response.status, response.statusText);
+        logger.error("❌ Failed to load managers:", response.status, response.statusText);
         const errorText = await response.text();
-        console.error("❌ Error response:", errorText);
+        logger.error("❌ Error response:", errorText);
         toast.error("Error", {
           description: `Failed to load managers: ${response.status} ${response.statusText}`
         });
@@ -184,7 +185,7 @@ export default function AdminManageLocations() {
       if (response.ok) {
         // Check response content type
         const contentType = response.headers.get('content-type');
-        console.log('👥 Response content-type:', contentType);
+        logger.info('👥 Response content-type:', contentType);
 
         let data;
         if (contentType?.includes('application/json')) {
@@ -192,40 +193,40 @@ export default function AdminManageLocations() {
         } else {
           // Try to parse as text first, then JSON
           const text = await response.text();
-          console.warn('👥 Response was not JSON, got text:', text.substring(0, 200));
+          logger.warn('👥 Response was not JSON, got text:', text.substring(0, 200));
           try {
             data = JSON.parse(text);
           } catch (e) {
-            console.error('👥 Failed to parse response as JSON:', e);
+            logger.error('👥 Failed to parse response as JSON:', e);
             return;
           }
         }
 
-        console.log('👥 Raw response data:', data);
-        console.log('👥 Response is array?', Array.isArray(data));
-        console.log('👥 Response length:', data?.length);
+        logger.info('👥 Raw response data:', data);
+        logger.info('👥 Response is array?', Array.isArray(data));
+        logger.info('👥 Response length:', data?.length);
 
         if (!Array.isArray(data)) {
-          console.error('👥 Response is not an array! Got:', typeof data);
+          logger.error('👥 Response is not an array! Got:', typeof data);
           return;
         }
 
         if (data.length > 0) {
-          console.log('👥 First manager from API:', JSON.stringify(data[0], null, 2));
-          console.log('👥 First manager has locations property?', 'locations' in data[0]);
-          console.log('👥 First manager.locations value:', data[0].locations);
-          console.log('👥 First manager.locations type:', typeof data[0].locations);
-          console.log('👥 First manager.locations is array?', Array.isArray(data[0].locations));
+          logger.info('👥 First manager from API:', JSON.stringify(data[0], null, 2));
+          logger.info('👥 First manager has locations property?', 'locations' in data[0]);
+          logger.info('👥 First manager.locations value:', data[0].locations);
+          logger.info('👥 First manager.locations type:', typeof data[0].locations);
+          logger.info('👥 First manager.locations is array?', Array.isArray(data[0].locations));
           if (data[0].locations) {
-            console.log('👥 First manager.locations length:', data[0].locations.length);
-            console.log('👥 First manager.locations content:', JSON.stringify(data[0].locations, null, 2));
+            logger.info('👥 First manager.locations length:', data[0].locations.length);
+            logger.info('👥 First manager.locations content:', JSON.stringify(data[0].locations, null, 2));
           }
         }
 
         // CRITICAL: Ensure every manager has a locations array, even if empty
         const managersWithLocations = data.map((manager: any, index: number) => {
           // Extensive validation and logging
-          console.log(`👥 Processing manager ${index}:`, {
+          logger.info(`👥 Processing manager ${index}:`, {
             id: manager.id,
             username: manager.username,
             hasLocationsKey: 'locations' in manager,
@@ -246,11 +247,11 @@ export default function AdminManageLocations() {
                   normalizedLocations = [];
                 }
               } catch (e) {
-                console.warn(`👥 Manager ${manager.id}: Failed to parse locations string:`, e);
+                logger.warn(`👥 Manager ${manager.id}: Failed to parse locations string:`, e);
                 normalizedLocations = [];
               }
             } else {
-              console.warn(`👥 Manager ${manager.id}: locations is not array or string, got:`, typeof manager.locations);
+              logger.warn(`👥 Manager ${manager.id}: locations is not array or string, got:`, typeof manager.locations);
               normalizedLocations = [];
             }
           }
@@ -260,7 +261,7 @@ export default function AdminManageLocations() {
             locations: normalizedLocations
           };
 
-          console.log(`👥 Manager ${index} normalized:`, {
+          logger.info(`👥 Manager ${index} normalized:`, {
             id: normalized.id,
             username: normalized.username,
             locationsCount: normalized.locations.length,
@@ -270,16 +271,16 @@ export default function AdminManageLocations() {
           return normalized;
         });
 
-        console.log('👥 FINAL: All managers processed, setting state with:', managersWithLocations.length, 'managers');
+        logger.info('👥 FINAL: All managers processed, setting state with:', managersWithLocations.length, 'managers');
         if (managersWithLocations.length > 0) {
-          console.log('👥 FINAL: First manager final structure:', JSON.stringify(managersWithLocations[0], null, 2));
+          logger.info('👥 FINAL: First manager final structure:', JSON.stringify(managersWithLocations[0], null, 2));
         }
 
-        console.log(`✅ Loaded ${managersWithLocations.length} managers`);
+        logger.info(`✅ Loaded ${managersWithLocations.length} managers`);
         setManagers(managersWithLocations);
       }
     } catch (error: any) {
-      console.error("❌ Error loading managers:", error);
+      logger.error("❌ Error loading managers:", error);
       toast.error("Error", {
         description: error.message || "Failed to load managers"
       });
@@ -301,7 +302,7 @@ export default function AdminManageLocations() {
       const data = await response.json();
       setKitchens(data);
     } catch (error) {
-      console.error("Error loading kitchens:", error);
+      logger.error("Error loading kitchens:", error);
       toast.error("Error", { description: "Failed to load kitchens" });
     } finally {
       setLoading(false);
@@ -345,7 +346,7 @@ export default function AdminManageLocations() {
 
     setLoading(true);
     try {
-      console.log('📍 Updating location:', editingLocation.id, {
+      logger.info('📍 Updating location:', editingLocation.id, {
         name: locationForm.name,
         address: locationForm.address,
         managerId: locationForm.managerId || null,
@@ -365,7 +366,7 @@ export default function AdminManageLocations() {
 
       if (response.ok) {
         const updatedLocation = await response.json();
-        console.log('✅ Location updated successfully:', updatedLocation);
+        logger.info('✅ Location updated successfully:', updatedLocation);
         toast.success("Success", { description: "Location updated successfully" });
         setShowLocationForm(false);
         setEditingLocation(null);
@@ -375,11 +376,11 @@ export default function AdminManageLocations() {
         await Promise.all([loadLocations(), loadManagers()]);
       } else {
         const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
-        console.error('❌ Failed to update location:', errorData);
+        logger.error('❌ Failed to update location:', errorData);
         toast.error("Error", { description: errorData.error || "Failed to update location" });
       }
     } catch (error: any) {
-      console.error('❌ Error updating location:', error);
+      logger.error('❌ Error updating location:', error);
       toast.error("Error", { description: error.message || "Failed to update location" });
     } finally {
       setLoading(false);
@@ -570,7 +571,7 @@ export default function AdminManageLocations() {
 
     setLoading(true);
     try {
-      console.log('👤 Updating manager:', editingManager.id, {
+      logger.info('👤 Updating manager:', editingManager.id, {
         username: managerForm.username,
         locationNotificationEmails: managerForm.locationNotificationEmails,
       });
@@ -588,7 +589,7 @@ export default function AdminManageLocations() {
 
       if (response.ok) {
         const updatedManager = await response.json();
-        console.log('✅ Manager updated successfully:', updatedManager);
+        logger.info('✅ Manager updated successfully:', updatedManager);
         toast.success("Success", { description: "Manager updated successfully" });
         setShowManagerForm(false);
         setEditingManager(null);
@@ -598,11 +599,11 @@ export default function AdminManageLocations() {
         await Promise.all([loadManagers(), loadLocations()]);
       } else {
         const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
-        console.error('❌ Failed to update manager:', errorData);
+        logger.error('❌ Failed to update manager:', errorData);
         toast.error("Error", { description: errorData.error || "Failed to update manager" });
       }
     } catch (error: any) {
-      console.error('❌ Error updating manager:', error);
+      logger.error('❌ Error updating manager:', error);
       toast.error("Error", { description: error.message || "Failed to update manager" });
     } finally {
       setLoading(false);
@@ -637,14 +638,14 @@ export default function AdminManageLocations() {
   };
 
   const handleEditManager = async (manager: any) => {
-    console.log('📝 Editing manager:', manager.id, manager.username);
+    logger.info('📝 Editing manager:', manager.id, manager.username);
 
     // CRITICAL: Always fetch locations directly from API to ensure we get the latest notification emails
     // Don't rely on manager.locations or local state - always fetch fresh from database
     let managerLocations: any[] = [];
 
     try {
-      console.log('🔍 Fetching locations for manager from API...');
+      logger.info('🔍 Fetching locations for manager from API...');
       const headers = await getAuthHeaders();
       const locationsResponse = await fetch('/api/admin/locations', {
         credentials: 'include',
@@ -652,19 +653,19 @@ export default function AdminManageLocations() {
       });
       if (locationsResponse.ok) {
         const allLocations = await locationsResponse.json();
-        console.log(`📊 Fetched ${allLocations.length} total locations from API`);
+        logger.info(`📊 Fetched ${allLocations.length} total locations from API`);
 
         // Filter locations assigned to this manager
         const managerLocs = allLocations.filter((loc: any) => {
           const locManagerId = loc.managerId || loc.manager_id;
           const matches = locManagerId === manager.id || locManagerId === manager.id?.toString();
           if (matches) {
-            console.log(`✅ Found location: ${loc.name} (ID: ${loc.id}), email: ${loc.notificationEmail || loc.notification_email || 'none'}`);
+            logger.info(`✅ Found location: ${loc.name} (ID: ${loc.id}), email: ${loc.notificationEmail || loc.notification_email || 'none'}`);
           }
           return matches;
         });
 
-        console.log(`🔍 Found ${managerLocs.length} location(s) for manager ${manager.id}`);
+        logger.info(`🔍 Found ${managerLocs.length} location(s) for manager ${manager.id}`);
 
         // Map to consistent structure, ensuring we extract notification emails
         managerLocations = managerLocs.map((loc: any) => {
@@ -673,7 +674,7 @@ export default function AdminManageLocations() {
           // Extract notification email from all possible field variations
           const notificationEmail = loc.notificationEmail || loc.notification_email || null;
 
-          console.log(`📍 Mapping location ${locationId} (${locationName}): email = "${notificationEmail}"`);
+          logger.info(`📍 Mapping location ${locationId} (${locationName}): email = "${notificationEmail}"`);
 
           return {
             locationId: locationId,
@@ -682,12 +683,12 @@ export default function AdminManageLocations() {
           };
         });
 
-        console.log('✅ Final manager locations with emails:', JSON.stringify(managerLocations, null, 2));
+        logger.info('✅ Final manager locations with emails:', JSON.stringify(managerLocations, null, 2));
       } else {
-        console.error('❌ Failed to fetch locations:', locationsResponse.status, locationsResponse.statusText);
+        logger.error('❌ Failed to fetch locations:', locationsResponse.status, locationsResponse.statusText);
       }
     } catch (error) {
-      console.error('❌ Error fetching locations for manager:', error);
+      logger.error('❌ Error fetching locations for manager:', error);
     }
 
     // Set the manager with locations (even if empty array)
@@ -703,7 +704,7 @@ export default function AdminManageLocations() {
       const email = loc.notificationEmail || "";
       const locationId = loc.locationId || loc.id;
 
-      console.log(`📧 Pre-populating email for location ${locationId}: "${email}"`);
+      logger.info(`📧 Pre-populating email for location ${locationId}: "${email}"`);
 
       return {
         locationId: locationId,
@@ -711,7 +712,7 @@ export default function AdminManageLocations() {
       };
     });
 
-    console.log('📧 Final location notification emails array:', JSON.stringify(locationEmails, null, 2));
+    logger.info('📧 Final location notification emails array:', JSON.stringify(locationEmails, null, 2));
 
     setManagerForm({
       username: manager.username || "",

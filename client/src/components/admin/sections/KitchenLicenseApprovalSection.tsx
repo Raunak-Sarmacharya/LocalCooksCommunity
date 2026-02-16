@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -256,7 +257,7 @@ export function KitchenLicenseApprovalSection() {
                                   
                                   window.open(viewUrl, '_blank');
                                 } catch (error) {
-                                  console.error("Error opening license:", error);
+                                  logger.error("Error opening license:", error);
                                   toast({
                                     title: "Error",
                                     description: "Failed to open license document. Please try again.",
@@ -308,7 +309,7 @@ export function KitchenLicenseApprovalSection() {
                                   
                                   window.open(viewUrl, '_blank');
                                 } catch (error) {
-                                  console.error("Error opening terms:", error);
+                                  logger.error("Error opening terms:", error);
                                   toast({
                                     title: "Error",
                                     description: "Failed to open terms document. Please try again.",

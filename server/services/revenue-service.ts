@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 /**
  * Revenue Service
  * 
@@ -62,7 +63,7 @@ export function calculateManagerRevenue(
   serviceFeeRate: number
 ): number {
   if (serviceFeeRate < 0 || serviceFeeRate > 1) {
-    console.warn(`Invalid service fee rate: ${serviceFeeRate}, using 0`);
+    logger.warn(`Invalid service fee rate: ${serviceFeeRate}, using 0`);
     return totalRevenue; // If invalid, manager gets 100%
   }
 
@@ -126,7 +127,7 @@ export async function getRevenueMetrics(
       WHERE l.manager_id = ${managerId}
     `);
 
-    console.log('[Revenue Service] Debug - Manager bookings:', {
+    logger.info('[Revenue Service] Debug - Manager bookings:', {
       managerId,
       debug: debugQuery.rows[0],
       locationId,
@@ -247,7 +248,7 @@ export async function getRevenueMetrics(
     `);
 
     // Debug: Log pending payments query results
-    console.log('[Revenue Service] Pending payments query result:', {
+    logger.info('[Revenue Service] Pending payments query result:', {
       managerId,
       locationId,
       pendingCount: pendingResult.rows[0]?.pending_count_all || 0,
@@ -293,7 +294,7 @@ export async function getRevenueMetrics(
       : (pendingRow.pending_payments_all ? parseInt(String(pendingRow.pending_payments_all)) : 0);
 
     // Debug: Log the pending payments result
-    console.log('[Revenue Service] Pending payments result:', {
+    logger.info('[Revenue Service] Pending payments result:', {
       allPendingPayments,
       pendingCount: pendingRow.pending_count_all || 0,
       rawValue: pendingRow.pending_payments_all
@@ -306,10 +307,10 @@ export async function getRevenueMetrics(
       : (completedRow.completed_payments_all ? parseInt(String(completedRow.completed_payments_all)) : 0);
 
     // Debug: Log query results
-    console.log('[Revenue Service] Main query result count:', result.rows.length);
+    logger.info('[Revenue Service] Main query result count:', result.rows.length);
     if (result.rows.length > 0) {
       const dbgRow: any = result.rows[0];
-      console.log('[Revenue Service] Main query result:', {
+      logger.info('[Revenue Service] Main query result:', {
         total_revenue: dbgRow.total_revenue,
         platform_fee: dbgRow.platform_fee,
         booking_count: dbgRow.booking_count,
@@ -317,7 +318,7 @@ export async function getRevenueMetrics(
     }
 
     if (result.rows.length === 0) {
-      console.log('[Revenue Service] No bookings in date range, checking for payments outside date range...');
+      logger.info('[Revenue Service] No bookings in date range, checking for payments outside date range...');
       // Even if no bookings in date range, check if there are pending or completed payments
       // Calculate revenue based on all payments (completed + pending)
       // We need to get the service fees for these payments too
@@ -400,7 +401,7 @@ export async function getRevenueMetrics(
         `);
         actualStripeFeeFromDb = parseInt(feeResult.rows[0]?.total_stripe_fee || '0') || 0;
       } catch (feeError) {
-        console.warn('[Revenue Service] Could not fetch actual Stripe fees:', feeError);
+        logger.warn('[Revenue Service] Could not fetch actual Stripe fees:', feeError);
       }
       // Use actual fees if available, otherwise show 0 (fees will sync via charge.updated webhook)
       const estimatedStripeFee = actualStripeFeeFromDb > 0 ? actualStripeFeeFromDb : 0;
@@ -430,7 +431,7 @@ export async function getRevenueMetrics(
     const row: any = result.rows[0];
 
     // Debug logging
-    console.log('[Revenue Service] Query result:', {
+    logger.info('[Revenue Service] Query result:', {
       total_revenue: row.total_revenue,
       platform_fee: row.platform_fee,
       booking_count: row.booking_count,
@@ -568,15 +569,15 @@ export async function getRevenueMetrics(
       if (storedStripeFee > 0) {
         actualStripeFee = storedStripeFee;
         stripeFeeSource = 'stripe';
-        console.log(`[Revenue Service] Using actual Stripe fees from payment_transactions: ${actualStripeFee} cents`);
+        logger.info(`[Revenue Service] Using actual Stripe fees from payment_transactions: ${actualStripeFee} cents`);
       } else {
         // ENTERPRISE STANDARD: Do not estimate fees - use actual data only
         // If no stored fees, leave as 0 - charge.updated webhook will sync fees later
         actualStripeFee = 0;
-        console.log(`[Revenue Service] No stored Stripe fees found - fees will sync via charge.updated webhook`);
+        logger.info(`[Revenue Service] No stored Stripe fees found - fees will sync via charge.updated webhook`);
       }
     } catch (error) {
-      console.warn('[Revenue Service] Error fetching Stripe fees from payment_transactions:', error);
+      logger.warn('[Revenue Service] Error fetching Stripe fees from payment_transactions:', error);
       // ENTERPRISE STANDARD: Do not fallback to estimates - use 0 until actual fees are synced
       actualStripeFee = 0;
     }
@@ -619,7 +620,7 @@ export async function getRevenueMetrics(
         ? parseInt(effectiveTaxRow.effective_tax) || 0
         : (effectiveTaxRow.effective_tax ? parseInt(String(effectiveTaxRow.effective_tax)) : 0);
     } catch (error) {
-      console.warn('[Revenue Service] Error calculating effective tax amount:', error);
+      logger.warn('[Revenue Service] Error calculating effective tax amount:', error);
     }
     
     // Use effective tax from payment_transactions if available, otherwise fall back to gross tax
@@ -654,7 +655,7 @@ export async function getRevenueMetrics(
       refundedAmount: refundedAmount,
     };
   } catch (error) {
-    console.error('Error getting revenue metrics:', error);
+    logger.error('Error getting revenue metrics:', error);
     throw error;
   }
 }
@@ -677,7 +678,7 @@ export async function getRevenueByLocation(
   try {
     // Ensure managerId is valid
     if (managerId === undefined || managerId === null || isNaN(managerId)) {
-        console.error('[Revenue Service] Invalid managerId:', managerId);
+        logger.error('[Revenue Service] Invalid managerId:', managerId);
         throw new Error('Invalid manager ID');
     }
     const managerIdParam = sql`${managerId}`;
@@ -747,7 +748,7 @@ export async function getRevenueByLocation(
       };
     });
   } catch (error) {
-    console.error('Error getting revenue by location:', error);
+    logger.error('Error getting revenue by location:', error);
     throw error;
   }
 }
@@ -770,7 +771,7 @@ export async function getRevenueByDate(
   try {
     // Ensure managerId is valid
     if (managerId === undefined || managerId === null || isNaN(managerId)) {
-        console.error('[Revenue Service] Invalid managerId:', managerId);
+        logger.error('[Revenue Service] Invalid managerId:', managerId);
         throw new Error('Invalid manager ID');
     }
 
@@ -787,7 +788,7 @@ export async function getRevenueByDate(
     
     if (!start || !end) {
         // If dates are missing, fallback to last 30 days or handle gracefully
-        console.warn('[Revenue Service] Missing date parameters for getRevenueByDate');
+        logger.warn('[Revenue Service] Missing date parameters for getRevenueByDate');
         // We can't query without a range efficiently here without potential errors
     }
     
@@ -835,7 +836,7 @@ export async function getRevenueByDate(
       ORDER BY date ASC
     `);
 
-    console.log('[Revenue Service] Revenue by date query:', {
+    logger.info('[Revenue Service] Revenue by date query:', {
       managerId,
       start,
       end,
@@ -861,7 +862,7 @@ export async function getRevenueByDate(
       };
     });
   } catch (error) {
-    console.error('Error getting revenue by date:', error);
+    logger.error('Error getting revenue by date:', error);
     throw error;
   }
 }
@@ -1259,7 +1260,7 @@ export async function getTransactionHistory(
 
     return { transactions: pagedTransactions, total };
   } catch (error) {
-    console.error('Error getting transaction history:', error);
+    logger.error('Error getting transaction history:', error);
     throw error;
   }
 }
@@ -1276,7 +1277,7 @@ export async function getCompleteRevenueMetrics(
   locationId?: number
 ): Promise<RevenueMetrics> {
   try {
-    console.log('[Revenue Service] getCompleteRevenueMetrics called:', {
+    logger.info('[Revenue Service] getCompleteRevenueMetrics called:', {
       managerId,
       startDate,
       endDate,
@@ -1287,17 +1288,17 @@ export async function getCompleteRevenueMetrics(
     try {
       const { getRevenueMetricsFromTransactions } = await import('./revenue-service-v2');
       const metrics = await getRevenueMetricsFromTransactions(managerId, db, startDate, endDate, locationId);
-      console.log('[Revenue Service] Using payment_transactions for revenue metrics');
+      logger.info('[Revenue Service] Using payment_transactions for revenue metrics');
       return metrics;
     } catch (error) {
-      console.warn('[Revenue Service] Failed to use payment_transactions, falling back to booking tables:', error);
+      logger.warn('[Revenue Service] Failed to use payment_transactions, falling back to booking tables:', error);
       // Fall through to legacy method
     }
 
     // Get kitchen booking metrics (legacy method)
     const kitchenMetrics = await getRevenueMetrics(managerId, db, startDate, endDate, locationId);
 
-    console.log('[Revenue Service] Kitchen metrics:', kitchenMetrics);
+    logger.info('[Revenue Service] Kitchen metrics:', kitchenMetrics);
 
     // Build WHERE clause for storage and equipment
     const whereConditions = [sql`l.manager_id = ${managerId}`];
@@ -1445,11 +1446,11 @@ export async function getCompleteRevenueMetrics(
       refundedAmount: isNaN(kitchenMetrics.refundedAmount) ? 0 : kitchenMetrics.refundedAmount,
     };
 
-    console.log('[Revenue Service] Final complete metrics:', finalMetrics);
+    logger.info('[Revenue Service] Final complete metrics:', finalMetrics);
 
     return finalMetrics;
   } catch (error) {
-    console.error('Error getting complete revenue metrics:', error);
+    logger.error('Error getting complete revenue metrics:', error);
     throw error;
   }
 }

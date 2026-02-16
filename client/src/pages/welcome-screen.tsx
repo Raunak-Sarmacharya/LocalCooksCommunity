@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useFirebaseAuth } from '@/hooks/use-auth';
@@ -59,7 +60,7 @@ export default function WelcomeScreen({ onComplete, onContinue }: WelcomeScreenP
       // Get current Firebase user and token
       const currentUser = auth.currentUser;
       if (currentUser) {
-        console.log("🎉 Marking welcome screen as seen for user:", currentUser.uid);
+        logger.info("🎉 Marking welcome screen as seen for user:", currentUser.uid);
         const token = await currentUser.getIdToken();
         
         const response = await fetch('/api/user/seen-welcome', {
@@ -72,22 +73,22 @@ export default function WelcomeScreen({ onComplete, onContinue }: WelcomeScreenP
 
         if (response.ok) {
           const result = await response.json();
-          console.log("✅ Welcome screen completion response:", result);
+          logger.info("✅ Welcome screen completion response:", result);
         } else {
           const errorText = await response.text();
-          console.warn("⚠️ Welcome screen API call failed:", response.status, errorText);
+          logger.warn("⚠️ Welcome screen API call failed:", response.status, errorText);
         }
       } else {
-        console.warn("⚠️ No Firebase user available when completing welcome screen");
+        logger.warn("⚠️ No Firebase user available when completing welcome screen");
       }
       
-      console.log("✅ Welcome screen completed, proceeding to callback");
+      logger.info("✅ Welcome screen completed, proceeding to callback");
       const callback = onComplete || onContinue;
       if (callback) callback();
     } catch (error) {
-      console.error('❌ Error completing welcome screen:', error);
+      logger.error('❌ Error completing welcome screen:', error);
       // Still allow them to continue even if backend call fails
-      console.log("🔄 Continuing despite error...");
+      logger.info("🔄 Continuing despite error...");
       const callback = onComplete || onContinue;
       if (callback) callback();
     } finally {

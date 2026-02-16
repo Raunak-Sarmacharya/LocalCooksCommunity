@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Global safety net for Radix UI bug #1241
  * 
@@ -22,7 +23,7 @@ function cleanupBodyPointerEvents() {
     // Also clean up any stale scroll-lock styles Radix may leave
     document.body.style.overflow = '';
     document.body.removeAttribute('data-scroll-locked');
-    console.warn('[RadixCleanup] Removed stale pointer-events:none from body');
+    logger.warn('[RadixCleanup] Removed stale pointer-events:none from body');
   }
 }
 

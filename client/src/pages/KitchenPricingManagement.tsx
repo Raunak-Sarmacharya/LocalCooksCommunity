@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { DollarSign, Save, Info, Loader2 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -73,11 +74,11 @@ function KitchenPricingContent({
     if (!selectedKitchenId) return;
 
     try {
-      console.log('Loading pricing for kitchen:', selectedKitchenId);
+      logger.info('Loading pricing for kitchen:', selectedKitchenId);
 
       const data = await apiGet(`/manager/kitchens/${selectedKitchenId}/pricing`);
-      console.log('Pricing loaded:', data);
-      console.log('Pricing loaded:', data);
+      logger.info('Pricing loaded:', data);
+      logger.info('Pricing loaded:', data);
 
       setPricing({
         // Convert cents to dollars for UI display
@@ -87,7 +88,7 @@ function KitchenPricingContent({
         taxRatePercent: data.taxRatePercent !== undefined && data.taxRatePercent !== null ? Number(data.taxRatePercent) : null,
       });
     } catch (error) {
-      console.error('Error loading pricing:', error);
+      logger.error('Error loading pricing:', error);
       toast({
         title: "Error",
         description: (error as Error).message || "Failed to load pricing",
@@ -145,11 +146,11 @@ function KitchenPricingContent({
         taxRatePercent: pricing.taxRatePercent,
       };
 
-      console.log('Saving kitchen pricing:', { kitchenId: selectedKitchenId, payload });
+      logger.info('Saving kitchen pricing:', { kitchenId: selectedKitchenId, payload });
 
       const updated = await apiPut(`/manager/kitchens/${selectedKitchenId}/pricing`, payload);
-      console.log('Pricing saved successfully:', updated);
-      console.log('Pricing saved successfully:', updated);
+      logger.info('Pricing saved successfully:', updated);
+      logger.info('Pricing saved successfully:', updated);
 
       // Update state with the response data (convert cents back to dollars for UI)
       setPricing({
@@ -167,7 +168,7 @@ function KitchenPricingContent({
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: [`/api/manager/kitchens/${selectedKitchenId}/pricing`] });
     } catch (error) {
-      console.error('Error saving pricing:', error);
+      logger.error('Error saving pricing:', error);
       toast({
         title: "Error",
         description: (error as Error).message || "Failed to save pricing",

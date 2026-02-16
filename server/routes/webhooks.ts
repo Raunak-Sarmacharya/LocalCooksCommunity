@@ -14,6 +14,7 @@ import {
 } from "@shared/schema";
 import { eq, and, ne, notInArray } from "drizzle-orm";
 import { logger } from "../logger";
+import * as Sentry from '@sentry/node';
 import { errorResponse } from "../api-response";
 import { notificationService } from "../services/notification.service";
 
@@ -97,6 +98,9 @@ router.post("/stripe", async (req: Request, res: Response) => {
     // Store event.id for use in handlers
     const webhookEventId = event.id;
 
+    // Child logger: every log in this webhook automatically includes event context
+    const wLog = logger.child({ webhookEventId, eventType: event.type });
+
     switch (event.type) {
       case "checkout.session.completed":
         await handleCheckoutSessionCompleted(
@@ -163,13 +167,14 @@ router.post("/stripe", async (req: Request, res: Response) => {
             webhookEventId,
           );
         } else {
-          logger.info(`Unhandled event type: ${event.type}`);
+          wLog.info(`Unhandled event type: ${event.type}`);
         }
     }
 
     res.json({ received: true });
   } catch (err: any) {
     logger.error("Unhandled webhook error:", err);
+    Sentry.captureException(err, { tags: { component: 'stripe_webhook' } });
     return errorResponse(res, err);
   }
 });
@@ -632,6 +637,10 @@ async function handleCheckoutSessionCompleted(
             chefId,
             paymentIntentId,
           });
+          Sentry.captureException(insertError, {
+            tags: { component: 'webhook_booking_creation' },
+            extra: { sessionId: session.id, kitchenId, chefId, paymentIntentId },
+          });
           throw insertError;
         }
 
@@ -651,8 +660,13 @@ async function handleCheckoutSessionCompleted(
           .limit(1);
         
         if (!verifiedBooking) {
+          const persistError = new Error(`Booking ${booking.id} was not persisted to database`);
           logger.error(`[Webhook] CRITICAL: Booking ${booking.id} was not persisted to database! Session: ${session.id}`);
-          throw new Error(`Booking ${booking.id} was not persisted to database`);
+          Sentry.captureException(persistError, {
+            tags: { component: 'webhook_booking_persist' },
+            extra: { bookingId: booking.id, sessionId: session.id },
+          });
+          throw persistError;
         }
         
         logger.info(`[Webhook] Verified booking ${booking.id} exists in database`);
@@ -1196,6 +1210,10 @@ async function handleCheckoutSessionCompleted(
     }
   } catch (error: any) {
     logger.error(`[Webhook] Error handling checkout.session.completed:`, error);
+    Sentry.captureException(error, {
+      tags: { component: 'webhook_checkout_completed' },
+      extra: { sessionId: session.id },
+    });
   }
 }
 
@@ -1206,7 +1224,7 @@ async function updateStorageBookingStripeIds(
   stripeCustomerId: string | undefined,
   stripePaymentMethodId: string | undefined,
 ) {
-  console.log(`🔒 [OFF-SESSION] updateStorageBookingStripeIds called:`, {
+  logger.info(`🔒 [OFF-SESSION] updateStorageBookingStripeIds called:`, {
     storageBookingId,
     chefId,
     stripeCustomerId: stripeCustomerId || 'UNDEFINED',

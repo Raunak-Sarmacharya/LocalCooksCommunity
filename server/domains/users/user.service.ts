@@ -1,3 +1,4 @@
+import { logger } from "../../logger";
 import { UserRepository } from "./user.repository";
 import { CreateUserDTO, UpdateUserDTO, User } from "./user.types";
 import { locations, users } from "@shared/schema";
@@ -196,7 +197,7 @@ export class UserService {
         totalOwedCents: penaltyTotal + claimTotal,
       };
     } catch (error) {
-      console.error(`[UserService] Error checking obligations for user ${userId}:`, error);
+      logger.error(`[UserService] Error checking obligations for user ${userId}:`, error);
       // On error, assume no obligations to avoid blocking legitimate deletions
       return { hasObligations: false, overstayPenalties: 0, damageClaims: 0, totalOwedCents: 0 };
     }
@@ -221,12 +222,12 @@ export class UserService {
       const managedLocations = await tx.select().from(locations).where(eq(locations.managerId, id));
       if (managedLocations.length > 0) {
         await tx.update(locations).set({ managerId: null }).where(eq(locations.managerId, id));
-        console.log(`Removed manager ${id} from ${managedLocations.length} locations`);
+        logger.info(`Removed manager ${id} from ${managedLocations.length} locations`);
       }
 
       // Delete the user
       await tx.delete(users).where(eq(users.id, id));
-      console.log(`Deleted user ${id}`);
+      logger.info(`Deleted user ${id}`);
     });
   }
 }

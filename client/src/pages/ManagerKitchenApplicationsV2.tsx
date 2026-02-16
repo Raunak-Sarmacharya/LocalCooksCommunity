@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 "use client"
 
 import { useManagerKitchenApplications } from "@/hooks/use-manager-kitchen-applications";
@@ -331,7 +332,7 @@ export function ManagerKitchenApplicationsContent({
                 const result = await refetchManagerInfo();
                 currentManagerId = result.data?.id || null;
             } catch (e) {
-                console.error('Failed to refetch manager info:', e);
+                logger.error('Failed to refetch manager info:', e);
             }
         }
         
@@ -353,7 +354,7 @@ export function ManagerKitchenApplicationsContent({
                     conversationId = existing.id;
                 }
             } catch (e) {
-                console.error("Error looking up conversation:", e);
+                logger.error("Error looking up conversation:", e);
             }
         }
 
@@ -366,7 +367,7 @@ export function ManagerKitchenApplicationsContent({
                     application.locationId
                 );
             } catch (error) {
-                console.error('Error initializing chat:', error);
+                logger.error('Error initializing chat:', error);
                 toast({
                     title: "Error",
                     description: "Failed to open chat. Please try again.",

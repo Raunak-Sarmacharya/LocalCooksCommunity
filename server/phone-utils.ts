@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import { validateAndNormalizePhone } from '@shared/phone-validation';
 import { db } from './db';
 import { applications, portalUserApplications } from '@shared/schema';
@@ -25,7 +26,7 @@ export async function getManagerPhone(
     if (normalized) {
       return normalized;
     }
-    console.warn(`⚠️ Location notification phone is invalid format: ${phone}`);
+    logger.warn(`⚠️ Location notification phone is invalid format: ${phone}`);
   }
 
   // Fallback: Get phone from manager's application
@@ -43,11 +44,11 @@ export async function getManagerPhone(
         if (normalized) {
           return normalized;
         }
-        console.warn(`⚠️ Manager application phone is invalid format: ${phone}`);
+        logger.warn(`⚠️ Manager application phone is invalid format: ${phone}`);
       }
     } catch (error) {
       // Non-critical error
-      console.warn('Could not retrieve manager phone from application:', error);
+      logger.warn('Could not retrieve manager phone from application:', error);
     }
   }
 
@@ -76,10 +77,10 @@ export async function getChefPhone(
       if (normalized) {
         return normalized;
       }
-      console.warn(`⚠️ Chef application phone is invalid format: ${phone}`);
+      logger.warn(`⚠️ Chef application phone is invalid format: ${phone}`);
     }
   } catch (error) {
-    console.warn('Could not retrieve chef phone from application:', error);
+    logger.warn('Could not retrieve chef phone from application:', error);
   }
 
   return null;
@@ -118,11 +119,11 @@ export async function getPortalUserPhone(
         if (normalized) {
           return normalized;
         }
-        console.warn(`⚠️ Portal user application phone is invalid format: ${phone}`);
+        logger.warn(`⚠️ Portal user application phone is invalid format: ${phone}`);
         phone = null; // Reset if invalid
       }
     } catch (error) {
-      console.warn('Could not retrieve portal user phone from portal_user_applications:', error);
+      logger.warn('Could not retrieve portal user phone from portal_user_applications:', error);
     }
   }
 
@@ -141,10 +142,10 @@ export async function getPortalUserPhone(
         if (normalized) {
           return normalized;
         }
-        console.warn(`⚠️ Applications table phone is invalid format: ${phone}`);
+        logger.warn(`⚠️ Applications table phone is invalid format: ${phone}`);
       }
     } catch (error) {
-      console.warn('Could not retrieve phone from applications table:', error);
+      logger.warn('Could not retrieve phone from applications table:', error);
     }
   }
 

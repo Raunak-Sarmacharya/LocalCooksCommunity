@@ -1,3 +1,4 @@
+import { logger } from "../../logger";
 /**
  * Kitchen Repository
  * 
@@ -44,7 +45,7 @@ export class KitchenRepository {
 
       return kitchen ? this.mapToDTO(kitchen) : null;
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error finding kitchen by ID ${id}:`, error);
+      logger.error(`[KitchenRepository] Error finding kitchen by ID ${id}:`, error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to find kitchen',
@@ -66,7 +67,7 @@ export class KitchenRepository {
 
       return results.map(k => this.mapToDTO(k));
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error finding kitchens by location ${locationId}:`, error);
+      logger.error(`[KitchenRepository] Error finding kitchens by location ${locationId}:`, error);
       throw new DomainError(
         KitchenErrorCodes.LOCATION_NOT_FOUND,
         'Failed to find kitchens',
@@ -93,7 +94,7 @@ export class KitchenRepository {
 
       return results.map(k => this.mapToDTO(k));
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error finding active kitchens by location ${locationId}:`, error);
+      logger.error(`[KitchenRepository] Error finding active kitchens by location ${locationId}:`, error);
       throw new DomainError(
         KitchenErrorCodes.LOCATION_NOT_FOUND,
         'Failed to find kitchens',
@@ -115,7 +116,7 @@ export class KitchenRepository {
 
       return results.map(k => this.mapToDTO(k));
     } catch (error: any) {
-      console.error('[KitchenRepository] Error finding all active kitchens:', error);
+      logger.error('[KitchenRepository] Error finding all active kitchens:', error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to find kitchens',
@@ -149,7 +150,7 @@ export class KitchenRepository {
 
       return this.mapToDTO(kitchen);
     } catch (error: any) {
-      console.error('[KitchenRepository] Error creating kitchen:', error);
+      logger.error('[KitchenRepository] Error creating kitchen:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
         'Failed to create kitchen',
@@ -184,7 +185,7 @@ export class KitchenRepository {
 
       return kitchen ? this.mapToDTO(kitchen) : null;
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error updating kitchen ${id}:`, error);
+      logger.error(`[KitchenRepository] Error updating kitchen ${id}:`, error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to update kitchen',
@@ -206,7 +207,7 @@ export class KitchenRepository {
 
       return kitchen ? this.mapToDTO(kitchen) : null;
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error activating kitchen ${id}:`, error);
+      logger.error(`[KitchenRepository] Error activating kitchen ${id}:`, error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to activate kitchen',
@@ -228,7 +229,7 @@ export class KitchenRepository {
 
       return kitchen ? this.mapToDTO(kitchen) : null;
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error deactivating kitchen ${id}:`, error);
+      logger.error(`[KitchenRepository] Error deactivating kitchen ${id}:`, error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to deactivate kitchen',
@@ -256,7 +257,7 @@ export class KitchenRepository {
 
       return result.length > 0;
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error checking name existence for location ${locationId}:`, error);
+      logger.error(`[KitchenRepository] Error checking name existence for location ${locationId}:`, error);
       return false;
     }
   }
@@ -274,7 +275,7 @@ export class KitchenRepository {
 
       return kitchen ? this.mapToDTO(kitchen) : null;
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error updating image for kitchen ${id}:`, error);
+      logger.error(`[KitchenRepository] Error updating image for kitchen ${id}:`, error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to update kitchen image',
@@ -296,7 +297,7 @@ export class KitchenRepository {
 
       return kitchen ? this.mapToDTO(kitchen) : null;
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error updating gallery for kitchen ${id}:`, error);
+      logger.error(`[KitchenRepository] Error updating gallery for kitchen ${id}:`, error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to update kitchen gallery',
@@ -317,7 +318,7 @@ export class KitchenRepository {
 
       return results.map(k => this.mapToDTO(k));
     } catch (error: any) {
-      console.error('[KitchenRepository] Error finding all kitchens:', error);
+      logger.error('[KitchenRepository] Error finding all kitchens:', error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to find kitchens',
@@ -355,7 +356,7 @@ export class KitchenRepository {
         } : undefined
       } as KitchenWithLocationDTO));
     } catch (error: any) {
-      console.error('[KitchenRepository] Error finding kitchens with location:', error);
+      logger.error('[KitchenRepository] Error finding kitchens with location:', error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to find kitchens with location',
@@ -371,7 +372,7 @@ export class KitchenRepository {
     try {
       await db.delete(kitchens).where(eq(kitchens.id, id));
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error deleting kitchen ${id}:`, error);
+      logger.error(`[KitchenRepository] Error deleting kitchen ${id}:`, error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to delete kitchen',
@@ -409,7 +410,7 @@ export class KitchenRepository {
 
       return results.map(o => this.mapOverrideToDTO(o));
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error finding overrides for kitchen ${kitchenId}:`, error);
+      logger.error(`[KitchenRepository] Error finding overrides for kitchen ${kitchenId}:`, error);
       throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to find overrides', 500);
     }
   }
@@ -424,7 +425,7 @@ export class KitchenRepository {
 
       return override ? this.mapOverrideToDTO(override) : null;
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error finding override ${id}:`, error);
+      logger.error(`[KitchenRepository] Error finding override ${id}:`, error);
       throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to find override', 500);
     }
   }
@@ -445,7 +446,7 @@ export class KitchenRepository {
 
       return this.mapOverrideToDTO(override);
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error creating override:`, error);
+      logger.error(`[KitchenRepository] Error creating override:`, error);
       throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to create override', 500);
     }
   }
@@ -466,7 +467,7 @@ export class KitchenRepository {
 
       return override ? this.mapOverrideToDTO(override) : null;
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error updating override ${id}:`, error);
+      logger.error(`[KitchenRepository] Error updating override ${id}:`, error);
       throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to update override', 500);
     }
   }
@@ -475,7 +476,7 @@ export class KitchenRepository {
     try {
       await db.delete(kitchenDateOverrides).where(eq(kitchenDateOverrides.id, id));
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error deleting override ${id}:`, error);
+      logger.error(`[KitchenRepository] Error deleting override ${id}:`, error);
       throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to delete override', 500);
     }
   }
@@ -491,7 +492,7 @@ export class KitchenRepository {
         .from(kitchenAvailability)
         .where(eq(kitchenAvailability.kitchenId, kitchenId));
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error finding availability for kitchen ${kitchenId}:`, error);
+      logger.error(`[KitchenRepository] Error finding availability for kitchen ${kitchenId}:`, error);
       throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to find availability', 500);
     }
   }
@@ -514,7 +515,7 @@ export class KitchenRepository {
 
       return override ? this.mapOverrideToDTO(override) : null;
     } catch (error: any) {
-      console.error(`[KitchenRepository] Error finding override for date:`, error);
+      logger.error(`[KitchenRepository] Error finding override for date:`, error);
       // Return null instead of throwing - no override is a valid state
       return null;
     }

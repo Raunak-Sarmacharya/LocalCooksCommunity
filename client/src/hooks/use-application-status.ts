@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Application } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
@@ -38,7 +39,7 @@ export function useApplicationStatus() {
         const userData = await response.json();
         return userData;
       } catch (error) {
-        console.error('useApplicationStatus - Firebase auth error:', error);
+        logger.error('useApplicationStatus - Firebase auth error:', error);
         return null;
       }
     },
@@ -59,7 +60,7 @@ export function useApplicationStatus() {
   } : null);
   
   // Debug logging for application status hook
-  console.log('useApplicationStatus: Auth state', {
+  logger.info('useApplicationStatus: Auth state', {
     profileUser: profileUser ? { role: profileUser.role, id: profileUser.id } : null,
     firebaseUser: firebaseAuth.user ? { 
       role: firebaseAuth.user.role, 
@@ -169,7 +170,7 @@ export function useApplicationStatus() {
       const isChef = (user as any)?.isChef;
       const isManager = (user as any)?.isManager;
       
-      console.log('🔍 getButtonText: checking roles', { isChef, isManager, user });
+      logger.info('🔍 getButtonText: checking roles', { isChef, isManager, user });
       
       // Manager role check - managers go to their own dashboard
       if (isManager || user.role === "manager") {
@@ -178,7 +179,7 @@ export function useApplicationStatus() {
         return defaultText.includes("Start") ? defaultText : "Start Chef Application";
       } else {
         // Fallback: If roles are not detected but user is logged in, default to generic text
-        console.warn('⚠️ No roles detected for logged in user, using fallback text');
+        logger.warn('⚠️ No roles detected for logged in user, using fallback text');
         return defaultText;
       }
     } else {
@@ -201,7 +202,7 @@ export function useApplicationStatus() {
       const isChef = (user as any)?.isChef;
       const isManager = (user as any)?.isManager;
       
-      console.log('🔍 getNavigationPath: checking roles', { isChef, isManager });
+      logger.info('🔍 getNavigationPath: checking roles', { isChef, isManager });
       
       // Manager role check - managers go to their own dashboard
       if (isManager || user.role === "manager") {
@@ -210,7 +211,7 @@ export function useApplicationStatus() {
         return "/apply";
       } else {
         // Fallback: If no roles detected but user is logged in, go to dashboard
-        console.warn('⚠️ No roles detected for logged in user, redirecting to dashboard instead of auth');
+        logger.warn('⚠️ No roles detected for logged in user, redirecting to dashboard instead of auth');
         return "/dashboard";
       }
     } else {

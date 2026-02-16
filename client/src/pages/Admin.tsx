@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
 import PromoCodeSender from "@/components/admin/PromoCodeSender";
 import ChefKitchenAccessManager from "@/components/admin/ChefKitchenAccessManager";
@@ -34,7 +35,7 @@ function SafeIcon({ IconComponent, fallback = UserIcon, className, ...props }: a
     const FallbackComponent = fallback;
     return <FallbackComponent className={className} {...props} />;
   } catch (error) {
-    console.warn('Icon render error:', error);
+    logger.warn('Icon render error:', error);
     return <UserIcon className={className} {...props} />;
   }
 }
@@ -51,7 +52,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode, fallbac
   }
 
   componentDidCatch(error: any, errorInfo: any) {
-    console.error('Component error:', error, errorInfo);
+    logger.error('Component error:', error, errorInfo);
   }
 
   render() {
@@ -209,7 +210,7 @@ function AdminDashboard() {
       setPresignedUrls(prev => ({ ...prev, [fileUrl]: presignedUrl }));
       return presignedUrl;
     } catch (error) {
-      console.error('Error getting presigned URL:', error);
+      logger.error('Error getting presigned URL:', error);
       return fileUrl;
     } finally {
       setLoadingUrls(prev => {
@@ -253,10 +254,10 @@ function AdminDashboard() {
         }
 
         const userData = await response.json();
-        console.log('Admin Dashboard - Firebase user data:', userData);
+        logger.info('Admin Dashboard - Firebase user data:', userData);
         return userData;
       } catch (error) {
-        console.error('Admin Dashboard - Firebase auth error:', error);
+        logger.error('Admin Dashboard - Firebase auth error:', error);
         return null;
       }
     },
@@ -273,7 +274,7 @@ function AdminDashboard() {
   const isAdmin = user?.role === 'admin';
 
   // Debug authentication state
-  console.log('Admin Dashboard - Authentication state:', {
+  logger.info('Admin Dashboard - Authentication state:', {
     loading,
     isLoggedIn: !!user,
     userRole: user?.role,
@@ -308,7 +309,7 @@ function AdminDashboard() {
         throw new Error("Admin not authenticated");
       }
 
-      console.log('Admin: Fetching applications data via Firebase auth...', {
+      logger.info('Admin: Fetching applications data via Firebase auth...', {
         endpoint: queryKey[0],
         hasFirebaseUser: !!firebaseUser
       });
@@ -348,7 +349,7 @@ function AdminDashboard() {
       }
 
       const rawData = await response.json();
-      console.log('Admin: Fresh data fetched', rawData);
+      logger.info('Admin: Fresh data fetched', rawData);
 
       // Convert snake_case to camelCase for database fields
       const normalizedData = rawData.map((app: any) => ({
@@ -374,7 +375,7 @@ function AdminDashboard() {
         documentsReviewedAt: app.documents_reviewed_at || app.documentsReviewedAt,
       }));
 
-      console.log('Admin: Normalized application data', normalizedData);
+      logger.info('Admin: Normalized application data', normalizedData);
       return normalizedData;
     },
     enabled: !!firebaseUser && isAdmin, // Only fetch if user is admin
@@ -420,7 +421,7 @@ function AdminDashboard() {
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number, status: string }) => {
       try {
-        console.log(`Updating application ${id} status to ${status}`);
+        logger.info(`Updating application ${id} status to ${status}`);
 
         const token = await getFirebaseToken();
         const headers: Record<string, string> = {
@@ -440,10 +441,10 @@ function AdminDashboard() {
           throw new Error(errorData.error || response.statusText);
         }
 
-        console.log('Status update response:', response.status);
+        logger.info('Status update response:', response.status);
         return response.json();
       } catch (error) {
-        console.error('Error updating application status:', error);
+        logger.error('Error updating application status:', error);
         throw error;
       }
     },
@@ -462,7 +463,7 @@ function AdminDashboard() {
         description: `Application status changed to ${data.status}. Email notification sent.`
       });
 
-      console.log('Status update successful with email notification:', data);
+      logger.info('Status update successful with email notification:', data);
     },
     onError: (error) => {
       toast.error("Error updating status", {
@@ -515,7 +516,7 @@ function AdminDashboard() {
         description: `${variables.field === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate'} status changed to ${variables.status}. Email notification sent to user.`
       });
 
-      console.log('Admin: Document status updated', {
+      logger.info('Admin: Document status updated', {
         applicationId: variables.id,
         field: variables.field,
         newStatus: variables.status,
@@ -800,7 +801,7 @@ function AdminDashboard() {
 
   // Enhanced force refresh function for admin
   const forceAdminRefresh = async () => {
-    console.log('Admin: Forcing comprehensive refresh...');
+    logger.info('Admin: Forcing comprehensive refresh...');
 
     try {
       // 1. Clear all application-related caches more aggressively
@@ -836,15 +837,15 @@ function AdminDashboard() {
         })
       ]);
 
-      console.log('Admin: Comprehensive refresh completed');
+      logger.info('Admin: Comprehensive refresh completed');
     } catch (error) {
-      console.error('Admin: Force refresh failed', error);
+      logger.error('Admin: Force refresh failed', error);
       // Fallback: try to refresh just the admin query
       try {
         await queryClient.refetchQueries({ queryKey: ["/api/firebase/admin/applications"] });
-        console.log('Admin: Fallback refresh completed');
+        logger.info('Admin: Fallback refresh completed');
       } catch (fallbackError) {
-        console.error('Admin: Fallback refresh also failed', fallbackError);
+        logger.error('Admin: Fallback refresh also failed', fallbackError);
       }
     }
   };
@@ -856,7 +857,7 @@ function AdminDashboard() {
       queryClient.clear();
       navigate('/admin');
     } catch (error) {
-      console.error('Logout error:', error);
+      logger.error('Logout error:', error);
       navigate('/admin');
     }
   };

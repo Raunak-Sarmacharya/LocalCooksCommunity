@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import PDFDocument from 'pdfkit';
 import { db } from "../db";
 import { paymentTransactions } from "@shared/schema";
@@ -46,10 +47,10 @@ export async function generateInvoicePDF(
         // For bundle bookings, we need to get individual booking base amounts
         // The base_amount in payment_transactions is the total base for the bundle
         // We'll calculate proportions from the booking data
-        console.log(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, base=${stripeBaseAmount}, platformFee=${stripePlatformFee}`);
+        logger.info(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, base=${stripeBaseAmount}, platformFee=${stripePlatformFee}`);
       }
     } catch (error) {
-      console.warn('[Invoice] Could not fetch payment transaction, will calculate fees:', error);
+      logger.warn('[Invoice] Could not fetch payment transaction, will calculate fees:', error);
     }
   }
   // Calculate pricing first (async operations)
@@ -130,7 +131,7 @@ export async function generateInvoicePDF(
              hourlyRate = kitchenRate / 100;
              kitchenAmount = (kitchenRate * durationHours) / 100;
          } catch (e) {
-             console.error("Error recalculating kitchen price", e);
+             logger.error("Error recalculating kitchen price", e);
          }
       }
 
@@ -151,7 +152,7 @@ export async function generateInvoicePDF(
           });
       }
     } catch (error) {
-       console.error('Error in kitchen price calculation:', error);
+       logger.error('Error in kitchen price calculation:', error);
     }
   }
 
@@ -209,7 +210,7 @@ export async function generateInvoicePDF(
                    amount: amount
                 });
             }
-          } catch (e) { console.error('[Invoice] Error processing storage booking:', e); }
+          } catch (e) { logger.error('[Invoice] Error processing storage booking:', e); }
       }
   }
 
@@ -287,7 +288,7 @@ export async function generateInvoicePDF(
   if (stripeTotalAmount > 0) {
     const diff = Math.abs(subtotalWithTaxCents - stripeTotalAmount);
     if (diff > 1) { // Allow 1 cent rounding tolerance
-      console.warn(`[Invoice] MISMATCH: Calculated total (${subtotalWithTaxCents}) differs from Stripe captured amount (${stripeTotalAmount}) by ${diff} cents. Items: ${items.length}, Subtotal: ${subtotalCents}, Tax: ${taxCents}`);
+      logger.warn(`[Invoice] MISMATCH: Calculated total (${subtotalWithTaxCents}) differs from Stripe captured amount (${stripeTotalAmount}) by ${diff} cents. Items: ${items.length}, Subtotal: ${subtotalCents}, Tax: ${taxCents}`);
     }
   }
   
@@ -320,10 +321,10 @@ export async function generateInvoicePDF(
           actualPlatformFee: stripeData.stripePlatformFee / 100,
           dataSource: 'stripe'
         };
-        console.log(`[Invoice] Using Stripe BalanceTransaction data: processingFee=${stripeDataForManager.stripeProcessingFee}, netPayout=${stripeDataForManager.stripeNetPayout}, platformFee=${stripeDataForManager.actualPlatformFee}`);
+        logger.info(`[Invoice] Using Stripe BalanceTransaction data: processingFee=${stripeDataForManager.stripeProcessingFee}, netPayout=${stripeDataForManager.stripeNetPayout}, platformFee=${stripeDataForManager.actualPlatformFee}`);
       }
     } catch (error) {
-      console.warn('[Invoice] Could not fetch Stripe payment amounts, will use calculated values:', error);
+      logger.warn('[Invoice] Could not fetch Stripe payment amounts, will use calculated values:', error);
     }
   }
 
@@ -961,7 +962,7 @@ export async function generateDamageClaimInvoicePDF(
         managerRevenueCents = parseInt(String(transaction.managerRevenue || '0')) || 0;
       }
     } catch (error) {
-      console.warn('[DamageClaimInvoice] Could not fetch Stripe fees:', error);
+      logger.warn('[DamageClaimInvoice] Could not fetch Stripe fees:', error);
     }
   }
   

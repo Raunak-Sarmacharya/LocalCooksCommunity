@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Equipment Listing Management
  * 
@@ -295,7 +296,7 @@ function EquipmentListingContent({
         });
         successCount++;
       } catch (error) {
-        console.error('Error creating equipment listing:', error);
+        logger.error('Error creating equipment listing:', error);
       }
     }
     setIsSaving(false);

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useQuery } from "@tanstack/react-query";
 import { useFirebaseAuth } from "./use-auth";
 import { auth } from "@/lib/firebase";
@@ -79,7 +80,7 @@ export function useManagerDashboard() {
         const token = await currentFirebaseUser.getIdToken();
         headers['Authorization'] = `Bearer ${token}`;
       } catch (error) {
-        console.error('Error getting Firebase token:', error);
+        logger.error('Error getting Firebase token:', error);
       }
     }
     

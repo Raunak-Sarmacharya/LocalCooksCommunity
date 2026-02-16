@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 /**
  * Payment Tracking Service
  * 
@@ -120,7 +121,7 @@ export async function syncPaymentStatusFromStripe(
         WHERE id = ${bookingId}
       `);
 
-      console.log(`[Payment Tracking] Updated booking ${bookingId} payment status: ${currentStatus} -> ${newPaymentStatus} (Stripe: ${paymentIntent.status})`);
+      logger.info(`[Payment Tracking] Updated booking ${bookingId} payment status: ${currentStatus} -> ${newPaymentStatus} (Stripe: ${paymentIntent.status})`);
 
       return {
         success: true,
@@ -141,7 +142,7 @@ export async function syncPaymentStatusFromStripe(
       updated: false
     };
   } catch (error: any) {
-    console.error(`[Payment Tracking] Error syncing payment status for booking ${bookingId}:`, error);
+    logger.error(`[Payment Tracking] Error syncing payment status for booking ${bookingId}:`, error);
     return {
       success: false,
       paymentStatus: 'pending',
@@ -189,11 +190,11 @@ export async function syncManagerPayments(
       }
     }
 
-    console.log(`[Payment Tracking] Synced ${synced} payments for manager ${managerId}: ${updated} updated, ${errors} errors`);
+    logger.info(`[Payment Tracking] Synced ${synced} payments for manager ${managerId}: ${updated} updated, ${errors} errors`);
 
     return { synced, updated, errors };
   } catch (error: any) {
-    console.error(`[Payment Tracking] Error syncing manager payments:`, error);
+    logger.error(`[Payment Tracking] Error syncing manager payments:`, error);
     throw error;
   }
 }
@@ -276,7 +277,7 @@ export async function recoverMissingPaymentData(
         WHERE id = ${bookingId}
       `);
 
-      console.log(`[Payment Tracking] Recovered payment data for booking ${bookingId}:`, {
+      logger.info(`[Payment Tracking] Recovered payment data for booking ${bookingId}:`, {
         status: newPaymentStatus,
         amount: paymentIntent.amount
       });
@@ -300,7 +301,7 @@ export async function recoverMissingPaymentData(
       updated: false
     };
   } catch (error: any) {
-    console.error(`[Payment Tracking] Error recovering payment data for booking ${bookingId}:`, error);
+    logger.error(`[Payment Tracking] Error recovering payment data for booking ${bookingId}:`, error);
     return {
       success: false,
       paymentStatus: 'pending',
@@ -331,7 +332,7 @@ export async function trackRefund(
       WHERE id = ${bookingId}
     `);
 
-    console.log(`[Payment Tracking] Tracked ${isPartial ? 'partial' : 'full'} refund for booking ${bookingId}: ${refundAmount} cents`);
+    logger.info(`[Payment Tracking] Tracked ${isPartial ? 'partial' : 'full'} refund for booking ${bookingId}: ${refundAmount} cents`);
 
     return {
       success: true,
@@ -342,7 +343,7 @@ export async function trackRefund(
       updated: true
     };
   } catch (error: any) {
-    console.error(`[Payment Tracking] Error tracking refund for booking ${bookingId}:`, error);
+    logger.error(`[Payment Tracking] Error tracking refund for booking ${bookingId}:`, error);
     return {
       success: false,
       paymentStatus: 'pending',
@@ -417,7 +418,7 @@ export async function getPaymentStatus(
       needsSync
     };
   } catch (error: any) {
-    console.error(`[Payment Tracking] Error getting payment status for booking ${bookingId}:`, error);
+    logger.error(`[Payment Tracking] Error getting payment status for booking ${bookingId}:`, error);
     throw error;
   }
 }

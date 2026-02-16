@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react';
 import { CustomAlertsProvider, useCustomAlerts } from "@/components/ui/custom-alerts";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -216,9 +217,7 @@ function Router() {
         <Route path="/terms" component={Terms} />
         <Route path="/privacy" component={Privacy} />
         <Route path="/unsubscribe" component={UnsubscribePage} />
-        <Route path="/welcome-test">
-          <WelcomeScreen onComplete={() => console.log('Welcome test completed')} />
-        </Route>
+        
         <Route path="/email-verification-test" component={EmailVerificationTest} />
         <Route path="/reset-welcome">
           <div style={{ padding: '20px', textAlign: 'center' }}>
@@ -500,7 +499,6 @@ function WelcomeStatusButton() {
               }
             };
 
-            console.log('🔍 WELCOME DEBUG DATA:', debugData);
             showAlert({
               title: "Welcome Screen Debug Info",
               description: JSON.stringify(display, null, 2),
@@ -595,20 +593,22 @@ function RadixBodyCleanupProvider({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <HelmetProvider>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <CustomAlertsProvider>
-            <TooltipProvider>
-              <RadixBodyCleanupProvider>
-                <SonnerToaster />
-                <Router />
-              </RadixBodyCleanupProvider>
-            </TooltipProvider>
-          </CustomAlertsProvider>
-        </AuthProvider>
-      </QueryClientProvider>
-    </HelmetProvider>
+    <Sentry.ErrorBoundary fallback={<div className="flex items-center justify-center min-h-screen"><p className="text-destructive">Something went wrong. Please refresh the page.</p></div>}>
+      <HelmetProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <CustomAlertsProvider>
+              <TooltipProvider>
+                <RadixBodyCleanupProvider>
+                  <SonnerToaster />
+                  <Router />
+                </RadixBodyCleanupProvider>
+              </TooltipProvider>
+            </CustomAlertsProvider>
+          </AuthProvider>
+        </QueryClientProvider>
+      </HelmetProvider>
+    </Sentry.ErrorBoundary>
   );
 }
 

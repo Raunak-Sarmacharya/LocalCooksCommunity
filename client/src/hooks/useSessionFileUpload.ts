@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState } from 'react';
 import { auth } from '@/lib/firebase';
 
@@ -126,7 +127,7 @@ export const useSessionFileUpload = (options: UseSessionFileUploadOptions = {}) 
         xhr.setRequestHeader('Authorization', `Bearer ${token}`);
         xhr.withCredentials = true; // Include cookies
 
-        console.log('Uploading file with Firebase authentication');
+        logger.info('Uploading file with Firebase authentication');
         xhr.send(formData);
       });
 

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -97,7 +98,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
         'Authorization': `Bearer ${freshToken}`,
       };
     } catch (error) {
-      console.error('Error getting Firebase token:', error);
+      logger.error('Error getting Firebase token:', error);
     }
   }
 

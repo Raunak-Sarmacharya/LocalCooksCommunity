@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -104,14 +105,14 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    console.log(`[FileUpload] Rejected file with mimetype: ${file.mimetype}`);
+    logger.info(`[FileUpload] Rejected file with mimetype: ${file.mimetype}`);
     cb(new Error('Invalid file type. Only PDF, JPG, JPEG, PNG, WebP, DOC, and DOCX files are allowed.'));
   }
 };
 
 // Configure multer: use memory storage when R2 is available (for cloud upload)
 // Use disk storage only as fallback when R2 is not configured
-console.log(` File Upload Config: R2 configured = ${isR2Configured()}, using ${useCloudStorage ? 'memory (R2)' : 'disk (local)'} storage`);
+logger.info(` File Upload Config: R2 configured = ${isR2Configured()}, using ${useCloudStorage ? 'memory (R2)' : 'disk (local)'} storage`);
 
 export const upload = multer({
   storage: useCloudStorage ? memoryStorage : diskStorage,
@@ -126,21 +127,21 @@ export const uploadToBlob = async (file: Express.Multer.File, userId: number, fo
   try {
     // Use Cloudflare R2 if configured (production OR development with keys)
     const r2Available = isR2Configured();
-    console.log(`📦 uploadToBlob: R2 configured = ${r2Available}, file has buffer = ${!!file.buffer}, file has path = ${!!file.path}`);
+    logger.info(`📦 uploadToBlob: R2 configured = ${r2Available}, file has buffer = ${!!file.buffer}, file has path = ${!!file.path}`);
     
     if (r2Available) {
-      console.log(`☁️ Uploading to Cloudflare R2...`);
+      logger.info(`☁️ Uploading to Cloudflare R2...`);
       const url = await uploadToR2(file, userId, folder);
-      console.log(`✅ R2 upload complete: ${url}`);
+      logger.info(`✅ R2 upload complete: ${url}`);
       return url;
     } else {
       // Development fallback: return local file path
-      console.log(`📁 R2 not configured, using local storage`);
+      logger.info(`📁 R2 not configured, using local storage`);
       const filename = file.filename || `${userId}_${Date.now()}_${file.originalname}`;
       return getFileUrl(filename);
     }
   } catch (error) {
-    console.error('❌ Error uploading file:', error);
+    logger.error('❌ Error uploading file:', error);
     throw new Error('Failed to upload file to cloud storage');
   }
 };
@@ -153,7 +154,7 @@ export const deleteFile = (filePath: string): void => {
       fs.unlinkSync(fullPath);
     }
   } catch (error) {
-    console.error('Error deleting file:', error);
+    logger.error('Error deleting file:', error);
   }
 };
 
@@ -192,11 +193,11 @@ export const cleanupApplicationDocuments = async (application: {
     if (isR2Configured()) {
       if (application.foodSafetyLicenseUrl) {
         await deleteFromR2(application.foodSafetyLicenseUrl);
-        console.log(`Deleted food safety license file from R2: ${application.foodSafetyLicenseUrl}`);
+        logger.info(`Deleted food safety license file from R2: ${application.foodSafetyLicenseUrl}`);
       }
       if (application.foodEstablishmentCertUrl) {
         await deleteFromR2(application.foodEstablishmentCertUrl);
-        console.log(`Deleted food establishment certificate file from R2: ${application.foodEstablishmentCertUrl}`);
+        logger.info(`Deleted food establishment certificate file from R2: ${application.foodEstablishmentCertUrl}`);
       }
       return;
     }
@@ -207,7 +208,7 @@ export const cleanupApplicationDocuments = async (application: {
       if (filename) {
         const filePath = path.join(uploadsDir, filename);
         deleteFile(filePath);
-        console.log(`Deleted food safety license file: ${filename}`);
+        logger.info(`Deleted food safety license file: ${filename}`);
       }
     }
 
@@ -216,10 +217,10 @@ export const cleanupApplicationDocuments = async (application: {
       if (filename) {
         const filePath = path.join(uploadsDir, filename);
         deleteFile(filePath);
-        console.log(`Deleted food establishment certificate file: ${filename}`);
+        logger.info(`Deleted food establishment certificate file: ${filename}`);
       }
     }
   } catch (error) {
-    console.error('Error cleaning up application documents:', error);
+    logger.error('Error cleaning up application documents:', error);
   }
 }; 

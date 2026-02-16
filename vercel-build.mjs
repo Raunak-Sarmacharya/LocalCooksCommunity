@@ -39,7 +39,9 @@ if (!fs.existsSync('api')) {
 // Exclude Vite and Rollup (build tools) from the bundle - they have platform-specific native deps
 // Dynamic imports in setupVite() prevent bundling, but we explicitly exclude to be safe
 // esbuild automatically handles .ts files and resolves .js extensions in imports to .ts source files
-runCommand('npx esbuild server/index.ts --bundle --platform=node --packages=external --format=esm --outfile=api/index.js --external:vite --external:rollup');
+// Generate source maps when SENTRY_AUTH_TOKEN is present for readable server-side stack traces
+const sourcemapFlag = process.env.SENTRY_AUTH_TOKEN ? ' --sourcemap' : '';
+runCommand(`npx esbuild server/index.ts --bundle --platform=node --packages=external --format=esm --outfile=api/index.js --external:vite --external:rollup${sourcemapFlag}`);
 
 // Note: api/sitemap.ts is left as-is — Vercel compiles .ts files in api/ directory natively
 // We don't bundle it because it imports @vercel/node types which aren't in dependencies
