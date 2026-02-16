@@ -401,7 +401,7 @@ export function StorageSelection({
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent
-                        className="w-auto p-0"
+                        className="p-0"
                         align="end"
                         sideOffset={8}
                       >
@@ -441,7 +441,7 @@ export function StorageSelection({
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent
-                    className="w-auto p-0"
+                    className="p-0"
                     align="start"
                     sideOffset={8}
                   >
