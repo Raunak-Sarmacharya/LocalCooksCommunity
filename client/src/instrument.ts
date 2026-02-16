@@ -42,8 +42,10 @@ if (sentryDsn) {
       }),
     ],
 
-    // Performance: 100% in dev, 10% in production (tune as traffic grows)
-    tracesSampleRate: isProduction ? 0.1 : 1.0,
+    // Performance sampling — FREE TIER BUDGET: 10K transactions/month (shared with server)
+    // Client page loads + navigations generate ~1 transaction per page view
+    // 5% production keeps us well within budget
+    tracesSampleRate: isProduction ? 0.05 : 0.2,
 
     // Propagate traces to our API for distributed tracing (server ↔ client correlation)
     tracePropagationTargets: [
@@ -52,9 +54,10 @@ if (sentryDsn) {
       /^https:\/\/dev(-chef|-kitchen|-admin)?\.localcooks\.ca\/api/, // Dev subdomains
     ],
 
-    // Session replay sampling
-    replaysSessionSampleRate: 0,     // Don't record normal sessions (cost-conscious)
-    replaysOnErrorSampleRate: 1.0,   // Record 100% of sessions that have errors
+    // Session replay — FREE TIER: 50 replays/month
+    // Only capture error sessions to maximize value from limited quota
+    replaysSessionSampleRate: 0,     // Don't record normal sessions
+    replaysOnErrorSampleRate: 1.0,   // Record 100% of sessions that have errors (max 50/month)
 
     // Scrub sensitive data
     beforeSend(event) {
