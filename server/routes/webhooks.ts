@@ -26,7 +26,7 @@ const router = Router();
 // Stripe webhook handler for payment events
 router.post("/stripe", async (req: Request, res: Response) => {
   // Log webhook receipt immediately for debugging
-  logger.info(`[Webhook] Received Stripe webhook request`);
+  logger.operational(`[Webhook] Received Stripe webhook request`);
   
   try {
     const sig = req.headers["stripe-signature"];
@@ -34,7 +34,7 @@ router.post("/stripe", async (req: Request, res: Response) => {
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 
     // Log request details for debugging
-    logger.info(`[Webhook] Request details:`, {
+    logger.operational(`[Webhook] Request details:`, {
       hasSignature: !!sig,
       hasWebhookSecret: !!webhookSecret,
       bodyType: typeof req.body,
@@ -71,7 +71,7 @@ router.post("/stripe", async (req: Request, res: Response) => {
       ? req.body 
       : (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
     
-    logger.info(`[Webhook] Raw body prepared, length: ${rawBody.length}`);
+    logger.operational(`[Webhook] Raw body prepared, length: ${rawBody.length}`);
 
     // Verify webhook signature if secret is configured
     if (webhookSecret && sig) {
@@ -469,7 +469,7 @@ async function handleCheckoutSessionCompleted(
 
     // Check if this is a storage extension payment
     const metadata = expandedSession.metadata || {};
-    logger.info(`[Webhook] Checkout session metadata:`, { 
+    logger.operational(`[Webhook] Checkout session metadata:`, { 
       sessionId: session.id, 
       metadataType: metadata.type,
       allMetadata: metadata 
@@ -560,7 +560,7 @@ async function handleCheckoutSessionCompleted(
         const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
         const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
 
-        logger.info(`[Webhook] Creating booking from metadata for kitchen ${kitchenId}, chef ${chefId}`, {
+        logger.operational(`[Webhook] Creating booking from metadata for kitchen ${kitchenId}, chef ${chefId}`, {
           sessionId: session.id,
           paymentIntentId,
           bookingDate: bookingDate.toISOString(),
@@ -618,7 +618,7 @@ async function handleCheckoutSessionCompleted(
               paymentStatus: directBooking.paymentStatus,
               paymentIntentId: directBooking.paymentIntentId,
             };
-            logger.info(`[Webhook] Created booking ${directBooking.id} via direct DB insert`);
+            logger.operational(`[Webhook] Created booking ${directBooking.id} via direct DB insert`);
           } else {
             throw new Error("Direct DB insert returned no result");
           }
@@ -641,7 +641,7 @@ async function handleCheckoutSessionCompleted(
           throw new Error("No booking was created");
         }
 
-        logger.info(`[Webhook] Created booking ${booking.id} from checkout session ${session.id}`);
+        logger.operational(`[Webhook] Created booking ${booking.id} from checkout session ${session.id}`);
 
         // CRITICAL: Verify booking was actually persisted to database before creating payment_transactions
         const [verifiedBooking] = await db

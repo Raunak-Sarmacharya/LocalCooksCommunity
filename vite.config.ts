@@ -32,6 +32,12 @@ export default defineConfig({
       'react/jsx-runtime'
     ]
   },
+  // ENTERPRISE: Strip console.log/debug from production client bundles
+  // Preview deploys (dev branch) keep all console output for debugging
+  // Production deploys (main branch) strip console.log/debug — keeps warn/error
+  esbuild: {
+    pure: process.env.VERCEL_ENV === 'production' ? ['console.log', 'console.debug'] : [],
+  },
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
