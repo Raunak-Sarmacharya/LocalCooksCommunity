@@ -1,3 +1,4 @@
+import { logger } from "../../logger";
 /**
  * Firebase Applications Router
  * 
@@ -43,7 +44,7 @@ router.post('/firebase/applications',
     async (req: Request, res: Response) => {
         try {
             const userId = req.neonUser!.id;
-            console.log(`📝 POST /api/firebase/applications - User ${userId} submitting application`);
+            logger.info(`📝 POST /api/firebase/applications - User ${userId} submitting application`);
 
             // Strip userId from request body - we use the authenticated user's ID
             // This prevents spoofing and fixes type coercion issues from form data
@@ -57,7 +58,7 @@ router.post('/firebase/applications',
                 cleanupUploadedFiles(req);
 
                 const validationError = fromZodError(parsedData.error);
-                console.error('❌ Validation error:', validationError.details);
+                logger.error('❌ Validation error:', validationError.details);
                 return res.status(400).json({
                     error: "Validation error",
                     message: validationError.message,
@@ -85,32 +86,32 @@ router.post('/firebase/applications',
             if (files) {
                 // Upload food safety license if provided
                 if (files.foodSafetyLicense?.[0]) {
-                    console.log('📄 Uploading food safety license file to R2...');
+                    logger.info('📄 Uploading food safety license file to R2...');
                     try {
                         applicationData.foodSafetyLicenseUrl = await uploadToBlob(
                             files.foodSafetyLicense[0],
                             userId,
                             'documents'
                         );
-                        console.log(`✅ Food safety license uploaded: ${applicationData.foodSafetyLicenseUrl}`);
+                        logger.info(`✅ Food safety license uploaded: ${applicationData.foodSafetyLicenseUrl}`);
                     } catch (uploadError) {
-                        console.error('❌ Failed to upload food safety license:', uploadError);
+                        logger.error('❌ Failed to upload food safety license:', uploadError);
                         // Continue without the file - don't fail the entire submission
                     }
                 }
 
                 // Upload food establishment cert if provided
                 if (files.foodEstablishmentCert?.[0]) {
-                    console.log('📄 Uploading food establishment cert file to R2...');
+                    logger.info('📄 Uploading food establishment cert file to R2...');
                     try {
                         applicationData.foodEstablishmentCertUrl = await uploadToBlob(
                             files.foodEstablishmentCert[0],
                             userId,
                             'documents'
                         );
-                        console.log(`✅ Food establishment cert uploaded: ${applicationData.foodEstablishmentCertUrl}`);
+                        logger.info(`✅ Food establishment cert uploaded: ${applicationData.foodEstablishmentCertUrl}`);
                     } catch (uploadError) {
-                        console.error('❌ Failed to upload food establishment cert:', uploadError);
+                        logger.error('❌ Failed to upload food establishment cert:', uploadError);
                     }
                 }
             }
@@ -126,7 +127,7 @@ router.post('/firebase/applications',
             // Create the application via Service
             const application = await applicationService.submitApplication(applicationData);
 
-            console.log('✅ Application created successfully:', {
+            logger.info('✅ Application created successfully:', {
                 id: application.id,
                 userId: application.userId,
                 hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl)
@@ -138,7 +139,7 @@ router.post('/firebase/applications',
             res.status(201).json(application);
 
         } catch (error) {
-            console.error('❌ Error creating application:', error);
+            logger.error('❌ Error creating application:', error);
             cleanupUploadedFiles(req);
 
             if (error instanceof DomainError) {
@@ -175,7 +176,7 @@ router.patch('/firebase/applications/:id/documents',
                 return res.status(400).json({ error: 'Invalid application ID' });
             }
 
-            console.log(`📝 PATCH /api/firebase/applications/${applicationId}/documents - User ${userId}`);
+            logger.info(`📝 PATCH /api/firebase/applications/${applicationId}/documents - User ${userId}`);
 
             // Verify ownership
             const application = await applicationService.getApplicationById(applicationId);
@@ -196,31 +197,31 @@ router.patch('/firebase/applications/:id/documents',
 
             if (files) {
                 if (files.foodSafetyLicense?.[0]) {
-                    console.log('📄 Uploading food safety license file to R2...');
+                    logger.info('📄 Uploading food safety license file to R2...');
                     try {
                         updates.foodSafetyLicenseUrl = await uploadToBlob(
                             files.foodSafetyLicense[0],
                             userId,
                             'documents'
                         );
-                        console.log(`✅ Food safety license uploaded: ${updates.foodSafetyLicenseUrl}`);
+                        logger.info(`✅ Food safety license uploaded: ${updates.foodSafetyLicenseUrl}`);
                     } catch (uploadError) {
-                        console.error('❌ Failed to upload food safety license:', uploadError);
+                        logger.error('❌ Failed to upload food safety license:', uploadError);
                         return res.status(500).json({ error: 'Failed to upload food safety license' });
                     }
                 }
 
                 if (files.foodEstablishmentCert?.[0]) {
-                    console.log('📄 Uploading food establishment cert file to R2...');
+                    logger.info('📄 Uploading food establishment cert file to R2...');
                     try {
                         updates.foodEstablishmentCertUrl = await uploadToBlob(
                             files.foodEstablishmentCert[0],
                             userId,
                             'documents'
                         );
-                        console.log(`✅ Food establishment cert uploaded: ${updates.foodEstablishmentCertUrl}`);
+                        logger.info(`✅ Food establishment cert uploaded: ${updates.foodEstablishmentCertUrl}`);
                     } catch (uploadError) {
-                        console.error('❌ Failed to upload food establishment cert:', uploadError);
+                        logger.error('❌ Failed to upload food establishment cert:', uploadError);
                         return res.status(500).json({ error: 'Failed to upload food establishment cert' });
                     }
                 }
@@ -241,7 +242,7 @@ router.patch('/firebase/applications/:id/documents',
             // Update documents via service
             const updatedApplication = await applicationService.updateDocuments(applicationId, updates);
 
-            console.log('✅ Application documents updated:', {
+            logger.info('✅ Application documents updated:', {
                 id: updatedApplication.id,
                 foodSafetyLicenseUrl: updatedApplication.foodSafetyLicenseUrl,
                 foodEstablishmentCertUrl: updatedApplication.foodEstablishmentCertUrl
@@ -250,7 +251,7 @@ router.patch('/firebase/applications/:id/documents',
             res.json(updatedApplication);
 
         } catch (error) {
-            console.error('❌ Error updating application documents:', error);
+            logger.error('❌ Error updating application documents:', error);
             cleanupUploadedFiles(req);
 
             if (error instanceof DomainError) {
@@ -283,12 +284,12 @@ router.patch('/firebase/applications/:id/cancel',
                 return res.status(400).json({ error: 'Invalid application ID' });
             }
 
-            console.log(`📝 PATCH /api/firebase/applications/${applicationId}/cancel - User ${userId}`);
+            logger.info(`📝 PATCH /api/firebase/applications/${applicationId}/cancel - User ${userId}`);
 
             // Cancel via service (handles ownership check)
             const updatedApplication = await applicationService.cancelApplication(applicationId, userId);
 
-            console.log('✅ Application cancelled:', { id: updatedApplication.id });
+            logger.info('✅ Application cancelled:', { id: updatedApplication.id });
 
             // Send cancellation email
             try {
@@ -304,13 +305,13 @@ router.patch('/firebase/applications/:id/cancel',
                     });
                 }
             } catch (emailError) {
-                console.error('Error sending cancellation email:', emailError);
+                logger.error('Error sending cancellation email:', emailError);
             }
 
             res.json(updatedApplication);
 
         } catch (error) {
-            console.error('❌ Error cancelling application:', error);
+            logger.error('❌ Error cancelling application:', error);
 
             if (error instanceof DomainError) {
                 return res.status(error.statusCode).json({ 
@@ -339,7 +340,7 @@ function cleanupUploadedFiles(req: Request): void {
                     fs.unlinkSync(file.path);
                 }
             } catch (e) {
-                console.error('Error cleaning up file:', e);
+                logger.error('Error cleaning up file:', e);
             }
         });
     }
@@ -380,7 +381,7 @@ async function sendApplicationEmail(application: {
             });
         }
     } catch (emailError) {
-        console.error('Error sending application email:', emailError);
+        logger.error('Error sending application email:', emailError);
     }
 }
 

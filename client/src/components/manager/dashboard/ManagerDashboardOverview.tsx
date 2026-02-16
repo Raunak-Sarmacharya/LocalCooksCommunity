@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -172,7 +173,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
             const day = String(d.getDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
         } catch (error) {
-            console.error('Error normalizing date:', error);
+            logger.error('Error normalizing date:', error);
             return '';
         }
     };

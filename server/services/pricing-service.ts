@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 /**
  * Pricing Service
  * 
@@ -69,7 +70,7 @@ export async function getKitchenPricing(kitchenId: number): Promise<KitchenPrici
       taxRatePercent: kitchen.taxRatePercent ? parseFloat(kitchen.taxRatePercent) : null,
     };
   } catch (error) {
-    console.error('Error getting kitchen pricing:', error);
+    logger.error('Error getting kitchen pricing:', error);
     throw error;
   }
 }
@@ -138,7 +139,7 @@ export async function calculateKitchenBookingPrice(
       taxAmountCents, // New field
     };
   } catch (error) {
-    console.error('Error calculating kitchen booking price:', error);
+    logger.error('Error calculating kitchen booking price:', error);
     throw error;
   }
 }
@@ -167,7 +168,7 @@ export async function getServiceFeeRate(): Promise<number> {
 
     return rate;
   } catch (error) {
-    console.error('Error getting service fee rate from platform_settings:', error);
+    logger.error('Error getting service fee rate from platform_settings:', error);
     return 0.05; // Default to 5% on error
   }
 }

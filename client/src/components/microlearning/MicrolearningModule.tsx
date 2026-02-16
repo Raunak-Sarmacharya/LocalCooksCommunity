@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
@@ -314,7 +315,7 @@ export default function MicrolearningModule({
   const overallProgress = (userProgress.filter(p => p.completed).length / videos.length) * 100;
 
   // Debug log
-  console.log('MicrolearningModule rendering:', {
+  logger.info('MicrolearningModule rendering:', {
     isLoading,
     applicationInfo,
     hasApprovedApplication,
@@ -333,14 +334,14 @@ export default function MicrolearningModule({
   const loadUserProgress = async () => {
     try {
       if (!user) {
-        console.error('No authenticated user found');
+        logger.error('No authenticated user found');
         return;
       }
 
       // Firebase-based access only (session auth has been removed)
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        console.error('No authenticated Firebase user found');
+        logger.error('No authenticated Firebase user found');
         return;
       }
       
@@ -354,7 +355,7 @@ export default function MicrolearningModule({
       
       if (response.ok) {
         const data = await response.json();
-        console.log('Progress data received:', data);
+        logger.info('Progress data received:', data);
         
         // Filter out any old video IDs that don't match current video structure
         const currentVideoIds = videos.map(v => v.id);
@@ -362,7 +363,7 @@ export default function MicrolearningModule({
           currentVideoIds.includes(p.videoId)
         );
         
-        console.log('Filtered progress (removing old video IDs):', {
+        logger.info('Filtered progress (removing old video IDs):', {
           original: data.progress?.length || 0,
           filtered: filteredProgress.length,
           currentVideoIds,
@@ -375,7 +376,7 @@ export default function MicrolearningModule({
         setHasApprovedApplication(data.hasApprovedApplication || (user.role === 'admin'));
         setApplicationInfo(data.applicationInfo || null);
       } else {
-        console.error('Failed to load progress:', response.status, response.statusText);
+        logger.error('Failed to load progress:', response.status, response.statusText);
         // For admins, provide default full access even if API fails
         if (user.role === 'admin') {
           setAccessLevel('full');
@@ -384,7 +385,7 @@ export default function MicrolearningModule({
         }
       }
     } catch (error) {
-      console.error('Failed to load progress:', error);
+      logger.error('Failed to load progress:', error);
       // For admins, provide default full access even if API fails
       if (user?.role === 'admin') {
         setAccessLevel('full');
@@ -399,14 +400,14 @@ export default function MicrolearningModule({
   const updateVideoProgress = async (videoId: string, progress: number, completed: boolean = false, watchedPercentage: number = 0) => {
     try {
       if (!user) {
-        console.error('No authenticated user found');
+        logger.error('No authenticated user found');
         return;
       }
 
       // Firebase-based access only (session auth has been removed)
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        console.error('No authenticated Firebase user found');
+        logger.error('No authenticated Firebase user found');
         return;
       }
       
@@ -446,14 +447,14 @@ export default function MicrolearningModule({
             startedAt: existing?.startedAt || (progress > 0 ? new Date() : undefined)
           };
           
-          console.log(`Progress updated for ${videoId}:`, updatedProgress);
+          logger.info(`Progress updated for ${videoId}:`, updatedProgress);
           return [...filtered, updatedProgress];
         });
       } else {
-        console.error('Failed to update progress:', response.status);
+        logger.error('Failed to update progress:', response.status);
       }
     } catch (error) {
-      console.error('Failed to update progress:', error);
+      logger.error('Failed to update progress:', error);
     }
   };
 
@@ -484,7 +485,7 @@ export default function MicrolearningModule({
     // Show success message
     const video = videos.find(v => v.id === videoId);
     if (video) {
-      console.log(`Module completed: ${video.title}`);
+      logger.info(`Module completed: ${video.title}`);
     }
     
     // Auto-advance logic - but prevent looping for limited access users
@@ -516,7 +517,7 @@ export default function MicrolearningModule({
       // For limited access users completing the sample video, show application prompt
       setTimeout(() => {
         setShowApplicationPrompt(true);
-        console.log('Limited access user completed sample video - showing application prompt');
+        logger.info('Limited access user completed sample video - showing application prompt');
       }, 2000); // Show prompt after 2 seconds to let completion message display
     }
   };
@@ -529,7 +530,7 @@ export default function MicrolearningModule({
       // Get Firebase token for authentication
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        console.error('No authenticated user found');
+        logger.error('No authenticated user found');
         showAlert({
           title: "Authentication Error",
           description: "Authentication error. Please refresh the page and try again.",
@@ -556,7 +557,7 @@ export default function MicrolearningModule({
 
       if (response.ok) {
         const result = await response.json();
-        console.log('Completion confirmed successfully:', result);
+        logger.info('Completion confirmed successfully:', result);
         setCompletionConfirmed(true);
         
         // Reload user progress to ensure state is synchronized with server
@@ -568,7 +569,7 @@ export default function MicrolearningModule({
       } else {
         // Handle non-200 responses
         const errorData = await response.json().catch(() => ({}));
-        console.error('Failed to confirm completion:', errorData);
+        logger.error('Failed to confirm completion:', errorData);
         
         if (response.status === 403 && errorData.requiresApproval) {
           // User doesn't have approved application
@@ -594,7 +595,7 @@ export default function MicrolearningModule({
         }
       }
     } catch (error) {
-      console.error('Failed to confirm completion:', error);
+      logger.error('Failed to confirm completion:', error);
       showAlert({
         title: "Network Error",
         description: "Network error. Please check your connection and try again.",
@@ -1381,7 +1382,7 @@ export default function MicrolearningModule({
                             }
                           }
                         } catch (error) {
-                          console.error('Certificate download error:', error);
+                          logger.error('Certificate download error:', error);
                         }
                       }}
                     >

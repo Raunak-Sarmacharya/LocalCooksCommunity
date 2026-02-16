@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 /**
  * Always Food Safe API Integration
  * 
@@ -92,7 +93,7 @@ export async function submitToAlwaysFoodSafe(
     };
 
   } catch (error) {
-    console.error('Always Food Safe API submission failed:', error);
+    logger.error('Always Food Safe API submission failed:', error);
     
     return {
       success: false,
@@ -128,7 +129,7 @@ export async function verifyCertificate(certificateId: string): Promise<boolean>
     return data.valid === true;
 
   } catch (error) {
-    console.error('Certificate verification failed:', error);
+    logger.error('Certificate verification failed:', error);
     return false;
   }
 }
@@ -160,7 +161,7 @@ export async function getTrainingModules(): Promise<any[]> {
     return data.modules || [];
 
   } catch (error) {
-    console.error('Failed to fetch training modules:', error);
+    logger.error('Failed to fetch training modules:', error);
     return [];
   }
 }

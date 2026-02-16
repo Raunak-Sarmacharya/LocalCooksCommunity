@@ -1,3 +1,4 @@
+import { logger } from "../../logger";
 /**
  * Location Service
  * 
@@ -44,7 +45,7 @@ export class LocationService {
         throw error;
       }
 
-      console.error('[LocationService] Error creating location:', error);
+      logger.error('[LocationService] Error creating location:', error);
       throw new DomainError(
         LocationErrorCodes.INVALID_ADDRESS,
         'Failed to create location',
@@ -92,7 +93,7 @@ export class LocationService {
         throw error;
       }
 
-      console.error('[LocationService] Error updating location:', error);
+      logger.error('[LocationService] Error updating location:', error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to update location',
@@ -144,7 +145,7 @@ export class LocationService {
 
       return updated;
     } catch (error: any) {
-      console.error('[LocationService] Error verifying kitchen license:', error);
+      logger.error('[LocationService] Error verifying kitchen license:', error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to verify kitchen license',
@@ -180,7 +181,7 @@ export class LocationService {
 
       return updated;
     } catch (error: any) {
-      console.error('[LocationService] Error updating kitchen license URL:', error);
+      logger.error('[LocationService] Error updating kitchen license URL:', error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to update kitchen license URL',
@@ -209,7 +210,7 @@ export class LocationService {
       if (error instanceof DomainError) {
         throw error;
       }
-      console.error('[LocationService] Error getting location by ID:', error);
+      logger.error('[LocationService] Error getting location by ID:', error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to get location',
@@ -225,7 +226,7 @@ export class LocationService {
     try {
       return await this.locationRepo.findByManagerId(managerId);
     } catch (error: any) {
-      console.error('[LocationService] Error getting locations by manager:', error);
+      logger.error('[LocationService] Error getting locations by manager:', error);
       throw new DomainError(
         LocationErrorCodes.NO_MANAGER_ASSIGNED,
         'Failed to get locations',
@@ -241,7 +242,7 @@ export class LocationService {
     try {
       return await this.locationRepo.findAll();
     } catch (error: any) {
-      console.error('[LocationService] Error getting all locations:', error);
+      logger.error('[LocationService] Error getting all locations:', error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to get locations',
@@ -308,7 +309,7 @@ export class LocationService {
         updatedAt: new Date(),
       } as LocationRequirements;
     } catch (error: any) {
-      console.error(`[LocationService] Error getting requirements for location ${locationId}:`, error);
+      logger.error(`[LocationService] Error getting requirements for location ${locationId}:`, error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to get location requirements',
@@ -330,7 +331,7 @@ export class LocationService {
     } catch (error: any) {
       if (error instanceof DomainError) throw error;
 
-      console.error(`[LocationService] Error upserting requirements for location ${locationId}:`, error);
+      logger.error(`[LocationService] Error upserting requirements for location ${locationId}:`, error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to update location requirements',
@@ -374,17 +375,17 @@ export class LocationService {
         const cleanupPromises = locationApps
           .filter(app => app.conversationId)
           .map(app => deleteConversation(app.conversationId!)
-            .catch((err: any) => console.error(`Failed to delete conversation ${app.conversationId}:`, err))
+            .catch((err: any) => logger.error(`Failed to delete conversation ${app.conversationId}:`, err))
           );
 
         await Promise.all(cleanupPromises);
-        console.log(`[LocationService] Cleaned up ${cleanupPromises.length} conversations for deleted location ${id}`);
+        logger.info(`[LocationService] Cleaned up ${cleanupPromises.length} conversations for deleted location ${id}`);
       }
 
       // 3. Delete location in Postgres
       await this.locationRepo.delete(id);
     } catch (error: any) {
-      console.error('[LocationService] Error deleting location:', error);
+      logger.error('[LocationService] Error deleting location:', error);
       throw error;
     }
   }

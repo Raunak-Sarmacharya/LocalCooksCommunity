@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import {
@@ -68,9 +69,19 @@ import { UserService } from "./domains/users/user.service";
 // function normalizeImageUrl moved to ./routes/utils
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  console.log("[Routes] Registering all routes including chef-kitchen-access and portal user routes...");
+  logger.info("[Routes] Registering all routes including chef-kitchen-access and portal user routes...");
   // Set up authentication routes and middleware
   // Session auth removed in favor of Firebase Auth
+
+  // ─── Sentry Verification Endpoints (safe to leave in production) ───
+  // GET  /api/sentry-test       → triggers a test error that appears in Sentry Issues
+  // GET  /api/sentry-test/trace → returns 200, generates a performance trace in Sentry
+  app.get("/api/sentry-test", (_req: Request, _res: Response) => {
+    throw new Error("Sentry test error — if you see this in Sentry, it works!");
+  });
+  app.get("/api/sentry-test/trace", (_req: Request, res: Response) => {
+    res.json({ ok: true, message: "Sentry trace generated. Check Sentry Performance tab." });
+  });
 
   // Enable optional Firebase auth globally for all routes
   // This populates req.firebaseUser and req.neonUser if a token is present
@@ -94,7 +105,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Legacy logout endpoint alias (frontend calls /api/logout)
   app.post("/api/logout", (req, res) => {
-    console.log("🚪 Logout request received (Firebase Auth is stateless)");
+    logger.info("🚪 Logout request received (Firebase Auth is stateless)");
     res.json({ success: true, message: "Logged out successfully" });
   });
 
@@ -145,7 +156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         has_seen_welcome: user.has_seen_welcome
       });
     } catch (error) {
-      console.error("[API] Error getting user:", error);
+      logger.error("[API] Error getting user:", error);
       res.status(500).json({ error: "Failed to get user info" });
     }
   });
@@ -160,7 +171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // CRITICAL: Update is_verified status if Firebase reports email is verified
       const firebaseEmailVerified = req.firebaseUser?.email_verified;
       if (firebaseEmailVerified && !user.isVerified) {
-        console.log(`📧 Updating is_verified for user ${user.id} - Firebase email verified`);
+        logger.info(`📧 Updating is_verified for user ${user.id} - Firebase email verified`);
         const updatedUser = await userService.updateUser(user.id, { isVerified: true });
         if (updatedUser) {
           user = updatedUser;
@@ -172,7 +183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (firebaseEmailVerified && user.isVerified && !user.welcomeEmailSentAt) {
         try {
           const { sendEmail, generateWelcomeEmail } = await import('./email');
-          console.log(`📧 Sending welcome email to newly verified user: ${user.username}`);
+          logger.info(`📧 Sending welcome email to newly verified user: ${user.username}`);
           const welcomeEmail = generateWelcomeEmail({
             fullName: req.firebaseUser?.name || user.username.split('@')[0],
             email: user.username,
@@ -185,16 +196,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (emailResult) {
             // Mark welcome email as sent with timestamp (idempotency)
             await userService.updateUser(user.id, { welcomeEmailSentAt: new Date() });
-            console.log(`✅ Welcome email sent successfully to ${user.username}`);
+            logger.info(`✅ Welcome email sent successfully to ${user.username}`);
           }
         } catch (emailError) {
-          console.error('❌ Error sending welcome email on sync verification:', emailError);
+          logger.error('❌ Error sending welcome email on sync verification:', emailError);
         }
       }
 
       res.json(user);
     } catch (error) {
-      console.error("Error syncing user:", error);
+      logger.error("Error syncing user:", error);
       res.status(500).json({ error: "Failed to sync user" });
     }
   });
@@ -225,7 +236,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user already exists by Firebase UID
       const existingByUid = await userService.getUserByFirebaseUid(uid);
       if (existingByUid) {
-        console.log(`✅ User already exists with Firebase UID ${uid}, returning existing user`);
+        logger.info(`✅ User already exists with Firebase UID ${uid}, returning existing user`);
         return res.json(existingByUid);
       }
 
@@ -236,7 +247,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // User exists in Neon but with different/no Firebase UID
         // Link the new Firebase account to existing Neon user
         if (!existingByUsername.firebaseUid) {
-          console.log(`🔗 Linking Firebase UID ${uid} to existing Neon user ${existingByUsername.id}`);
+          logger.info(`🔗 Linking Firebase UID ${uid} to existing Neon user ${existingByUsername.id}`);
           const updatedUser = await userService.updateUser(existingByUsername.id, {
             firebaseUid: uid,
             isVerified: decodedToken.email_verified || existingByUsername.isVerified
@@ -245,8 +256,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else if (existingByUsername.firebaseUid !== uid) {
           // User exists with a DIFFERENT Firebase UID - this is a conflict
           // The old Firebase account may have been deleted and user is re-registering
-          console.log(`⚠️ User ${email} exists with different Firebase UID. Old: ${existingByUsername.firebaseUid}, New: ${uid}`);
-          console.log(`🔄 Updating Firebase UID to new account (user may have re-registered in Firebase)`);
+          logger.info(`⚠️ User ${email} exists with different Firebase UID. Old: ${existingByUsername.firebaseUid}, New: ${uid}`);
+          logger.info(`🔄 Updating Firebase UID to new account (user may have re-registered in Firebase)`);
           const updatedUser = await userService.updateUser(existingByUsername.id, {
             firebaseUid: uid,
             isVerified: decodedToken.email_verified || false // Reset verification for new Firebase account
@@ -258,7 +269,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create new user - no existing user found
-      console.log(`📝 Creating new user: ${email} with role: ${role || 'user'}`);
+      logger.info(`📝 Creating new user: ${email} with role: ${role || 'user'}`);
       const finalRole = role || "user";
       const newUser = await userService.createUser({
         username: email,
@@ -280,7 +291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // ENTERPRISE: Only send welcome email if the user is verified (e.g. Google Auth)
         // For email/password users, they will get this email after they verify via /api/sync-verification-status
         if (decodedToken.email_verified) {
-          console.log(`📧 Sending welcome email to VERIFIED new ${finalRole}: ${email}`);
+          logger.info(`📧 Sending welcome email to VERIFIED new ${finalRole}: ${email}`);
           const welcomeEmail = generateWelcomeEmail({
             fullName: displayName,
             email,
@@ -292,12 +303,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (welcomeSent) {
             // ENTERPRISE: Mark welcome email as sent with timestamp (idempotency)
             await userService.updateUser(newUser.id, { welcomeEmailSentAt: new Date() });
-            console.log(`✅ Welcome email sent to new ${finalRole}: ${email}`);
+            logger.info(`✅ Welcome email sent to new ${finalRole}: ${email}`);
           } else {
-            console.log(`❌ Failed to send welcome email to ${email}`);
+            logger.info(`❌ Failed to send welcome email to ${email}`);
           }
         } else {
-          console.log(`ℹ️ Skipping welcome email for UNVERIFIED new ${finalRole}: ${email} - will be sent after verification`);
+          logger.info(`ℹ️ Skipping welcome email for UNVERIFIED new ${finalRole}: ${email} - will be sent after verification`);
         }
 
         // Send notification to admins about new user registration
@@ -319,18 +330,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
               trackingId: `new_user_admin_${admin.username}_${Date.now()}`
             });
             if (adminSent) {
-              console.log(`✅ Admin notification sent to ${admin.username} about new ${finalRole} registration`);
+              logger.info(`✅ Admin notification sent to ${admin.username} about new ${finalRole} registration`);
             }
           }
         }
       } catch (emailError) {
-        console.error('❌ Error sending registration emails:', emailError);
+        logger.error('❌ Error sending registration emails:', emailError);
         // Don't fail registration if email fails
       }
 
       res.status(201).json(newUser);
     } catch (error: any) {
-      console.error("Error registering user:", error);
+      logger.error("Error registering user:", error);
 
       // Provide more specific error messages
       if (error.message?.includes('already taken') || error.code === '23505') {
@@ -429,7 +440,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!emailSent) {
-        console.error('Failed to send unsubscribe notification email');
+        logger.error('Failed to send unsubscribe notification email');
         return res.status(500).json({
           success: false,
           message: 'Failed to process unsubscribe request'
@@ -507,7 +518,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         trackingId: `unsubscribe_confirmation_${email}_${Date.now()}`
       });
 
-      console.log(`✅ Unsubscribe request processed for: ${email}`);
+      logger.info(`✅ Unsubscribe request processed for: ${email}`);
 
       res.json({
         success: true,
@@ -515,7 +526,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
     } catch (error) {
-      console.error('Error processing unsubscribe request:', error);
+      logger.error('Error processing unsubscribe request:', error);
       res.status(500).json({
         success: false,
         message: 'Internal server error'

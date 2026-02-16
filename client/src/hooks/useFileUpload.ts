@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { auth } from '@/lib/firebase';
 import { useState } from 'react';
 
@@ -125,7 +126,7 @@ export const useFileUpload = (options: UseFileUploadOptions = {}) => {
         // Add Firebase Authorization header
         xhr.setRequestHeader('Authorization', `Bearer ${idToken}`);
         
-        console.log('Uploading file with Firebase authentication');
+        logger.info('Uploading file with Firebase authentication');
         
         xhr.send(formData);
       });

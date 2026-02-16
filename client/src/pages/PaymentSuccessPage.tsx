@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
@@ -93,7 +94,7 @@ export default function PaymentSuccessPage() {
         }
         
         if (!currentUser) {
-          console.log('[PaymentSuccess] No user after waiting, will retry fetch');
+          logger.info('[PaymentSuccess] No user after waiting, will retry fetch');
           // Instead of showing error immediately, retry the whole fetch
           if (retryCount < 3) {
             await new Promise(resolve => setTimeout(resolve, 2000));
@@ -144,7 +145,7 @@ export default function PaymentSuccessPage() {
 
           // If 404 or other error, booking may not be created yet - retry
           if ((response.status === 404 || response.status >= 500) && retryCount < 15) {
-            console.log(`[PaymentSuccess] Booking not found yet (status: ${response.status}), retrying (${retryCount + 1}/15)...`);
+            logger.info(`[PaymentSuccess] Booking not found yet (status: ${response.status}), retrying (${retryCount + 1}/15)...`);
             setIsPolling(true);
             setPollingAttempt(retryCount + 1);
             await new Promise(resolve => setTimeout(resolve, 2000));
@@ -190,10 +191,10 @@ export default function PaymentSuccessPage() {
         setIsLoading(false);
         // Don't set error - show payment success with processing message instead
       } catch (err: any) {
-        console.error('Error fetching booking:', err);
+        logger.error('Error fetching booking:', err);
         // For enterprise flow, retry on errors (webhook may still be processing)
         if (!bookingId && retryCount < 15) {
-          console.log(`[PaymentSuccess] Error occurred, retrying (${retryCount + 1}/15)...`);
+          logger.info(`[PaymentSuccess] Error occurred, retrying (${retryCount + 1}/15)...`);
           setIsPolling(true);
           setPollingAttempt(retryCount + 1);
           await new Promise(resolve => setTimeout(resolve, 2000));

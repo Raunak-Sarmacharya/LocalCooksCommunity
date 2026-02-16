@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -57,7 +58,7 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
                                 alt={location.name}
                                 className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
                                 onError={(e) => {
-                                    console.error(`[KitchenLocationCard] Image failed to load for ${location.name}:`, rawImageUrl);
+                                    logger.error(`[KitchenLocationCard] Image failed to load for ${location.name}:`, rawImageUrl);
                                     setImageError(true);
                                 }}
                                 loading="lazy"

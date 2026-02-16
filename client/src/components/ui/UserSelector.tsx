@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,7 +56,7 @@ export const UserSelector: React.FC<UserSelectorProps> = ({
         setAvailableUsers(filteredUsers);
       }
     } catch (error) {
-      console.error('Error fetching users:', error);
+      logger.error('Error fetching users:', error);
     } finally {
       setIsLoading(false);
     }

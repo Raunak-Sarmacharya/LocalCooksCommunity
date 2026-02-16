@@ -1,3 +1,4 @@
+import { logger } from "../../logger";
 import { Router, Request, Response } from 'express';
 import { requireFirebaseAuthWithUser } from '../../firebase-auth-middleware';
 import { applicationService } from '../../domains/applications/application.service';
@@ -32,7 +33,7 @@ router.get('/firebase/dashboard', requireFirebaseAuthWithUser, async (req: Reque
             microlearningProgress,
         });
     } catch (error) {
-        console.error('Error getting dashboard data:', error);
+        logger.error('Error getting dashboard data:', error);
         res.status(500).json({ error: 'Failed to get dashboard data' });
     }
 });
@@ -41,7 +42,7 @@ router.get('/firebase/dashboard', requireFirebaseAuthWithUser, async (req: Reque
 router.get('/firebase/applications/my', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
         const userId = req.neonUser!.id;
-        console.log(`📋 GET /api/firebase/applications/my - User ${userId}`);
+        logger.info(`📋 GET /api/firebase/applications/my - User ${userId}`);
 
         const applications = await applicationService.getApplicationsByUserId(userId);
 
@@ -58,7 +59,7 @@ router.get('/firebase/applications/my', requireFirebaseAuthWithUser, async (req:
 
         res.json(transformed);
     } catch (error) {
-        console.error('Error getting user applications:', error);
+        logger.error('Error getting user applications:', error);
         res.status(500).json({ error: 'Failed to get applications' });
     }
 });

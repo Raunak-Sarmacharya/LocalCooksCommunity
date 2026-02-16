@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useFileUpload } from "@/hooks/useFileUpload";
@@ -75,7 +76,7 @@ export default function CertificationsForm() {
 
   const { mutate, isPending } = useMutation({
     mutationFn: async (data: ApplicationFormData & { files?: Record<string, File> }) => {
-      console.log("🚀 Submitting application with data:", data);
+      logger.info("🚀 Submitting application with data:", data);
 
       // Get Firebase auth token
       let authToken: string | null = null;
@@ -84,7 +85,7 @@ export default function CertificationsForm() {
         try {
           authToken = await currentFirebaseUser.getIdToken();
         } catch (tokenError) {
-          console.error('Failed to get Firebase token:', tokenError);
+          logger.error('Failed to get Firebase token:', tokenError);
           throw new Error('Authentication failed. Please log in again.');
         }
       }
@@ -97,7 +98,7 @@ export default function CertificationsForm() {
       const hasFileUploads = data.files && Object.keys(data.files).length > 0;
       const hasUploadedUrls = data.foodSafetyLicenseUrl || data.foodEstablishmentCertUrl;
       
-      console.log("📋 Submission method decision:", {
+      logger.info("📋 Submission method decision:", {
         hasFileUploads,
         hasUploadedUrls,
         willUseFormData: hasFileUploads,
@@ -124,7 +125,7 @@ export default function CertificationsForm() {
           "Authorization": `Bearer ${authToken}`
         };
 
-        console.log("📤 Submitting via FormData with files to Firebase endpoint");
+        logger.info("📤 Submitting via FormData with files to Firebase endpoint");
         const response = await fetch("/api/firebase/applications", {
           method: "POST",
           headers,
@@ -144,7 +145,7 @@ export default function CertificationsForm() {
           "Authorization": `Bearer ${authToken}`
         };
 
-        console.log("📤 Submitting via JSON with document URLs to Firebase endpoint:", {
+        logger.info("📤 Submitting via JSON with document URLs to Firebase endpoint:", {
           foodSafetyLicenseUrl: data.foodSafetyLicenseUrl || null,
           foodEstablishmentCertUrl: data.foodEstablishmentCertUrl || null
         });
@@ -167,7 +168,7 @@ export default function CertificationsForm() {
       navigate("/success");
     },
     onError: (error: any) => {
-      console.error("Application submission error:", error);
+      logger.error("Application submission error:", error);
       let errorMessage = "Please try again later.";
       let title = "Error submitting application";
       let isAuthError = false;
@@ -182,7 +183,7 @@ export default function CertificationsForm() {
         try {
           errorMessage = error.response.error || error.message || errorMessage;
         } catch (e) {
-          console.error("Error parsing error response:", e);
+          logger.error("Error parsing error response:", e);
         }
       }
 
@@ -232,7 +233,7 @@ export default function CertificationsForm() {
       const hasFiles = Object.keys(fileUploads).length > 0;
       const hasUrls = documentUrls.foodSafetyLicenseUrl.trim() || documentUrls.foodEstablishmentCertUrl.trim();
       
-      console.log("🎯 Form submission strategy:", {
+      logger.info("🎯 Form submission strategy:", {
         hasFiles,
         hasUrls,
         fileCount: Object.keys(fileUploads).length,
@@ -248,7 +249,7 @@ export default function CertificationsForm() {
           files: fileUploads // Include files for FormData submission
         } as ApplicationFormData & { files: Record<string, File> };
 
-        console.log("📁 Submitting with files directly to backend");
+        logger.info("📁 Submitting with files directly to backend");
         mutate(completeFormData);
         
       } else if (hasUrls) {
@@ -260,7 +261,7 @@ export default function CertificationsForm() {
           userId: user.uid,
         } as ApplicationFormData;
 
-        console.log("🔗 Submitting with pre-uploaded URLs");
+        logger.info("🔗 Submitting with pre-uploaded URLs");
         mutate(completeFormData);
         
       } else {
@@ -271,7 +272,7 @@ export default function CertificationsForm() {
           userId: user.uid,
         } as ApplicationFormData;
 
-        console.log("📝 Submitting without documents");
+        logger.info("📝 Submitting without documents");
         mutate(completeFormData);
       }
       

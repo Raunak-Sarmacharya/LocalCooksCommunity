@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -542,7 +543,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     if (elementId === 'email-header') {
       // Prevent changes to header background color and image to maintain brand consistency
       if (property === 'backgroundColor' || property === 'backgroundImage') {
-        console.log('Header background changes are disabled to maintain brand consistency');
+        logger.info('Header background changes are disabled to maintain brand consistency');
         return;
       }
 
@@ -819,7 +820,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       currentDesign.content.sections?.['custom-message-section']?.text || '';
     const messageContent = currentDesign.content.message || messageFromSections;
 
-    console.log('Email validation debug:', {
+    logger.info('Email validation debug:', {
       messageFromContent: currentDesign.content.message,
       messageFromSections: messageFromSections,
       finalMessageContent: messageContent,

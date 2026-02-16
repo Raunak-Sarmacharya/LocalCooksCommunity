@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -133,7 +134,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
           return headers;
         }
       } catch (tokenError) {
-        console.error('Failed to get Firebase token:', tokenError);
+        logger.error('Failed to get Firebase token:', tokenError);
       }
     }
 
@@ -143,7 +144,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       headers['Authorization'] = `Bearer ${storedToken}`;
     }
   } catch (error) {
-    console.error('Error getting auth headers:', error);
+    logger.error('Error getting auth headers:', error);
     // Fallback to localStorage
     const storedToken = localStorage.getItem('firebaseToken');
     if (storedToken) {
@@ -214,7 +215,7 @@ export default function ManagerBookingDashboard() {
         if (!response.ok) return null;
         return response.json();
       } catch (error) {
-        console.error('Error fetching user profile:', error);
+        logger.error('Error fetching user profile:', error);
         return null;
       }
     },
@@ -271,17 +272,17 @@ export default function ManagerBookingDashboard() {
 
               if (!response.ok) {
                 const err = await response.text();
-                console.error("Sync response not OK:", response.status, err);
+                logger.error("Sync response not OK:", response.status, err);
                 throw new Error(`Sync failed: ${response.status}`);
               }
 
-              console.log("Stripe status synced successfully via return handler");
+              logger.info("Stripe status synced successfully via return handler");
             } else {
-              console.error("No token available for sync");
+              logger.error("No token available for sync");
               throw new Error("Authentication missing");
             }
           } catch (e) {
-            console.error("Failed to sync stripe status:", e);
+            logger.error("Failed to sync stripe status:", e);
             toast({
               title: "Sync Warning",
               description: "We couldn't automatically confirm your status. Please click 'Refresh Status' if needed.",
@@ -365,7 +366,7 @@ export default function ManagerBookingDashboard() {
           defaultDailyBookingLimit: location.defaultDailyBookingLimit || location.default_daily_booking_limit,
         } as Location;
 
-        console.log('Fetched location details:', {
+        logger.info('Fetched location details:', {
           id: mappedLocation.id,
           notificationEmail: mappedLocation.notificationEmail,
           rawData: location
@@ -392,9 +393,9 @@ export default function ManagerBookingDashboard() {
       timezone?: string;
     }) => {
       const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, timezone };
-      console.log('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
-      console.log('📡 Request body:', payload);
-      console.log('📡 LogoUrl in payload:', logoUrl, 'type:', typeof logoUrl);
+      logger.info('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
+      logger.info('📡 Request body:', payload);
+      logger.info('📡 LogoUrl in payload:', logoUrl, 'type:', typeof logoUrl);
 
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/locations/${locationId}/cancellation-policy`, {
@@ -431,7 +432,7 @@ export default function ManagerBookingDashboard() {
         result = text ? JSON.parse(text) : {};
       }
 
-      console.log('✅ Save response:', result);
+      logger.info('✅ Save response:', result);
       return { result, payload };
     },
     onSuccess: (data, variables) => {
@@ -1105,7 +1106,7 @@ function KitchenGalleryImages({
         description: "Gallery images updated successfully",
       });
     } catch (error: any) {
-      console.error('Gallery images update error:', error);
+      logger.error('Gallery images update error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to update gallery images",
@@ -1138,7 +1139,7 @@ function KitchenGalleryImages({
         body: JSON.stringify({ fileUrl: imageUrl }),
       });
     } catch (error) {
-      console.error('Error deleting file from R2:', error);
+      logger.error('Error deleting file from R2:', error);
       // Continue even if R2 deletion fails
     }
   };
@@ -1167,7 +1168,7 @@ function KitchenGalleryImages({
         body: JSON.stringify({ fileUrl: oldUrl }),
       });
     } catch (error) {
-      console.error('Error deleting old file from R2:', error);
+      logger.error('Error deleting old file from R2:', error);
       // Continue even if R2 deletion fails
     }
   };
@@ -1423,7 +1424,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       setOverstayMaxPenaltyDays(data.locationDefaults.maxPenaltyDays);
       setOverstayPolicyText(data.locationDefaults.policyText || '');
     } catch (error: any) {
-      console.error('Error fetching overstay penalty defaults:', error);
+      logger.error('Error fetching overstay penalty defaults:', error);
       toast({
         title: "Error",
         description: "Failed to load overstay penalty settings",
@@ -1449,7 +1450,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     // notificationEmail should be what's saved in notification_email column
     const savedEmail = location.notificationEmail || '';
     const savedPhone = location.notificationPhone || '';
-    console.log('SettingsView: Loading notificationEmail and notificationPhone from location:', {
+    logger.info('SettingsView: Loading notificationEmail and notificationPhone from location:', {
       locationId: location.id,
       notificationEmail: savedEmail,
       notificationPhone: savedPhone,
@@ -1503,7 +1504,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
         description: "Overstay penalty defaults updated successfully",
       });
     } catch (error: any) {
-      console.error('Error saving overstay penalty defaults:', error);
+      logger.error('Error saving overstay penalty defaults:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to save overstay penalty settings",
@@ -1540,7 +1541,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       timezone: timezone || DEFAULT_TIMEZONE,
     };
 
-    console.log('🚀 Saving location settings:', payload);
+    logger.info('🚀 Saving location settings:', payload);
 
     onUpdateSettings.mutate(payload);
   };
@@ -1553,7 +1554,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       defaultDailyBookingLimit: dailyBookingLimit,
     };
 
-    console.log('🚀 Saving daily booking limit only:', payload);
+    logger.info('🚀 Saving daily booking limit only:', payload);
 
     onUpdateSettings.mutate(payload);
   };
@@ -1595,7 +1596,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
         description: "Kitchen description updated successfully",
       });
     } catch (error: any) {
-      console.error('Kitchen description update error:', error);
+      logger.error('Kitchen description update error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to update kitchen description",
@@ -1692,7 +1693,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       setLicenseExpiryDate('');
       return licenseUrl;
     } catch (error: any) {
-      console.error('License upload error:', error);
+      logger.error('License upload error:', error);
       toast({
         title: "Upload Failed",
         description: error.message || "Failed to upload license",
@@ -1948,7 +1949,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                                     description: "License expiration date has been added successfully.",
                                   });
                                 } catch (error: any) {
-                                  console.error('Expiry date update error:', error);
+                                  logger.error('Expiry date update error:', error);
                                   toast({
                                     title: "Update Failed",
                                     description: error.message || "Failed to update expiry date",
@@ -2079,7 +2080,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                               }
                               setLicenseFile(file);
                               handleLicenseUpload(file, licenseExpiryDate).catch((error) => {
-                                console.error('License upload failed:', error);
+                                logger.error('License upload failed:', error);
                               });
                             }
                           }}

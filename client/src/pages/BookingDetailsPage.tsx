@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useEffect, useMemo } from "react";
 import { useLocation, useRoute } from "wouter";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
@@ -136,7 +137,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       };
     }
   } catch (error) {
-    console.error("Error getting Firebase token:", error);
+    logger.error("Error getting Firebase token:", error);
   }
   return {
     "Content-Type": "application/json",
@@ -199,7 +200,7 @@ export default function BookingDetailsPage() {
         const data = await response.json();
         setBooking(data);
       } catch (err) {
-        console.error("Error fetching booking details:", err);
+        logger.error("Error fetching booking details:", err);
         setError(err instanceof Error ? err.message : "Failed to load booking details");
       } finally {
         setIsLoading(false);
@@ -249,7 +250,7 @@ export default function BookingDetailsPage() {
         description: "Your invoice has been downloaded successfully!",
       });
     } catch (err) {
-      console.error("Error downloading invoice:", err);
+      logger.error("Error downloading invoice:", err);
       toast({
         title: "Download Failed",
         description: err instanceof Error ? err.message : "Failed to download invoice. Please try again.",
@@ -644,7 +645,7 @@ export default function BookingDetailsPage() {
         });
       }
     } catch (err) {
-      console.error('Error updating booking:', err);
+      logger.error('Error updating booking:', err);
       toast({
         title: "Error",
         description: err instanceof Error ? err.message : 'Failed to update booking',

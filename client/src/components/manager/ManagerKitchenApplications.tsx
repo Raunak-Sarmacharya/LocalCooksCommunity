@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useManagerKitchenApplications } from "@/hooks/use-manager-kitchen-applications";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -98,7 +99,7 @@ export default function ManagerKitchenApplications({
           locationName = locationData?.name || null;
         }
       } catch (error) {
-        console.error(`Error fetching location ${application.locationId}:`, error);
+        logger.error(`Error fetching location ${application.locationId}:`, error);
       }
     }
     setChatLocationName(locationName || null);
@@ -121,7 +122,7 @@ export default function ManagerKitchenApplications({
           );
         }
       } catch (error) {
-        console.error('Error initializing chat:', error);
+        logger.error('Error initializing chat:', error);
         toast({
           title: "Error",
           description: "Failed to open chat. Please try again.",

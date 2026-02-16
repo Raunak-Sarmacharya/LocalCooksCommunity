@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
@@ -29,14 +30,14 @@ export default function PasswordReset() {
 
     // Check if this is a valid password reset request
     if (modeParam && modeParam !== 'resetPassword') {
-      console.log('Invalid reset mode:', modeParam);
+      logger.info('Invalid reset mode:', modeParam);
       const redirectPath = roleParam === 'manager' ? '/manager/login' : '/auth';
       setLocation(redirectPath);
     }
   }, [setLocation]);
 
   const handleSuccess = () => {
-    console.log('✅ Password reset completed successfully');
+    logger.info('✅ Password reset completed successfully');
     setIsSuccess(true);
     // Redirect to appropriate login page based on role
     const redirectPath = role === 'manager' ? '/manager/login' : '/auth';

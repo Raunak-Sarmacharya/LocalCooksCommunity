@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import { Request, Response, NextFunction } from "express";
 import { verifyFirebaseToken } from "../firebase-setup";
 
@@ -33,7 +34,7 @@ export async function requireChef(req: Request, res: Response, next: NextFunctio
         req.neonUser.role === 'admin';    // Admins can access chef routes
 
     if (!hasChefAccess) {
-        console.log(`[requireChef] Access denied for user ${req.neonUser.id}:`, {
+        logger.info(`[requireChef] Access denied for user ${req.neonUser.id}:`, {
             role: req.neonUser.role,
             isChef: req.neonUser.isChef
         });
@@ -191,11 +192,11 @@ export async function requireNoUnpaidPenalties(req: Request, res: Response, next
         }
         response.message = `You have ${parts.join(' and ')} totaling ${response.totalOwed}. Please resolve these to continue using the portal.`;
 
-        console.log(`[requireNoUnpaidPenalties] Chef ${chefId} blocked: ${parts.join(' and ')}, $${(grandTotal / 100).toFixed(2)} owed`);
+        logger.info(`[requireNoUnpaidPenalties] Chef ${chefId} blocked: ${parts.join(' and ')}, $${(grandTotal / 100).toFixed(2)} owed`);
 
         return res.status(403).json(response);
     } catch (error) {
-        console.error('[requireNoUnpaidPenalties] Error checking obligations:', error);
+        logger.error('[requireNoUnpaidPenalties] Error checking obligations:', error);
         // Allow access on error to prevent blocking legitimate users
         next();
     }
@@ -250,7 +251,7 @@ export async function requirePortalUser(req: Request, res: Response, next: NextF
         });
 
     } catch (error) {
-        console.error('Error in requirePortalUser middleware:', error);
+        logger.error('Error in requirePortalUser middleware:', error);
         return res.status(401).json({ error: "Authentication failed" });
     }
 }

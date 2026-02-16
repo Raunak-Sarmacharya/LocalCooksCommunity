@@ -112,7 +112,7 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
         // DEPRECATED: This legacy endpoint expects booking to already exist
         // The new enterprise-grade flow is /chef/bookings/checkout which creates booking in webhook
         // payment_transactions will be created in webhook when payment succeeds
-        console.warn(`[DEPRECATED] Legacy /bookings/checkout endpoint used for booking ${bookingId}`);
+        logger.warn(`[DEPRECATED] Legacy /bookings/checkout endpoint used for booking ${bookingId}`);
 
         // Return response
         res.json({
@@ -125,7 +125,7 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
             },
         });
     } catch (error: any) {
-        console.error('Error creating checkout session:', error);
+        logger.error('Error creating checkout session:', error);
         res.status(500).json({
             error: error.message || 'Failed to create checkout session',
         });
@@ -138,7 +138,7 @@ router.get("/chef/storage-bookings", requireChef, async (req: Request, res: Resp
         const storageBookings = await bookingService.getStorageBookingsByChef(req.neonUser!.id);
         res.json(storageBookings);
     } catch (error) {
-        console.error("Error fetching storage bookings:", error);
+        logger.error("Error fetching storage bookings:", error);
         res.status(500).json({ error: "Failed to fetch storage bookings" });
     }
 });
@@ -149,7 +149,7 @@ router.get("/chef/equipment-bookings", requireChef, async (req: Request, res: Re
         const equipmentBookings = await bookingService.getEquipmentBookingsByChef(req.neonUser!.id);
         res.json(equipmentBookings);
     } catch (error) {
-        console.error("Error fetching equipment bookings:", error);
+        logger.error("Error fetching equipment bookings:", error);
         res.status(500).json({ error: "Failed to fetch equipment bookings" });
     }
 });
@@ -193,7 +193,7 @@ router.get("/chef/storage-bookings/expiring", requireChef, async (req: Request, 
         
         res.json(expiringBookings);
     } catch (error: any) {
-        console.error("Error fetching expiring storage bookings:", error);
+        logger.error("Error fetching expiring storage bookings:", error);
         res.status(500).json({ error: error.message || "Failed to fetch expiring storage bookings" });
     }
 });
@@ -218,7 +218,7 @@ router.get("/chef/storage-bookings/:id", requireChef, async (req: Request, res: 
 
         res.json(booking);
     } catch (error: any) {
-        console.error("Error fetching storage booking:", error);
+        logger.error("Error fetching storage booking:", error);
         res.status(500).json({ error: error.message || "Failed to fetch storage booking" });
     }
 });
@@ -350,7 +350,7 @@ router.put("/chef/storage-bookings/:id/cancel", requireChef, async (req: Request
 
         res.json({ success: true, action: 'cancelled', message: 'Storage booking cancelled.' });
     } catch (error) {
-        console.error("Error cancelling storage booking:", error);
+        logger.error("Error cancelling storage booking:", error);
         res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel storage booking" });
     }
 });
@@ -672,14 +672,14 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
         const authHeader = req.headers.authorization;
         
         if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-            console.warn("[Cron] Unauthorized cron job attempt");
+            logger.warn("[Cron] Unauthorized cron job attempt");
             return res.status(401).json({ error: "Unauthorized" });
         }
 
-        console.log("[Cron] Starting daily scheduled tasks...");
+        logger.info("[Cron] Starting daily scheduled tasks...");
         
         // Task 1: Detect overstays
-        console.log("[Cron] Task 1: Detecting overstays...");
+        logger.info("[Cron] Task 1: Detecting overstays...");
         const overstayResults = await overstayPenaltyService.detectOverstays();
         
         const overstaySummary = {
@@ -688,20 +688,20 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
             pendingReview: overstayResults.filter(r => r.status === 'pending_review').length,
             totalCalculatedPenalty: overstayResults.reduce((sum, r) => sum + r.calculatedPenaltyCents, 0),
         };
-        console.log("[Cron] Overstay detection complete:", overstaySummary);
+        logger.info("[Cron] Overstay detection complete:", overstaySummary);
 
         // Task 2: Process expired damage claims
-        console.log("[Cron] Task 2: Processing expired damage claims...");
+        logger.info("[Cron] Task 2: Processing expired damage claims...");
         const expiredClaimResults = await damageClaimService.processExpiredClaims();
         
         const claimSummary = {
             total: expiredClaimResults.length,
             autoApproved: expiredClaimResults.filter(r => r.action === 'auto_approved').length,
         };
-        console.log("[Cron] Expired claims processing complete:", claimSummary);
+        logger.info("[Cron] Expired claims processing complete:", claimSummary);
 
         // Task 3: Cancel expired payment authorizations (24-hour hold window)
-        console.log("[Cron] Task 3: Cancelling expired payment authorizations...");
+        logger.info("[Cron] Task 3: Cancelling expired payment authorizations...");
         const authExpiryResults = await processExpiredAuthorizations();
         
         const authExpirySummary = {
@@ -711,10 +711,10 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
             kitchenBookings: authExpiryResults.filter(r => r.type === 'kitchen_booking').length,
             storageExtensions: authExpiryResults.filter(r => r.type === 'storage_extension').length,
         };
-        console.log("[Cron] Expired authorizations processing complete:", authExpirySummary);
+        logger.info("[Cron] Expired authorizations processing complete:", authExpirySummary);
 
         // Task 4: Auto-clear expired storage checkout review windows
-        console.log("[Cron] Task 4: Auto-clearing expired storage checkout reviews...");
+        logger.info("[Cron] Task 4: Auto-clearing expired storage checkout reviews...");
         const { processExpiredCheckoutReviews } = await import("../services/storage-checkout-service");
         const checkoutAutoClearResults = await processExpiredCheckoutReviews();
         
@@ -723,14 +723,14 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
             cleared: checkoutAutoClearResults.cleared,
             errors: checkoutAutoClearResults.errors,
         };
-        console.log("[Cron] Storage checkout auto-clear complete:", checkoutAutoClearSummary);
+        logger.info("[Cron] Storage checkout auto-clear complete:", checkoutAutoClearSummary);
 
         // Task 5: Auto-accept expired chef cancellation requests
-        console.log("[Cron] Task 5: Auto-accepting expired cancellation requests...");
+        logger.info("[Cron] Task 5: Auto-accepting expired cancellation requests...");
         const cancellationAutoAcceptResults = await processExpiredCancellationRequests();
-        console.log("[Cron] Cancellation request auto-accept complete:", cancellationAutoAcceptResults);
+        logger.info("[Cron] Cancellation request auto-accept complete:", cancellationAutoAcceptResults);
 
-        console.log("[Cron] All daily scheduled tasks complete");
+        logger.info("[Cron] All daily scheduled tasks complete");
 
         res.json({
             success: true,
@@ -769,7 +769,7 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
         });
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : "Failed to run daily tasks";
-        console.error("[Cron] Error running daily tasks:", error);
+        logger.error("[Cron] Error running daily tasks:", error);
         res.status(500).json({ error: errorMessage });
     }
 });
@@ -785,7 +785,7 @@ router.post("/admin/storage-bookings/process-overstayer-penalties", async (req: 
         if (!isAdmin && (!cronSecret || authHeader !== `Bearer ${cronSecret}`)) {
             return res.status(401).json({ error: "Unauthorized" });
         }
-        console.warn("[DEPRECATED] Old penalty endpoint called - use /detect-overstays instead");
+        logger.warn("[DEPRECATED] Old penalty endpoint called - use /detect-overstays instead");
         
         const results = await overstayPenaltyService.detectOverstays();
 
@@ -797,7 +797,7 @@ router.post("/admin/storage-bookings/process-overstayer-penalties", async (req: 
             deprecationWarning: "This endpoint is deprecated. Use POST /api/detect-overstays instead.",
         });
     } catch (error: any) {
-        console.error("Error processing overstayer penalties:", error);
+        logger.error("Error processing overstayer penalties:", error);
         res.status(500).json({ error: error.message || "Failed to process overstayer penalties" });
     }
 });
@@ -916,7 +916,7 @@ router.post("/chef/storage-bookings/:id/extension-preview", requireChef, require
             currency: 'CAD',
         });
     } catch (error: any) {
-        console.error("Error calculating extension preview:", error);
+        logger.error("Error calculating extension preview:", error);
         res.status(500).json({ error: error.message || "Failed to calculate extension preview" });
     }
 });
@@ -1087,7 +1087,7 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, requir
             },
         });
 
-        console.log(`[Storage Extension Checkout] Created pending checkout session ${checkoutSession.sessionId} - extension will be created in webhook`);
+        logger.info(`[Storage Extension Checkout] Created pending checkout session ${checkoutSession.sessionId} - extension will be created in webhook`);
 
         // Return response (consistent with kitchen bookings - shows base + tax, not platform fee)
         res.json({
@@ -1109,7 +1109,7 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, requir
             },
         });
     } catch (error: any) {
-        console.error("Error creating storage extension checkout:", error);
+        logger.error("Error creating storage extension checkout:", error);
         res.status(500).json({ error: error.message || "Failed to create storage extension checkout" });
     }
 });
@@ -1171,7 +1171,7 @@ router.get("/chef/storage-extensions/pending", requireChef, async (req: Request,
 
         res.json(extensions);
     } catch (error: any) {
-        console.error("Error fetching chef's pending storage extensions:", error);
+        logger.error("Error fetching chef's pending storage extensions:", error);
         res.status(500).json({ error: error.message || "Failed to fetch pending extensions" });
     }
 });
@@ -1249,7 +1249,7 @@ router.post("/storage-extensions/:id/sync", requireChef, async (req: Request, re
                 })
                 .where(eq(pendingStorageExtensions.id, extensionId));
 
-            console.log(`[Storage Extension Sync] Updated extension ${extensionId} to 'paid' status`);
+            logger.info(`[Storage Extension Sync] Updated extension ${extensionId} to 'paid' status`);
 
             return res.json({
                 success: true,
@@ -1278,7 +1278,7 @@ router.post("/storage-extensions/:id/sync", requireChef, async (req: Request, re
             sessionStatus: session.status,
         });
     } catch (error: any) {
-        console.error("Error syncing storage extension:", error);
+        logger.error("Error syncing storage extension:", error);
         res.status(500).json({ error: error.message || "Failed to sync extension" });
     }
 });
@@ -1344,7 +1344,7 @@ router.put("/chef/storage-bookings/:id/extend", requireChef, async (req: Request
             message: `Storage booking extended successfully to ${newEndDateObj.toLocaleDateString()}`,
         });
     } catch (error: any) {
-        console.error("Error extending storage booking:", error);
+        logger.error("Error extending storage booking:", error);
         res.status(500).json({ error: error.message || "Failed to extend storage booking" });
     }
 });
@@ -1386,7 +1386,7 @@ router.post("/chef/storage-bookings/:id/request-checkout", requireChef, async (r
             message: "Checkout request submitted successfully. The manager will verify and approve your checkout.",
         });
     } catch (error: any) {
-        console.error("Error requesting storage checkout:", error);
+        logger.error("Error requesting storage checkout:", error);
         res.status(500).json({ error: error.message || "Failed to request checkout" });
     }
 });
@@ -1420,7 +1420,7 @@ router.post("/chef/storage-bookings/:id/checkout-photos", requireChef, async (re
             message: "Photos added to checkout request successfully.",
         });
     } catch (error: any) {
-        console.error("Error adding checkout photos:", error);
+        logger.error("Error adding checkout photos:", error);
         res.status(500).json({ error: error.message || "Failed to add checkout photos" });
     }
 });
@@ -1452,7 +1452,7 @@ router.get("/chef/storage-bookings/:id/checkout-status", requireChef, async (req
 
         res.json(status);
     } catch (error: any) {
-        console.error("Error getting checkout status:", error);
+        logger.error("Error getting checkout status:", error);
         res.status(500).json({ error: error.message || "Failed to get checkout status" });
     }
 });
@@ -1489,7 +1489,7 @@ router.get("/chef/bookings/:id", requireChef, async (req: Request, res: Response
             equipmentBookings,
         });
     } catch (error: any) {
-        console.error("Error fetching booking details:", error);
+        logger.error("Error fetching booking details:", error);
         res.status(500).json({ error: error.message || "Failed to fetch booking details" });
     }
 });
@@ -1690,7 +1690,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                 };
             }
         } catch (err) {
-            console.error("Error fetching payment transaction:", err);
+            logger.error("Error fetching payment transaction:", err);
         }
 
         // Calculate correct kitchen price from hourly rate and duration
@@ -1719,7 +1719,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             paymentTransaction,
         });
     } catch (error: any) {
-        console.error("Error fetching booking details:", error);
+        logger.error("Error fetching booking details:", error);
         res.status(500).json({ error: error.message || "Failed to fetch booking details" });
     }
 });
@@ -1815,7 +1815,7 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
                     }
                 }
             } catch {
-                console.log('[Invoice] Could not fetch original storage dates from transaction, using current dates');
+                logger.info('[Invoice] Could not fetch original storage dates from transaction, using current dates');
             }
         }
 
@@ -1856,7 +1856,7 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
 
         res.send(pdfBuffer);
     } catch (error: any) {
-        console.error("Error generating invoice:", error);
+        logger.error("Error generating invoice:", error);
         res.status(500).json({ error: error.message || "Failed to generate invoice" });
     }
 });
@@ -1977,7 +1977,7 @@ router.get("/chef/invoices/storage/:id", requireChef, async (req: Request, res: 
         res.setHeader('Content-Length', pdfBuffer.length);
         res.send(pdfBuffer);
     } catch (error: any) {
-        console.error("Error generating storage invoice:", error);
+        logger.error("Error generating storage invoice:", error);
         res.status(500).json({ error: error.message || "Failed to generate storage invoice" });
     }
 });
@@ -2123,7 +2123,7 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
 
         res.json({ success: true, action: 'cancelled', message: 'Booking cancelled.' });
     } catch (error) {
-        console.error("Error cancelling booking:", error);
+        logger.error("Error cancelling booking:", error);
         res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel booking" });
     }
 });
@@ -2289,7 +2289,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
                         totalPriceCents += storagePrice;
                     }
                 } catch (error) {
-                    console.error('Error calculating storage price:', error);
+                    logger.error('Error calculating storage price:', error);
                 }
             }
         }
@@ -2345,7 +2345,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
                 }
             }
         } catch (error) {
-            console.error(`Error fetching kitchen/manager details for payment ${kitchenId}:`, error);
+            logger.error(`Error fetching kitchen/manager details for payment ${kitchenId}:`, error);
         }
 
         // Calculate Tax based on kitchen's tax rate
@@ -2368,7 +2368,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
           ? undefined 
           : feeCalculation.totalPlatformFeeInCents;
 
-        console.log(`[Payment] Creating intent: Subtotal=${totalPriceCents}, Tax=${taxCents} (${taxRatePercent}%), Total=${totalWithTaxCents}, Expected=${expectedAmountCents}, PlatformFee=${applicationFeeAmountCents ?? 'Stripe Platform Pricing'}, ManagerReceives=${feeCalculation.managerReceivesInCents}, UseStripePricing=${feeCalculation.useStripePlatformPricing}`);
+        logger.info(`[Payment] Creating intent: Subtotal=${totalPriceCents}, Tax=${taxCents} (${taxRatePercent}%), Total=${totalWithTaxCents}, Expected=${expectedAmountCents}, PlatformFee=${applicationFeeAmountCents ?? 'Stripe Platform Pricing'}, ManagerReceives=${feeCalculation.managerReceivesInCents}, UseStripePricing=${feeCalculation.useStripePlatformPricing}`);
 
         // Create Metadata
         const metadata = {
@@ -2424,7 +2424,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
         });
 
     } catch (error: any) {
-        console.error("Error creating payment intent:", error);
+        logger.error("Error creating payment intent:", error);
         res.status(500).json({ error: error.message || "Failed to create payment intent" });
     }
 });
@@ -2455,7 +2455,7 @@ router.post("/payments/confirm", requireChef, async (req: Request, res: Response
             status: confirmed.status,
         });
     } catch (error: any) {
-        console.error('Error confirming payment:', error);
+        logger.error('Error confirming payment:', error);
         res.status(500).json({
             error: "Failed to confirm payment",
             message: error.message
@@ -2481,7 +2481,7 @@ router.get("/payments/intent/:id/status", requireChef, async (req: Request, res:
             status: paymentIntent.status,
         });
     } catch (error: any) {
-        console.error('Error getting payment intent status:', error);
+        logger.error('Error getting payment intent status:', error);
         res.status(500).json({
             error: "Failed to get payment intent status",
             message: error.message
@@ -2533,7 +2533,7 @@ router.post("/payments/cancel", requireChef, async (req: Request, res: Response)
             message: "Payment intent cancelled. Note: For captured payments, use refunds instead.",
         });
     } catch (error: any) {
-        console.error('Error canceling payment intent:', error);
+        logger.error('Error canceling payment intent:', error);
         res.status(500).json({
             error: "Failed to cancel payment intent",
             message: error.message
@@ -2652,7 +2652,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             // Staggered slots: price based on number of slots (each slot = 1 hour)
             effectiveDurationHours = Math.max(selectedSlots.length, minimumBookingHours);
             totalPriceCents = Math.round(kitchenPricing.hourlyRateCents * effectiveDurationHours);
-            console.log(`[Checkout] Staggered slots pricing: ${selectedSlots.length} slots, effective ${effectiveDurationHours} hours, $${(totalPriceCents / 100).toFixed(2)}`);
+            logger.info(`[Checkout] Staggered slots pricing: ${selectedSlots.length} slots, effective ${effectiveDurationHours} hours, $${(totalPriceCents / 100).toFixed(2)}`);
         } else {
             // Contiguous booking: use standard duration calculation
             effectiveDurationHours = kitchenPricing.durationHours;
@@ -2689,7 +2689,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                         });
                     }
                 } catch (error) {
-                    console.error('Error calculating storage price:', error);
+                    logger.error('Error calculating storage price:', error);
                 }
             }
         }
@@ -2709,7 +2709,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                         });
                     }
                 } catch (error) {
-                    console.error(`Error calculating equipment price for listing ${equipmentListingId}:`, error);
+                    logger.error(`Error calculating equipment price for listing ${equipmentListingId}:`, error);
                 }
             }
         }
@@ -2772,7 +2772,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             },
         });
 
-        console.log(`[Checkout] Created pending checkout session ${checkoutSession.sessionId} - booking will be created in webhook`);
+        logger.info(`[Checkout] Created pending checkout session ${checkoutSession.sessionId} - booking will be created in webhook`);
 
         // Return checkout URL for redirect
         // Note: No bookingId returned since booking doesn't exist yet
@@ -2786,7 +2786,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             },
         });
     } catch (error: any) {
-        console.error("Error creating booking checkout:", error);
+        logger.error("Error creating booking checkout:", error);
         res.status(500).json({ error: error.message || "Failed to create booking checkout" });
     }
 });
@@ -2797,7 +2797,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
         const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser!.id;
         
-        console.log(`[Booking Route] Received booking request with selectedEquipmentIds: ${JSON.stringify(selectedEquipmentIds)}`);
+        logger.info(`[Booking Route] Received booking request with selectedEquipmentIds: ${JSON.stringify(selectedEquipmentIds)}`);
 
         // Get the kitchen details
         const kitchenDetails = await kitchenService.getKitchenById(kitchenId);
@@ -2852,9 +2852,9 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                 const minWindow = (location as any).minimumBookingWindowHours ?? (location as any).minimum_booking_window_hours;
                 if (minWindow !== null && minWindow !== undefined) {
                     minimumBookingWindowHours = Number(minWindow);
-                    console.log(`[Booking Window] Using location minimum booking window: ${minimumBookingWindowHours} hours for kitchen ${kitchenId}`);
+                    logger.info(`[Booking Window] Using location minimum booking window: ${minimumBookingWindowHours} hours for kitchen ${kitchenId}`);
                 } else {
-                    console.log(`[Booking Window] Location has no minimum booking window set, using default: 1 hour`);
+                    logger.info(`[Booking Window] Location has no minimum booking window set, using default: 1 hour`);
                 }
             }
         }
@@ -2910,7 +2910,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                 ? selectedStorage.map((s: any) => s.storageListingId).filter(Boolean)
                 : []);
         
-        console.log(`[Booking Route] Received booking request with selectedStorage: ${JSON.stringify(selectedStorage)}, extracted storageIds: ${JSON.stringify(storageIds)}`);
+        logger.info(`[Booking Route] Received booking request with selectedStorage: ${JSON.stringify(selectedStorage)}, extracted storageIds: ${JSON.stringify(storageIds)}`);
 
         // Create booking with PENDING status - requires manager approval
         const booking = await bookingService.createKitchenBooking({
@@ -2965,7 +2965,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                     }, db);
                 }
             } catch (ptError) {
-                console.warn(`[Booking Route] Could not create payment_transactions record for booking ${booking.id}:`, ptError);
+                logger.warn(`[Booking Route] Could not create payment_transactions record for booking ${booking.id}:`, ptError);
             }
         }
 
@@ -3004,13 +3004,13 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                 // See: handleCheckoutSessionCompleted in webhooks.ts
             }
         } catch (emailError) {
-            console.error("Error sending booking emails:", emailError);
+            logger.error("Error sending booking emails:", emailError);
             // Don't fail booking if email fails
         }
 
         res.status(201).json(booking);
     } catch (error: any) {
-        console.error("Error creating booking:", error);
+        logger.error("Error creating booking:", error);
         res.status(500).json({ error: error.message || "Failed to create booking" });
     }
 });
@@ -3022,7 +3022,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
         const { sessionId } = req.params;
         const chefId = req.neonUser!.id;
 
-        console.log(`[by-session] Request received for session ${sessionId}, chefId=${chefId}`);
+        logger.info(`[by-session] Request received for session ${sessionId}, chefId=${chefId}`);
 
         if (!sessionId) {
             return res.status(400).json({ error: "Session ID is required" });
@@ -3042,9 +3042,9 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
             session = await stripe.checkout.sessions.retrieve(sessionId, {
                 expand: ["payment_intent"],
             });
-            console.log(`[by-session] Retrieved Stripe session: payment_status=${session.payment_status}, metadata_type=${session.metadata?.type}`);
+            logger.info(`[by-session] Retrieved Stripe session: payment_status=${session.payment_status}, metadata_type=${session.metadata?.type}`);
         } catch (stripeError: any) {
-            console.error(`[by-session] Failed to retrieve Stripe session ${sessionId}:`, stripeError.message);
+            logger.error(`[by-session] Failed to retrieve Stripe session ${sessionId}:`, stripeError.message);
             return res.status(404).json({ error: "Invalid or expired session ID" });
         }
 
@@ -3060,7 +3060,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
         }
 
         // Find booking by payment intent ID
-        console.log(`[by-session] Looking for booking with paymentIntentId=${paymentIntentId}, chefId=${chefId}`);
+        logger.info(`[by-session] Looking for booking with paymentIntentId=${paymentIntentId}, chefId=${chefId}`);
         
         // Query by payment intent ID only, then verify chef ownership
         const [bookingByIntent] = await db
@@ -3072,11 +3072,11 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
         let booking = bookingByIntent;
         
         if (bookingByIntent) {
-            console.log(`[by-session] Found booking ${bookingByIntent.id} with chef_id=${bookingByIntent.chefId}, requested chefId=${chefId}`);
+            logger.info(`[by-session] Found booking ${bookingByIntent.id} with chef_id=${bookingByIntent.chefId}, requested chefId=${chefId}`);
             
             // Verify chef ownership
             if (bookingByIntent.chefId !== chefId) {
-                console.log(`[by-session] Chef mismatch - booking belongs to chef ${bookingByIntent.chefId}, not ${chefId}`);
+                logger.info(`[by-session] Chef mismatch - booking belongs to chef ${bookingByIntent.chefId}, not ${chefId}`);
                 return res.status(403).json({ error: "This booking does not belong to you" });
             }
             
@@ -3100,7 +3100,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                 kitchenName: kitchen?.name || 'Kitchen',
             });
         } else {
-            console.log(`[by-session] No booking found with paymentIntentId=${paymentIntentId}`);
+            logger.info(`[by-session] No booking found with paymentIntentId=${paymentIntentId}`);
         }
 
         // FALLBACK: If booking doesn't exist but payment was successful/authorized, create it from session metadata
@@ -3110,7 +3110,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
         const fallbackIsManualCapture = piObj?.status === 'requires_capture';
         const fallbackPaymentStatus = fallbackIsManualCapture ? 'authorized' : 'paid';
         if (!booking && (session.payment_status === 'paid' || fallbackIsManualCapture) && session.metadata?.type === 'kitchen_booking') {
-            console.log(`[Fallback] Webhook may have failed - creating booking from session ${sessionId}`);
+            logger.info(`[Fallback] Webhook may have failed - creating booking from session ${sessionId}`);
             
             const metadata = session.metadata;
             const kitchenIdFromMeta = parseInt(metadata.kitchen_id);
@@ -3130,7 +3130,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
             const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
             const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
             
-            console.log(`[Fallback] Creating booking for kitchen ${kitchenIdFromMeta}, chef ${chefIdFromMeta}`);
+            logger.info(`[Fallback] Creating booking for kitchen ${kitchenIdFromMeta}, chef ${chefIdFromMeta}`);
             
             // Use direct DB insert to bypass chef access validation (already validated at checkout)
             const totalPriceCents = parseInt(metadata.total_price_cents || "0");
@@ -3165,7 +3165,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
             }
             
             const newBooking = directBooking;
-            console.log(`[Fallback] Created booking ${newBooking.id} from session ${sessionId}`);
+            logger.info(`[Fallback] Created booking ${newBooking.id} from session ${sessionId}`);
             
             // Create payment_transactions record
             try {
@@ -3211,11 +3211,11 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                             },
                         }, db);
                         
-                        console.log(`[Fallback] Created payment_transactions for booking ${newBooking.id}`);
+                        logger.info(`[Fallback] Created payment_transactions for booking ${newBooking.id}`);
                     }
                 }
             } catch (ptError) {
-                console.warn(`[Fallback] Could not create payment_transactions:`, ptError);
+                logger.warn(`[Fallback] Could not create payment_transactions:`, ptError);
             }
             
             // Send manager notification
@@ -3273,7 +3273,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                                 bookingId: newBooking.id,
                             });
                             await sendEmail(managerEmail);
-                            console.log(`[Fallback] Sent manager notification for booking ${newBooking.id}`);
+                            logger.info(`[Fallback] Sent manager notification for booking ${newBooking.id}`);
                         }
                         
                         // Create in-app notification
@@ -3291,7 +3291,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                     }
                 }
             } catch (notifyError) {
-                console.error(`[Fallback] Error sending notifications:`, notifyError);
+                logger.error(`[Fallback] Error sending notifications:`, notifyError);
             }
             
             // Fetch the created booking
@@ -3304,7 +3304,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
 
         if (!booking) {
             // Log why fallback didn't trigger
-            console.error(`[by-session] CRITICAL: No booking created for session ${sessionId}`, {
+            logger.error(`[by-session] CRITICAL: No booking created for session ${sessionId}`, {
                 paymentStatus: session.payment_status,
                 metadataType: session.metadata?.type,
                 hasMetadata: !!session.metadata,
@@ -3332,7 +3332,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
             kitchenName: kitchen?.name || 'Kitchen',
         });
     } catch (error: any) {
-        console.error("Error fetching booking by session:", error);
+        logger.error("Error fetching booking by session:", error);
         res.status(500).json({ error: error.message || "Failed to fetch booking" });
     }
 });
@@ -3341,7 +3341,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
 router.get("/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {
         const chefId = req.neonUser!.id;
-        console.log(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
+        logger.info(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
 
         // Check if firebaseStorage.getBookingsByChef exists, if not use pool
         const bookings = await bookingService.getKitchenBookingsByChef(chefId);
@@ -3370,7 +3370,7 @@ router.get("/chef/bookings", requireChef, async (req: Request, res: Response) =>
 
         res.json(bookings);
     } catch (error) {
-        console.error("Error fetching bookings:", error);
+        logger.error("Error fetching bookings:", error);
         res.status(500).json({ error: "Failed to fetch bookings" });
     }
 });

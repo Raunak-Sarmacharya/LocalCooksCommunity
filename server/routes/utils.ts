@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import { Request } from "express";
 
 /**
@@ -61,7 +62,7 @@ export function normalizeImageUrl(url: string | null | undefined, req: Request):
     if (url.startsWith('/')) {
         const origin = getOrigin();
         if (!origin || origin === '://') {
-            console.warn(`[normalizeImageUrl] Could not determine host for URL: ${url}`);
+            logger.warn(`[normalizeImageUrl] Could not determine host for URL: ${url}`);
             return url;
         }
         return `${origin}${url}`;

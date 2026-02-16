@@ -1,3 +1,4 @@
+import { logger } from "../../logger";
 import { Router, Request, Response } from 'express';
 import { upload, uploadToBlob } from '../../fileUpload';
 import { requireFirebaseAuthWithUser, requireManager } from '../../firebase-auth-middleware';
@@ -47,7 +48,7 @@ router.post('/firebase/chef/kitchen-applications',
     requireFirebaseAuthWithUser,
     async (req: Request, res: Response) => {
         try {
-            console.log(`🍳 POST /api/firebase/chef/kitchen-applications - Chef ${req.neonUser!.id} submitting kitchen application`);
+            logger.info(`🍳 POST /api/firebase/chef/kitchen-applications - Chef ${req.neonUser!.id} submitting kitchen application`);
 
             // Handle file uploads if present
             // Convert array format from upload.any() to object format for easier access
@@ -71,9 +72,9 @@ router.post('/firebase/chef/kitchen-applications',
                 if (files['foodSafetyLicenseFile']?.[0]) {
                     try {
                         foodSafetyLicenseUrl = await uploadToBlob(files['foodSafetyLicenseFile'][0], req.neonUser!.id, 'documents');
-                        console.log(`✅ Uploaded food safety license: ${foodSafetyLicenseUrl}`);
+                        logger.info(`✅ Uploaded food safety license: ${foodSafetyLicenseUrl}`);
                     } catch (uploadError) {
-                        console.error('❌ Failed to upload food safety license:', uploadError);
+                        logger.error('❌ Failed to upload food safety license:', uploadError);
                     }
                 }
 
@@ -81,9 +82,9 @@ router.post('/firebase/chef/kitchen-applications',
                 if (files['foodEstablishmentCertFile']?.[0]) {
                     try {
                         foodEstablishmentCertUrl = await uploadToBlob(files['foodEstablishmentCertFile'][0], req.neonUser!.id, 'documents');
-                        console.log(`✅ Uploaded food establishment cert: ${foodEstablishmentCertUrl}`);
+                        logger.info(`✅ Uploaded food establishment cert: ${foodEstablishmentCertUrl}`);
                     } catch (uploadError) {
-                        console.error('❌ Failed to upload food establishment cert:', uploadError);
+                        logger.error('❌ Failed to upload food establishment cert:', uploadError);
                     }
                 }
 
@@ -101,9 +102,9 @@ router.post('/firebase/chef/kitchen-applications',
                         try {
                             const url = await uploadToBlob(files[field][0], req.neonUser!.id, 'documents');
                             tierFileUrls[field] = url;
-                            console.log(`✅ Uploaded ${field}: ${url}`);
+                            logger.info(`✅ Uploaded ${field}: ${url}`);
                         } catch (uploadError) {
-                            console.error(`❌ Failed to upload ${field}:`, uploadError);
+                            logger.error(`❌ Failed to upload ${field}:`, uploadError);
                         }
                     }
                 }
@@ -116,13 +117,13 @@ router.post('/firebase/chef/kitchen-applications',
                     customFieldsData = typeof req.body.customFieldsData === 'string'
                         ? JSON.parse(req.body.customFieldsData)
                         : req.body.customFieldsData;
-                    console.log('✅ Parsed customFieldsData:', JSON.stringify(customFieldsData));
+                    logger.info('✅ Parsed customFieldsData:', JSON.stringify(customFieldsData));
                 } catch (error) {
-                    console.error('Error parsing customFieldsData:', error);
+                    logger.error('Error parsing customFieldsData:', error);
                     customFieldsData = undefined;
                 }
             } else {
-                console.log('⚠️ No customFieldsData in request body');
+                logger.info('⚠️ No customFieldsData in request body');
             }
             
             // Upload custom field files (prefixed with customFile_) and store URLs in customFieldsData
@@ -134,7 +135,7 @@ router.post('/firebase/chef/kitchen-applications',
                     if (file) {
                         try {
                             const url = await uploadToBlob(file, req.neonUser!.id, 'documents');
-                            console.log(`✅ Uploaded custom field file ${fieldId}: ${url}`);
+                            logger.info(`✅ Uploaded custom field file ${fieldId}: ${url}`);
                             // Initialize customFieldsData if not exists
                             if (!customFieldsData) {
                                 customFieldsData = {};
@@ -142,7 +143,7 @@ router.post('/firebase/chef/kitchen-applications',
                             // Store the URL in customFieldsData (overwrites filename with URL)
                             customFieldsData[fieldId] = url;
                         } catch (uploadError) {
-                            console.error(`❌ Failed to upload custom field file ${fieldId}:`, uploadError);
+                            logger.error(`❌ Failed to upload custom field file ${fieldId}:`, uploadError);
                         }
                     }
                 }
@@ -160,7 +161,7 @@ router.post('/firebase/chef/kitchen-applications',
                         tierData = { ...tierData, tierFiles: tierFileUrls };
                     }
                 } catch (error) {
-                    console.error('Error parsing tier_data:', error);
+                    logger.error('Error parsing tier_data:', error);
                 }
             }
 
@@ -236,7 +237,7 @@ router.post('/firebase/chef/kitchen-applications',
                         ? JSON.parse(req.body.businessDescription)
                         : req.body.businessDescription;
                 } catch (error) {
-                    console.error('Error parsing businessDescription:', error);
+                    logger.error('Error parsing businessDescription:', error);
                     businessInfo = {};
                 }
             }
@@ -542,7 +543,7 @@ router.post('/firebase/chef/kitchen-applications',
 
             if (!parsedData.success) {
                 const validationError = fromZodError(parsedData.error);
-                console.log('❌ Validation failed:', validationError.details);
+                logger.info('❌ Validation failed:', validationError.details);
                 return res.status(400).json({
                     error: 'Validation error',
                     message: validationError.message,
@@ -563,7 +564,7 @@ router.post('/firebase/chef/kitchen-applications',
                 customFieldsData: formData.customFieldsData || parsedData.data.customFieldsData || {},
             };
             
-            console.log('📦 Application data being saved:', {
+            logger.info('📦 Application data being saved:', {
                 hasCustomFieldsData: !!applicationData.customFieldsData && Object.keys(applicationData.customFieldsData).length > 0,
                 customFieldsData: applicationData.customFieldsData,
                 formDataCustomFields: formData.customFieldsData,
@@ -572,7 +573,7 @@ router.post('/firebase/chef/kitchen-applications',
             
             const application = await chefApplicationService.createApplication(applicationData as any);
 
-            console.log(`✅ Kitchen application created/updated: Chef ${req.neonUser!.id} → Location ${parsedData.data.locationId}, ID: ${application.id}`);
+            logger.info(`✅ Kitchen application created/updated: Chef ${req.neonUser!.id} → Location ${parsedData.data.locationId}, ID: ${application.id}`);
 
             // Create in-app notification for manager about new application
             try {
@@ -586,7 +587,7 @@ router.post('/firebase/chef/kitchen-applications',
                     });
                 }
             } catch (notifError) {
-                console.error("Error creating application notification:", notifError);
+                logger.error("Error creating application notification:", notifError);
             }
 
             // Send email notification to manager about new kitchen application
@@ -603,10 +604,10 @@ router.post('/firebase/chef/kitchen-applications',
                     await sendEmail(managerEmailContent, {
                         trackingId: `kitchen_app_new_${application.id}_${Date.now()}`
                     });
-                    console.log(`✅ Sent new kitchen application email to manager: ${location.notificationEmail}`);
+                    logger.info(`✅ Sent new kitchen application email to manager: ${location.notificationEmail}`);
                 }
             } catch (emailError) {
-                console.error("Error sending new kitchen application email to manager:", emailError);
+                logger.error("Error sending new kitchen application email to manager:", emailError);
             }
 
             res.status(201).json({
@@ -616,7 +617,7 @@ router.post('/firebase/chef/kitchen-applications',
                 isResubmission: application.createdAt < application.updatedAt,
             });
         } catch (error) {
-            console.error('Error creating kitchen application:', error);
+            logger.error('Error creating kitchen application:', error);
             res.status(500).json({
                 error: 'Failed to submit kitchen application',
                 message: error instanceof Error ? error.message : 'Unknown error'
@@ -635,7 +636,7 @@ router.get('/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, a
         const applications = await chefApplicationService.getChefApplications(chefId);
         res.json(applications);
     } catch (error) {
-        console.error('Error getting chef kitchen applications:', error);
+        logger.error('Error getting chef kitchen applications:', error);
         res.status(500).json({ error: 'Failed to get kitchen applications' });
     }
 });
@@ -684,7 +685,7 @@ router.get('/firebase/chef/kitchen-applications/location/:locationId', requireFi
             } : null,
         });
     } catch (error) {
-        console.error('Error getting chef kitchen application:', error);
+        logger.error('Error getting chef kitchen application:', error);
         res.status(500).json({ error: 'Failed to get kitchen application' });
     }
 });
@@ -704,7 +705,7 @@ router.get('/firebase/chef/kitchen-access-status/:locationId', requireFirebaseAu
         const accessStatus = await chefApplicationService.getApplicationStatus(req.neonUser!.id, locationId);
         res.json(accessStatus);
     } catch (error) {
-        console.error('Error getting kitchen access status:', error);
+        logger.error('Error getting kitchen access status:', error);
         res.status(500).json({ error: 'Failed to get kitchen access status' });
     }
 });
@@ -718,7 +719,7 @@ router.get('/firebase/chef/approved-kitchens', requireFirebaseAuthWithUser, asyn
         const approvedKitchens = await chefApplicationService.getApprovedKitchens(req.neonUser!.id);
         res.json(approvedKitchens);
     } catch (error) {
-        console.error('Error getting approved kitchens:', error);
+        logger.error('Error getting approved kitchens:', error);
         res.status(500).json({ error: 'Failed to get approved kitchens' });
     }
 });
@@ -743,7 +744,7 @@ router.patch('/firebase/chef/kitchen-applications/:id/cancel', requireFirebaseAu
             message: 'Application cancelled successfully',
         });
     } catch (error) {
-        console.error('Error cancelling kitchen application:', error);
+        logger.error('Error cancelling kitchen application:', error);
         res.status(500).json({
             error: 'Failed to cancel application',
             message: error instanceof Error ? error.message : 'Unknown error'
@@ -789,7 +790,7 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
                     try {
                         updateData.foodSafetyLicenseUrl = await uploadToBlob(files['foodSafetyLicenseFile'][0], req.neonUser!.id, 'documents');
                     } catch (uploadError) {
-                        console.error('❌ Failed to upload food safety license:', uploadError);
+                        logger.error('❌ Failed to upload food safety license:', uploadError);
                     }
                 }
 
@@ -797,7 +798,7 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
                     try {
                         updateData.foodEstablishmentCertUrl = await uploadToBlob(files['foodEstablishmentCertFile'][0], req.neonUser!.id, 'documents');
                     } catch (uploadError) {
-                        console.error('❌ Failed to upload food establishment cert:', uploadError);
+                        logger.error('❌ Failed to upload food establishment cert:', uploadError);
                     }
                 }
             }
@@ -810,7 +811,7 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
                 message: 'Documents updated successfully. They will be reviewed by the manager.',
             });
         } catch (error) {
-            console.error('Error updating kitchen application documents:', error);
+            logger.error('Error updating kitchen application documents:', error);
             res.status(500).json({
                 error: 'Failed to update documents',
                 message: error instanceof Error ? error.message : 'Unknown error'
@@ -833,7 +834,7 @@ router.get('/manager/kitchen-applications', requireFirebaseAuthWithUser, require
         const applications = await chefApplicationService.getApplicationsForManager(user.id);
         res.json(applications);
     } catch (error) {
-        console.error('Error getting kitchen applications for manager:', error);
+        logger.error('Error getting kitchen applications for manager:', error);
         res.status(500).json({ error: 'Failed to get applications' });
     }
 });
@@ -859,7 +860,7 @@ router.get('/manager/kitchen-applications/location/:locationId', requireFirebase
         const applications = await chefApplicationService.getApplicationsByLocation(locationId);
         res.json(applications);
     } catch (error) {
-        console.error('Error getting kitchen applications for location:', error);
+        logger.error('Error getting kitchen applications for location:', error);
         res.status(500).json({ error: 'Failed to get applications' });
     }
 });
@@ -917,7 +918,7 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
             ) || updatedApplication;
         }
 
-        console.log(`✅ Application ${applicationId} ${status} by Manager ${user.id}`);
+        logger.info(`✅ Application ${applicationId} ${status} by Manager ${user.id}`);
 
         // Create in-app notification for application approval
         if (status === 'approved' && updatedApplication) {
@@ -930,7 +931,7 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                     chefEmail: application.email || ''
                 });
             } catch (notifError) {
-                console.error("Error creating application approval notification:", notifError);
+                logger.error("Error creating application approval notification:", notifError);
             }
 
             // Send email to chef about approval — tier-aware
@@ -950,7 +951,7 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                         await sendEmail(step1Email, {
                             trackingId: `kitchen_app_step1_approved_${application.id}_${Date.now()}`
                         });
-                        console.log(`✅ Sent step 1 approval email to chef: ${application.email} (Tier ${approvalTier})`);
+                        logger.info(`✅ Sent step 1 approval email to chef: ${application.email} (Tier ${approvalTier})`);
                     } else {
                         // Tier 2+ approval: full access — send "APPROVED, book now" email
                         const approvalEmail = generateKitchenApplicationApprovedEmail({
@@ -961,11 +962,11 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                         await sendEmail(approvalEmail, {
                             trackingId: `kitchen_app_approved_${application.id}_${Date.now()}`
                         });
-                        console.log(`✅ Sent full approval email to chef: ${application.email} (Tier ${approvalTier})`);
+                        logger.info(`✅ Sent full approval email to chef: ${application.email} (Tier ${approvalTier})`);
                     }
                 }
             } catch (emailError) {
-                console.error("Error sending kitchen application approval email:", emailError);
+                logger.error("Error sending kitchen application approval email:", emailError);
             }
 
             // Create in-app notification for chef
@@ -979,7 +980,7 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                     });
                 }
             } catch (notifError) {
-                console.error("Error creating chef application approval notification:", notifError);
+                logger.error("Error creating chef application approval notification:", notifError);
             }
         }
 
@@ -997,10 +998,10 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                     await sendEmail(rejectionEmail, {
                         trackingId: `kitchen_app_rejected_${application.id}_${Date.now()}`
                     });
-                    console.log(`✅ Sent kitchen application rejection email to chef: ${application.email}`);
+                    logger.info(`✅ Sent kitchen application rejection email to chef: ${application.email}`);
                 }
             } catch (emailError) {
-                console.error("Error sending kitchen application rejection email:", emailError);
+                logger.error("Error sending kitchen application rejection email:", emailError);
             }
 
             // Create in-app notification for chef about rejection
@@ -1015,7 +1016,7 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                     });
                 }
             } catch (notifError) {
-                console.error("Error creating chef application rejection notification:", notifError);
+                logger.error("Error creating chef application rejection notification:", notifError);
             }
         }
 
@@ -1070,13 +1071,13 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                                 grantedBy: req.neonUser!.id,
                                 grantedAt: new Date(),
                             });
-                            console.log(`✅ Granted chef ${application.chefId} access to location ${application.locationId} (Requirements Met)`);
+                            logger.info(`✅ Granted chef ${application.chefId} access to location ${application.locationId} (Requirements Met)`);
                         }
                     } catch (accessError) {
-                        console.error('Error granting chef access:', accessError);
+                        logger.error('Error granting chef access:', accessError);
                     }
                 } else {
-                    console.log(`ℹ️ Chef ${application.chefId} at Tier ${currentTier} but missing requirements: ${validation.missingRequirements.join(', ')}`);
+                    logger.info(`ℹ️ Chef ${application.chefId} at Tier ${currentTier} but missing requirements: ${validation.missingRequirements.join(', ')}`);
                     // Optionally: Send system message about missing requirements?
                     // For now, just logging and NOT granting access.
                 }
@@ -1089,7 +1090,7 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
             message: `Application ${status} successfully`,
         });
     } catch (error) {
-        console.error('Error updating kitchen application status:', error);
+        logger.error('Error updating kitchen application status:', error);
         res.status(500).json({
             error: 'Failed to update application status',
             message: error instanceof Error ? error.message : 'Unknown error'
@@ -1162,7 +1163,7 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
             message: 'Document verification updated',
         });
     } catch (error) {
-        console.error('Error verifying kitchen application documents:', error);
+        logger.error('Error verifying kitchen application documents:', error);
         res.status(500).json({
             error: 'Failed to verify documents',
             message: error instanceof Error ? error.message : 'Unknown error'
@@ -1228,7 +1229,7 @@ router.patch('/manager/kitchen-applications/:id/tier', requireFirebaseAuthWithUs
             message: `Application advanced to Tier ${parsed.data.current_tier}`,
         });
     } catch (error) {
-        console.error('Error updating application tier:', error);
+        logger.error('Error updating application tier:', error);
         res.status(500).json({
             error: 'Failed to update application tier',
             message: error instanceof Error ? error.message : 'Unknown error',

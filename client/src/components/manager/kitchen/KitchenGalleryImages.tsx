@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -77,7 +78,7 @@ export function KitchenGalleryImages({
                 description: "Gallery images updated successfully",
             });
         } catch (error: any) {
-            console.error('Gallery images update error:', error);
+            logger.error('Gallery images update error:', error);
             toast({
                 title: "Error",
                 description: error.message || "Failed to update gallery images",
@@ -108,7 +109,7 @@ export function KitchenGalleryImages({
                 body: JSON.stringify({ fileUrl: imageUrl }),
             });
         } catch (error) {
-            console.error('Error deleting file from R2:', error);
+            logger.error('Error deleting file from R2:', error);
         }
     };
 
@@ -134,7 +135,7 @@ export function KitchenGalleryImages({
                 body: JSON.stringify({ fileUrl: oldUrl }),
             });
         } catch (error) {
-            console.error('Error deleting old file from R2:', error);
+            logger.error('Error deleting old file from R2:', error);
         }
     };
 

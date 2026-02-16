@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -59,7 +60,7 @@ export default function AdminLogin() {
 
     // If it's not an email format (likely a username), try migration login first
     if (!isEmailFormat) {
-      console.log('🔄 Username detected, trying migration login for old admin...');
+      logger.info('🔄 Username detected, trying migration login for old admin...');
       
       try {
         const migrateResponse = await fetch('/api/admin-migrate-login', {
@@ -79,7 +80,7 @@ export default function AdminLogin() {
           if (migrateData.customToken) {
             // Sign in with custom token
             const userCredential = await signInWithCustomToken(auth, migrateData.customToken);
-            console.log('✅ Migration login successful');
+            logger.info('✅ Migration login successful');
             
             // Force token refresh and sync user data
             if (userCredential.user) {
@@ -96,10 +97,10 @@ export default function AdminLogin() {
                 });
                 
                 if (syncResponse.ok) {
-                  console.log('✅ User profile synced after migration login');
+                  logger.info('✅ User profile synced after migration login');
                 }
               } catch (syncError) {
-                console.error('❌ Error syncing user profile after migration:', syncError);
+                logger.error('❌ Error syncing user profile after migration:', syncError);
               }
             }
             
@@ -115,10 +116,10 @@ export default function AdminLogin() {
         } else {
           // Migration login failed - try Firebase as fallback if it's an email
           const errorData = await migrateResponse.json().catch(() => ({}));
-          console.log('Migration login failed:', errorData);
+          logger.info('Migration login failed:', errorData);
         }
       } catch (migrateError) {
-        console.log('Migration login error, trying Firebase as fallback:', migrateError);
+        logger.info('Migration login error, trying Firebase as fallback:', migrateError);
       }
     }
 
@@ -126,12 +127,12 @@ export default function AdminLogin() {
     try {
       // Only try Firebase if it looks like an email, otherwise skip
       if (isEmailFormat) {
-        console.log('Attempting admin login with Firebase Auth:', loginIdentifier);
+        logger.info('Attempting admin login with Firebase Auth:', loginIdentifier);
         
         // Use Firebase Auth login (email/password)
         await login(loginIdentifier, data.password);
         
-        console.log('Firebase login successful, checking admin role...');
+        logger.info('Firebase login successful, checking admin role...');
         
         // Clear all cached data
         queryClient.clear();
@@ -143,11 +144,11 @@ export default function AdminLogin() {
       }
       
     } catch (error: any) {
-      console.error('Admin login error:', error);
+      logger.error('Admin login error:', error);
       
       // If Firebase login fails, try migration login for old admins (if we haven't already)
       if (isEmailFormat && (error.message?.includes('invalid-credential') || error.message?.includes('wrong-password') || error.message?.includes('user-not-found'))) {
-        console.log('🔄 Firebase login failed, trying migration login for old admin...');
+        logger.info('🔄 Firebase login failed, trying migration login for old admin...');
         
         try {
           // Try migration login (for old admins with username/password in Neon DB)
@@ -176,7 +177,7 @@ export default function AdminLogin() {
               if (migrateData.customToken) {
                 // Sign in with custom token
                 const userCredential = await signInWithCustomToken(auth, migrateData.customToken);
-                console.log('✅ Migration login successful');
+                logger.info('✅ Migration login successful');
                 
                 // Force token refresh and sync user data
                 if (userCredential.user) {
@@ -193,10 +194,10 @@ export default function AdminLogin() {
                     });
                     
                     if (syncResponse.ok) {
-                      console.log('✅ User profile synced after migration login');
+                      logger.info('✅ User profile synced after migration login');
                     }
                   } catch (syncError) {
-                    console.error('❌ Error syncing user profile after migration:', syncError);
+                    logger.error('❌ Error syncing user profile after migration:', syncError);
                   }
                 }
                 
@@ -212,7 +213,7 @@ export default function AdminLogin() {
             }
           }
         } catch (migrateError) {
-          console.log('Migration login also failed, continuing with Firebase error handling');
+          logger.info('Migration login also failed, continuing with Firebase error handling');
         }
       }
       
@@ -236,13 +237,13 @@ export default function AdminLogin() {
 
   // Redirect if already logged in as admin
   if (!loading && isAdmin) {
-    console.log('Admin already logged in, redirecting to admin panel');
+    logger.info('Admin already logged in, redirecting to admin panel');
     return <Redirect to="/admin" />;
   }
   
   // Redirect non-admin users
   if (!loading && user && !isAdmin) {
-    console.log('Non-admin user detected, redirecting to appropriate dashboard');
+    logger.info('Non-admin user detected, redirecting to appropriate dashboard');
     if (user.role === 'manager') {
       return <Redirect to="/manager/dashboard" />;
     }

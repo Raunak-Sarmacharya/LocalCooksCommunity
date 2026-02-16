@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
 import { Button } from "@/components/ui/button";
@@ -49,7 +50,7 @@ export default function EnhancedAuthPage() {
         setShowSuccessMessage(false);
       }, 8000);
     } else if (verified === 'true') {
-      console.log('📧 EMAIL VERIFICATION SUCCESS detected in URL');
+      logger.info('📧 EMAIL VERIFICATION SUCCESS detected in URL');
       setSuccessMessageType('email-verified');
       setShowSuccessMessage(true);
       setActiveTab('login'); // Switch to login tab so they can sign in
@@ -97,7 +98,7 @@ export default function EnhancedAuthPage() {
           setUserMetaLoading(true);
           const firebaseUser = auth.currentUser;
           if (!firebaseUser) {
-            console.error('❌ No Firebase user available');
+            logger.error('❌ No Firebase user available');
             return;
           }
           
@@ -112,7 +113,7 @@ export default function EnhancedAuthPage() {
           
           if (response.ok) {
             const userData = await response.json();
-            console.log('✅ USER DATA FETCHED:', {
+            logger.info('✅ USER DATA FETCHED:', {
               id: userData.id,
               username: userData.username,
               is_verified: userData.is_verified,
@@ -127,13 +128,13 @@ export default function EnhancedAuthPage() {
             // **CRITICAL WELCOME SCREEN LOGIC**
             // Show welcome screen if user is verified but hasn't seen welcome
             if (userData.is_verified && !userData.has_seen_welcome) {
-              console.log('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
+              logger.info('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
               return; // Don't proceed with redirect, let the render logic handle welcome screen
             }
             
             // Check if user needs email verification (for email/password users)
             if (!userData.is_verified) {
-              console.log('📧 EMAIL VERIFICATION REQUIRED');
+              logger.info('📧 EMAIL VERIFICATION REQUIRED');
               // For now, we'll redirect to dashboard anyway as verification is handled elsewhere
               // In a full implementation, you might want to show a verification screen here
             }
@@ -142,7 +143,7 @@ export default function EnhancedAuthPage() {
             if (hasAttemptedLogin) {
               const redirectPath = getRedirectPath();
               const targetPath = redirectPath !== '/' ? redirectPath : (userData.role === 'admin' ? '/admin' : '/dashboard');
-              console.log(`🚀 REDIRECTING TO: ${targetPath}`);
+              logger.info(`🚀 REDIRECTING TO: ${targetPath}`);
               
               // Use setTimeout to ensure state is properly set before redirect
               setTimeout(() => {
@@ -151,18 +152,18 @@ export default function EnhancedAuthPage() {
             }
             
           } else {
-            console.error('❌ Failed to fetch user data:', response.status);
+            logger.error('❌ Failed to fetch user data:', response.status);
             const errorText = await response.text();
-            console.error('❌ Error response:', errorText);
+            logger.error('❌ Error response:', errorText);
             // If profile doesn't exist yet (404), reset hasCheckedUser so we can retry
             // This handles the case where Google sign-in completes before backend sync
             if (response.status === 404) {
-              console.log('🔄 Profile not found (404) - resetting hasCheckedUser for retry');
+              logger.info('🔄 Profile not found (404) - resetting hasCheckedUser for retry');
               hasCheckedUser.current = false;
             }
           }
         } catch (error) {
-          console.error('❌ Error fetching user meta:', error);
+          logger.error('❌ Error fetching user meta:', error);
           // Reset on error to allow retry
           hasCheckedUser.current = false;
         } finally {
@@ -182,11 +183,11 @@ export default function EnhancedAuthPage() {
   // Handle welcome screen completion
   const handleWelcomeContinue = async () => {
     try {
-      console.log('🎉 WELCOME SCREEN COMPLETION STARTED');
+      logger.info('🎉 WELCOME SCREEN COMPLETION STARTED');
       
       const firebaseUser = auth.currentUser;
       if (!firebaseUser) {
-        console.error('❌ No Firebase user available for welcome completion');
+        logger.error('❌ No Firebase user available for welcome completion');
         return;
       }
 
@@ -202,7 +203,7 @@ export default function EnhancedAuthPage() {
       
       if (response.ok) {
         const result = await response.json();
-        console.log('✅ WELCOME COMPLETION SUCCESS:', result);
+        logger.info('✅ WELCOME COMPLETION SUCCESS:', result);
         
         // Update local user meta
         if (userMeta) {
@@ -226,12 +227,12 @@ export default function EnhancedAuthPage() {
             targetPath = '/chef-setup';
           }
         }
-        console.log(`🚀 WELCOME COMPLETE - REDIRECTING TO: ${targetPath}`);
+        logger.info(`🚀 WELCOME COMPLETE - REDIRECTING TO: ${targetPath}`);
         setLocation(targetPath);
       } else {
-        console.error('⚠️ Welcome completion API failed:', response.status);
+        logger.error('⚠️ Welcome completion API failed:', response.status);
         const errorText = await response.text();
-        console.error('⚠️ Error details:', errorText);
+        logger.error('⚠️ Error details:', errorText);
         
         // Still redirect on API failure - chefs go to chef-setup
         let targetPath = '/dashboard';
@@ -240,11 +241,11 @@ export default function EnhancedAuthPage() {
         } else if (userMeta?.role === 'chef') {
           targetPath = '/chef-setup';
         }
-        console.log(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
+        logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
         setLocation(targetPath);
       }
     } catch (error) {
-      console.error('❌ Error completing welcome screen:', error);
+      logger.error('❌ Error completing welcome screen:', error);
       
       // Still redirect on error - chefs go to chef-setup
       let targetPath = '/dashboard';
@@ -253,7 +254,7 @@ export default function EnhancedAuthPage() {
       } else if (userMeta?.role === 'chef') {
         targetPath = '/chef-setup';
       }
-      console.log(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
+      logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
       setLocation(targetPath);
     }
   };
@@ -272,15 +273,15 @@ export default function EnhancedAuthPage() {
       // Other users: Show welcome screen if needed
       if (userMeta.is_verified && !userMeta.has_seen_welcome) {
         if (userMeta.role === 'admin') {
-          console.log('👑 Admin user - skipping welcome screen, redirecting to admin');
+          logger.info('👑 Admin user - skipping welcome screen, redirecting to admin');
           setLocation('/admin');
           return;
         } else if (userMeta.role === 'manager') {
-          console.log('🏢 Manager user - skipping welcome screen, redirecting to manager dashboard');
+          logger.info('🏢 Manager user - skipping welcome screen, redirecting to manager dashboard');
           setLocation('/manager/dashboard');
           return;
         } else {
-          console.log('🎉 WELCOME SCREEN REQUIRED - Not redirecting yet');
+          logger.info('🎉 WELCOME SCREEN REQUIRED - Not redirecting yet');
           return; // Don't redirect, show welcome screen for chefs
         }
       }
@@ -319,11 +320,11 @@ export default function EnhancedAuthPage() {
   }, []);
 
   const handleSuccess = () => {
-    console.log('🎯 AUTH SUCCESS - Setting hasAttemptedLogin to true, hasUserMetaRef:', hasUserMetaRef.current);
+    logger.info('🎯 AUTH SUCCESS - Setting hasAttemptedLogin to true, hasUserMetaRef:', hasUserMetaRef.current);
     // Only reset hasCheckedUser if userMeta was NOT successfully fetched
     // Use ref instead of state to avoid stale closure issues
     if (!hasUserMetaRef.current) {
-      console.log('🔄 Resetting hasCheckedUser for retry (userMeta not fetched yet)');
+      logger.info('🔄 Resetting hasCheckedUser for retry (userMeta not fetched yet)');
       hasCheckedUser.current = false;
     }
     setHasAttemptedLogin(true);

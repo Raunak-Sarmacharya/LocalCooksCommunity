@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -68,7 +69,7 @@ function CarouselImage({ imageUrl, kitchenName, index }: { imageUrl: string; kit
           alt={`${kitchenName} - Image ${index + 1}`}
           className="w-full h-full object-cover"
           onError={(e) => {
-            console.error('Image failed to load:', imageUrl);
+            logger.error('Image failed to load:', imageUrl);
             const target = e.target as HTMLImageElement;
             target.style.display = 'none';
           }}
@@ -1116,7 +1117,7 @@ export default function KitchenPreviewPage() {
   // Debug logging
   useEffect(() => {
     if (isAuthenticated && locationId) {
-      console.log('[KitchenPreviewPage] Application status:', {
+      logger.info('[KitchenPreviewPage] Application status:', {
         hasApplication,
         canBook,
         applicationStatus: application?.status,
@@ -1164,7 +1165,7 @@ export default function KitchenPreviewPage() {
               return { Authorization: `Bearer ${token}` };
             }
           } catch (error) {
-            console.error("Error getting Firebase token:", error);
+            logger.error("Error getting Firebase token:", error);
           }
           return {};
         };
@@ -1205,7 +1206,7 @@ export default function KitchenPreviewPage() {
             setKitchenEquipment({ included: [], rental: [] });
           }
         } catch (error) {
-          console.error(`Failed to fetch equipment for kitchen ${selectedKitchen.id}:`, error);
+          logger.error(`Failed to fetch equipment for kitchen ${selectedKitchen.id}:`, error);
           setKitchenEquipment({ included: [], rental: [] });
         }
 
@@ -1236,11 +1237,11 @@ export default function KitchenPreviewPage() {
             setKitchenStorage([]);
           }
         } catch (error) {
-          console.error(`Failed to fetch storage for kitchen ${selectedKitchen.id}:`, error);
+          logger.error(`Failed to fetch storage for kitchen ${selectedKitchen.id}:`, error);
           setKitchenStorage([]);
         }
       } catch (error) {
-        console.error('Error fetching kitchen addons:', error);
+        logger.error('Error fetching kitchen addons:', error);
         setKitchenEquipment({ included: [], rental: [] });
         setKitchenStorage([]);
       } finally {

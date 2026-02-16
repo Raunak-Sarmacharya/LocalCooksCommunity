@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
@@ -44,7 +45,7 @@ export default function AdminLanding() {
             }
           }
         } catch (e) {
-          console.error('Admin check failed:', e);
+          logger.error('Admin check failed:', e);
         }
         setIsCheckingAuth(false);
       };

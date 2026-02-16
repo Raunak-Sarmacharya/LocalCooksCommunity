@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Customer Payment Component
  * 
@@ -75,14 +76,14 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
 
           if (!hasCalledSuccessRef.current && paymentMethodId) {
             hasCalledSuccessRef.current = true;
-            console.log('Payment already confirmed:', pi.id);
+            logger.info('Payment already confirmed:', pi.id);
             onSuccess(pi.id, paymentMethodId);
           }
           return;
         }
       }
     } catch (checkError) {
-      console.error('Error checking payment status:', checkError);
+      logger.error('Error checking payment status:', checkError);
       // Continue with confirmation if check fails
     }
 
@@ -137,7 +138,7 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
           // Only call onSuccess once
           if (!hasCalledSuccessRef.current && paymentMethodId) {
             hasCalledSuccessRef.current = true;
-            console.log('Payment confirmed successfully:', paymentIntent.id);
+            logger.info('Payment confirmed successfully:', paymentIntent.id);
             onSuccess(paymentIntent.id, paymentMethodId);
             return; // Exit early to prevent further processing
           }
@@ -170,7 +171,7 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
 
               if (!hasCalledSuccessRef.current && paymentMethodId) {
                 hasCalledSuccessRef.current = true;
-                console.log('Payment confirmed successfully (retrieved):', pi.id);
+                logger.info('Payment confirmed successfully (retrieved):', pi.id);
                 onSuccess(pi.id, paymentMethodId);
                 return;
               }
@@ -180,13 +181,13 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
             }
           }
         } catch (retrieveError: any) {
-          console.error('Error retrieving payment intent:', retrieveError);
+          logger.error('Error retrieving payment intent:', retrieveError);
           setError('Unable to verify payment status. Please check your booking status.');
           onError('Unable to verify payment status');
         }
       }
     } catch (err: any) {
-      console.error('Payment submission error:', err);
+      logger.error('Payment submission error:', err);
       const errorMsg = err.message || 'An unexpected error occurred';
       setError(errorMsg);
       onError(errorMsg);

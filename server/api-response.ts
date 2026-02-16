@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import { Response } from 'express';
 
 export function errorResponse(res: Response, error: unknown, statusCode = 500) {
@@ -6,7 +7,7 @@ export function errorResponse(res: Response, error: unknown, statusCode = 500) {
         : (error as Error)?.message || 'Unknown error';
 
     // Log full error server-side
-    console.error('[API Error]', error);
+    logger.error('[API Error]', error);
 
     return res.status(statusCode).json({ error: message });
 }

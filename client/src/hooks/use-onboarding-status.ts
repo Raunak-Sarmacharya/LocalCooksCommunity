@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 
 import { useQuery } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -53,7 +54,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     // Debug logging for early-exit optimization
     if (userData) {
-        console.log('[useOnboardingStatus] Early-exit check:', {
+        logger.info('[useOnboardingStatus] Early-exit check:', {
             managerOnboardingCompleted: userData.managerOnboardingCompleted,
             isOnboardingMarkedComplete,
             willSkipDetailedQueries: isOnboardingMarkedComplete
@@ -238,7 +239,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     // Debug logging for final values
     if (userData && !isLoading) {
-        console.log('[useOnboardingStatus] Final status:', {
+        logger.info('[useOnboardingStatus] Final status:', {
             isOnboardingMarkedComplete,
             showSetupBanner,
             showLicenseReviewBanner,

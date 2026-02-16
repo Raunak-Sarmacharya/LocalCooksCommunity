@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useEffect } from 'react';
 import { auth } from '@/lib/firebase';
 
@@ -46,7 +47,7 @@ export function usePresignedImageUrl(imageUrl: string | null | undefined): strin
               headers['Authorization'] = `Bearer ${token}`;
             }
           } catch (tokenError) {
-            console.warn('Could not get Firebase token for presigned URL request:', tokenError);
+            logger.warn('Could not get Firebase token for presigned URL request:', tokenError);
           }
         }
 
@@ -64,7 +65,7 @@ export function usePresignedImageUrl(imageUrl: string | null | undefined): strin
         const data = await response.json();
         setPresignedUrl(data.url);
       } catch (error) {
-        console.error('Error fetching presigned URL:', error);
+        logger.error('Error fetching presigned URL:', error);
         // Fallback to original URL
         setPresignedUrl(imageUrl);
       } finally {

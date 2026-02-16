@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import { Router, Request, Response } from "express";
 
 const router = Router();
@@ -71,7 +72,7 @@ router.get("/autocomplete", async (req: Request, res: Response) => {
     }
 
     if (!GOOGLE_PLACES_API_KEY) {
-      console.error("[Places API] GOOGLE_MAPS_API_KEY is not configured");
+      logger.error("[Places API] GOOGLE_MAPS_API_KEY is not configured");
       return res.status(500).json({
         error: "Server Configuration Error",
         message: "Places API is not configured"
@@ -88,7 +89,7 @@ router.get("/autocomplete", async (req: Request, res: Response) => {
     const data = await response.json();
 
     if (data.status === "REQUEST_DENIED") {
-      console.error("[Places API] Request denied:", data.error_message);
+      logger.error("[Places API] Request denied:", data.error_message);
       return res.status(403).json({
         error: "API Error",
         message: "Places API request was denied"
@@ -110,7 +111,7 @@ router.get("/autocomplete", async (req: Request, res: Response) => {
       predictions
     });
   } catch (error) {
-    console.error("[Places API] Autocomplete error:", error);
+    logger.error("[Places API] Autocomplete error:", error);
     res.status(500).json({
       error: "Internal Server Error",
       message: "Failed to fetch address suggestions"
@@ -147,7 +148,7 @@ router.get("/details", async (req: Request, res: Response) => {
     }
 
     if (!GOOGLE_PLACES_API_KEY) {
-      console.error("[Places API] GOOGLE_MAPS_API_KEY is not configured");
+      logger.error("[Places API] GOOGLE_MAPS_API_KEY is not configured");
       return res.status(500).json({
         error: "Server Configuration Error",
         message: "Places API is not configured"
@@ -163,7 +164,7 @@ router.get("/details", async (req: Request, res: Response) => {
     const data = await response.json();
 
     if (data.status === "REQUEST_DENIED") {
-      console.error("[Places API] Request denied:", data.error_message);
+      logger.error("[Places API] Request denied:", data.error_message);
       return res.status(403).json({
         error: "API Error",
         message: "Places API request was denied"
@@ -187,7 +188,7 @@ router.get("/details", async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error("[Places API] Details error:", error);
+    logger.error("[Places API] Details error:", error);
     res.status(500).json({
       error: "Internal Server Error",
       message: "Failed to fetch place details"

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -71,7 +72,7 @@ export default function ChefProfileSettings() {
                 }
                 return await response.json();
             } catch (error) {
-                console.error('Error fetching user profile:', error);
+                logger.error('Error fetching user profile:', error);
                 return null;
             }
         },
@@ -101,7 +102,7 @@ export default function ChefProfileSettings() {
                 }
                 return response.json();
             } catch (error) {
-                console.error('Error fetching chef profile:', error);
+                logger.error('Error fetching chef profile:', error);
                 return { phone: null, displayName: null, profileImageUrl: null, applicationStatus: null };
             }
         },
@@ -163,7 +164,7 @@ export default function ChefProfileSettings() {
                         displayName: profileData.displayName,
                     });
                 } catch (firebaseError) {
-                    console.error('Failed to update Firebase Auth displayName:', firebaseError);
+                    logger.error('Failed to update Firebase Auth displayName:', firebaseError);
                 }
             }
 

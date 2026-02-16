@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Enterprise-Grade Chef Notification Center Component
  * 
@@ -500,7 +501,7 @@ export default function ChefNotificationCenter() {
       return { previousNotifications, previousUnreadCount };
     },
     onError: (err, _ids, context) => {
-      console.error("[ChefNotificationCenter] Failed to mark as read:", err);
+      logger.error("[ChefNotificationCenter] Failed to mark as read:", err);
       if (context?.previousNotifications) {
         queryClient.setQueryData(["/api/chef/notifications", filter], context.previousNotifications);
       }
@@ -545,7 +546,7 @@ export default function ChefNotificationCenter() {
       return { previousNotifications, previousUnreadCount };
     },
     onError: (err, _, context) => {
-      console.error("[ChefNotificationCenter] Failed to mark all as read:", err);
+      logger.error("[ChefNotificationCenter] Failed to mark all as read:", err);
       if (context?.previousNotifications) {
         queryClient.setQueryData(["/api/chef/notifications", filter], context.previousNotifications);
       }
@@ -602,7 +603,7 @@ export default function ChefNotificationCenter() {
       return { previousNotifications, previousUnreadCount };
     },
     onError: (err, _ids, context) => {
-      console.error("[ChefNotificationCenter] Failed to archive:", err);
+      logger.error("[ChefNotificationCenter] Failed to archive:", err);
       if (context?.previousNotifications) {
         queryClient.setQueryData(["/api/chef/notifications", filter], context.previousNotifications);
       }
@@ -656,7 +657,7 @@ export default function ChefNotificationCenter() {
       return { previousNotifications, previousUnreadCount };
     },
     onError: (err, _id, context) => {
-      console.error("[ChefNotificationCenter] Failed to delete:", err);
+      logger.error("[ChefNotificationCenter] Failed to delete:", err);
       if (context?.previousNotifications) {
         queryClient.setQueryData(["/api/chef/notifications", filter], context.previousNotifications);
       }

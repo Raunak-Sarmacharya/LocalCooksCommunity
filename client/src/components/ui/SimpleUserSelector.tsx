@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -73,7 +74,7 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
         setAvailableUsers(filteredUsers);
       }
     } catch (error) {
-      console.error('Error fetching users:', error);
+      logger.error('Error fetching users:', error);
     } finally {
       setIsLoading(false);
     }
@@ -106,7 +107,7 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
 
   // Handle user selection from database
   const handleUserSelect = (user: User) => {
-    console.log('User selected:', user);
+    logger.info('User selected:', user);
     const totalRecipients = selectedUsers.length + selectedRecipients.length;
     if (totalRecipients < maxUsers) {
       onUsersChange([...selectedUsers, user]);
@@ -306,7 +307,7 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
                     key={user.id}
                     className="p-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
                     onClick={(e) => {
-                      console.log('User clicked:', user, e);
+                      logger.info('User clicked:', user, e);
                       e.stopPropagation();
                       handleUserSelect(user);
                     }}

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useEffect } from 'react';
 import { auth } from '@/lib/firebase';
 
@@ -62,7 +63,7 @@ export function usePresignedDocumentUrl(documentUrl: string | null | undefined):
                             headers['Authorization'] = `Bearer ${token}`;
                         }
                     } catch (tokenError) {
-                        console.warn('Could not get Firebase token for presigned document URL request:', tokenError);
+                        logger.warn('Could not get Firebase token for presigned document URL request:', tokenError);
                     }
                 }
 
@@ -82,7 +83,7 @@ export function usePresignedDocumentUrl(documentUrl: string | null | undefined):
                 const data = await response.json();
                 setPresignedUrl(data.url);
             } catch (err) {
-                console.error('Error fetching presigned document URL:', err);
+                logger.error('Error fetching presigned document URL:', err);
                 setError(err instanceof Error ? err : new Error('Unknown error'));
                 // Fallback to original URL - user might have access or it might work via other means
                 setPresignedUrl(documentUrl);

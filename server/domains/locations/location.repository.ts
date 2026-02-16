@@ -1,3 +1,4 @@
+import { logger } from "../../logger";
 /**
  * Location Repository
  * 
@@ -28,7 +29,7 @@ export class LocationRepository {
 
       return (location || null) as LocationDTO | null;
     } catch (error: any) {
-      console.error(`[LocationRepository] Error finding location by ID ${id}:`, error);
+      logger.error(`[LocationRepository] Error finding location by ID ${id}:`, error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to find location',
@@ -50,7 +51,7 @@ export class LocationRepository {
 
       return results as LocationDTO[];
     } catch (error: any) {
-      console.error(`[LocationRepository] Error finding locations by manager ${managerId}:`, error);
+      logger.error(`[LocationRepository] Error finding locations by manager ${managerId}:`, error);
       throw new DomainError(
         LocationErrorCodes.NO_MANAGER_ASSIGNED,
         'Failed to find locations',
@@ -94,7 +95,7 @@ export class LocationRepository {
 
       return location as LocationDTO;
     } catch (error: any) {
-      console.error('[LocationRepository] Error creating location:', error);
+      logger.error('[LocationRepository] Error creating location:', error);
       throw new DomainError(
         LocationErrorCodes.INVALID_ADDRESS,
         'Failed to create location',
@@ -139,7 +140,7 @@ export class LocationRepository {
 
       return (location || null) as LocationDTO | null;
     } catch (error: any) {
-      console.error(`[LocationRepository] Error updating location ${id}:`, error);
+      logger.error(`[LocationRepository] Error updating location ${id}:`, error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to update location',
@@ -167,7 +168,7 @@ export class LocationRepository {
 
       return (location || null) as LocationDTO | null;
     } catch (error: any) {
-      console.error(`[LocationRepository] Error verifying kitchen license for location ${dto.locationId}:`, error);
+      logger.error(`[LocationRepository] Error verifying kitchen license for location ${dto.locationId}:`, error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to verify kitchen license',
@@ -189,7 +190,7 @@ export class LocationRepository {
 
       return (location || null) as LocationDTO | null;
     } catch (error: any) {
-      console.error(`[LocationRepository] Error updating kitchen license URL for location ${locationId}:`, error);
+      logger.error(`[LocationRepository] Error updating kitchen license URL for location ${locationId}:`, error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to update kitchen license URL',
@@ -210,7 +211,7 @@ export class LocationRepository {
 
       return results as LocationDTO[];
     } catch (error: any) {
-      console.error('[LocationRepository] Error finding all locations:', error);
+      logger.error('[LocationRepository] Error finding all locations:', error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to find locations',
@@ -235,7 +236,7 @@ export class LocationRepository {
 
       return result.length > 0;
     } catch (error: any) {
-      console.error(`[LocationRepository] Error checking name existence ${name}:`, error);
+      logger.error(`[LocationRepository] Error checking name existence ${name}:`, error);
       return false;
     }
   }
@@ -252,7 +253,7 @@ export class LocationRepository {
 
       return results.length;
     } catch (error: any) {
-      console.error(`[LocationRepository] Error counting locations by manager ${managerId}:`, error);
+      logger.error(`[LocationRepository] Error counting locations by manager ${managerId}:`, error);
       return 0;
     }
   }
@@ -269,7 +270,7 @@ export class LocationRepository {
 
       return (requirements || null) as LocationRequirements | null;
     } catch (error: any) {
-      console.error(`[LocationRepository] Error finding requirements for location ${locationId}:`, error);
+      logger.error(`[LocationRepository] Error finding requirements for location ${locationId}:`, error);
       return null;
     }
   }
@@ -306,7 +307,7 @@ export class LocationRepository {
         return created as LocationRequirements;
       }
     } catch (error: any) {
-      console.error(`[LocationRepository] Error upserting requirements for location ${locationId}:`, error);
+      logger.error(`[LocationRepository] Error upserting requirements for location ${locationId}:`, error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to update location requirements',
@@ -322,7 +323,7 @@ export class LocationRepository {
     try {
       await db.delete(locations).where(eq(locations.id, id));
     } catch (error: any) {
-      console.error(`[LocationRepository] Error deleting location ${id}:`, error);
+      logger.error(`[LocationRepository] Error deleting location ${id}:`, error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to delete location',

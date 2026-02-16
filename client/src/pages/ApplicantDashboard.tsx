@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -557,7 +558,7 @@ export default function ApplicantDashboard() {
             toast({ title: "Application cancelled", variant: "destructive" });
           }
         } catch (error) {
-          console.error(error);
+          logger.error("Dashboard error", error);
         }
       }
     });

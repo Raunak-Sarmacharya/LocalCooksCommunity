@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 /**
  * Damage Claim Limits Service
  * 
@@ -90,7 +91,7 @@ export async function getDamageClaimLimits(): Promise<DamageClaimLimits> {
         : DEFAULTS.claimSubmissionDeadlineDays,
     };
   } catch (error) {
-    console.error('[DamageClaimLimitsService] Error fetching limits:', error);
+    logger.error('[DamageClaimLimitsService] Error fetching limits:', error);
     return DEFAULTS;
   }
 }
@@ -205,7 +206,7 @@ export async function getStorageCheckoutSettings(): Promise<StorageCheckoutSetti
         : STORAGE_CHECKOUT_DEFAULTS.extendedClaimWindowHours,
     };
   } catch (error) {
-    console.error('[DamageClaimLimitsService] Error fetching storage checkout settings:', error);
+    logger.error('[DamageClaimLimitsService] Error fetching storage checkout settings:', error);
     return STORAGE_CHECKOUT_DEFAULTS;
   }
 }

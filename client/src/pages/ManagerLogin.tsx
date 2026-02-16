@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
 import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
@@ -45,7 +46,7 @@ export default function ManagerLogin() {
     try {
       const currentUser = auth.currentUser;
       if (currentUser) {
-        console.log('📧 Resending Firebase verification email...');
+        logger.info('📧 Resending Firebase verification email...');
         const hostname = window.location.hostname;
         const isLocalhost = hostname === 'localhost' || 
                            hostname === '127.0.0.1' || 
@@ -60,19 +61,19 @@ export default function ManagerLogin() {
             handleCodeInApp: false,
           });
         }
-        console.log('✅ Firebase verification email resent successfully');
+        logger.info('✅ Firebase verification email resent successfully');
       } else {
-        console.log('⚠️ User is signed out - verification email was sent during registration');
+        logger.info('⚠️ User is signed out - verification email was sent during registration');
       }
     } catch (error: any) {
-      console.error('❌ Failed to resend Firebase verification email:', error);
+      logger.error('❌ Failed to resend Firebase verification email:', error);
       throw error;
     }
   };
   
   // Callback when registration starts (show loading overlay)
   const handleRegistrationStart = () => {
-    console.log('🔄 Registration started - showing loading overlay');
+    logger.info('🔄 Registration started - showing loading overlay');
     setLoadingMessage("Creating your account...");
     setLoadingSubmessage("Please wait while we set up your account securely.");
     setShowLoadingOverlay(true);
@@ -80,7 +81,7 @@ export default function ManagerLogin() {
   
   // Callback when registration completes successfully
   const handleRegistrationSuccess = (email: string) => {
-    console.log('✅ Registration complete - showing email verification screen');
+    logger.info('✅ Registration complete - showing email verification screen');
     // Brief delay to show success state before transitioning
     setLoadingMessage("Account created!");
     setLoadingSubmessage("Redirecting to email verification...");
@@ -94,7 +95,7 @@ export default function ManagerLogin() {
   
   // Callback when registration fails
   const handleRegistrationError = () => {
-    console.log('❌ Registration failed - hiding loading overlay');
+    logger.info('❌ Registration failed - hiding loading overlay');
     setShowLoadingOverlay(false);
   };
 
@@ -116,7 +117,7 @@ export default function ManagerLogin() {
         setShowSuccessMessage(false);
       }, 8000);
     } else if (verified === 'true') {
-      console.log('📧 EMAIL VERIFICATION SUCCESS detected in URL');
+      logger.info('📧 EMAIL VERIFICATION SUCCESS detected in URL');
       setSuccessMessageType('email-verified');
       setShowSuccessMessage(true);
       setActiveTab('login');
@@ -160,7 +161,7 @@ export default function ManagerLogin() {
         }
         
         const userData = await response.json();
-        console.log('✅ MANAGER USER DATA FETCHED:', {
+        logger.info('✅ MANAGER USER DATA FETCHED:', {
           id: userData.id,
           username: userData.username,
           is_verified: userData.is_verified,
@@ -171,7 +172,7 @@ export default function ManagerLogin() {
         
         return userData;
       } catch (error) {
-        console.error('Error fetching user metadata:', error);
+        logger.error('Error fetching user metadata:', error);
         return null;
       }
     },
@@ -203,14 +204,14 @@ export default function ManagerLogin() {
       const isManager = userMetaData.role === 'manager' || userMetaData.isManager;
       
       if (isManager && userMetaData.is_verified) {
-        console.log('✅ Manager verified - redirecting to dashboard (wizard will show if needed)');
+        logger.info('✅ Manager verified - redirecting to dashboard (wizard will show if needed)');
         hasRedirected.current = true;
         setLocation('/manager/dashboard');
       } else if (isManager && !userMetaData.is_verified) {
-        console.log('📧 EMAIL VERIFICATION REQUIRED');
+        logger.info('📧 EMAIL VERIFICATION REQUIRED');
         // Stay on login page to show verification message
       } else if (!isManager) {
-        console.warn('⚠️ User is not a manager, redirecting...');
+        logger.warn('⚠️ User is not a manager, redirecting...');
         hasRedirected.current = true;
         // Redirect non-managers to appropriate page
         if (userMetaData.role === 'admin') {
@@ -365,7 +366,7 @@ export default function ManagerLogin() {
               <TabsContent value="register">
                 <EnhancedRegisterForm
                   onSuccess={async () => {
-                    console.log('🎯 GOOGLE REGISTRATION SUCCESS - Invalidating cache and refreshing data');
+                    logger.info('🎯 GOOGLE REGISTRATION SUCCESS - Invalidating cache and refreshing data');
                     // ENTERPRISE FIX: Invalidate React Query cache to force refetch of user profile
                     // This ensures the redirect logic has fresh data after Google Sign-In registration
                     await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });

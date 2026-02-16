@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/ui/logo";
 import { useQuery } from "@tanstack/react-query";
@@ -56,7 +57,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
         const userData = await response.json();
         return userData;
       } catch (error) {
-        console.error('Error fetching user profile:', error);
+        logger.error('Error fetching user profile:', error);
         return null;
       }
     },
@@ -75,7 +76,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
         // Get Firebase token for authentication
         const currentFirebaseUser = auth.currentUser;
         if (!currentFirebaseUser) {
-          console.error('No Firebase user available');
+          logger.error('No Firebase user available');
           return [];
         }
 
@@ -88,17 +89,17 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
           },
         });
         if (!response.ok) {
-          console.error('Failed to fetch locations:', response.status);
+          logger.error('Failed to fetch locations:', response.status);
           return [];
         }
         const data = await response.json();
-        console.log('ManagerHeader - Fetched locations:', data);
-        console.log('ManagerHeader - First location fields:', data[0] ? Object.keys(data[0]) : 'no locations');
-        console.log('ManagerHeader - First location logoUrl:', data[0] ? (data[0] as any).logoUrl : 'no locations');
-        console.log('ManagerHeader - First location logo_url:', data[0] ? (data[0] as any).logo_url : 'no locations');
+        logger.info('ManagerHeader - Fetched locations:', data);
+        logger.info('ManagerHeader - First location fields:', data[0] ? Object.keys(data[0]) : 'no locations');
+        logger.info('ManagerHeader - First location logoUrl:', data[0] ? (data[0] as any).logoUrl : 'no locations');
+        logger.info('ManagerHeader - First location logo_url:', data[0] ? (data[0] as any).logo_url : 'no locations');
         return data;
       } catch (error) {
-        console.error('Error fetching locations:', error);
+        logger.error('Error fetching locations:', error);
         return [];
       }
     },
@@ -114,22 +115,22 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
     ? ((locations[0] as any).logoUrl || (locations[0] as any).logo_url || null)
     : null;
 
-  console.log('ManagerHeader - locationLogoUrl:', locationLogoUrl);
-  console.log('ManagerHeader - Full location object:', locations && locations.length > 0 ? locations[0] : 'no locations');
+  logger.info('ManagerHeader - locationLogoUrl:', locationLogoUrl);
+  logger.info('ManagerHeader - Full location object:', locations && locations.length > 0 ? locations[0] : 'no locations');
 
   const { logout } = useFirebaseAuth();
 
   const handleLogout = async () => {
     try {
-      console.log('Performing manager logout...');
+      logger.info('Performing manager logout...');
 
       // Use Firebase logout
       await logout();
 
-      console.log('Manager logout successful, redirecting...');
+      logger.info('Manager logout successful, redirecting...');
       window.location.href = '/manager/login';
     } catch (error) {
-      console.error('Manager logout failed:', error);
+      logger.error('Manager logout failed:', error);
       // Still redirect even if logout fails
       window.location.href = '/manager/login';
     }

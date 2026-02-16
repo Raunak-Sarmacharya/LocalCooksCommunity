@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle } from "lucide-react";
@@ -52,7 +53,7 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack, role }: Forgot
     setErrorMessage(null);
 
     try {
-      console.log('🔄 Submitting forgot password request for:', data.email, 'role:', role);
+      logger.info('🔄 Submitting forgot password request for:', data.email, 'role:', role);
       
       // Use manager endpoint for managers, Firebase endpoint for others
       const endpoint = isManager ? '/api/manager/forgot-password' : '/api/firebase/forgot-password';
@@ -66,23 +67,23 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack, role }: Forgot
         body: JSON.stringify(body),
       });
 
-      console.log('📡 Forgot password response status:', response.status);
+      logger.info('📡 Forgot password response status:', response.status);
       
       const responseData = await response.json();
-      console.log('📡 Forgot password response:', responseData);
+      logger.info('📡 Forgot password response:', responseData);
 
       if (!response.ok) {
-        console.error('❌ Forgot password failed:', responseData);
+        logger.error('❌ Forgot password failed:', responseData);
         throw new Error(responseData.message || 'Failed to send reset email');
       }
 
-      console.log('✅ Forgot password request successful');
+      logger.info('✅ Forgot password request successful');
       setFormState('success');
       if (onSuccess) {
         setTimeout(onSuccess, 2000);
       }
     } catch (error: any) {
-      console.error('❌ Forgot password error:', error);
+      logger.error('❌ Forgot password error:', error);
       setFormState('error');
       setErrorMessage(error.message || 'An unexpected error occurred');
     }

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Calendar as CalendarIcon, Save, Trash2, Loader2, AlertTriangle } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -88,7 +89,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       const token = await currentFirebaseUser.getIdToken();
       headers['Authorization'] = `Bearer ${token}`;
     } catch (error) {
-      console.error('Error getting Firebase token:', error);
+      logger.error('Error getting Firebase token:', error);
     }
   }
   return headers;
@@ -253,7 +254,7 @@ function AvailabilityContent({
         setWeeklySchedule(scheduleMap);
       }
     } catch (error) {
-      console.error("Failed to load schedule", error);
+      logger.error("Failed to load schedule", error);
     }
   }, [selectedKitchenId]);
 

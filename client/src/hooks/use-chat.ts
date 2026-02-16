@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFirebaseAuth } from '@/hooks/use-auth';
@@ -76,7 +77,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
           if (onUnreadCountUpdateRef.current) onUnreadCountUpdateRef.current();
         }
       } catch (error) {
-        console.error('Error loading messages:', error);
+        logger.error('Error loading messages:', error);
         if (mounted) {
           setError(error as Error);
           setIsLoading(false);
@@ -105,10 +106,10 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
             .then(() => {
               if (onUnreadCountUpdateRef.current) onUnreadCountUpdateRef.current();
             })
-            .catch(console.error);
+            .catch((err) => logger.error('Failed to mark as read', err));
         }
       },
-      (error) => console.error('Subscription error:', error)
+      (error) => logger.error('Subscription error:', error)
     );
 
     return () => unsubscribe();
@@ -151,7 +152,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
       // No need to setMessages manually as subscription will catch it
       // But we could optimistically update here if desired
     } catch (error) {
-      console.error('Error sending message:', error);
+      logger.error('Error sending message:', error);
       throw error;
     } finally {
       setIsSending(false);

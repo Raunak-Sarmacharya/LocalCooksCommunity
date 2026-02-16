@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 /**
  * Cloudflare R2 Storage Utility
  * 
@@ -135,10 +136,10 @@ export async function uploadToR2(
       publicUrl = `https://${config.accountId}.r2.cloudflarestorage.com/${config.bucketName}/${key}`;
     }
 
-    console.log(`✅ File uploaded to R2: ${key} -> ${publicUrl}`);
+    logger.info(`✅ File uploaded to R2: ${key} -> ${publicUrl}`);
     return publicUrl;
   } catch (error) {
-    console.error('❌ Error uploading to R2:', error);
+    logger.error('❌ Error uploading to R2:', error);
     throw new Error(`Failed to upload file to R2: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -160,13 +161,13 @@ export async function deleteFromR2(fileUrl: string): Promise<boolean> {
         const urlParam = urlObj.searchParams.get('url');
         if (urlParam) {
           actualFileUrl = decodeURIComponent(urlParam);
-          console.log(`🔍 Extracted R2 URL from proxy: ${actualFileUrl}`);
+          logger.info(`🔍 Extracted R2 URL from proxy: ${actualFileUrl}`);
         } else {
-          console.error('❌ Proxy URL missing url parameter:', fileUrl);
+          logger.error('❌ Proxy URL missing url parameter:', fileUrl);
           return false;
         }
       } catch (urlError) {
-        console.error('❌ Error parsing proxy URL:', urlError);
+        logger.error('❌ Error parsing proxy URL:', urlError);
         return false;
       }
     }
@@ -205,11 +206,11 @@ export async function deleteFromR2(fileUrl: string): Promise<boolean> {
 
     // Final validation: key should not be empty
     if (!key || key.length === 0) {
-      console.error(`❌ Invalid key extracted from URL: ${fileUrl} -> ${actualFileUrl}`);
+      logger.error(`❌ Invalid key extracted from URL: ${fileUrl} -> ${actualFileUrl}`);
       return false;
     }
 
-    console.log('🔍 R2 Delete Debug:', {
+    logger.info('🔍 R2 Delete Debug:', {
       originalUrl: fileUrl,
       actualFileUrl,
       extractedKey: key,
@@ -225,10 +226,10 @@ export async function deleteFromR2(fileUrl: string): Promise<boolean> {
     });
 
     await client.send(command);
-    console.log(`✅ File deleted from R2: ${key}`);
+    logger.info(`✅ File deleted from R2: ${key}`);
     return true;
   } catch (error) {
-    console.error('❌ Error deleting from R2:', {
+    logger.error('❌ Error deleting from R2:', {
       error: error instanceof Error ? error.message : 'Unknown error',
       fileUrl,
       stack: error instanceof Error ? error.stack : undefined
@@ -331,21 +332,21 @@ export async function getPresignedUrl(fileUrl: string, expiresIn: number = 3600)
           (key.includes('foodSafetyLicenseFile') || key.includes('foodEstablishmentCert'))) {
 
           const remappedKey = key.replace('documents/', 'kitchen-applications/');
-          console.log(`[R2 Storage] Key ${key} not found. Checking remapped: ${remappedKey}`);
+          logger.info(`[R2 Storage] Key ${key} not found. Checking remapped: ${remappedKey}`);
 
           try {
             await client.send(new HeadObjectCommand({ Bucket: config.bucketName!, Key: remappedKey }));
             // Remapped key exists! Use it.
             key = remappedKey;
-            console.log(`[R2 Storage] Using remapped key: ${key}`);
+            logger.info(`[R2 Storage] Using remapped key: ${key}`);
           } catch (_remapError) {
-            console.log(`[R2 Storage] Remapped key also not found: ${remappedKey}`);
+            logger.info(`[R2 Storage] Remapped key also not found: ${remappedKey}`);
             // Neither found. Fallback to original key (will likely 404 client-side, but nothing else we can do)
           }
         }
       } else {
         // Other error (auth, network), log it but proceed with original key
-        console.warn(`[R2 Storage] Warning: HeadObject validation failed for ${key}:`, err.message);
+        logger.warn(`[R2 Storage] Warning: HeadObject validation failed for ${key}:`, err.message);
       }
     }
 
@@ -357,7 +358,7 @@ export async function getPresignedUrl(fileUrl: string, expiresIn: number = 3600)
     const presignedUrl = await getSignedUrl(client, command, { expiresIn });
     return presignedUrl;
   } catch (error) {
-    console.error('❌ Error generating presigned URL:', {
+    logger.error('❌ Error generating presigned URL:', {
       error: error instanceof Error ? error.message : 'Unknown error',
       fileUrl,
       stack: error instanceof Error ? error.stack : undefined

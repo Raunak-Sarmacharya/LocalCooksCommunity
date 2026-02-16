@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Manager Kitchen Applications Page - Enterprise Edition
  * 
@@ -258,7 +259,7 @@ function ManagerKitchenApplicationsContentLegacy({
               const conversation = await getConversationForApplication(app.id);
               return { appId: app.id, count: conversation?.unreadManagerCount || 0 };
             } catch (error) {
-              console.error('Error fetching unread count for application', app.id, ':', error);
+              logger.error('Error fetching unread count for application', app.id, ':', error);
               return { appId: app.id, count: 0 };
             }
           })
@@ -322,7 +323,7 @@ function ManagerKitchenApplicationsContentLegacy({
           conversationId = existing.id;
         }
       } catch (e) {
-        console.error("Error looking up conversation:", e);
+        logger.error("Error looking up conversation:", e);
       }
     }
 
@@ -336,7 +337,7 @@ function ManagerKitchenApplicationsContentLegacy({
           application.locationId
         );
       } catch (error) {
-        console.error('Error initializing chat:', error);
+        logger.error('Error initializing chat:', error);
         toast({
           title: "Error",
           description: "Failed to open chat. Please try again.",

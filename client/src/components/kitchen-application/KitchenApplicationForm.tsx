@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useChefKitchenApplications, useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 import { useToast } from "@/hooks/use-toast";
@@ -376,7 +377,7 @@ export default function KitchenApplicationForm({
           defaults.foodHandlerCertExpiry = businessInfo.foodHandlerCertExpiry || '';
           defaults.foodEstablishmentCertExpiry = businessInfo.foodEstablishmentCertExpiry || '';
         } catch (e) {
-          console.warn('Failed to parse business description JSON:', e);
+          logger.warn('Failed to parse business description JSON:', e);
         }
       }
 
@@ -612,7 +613,7 @@ export default function KitchenApplicationForm({
         }
       });
       
-      console.log('[KitchenApplicationForm] Custom fields data:', {
+      logger.info('[KitchenApplicationForm] Custom fields data:', {
         fieldsToUse: fieldsToUse.map(f => ({ id: f.id, label: f.label, type: f.type })),
         customFieldsData,
         formValues: Object.keys(data).filter(k => k.startsWith('custom_')).map(k => ({ key: k, value: data[k as keyof typeof data] }))
@@ -620,9 +621,9 @@ export default function KitchenApplicationForm({
       
       if (Object.keys(customFieldsData).length > 0) {
         formData.append("customFieldsData", JSON.stringify(customFieldsData));
-        console.log('[KitchenApplicationForm] Appending customFieldsData:', JSON.stringify(customFieldsData));
+        logger.info('[KitchenApplicationForm] Appending customFieldsData:', JSON.stringify(customFieldsData));
       } else {
-        console.warn('[KitchenApplicationForm] No custom fields data to append');
+        logger.warn('[KitchenApplicationForm] No custom fields data to append');
       }
 
       // Add tier data if submitting for higher tiers (currently supporting Tier 2)
@@ -645,7 +646,7 @@ export default function KitchenApplicationForm({
       // Files are appended with prefix 'customFile_' + fieldId so server can identify them
       Object.entries(customFieldFiles).forEach(([fieldId, file]) => {
         formData.append(`customFile_${fieldId}`, file);
-        console.log(`[KitchenApplicationForm] Appending custom file: customFile_${fieldId}`, file.name);
+        logger.info(`[KitchenApplicationForm] Appending custom file: customFile_${fieldId}`, file.name);
       });
 
       await createApplication.mutateAsync(formData);

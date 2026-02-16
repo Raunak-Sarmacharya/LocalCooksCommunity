@@ -1,3 +1,4 @@
+import { logger } from "../logger.js";
 /**
  * Stripe Connect Service
  * 
@@ -10,7 +11,7 @@ import Stripe from 'stripe';
 // Initialize Stripe client
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 if (!stripeSecretKey) {
-  console.warn('⚠️ STRIPE_SECRET_KEY not found in environment variables');
+  logger.warn('⚠️ STRIPE_SECRET_KEY not found in environment variables');
 }
 
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
@@ -73,7 +74,7 @@ export async function createConnectAccount(params: CreateConnectAccountParams): 
 
     return { accountId: account.id };
   } catch (error: any) {
-    console.error('Error creating Stripe Connect account:', error);
+    logger.error('Error creating Stripe Connect account:', error);
     throw new Error(`Failed to create Connect account: ${error.message}`);
   }
 }
@@ -101,7 +102,7 @@ export async function createAccountLink(
 
     return { url: accountLink.url };
   } catch (error: any) {
-    console.error('Error creating account link:', error);
+    logger.error('Error creating account link:', error);
     throw new Error(`Failed to create account link: ${error.message}`);
   }
 }
@@ -128,7 +129,7 @@ export async function createAccountUpdateLink(
 
     return { url: accountLink.url };
   } catch (error: any) {
-    console.error('Error creating account update link:', error);
+    logger.error('Error creating account update link:', error);
     throw new Error(`Failed to create account update link: ${error.message}`);
   }
 }
@@ -145,7 +146,7 @@ export async function isAccountReady(accountId: string): Promise<boolean> {
     const account = await stripe.accounts.retrieve(accountId);
     return account.charges_enabled === true && account.payouts_enabled === true;
   } catch (error: any) {
-    console.error('Error checking account readiness:', error);
+    logger.error('Error checking account readiness:', error);
     return false;
   }
 }
@@ -178,7 +179,7 @@ export async function getAccountStatus(accountId: string): Promise<ConnectAccoun
       },
     };
   } catch (error: any) {
-    console.error('Error retrieving account status:', error);
+    logger.error('Error retrieving account status:', error);
     throw new Error(`Failed to retrieve account status: ${error.message}`);
   }
 }
@@ -198,7 +199,7 @@ export async function getAccount(accountId: string): Promise<Stripe.Account | nu
     if (error.code === 'resource_missing') {
       return null;
     }
-    console.error('Error retrieving account:', error);
+    logger.error('Error retrieving account:', error);
     throw new Error(`Failed to retrieve account: ${error.message}`);
   }
 }
@@ -226,7 +227,7 @@ export async function getPayouts(
 
     return payouts.data;
   } catch (error: any) {
-    console.error('Error retrieving payouts:', error);
+    logger.error('Error retrieving payouts:', error);
     throw new Error(`Failed to retrieve payouts: ${error.message}`);
   }
 }
@@ -254,7 +255,7 @@ export async function getPayout(
     if (error.code === 'resource_missing') {
       return null;
     }
-    console.error('Error retrieving payout:', error);
+    logger.error('Error retrieving payout:', error);
     throw new Error(`Failed to retrieve payout: ${error.message}`);
   }
 }
@@ -307,7 +308,7 @@ export async function getBalanceTransactions(
 
     return transactions.data;
   } catch (error: any) {
-    console.error('Error retrieving balance transactions:', error);
+    logger.error('Error retrieving balance transactions:', error);
     throw new Error(`Failed to retrieve balance transactions: ${error.message}`);
   }
 }
@@ -326,7 +327,7 @@ export async function getAccountBalance(accountId: string): Promise<Stripe.Balan
     });
     return balance;
   } catch (error: any) {
-    console.error('Error retrieving balance:', error);
+    logger.error('Error retrieving balance:', error);
     throw new Error(`Failed to retrieve balance: ${error.message}`);
   }
 }
@@ -344,7 +345,7 @@ export async function createDashboardLoginLink(accountId: string): Promise<{ url
     const loginLink = await stripe.accounts.createLoginLink(accountId);
     return { url: loginLink.url };
   } catch (error: any) {
-    console.error('Error creating dashboard login link:', error);
+    logger.error('Error creating dashboard login link:', error);
     throw new Error(`Failed to create dashboard login link: ${error.message}`);
   }
 }

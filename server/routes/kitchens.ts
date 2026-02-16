@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import { Router, Request, Response } from "express";
 import { eq, inArray, desc, and } from "drizzle-orm";
 import { db } from "../db";
@@ -58,11 +59,11 @@ router.get("/chef/kitchens", requireChef, async (req: Request, res: Response) =>
             };
         });
 
-        console.log(`[API] /api/chef/kitchens - Returning ${normalizedKitchens.length} active kitchens (all locations for marketing)`);
+        logger.info(`[API] /api/chef/kitchens - Returning ${normalizedKitchens.length} active kitchens (all locations for marketing)`);
 
         res.json(normalizedKitchens);
     } catch (error: any) {
-        console.error("Error fetching kitchens:", error);
+        logger.error("Error fetching kitchens:", error);
         res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
     }
 });
@@ -90,7 +91,7 @@ router.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req: Request
         if (error.statusCode === 404) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
-        console.error("Error getting kitchen pricing:", error);
+        logger.error("Error getting kitchen pricing:", error);
         res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
     }
 });
@@ -123,7 +124,7 @@ router.get("/chef/kitchens/:kitchenId/policy", requireChef, async (req: Request,
         if (error.statusCode === 404) {
             return res.status(404).json({ error: error.message });
         }
-        console.error("Error getting kitchen policy:", error);
+        logger.error("Error getting kitchen policy:", error);
         res.status(500).json({ error: error.message || "Failed to get kitchen policy" });
     }
 });
@@ -193,17 +194,17 @@ router.post("/chef/share-profile", requireChef, async (req: Request, res: Respon
                         locationId: locationId
                     });
                     await sendEmail(emailContent);
-                    console.log(`✅ Chef profile request notification sent to manager: ${managerEmail}`);
+                    logger.info(`✅ Chef profile request notification sent to manager: ${managerEmail}`);
                 }
             } catch (emailError) {
-                console.error("Error sending chef profile request notification:", emailError);
+                logger.error("Error sending chef profile request notification:", emailError);
                 // Don't fail the profile share if email fails
             }
         }
 
         res.status(201).json(profile);
     } catch (error: any) {
-        console.error("Error sharing chef profile:", error);
+        logger.error("Error sharing chef profile:", error);
         res.status(500).json({ error: error.message || "Failed to share profile" });
     }
 });
@@ -242,7 +243,7 @@ router.get("/chef/profiles", requireChef, async (req: Request, res: Response) =>
 
         res.json(profiles);
     } catch (error: any) {
-        console.error("Error getting chef profiles:", error);
+        logger.error("Error getting chef profiles:", error);
         res.status(500).json({ error: error.message || "Failed to get profiles" });
     }
 });
@@ -271,7 +272,7 @@ router.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req: Request, 
 
         res.json(slotsInfo);
     } catch (error: any) {
-        console.error("Error fetching time slots:", error);
+        logger.error("Error fetching time slots:", error);
         res.status(500).json({
             error: "Failed to fetch time slots",
             message: error.message
@@ -299,15 +300,15 @@ router.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req: Re
             return res.status(400).json({ error: "Invalid date format" });
         }
 
-        console.log(`🔍 Fetching available slots for kitchen ${kitchenId} on ${date}`);
+        logger.info(`🔍 Fetching available slots for kitchen ${kitchenId} on ${date}`);
 
         const slots = await bookingService.getAvailableTimeSlots(kitchenId, bookingDate);
 
-        console.log(`✅ Returning ${slots.length} available slots`);
+        logger.info(`✅ Returning ${slots.length} available slots`);
 
         res.json(slots);
     } catch (error: any) {
-        console.error("Error fetching available slots:", error);
+        logger.error("Error fetching available slots:", error);
         res.status(500).json({
             error: "Failed to fetch available slots",
             message: error.message
@@ -370,7 +371,7 @@ router.get("/chef/my-profile", requireChef, async (req: Request, res: Response) 
             applicationPhone: latestApp?.phone || null,
         });
     } catch (error: any) {
-        console.error("[Chef Profile] GET error:", error);
+        logger.error("[Chef Profile] GET error:", error);
         res.status(500).json({ error: error.message || "Failed to fetch chef profile" });
     }
 });
@@ -434,7 +435,7 @@ router.put("/chef/my-profile", requireChef, async (req: Request, res: Response) 
             displayName: finalProfile.displayName || null,
         });
     } catch (error: any) {
-        console.error("[Chef Profile] PUT error:", error);
+        logger.error("[Chef Profile] PUT error:", error);
         res.status(500).json({ error: error.message || "Failed to update chef profile" });
     }
 });

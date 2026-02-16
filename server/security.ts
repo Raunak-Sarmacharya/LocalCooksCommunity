@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 /**
  * Security Middleware Configuration
  * 
@@ -86,7 +87,7 @@ async function loadRateLimitConfig(): Promise<RateLimitConfig> {
     lastConfigFetch = now;
   } catch (error) {
     // DB not ready yet (startup) or settings table doesn't have these keys — use defaults
-    console.log('[Security] Using default rate limits (DB config not available)');
+    logger.info('[Security] Using default rate limits (DB config not available)');
   }
 
   return cachedConfig;
@@ -214,6 +215,7 @@ export function registerSecurityMiddleware(app: Express): void {
           "https://widget-v4.tidiochat.com",
           "wss://*.tidiochat.com",
           "https://files.localcooks.ca",
+          "https://*.ingest.us.sentry.io",
           ...(isProduction ? ["https://*.localcooks.ca"] : ["http://localhost:*", "ws://localhost:*"]),
         ],
         frameSrc: [
@@ -321,5 +323,5 @@ export function registerSecurityMiddleware(app: Express): void {
   });
   app.use('/api/webhooks', webhookLimiter);
 
-  console.log(`[Security] Helmet, CORS, and Rate Limiting configured (env: ${isProduction ? 'production' : 'development'})`);
+  logger.info(`[Security] Helmet, CORS, and Rate Limiting configured (env: ${isProduction ? 'production' : 'development'})`);
 }

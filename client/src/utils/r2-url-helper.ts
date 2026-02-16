@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Check if a URL points to a public folder (kitchens, public images)
  * Public folders don't require authentication
@@ -100,7 +101,7 @@ export async function getAuthenticatedR2ProxyUrl(fileUrl: string | null | undefi
         }
       }
     } catch (error) {
-      console.error('Error getting authenticated R2 proxy URL:', error);
+      logger.error('Error getting authenticated R2 proxy URL:', error);
     }
     // Fallback to regular proxy URL (may fail for protected files)
     return getR2ProxyUrl(fileUrl);
@@ -135,7 +136,7 @@ export async function getAuthenticatedFileUrl(fileUrl: string | null | undefined
         return `${fileUrl}${separator}token=${encodeURIComponent(token)}`;
       }
     } catch (error) {
-      console.error('Error getting Firebase token for file URL:', error);
+      logger.error('Error getting Firebase token for file URL:', error);
     }
     // Fallback to original URL if token can't be obtained
     return fileUrl;

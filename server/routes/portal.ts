@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import { Router, Request, Response } from "express";
 import { db } from "../db";
 import {
@@ -70,7 +71,7 @@ router.get("/application-status", async (req: Request, res: Response) => {
             awaitingApproval: false
         });
     } catch (error: any) {
-        console.error("Error getting portal application status:", error);
+        logger.error("Error getting portal application status:", error);
         res.status(500).json({ error: error.message || "Failed to get application status" });
     }
 });
@@ -118,7 +119,7 @@ router.get("/my-location", requirePortalUser, async (req: Request, res: Response
             slug: slug,
         });
     } catch (error: any) {
-        console.error("Error fetching portal user location:", error);
+        logger.error("Error fetching portal user location:", error);
         res.status(500).json({ error: error.message || "Failed to fetch location" });
     }
 });
@@ -166,7 +167,7 @@ router.get("/locations", requirePortalUser, async (req: Request, res: Response) 
             slug: slug,
         }]);
     } catch (error: any) {
-        console.error("Error fetching portal user location:", error);
+        logger.error("Error fetching portal user location:", error);
         res.status(500).json({ error: error.message || "Failed to fetch location" });
     }
 });
@@ -220,7 +221,7 @@ router.get("/locations/:locationSlug", requirePortalUser, async (req: Request, r
             logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
         });
     } catch (error: any) {
-        console.error("Error fetching portal location:", error);
+        logger.error("Error fetching portal location:", error);
         res.status(500).json({ error: error.message || "Failed to fetch location" });
     }
 });
@@ -280,7 +281,7 @@ router.get("/locations/:locationSlug/kitchens", requirePortalUser, async (req: R
 
         res.json(publicKitchens);
     } catch (error: any) {
-        console.error("Error fetching portal kitchens:", error);
+        logger.error("Error fetching portal kitchens:", error);
         res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
     }
 });
@@ -334,7 +335,7 @@ router.get("/kitchens/:kitchenId/availability", requirePortalUser, async (req: R
 
         res.json({ slots });
     } catch (error: any) {
-        console.error("Error fetching portal availability:", error);
+        logger.error("Error fetching portal availability:", error);
         res.status(500).json({ error: error.message || "Failed to fetch availability" });
     }
 });
@@ -495,7 +496,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
                     bookingId: booking.id,
                 });
                 await sendEmail(managerEmail);
-                console.log(`✅ Portal booking notification email sent to manager: ${notificationEmail}`);
+                logger.info(`✅ Portal booking notification email sent to manager: ${notificationEmail}`);
             }
 
             // Send confirmation to portal user
@@ -512,11 +513,11 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
                     locationName,
                 });
                 await sendEmail(portalUserEmail);
-                console.log(`✅ Portal booking confirmation email sent to user: ${bookingEmail}`);
+                logger.info(`✅ Portal booking confirmation email sent to user: ${bookingEmail}`);
             }
 
         } catch (error) {
-            console.error("Error sending booking notifications:", error);
+            logger.error("Error sending booking notifications:", error);
         }
 
         res.status(201).json({
@@ -532,7 +533,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
         });
 
     } catch (error: any) {
-        console.error("Error creating portal booking:", error);
+        logger.error("Error creating portal booking:", error);
         res.status(500).json({ error: error.message || "Failed to create booking" });
     }
 });

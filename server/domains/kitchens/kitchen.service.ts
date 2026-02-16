@@ -1,3 +1,4 @@
+import { logger } from "../../logger";
 /**
  * Kitchen Service
  * 
@@ -39,7 +40,7 @@ export class KitchenService {
         throw error;
       }
 
-      console.error('[KitchenService] Error creating kitchen:', error);
+      logger.error('[KitchenService] Error creating kitchen:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
         `Failed to create kitchen: ${error.message || 'Unknown error'}`,
@@ -99,7 +100,7 @@ export class KitchenService {
         throw error;
       }
 
-      console.error('[KitchenService] Error updating kitchen:', error);
+      logger.error('[KitchenService] Error updating kitchen:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
         'Failed to update kitchen',
@@ -146,7 +147,7 @@ export class KitchenService {
       if (error instanceof DomainError) {
         throw error;
       }
-      console.error('[KitchenService] Error activating kitchen:', error);
+      logger.error('[KitchenService] Error activating kitchen:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
         'Failed to activate kitchen',
@@ -193,7 +194,7 @@ export class KitchenService {
       if (error instanceof DomainError) {
         throw error;
       }
-      console.error('[KitchenService] Error deactivating kitchen:', error);
+      logger.error('[KitchenService] Error deactivating kitchen:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
         'Failed to deactivate kitchen',
@@ -232,7 +233,7 @@ export class KitchenService {
       if (error instanceof DomainError) {
         throw error;
       }
-      console.error('[KitchenService] Error updating kitchen image:', error);
+      logger.error('[KitchenService] Error updating kitchen image:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
         'Failed to update kitchen image',
@@ -271,7 +272,7 @@ export class KitchenService {
       if (error instanceof DomainError) {
         throw error;
       }
-      console.error('[KitchenService] Error updating kitchen gallery:', error);
+      logger.error('[KitchenService] Error updating kitchen gallery:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
         'Failed to update kitchen gallery',
@@ -300,7 +301,7 @@ export class KitchenService {
       if (error instanceof DomainError) {
         throw error;
       }
-      console.error('[KitchenService] Error getting kitchen by ID:', error);
+      logger.error('[KitchenService] Error getting kitchen by ID:', error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to get kitchen',
@@ -320,7 +321,7 @@ export class KitchenService {
         return await this.kitchenRepo.findByLocationId(locationId);
       }
     } catch (error: any) {
-      console.error('[KitchenService] Error getting kitchens by location:', error);
+      logger.error('[KitchenService] Error getting kitchens by location:', error);
       throw new DomainError(
         KitchenErrorCodes.LOCATION_NOT_FOUND,
         'Failed to get kitchens',
@@ -336,7 +337,7 @@ export class KitchenService {
     try {
       return await this.kitchenRepo.findAllActive();
     } catch (error: any) {
-      console.error('[KitchenService] Error getting all active kitchens:', error);
+      logger.error('[KitchenService] Error getting all active kitchens:', error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to get kitchens',
@@ -352,7 +353,7 @@ export class KitchenService {
     try {
       return await this.kitchenRepo.findAll();
     } catch (error: any) {
-      console.error('[KitchenService] Error getting all kitchens:', error);
+      logger.error('[KitchenService] Error getting all kitchens:', error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to get kitchens',
@@ -368,7 +369,7 @@ export class KitchenService {
     try {
       return await this.kitchenRepo.findAllWithLocation();
     } catch (error: any) {
-      console.error('[KitchenService] Error getting all kitchens with location:', error);
+      logger.error('[KitchenService] Error getting all kitchens with location:', error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to get kitchens with location',
@@ -390,7 +391,7 @@ export class KitchenService {
       if (error instanceof DomainError) {
         throw error;
       }
-      console.error('[KitchenService] Error deleting kitchen:', error);
+      logger.error('[KitchenService] Error deleting kitchen:', error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to delete kitchen',
@@ -410,7 +411,7 @@ export class KitchenService {
       return await this.kitchenRepo.findOverrides(kitchenId, start, end);
     } catch (error: any) {
       if (error instanceof DomainError) throw error;
-      console.error('[KitchenService] Error getting overrides:', error);
+      logger.error('[KitchenService] Error getting overrides:', error);
       throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to get overrides', 500);
     }
   }
@@ -421,7 +422,7 @@ export class KitchenService {
       return await this.kitchenRepo.createOverride(dto);
     } catch (error: any) {
       if (error instanceof DomainError) throw error;
-      console.error('[KitchenService] Error creating override:', error);
+      logger.error('[KitchenService] Error creating override:', error);
       throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to create override', 500);
     }
   }
@@ -437,7 +438,7 @@ export class KitchenService {
       return updated;
     } catch (error: any) {
       if (error instanceof DomainError) throw error;
-      console.error('[KitchenService] Error updating override:', error);
+      logger.error('[KitchenService] Error updating override:', error);
       throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to update override', 500);
     }
   }
@@ -446,7 +447,7 @@ export class KitchenService {
     try {
       await this.kitchenRepo.deleteOverride(id);
     } catch (error: any) {
-      console.error('[KitchenService] Error deleting override:', error);
+      logger.error('[KitchenService] Error deleting override:', error);
       throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to delete override', 500);
     }
   }
@@ -459,7 +460,7 @@ export class KitchenService {
     try {
       return this.kitchenRepo.findAvailability(kitchenId);
     } catch (error: any) {
-      console.error('[KitchenService] Error getting availability:', error);
+      logger.error('[KitchenService] Error getting availability:', error);
       throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to get availability', 500);
     }
   }
@@ -468,7 +469,7 @@ export class KitchenService {
     try {
       return this.kitchenRepo.findOverrideForDate(kitchenId, date);
     } catch (error: any) {
-      console.error('[KitchenService] Error getting override for date:', error);
+      logger.error('[KitchenService] Error getting override for date:', error);
       throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to get override', 500);
     }
   }

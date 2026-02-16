@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useAdminChefKitchenAccess } from "@/hooks/use-chef-kitchen-access";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -42,7 +43,7 @@ export default function ChefKitchenAccessManager() {
         }
         return await locationsRes.json();
       } catch (error) {
-        console.error("Error fetching locations:", error);
+        logger.error("Error fetching locations:", error);
         return [];
       }
     },

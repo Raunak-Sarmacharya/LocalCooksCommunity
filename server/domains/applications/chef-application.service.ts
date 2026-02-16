@@ -1,3 +1,4 @@
+import { logger } from "../../logger";
 /**
  * Chef Application Service
  * 
@@ -30,7 +31,7 @@ export class ChefApplicationService {
                 .where(eq(chefKitchenApplications.locationId, locationId))
                 .orderBy(desc(chefKitchenApplications.createdAt));
         } catch (error) {
-            console.error("[ChefApplicationService] Error fetching applications by location:", error);
+            logger.error("[ChefApplicationService] Error fetching applications by location:", error);
             throw error;
         }
     }
@@ -65,7 +66,7 @@ export class ChefApplicationService {
                 location: app.location // Ensure full location object is passed
             }));
         } catch (error) {
-            console.error("[ChefApplicationService] Error fetching chef applications:", error);
+            logger.error("[ChefApplicationService] Error fetching chef applications:", error);
             throw error;
         }
     }
@@ -89,7 +90,7 @@ export class ChefApplicationService {
 
             return updatedApp;
         } catch (error) {
-            console.error("[ChefApplicationService] Error updating application status:", error);
+            logger.error("[ChefApplicationService] Error updating application status:", error);
             throw error;
         }
     }
@@ -124,7 +125,7 @@ export class ChefApplicationService {
 
             return newAccess;
         } catch (error) {
-            console.error("[ChefApplicationService] Error granting location access:", error);
+            logger.error("[ChefApplicationService] Error granting location access:", error);
             // Don't throw if it's just a duplicate key error we missed
             if ((error as any).code === '23505') return null;
             throw error;
@@ -147,7 +148,7 @@ export class ChefApplicationService {
 
             return application;
         } catch (error) {
-            console.error("[ChefApplicationService] Error fetching chef application:", error);
+            logger.error("[ChefApplicationService] Error fetching chef application:", error);
             throw error;
         }
     }
@@ -188,7 +189,7 @@ export class ChefApplicationService {
                 .where(inArray(chefKitchenApplications.locationId, locationIds))
                 .orderBy(desc(chefKitchenApplications.createdAt));
         } catch (error) {
-            console.error("[ChefApplicationService] Error fetching manager applications:", error);
+            logger.error("[ChefApplicationService] Error fetching manager applications:", error);
             throw error;
         }
     }
@@ -234,7 +235,7 @@ export class ChefApplicationService {
                     managerId: app.location!.managerId
                 }));
         } catch (error) {
-            console.error("[ChefApplicationService] Error fetching approved kitchens:", error);
+            logger.error("[ChefApplicationService] Error fetching approved kitchens:", error);
             throw error;
         }
     }
@@ -299,7 +300,7 @@ export class ChefApplicationService {
                     };
             }
         } catch (error) {
-            console.error("[ChefApplicationService] Error checking application status:", error);
+            logger.error("[ChefApplicationService] Error checking application status:", error);
             return {
                 hasApplication: false,
                 status: null,
@@ -361,7 +362,7 @@ export class ChefApplicationService {
                 .returning();
             return created as ChefKitchenApplication;
         } catch (error) {
-            console.error("[ChefApplicationService] Error creating/updating application:", error);
+            logger.error("[ChefApplicationService] Error creating/updating application:", error);
             throw error;
         }
     }
@@ -395,7 +396,7 @@ export class ChefApplicationService {
 
             return cancelled as ChefKitchenApplication;
         } catch (error) {
-            console.error("[ChefApplicationService] Error cancelling application:", error);
+            logger.error("[ChefApplicationService] Error cancelling application:", error);
             throw error;
         }
     }
@@ -421,7 +422,7 @@ export class ChefApplicationService {
 
             return updated as ChefKitchenApplication;
         } catch (error) {
-            console.error("[ChefApplicationService] Error updating application documents:", error);
+            logger.error("[ChefApplicationService] Error updating application documents:", error);
             throw error;
         }
     }
@@ -438,7 +439,7 @@ export class ChefApplicationService {
                 .limit(1);
             return application as ChefKitchenApplication | undefined;
         } catch (error) {
-            console.error("[ChefApplicationService] Error getting application by ID:", error);
+            logger.error("[ChefApplicationService] Error getting application by ID:", error);
             throw error;
         }
     }
@@ -485,7 +486,7 @@ export class ChefApplicationService {
 
             return updated as ChefKitchenApplication | undefined;
         } catch (error) {
-            console.error("[ChefApplicationService] Error updating application tier:", error);
+            logger.error("[ChefApplicationService] Error updating application tier:", error);
             throw error;
         }
     }

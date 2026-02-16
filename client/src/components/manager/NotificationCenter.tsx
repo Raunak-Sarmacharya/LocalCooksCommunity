@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Enterprise-Grade Notification Center Component
  * 
@@ -520,7 +521,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
     },
     // Rollback on error
     onError: (err, ids, context) => {
-      console.error("[NotificationCenter] Failed to mark as read:", err);
+      logger.error("[NotificationCenter] Failed to mark as read:", err);
       if (context?.previousNotifications) {
         queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
       }
@@ -570,7 +571,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       return { previousNotifications, previousUnreadCount };
     },
     onError: (err, _, context) => {
-      console.error("[NotificationCenter] Failed to mark all as read:", err);
+      logger.error("[NotificationCenter] Failed to mark all as read:", err);
       if (context?.previousNotifications) {
         queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
       }
@@ -630,7 +631,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       return { previousNotifications, previousUnreadCount };
     },
     onError: (err, ids, context) => {
-      console.error("[NotificationCenter] Failed to archive:", err);
+      logger.error("[NotificationCenter] Failed to archive:", err);
       if (context?.previousNotifications) {
         queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
       }
@@ -676,7 +677,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       return { previousNotifications };
     },
     onError: (err, ids, context) => {
-      console.error("[NotificationCenter] Failed to unarchive:", err);
+      logger.error("[NotificationCenter] Failed to unarchive:", err);
       if (context?.previousNotifications) {
         queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
       }
@@ -730,7 +731,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       return { previousNotifications, previousUnreadCount };
     },
     onError: (err, id, context) => {
-      console.error("[NotificationCenter] Failed to delete:", err);
+      logger.error("[NotificationCenter] Failed to delete:", err);
       if (context?.previousNotifications) {
         queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
       }

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -80,7 +81,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
 
     // If it's not an email format (likely a username), try migration login first
     if (!isEmailFormat) {
-      console.log('🔄 Username detected, trying migration login for old manager...');
+      logger.info('🔄 Username detected, trying migration login for old manager...');
       
       try {
         const migrateResponse = await fetch('/api/manager-migrate-login', {
@@ -100,7 +101,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
           if (migrateData.customToken) {
             // Sign in with custom token
             const userCredential = await signInWithCustomToken(auth, migrateData.customToken);
-            console.log('✅ Migration login successful');
+            logger.info('✅ Migration login successful');
             
             // Force token refresh to ensure it's available immediately
             if (userCredential.user) {
@@ -119,12 +120,12 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
                 });
                 
                 if (syncResponse.ok) {
-                  console.log('✅ User profile synced after migration login');
+                  logger.info('✅ User profile synced after migration login');
                 } else {
-                  console.warn('⚠️ User profile sync returned non-OK status:', syncResponse.status);
+                  logger.warn('⚠️ User profile sync returned non-OK status:', syncResponse.status);
                 }
               } catch (syncError) {
-                console.error('❌ Error syncing user profile after migration:', syncError);
+                logger.error('❌ Error syncing user profile after migration:', syncError);
                 // Don't fail the login if sync fails - the middleware will handle it
               }
             }
@@ -139,10 +140,10 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
         } else {
           // Migration login failed - try Firebase as fallback if it's an email
           const errorData = await migrateResponse.json().catch(() => ({}));
-          console.log('Migration login failed:', errorData);
+          logger.info('Migration login failed:', errorData);
         }
       } catch (migrateError) {
-        console.log('Migration login error, trying Firebase as fallback:', migrateError);
+        logger.info('Migration login error, trying Firebase as fallback:', migrateError);
       }
     }
 
@@ -171,7 +172,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
     } catch (e: any) {
       // If Firebase login fails, try migration login for old managers (if we haven't already)
       if (isEmailFormat && (e.message.includes('invalid-credential') || e.message.includes('wrong-password') || e.message.includes('user-not-found'))) {
-        console.log('🔄 Firebase login failed, trying migration login for old manager...');
+        logger.info('🔄 Firebase login failed, trying migration login for old manager...');
         
         try {
           // Try migration login (for old managers with username/password in Neon DB)
@@ -200,7 +201,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
               if (migrateData.customToken) {
                 // Sign in with custom token
                 const userCredential = await signInWithCustomToken(auth, migrateData.customToken);
-                console.log('✅ Migration login successful');
+                logger.info('✅ Migration login successful');
                 
                 // Force token refresh and sync user data
                 if (userCredential.user) {
@@ -217,10 +218,10 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
                     });
                     
                     if (syncResponse.ok) {
-                      console.log('✅ User profile synced after migration login');
+                      logger.info('✅ User profile synced after migration login');
                     }
                   } catch (syncError) {
-                    console.error('❌ Error syncing user profile after migration:', syncError);
+                    logger.error('❌ Error syncing user profile after migration:', syncError);
                   }
                 }
                 
@@ -233,7 +234,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
             }
           }
         } catch (migrateError) {
-          console.log('Migration login also failed, continuing with Firebase error handling');
+          logger.info('Migration login also failed, continuing with Firebase error handling');
         }
       }
       

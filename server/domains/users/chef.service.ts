@@ -1,3 +1,4 @@
+import { logger } from "../../logger";
 
 import { ChefRepository } from "./chef.repository";
 import { userService } from "./user.service";
@@ -115,9 +116,9 @@ export class ChefService {
                         grantedBy: kitchenApplication.reviewedBy || chefId,
                         grantedAt: new Date(),
                     }).onConflictDoNothing();
-                    console.log(`✅ Auto-created chef_location_access for chef ${chefId} at location ${locationId}`);
+                    logger.info(`✅ Auto-created chef_location_access for chef ${chefId} at location ${locationId}`);
                 } catch (err) {
-                    console.error('Error auto-creating chef_location_access:', err);
+                    logger.error('Error auto-creating chef_location_access:', err);
                 }
 
                 return {

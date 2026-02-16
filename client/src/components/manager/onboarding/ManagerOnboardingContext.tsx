@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -353,7 +354,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       const hasLicense = loc?.kitchenLicenseUrl || loc?.kitchen_license_url;
       const hasTerms = loc?.kitchenTermsUrl || loc?.kitchen_terms_url;
       
-      console.log('[completedSteps] Location check:', {
+      logger.info('[completedSteps] Location check:', {
         selectedLocationId,
         locFound: !!loc,
         hasLicense: !!hasLicense,
@@ -442,7 +443,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     // Only auto-skip if current step is in the explicit skip list
     const stepIdStr = String(currentStepId);
     if (stepsToSkip.includes(stepIdStr)) {
-      console.log(`[Onboarding] Auto-skipping step: ${stepIdStr}`);
+      logger.info(`[Onboarding] Auto-skipping step: ${stepIdStr}`);
       next();
     }
   }, [currentStepId, isCompleted, hasExistingLocation, isAddingLocation, next]);
@@ -489,13 +490,13 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   useEffect(() => {
     // Reset on mount (handles page-based flow at /manager/setup)
     hasPerformedInitialAutoSkip.current = false;
-    console.log('[Onboarding] Component mounted - reset auto-skip flag');
+    logger.info('[Onboarding] Component mounted - reset auto-skip flag');
   }, []); // Empty deps = runs once on mount
 
   useEffect(() => {
     if (isOpen) {
       hasPerformedInitialAutoSkip.current = false;
-      console.log('[Onboarding] Wizard dialog opened - reset auto-skip flag');
+      logger.info('[Onboarding] Wizard dialog opened - reset auto-skip flag');
     }
   }, [isOpen]);
 
@@ -512,7 +513,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         url.searchParams.delete('newLocation');
         window.history.replaceState(null, '', url.pathname);
       }
-      console.log('[Onboarding] New location mode initialized — navigated engine to location step');
+      logger.info('[Onboarding] New location mode initialized — navigated engine to location step');
     }
   }, [isAddingLocation, engine]);
 
@@ -578,7 +579,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setKitchensLoaded(false);
       setRequirementsLoaded(false);
 
-      console.log('[Onboarding] Auto-selected location and initialized state:', {
+      logger.info('[Onboarding] Auto-selected location and initialized state:', {
         locationId: loc.id,
         hasLicenseUrl: !!existingLicenseUrl,
         hasTermsUrl: !!existingTermsUrl,
@@ -641,19 +642,19 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     // [FIX] Wait for location to be auto-selected before making any skip decisions
     // hasExistingLocation is true but selectedLocationId might not be set yet
     if (!selectedLocationId) {
-      console.log('[Onboarding] Waiting for location to be auto-selected...');
+      logger.info('[Onboarding] Waiting for location to be auto-selected...');
       return;
     }
 
     // [FIX] Wait for critical data to load before making any skip decisions
     // Kitchen data must be loaded to determine create-kitchen completion
     if (!kitchensLoaded) {
-      console.log('[Onboarding] Waiting for kitchens to load...');
+      logger.info('[Onboarding] Waiting for kitchens to load...');
       return;
     }
     // Requirements depend on location (not kitchen), always wait
     if (!requirementsLoaded) {
-      console.log('[Onboarding] Waiting for requirements to load...');
+      logger.info('[Onboarding] Waiting for requirements to load...');
       return;
     }
     // Availability depends on selectedKitchenId — only wait if a kitchen is actually selected.
@@ -661,7 +662,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     // availability data. The auto-skip will correctly identify create-kitchen or availability
     // as incomplete based on kitchens.length and hasAvailability (which defaults to false).
     if (selectedKitchenId && !availabilityLoaded) {
-      console.log('[Onboarding] Waiting for availability to load...');
+      logger.info('[Onboarding] Waiting for availability to load...');
       return;
     }
 
@@ -679,7 +680,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       
       // If location has both URLs but completedSteps hasn't updated yet, wait
       if (hasLicense && hasTerms) {
-        console.log('[Onboarding] Waiting for completedSteps to reflect location data...');
+        logger.info('[Onboarding] Waiting for completedSteps to reflect location data...');
         return;
       }
     }
@@ -691,7 +692,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     // The hasPerformedInitialAutoSkip guard ensures this only runs once
     const currentCompletedSteps = completedSteps;
 
-    console.log(`[Onboarding] Auto-skip check - currentStep: ${currentId}, completedSteps:`, currentCompletedSteps);
+    logger.info(`[Onboarding] Auto-skip check - currentStep: ${currentId}, completedSteps:`, currentCompletedSteps);
 
     // Check if current step is already completed - if so, auto-navigate to first incomplete
     const isCurrentStepComplete = currentCompletedSteps[String(currentId)];
@@ -705,7 +706,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       for (const stepId of requiredStepOrder) {
         // If this step is incomplete, navigate to it
         if (!currentCompletedSteps[stepId]) {
-          console.log(`[Onboarding] Enterprise auto-skip: ${currentId} → ${stepId}`);
+          logger.info(`[Onboarding] Enterprise auto-skip: ${currentId} → ${stepId}`);
           engine.goToStep(stepId);
           return;
         }
@@ -716,14 +717,14 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       if (currentIndex !== -1 && currentIndex < steps.length - 1) {
         const nextStep = steps[currentIndex + 1];
         if (nextStep && nextStep.id) {
-          console.log(`[Onboarding] Advancing from completed required step to: ${nextStep.id}`);
+          logger.info(`[Onboarding] Advancing from completed required step to: ${nextStep.id}`);
           engine.goToStep(nextStep.id);
           return;
         }
       }
     }
 
-    console.log(`[Onboarding] User on incomplete step: ${currentId}, staying here`);
+    logger.info(`[Onboarding] User on incomplete step: ${currentId}, staying here`);
 
   }, [engine, hasExistingLocation, isLoadingLocations, selectedLocationId, isAddingLocation,
     kitchensLoaded, requirementsLoaded, availabilityLoaded, selectedKitchenId, completedSteps, currentStep?.id, locations]);
@@ -751,7 +752,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
             if (kData.length === 0) setShowCreateKitchen(true);
           }
         } catch (e) {
-          console.error("Error loading kitchens", e);
+          logger.error("Error loading kitchens", e);
         } finally {
           setIsLoadingKitchens(false);
           setKitchensLoaded(true);
@@ -816,7 +817,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           setHasAvailability(isSet);
         }
       } catch (e) {
-        console.error("Failed to check availability", e);
+        logger.error("Failed to check availability", e);
       } finally {
         setIsLoadingAvailability(false);
         setAvailabilityLoaded(true); // [FIX] Mark as loaded when check completes
@@ -851,7 +852,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           setHasRequirements(false);
         }
       } catch (e) {
-        console.error("Failed to check requirements", e);
+        logger.error("Failed to check requirements", e);
         setHasRequirements(false);
       } finally {
         setIsLoadingRequirements(false);
@@ -888,7 +889,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
       }
     } catch (e) {
-      console.error('[Onboarding] Failed to track step completion:', e);
+      logger.error('[Onboarding] Failed to track step completion:', e);
     }
   }, [selectedLocationId, queryClient]);
 
@@ -930,7 +931,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setLicenseUploadedUrl(data.url);
       licenseUploadedUrlRef.current = data.url; // Also set ref
       setLicenseFile(file);
-      console.log('[Onboarding] ✅ License file uploaded successfully:', data.url);
+      logger.info('[Onboarding] ✅ License file uploaded successfully:', data.url);
       return data.url;
     } catch (error) {
       setLicenseFile(null);
@@ -944,7 +945,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
   // Immediate upload function for terms file (called from LocationStep)
   const uploadTermsFile = async (file: File): Promise<string | null> => {
-    console.log('[Onboarding] uploadTermsFile called with:', file.name);
+    logger.info('[Onboarding] uploadTermsFile called with:', file.name);
     setUploadingTerms(true);
     try {
       const token = await auth.currentUser?.getIdToken();
@@ -957,11 +958,11 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       });
       if (!res.ok) {
         const errorText = await res.text();
-        console.error('[Onboarding] Terms upload failed:', res.status, errorText);
+        logger.error('[Onboarding] Terms upload failed:', res.status, errorText);
         throw new Error("Upload failed");
       }
       const data = await res.json();
-      console.log('[Onboarding] ✅ Terms file uploaded successfully:', {
+      logger.info('[Onboarding] ✅ Terms file uploaded successfully:', {
         url: data.url,
         fileName: data.fileName,
         size: data.size
@@ -971,7 +972,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setTermsFile(file);
       return data.url;
     } catch (error) {
-      console.error('[Onboarding] ❌ Terms upload error:', error);
+      logger.error('[Onboarding] ❌ Terms upload error:', error);
       setTermsFile(null);
       setTermsUploadedUrl(null);
       termsUploadedUrlRef.current = null; // Also clear ref on error
@@ -994,7 +995,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
     // [GUARD 1] Prevent concurrent submissions
     if (isSubmitting) {
-      console.log('[Onboarding] ⚠️ Submission already in progress, ignoring duplicate click');
+      logger.info('[Onboarding] ⚠️ Submission already in progress, ignoring duplicate click');
       return;
     }
 
@@ -1005,7 +1006,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     setIsSubmitting(true);
 
     try {
-      console.log('[Onboarding] updateLocation called', { 
+      logger.info('[Onboarding] updateLocation called', { 
         submissionId: thisSubmissionId,
         licenseFile: licenseFile?.name, 
         licenseUploadedUrl,
@@ -1019,7 +1020,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       // [FIX 1] Use already-uploaded URL if available, don't re-upload
       // [ENTERPRISE] Read from ref first (avoids stale closure), then fallback to state
       let licenseUrl = licenseUploadedUrlRef.current || licenseUploadedUrl;
-      console.log('[Onboarding] License URL sources:', {
+      logger.info('[Onboarding] License URL sources:', {
         fromRef: licenseUploadedUrlRef.current,
         fromState: licenseUploadedUrl,
         usingUrl: licenseUrl
@@ -1032,15 +1033,15 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           return;
         }
         licenseUrl = await uploadLicense();
-        console.log('[Onboarding] License uploaded (fresh):', licenseUrl);
+        logger.info('[Onboarding] License uploaded (fresh):', licenseUrl);
       } else if (licenseUrl) {
-        console.log('[Onboarding] Using pre-uploaded license URL:', licenseUrl);
+        logger.info('[Onboarding] Using pre-uploaded license URL:', licenseUrl);
       }
 
       // [FIX 2] Use already-uploaded terms URL if available
       // [ENTERPRISE] Read from ref first (avoids stale closure), then fallback to state
       let termsUrl = termsUploadedUrlRef.current || termsUploadedUrl;
-      console.log('[Onboarding] Terms URL sources:', {
+      logger.info('[Onboarding] Terms URL sources:', {
         fromRef: termsUploadedUrlRef.current,
         fromState: termsUploadedUrl,
         usingUrl: termsUrl
@@ -1051,12 +1052,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         const loc = locations.find(l => l.id === selectedLocationId) as any;
         termsUrl = loc?.kitchenTermsUrl || loc?.kitchen_terms_url || null;
         if (termsUrl) {
-          console.log('[Onboarding] Using terms URL from existing location:', termsUrl);
+          logger.info('[Onboarding] Using terms URL from existing location:', termsUrl);
         }
       }
       
       if (!termsUrl && termsFile) {
-        console.log('[Onboarding] Uploading terms file (fresh):', termsFile.name);
+        logger.info('[Onboarding] Uploading terms file (fresh):', termsFile.name);
         setUploadingTerms(true);
         const token = await auth.currentUser?.getIdToken();
         const formData = new FormData();
@@ -1070,15 +1071,15 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         const uploadResult = await uploadRes.json();
         termsUrl = uploadResult.url;
         setTermsUploadedUrl(termsUrl);
-        console.log('[Onboarding] Terms uploaded (fresh):', termsUrl);
+        logger.info('[Onboarding] Terms uploaded (fresh):', termsUrl);
         setUploadingTerms(false);
       } else if (termsUrl) {
-        console.log('[Onboarding] Using pre-uploaded terms URL:', termsUrl);
+        logger.info('[Onboarding] Using pre-uploaded terms URL:', termsUrl);
       }
 
       // [GUARD 3] Check if submission was superseded
       if (submissionIdRef.current !== thisSubmissionId) {
-        console.log('[Onboarding] ⚠️ Submission superseded, aborting:', thisSubmissionId);
+        logger.info('[Onboarding] ⚠️ Submission superseded, aborting:', thisSubmissionId);
         return;
       }
 
@@ -1121,7 +1122,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
       // Include terms URL (pre-uploaded or freshly uploaded)
       // [ENTERPRISE DEBUG] Log terms URL status for debugging
-      console.log('[Onboarding] Terms URL check:', {
+      logger.info('[Onboarding] Terms URL check:', {
         termsUrl,
         termsUploadedUrl,
         termsFile: termsFile?.name,
@@ -1130,9 +1131,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       
       if (termsUrl) {
         body.kitchenTermsUrl = termsUrl;
-        console.log('[Onboarding] ✅ Including kitchenTermsUrl in body:', termsUrl);
+        logger.info('[Onboarding] ✅ Including kitchenTermsUrl in body:', termsUrl);
       } else {
-        console.warn('[Onboarding] ⚠️ No terms URL to include - terms will not be saved!');
+        logger.warn('[Onboarding] ⚠️ No terms URL to include - terms will not be saved!');
       }
 
       // [FIX 3] Robust POST vs PUT decision - check multiple sources to prevent duplicates
@@ -1150,7 +1151,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         : `/api/manager/locations/${effectiveLocationId}`;
       const method = shouldCreate ? "POST" : "PUT";
 
-      console.log('[Onboarding] Request:', { 
+      logger.info('[Onboarding] Request:', { 
         method, 
         endpoint, 
         effectiveLocationId,
@@ -1164,7 +1165,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       });
 
       const data = await res.json();
-      console.log('[Onboarding] Response:', res.status, data);
+      logger.info('[Onboarding] Response:', res.status, data);
 
       if (!res.ok) throw new Error(data.error || "Failed to save location");
 
@@ -1224,7 +1225,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         });
       }
 
-      console.log('[Onboarding] ✅ Cache updated optimistically with URLs:', { licenseUrl, termsUrl, savedLocationId });
+      logger.info('[Onboarding] ✅ Cache updated optimistically with URLs:', { licenseUrl, termsUrl, savedLocationId });
 
       // [ENTERPRISE FIX] Track step completion FIRST - this sets dbCompletedSteps which triggers completedSteps recalculation
       await trackStepCompletion(currentStep?.id || 'location');
@@ -1238,7 +1239,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
       // [GUARD 4] Final check - ensure this submission wasn't superseded
       if (submissionIdRef.current !== thisSubmissionId) {
-        console.log('[Onboarding] ⚠️ Submission superseded before navigation, aborting:', thisSubmissionId);
+        logger.info('[Onboarding] ⚠️ Submission superseded before navigation, aborting:', thisSubmissionId);
         return;
       }
 
@@ -1251,7 +1252,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       next(); // Move to next step via OnboardJS
 
     } catch (e: any) {
-      console.error('[Onboarding] Error in updateLocation:', e);
+      logger.error('[Onboarding] Error in updateLocation:', e);
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
@@ -1327,7 +1328,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     // Listen for step completion to track progress and auto-save
     const unsubscribeStepCompleted = engine.addStepCompletedListener(async (event: any) => {
       const stepId = event.step?.id;
-      console.log('✅ Step Completed:', stepId);
+      logger.info('✅ Step Completed:', stepId);
 
       // Persist step completion
       if (stepId) {
@@ -1340,7 +1341,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
     // Listen for flow completion
     const unsubscribeFlowCompleted = engine.addFlowCompletedListener(async () => {
-      console.log('🎉 Flow Complete');
+      logger.info('🎉 Flow Complete');
       await handleSkipAction();
     });
 
@@ -1387,7 +1388,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       onboardSkip();
       toast({ title: "Flow Completed", description: "All set!" });
     } catch (e) {
-      console.error(e);
+      logger.error("Onboarding flow error", e);
     }
   };
 
@@ -1398,7 +1399,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   useEffect(() => {
     if (isAddingLocation && !currentPath.startsWith('/manager/setup')) {
       setIsAddingLocation(false);
-      console.log('[Onboarding] Reset isAddingLocation - navigated away from setup page');
+      logger.info('[Onboarding] Reset isAddingLocation - navigated away from setup page');
     }
   }, [currentPath, isAddingLocation]);
 
@@ -1421,14 +1422,14 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       // Skip to next step without marking current as complete
       if (engine) {
         isManualNavigation.current = true;
-        console.log(`[Onboarding] Skipping step: ${currentStep?.id}`);
+        logger.info(`[Onboarding] Skipping step: ${currentStep?.id}`);
         next(); // Move to next step without completion tracking
       }
     },
     goToStep: async (stepId: string) => {
       if (engine) {
         isManualNavigation.current = true;
-        console.log(`[Onboarding] Navigating directly to step: ${stepId}`);
+        logger.info(`[Onboarding] Navigating directly to step: ${stepId}`);
         await engine.goToStep(stepId);
       }
     },
@@ -1461,7 +1462,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           setHasAvailability(isSet);
         }
       } catch (e) {
-        console.error("Failed to refresh availability", e);
+        logger.error("Failed to refresh availability", e);
       }
     },
     hasRequirements,
@@ -1479,7 +1480,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           setHasRequirements(!!data && !!data.id);
         }
       } catch (e) {
-        console.error("Failed to refresh requirements", e);
+        logger.error("Failed to refresh requirements", e);
       }
     },
 
@@ -1551,14 +1552,14 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       try {
         const token = await auth.currentUser?.getIdToken();
         if (!token) {
-          console.warn('[Onboarding] No auth token for saveAndExit');
+          logger.warn('[Onboarding] No auth token for saveAndExit');
           const locId = selectedLocationId || lastSubmittedLocationIdRef.current;
           setLocation(locId ? `/manager/dashboard?locationId=${locId}` : '/manager/dashboard');
           return;
         }
 
         const stepId = currentStep?.id;
-        console.log('[Onboarding] Save & Exit from step:', stepId);
+        logger.info('[Onboarding] Save & Exit from step:', stepId);
 
         // 1. Mark current step as "seen" via manager onboarding step tracking
         // NOTE: has_seen_welcome is for CHEF onboarding only, not managers
@@ -1604,7 +1605,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
               };
             });
 
-            console.log('[Onboarding] ✅ Optimistically updated user profile with step:', stepId);
+            logger.info('[Onboarding] ✅ Optimistically updated user profile with step:', stepId);
           }
         }
 
@@ -1627,7 +1628,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         setLocation(locId ? `/manager/dashboard?locationId=${locId}` : '/manager/dashboard');
 
       } catch (error) {
-        console.error('[Onboarding] Error in saveAndExit:', error);
+        logger.error('[Onboarding] Error in saveAndExit:', error);
         // Still navigate even if save fails - don't trap the user
         setIsAddingLocation(false);
         const locId = selectedLocationId || lastSubmittedLocationIdRef.current;

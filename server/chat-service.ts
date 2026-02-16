@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { initializeFirebaseAdmin } from './firebase-setup';
 import { db } from './db';
@@ -47,7 +48,7 @@ export async function initializeConversation(applicationData: {
       .limit(1);
 
     if (!location || !location.managerId) {
-      console.error('Location not found or has no manager');
+      logger.error('Location not found or has no manager');
       return null;
     }
 
@@ -84,7 +85,7 @@ export async function initializeConversation(applicationData: {
 
     return conversationRef.id;
   } catch (error) {
-    console.error('Error initializing conversation:', error);
+    logger.error('Error initializing conversation:', error);
     return null;
   }
 }
@@ -148,7 +149,7 @@ export async function sendSystemNotification(
       });
 
       if (isDuplicate) {
-        console.log(`[CHAT] Skipping duplicate system message: "${content.substring(0, 30)}..."`);
+        logger.info(`[CHAT] Skipping duplicate system message: "${content.substring(0, 30)}..."`);
         return;
       }
     }
@@ -174,7 +175,7 @@ export async function sendSystemNotification(
         lastMessageAt: FieldValue.serverTimestamp(),
       });
   } catch (error) {
-    console.error('Error sending system notification:', error);
+    logger.error('Error sending system notification:', error);
   }
 }
 
@@ -208,7 +209,7 @@ export async function getUnreadCounts(
 
     return snapshot.data().totalUnread || 0;
   } catch (error) {
-    console.error('Error getting unread counts:', error);
+    logger.error('Error getting unread counts:', error);
     return 0;
   }
 }
@@ -240,9 +241,9 @@ export async function deleteConversation(conversationId: string): Promise<void> 
     // Delete the conversation document
     await adminDb.collection('conversations').doc(conversationId).delete();
 
-    console.log(`Successfully deleted conversation ${conversationId} and all its messages`);
+    logger.info(`Successfully deleted conversation ${conversationId} and all its messages`);
   } catch (error) {
-    console.error('Error deleting conversation:', error);
+    logger.error('Error deleting conversation:', error);
     throw error;
   }
 }
@@ -265,7 +266,7 @@ export async function notifyTierTransition(
       .limit(1);
 
     if (!application) {
-      console.error('Application not found for tier transition notification');
+      logger.error('Application not found for tier transition notification');
       return;
     }
 
@@ -279,7 +280,7 @@ export async function notifyTierTransition(
         locationId: application.locationId,
       });
       if (!conversationId) {
-        console.error('Failed to initialize conversation for tier transition');
+        logger.error('Failed to initialize conversation for tier transition');
         return;
       }
     }
@@ -297,6 +298,6 @@ export async function notifyTierTransition(
       await sendSystemNotification(conversationId, eventType, { reason });
     }
   } catch (error) {
-    console.error('Error notifying tier transition:', error);
+    logger.error('Error notifying tier transition:', error);
   }
 }

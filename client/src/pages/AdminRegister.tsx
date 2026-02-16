@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -64,11 +65,11 @@ export default function AdminRegister() {
     if (loading || isInitialLoad) return;
     
     if (user) {
-      console.log('AdminRegister - User detected:', user);
+      logger.info('AdminRegister - User detected:', user);
       
       // Check if user is admin
       if (user.role === 'admin') {
-        console.log('AdminRegister - Admin user detected, redirecting to admin dashboard');
+        logger.info('AdminRegister - Admin user detected, redirecting to admin dashboard');
         setLocation('/admin');
         return;
       }
@@ -160,7 +161,7 @@ export default function AdminRegister() {
               <TabsContent value="login">
                 <EnhancedLoginForm
                   onSuccess={() => {
-                    console.log('AdminRegister - Login successful, refreshing user data');
+                    logger.info('AdminRegister - Login successful, refreshing user data');
                     refreshUserData();
                   }}
                   setHasAttemptedLogin={setHasAttemptedLogin}
@@ -170,7 +171,7 @@ export default function AdminRegister() {
               <TabsContent value="register">
                 <EnhancedRegisterForm
                   onSuccess={() => {
-                    console.log('AdminRegister - Registration successful');
+                    logger.info('AdminRegister - Registration successful');
                     setActiveTab('login');
                   }}
                   setHasAttemptedLogin={setHasAttemptedLogin}

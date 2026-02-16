@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 // REMOVED: All session and passport imports - Firebase Auth only
 import { Express } from "express";
 
@@ -9,10 +10,10 @@ export function setupAuth(app: Express) {
   // REMOVED: All session-based authentication
   // All authentication now uses Firebase Auth exclusively
   // Session middleware, passport, and local strategy have been removed
-  console.log("✅ Session-based auth removed - Using Firebase Auth only");
+  logger.info("✅ Session-based auth removed - Using Firebase Auth only");
 
   // REMOVED: All OAuth strategies (Facebook, Google) - Firebase Auth handles all OAuth
-  console.log("✅ All OAuth strategies removed - Firebase Auth handles all authentication");
+  logger.info("✅ All OAuth strategies removed - Firebase Auth handles all authentication");
 
   // REMOVED: Passport serialize/deserialize - No longer needed with Firebase Auth
 

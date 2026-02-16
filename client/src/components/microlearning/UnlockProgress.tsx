@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -55,7 +56,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
         setApplications(normalizedData);
       }
     } catch (error) {
-      console.error('Failed to fetch applications:', error);
+      logger.error('Failed to fetch applications:', error);
     } finally {
       setLoading(false);
     }

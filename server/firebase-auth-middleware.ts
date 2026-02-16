@@ -1,7 +1,9 @@
+import { logger } from "./logger";
 import { NextFunction, Request, Response } from 'express';
 import { verifyFirebaseToken } from './firebase-setup';
 import { userService } from './domains/users/user.service';
 import { UserWithFlags } from "@shared/schema";
+import * as Sentry from '@sentry/node';
 
 // Extend Express Request to include Firebase user data
 declare global {
@@ -62,10 +64,10 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
   } catch (error) {
     // Check if response was already sent before trying to send error
     if (res.headersSent) {
-      console.error('Firebase auth verification error (response already sent):', error);
+      logger.error('Firebase auth verification error (response already sent):', error);
       return;
     }
-    console.error('Firebase auth verification error:', error);
+    logger.error('Firebase auth verification error:', error);
     return res.status(401).json({
       error: 'Unauthorized',
       message: 'Token verification failed'
@@ -132,20 +134,25 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
       uid: neonUser.firebaseUid || undefined, // Support legacy code that uses .uid
     } as UserWithFlags;
 
-    console.log(`🔄 Auth translation: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${neonUser.id}`, {
-      role: neonUser.role,
-      isChef: (neonUser as any).isChef,
-      isManager: (neonUser as any).isManager
+    // Enrich Sentry with authenticated user context for error attribution
+    Sentry.setUser({
+      id: String(neonUser.id),
+      email: req.firebaseUser.email,
+      username: neonUser.username || undefined,
+      data: {
+        role: neonUser.role,
+        firebaseUid: req.firebaseUser.uid,
+      },
     });
 
     next();
   } catch (error) {
     // Check if response was already sent before trying to send error
     if (res.headersSent) {
-      console.error('Firebase auth with user verification error (response already sent):', error);
+      logger.error('Firebase auth with user verification error (response already sent):', error);
       return;
     }
-    console.error('Firebase auth with user verification error:', error);
+    logger.error('Firebase auth with user verification error:', error);
     return res.status(500).json({
       error: 'Internal server error',
       message: 'Authentication verification failed'
@@ -191,7 +198,7 @@ export async function optionalFirebaseAuth(req: Request, res: Response, next: Ne
 
     next();
   } catch (error) {
-    console.error('Optional Firebase auth error:', error);
+    logger.error('Optional Firebase auth error:', error);
     // Don't fail the request, just continue without user
     next();
   }

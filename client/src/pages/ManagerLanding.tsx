@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -40,7 +41,7 @@ export default function ManagerLanding() {
         const userData = await response.json();
         return userData;
       } catch (error) {
-        console.error('ManagerLanding - Firebase auth error:', error);
+        logger.error('ManagerLanding - Firebase auth error:', error);
         return null;
       }
     },

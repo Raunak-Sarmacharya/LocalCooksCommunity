@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useCallback, useRef } from 'react';
 
 interface PerformanceMetrics {
@@ -32,7 +33,7 @@ export function usePerformanceMonitor() {
     
     // Log performance metrics for debugging
     if (process.env.NODE_ENV === 'development') {
-      console.log(`📊 Form Performance - ${action}:`, {
+      logger.info(`📊 Form Performance - ${action}:`, {
         apiCallTime: metrics.current.apiCallTime,
         userInteractionTime: metrics.current.userInteractionTime,
         totalFormTime: now - startTime.current

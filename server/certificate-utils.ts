@@ -1,10 +1,11 @@
+import { logger } from "./logger";
 import { PDFDocument, rgb } from 'pdf-lib';
 import { User } from '@shared/schema';
 
 export async function generateCertificatePDF(user: any, course: any): Promise<Buffer> {
     // efficient stub implementation to fix build error
     // In a real implementation, this would generate a PDF with the user's name and course details
-    console.log(`Generating certificate for user ${user.id} and course ${course.id}`);
+    logger.info(`Generating certificate for user ${user.id} and course ${course.id}`);
 
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([600, 400]);

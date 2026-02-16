@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import {
     Form,
@@ -50,12 +51,12 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
     setHasAttemptedLogin?.(true);
     setFormError(null);
     try {
-      console.log('🟦 REGULAR LOGIN FORM ATTEMPT:', data.email);
+      logger.info('🟦 REGULAR LOGIN FORM ATTEMPT:', data.email);
       await login(data.email, data.password);
-      console.log('✅ REGULAR LOGIN SUCCESS');
+      logger.info('✅ REGULAR LOGIN SUCCESS');
       if (onSuccess) onSuccess(); // Auth page will handle verification and redirect
     } catch (e: any) {
-      console.log('❌ REGULAR LOGIN ERROR:', e.message);
+      logger.info('❌ REGULAR LOGIN ERROR:', e.message);
       
       // Handle different Firebase error types with user-friendly messages
       if (e.message.includes('invalid-credential') || e.message.includes('wrong-password') || e.message.includes('user-not-found')) {
@@ -92,7 +93,7 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
           try {
             await signInWithGoogle(false);
           } catch (e: any) {
-            console.log('❌ GOOGLE SIGN-IN ERROR:', e.message);
+            logger.info('❌ GOOGLE SIGN-IN ERROR:', e.message);
             
             // Handle Google sign-in errors with user-friendly messages
             if (e.message.includes('popup-closed-by-user')) {

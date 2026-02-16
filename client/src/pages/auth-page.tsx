@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
 import LoginForm from "@/components/auth/LoginForm";
 import RegisterForm from "@/components/auth/RegisterForm";
@@ -59,7 +60,7 @@ export default function AuthPage() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('verified') === 'true') {
-      console.log('📧 EMAIL VERIFICATION SUCCESS detected in URL');
+      logger.info('📧 EMAIL VERIFICATION SUCCESS detected in URL');
       setShowVerificationSuccess(true);
       
       // Clear the URL parameter
@@ -85,12 +86,12 @@ export default function AuthPage() {
           try {
             const firebaseUser = auth.currentUser;
             if (!firebaseUser) {
-              console.error('❌ No Firebase user available');
+              logger.error('❌ No Firebase user available');
               return;
             }
 
             const token = await firebaseUser.getIdToken();
-            console.log('🔥 FETCHING USER META - Firebase UID:', firebaseUser.uid);
+            logger.info('🔥 FETCHING USER META - Firebase UID:', firebaseUser.uid);
             
             const response = await fetch('/api/user/profile', {
               headers: {
@@ -101,7 +102,7 @@ export default function AuthPage() {
             
             if (response.ok) {
               const userData = await response.json();
-              console.log('✅ USER DATA FETCHED:', {
+              logger.info('✅ USER DATA FETCHED:', {
                 id: userData.id,
                 username: userData.username,
                 is_verified: userData.is_verified,
@@ -113,7 +114,7 @@ export default function AuthPage() {
               
               // Check if user needs email verification
               if (!userData.is_verified) {
-                console.log('📧 EMAIL VERIFICATION REQUIRED');
+                logger.info('📧 EMAIL VERIFICATION REQUIRED');
                 setVerifyEmailAddress(userData.username || userData.email || '');
                 setShowVerifyEmail(true);
                 return;
@@ -126,17 +127,17 @@ export default function AuthPage() {
               let targetPath = '/dashboard';
               if (userData.role === 'admin') {
                 targetPath = '/admin';
-                console.log('👑 Admin user - skipping welcome screen, going to admin dashboard');
+                logger.info('👑 Admin user - skipping welcome screen, going to admin dashboard');
               } else if (userData.role === 'manager') {
                 targetPath = '/manager/dashboard';
-                console.log('🏢 Manager user - skipping welcome screen, going to manager dashboard (wizard will show if needed)');
+                logger.info('🏢 Manager user - skipping welcome screen, going to manager dashboard (wizard will show if needed)');
               } else if (userData.is_verified && !userData.has_seen_welcome) {
                 // Only show welcome screen for chefs
-                console.log('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
+                logger.info('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
                 return; // Don't proceed with redirect, let the render logic handle welcome screen
               }
               
-              console.log(`🚀 REDIRECTING TO: ${targetPath}`);
+              logger.info(`🚀 REDIRECTING TO: ${targetPath}`);
               
               // Use setTimeout to ensure state is properly set before redirect
               setTimeout(() => {
@@ -144,12 +145,12 @@ export default function AuthPage() {
               }, 500);
               
             } else {
-              console.error('❌ Failed to fetch user data:', response.status);
+              logger.error('❌ Failed to fetch user data:', response.status);
               const errorText = await response.text();
-              console.error('❌ Error response:', errorText);
+              logger.error('❌ Error response:', errorText);
             }
           } catch (error) {
-            console.error('❌ Error fetching user meta:', error);
+            logger.error('❌ Error fetching user meta:', error);
           } finally {
             setUserMetaLoading(false);
           }
@@ -167,11 +168,11 @@ export default function AuthPage() {
   // Handle welcome screen completion
   const handleWelcomeContinue = async () => {
     try {
-      console.log('🎉 WELCOME SCREEN COMPLETION STARTED');
+      logger.info('🎉 WELCOME SCREEN COMPLETION STARTED');
       
       const firebaseUser = auth.currentUser;
       if (!firebaseUser) {
-        console.error('❌ No Firebase user available for welcome completion');
+        logger.error('❌ No Firebase user available for welcome completion');
         return;
       }
 
@@ -187,7 +188,7 @@ export default function AuthPage() {
       
       if (response.ok) {
         const result = await response.json();
-        console.log('✅ WELCOME COMPLETION SUCCESS:', result);
+        logger.info('✅ WELCOME COMPLETION SUCCESS:', result);
         
         // Update local user meta
         if (userMeta) {
@@ -207,12 +208,12 @@ export default function AuthPage() {
         } else if (userMeta?.role === 'chef') {
           targetPath = '/chef-setup';
         }
-        console.log(`🚀 WELCOME COMPLETE - REDIRECTING TO: ${targetPath}`);
+        logger.info(`🚀 WELCOME COMPLETE - REDIRECTING TO: ${targetPath}`);
         setLocation(targetPath);
       } else {
-        console.error('⚠️ Welcome completion API failed:', response.status);
+        logger.error('⚠️ Welcome completion API failed:', response.status);
         const errorText = await response.text();
-        console.error('⚠️ Error details:', errorText);
+        logger.error('⚠️ Error details:', errorText);
         
         // Still redirect on API failure
         let targetPath = '/dashboard';
@@ -221,11 +222,11 @@ export default function AuthPage() {
         } else if (userMeta?.role === 'chef') {
           targetPath = '/chef-setup';
         }
-        console.log(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
+        logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
         setLocation(targetPath);
       }
     } catch (error) {
-      console.error('❌ Error completing welcome screen:', error);
+      logger.error('❌ Error completing welcome screen:', error);
       
       // Still redirect on error
       let targetPath = '/dashboard';
@@ -234,7 +235,7 @@ export default function AuthPage() {
       } else if (userMeta?.role === 'chef') {
         targetPath = '/chef-setup';
       }
-      console.log(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
+      logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
       setLocation(targetPath);
     }
   };
@@ -258,13 +259,13 @@ export default function AuthPage() {
   // Only show welcome screen for chefs
   if (userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
     if (userMeta.role === 'admin') {
-      console.log('👑 Admin user - skipping welcome screen');
+      logger.info('👑 Admin user - skipping welcome screen');
       return <Redirect to="/admin" />;
     } else if (userMeta.role === 'manager') {
-      console.log('🏢 Manager user - skipping welcome screen, going to manager dashboard');
+      logger.info('🏢 Manager user - skipping welcome screen, going to manager dashboard');
       return <Redirect to="/manager/dashboard" />;
     } else {
-      console.log('🎉 RENDERING WELCOME SCREEN for chef');
+      logger.info('🎉 RENDERING WELCOME SCREEN for chef');
       return <WelcomeScreen onComplete={handleWelcomeContinue} />;
     }
   }

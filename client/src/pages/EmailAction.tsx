@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * EmailAction.tsx - Enterprise-Grade Email Action Handler
  * 
@@ -92,7 +93,7 @@ function detectRoleFromContinueUrl(continueUrl: string): 'manager' | 'chef' | 'a
 
     return null;
   } catch (error) {
-    console.error('❌ Failed to parse continueUrl:', error);
+    logger.error('❌ Failed to parse continueUrl:', error);
     return null;
   }
 }
@@ -148,13 +149,13 @@ function buildRedirectUrl(continueUrl: string | null): string {
       );
 
       if (isTrusted) {
-        console.log('✅ Using trusted continueUrl:', continueUrl);
+        logger.info('✅ Using trusted continueUrl:', continueUrl);
         return decodeURIComponent(continueUrl);
       } else {
-        console.warn('⚠️ ContinueUrl not from trusted domain, ignoring:', url.hostname);
+        logger.warn('⚠️ ContinueUrl not from trusted domain, ignoring:', url.hostname);
       }
     } catch (error) {
-      console.error('❌ Failed to parse continueUrl:', error);
+      logger.error('❌ Failed to parse continueUrl:', error);
     }
   }
 
@@ -163,7 +164,7 @@ function buildRedirectUrl(continueUrl: string | null): string {
     ? detectRoleFromContinueUrl(continueUrl)
     : detectRoleFromCurrentHostname();
 
-  console.log('🔍 Detected role for redirect:', role);
+  logger.info('🔍 Detected role for redirect:', role);
 
   // For localhost, use relative paths
   const isLocalhost = window.location.hostname === 'localhost' ||
@@ -172,7 +173,7 @@ function buildRedirectUrl(continueUrl: string | null): string {
 
   if (isLocalhost) {
     const defaultPath = role ? DEFAULT_REDIRECT_PATHS[role] : '/auth?verified=true';
-    console.log('📍 Using localhost redirect path:', defaultPath);
+    logger.info('📍 Using localhost redirect path:', defaultPath);
     return defaultPath;
   }
 
@@ -181,7 +182,7 @@ function buildRedirectUrl(continueUrl: string | null): string {
   const path = role ? DEFAULT_REDIRECT_PATHS[role] : DEFAULT_REDIRECT_PATHS.chef;
   const fullUrl = `${subdomain}${path}`;
 
-  console.log('🌐 Using production redirect URL:', fullUrl);
+  logger.info('🌐 Using production redirect URL:', fullUrl);
   return fullUrl;
 }
 
@@ -194,16 +195,16 @@ function performRedirect(url: string, setLocation: (path: string) => void): void
 
   if (isRelative) {
     // Use wouter for same-origin relative paths (SPA navigation)
-    console.log('🔄 SPA navigation to:', url);
+    logger.info('🔄 SPA navigation to:', url);
     setLocation(url);
   } else if (isSameOrigin) {
     // Use wouter for same-origin full URLs
     const path = url.replace(window.location.origin, '');
-    console.log('🔄 SPA navigation to:', path);
+    logger.info('🔄 SPA navigation to:', path);
     setLocation(path);
   } else {
     // Use full page redirect for cross-origin (different subdomain)
-    console.log('🌐 Cross-origin redirect to:', url);
+    logger.info('🌐 Cross-origin redirect to:', url);
     window.location.href = url;
   }
 }
@@ -239,7 +240,7 @@ export default function EmailAction() {
         const continueUrl = urlParams.get('continueUrl');
         const lang = urlParams.get('lang') || 'en';
 
-        console.log('📧 Email action detected:', {
+        logger.info('📧 Email action detected:', {
           mode,
           oobCode: oobCode?.substring(0, 8) + '...',
           email,
@@ -272,7 +273,7 @@ export default function EmailAction() {
             throw new Error(`Unknown action mode: ${mode}`);
         }
       } catch (error: any) {
-        console.error('❌ Email action error:', error);
+        logger.error('❌ Email action error:', error);
         setStatus('error');
         setMessage(error.message || 'Invalid or expired link');
 
@@ -291,28 +292,28 @@ export default function EmailAction() {
      */
     const handleEmailVerification = async (oobCode: string, continueUrl: string | null) => {
       try {
-        console.log('🔍 Applying email verification action code...');
+        logger.info('🔍 Applying email verification action code...');
         
         // First, check the action code to get the email address
         const { checkActionCode } = await import('firebase/auth');
         const actionCodeInfo = await checkActionCode(auth, oobCode);
         const email = actionCodeInfo.data.email;
         
-        console.log('📧 Action code info:', {
+        logger.info('📧 Action code info:', {
           operation: actionCodeInfo.operation,
           email: email
         });
         
         // Apply the action code to verify the email in Firebase
         await applyActionCode(auth, oobCode);
-        console.log('✅ Email verification successful in Firebase');
+        logger.info('✅ Email verification successful in Firebase');
 
         // ENTERPRISE: Call public endpoint to sync verification to database
         // This endpoint uses Firebase Admin SDK to verify the email is actually verified
         // and sends the welcome email. It doesn't require authentication because
         // the user is NOT signed in when clicking the verification link.
         if (email) {
-          console.log('🔄 Calling public verify-email-complete endpoint...');
+          logger.info('🔄 Calling public verify-email-complete endpoint...');
           try {
             const syncResponse = await fetch('/api/user/verify-email-complete', {
               method: 'POST',
@@ -324,35 +325,35 @@ export default function EmailAction() {
 
             if (syncResponse.ok) {
               const syncResult = await syncResponse.json();
-              console.log('✅ DATABASE VERIFICATION SYNC SUCCESS:', JSON.stringify(syncResult, null, 2));
-              console.log(`   - Database verified: ${syncResult.databaseVerified}`);
-              console.log(`   - Welcome email sent: ${syncResult.welcomeEmailSent}`);
-              console.log(`   - Email config status:`, syncResult.emailConfigStatus);
+              logger.info('✅ DATABASE VERIFICATION SYNC SUCCESS:', JSON.stringify(syncResult, null, 2));
+              logger.info(`   - Database verified: ${syncResult.databaseVerified}`);
+              logger.info(`   - Welcome email sent: ${syncResult.welcomeEmailSent}`);
+              logger.info(`   - Email config status:`, syncResult.emailConfigStatus);
               
               // ENTERPRISE: Warn if email wasn't sent so we can investigate
               if (!syncResult.welcomeEmailSent && !syncResult.welcomeEmailPreviouslySent) {
-                console.warn('⚠️ Welcome email was NOT sent! Check server logs for details.');
-                console.warn('⚠️ Email config:', syncResult.emailConfigStatus);
+                logger.warn('⚠️ Welcome email was NOT sent! Check server logs for details.');
+                logger.warn('⚠️ Email config:', syncResult.emailConfigStatus);
               }
             } else {
               const errorData = await syncResponse.json().catch(() => ({}));
-              console.error('❌ DATABASE VERIFICATION SYNC FAILED:', syncResponse.status, JSON.stringify(errorData, null, 2));
+              logger.error('❌ DATABASE VERIFICATION SYNC FAILED:', syncResponse.status, JSON.stringify(errorData, null, 2));
               // Don't fail - Firebase verification succeeded, user can still log in
             }
           } catch (syncError) {
-            console.error('❌ Error calling verify-email-complete:', syncError);
+            logger.error('❌ Error calling verify-email-complete:', syncError);
             // Don't fail - Firebase verification succeeded
           }
         }
 
         // Also try to update auth context if user happens to be signed in
-        console.log('🔄 Attempting to update auth context (may fail if not signed in)...');
+        logger.info('🔄 Attempting to update auth context (may fail if not signed in)...');
         try {
           await updateUserVerification();
-          console.log('✅ Auth context updated');
+          logger.info('✅ Auth context updated');
         } catch (updateError) {
           // Expected to fail if user is not signed in - this is normal
-          console.log('ℹ️ Auth context update skipped (user not signed in)');
+          logger.info('ℹ️ Auth context update skipped (user not signed in)');
         }
 
         setStatus('success');
@@ -362,13 +363,13 @@ export default function EmailAction() {
         const finalRedirectUrl = buildRedirectUrl(continueUrl);
         setRedirectUrl(finalRedirectUrl);
 
-        console.log('🎯 Will redirect to:', finalRedirectUrl);
+        logger.info('🎯 Will redirect to:', finalRedirectUrl);
 
         // Start countdown and progress animation
         // Redirect happens via the useEffect below
 
       } catch (verifyError: any) {
-        console.error('❌ Email verification failed:', verifyError);
+        logger.error('❌ Email verification failed:', verifyError);
         throw new Error(
           verifyError.code === 'auth/invalid-action-code'
             ? 'This verification link has expired or is invalid.'
@@ -387,7 +388,7 @@ export default function EmailAction() {
       email: string | null,
       continueUrl: string | null
     ) => {
-      console.log('🔄 Redirecting to password reset page');
+      logger.info('🔄 Redirecting to password reset page');
 
       // Detect role for proper subdomain routing after reset
       const role = continueUrl ? detectRoleFromContinueUrl(continueUrl) : detectRoleFromCurrentHostname();
@@ -401,7 +402,7 @@ export default function EmailAction() {
       });
 
       const resetUrl = `/password-reset?${resetParams.toString()}`;
-      console.log('🔗 Reset URL:', resetUrl);
+      logger.info('🔗 Reset URL:', resetUrl);
       setLocation(resetUrl);
     };
 
@@ -410,9 +411,9 @@ export default function EmailAction() {
      */
     const handleEmailRecovery = async (oobCode: string, continueUrl: string | null) => {
       try {
-        console.log('🔍 Applying email recovery action code...');
+        logger.info('🔍 Applying email recovery action code...');
         await applyActionCode(auth, oobCode);
-        console.log('✅ Email recovery successful');
+        logger.info('✅ Email recovery successful');
 
         setStatus('success');
         setMessage('Your email has been restored to the previous address.');
@@ -425,7 +426,7 @@ export default function EmailAction() {
         }, 3000);
 
       } catch (error: any) {
-        console.error('❌ Email recovery failed:', error);
+        logger.error('❌ Email recovery failed:', error);
         throw new Error('Failed to recover email. The link may have expired.');
       }
     };

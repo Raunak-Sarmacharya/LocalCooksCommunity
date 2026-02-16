@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -333,7 +334,7 @@ function ChefOnboardingLogic({
         await next();
       }
     } catch (error) {
-      console.error('Error advancing step:', error);
+      logger.error('Error advancing step:', error);
       toast({
         title: "Error",
         description: "Failed to proceed to next step",
@@ -350,7 +351,7 @@ function ChefOnboardingLogic({
     try {
       await onboardSkip();
     } catch (error) {
-      console.error('Error skipping step:', error);
+      logger.error('Error skipping step:', error);
     }
   }, [onboardSkip]);
 
@@ -399,9 +400,9 @@ function ChefOnboardingLogic({
       // Invalidate user profile to refresh onboarding status
       queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
       
-      console.log('[Chef Onboarding] Marked as complete');
+      logger.info('[Chef Onboarding] Marked as complete');
     } catch (error) {
-      console.error('[Chef Onboarding] Failed to mark complete:', error);
+      logger.error('[Chef Onboarding] Failed to mark complete:', error);
     }
   }, [selectedPaths, queryClient]);
 
@@ -421,7 +422,7 @@ function ChefOnboardingLogic({
 
     // Skip auto-advance if user manually navigated
     if (isManualNavigation.current) {
-      console.log('[Chef Onboarding] Skipping auto-advance due to manual navigation');
+      logger.info('[Chef Onboarding] Skipping auto-advance due to manual navigation');
       isManualNavigation.current = false;
       return;
     }
@@ -461,7 +462,7 @@ function ChefOnboardingLogic({
     for (const stepId of stepOrder) {
       // If this step is not done, navigate to it
       if (!completedSteps[stepId]) {
-        console.log(`[Chef Onboarding] Auto-resume: ${currentId} → ${stepId}`);
+        logger.info(`[Chef Onboarding] Auto-resume: ${currentId} → ${stepId}`);
         hasPerformedInitialAutoSkip.current = true;
         engine.goToStep(stepId as any);
         return;
@@ -473,7 +474,7 @@ function ChefOnboardingLogic({
     if (currentIndex !== -1 && currentIndex < visibleSteps.length - 1) {
       const nextStep = visibleSteps[currentIndex + 1];
       if (nextStep && nextStep.id) {
-        console.log(`[Chef Onboarding] Advancing from completed step to: ${nextStep.id}`);
+        logger.info(`[Chef Onboarding] Advancing from completed step to: ${nextStep.id}`);
         hasPerformedInitialAutoSkip.current = true;
         engine.goToStep(nextStep.id as any);
       }

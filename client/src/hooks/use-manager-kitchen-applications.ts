@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
 
@@ -86,7 +87,7 @@ export function useManagerKitchenApplications() {
         const token = await currentFirebaseUser.getIdToken();
         headers['Authorization'] = `Bearer ${token}`;
       } catch (error) {
-        console.error('Error getting Firebase token:', error);
+        logger.error('Error getting Firebase token:', error);
       }
     }
 
@@ -278,7 +279,7 @@ export function useManagerKitchenApplicationsForLocation(locationId: number | nu
         const token = await currentFirebaseUser.getIdToken();
         headers['Authorization'] = `Bearer ${token}`;
       } catch (error) {
-        console.error('Error getting Firebase token:', error);
+        logger.error('Error getting Firebase token:', error);
       }
     }
 

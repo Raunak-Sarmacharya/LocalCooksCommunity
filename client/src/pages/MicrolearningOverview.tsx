@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
 import { Badge } from '@/components/ui/badge';
@@ -41,7 +42,7 @@ export default function MicrolearningOverview() {
   // Redirect to login if not authenticated
   React.useEffect(() => {
     if (!loading && !user) {
-      console.log('🔄 MicrolearningOverview: Redirecting to auth - no user');
+      logger.info('🔄 MicrolearningOverview: Redirecting to auth - no user');
       navigate('/auth');
     }
   }, [user, loading, navigate]);
@@ -52,7 +53,7 @@ export default function MicrolearningOverview() {
     queryFn: async () => {
       if (!user) return null;
       
-      console.log('🔄 MicrolearningOverview: Fetching training access for user:', user);
+      logger.info('🔄 MicrolearningOverview: Fetching training access for user:', user);
       
       try {
         // Firebase-based access only (session auth has been removed)
@@ -73,7 +74,7 @@ export default function MicrolearningOverview() {
 
         if (!response.ok) {
           if (response.status === 404) {
-            console.log('📝 MicrolearningOverview: No training progress found (firebase) - defaulting to limited access');
+            logger.info('📝 MicrolearningOverview: No training progress found (firebase) - defaulting to limited access');
             return {
               accessLevel: 'limited',
               hasApprovedApplication: false,
@@ -84,10 +85,10 @@ export default function MicrolearningOverview() {
         }
 
         const result = await response.json();
-        console.log('✅ MicrolearningOverview: Training access fetched (firebase):', result);
+        logger.info('✅ MicrolearningOverview: Training access fetched (firebase):', result);
         return result;
       } catch (error) {
-        console.error("❌ MicrolearningOverview: Error fetching training access:", error);
+        logger.error("❌ MicrolearningOverview: Error fetching training access:", error);
         return {
           accessLevel: 'limited',
           hasApprovedApplication: false,
@@ -127,17 +128,17 @@ export default function MicrolearningOverview() {
 
         if (!response.ok) {
           if (response.status === 404) {
-            console.log('📝 MicrolearningOverview: No completion found (firebase)');
+            logger.info('📝 MicrolearningOverview: No completion found (firebase)');
             return null;
           }
           throw new Error(`Failed to fetch completion status (firebase): ${response.status} ${response.statusText}`);
         }
 
         const result = await response.json();
-        console.log('✅ MicrolearningOverview: Completion status fetched (firebase):', result);
+        logger.info('✅ MicrolearningOverview: Completion status fetched (firebase):', result);
         return result;
       } catch (error) {
-        console.error("❌ MicrolearningOverview: Error fetching microlearning completion:", error);
+        logger.error("❌ MicrolearningOverview: Error fetching microlearning completion:", error);
         return null;
       }
     },
@@ -167,12 +168,12 @@ export default function MicrolearningOverview() {
   // Add debug logging to understand what data we're getting (moved before early returns)
   React.useEffect(() => {
     if (microlearningCompletion || trainingAccess) {
-      console.log('🎯 Microlearning completion data:', microlearningCompletion);
-      console.log('🎯 Training access data:', trainingAccess);
+      logger.info('🎯 Microlearning completion data:', microlearningCompletion);
+      logger.info('🎯 Training access data:', trainingAccess);
     }
   }, [microlearningCompletion, trainingAccess]);
   
-  console.log('🔄 MicrolearningOverview: Render state:', {
+  logger.info('🔄 MicrolearningOverview: Render state:', {
     loading,
     user: !!user,
     isLoadingTrainingAccess,
@@ -208,7 +209,7 @@ export default function MicrolearningOverview() {
 
       if (!response.ok) {
         const error = await response.json();
-        console.error('Certificate download failed:', error);
+        logger.error('Certificate download failed:', error);
         throw new Error('Failed to download certificate');
       }
 
@@ -230,7 +231,7 @@ export default function MicrolearningOverview() {
         type: "success"
       });
     } catch (error) {
-      console.error('Error downloading certificate:', error);
+      logger.error('Error downloading certificate:', error);
       showAlert({
         title: "Download Failed",
         description: "Failed to download certificate. Please try again.",
@@ -268,7 +269,7 @@ export default function MicrolearningOverview() {
 
   // Show error state if data failed to load but still render with fallbacks
   if (hasError && !trainingAccess && !microlearningCompletion) {
-    console.log('⚠️ MicrolearningOverview: Error state with fallbacks');
+    logger.info('⚠️ MicrolearningOverview: Error state with fallbacks');
   }
 
   // If there's a critical error and we have no fallback data, show error page but with minimal UI

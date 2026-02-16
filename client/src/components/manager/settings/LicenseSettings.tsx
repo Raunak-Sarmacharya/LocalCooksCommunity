@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * License Settings Component
  * Manages kitchen license upload and status for a location
@@ -177,7 +178,7 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
       setLicenseExpiryDate('');
       return licenseUrl;
     } catch (error: any) {
-      console.error('License upload error:', error);
+      logger.error('License upload error:', error);
       toast({
         title: "Upload Failed",
         description: error.message || "Failed to upload license",
@@ -248,7 +249,7 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
       setTermsFile(null);
       return termsUrl;
     } catch (error: any) {
-      console.error('Terms upload error:', error);
+      logger.error('Terms upload error:', error);
       toast({
         title: "Upload Failed",
         description: error.message || "Failed to upload terms",

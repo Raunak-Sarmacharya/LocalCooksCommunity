@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -85,7 +86,7 @@ export default function ManagerProfileSettings() {
                 const userData = await response.json();
                 return userData;
             } catch (error) {
-                console.error('Error fetching user profile:', error);
+                logger.error('Error fetching user profile:', error);
                 return null;
             }
         },
@@ -191,9 +192,9 @@ export default function ManagerProfileSettings() {
                     await updateProfile(currentFirebaseUser, {
                         displayName: profileData.displayName,
                     });
-                    console.log('✅ Firebase Auth displayName updated:', profileData.displayName);
+                    logger.info('✅ Firebase Auth displayName updated:', profileData.displayName);
                 } catch (firebaseError) {
-                    console.error('❌ Failed to update Firebase Auth displayName:', firebaseError);
+                    logger.error('❌ Failed to update Firebase Auth displayName:', firebaseError);
                     // Continue with Neon update even if Firebase update fails
                 }
             }

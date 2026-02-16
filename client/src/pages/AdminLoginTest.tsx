@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState } from "react";
 
 export default function AdminLoginTest() {
@@ -10,7 +11,7 @@ export default function AdminLoginTest() {
 
   const testLogin = async () => {
     try {
-      console.log('Testing admin login...');
+      logger.info('Testing admin login...');
       const loginResponse = await fetch('/api/admin/login', {
         method: 'POST',
         headers: {

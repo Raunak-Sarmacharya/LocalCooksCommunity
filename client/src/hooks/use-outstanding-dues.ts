@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Hook to check if chef has outstanding dues (overstay penalties + damage claims)
  * Enterprise standard: single unified check used by:
@@ -39,7 +40,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       };
     }
   } catch (error) {
-    console.error('Error getting Firebase token:', error);
+    logger.error('Error getting Firebase token:', error);
   }
   return {
     'Content-Type': 'application/json',

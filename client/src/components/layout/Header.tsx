@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -66,7 +67,7 @@ export default function Header() {
         const userData = await response.json();
         return userData;
       } catch (error) {
-        console.error('Header - Firebase auth error:', error);
+        logger.error('Header - Firebase auth error:', error);
         return null;
       }
     },
@@ -82,12 +83,12 @@ export default function Header() {
 
   const logout = async () => {
     // Firebase logout (session auth removed)
-    console.log('Performing Firebase logout...');
+    logger.info('Performing Firebase logout...');
     firebaseAuth.logout();
   };
 
   // Debug logging for header state
-  console.log('Header component state:', {
+  logger.info('Header component state:', {
     profileUser,
     firebaseUser: firebaseAuth.user,
     finalUser: user,

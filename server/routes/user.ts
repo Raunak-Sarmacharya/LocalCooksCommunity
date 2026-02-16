@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import { Router, Request, Response } from "express";
 import { userService } from "../domains/users/user.service";
 import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
@@ -22,7 +23,7 @@ router.get("/profile", requireFirebaseAuthWithUser, async (req: Request, res: Re
     // This handles the case where user verifies email via Firebase but Neon DB wasn't updated
     const firebaseEmailVerified = req.firebaseUser?.email_verified;
     if (firebaseEmailVerified && !user.isVerified) {
-      console.log(`📧 Updating is_verified for user ${user.id} - Firebase email verified (profile fetch)`);
+      logger.info(`📧 Updating is_verified for user ${user.id} - Firebase email verified (profile fetch)`);
       const updatedUser = await userService.updateUser(user.id, { isVerified: true });
       if (updatedUser) {
         user = updatedUser;
@@ -36,7 +37,7 @@ router.get("/profile", requireFirebaseAuthWithUser, async (req: Request, res: Re
     };
     res.json(responseUser);
   } catch (error) {
-    console.error("Error fetching user profile:", error);
+    logger.error("Error fetching user profile:", error);
     res.status(500).json({ error: "Failed to fetch user profile" });
   }
 });
@@ -48,11 +49,11 @@ router.get("/profile", requireFirebaseAuthWithUser, async (req: Request, res: Re
 router.post("/seen-welcome", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
   try {
     const user = req.neonUser!;
-    console.log(`🎉 Marking welcome screen as seen for user ${user.id}`);
+    logger.info(`🎉 Marking welcome screen as seen for user ${user.id}`);
     await userService.updateUser(user.id, { has_seen_welcome: true });
     res.json({ success: true });
   } catch (error) {
-    console.error("Error setting has_seen_welcome:", error);
+    logger.error("Error setting has_seen_welcome:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -65,7 +66,7 @@ router.post("/seen-welcome", requireFirebaseAuthWithUser, async (req: Request, r
 router.post("/logout", async (req: Request, res: Response) => {
   // Firebase Auth is stateless (JWT-based), no server session to destroy
   // This endpoint exists for compatibility with frontend logout calls
-  console.log("🚪 Logout request received (Firebase Auth is stateless)");
+  logger.info("🚪 Logout request received (Firebase Auth is stateless)");
   res.json({ success: true, message: "Logged out successfully" });
 });
 
@@ -81,7 +82,7 @@ router.post("/sync", requireFirebaseAuthWithUser, async (req: Request, res: Resp
     // This handles the case where user verifies email via Firebase but Neon DB wasn't updated
     const firebaseEmailVerified = req.firebaseUser?.email_verified;
     if (firebaseEmailVerified && !user.isVerified) {
-      console.log(`📧 Updating is_verified for user ${user.id} - Firebase email verified`);
+      logger.info(`📧 Updating is_verified for user ${user.id} - Firebase email verified`);
       const updatedUser = await userService.updateUser(user.id, { isVerified: true });
       if (updatedUser) {
         user = updatedUser;
@@ -90,7 +91,7 @@ router.post("/sync", requireFirebaseAuthWithUser, async (req: Request, res: Resp
     
     res.json(user);
   } catch (error) {
-    console.error("Error syncing user:", error);
+    logger.error("Error syncing user:", error);
     res.status(500).json({ error: "Failed to sync user" });
   }
 });
@@ -105,7 +106,7 @@ router.post("/chef-onboarding-complete", requireFirebaseAuthWithUser, async (req
     const user = req.neonUser!;
     const { selectedPaths } = req.body;
     
-    console.log(`🎓 Marking chef onboarding complete for user ${user.id}, paths: ${JSON.stringify(selectedPaths)}`);
+    logger.info(`🎓 Marking chef onboarding complete for user ${user.id}, paths: ${JSON.stringify(selectedPaths)}`);
     
     // Update user to mark chef onboarding as complete
     // Store selected paths for future reference
@@ -116,7 +117,7 @@ router.post("/chef-onboarding-complete", requireFirebaseAuthWithUser, async (req
     
     res.json({ success: true });
   } catch (error) {
-    console.error("Error marking chef onboarding complete:", error);
+    logger.error("Error marking chef onboarding complete:", error);
     res.status(500).json({ error: "Failed to mark onboarding complete" });
   }
 });
@@ -138,10 +139,10 @@ router.post("/sync-password", requireFirebaseAuthWithUser, async (req: Request, 
     // updateUser auto-hashes the password via hashPassword()
     await userService.updateUser(user.id, { password: newPassword });
 
-    console.log(`[sync-password] Password synced to Neon for user ${user.id} (${user.username})`);
+    logger.info(`[sync-password] Password synced to Neon for user ${user.id} (${user.username})`);
     res.json({ success: true });
   } catch (error) {
-    console.error('[sync-password] Error syncing password:', error);
+    logger.error('[sync-password] Error syncing password:', error);
     res.status(500).json({ error: 'Failed to sync password' });
   }
 });
@@ -174,10 +175,10 @@ router.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req
     const firebaseEmailVerified = req.firebaseUser?.email_verified;
     const firebaseDisplayName = req.firebaseUser?.name;
     
-    console.log(`🔄 SYNC VERIFICATION STATUS for user ${user.id} (${user.username})`);
-    console.log(`   - Firebase email_verified: ${firebaseEmailVerified}`);
-    console.log(`   - Database isVerified: ${user.isVerified}`);
-    console.log(`   - Welcome email already sent: ${user.welcomeEmailSentAt ? 'YES' : 'NO'}`);
+    logger.info(`🔄 SYNC VERIFICATION STATUS for user ${user.id} (${user.username})`);
+    logger.info(`   - Firebase email_verified: ${firebaseEmailVerified}`);
+    logger.info(`   - Database isVerified: ${user.isVerified}`);
+    logger.info(`   - Welcome email already sent: ${user.welcomeEmailSentAt ? 'YES' : 'NO'}`);
     
     let welcomeEmailSent = false;
     let verificationUpdated = false;
@@ -186,7 +187,7 @@ router.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req
     if (firebaseEmailVerified) {
       // Check if we need to update verification status in database
       if (!user.isVerified) {
-        console.log(`📧 Updating is_verified for user ${user.id} - Firebase email verified`);
+        logger.info(`📧 Updating is_verified for user ${user.id} - Firebase email verified`);
         const updatedUser = await userService.updateUser(user.id, { isVerified: true });
         if (updatedUser) {
           user = updatedUser;
@@ -197,7 +198,7 @@ router.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req
       // ENTERPRISE: Send welcome email ONLY if not already sent (idempotency check)
       // This prevents duplicate welcome emails on multiple sync calls
       if (!user.welcomeEmailSentAt) {
-        console.log(`📧 SENDING WELCOME EMAIL to newly verified user: ${user.username}`);
+        logger.info(`📧 SENDING WELCOME EMAIL to newly verified user: ${user.username}`);
         
         try {
           const displayName = firebaseDisplayName || user.username.split('@')[0];
@@ -217,19 +218,19 @@ router.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req
               welcomeEmailSentAt: new Date() 
             });
             welcomeEmailSent = true;
-            console.log(`✅ Welcome email sent successfully to ${user.username}`);
+            logger.info(`✅ Welcome email sent successfully to ${user.username}`);
           } else {
-            console.error(`❌ Failed to send welcome email to ${user.username} - sendEmail returned false`);
+            logger.error(`❌ Failed to send welcome email to ${user.username} - sendEmail returned false`);
           }
         } catch (emailError) {
-          console.error(`❌ Error sending welcome email to ${user.username}:`, emailError);
+          logger.error(`❌ Error sending welcome email to ${user.username}:`, emailError);
           // Don't fail the sync if email fails - user is still verified
         }
       } else {
-        console.log(`ℹ️ Welcome email already sent at ${user.welcomeEmailSentAt} - skipping duplicate`);
+        logger.info(`ℹ️ Welcome email already sent at ${user.welcomeEmailSentAt} - skipping duplicate`);
       }
     } else {
-      console.log(`⚠️ Firebase email not verified - no action taken`);
+      logger.info(`⚠️ Firebase email not verified - no action taken`);
     }
     
     // Return comprehensive status for debugging
@@ -245,7 +246,7 @@ router.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req
     });
     
   } catch (error) {
-    console.error("❌ Error in sync-verification-status:", error);
+    logger.error("❌ Error in sync-verification-status:", error);
     res.status(500).json({ 
       error: "Failed to sync verification status",
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -283,21 +284,21 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Email is required" });
     }
     
-    console.log(`🔄 PUBLIC VERIFY-EMAIL-COMPLETE for email: ${email}`);
+    logger.info(`🔄 PUBLIC VERIFY-EMAIL-COMPLETE for email: ${email}`);
     
     // SECURITY: Use Firebase Admin SDK to verify the email is actually verified
     const firebaseUser = await getFirebaseUserByEmail(email);
     
     if (!firebaseUser) {
-      console.log(`❌ Firebase user not found for email: ${email}`);
+      logger.info(`❌ Firebase user not found for email: ${email}`);
       return res.status(404).json({ error: "User not found in Firebase" });
     }
     
-    console.log(`   - Firebase emailVerified: ${firebaseUser.emailVerified}`);
-    console.log(`   - Firebase UID: ${firebaseUser.uid}`);
+    logger.info(`   - Firebase emailVerified: ${firebaseUser.emailVerified}`);
+    logger.info(`   - Firebase UID: ${firebaseUser.uid}`);
     
     if (!firebaseUser.emailVerified) {
-      console.log(`⚠️ Firebase email NOT verified for: ${email}`);
+      logger.info(`⚠️ Firebase email NOT verified for: ${email}`);
       return res.status(400).json({ 
         error: "Email not verified in Firebase",
         firebaseVerified: false 
@@ -308,20 +309,20 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
     const user = await userService.getUserByUsername(email);
     
     if (!user) {
-      console.log(`❌ User not found in Neon DB for email: ${email}`);
+      logger.info(`❌ User not found in Neon DB for email: ${email}`);
       return res.status(404).json({ error: "User not found in database" });
     }
     
-    console.log(`   - Neon user ID: ${user.id}`);
-    console.log(`   - Neon isVerified: ${user.isVerified}`);
-    console.log(`   - Welcome email already sent: ${user.welcomeEmailSentAt ? 'YES' : 'NO'}`);
+    logger.info(`   - Neon user ID: ${user.id}`);
+    logger.info(`   - Neon isVerified: ${user.isVerified}`);
+    logger.info(`   - Welcome email already sent: ${user.welcomeEmailSentAt ? 'YES' : 'NO'}`);
     
     let verificationUpdated = false;
     let welcomeEmailSent = false;
     
     // Update verification status if not already verified
     if (!user.isVerified) {
-      console.log(`📧 Updating is_verified for user ${user.id}`);
+      logger.info(`📧 Updating is_verified for user ${user.id}`);
       await userService.updateUser(user.id, { isVerified: true });
       verificationUpdated = true;
     }
@@ -329,8 +330,8 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
     // ENTERPRISE: Send welcome email ONLY if not already sent (idempotency)
     // Uses retry mechanism with exponential backoff for reliability
     if (!user.welcomeEmailSentAt) {
-      console.log(`📧 SENDING WELCOME EMAIL to newly verified user: ${email}`);
-      console.log(`📧 Email configuration check:`, {
+      logger.info(`📧 SENDING WELCOME EMAIL to newly verified user: ${email}`);
+      logger.info(`📧 Email configuration check:`, {
         hasEmailUser: !!process.env.EMAIL_USER,
         hasEmailPass: !!process.env.EMAIL_PASS,
         hasEmailFrom: !!process.env.EMAIL_FROM,
@@ -344,7 +345,7 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
         role: user.role as 'chef' | 'manager' | 'admin'
       });
       
-      console.log(`📧 Generated welcome email:`, {
+      logger.info(`📧 Generated welcome email:`, {
         to: welcomeEmail.to,
         subject: welcomeEmail.subject,
         hasHtml: !!welcomeEmail.html,
@@ -359,7 +360,7 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
       
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-          console.log(`📧 Welcome email attempt ${attempt}/${MAX_RETRIES} for ${email}`);
+          logger.info(`📧 Welcome email attempt ${attempt}/${MAX_RETRIES} for ${email}`);
           
           const emailResult = await sendEmail(welcomeEmail, {
             trackingId: `welcome_verified_public_${user.id}_${Date.now()}_attempt${attempt}`
@@ -369,15 +370,15 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
             // Mark welcome email as sent with timestamp (idempotency)
             await userService.updateUser(user.id, { welcomeEmailSentAt: new Date() });
             welcomeEmailSent = true;
-            console.log(`✅ Welcome email sent successfully to ${email} on attempt ${attempt}`);
+            logger.info(`✅ Welcome email sent successfully to ${email} on attempt ${attempt}`);
             break; // Success - exit retry loop
           } else {
-            console.error(`❌ sendEmail returned false for ${email} on attempt ${attempt}`);
+            logger.error(`❌ sendEmail returned false for ${email} on attempt ${attempt}`);
             lastError = new Error('sendEmail returned false');
           }
         } catch (emailError) {
           lastError = emailError instanceof Error ? emailError : new Error(String(emailError));
-          console.error(`❌ Error sending welcome email to ${email} on attempt ${attempt}:`, {
+          logger.error(`❌ Error sending welcome email to ${email} on attempt ${attempt}:`, {
             error: lastError.message,
             stack: lastError.stack
           });
@@ -386,20 +387,20 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
         // Exponential backoff before retry (1s, 2s, 4s)
         if (attempt < MAX_RETRIES) {
           const backoffMs = Math.pow(2, attempt - 1) * 1000;
-          console.log(`⏳ Waiting ${backoffMs}ms before retry...`);
+          logger.info(`⏳ Waiting ${backoffMs}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, backoffMs));
         }
       }
       
       // Log final status if all retries failed
       if (!welcomeEmailSent) {
-        console.error(`❌ CRITICAL: All ${MAX_RETRIES} attempts to send welcome email failed for ${email}`);
-        console.error(`❌ Last error:`, lastError?.message || 'Unknown error');
+        logger.error(`❌ CRITICAL: All ${MAX_RETRIES} attempts to send welcome email failed for ${email}`);
+        logger.error(`❌ Last error:`, lastError?.message || 'Unknown error');
         // Don't fail the verification - user can still log in
         // The email can be resent manually or via a background job
       }
     } else {
-      console.log(`ℹ️ Welcome email already sent at ${user.welcomeEmailSentAt} - skipping`);
+      logger.info(`ℹ️ Welcome email already sent at ${user.welcomeEmailSentAt} - skipping`);
     }
     
     res.json({
@@ -421,7 +422,7 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
     });
     
   } catch (error) {
-    console.error("❌ Error in verify-email-complete:", error);
+    logger.error("❌ Error in verify-email-complete:", error);
     res.status(500).json({ 
       error: "Failed to complete email verification",
       details: error instanceof Error ? error.message : 'Unknown error'

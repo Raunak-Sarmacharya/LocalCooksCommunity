@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import { Router, Request, Response } from "express";
 
 import { requireFirebaseAuthWithUser, requireManager } from "../firebase-auth-middleware";
@@ -35,7 +36,7 @@ router.get("/manager/kitchens/:kitchenId/equipment-listings", requireFirebaseAut
         const listings = await inventoryService.getEquipmentListingsByKitchen(kitchenId);
         res.json(listings);
     } catch (error: any) {
-        console.error("Error getting equipment listings:", error);
+        logger.error("Error getting equipment listings:", error);
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
     }
 });
@@ -67,7 +68,7 @@ router.get("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser
 
         res.json(listing);
     } catch (error: any) {
-        console.error("Error getting equipment listing:", error);
+        logger.error("Error getting equipment listing:", error);
         res.status(500).json({ error: error.message || "Failed to get equipment listing" });
     }
 });
@@ -112,10 +113,10 @@ router.post("/manager/equipment-listings", requireFirebaseAuthWithUser, requireM
             ...listingData,
         });
 
-        console.log(`✅ Equipment listing created by manager ${user.id}`);
+        logger.info(`✅ Equipment listing created by manager ${user.id}`);
         res.status(201).json(created);
     } catch (error: any) {
-        console.error("Error creating equipment listing:", error);
+        logger.error("Error creating equipment listing:", error);
         res.status(500).json({ error: error.message || "Failed to create equipment listing" });
     }
 });
@@ -147,10 +148,10 @@ router.put("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser
 
         const updated = await inventoryService.updateEquipmentListing(listingId, req.body);
 
-        console.log(`✅ Equipment listing ${listingId} updated by manager ${user.id}`);
+        logger.info(`✅ Equipment listing ${listingId} updated by manager ${user.id}`);
         res.json(updated);
     } catch (error: any) {
-        console.error("Error updating equipment listing:", error);
+        logger.error("Error updating equipment listing:", error);
         res.status(500).json({ error: error.message || "Failed to update equipment listing" });
     }
 });
@@ -182,10 +183,10 @@ router.delete("/manager/equipment-listings/:listingId", requireFirebaseAuthWithU
 
         await inventoryService.deleteEquipmentListing(listingId);
 
-        console.log(`✅ Equipment listing ${listingId} deleted by manager ${user.id}`);
+        logger.info(`✅ Equipment listing ${listingId} deleted by manager ${user.id}`);
         res.json({ success: true });
     } catch (error: any) {
-        console.error("Error deleting equipment listing:", error);
+        logger.error("Error deleting equipment listing:", error);
         res.status(500).json({ error: error.message || "Failed to delete equipment listing" });
     }
 });
@@ -216,7 +217,7 @@ router.get("/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (r
         const includedEquipment = visibleListings.filter((l: any) => l.availabilityType === 'included');
         const rentalEquipment = visibleListings.filter((l: any) => l.availabilityType === 'rental');
 
-        console.log(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
+        logger.info(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
 
         // Return categorized format expected by frontend
         res.json({
@@ -225,7 +226,7 @@ router.get("/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (r
             rental: rentalEquipment
         });
     } catch (error: any) {
-        console.error("Error getting equipment listings for chef:", error);
+        logger.error("Error getting equipment listings for chef:", error);
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
     }
 });

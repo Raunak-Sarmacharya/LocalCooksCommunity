@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import PDFDocument from 'pdfkit';
 import type { Pool } from 'pg';
 import Stripe from 'stripe';
@@ -25,7 +26,7 @@ export async function generatePayoutStatementPDF(
     const { getServiceFeeRate } = await import('./pricing-service');
     serviceFeeRate = await getServiceFeeRate();
   } catch (error) {
-    console.error('Error getting service fee rate for payout statement:', error);
+    logger.error('Error getting service fee rate for payout statement:', error);
   }
 
   // Calculate from bookings

@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 
 import { Router, Request, Response } from 'express';
 import { requireFirebaseAuthWithUser, requireManager } from '../firebase-auth-middleware';
@@ -91,7 +92,7 @@ router.get('/public/locations', async (req: Request, res: Response) => {
 
         res.json(publicLocations);
     } catch (error) {
-        console.error('Error fetching public locations:', error);
+        logger.error('Error fetching public locations:', error);
         res.status(500).json({ error: 'Failed to fetch locations' });
     }
 });
@@ -209,7 +210,7 @@ router.get('/public/kitchens', async (req: Request, res: Response) => {
 
         res.json(publicKitchens);
     } catch (error) {
-        console.error('Error fetching public kitchens:', error);
+        logger.error('Error fetching public kitchens:', error);
         res.status(500).json({ error: 'Failed to fetch kitchens' });
     }
 });
@@ -299,7 +300,7 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
         });
 
     } catch (error) {
-        console.error('Error fetching location details:', error);
+        logger.error('Error fetching location details:', error);
         if (error instanceof DomainError) {
             return res.status(error.statusCode).json({ error: error.message });
         }
@@ -319,7 +320,7 @@ router.get('/public/locations/:locationId/requirements', async (req: Request, re
         const requirements = await locationService.getLocationRequirementsWithDefaults(locationId);
         res.json(requirements);
     } catch (error) {
-        console.error('Error getting location requirements:', error);
+        logger.error('Error getting location requirements:', error);
         res.status(500).json({ error: 'Failed to get requirements' });
     }
 });
@@ -350,7 +351,7 @@ router.get('/manager/locations/:locationId/requirements',
             const requirements = await locationService.getLocationRequirementsWithDefaults(locationId);
             res.json(requirements);
         } catch (error) {
-            console.error('Error getting location requirements:', error);
+            logger.error('Error getting location requirements:', error);
             res.status(500).json({ error: 'Failed to get requirements' });
         }
     }
@@ -379,7 +380,7 @@ router.put('/manager/locations/:locationId/requirements',
             const parseResult = updateLocationRequirementsSchema.safeParse(req.body);
             if (!parseResult.success) {
                 const validationError = fromZodError(parseResult.error);
-                console.error('❌ Validation error updating location requirements:', validationError.message);
+                logger.error('❌ Validation error updating location requirements:', validationError.message);
                 return res.status(400).json({
                     error: 'Validation error',
                     message: validationError.message,
@@ -390,11 +391,11 @@ router.put('/manager/locations/:locationId/requirements',
             const updates = parseResult.data;
             const requirements = await locationService.upsertLocationRequirements(locationId, updates);
 
-            console.log(`✅ Location requirements updated for location ${locationId} by manager ${user.id} `);
+            logger.info(`✅ Location requirements updated for location ${locationId} by manager ${user.id} `);
             res.json({ success: true, requirements });
         } catch (error) {
             // Safe error logging
-            console.error('❌ Error updating location requirements:', error);
+            logger.error('❌ Error updating location requirements:', error);
             res.status(500).json({
                 error: 'Failed to update requirements',
                 message: error instanceof Error ? error.message : 'Unknown error'

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Revenue Data Hooks
  * 
@@ -190,7 +191,7 @@ export function useRevenueChartData(
     return useQuery({
         queryKey: ['/api/manager/revenue/charts', startDate, endDate, locationId],
         queryFn: async () => {
-            console.log('[useRevenueChartData] Fetching charts with:', { startDate, endDate, locationId })
+            logger.info('[useRevenueChartData] Fetching charts with:', { startDate, endDate, locationId })
             const headers = await getAuthHeaders()
             const params = new URLSearchParams({
                 period: 'daily',
@@ -206,7 +207,7 @@ export function useRevenueChartData(
 
             if (!response.ok) throw new Error('Failed to fetch chart data')
             const result = await response.json()
-            console.log('[useRevenueChartData] Received data:', result.data)
+            logger.info('[useRevenueChartData] Received data:', result.data)
             return result.data as RevenueByDate[]
         },
         enabled: enabled && !!startDate && !!endDate,

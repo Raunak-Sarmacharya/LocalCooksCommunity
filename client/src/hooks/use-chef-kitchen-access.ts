@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -42,7 +43,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       };
     }
   } catch (error) {
-    console.error('Error getting Firebase token:', error);
+    logger.error('Error getting Firebase token:', error);
   }
   return {};
 }
@@ -154,7 +155,7 @@ export function useAdminChefKitchenAccess() {
         const token = await currentFirebaseUser.getIdToken();
         headers['Authorization'] = `Bearer ${token}`;
       } catch (error) {
-        console.error('Error getting Firebase token:', error);
+        logger.error('Error getting Firebase token:', error);
       }
     }
     

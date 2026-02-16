@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -355,7 +356,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
       const finalData: Record<string, string> = {};
 
       if (data.file) {
-        console.log(`Uploading file for ${documentType}:`, {
+        logger.info(`Uploading file for ${documentType}:`, {
           fileName: data.file.name,
           fileSize: data.file.size,
           fileType: data.file.type
@@ -380,7 +381,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
         }
       }
 
-      console.log('Submitting document data to API:', {
+      logger.info('Submitting document data to API:', {
         verificationExists: !!verification,
         finalData,
         documentType
@@ -396,7 +397,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
       await forceRefresh();
 
     } catch (error) {
-      console.error('Document submission error:', error);
+      logger.error('Document submission error:', error);
       throw error;
     }
   };

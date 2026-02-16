@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import { Router, Request, Response } from "express";
 import fs from "fs";
 import path from "path";
@@ -57,7 +58,7 @@ router.post("/",
                         try {
                             fs.unlinkSync(file.path);
                         } catch (e) {
-                            console.error('Error cleaning up file:', e);
+                            logger.error('Error cleaning up file:', e);
                         }
                     });
                 }
@@ -75,7 +76,7 @@ router.post("/",
                         try {
                             fs.unlinkSync(file.path);
                         } catch (e) {
-                            console.error('Error cleaning up file:', e);
+                            logger.error('Error cleaning up file:', e);
                         }
                     });
                 }
@@ -105,7 +106,7 @@ router.post("/",
                 foodEstablishmentCertUrl: undefined
             };
 
-            console.log('=== APPLICATION SUBMISSION WITH DOCUMENTS ===');
+            logger.info('=== APPLICATION SUBMISSION WITH DOCUMENTS ===');
             // ... (keep logs if needed, but reducing verbosity for brevity in refactor)
 
             // Handle uploaded files and URL inputs
@@ -116,7 +117,7 @@ router.post("/",
                 const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 
                 if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
-                    console.log('📄 Uploading food safety license file...');
+                    logger.info('📄 Uploading food safety license file...');
                     if (isProduction) {
                         applicationData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.neonUser!.id);
                     } else {
@@ -125,7 +126,7 @@ router.post("/",
                 }
 
                 if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
-                    console.log('📄 Uploading food establishment cert file...');
+                    logger.info('📄 Uploading food establishment cert file...');
                     if (isProduction) {
                         applicationData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.neonUser!.id);
                     } else {
@@ -151,7 +152,7 @@ router.post("/",
             // But strict typing suggests we might want to reload it or just use it.
             // The service returns `ApplicationDTO`.
 
-            console.log('✅ Application created successfully:', {
+            logger.info('✅ Application created successfully:', {
                 id: application.id,
                 hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl)
             });
@@ -185,14 +186,14 @@ router.post("/",
                 }
             } catch (emailError) {
                 // Log the error but don't fail the request
-                console.error("Error sending new application email:", emailError);
+                logger.error("Error sending new application email:", emailError);
             }
 
-            console.log('=== APPLICATION SUBMISSION COMPLETE ===');
+            logger.info('=== APPLICATION SUBMISSION COMPLETE ===');
             return res.status(201).json(application);
 
         } catch (error) {
-            console.error("Error creating application:", error);
+            logger.error("Error creating application:", error);
 
             // Clean up uploaded files on error (development only)
             if (req.files) {
@@ -203,7 +204,7 @@ router.post("/",
                             fs.unlinkSync(file.path);
                         }
                     } catch (e) {
-                        console.error('Error cleaning up file:', e);
+                        logger.error('Error cleaning up file:', e);
                     }
                 });
             }
@@ -230,7 +231,7 @@ router.patch('/:id/documents',
                 return res.status(400).json({ message: "Invalid application ID" });
             }
 
-            console.log(`📝 PATCH /api/applications/${id}/documents - User ${req.neonUser!.id} updating documents`);
+            logger.info(`📝 PATCH /api/applications/${id}/documents - User ${req.neonUser!.id} updating documents`);
 
             // Check if application exists and belongs to user
             const application = await appService.getApplicationById(id);
@@ -253,7 +254,7 @@ router.patch('/:id/documents',
             if (files) {
                 // Upload food safety license if provided
                 if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
-                    console.log('📄 Uploading food safety license file...');
+                    logger.info('📄 Uploading food safety license file...');
                     if (isProduction) {
                         foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.neonUser!.id, 'documents');
                     } else {
@@ -263,7 +264,7 @@ router.patch('/:id/documents',
 
                 // Upload food establishment cert if provided
                 if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
-                    console.log('📄 Uploading food establishment cert file...');
+                    logger.info('📄 Uploading food establishment cert file...');
                     if (isProduction) {
                         foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.neonUser!.id, 'documents');
                     } else {
@@ -294,7 +295,7 @@ router.patch('/:id/documents',
 
             res.json(updatedApplication);
         } catch (error) {
-            console.error('Error updating application documents:', error);
+            logger.error('Error updating application documents:', error);
             res.status(500).json({
                 error: 'Failed to update application documents',
                 message: error instanceof Error ? error.message : 'Unknown error'
@@ -317,7 +318,7 @@ router.get("/", async (req: Request, res: Response) => {
         const applications = await appService.getAllApplications();
         return res.status(200).json(applications);
     } catch (error) {
-        console.error("Error fetching applications:", error);
+        logger.error("Error fetching applications:", error);
         if (error instanceof DomainError) {
             return res.status(error.statusCode).json({ message: error.message });
         }
@@ -337,7 +338,7 @@ router.get("/my-applications", async (req: Request, res: Response) => {
         const applications = await appService.getApplicationsByUserId(userId);
         return res.status(200).json(applications);
     } catch (error) {
-        console.error("Error fetching user applications:", error);
+        logger.error("Error fetching user applications:", error);
         if (error instanceof DomainError) {
             return res.status(error.statusCode).json({ message: error.message });
         }
@@ -358,7 +359,7 @@ router.get("/:id", async (req: Request, res: Response) => {
 
         return res.status(200).json(application);
     } catch (error) {
-        console.error("Error fetching application:", error);
+        logger.error("Error fetching application:", error);
         if (error instanceof DomainError) {
             return res.status(error.statusCode).json({ message: error.message });
         }
@@ -414,12 +415,12 @@ router.patch("/:id/status", async (req: Request, res: Response) => {
             }
         } catch (emailError) {
             // Log the error but don't fail the request
-            console.error("Error sending status change email:", emailError);
+            logger.error("Error sending status change email:", emailError);
         }
 
         return res.status(200).json(updatedApplication);
     } catch (error) {
-        console.error("Error updating application status:", error);
+        logger.error("Error updating application status:", error);
         if (error instanceof DomainError) {
             return res.status(error.statusCode).json({ message: error.message });
         }
@@ -460,12 +461,12 @@ router.patch("/:id/cancel", async (req: Request, res: Response) => {
                 });
             }
         } catch (emailError) {
-            console.error("Error sending cancellation email:", emailError);
+            logger.error("Error sending cancellation email:", emailError);
         }
 
         return res.status(200).json(updatedApplication);
     } catch (error) {
-        console.error("Error cancelling application:", error);
+        logger.error("Error cancelling application:", error);
         if (error instanceof DomainError) {
             return res.status(error.statusCode).json({ message: error.message });
         }
@@ -530,7 +531,7 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
             // Use UserService to verify user
             if (updatedApplication.userId) {
                 await userService.verifyUser(updatedApplication.userId, true);
-                console.log(`User ${updatedApplication.userId} has been fully verified`);
+                logger.info(`User ${updatedApplication.userId} has been fully verified`);
 
                 // Send full verification email with login credentials for localcook.shop
                 try {
@@ -543,10 +544,10 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
                         await sendEmail(emailContent, {
                             trackingId: `full_verification_${updatedApplication.id}_${Date.now()}`
                         });
-                        console.log(`✅ Full verification email with login credentials sent to ${updatedApplication.email}`);
+                        logger.info(`✅ Full verification email with login credentials sent to ${updatedApplication.email}`);
                     }
                 } catch (emailError) {
-                    console.error('❌ Error sending full verification email:', emailError);
+                    logger.error('❌ Error sending full verification email:', emailError);
                 }
             }
         }
@@ -583,12 +584,12 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
                 }
             }
         } catch (notifError) {
-            console.error("Error creating license notification:", notifError);
+            logger.error("Error creating license notification:", notifError);
         }
 
         return res.status(200).json(updatedApplication);
     } catch (error) {
-        console.error("Error updating application document verification:", error);
+        logger.error("Error updating application document verification:", error);
         if (error instanceof DomainError) {
             return res.status(error.statusCode).json({ message: error.message });
         }

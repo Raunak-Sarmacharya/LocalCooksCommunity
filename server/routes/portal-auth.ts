@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 
 import { Router, Request, Response } from "express";
 import { db } from "../db";
@@ -29,20 +30,20 @@ router.post("/portal-login", async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Username and password are required' });
         }
 
-        console.log('Portal user login attempt for:', username);
+        logger.info('Portal user login attempt for:', username);
 
         // Get portal user
         const portalUser = await userService.getUserByUsername(username);
 
         if (!portalUser) {
-            console.log('Portal user not found:', username);
+            logger.info('Portal user not found:', username);
             return res.status(401).json({ error: 'Incorrect username or password' });
         }
 
         // Verify user is portal user
         const isPortalUser = (portalUser as any).isPortalUser || (portalUser as any).is_portal_user;
         if (!isPortalUser) {
-            console.log('User is not a portal user:', username);
+            logger.info('User is not a portal user:', username);
             return res.status(403).json({ error: 'Not authorized - portal user access required' });
         }
 
@@ -50,7 +51,7 @@ router.post("/portal-login", async (req: Request, res: Response) => {
         const passwordMatches = await comparePasswords(password, portalUser.password);
 
         if (!passwordMatches) {
-            console.log('Password mismatch for portal user:', username);
+            logger.info('Password mismatch for portal user:', username);
             return res.status(401).json({ error: 'Incorrect username or password' });
         }
 
@@ -59,7 +60,7 @@ router.post("/portal-login", async (req: Request, res: Response) => {
         const isChef = (portalUser as any).isChef || (portalUser as any).is_chef || false;
         const isManager = (portalUser as any).isManager || (portalUser as any).is_manager || false;
         if (!isRoleAllowedForSubdomain(portalUser.role, subdomain, isPortalUser || false, isChef, isManager)) {
-            console.log(`Portal user ${username} attempted login from wrong subdomain: ${subdomain}`);
+            logger.info(`Portal user ${username} attempted login from wrong subdomain: ${subdomain}`);
             return res.status(403).json({
                 error: 'Access denied. Portal users must login from the kitchen subdomain.',
                 requiredSubdomain: 'kitchen'
@@ -89,7 +90,7 @@ router.post("/portal-login", async (req: Request, res: Response) => {
                     }
                     return null;
                 } catch (error) {
-                    console.error('Error fetching portal user location:', error);
+                    logger.error('Error fetching portal user location:', error);
                     return null;
                 }
             };
@@ -107,18 +108,18 @@ router.post("/portal-login", async (req: Request, res: Response) => {
                 }
             });
         } catch (tokenError) {
-            console.error("Error creating custom token:", tokenError);
+            logger.error("Error creating custom token:", tokenError);
             return res.status(500).json({ error: "Failed to create authentication token" });
         }
     } catch (error: any) {
-        console.error("Portal login error:", error);
+        logger.error("Portal login error:", error);
         res.status(500).json({ error: error.message || "Portal login failed" });
     }
 });
 
 // Portal user registration endpoint - creates application instead of direct access
 router.post("/portal-register", async (req: Request, res: Response) => {
-    console.log("[Routes] /api/portal-register called");
+    logger.info("[Routes] /api/portal-register called");
     try {
         const { username, password, locationId, fullName, email, phone, company } = req.body;
 
@@ -174,7 +175,7 @@ router.post("/portal-register", async (req: Request, res: Response) => {
                     )
                 );
         } catch (dbError: any) {
-            console.error("Error checking existing applications:", dbError);
+            logger.error("Error checking existing applications:", dbError);
             // If table doesn't exist, provide helpful error message
             if (dbError.message && dbError.message.includes('does not exist')) {
                 return res.status(500).json({
@@ -215,7 +216,7 @@ router.post("/portal-register", async (req: Request, res: Response) => {
                 status: 'inReview',
             }).returning();
         } catch (dbError: any) {
-            console.error("Error creating application:", dbError);
+            logger.error("Error creating application:", dbError);
             if (dbError.message && dbError.message.includes('does not exist')) {
                 return res.status(500).json({
                     error: "Database migration required. Please run the migration to create portal_user_applications table.",
@@ -271,12 +272,12 @@ router.post("/portal-register", async (req: Request, res: Response) => {
                                 `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
                         };
                         await sendEmail(emailContent);
-                        console.log(`✅ Portal user application notification sent to manager: ${managerEmail}`);
+                        logger.info(`✅ Portal user application notification sent to manager: ${managerEmail}`);
                     } else {
-                        console.log("⚠️ No manager email found for location - skipping email notification");
+                        logger.info("⚠️ No manager email found for location - skipping email notification");
                     }
                 } catch (emailError) {
-                    console.error("Error sending application notification email:", emailError);
+                    logger.error("Error sending application notification email:", emailError);
                 }
 
                 // Return success response with token
@@ -296,12 +297,12 @@ router.post("/portal-register", async (req: Request, res: Response) => {
                 });
             })();
         } catch (tokenError) {
-            console.error("Error creating token after registration:", tokenError);
+            logger.error("Error creating token after registration:", tokenError);
             return res.status(500).json({ error: "Registration successful but login failed. Please try logging in." });
         }
 
     } catch (error: any) {
-        console.error("Portal registration error:", error);
+        logger.error("Portal registration error:", error);
         res.status(500).json({ error: error.message || "Portal registration failed" });
     }
 });

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
 import { Application } from "@shared/schema";
 import {
@@ -33,11 +34,11 @@ const apiRequestFormData = async (method: string, url: string, data?: FormData) 
           headers['Authorization'] = `Bearer ${token}`;
         }
       } catch (tokenError) {
-        console.error('Failed to get Firebase token for FormData request:', tokenError);
+        logger.error('Failed to get Firebase token for FormData request:', tokenError);
       }
     }
   } catch (error) {
-    console.error('Error getting current Firebase user:', error);
+    logger.error('Error getting current Firebase user:', error);
   }
 
   const response = await fetch(url, {
@@ -71,11 +72,11 @@ const apiRequestJSON = async (method: string, url: string, data?: any) => {
           headers['Authorization'] = `Bearer ${token}`;
         }
       } catch (tokenError) {
-        console.error('Failed to get Firebase token for JSON request:', tokenError);
+        logger.error('Failed to get Firebase token for JSON request:', tokenError);
       }
     }
   } catch (error) {
-    console.error('Error getting current Firebase user:', error);
+    logger.error('Error getting current Firebase user:', error);
   }
 
   const response = await fetch(url, {
@@ -106,7 +107,7 @@ export function useDocumentVerification() {
   } = useQuery<Application[]>({
     queryKey: ["/api/firebase/applications/my"],
     queryFn: async ({ queryKey }) => {
-      console.log('Document verification: Fetching applications data from Firebase endpoint...');
+      logger.info('Document verification: Fetching applications data from Firebase endpoint...');
 
       // Use Firebase authentication for the Firebase endpoint
       const { auth } = await import('@/lib/firebase');
@@ -126,7 +127,7 @@ export function useDocumentVerification() {
         'Expires': '0',
       };
 
-      console.log('Using Firebase authentication for applications query:', currentUser.uid);
+      logger.info('Using Firebase authentication for applications query:', currentUser.uid);
 
       const response = await fetch(queryKey[0] as string, {
         credentials: 'include',
@@ -139,7 +140,7 @@ export function useDocumentVerification() {
       }
 
       const rawData = await response.json();
-      console.log('Document verification: Fresh data fetched', rawData);
+      logger.info('Document verification: Fresh data fetched', rawData);
 
       // Convert snake_case to camelCase for database fields
       const normalizedData = rawData.map((app: any) => ({
@@ -198,7 +199,7 @@ export function useDocumentVerification() {
 
       if (hasPendingDocuments) {
         // Very frequent updates when documents are under review (admin might be reviewing)
-        console.log('Document verification: Using aggressive refresh for pending documents');
+        logger.info('Document verification: Using aggressive refresh for pending documents');
         return 5000; // 5 seconds - very aggressive for immediate updates
       } else if (hasRejectedDocuments) {
         // Moderate frequency when documents need resubmission
@@ -267,7 +268,7 @@ export function useDocumentVerification() {
 
   // Enhanced force refresh function that ensures fresh data
   const forceRefresh = async () => {
-    console.log('Document verification: Forcing comprehensive refresh...');
+    logger.info('Document verification: Forcing comprehensive refresh...');
 
     try {
       // 1. Clear all application-related caches more aggressively
@@ -307,15 +308,15 @@ export function useDocumentVerification() {
       // 4. Also trigger a direct refetch of this specific query
       await refetch();
 
-      console.log('Document verification: Comprehensive refresh completed');
+      logger.info('Document verification: Comprehensive refresh completed');
     } catch (error) {
-      console.error('Document verification: Force refresh failed', error);
+      logger.error('Document verification: Force refresh failed', error);
       // Fallback: try individual refresh
       try {
         await refetch();
-        console.log('Document verification: Fallback refresh completed');
+        logger.info('Document verification: Fallback refresh completed');
       } catch (fallbackError) {
-        console.error('Document verification: Fallback refresh also failed', fallbackError);
+        logger.error('Document verification: Fallback refresh also failed', fallbackError);
       }
     }
   };

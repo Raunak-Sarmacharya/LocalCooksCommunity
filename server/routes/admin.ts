@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 
 import { Router, Request, Response } from "express";
 import { db } from "../db";
@@ -60,7 +61,7 @@ async function getFirestoreDisplayNames(firebaseUids: string[]): Promise<Record<
             }
         });
     } catch (error) {
-        console.error('Error fetching Firestore display names:', error);
+        logger.error('Error fetching Firestore display names:', error);
     }
 
     return nameMap;
@@ -149,7 +150,7 @@ router.get("/users", requireFirebaseAuthWithUser, requireAdmin, async (req: Requ
 
         res.json({ users: filteredUsers });
     } catch (error) {
-        console.error("Error fetching users:", error);
+        logger.error("Error fetching users:", error);
         res.status(500).json({ error: "Failed to fetch users" });
     }
 });
@@ -213,7 +214,7 @@ router.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, a
 
         res.json({ managers, total: managers.length });
     } catch (error: any) {
-        console.error('Error getting all managers revenue:', error);
+        logger.error('Error getting all managers revenue:', error);
         res.status(500).json({ error: error.message || 'Failed to get all managers revenue' });
     }
 });
@@ -275,7 +276,7 @@ router.get("/revenue/platform-overview", requireFirebaseAuthWithUser, requireAdm
             }
         });
     } catch (error: any) {
-        console.error('Error getting platform overview:', error);
+        logger.error('Error getting platform overview:', error);
         res.status(500).json({ error: error.message || 'Failed to get platform overview' });
     }
 });
@@ -338,7 +339,7 @@ router.get("/revenue/manager/:managerId", requireFirebaseAuthWithUser, requireAd
             })),
         });
     } catch (error: any) {
-        console.error('Error getting manager revenue details:', error);
+        logger.error('Error getting manager revenue details:', error);
         res.status(500).json({ error: error.message || 'Failed to get manager revenue details' });
     }
 });
@@ -375,12 +376,12 @@ router.post("/chef-location-access", async (req: Request, res: Response) => {
             // Get location details
             const location = await locationService.getLocationById(locationId);
             if (!location) {
-                console.warn(`⚠️ Location ${locationId} not found for email notification`);
+                logger.warn(`⚠️ Location ${locationId} not found for email notification`);
             } else {
                 // Get chef details
                 const chef = await userService.getUser(chefId);
                 if (!chef) {
-                    console.warn(`⚠️ Chef ${chefId} not found for email notification`);
+                    logger.warn(`⚠️ Chef ${chefId} not found for email notification`);
                 } else {
                     try {
                         const chefEmail = generateChefLocationAccessApprovedEmail({
@@ -390,21 +391,21 @@ router.post("/chef-location-access", async (req: Request, res: Response) => {
                             locationId: locationId
                         });
                         await sendEmail(chefEmail);
-                        console.log(`✅ Chef location access granted email sent to chef: ${chef.username}`);
+                        logger.info(`✅ Chef location access granted email sent to chef: ${chef.username}`);
                     } catch (emailError) {
-                        console.error("Error sending chef access email:", emailError);
-                        console.error("Chef email error details:", emailError instanceof Error ? emailError.message : emailError);
+                        logger.error("Error sending chef access email:", emailError);
+                        logger.error("Chef email error details:", emailError instanceof Error ? emailError.message : emailError);
                     }
                 }
             }
         } catch (emailError) {
-            console.error("Error sending chef access emails:", emailError);
+            logger.error("Error sending chef access emails:", emailError);
             // Don't fail the access grant if emails fail
         }
 
         res.status(201).json(access);
     } catch (error: any) {
-        console.error("Error granting chef location access:", error);
+        logger.error("Error granting chef location access:", error);
         res.status(500).json({ error: error.message || "Failed to grant access" });
     }
 });
@@ -433,7 +434,7 @@ router.delete("/chef-location-access", async (req: Request, res: Response) => {
         await chefService.revokeLocationAccess(chefId, locationId);
         res.json({ success: true });
     } catch (error: any) {
-        console.error("Error revoking chef location access:", error);
+        logger.error("Error revoking chef location access:", error);
         res.status(500).json({ error: error.message || "Failed to revoke access" });
     }
 });
@@ -441,22 +442,22 @@ router.delete("/chef-location-access", async (req: Request, res: Response) => {
 // Admin: Get all chefs with their location access (NEW - location-based access)
 router.get("/chef-location-access", async (req: Request, res: Response) => {
     try {
-        console.log("[Admin Chef Access] GET request received");
+        logger.info("[Admin Chef Access] GET request received");
         const sessionUser = await getAuthenticatedUser(req);
         const isFirebaseAuth = req.neonUser;
 
-        console.log("[Admin Chef Access] Auth check:", { hasSession: !!sessionUser, hasFirebase: !!isFirebaseAuth });
+        logger.info("[Admin Chef Access] Auth check:", { hasSession: !!sessionUser, hasFirebase: !!isFirebaseAuth });
 
         if (!sessionUser && !isFirebaseAuth) {
-            console.log("[Admin Chef Access] Not authenticated");
+            logger.info("[Admin Chef Access] Not authenticated");
             return res.status(401).json({ error: "Not authenticated" });
         }
 
         const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-        console.log("[Admin Chef Access] User:", { id: user.id, role: user.role });
+        logger.info("[Admin Chef Access] User:", { id: user.id, role: user.role });
 
         if (user.role !== "admin") {
-            console.log("[Admin Chef Access] Not admin");
+            logger.info("[Admin Chef Access] Not admin");
             return res.status(403).json({ error: "Admin access required" });
         }
 
@@ -473,21 +474,21 @@ router.get("/chef-location-access", async (req: Request, res: Response) => {
             return role === 'chef' || isChef === true;
         });
 
-        console.log(`[Admin Chef Access] Total users: ${allUsers.length}, Found ${chefs.length} chefs in database`);
+        logger.info(`[Admin Chef Access] Total users: ${allUsers.length}, Found ${chefs.length} chefs in database`);
 
         // Get all locations
         const allLocations = await db.select().from(locations);
-        console.log(`[Admin Chef Access] Found ${allLocations.length} locations`);
+        logger.info(`[Admin Chef Access] Found ${allLocations.length} locations`);
 
         // Get all location access records (handle case if table doesn't exist yet)
         let allAccess: any[] = [];
         try {
             allAccess = await db.select().from(chefLocationAccess);
-            console.log(`[Admin Chef Access] Found ${allAccess.length} location access records`);
+            logger.info(`[Admin Chef Access] Found ${allAccess.length} location access records`);
         } catch (error: any) {
-            console.error(`[Admin Chef Access] Error querying chef_location_access table:`, error.message);
+            logger.error(`[Admin Chef Access] Error querying chef_location_access table:`, error.message);
             if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
-                console.log(`[Admin Chef Access] Table doesn't exist yet, returning empty access`);
+                logger.info(`[Admin Chef Access] Table doesn't exist yet, returning empty access`);
                 allAccess = [];
             } else {
                 throw error;
@@ -525,11 +526,11 @@ router.get("/chef-location-access", async (req: Request, res: Response) => {
             };
         });
 
-        console.log(`[Admin Chef Access] Returning ${response.length} chefs with location access info`);
+        logger.info(`[Admin Chef Access] Returning ${response.length} chefs with location access info`);
         res.json(response);
     } catch (error: any) {
-        console.error("[Admin Chef Access] Error:", error);
-        console.error("[Admin Chef Access] Error stack:", error.stack);
+        logger.error("[Admin Chef Access] Error:", error);
+        logger.error("[Admin Chef Access] Error stack:", error.stack);
         res.status(500).json({ error: error.message || "Failed to get access" });
     }
 });
@@ -594,17 +595,17 @@ router.post("/managers", async (req: Request, res: Response) => {
             });
 
             await sendEmail(welcomeEmail);
-            console.log(`✅ Welcome email with credentials sent to manager: ${managerEmail}`);
+            logger.info(`✅ Welcome email with credentials sent to manager: ${managerEmail}`);
         } catch (emailError) {
-            console.error("Error sending manager welcome email:", emailError);
-            console.error("Email error details:", emailError instanceof Error ? emailError.message : emailError);
+            logger.error("Error sending manager welcome email:", emailError);
+            logger.error("Email error details:", emailError instanceof Error ? emailError.message : emailError);
             // Don't fail manager creation if email fails
         }
 
         res.status(201).json({ success: true, managerId: manager.id });
     } catch (error: any) {
-        console.error("Error creating manager:", error);
-        console.error("Error details:", error.message, error.stack);
+        logger.error("Error creating manager:", error);
+        logger.error("Error details:", error);
         res.status(500).json({ error: error.message || "Failed to create manager" });
     }
 });
@@ -725,7 +726,7 @@ router.get("/managers", async (req: Request, res: Response) => {
 
         return res.json(verifiedManagers);
     } catch (error: any) {
-        console.error("Error fetching managers:", error);
+        logger.error("Error fetching managers:", error);
         res.status(500).json({ error: error.message || "Failed to fetch managers" });
     }
 });
@@ -779,7 +780,7 @@ router.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, asy
 
         res.json(licenses);
     } catch (error: any) {
-        console.error("Error fetching location licenses:", error);
+        logger.error("Error fetching location licenses:", error);
         res.status(500).json({ error: error.message || "Failed to fetch location licenses" });
     }
 });
@@ -816,7 +817,7 @@ router.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAd
 
         res.json(formatted);
     } catch (error: any) {
-        console.error("Error fetching pending licenses:", error);
+        logger.error("Error fetching pending licenses:", error);
         res.status(500).json({ error: error.message || "Failed to fetch pending licenses" });
     }
 });
@@ -924,7 +925,7 @@ router.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requir
                         await sendEmail(approvalEmail, {
                             trackingId: `kitchen_license_approved_${locationId}_${Date.now()}`
                         });
-                        console.log(`✅ Sent kitchen license approval email to manager: ${managerEmail}`);
+                        logger.info(`✅ Sent kitchen license approval email to manager: ${managerEmail}`);
                     } else if (status === 'rejected') {
                         const rejectionEmail = generateKitchenLicenseRejectedEmail({
                             managerEmail,
@@ -935,17 +936,17 @@ router.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requir
                         await sendEmail(rejectionEmail, {
                             trackingId: `kitchen_license_rejected_${locationId}_${Date.now()}`
                         });
-                        console.log(`✅ Sent kitchen license rejection email to manager: ${managerEmail}`);
+                        logger.info(`✅ Sent kitchen license rejection email to manager: ${managerEmail}`);
                     }
                 }
             }
         } catch (emailError) {
-            console.error("Error sending kitchen license status email:", emailError);
+            logger.error("Error sending kitchen license status email:", emailError);
         }
 
         res.json({ message: "License status updated successfully" });
     } catch (error: any) {
-        console.error("Error updating license status:", error);
+        logger.error("Error updating license status:", error);
         res.status(500).json({ error: error.message || "Failed to update license status" });
     }
 });
@@ -970,7 +971,7 @@ router.get("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req: 
 
         res.json(mappedLocations);
     } catch (error) {
-        console.error("Error fetching locations:", error);
+        logger.error("Error fetching locations:", error);
         res.status(500).json({ error: "Failed to fetch locations" });
     }
 });
@@ -1031,7 +1032,7 @@ router.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req:
 
         res.status(201).json(mappedLocation);
     } catch (error: any) {
-        console.error("Error creating location:", error);
+        logger.error("Error creating location:", error);
         res.status(500).json({ error: error.message || "Failed to create location" });
     }
 });
@@ -1054,7 +1055,7 @@ router.get("/kitchens", async (req: Request, res: Response) => {
         const allKitchens = await kitchenService.getAllKitchensWithLocation();
         res.json(allKitchens);
     } catch (error: any) {
-        console.error("Error fetching all kitchens:", error);
+        logger.error("Error fetching all kitchens:", error);
         res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
     }
 });
@@ -1082,7 +1083,7 @@ router.get("/kitchens/:locationId", async (req: Request, res: Response) => {
         const kitchens = await kitchenService.getKitchensByLocationId(locationId);
         res.json(kitchens);
     } catch (error: any) {
-        console.error("Error fetching kitchens:", error);
+        logger.error("Error fetching kitchens:", error);
         res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
     }
 });
@@ -1130,7 +1131,7 @@ router.post("/kitchens", async (req: Request, res: Response) => {
         });
         res.status(201).json(kitchen);
     } catch (error: any) {
-        console.error("Error creating kitchen:", error);
+        logger.error("Error creating kitchen:", error);
         if (error.code === '23503') { // Foreign key constraint violation
             return res.status(400).json({ error: 'The selected location does not exist or is invalid.' });
         }
@@ -1216,7 +1217,7 @@ router.put("/locations/:id", async (req: Request, res: Response) => {
 
         return res.json(mappedLocation);
     } catch (error: any) {
-        console.error("Error updating location:", error);
+        logger.error("Error updating location:", error);
         res.status(500).json({ error: error.message || "Failed to update location" });
     }
 });
@@ -1244,7 +1245,7 @@ router.delete("/locations/:id", async (req: Request, res: Response) => {
         await locationService.deleteLocation(locationId);
         res.json({ success: true, message: "Location deleted successfully" });
     } catch (error: any) {
-        console.error("Error deleting location:", error);
+        logger.error("Error deleting location:", error);
         res.status(500).json({ error: error.message || "Failed to delete location" });
     }
 });
@@ -1350,7 +1351,7 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
                                 await sendEmail(email);
                             }
                         } catch (emailError) {
-                            console.error(`Error sending email to chef ${chefId}:`, emailError);
+                            logger.error(`Error sending email to chef ${chefId}:`, emailError);
                         }
                     }
 
@@ -1369,18 +1370,18 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
                                 await sendEmail(email);
                             }
                         } catch (emailError) {
-                            console.error(`Error sending email to manager:`, emailError);
+                            logger.error(`Error sending email to manager:`, emailError);
                         }
                     }
                 }
             } catch (emailError) {
-                console.error("Error sending kitchen settings change emails:", emailError);
+                logger.error("Error sending kitchen settings change emails:", emailError);
             }
         }
 
         res.json(updated);
     } catch (error: any) {
-        console.error("Error updating kitchen:", error);
+        logger.error("Error updating kitchen:", error);
         res.status(500).json({ error: error.message || "Failed to update kitchen" });
     }
 });
@@ -1408,7 +1409,7 @@ router.delete("/kitchens/:id", async (req: Request, res: Response) => {
         await kitchenService.deleteKitchen(kitchenId);
         res.json({ success: true, message: "Kitchen deleted successfully" });
     } catch (error: any) {
-        console.error("Error deleting kitchen:", error);
+        logger.error("Error deleting kitchen:", error);
         res.status(500).json({ error: error.message || "Failed to delete kitchen" });
     }
 });
@@ -1509,7 +1510,7 @@ router.put("/managers/:id", async (req: Request, res: Response) => {
 
         res.json(response);
     } catch (error: any) {
-        console.error("Error updating manager:", error);
+        logger.error("Error updating manager:", error);
         res.status(500).json({ error: error.message || "Failed to update manager" });
     }
 });
@@ -1549,7 +1550,7 @@ router.delete("/managers/:id", async (req: Request, res: Response) => {
         await userService.deleteUser(managerId);
         res.json({ success: true, message: "Manager deleted successfully" });
     } catch (error: any) {
-        console.error("Error deleting manager:", error);
+        logger.error("Error deleting manager:", error);
         res.status(500).json({ error: error.message || "Failed to delete manager" });
     }
 });
@@ -1558,7 +1559,7 @@ router.delete("/managers/:id", async (req: Request, res: Response) => {
 router.post('/test-email', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const user = req.neonUser!;
-        console.log(`POST /api/admin/test-email - User ID: ${user.id}`);
+        logger.info(`POST /api/admin/test-email - User ID: ${user.id}`);
 
         const {
             email,
@@ -1577,7 +1578,7 @@ router.post('/test-email', requireFirebaseAuthWithUser, requireAdmin, async (req
             return res.status(400).json({ error: 'Email is required' });
         }
 
-        console.log('Test email request - Validation passed, generating test email');
+        logger.info('Test email request - Validation passed, generating test email');
 
         // Generate a simple test email
         const emailContent = generatePromoCodeEmail({
@@ -1676,21 +1677,21 @@ router.post('/test-email', requireFirebaseAuthWithUser, requireAdmin, async (req
         });
 
         if (emailSent) {
-            console.log(`Test email sent successfully to ${email}`);
+            logger.info(`Test email sent successfully to ${email}`);
             res.json({
                 success: true,
                 message: 'Test email sent successfully',
                 recipient: email
             });
         } else {
-            console.error(`Failed to send test email to ${email}`);
+            logger.error(`Failed to send test email to ${email}`);
             res.status(500).json({
                 error: 'Failed to send email',
                 message: 'Email service unavailable'
             });
         }
     } catch (error) {
-        console.error('Error sending test email:', error);
+        logger.error('Error sending test email:', error);
         res.status(500).json({
             error: 'Internal server error',
             message: error instanceof Error ? error.message : 'Unknown error'
@@ -1709,7 +1710,7 @@ router.post('/test-email', requireFirebaseAuthWithUser, requireAdmin, async (req
 router.post('/send-promo-email', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const user = req.neonUser!;
-        console.log(`POST /api/admin/send-promo-email - User ID: ${user.id}`);
+        logger.info(`POST /api/admin/send-promo-email - User ID: ${user.id}`);
 
         const {
             email,
@@ -1814,7 +1815,7 @@ router.post('/send-promo-email', requireFirebaseAuthWithUser, requireAdmin, asyn
                     failureCount++;
                 }
             } catch (error) {
-                console.error(`Error sending promo email to ${targetEmail}:`, error);
+                logger.error(`Error sending promo email to ${targetEmail}:`, error);
                 results.push({ email: targetEmail, status: 'failed', error: error instanceof Error ? error.message : 'Unknown error' });
                 failureCount++;
             }
@@ -1835,7 +1836,7 @@ router.post('/send-promo-email', requireFirebaseAuthWithUser, requireAdmin, asyn
             });
         }
     } catch (error) {
-        console.error('Error sending promo email:', error);
+        logger.error('Error sending promo email:', error);
         res.status(500).json({
             error: 'Internal server error',
             message: error instanceof Error ? error.message : 'Unknown error'
@@ -1895,7 +1896,7 @@ router.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
             },
         });
     } catch (error) {
-        console.error('Error fetching fee config:', error);
+        logger.error('Error fetching fee config:', error);
         res.status(500).json({
             error: 'Failed to fetch fee configuration',
             message: error instanceof Error ? error.message : 'Unknown error',
@@ -2012,7 +2013,7 @@ router.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
         clearFeeConfigCache();
 
         // Log the change for audit purposes
-        console.log(`[AUDIT] Fee config updated by admin ${user.id} (${user.username}):`, updates);
+        logger.info(`[AUDIT] Fee config updated by admin ${user.id} (${user.username}):`, updates);
 
         // Get updated configuration
         const newConfig = await getFeeConfig();
@@ -2030,7 +2031,7 @@ router.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
             },
         });
     } catch (error) {
-        console.error('Error updating fee config:', error);
+        logger.error('Error updating fee config:', error);
         res.status(500).json({
             error: 'Failed to update fee configuration',
             message: error instanceof Error ? error.message : 'Unknown error',
@@ -2065,7 +2066,7 @@ router.get("/cancellation-config", requireFirebaseAuthWithUser, requireAdmin, as
             },
         });
     } catch (error) {
-        console.error('Error fetching cancellation config:', error);
+        logger.error('Error fetching cancellation config:', error);
         res.status(500).json({ error: 'Failed to fetch cancellation configuration' });
     }
 });
@@ -2112,7 +2113,7 @@ router.put("/cancellation-config", requireFirebaseAuthWithUser, requireAdmin, as
                 },
             });
 
-        console.log(`[AUDIT] Cancellation auto-accept hours updated to ${hours} by admin ${user.id} (${user.username})`);
+        logger.info(`[AUDIT] Cancellation auto-accept hours updated to ${hours} by admin ${user.id} (${user.username})`);
 
         res.json({
             success: true,
@@ -2122,7 +2123,7 @@ router.put("/cancellation-config", requireFirebaseAuthWithUser, requireAdmin, as
             config: { autoAcceptHours: hours },
         });
     } catch (error) {
-        console.error('Error updating cancellation config:', error);
+        logger.error('Error updating cancellation config:', error);
         res.status(500).json({ error: 'Failed to update cancellation configuration' });
     }
 });
@@ -2191,7 +2192,7 @@ router.post("/fees/simulate", requireFirebaseAuthWithUser, requireAdmin, async (
             } : null,
         });
     } catch (error) {
-        console.error('Error simulating fees:', error);
+        logger.error('Error simulating fees:', error);
         res.status(500).json({
             error: 'Failed to simulate fees',
             message: error instanceof Error ? error.message : 'Unknown error',
@@ -2213,12 +2214,12 @@ router.post("/sync-stripe-fees", requireFirebaseAuthWithUser, requireAdmin, asyn
     try {
         const { managerId, limit = 100 } = req.body;
 
-        console.log('[Admin] Starting Stripe fee sync...', { managerId, limit });
+        logger.info('[Admin] Starting Stripe fee sync...', { managerId, limit });
 
         const { syncStripeFees } = await import('../services/payment-transactions-service');
         const result = await syncStripeFees(db, managerId, limit);
 
-        console.log('[Admin] Stripe fee sync completed:', result);
+        logger.info('[Admin] Stripe fee sync completed:', result);
 
         res.json({
             success: true,
@@ -2226,7 +2227,7 @@ router.post("/sync-stripe-fees", requireFirebaseAuthWithUser, requireAdmin, asyn
             ...result,
         });
     } catch (error) {
-        console.error('Error syncing Stripe fees:', error);
+        logger.error('Error syncing Stripe fees:', error);
         res.status(500).json({
             error: 'Failed to sync Stripe fees',
             message: error instanceof Error ? error.message : 'Unknown error',
@@ -2251,7 +2252,7 @@ router.get("/damage-claim-limits", requireFirebaseAuthWithUser, requireAdmin, as
         const defaults = damageClaimLimitsService.getDefaultLimits();
         res.json({ limits, defaults });
     } catch (error) {
-        console.error("Error fetching damage claim limits:", error);
+        logger.error("Error fetching damage claim limits:", error);
         res.status(500).json({ error: "Failed to fetch damage claim limits" });
     }
 });
@@ -2352,7 +2353,7 @@ router.put("/damage-claim-limits", requireFirebaseAuthWithUser, requireAdmin, as
         // Fetch updated limits
         const newLimits = await damageClaimLimitsService.getDamageClaimLimits();
 
-        console.log('[Admin] Updated damage claim limits:', newLimits);
+        logger.info('[Admin] Updated damage claim limits:', newLimits);
 
         res.json({
             success: true,
@@ -2360,7 +2361,7 @@ router.put("/damage-claim-limits", requireFirebaseAuthWithUser, requireAdmin, as
             limits: newLimits,
         });
     } catch (error) {
-        console.error("Error updating damage claim limits:", error);
+        logger.error("Error updating damage claim limits:", error);
         res.status(500).json({ error: "Failed to update damage claim limits" });
     }
 });
@@ -2379,7 +2380,7 @@ router.get("/storage-checkout-settings", requireFirebaseAuthWithUser, requireAdm
         const defaults = damageClaimLimitsService.getDefaultStorageCheckoutSettings();
         res.json({ settings, defaults });
     } catch (error) {
-        console.error("Error fetching storage checkout settings:", error);
+        logger.error("Error fetching storage checkout settings:", error);
         res.status(500).json({ error: "Failed to fetch storage checkout settings" });
     }
 });
@@ -2439,7 +2440,7 @@ router.put("/storage-checkout-settings", requireFirebaseAuthWithUser, requireAdm
         }
 
         const newSettings = await damageClaimLimitsService.getStorageCheckoutSettings();
-        console.log('[Admin] Updated storage checkout settings:', newSettings);
+        logger.info('[Admin] Updated storage checkout settings:', newSettings);
 
         res.json({
             success: true,
@@ -2447,7 +2448,7 @@ router.put("/storage-checkout-settings", requireFirebaseAuthWithUser, requireAdm
             settings: newSettings,
         });
     } catch (error) {
-        console.error("Error updating storage checkout settings:", error);
+        logger.error("Error updating storage checkout settings:", error);
         res.status(500).json({ error: "Failed to update storage checkout settings" });
     }
 });
@@ -2536,7 +2537,7 @@ router.get("/damage-claims", requireFirebaseAuthWithUser, requireAdmin, async (r
 
         res.json({ claims });
     } catch (error) {
-        console.error("Error fetching damage claims:", error);
+        logger.error("Error fetching damage claims:", error);
         res.status(500).json({ error: "Failed to fetch damage claims" });
     }
 });
@@ -2560,7 +2561,7 @@ router.get("/damage-claims/:id", requireFirebaseAuthWithUser, requireAdmin, asyn
         const history = await damageClaimService.getClaimHistory(claimId);
         res.json({ claim, history });
     } catch (error) {
-        console.error("Error fetching damage claim:", error);
+        logger.error("Error fetching damage claim:", error);
         res.status(500).json({ error: "Failed to fetch damage claim" });
     }
 });
@@ -2607,7 +2608,7 @@ const handleAdminDamageClaimDecision = async (req: Request, res: Response) => {
             message: `Claim ${decision === 'reject' ? 'rejected' : 'approved'}`,
         });
     } catch (error) {
-        console.error("Error processing admin decision:", error);
+        logger.error("Error processing admin decision:", error);
         res.status(500).json({ error: "Failed to process decision" });
     }
 };
@@ -2644,7 +2645,7 @@ router.post("/damage-claims/:id/charge", requireFirebaseAuthWithUser, requireAdm
             chargeId: result.chargeId,
         });
     } catch (error) {
-        console.error("Error charging damage claim:", error);
+        logger.error("Error charging damage claim:", error);
         res.status(500).json({ error: "Failed to charge damage claim" });
     }
 });
@@ -2675,7 +2676,7 @@ router.get("/overstay-settings", requireFirebaseAuthWithUser, requireAdmin, asyn
             },
         });
     } catch (error) {
-        console.error("Error fetching overstay settings:", error);
+        logger.error("Error fetching overstay settings:", error);
         res.status(500).json({ error: "Failed to fetch overstay settings" });
     }
 });
@@ -2746,14 +2747,14 @@ router.put("/overstay-settings", requireFirebaseAuthWithUser, requireAdmin, asyn
 
         const { getOverstayPlatformDefaults } = await import('../services/overstay-defaults-service');
         const newDefaults = await getOverstayPlatformDefaults();
-        console.log('[Admin] Updated overstay settings:', newDefaults);
+        logger.info('[Admin] Updated overstay settings:', newDefaults);
 
         res.json({
             success: true,
             message: `Updated ${updates.length} overstay setting(s)`,
         });
     } catch (error) {
-        console.error("Error updating overstay settings:", error);
+        logger.error("Error updating overstay settings:", error);
         res.status(500).json({ error: "Failed to update overstay settings" });
     }
 });
@@ -2842,7 +2843,7 @@ router.get("/escalated-penalties", requireFirebaseAuthWithUser, requireAdmin, as
             },
         });
     } catch (error) {
-        console.error("Error fetching escalated penalties:", error);
+        logger.error("Error fetching escalated penalties:", error);
         res.status(500).json({ error: "Failed to fetch escalated penalties" });
     }
 });
@@ -2862,7 +2863,7 @@ router.get("/transactions/locations", requireFirebaseAuthWithUser, requireAdmin,
         `);
         res.json(result.rows);
     } catch (error) {
-        console.error('[Admin Transactions] Error fetching locations:', error);
+        logger.error('[Admin Transactions] Error fetching locations:', error);
         res.status(500).json({ error: "Failed to fetch locations" });
     }
 });
@@ -3093,8 +3094,8 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
 
         res.json({ transactions: formattedTransactions, total });
     } catch (error: any) {
-        console.error('[Admin Transactions] Error:', error?.message || error);
-        if (error?.stack) console.error('[Admin Transactions] Stack:', error.stack);
+        logger.error('[Admin Transactions] Error:', error?.message || error);
+        if (error?.stack) logger.error('[Admin Transactions] Stack:', error.stack);
         res.status(500).json({ error: "Failed to fetch transactions", detail: error?.message || String(error) });
     }
 });
@@ -3193,7 +3194,7 @@ router.get("/overstay-penalties", requireFirebaseAuthWithUser, requireAdmin, asy
 
         res.json({ overstayPenalties: result.rows, total });
     } catch (error: any) {
-        console.error('[Admin Overstay Penalties] Error:', error?.message || error);
+        logger.error('[Admin Overstay Penalties] Error:', error?.message || error);
         res.status(500).json({ error: "Failed to fetch overstay penalties" });
     }
 });
@@ -3228,7 +3229,7 @@ router.get("/overstay-penalties/:id/history", requireFirebaseAuthWithUser, requi
 
         res.json({ history: result.rows });
     } catch (error: any) {
-        console.error('[Admin Overstay History] Error:', error?.message || error);
+        logger.error('[Admin Overstay History] Error:', error?.message || error);
         res.status(500).json({ error: "Failed to fetch overstay history" });
     }
 });
@@ -3318,7 +3319,7 @@ router.get("/damage-claims-history", requireFirebaseAuthWithUser, requireAdmin, 
 
         res.json({ damageClaims: result.rows, total });
     } catch (error: any) {
-        console.error('[Admin Damage Claims History] Error:', error?.message || error);
+        logger.error('[Admin Damage Claims History] Error:', error?.message || error);
         res.status(500).json({ error: "Failed to fetch damage claims" });
     }
 });
@@ -3353,7 +3354,7 @@ router.get("/damage-claims-history/:id/history", requireFirebaseAuthWithUser, re
 
         res.json({ history: result.rows });
     } catch (error: any) {
-        console.error('[Admin Damage Claim History] Error:', error?.message || error);
+        logger.error('[Admin Damage Claim History] Error:', error?.message || error);
         res.status(500).json({ error: "Failed to fetch damage claim history" });
     }
 });
@@ -3390,7 +3391,7 @@ router.get("/damage-claims-history/:id/evidence", requireFirebaseAuthWithUser, r
 
         res.json({ evidence: result.rows });
     } catch (error: any) {
-        console.error('[Admin Damage Evidence] Error:', error?.message || error);
+        logger.error('[Admin Damage Evidence] Error:', error?.message || error);
         res.status(500).json({ error: "Failed to fetch evidence" });
     }
 });
@@ -3406,7 +3407,7 @@ router.get("/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, a
         const defaults = getDefaultRateLimits();
         res.json({ current, defaults });
     } catch (error: any) {
-        console.error('[Admin Security] Error fetching rate limits:', error?.message || error);
+        logger.error('[Admin Security] Error fetching rate limits:', error?.message || error);
         res.status(500).json({ error: "Failed to fetch rate limit settings" });
     }
 });
@@ -3445,10 +3446,10 @@ router.put("/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, a
             `);
         }
         invalidateRateLimitCache();
-        console.log(`[Admin Security] Rate limits updated by admin ${req.neonUser?.id}: ${updates.map(u => `${u.key}=${u.value}`).join(', ')}`);
+        logger.info(`[Admin Security] Rate limits updated by admin ${req.neonUser?.id}: ${updates.map(u => `${u.key}=${u.value}`).join(', ')}`);
         res.json({ success: true, updated: updates.length, settings: Object.fromEntries(updates.map(u => [u.key, u.value])) });
     } catch (error: any) {
-        console.error('[Admin Security] Error updating rate limits:', error?.message || error);
+        logger.error('[Admin Security] Error updating rate limits:', error?.message || error);
         res.status(500).json({ error: "Failed to update rate limit settings" });
     }
 });

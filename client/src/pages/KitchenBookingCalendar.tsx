@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, Lock, FileText, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -25,7 +26,7 @@ function EquipmentImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
         alt={alt}
         className="w-20 h-20 object-cover rounded-lg border border-gray-200"
         onError={(e) => {
-          console.error('Equipment image failed to load:', imageUrl);
+          logger.error('Equipment image failed to load:', imageUrl);
           e.currentTarget.style.display = 'none';
         }}
       />
@@ -392,7 +393,7 @@ export default function KitchenBookingCalendar() {
       }
 
       const slots = await response.json();
-      console.log('📅 All slots for', date, ':', slots);
+      logger.info('📅 All slots for', date, ':', slots);
 
       // Filter out past times and times within minimum booking window
       const now = new Date();
@@ -425,7 +426,7 @@ export default function KitchenBookingCalendar() {
         return true;
       });
 
-      console.log(`📅 Filtered ${slots.length} slots to ${filteredSlots.length} (removed past/within ${minimumBookingWindowHours}h window)`);
+      logger.info(`📅 Filtered ${slots.length} slots to ${filteredSlots.length} (removed past/within ${minimumBookingWindowHours}h window)`);
       setAllSlots(filteredSlots);
 
       if (slots.length === 0) {
@@ -436,7 +437,7 @@ export default function KitchenBookingCalendar() {
         });
       }
     } catch (error) {
-      console.error("Error loading slots:", error);
+      logger.error("Error loading slots:", error);
       setAllSlots([]);
       toast({
         title: "Error",
@@ -466,9 +467,9 @@ export default function KitchenBookingCalendar() {
         const storageData = await storageRes.json();
         // Keep values in cents - formatCurrency and useStoragePricing expect cents
         setStorageListings(storageData);
-        console.log(`✅ Loaded ${storageData.length} storage listings for kitchen ${kitchenId}`);
+        logger.info(`✅ Loaded ${storageData.length} storage listings for kitchen ${kitchenId}`);
       } else {
-        console.log(`ℹ️ No storage listings available (status: ${storageRes.status})`);
+        logger.info(`ℹ️ No storage listings available (status: ${storageRes.status})`);
         setStorageListings([]);
       }
 
@@ -499,16 +500,16 @@ export default function KitchenBookingCalendar() {
           rental: (equipmentData.rental || []).map(normalizeEquipment),
         };
         setEquipmentListings(normalizedEquipment);
-        console.log(`✅ Loaded equipment listings for kitchen ${kitchenId}:`, {
+        logger.info(`✅ Loaded equipment listings for kitchen ${kitchenId}:`, {
           included: normalizedEquipment.included.length,
           rental: normalizedEquipment.rental.length,
         });
       } else {
-        console.log(`ℹ️ No equipment listings available (status: ${equipmentRes.status})`);
+        logger.info(`ℹ️ No equipment listings available (status: ${equipmentRes.status})`);
         setEquipmentListings({ all: [], included: [], rental: [] });
       }
     } catch (error) {
-      console.error('Error fetching kitchen addons:', error);
+      logger.error('Error fetching kitchen addons:', error);
       setStorageListings([]);
       setEquipmentListings({ all: [], included: [], rental: [] });
     } finally {
@@ -556,25 +557,25 @@ export default function KitchenBookingCalendar() {
         if (currentUser) {
           const token = await currentUser.getIdToken();
           authHeader = `Bearer ${token}`;
-          console.log('🔑 Using fresh Firebase token for pricing fetch');
+          logger.info('🔑 Using fresh Firebase token for pricing fetch');
         }
       } catch (e) {
         // ignore, will fallback to localStorage token
-        console.log('⚠️ Failed to get fresh token, falling back to localStorage');
+        logger.info('⚠️ Failed to get fresh token, falling back to localStorage');
       }
 
       if (!authHeader) {
         const token = localStorage.getItem('firebaseToken');
         if (token) {
           authHeader = `Bearer ${token}`;
-          console.log('🔑 Using localStorage token for pricing fetch');
+          logger.info('🔑 Using localStorage token for pricing fetch');
         }
       }
 
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authHeader) headers['Authorization'] = authHeader;
 
-      console.log('🔍 Fetching pricing for kitchen:', kitchen.id, 'Auth header present:', !!authHeader);
+      logger.info('🔍 Fetching pricing for kitchen:', kitchen.id, 'Auth header present:', !!authHeader);
 
       const response = await fetch(`/api/chef/kitchens/${kitchen.id}/pricing`, {
         credentials: "include",
@@ -584,8 +585,8 @@ export default function KitchenBookingCalendar() {
 
       if (response.ok) {
         const pricing = await response.json();
-        console.log('✅ Kitchen pricing fetched:', pricing);
-        console.log('✅ Parsed hourlyRate:', pricing.hourlyRate, 'Type:', typeof pricing.hourlyRate);
+        logger.info('✅ Kitchen pricing fetched:', pricing);
+        logger.info('✅ Parsed hourlyRate:', pricing.hourlyRate, 'Type:', typeof pricing.hourlyRate);
 
         // API returns cents - use as is
         let hourlyRateCents = pricing.hourlyRate;
@@ -598,10 +599,10 @@ export default function KitchenBookingCalendar() {
           currency: pricing.currency || 'CAD',
           minimumBookingHours: pricing.minimumBookingHours || 1,
         });
-        console.log('✅ Set kitchenPricing state:', { hourlyRate: hourlyRateCents, currency: pricing.currency || 'CAD', minimumBookingHours: pricing.minimumBookingHours || 1 });
+        logger.info('✅ Set kitchenPricing state:', { hourlyRate: hourlyRateCents, currency: pricing.currency || 'CAD', minimumBookingHours: pricing.minimumBookingHours || 1 });
       } else if (response.status === 404) {
         // No pricing set yet - this is expected
-        console.log('ℹ️ No pricing set for kitchen:', kitchen.id);
+        logger.info('ℹ️ No pricing set for kitchen:', kitchen.id);
         setKitchenPricing({
           hourlyRate: null,
           currency: 'CAD',
@@ -609,7 +610,7 @@ export default function KitchenBookingCalendar() {
         });
       } else {
         const errorText = await response.text();
-        console.error('❌ Error fetching pricing:', response.status, response.statusText, errorText);
+        logger.error('❌ Error fetching pricing:', response.status, response.statusText, errorText);
         // Still set pricing state so UI can show message
         setKitchenPricing({
           hourlyRate: null,
@@ -618,7 +619,7 @@ export default function KitchenBookingCalendar() {
         });
       }
     } catch (error) {
-      console.error('Error fetching kitchen pricing:', error);
+      logger.error('Error fetching kitchen pricing:', error);
       setKitchenPricing({
         hourlyRate: null,
         currency: 'CAD',

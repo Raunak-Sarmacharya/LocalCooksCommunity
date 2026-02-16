@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import { Express } from 'express';
 // import { authRouter } from './routes/firebase/auth';
 // import { usersRouter } from './routes/firebase/users';
@@ -12,7 +13,7 @@ import { platformRouter } from './routes/firebase/platform';
 import { kitchenApplicationsRouter } from './routes/firebase/kitchen-applications';
 
 export function registerFirebaseRoutes(app: Express) {
-  console.log('🔥 Registering Firebase Routes (Modular)...');
+  logger.info('🔥 Registering Firebase Routes (Modular)...');
 
   // Base API path for Firebase routes
   const apiPrefix = '/api';
@@ -30,5 +31,5 @@ export function registerFirebaseRoutes(app: Express) {
   app.use(apiPrefix, platformRouter);
   app.use(apiPrefix, kitchenApplicationsRouter);
 
-  console.log('✅ All Firebase modules registered.');
+  logger.info('✅ All Firebase modules registered.');
 }

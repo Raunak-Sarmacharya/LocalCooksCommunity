@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import express, { Router, Request, Response } from "express";
 import path from "path";
 import fs from "fs";
@@ -38,7 +39,7 @@ router.post("/upload-file",
                     try {
                         fs.unlinkSync((req.file as any).path);
                     } catch (e) {
-                        console.error('Error cleaning up file:', e);
+                        logger.error('Error cleaning up file:', e);
                     }
                 }
                 return res.status(401).json({ error: "Not authenticated" });
@@ -64,14 +65,14 @@ router.post("/upload-file",
                 type: req.file.mimetype
             });
         } catch (error) {
-            console.error("File upload error:", error);
+            logger.error("File upload error:", error);
 
             // Clean up uploaded file on error (development only)
             if (req.file && (req.file as any).path) {
                 try {
                     fs.unlinkSync((req.file as any).path);
                 } catch (e) {
-                    console.error('Error cleaning up file:', e);
+                    logger.error('Error cleaning up file:', e);
                 }
             }
 
@@ -103,7 +104,7 @@ router.post("/images/presigned-url", optionalFirebaseAuth, async (req: Request, 
 
         // In development, always return the original URL (no presigned URLs needed)
         if (isDevelopment) {
-            console.log('💻 Development mode: Returning original URL without presigned URL');
+            logger.info('💻 Development mode: Returning original URL without presigned URL');
             return res.json({ url: imageUrl });
         }
 
@@ -113,7 +114,7 @@ router.post("/images/presigned-url", optionalFirebaseAuth, async (req: Request, 
                 // const { getPresignedUrl, isR2Configured } = await import('../r2-storage');
 
                 if (!isR2Configured()) {
-                    console.warn('R2 not configured, returning original URL');
+                    logger.warn('R2 not configured, returning original URL');
                     return res.json({ url: imageUrl });
                 }
 
@@ -126,13 +127,13 @@ router.post("/images/presigned-url", optionalFirebaseAuth, async (req: Request, 
                     if (!user) {
                         return res.status(401).json({ error: "Not authenticated" });
                     }
-                    console.log(`✅ Presigned URL request from authenticated user: ${user.id} (${user.role || 'no role'})`);
+                    logger.info(`✅ Presigned URL request from authenticated user: ${user.id} (${user.role || 'no role'})`);
                 }
 
                 const presignedUrl = await getPresignedUrl(imageUrl, 3600); // 1 hour expiry
                 return res.json({ url: presignedUrl });
             } catch (error) {
-                console.error('Error generating presigned URL, falling back to original URL:', {
+                logger.error('Error generating presigned URL, falling back to original URL:', {
                     error: error instanceof Error ? error.message : 'Unknown error',
                     imageUrl
                 });
@@ -145,7 +146,7 @@ router.post("/images/presigned-url", optionalFirebaseAuth, async (req: Request, 
         // Default: return original URL
         return res.json({ url: imageUrl });
     } catch (error) {
-        console.error('Error in presigned URL endpoint:', error);
+        logger.error('Error in presigned URL endpoint:', error);
         return res.status(500).json({
             error: "Failed to generate presigned URL",
             details: error instanceof Error ? error.message : "Unknown error"
@@ -181,10 +182,10 @@ router.get("/images/r2/:path(*)", async (req: Request, res: Response) => {
         const isPublic = isPublicPath || isImageFile;
 
         // Debug logging for auth issues
-        console.log(`[R2 Images Proxy] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}, path: ${decodedPath}`);
+        logger.info(`[R2 Images Proxy] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}, path: ${decodedPath}`);
 
         if (!isPublic && !req.neonUser) {
-            console.log(`[R2 Images Proxy] Unauthorized access attempt for protected file: ${decodedPath}`);
+            logger.info(`[R2 Images Proxy] Unauthorized access attempt for protected file: ${decodedPath}`);
             return res.status(401).send("Authentication required for protected files");
         }
 
@@ -192,7 +193,7 @@ router.get("/images/r2/:path(*)", async (req: Request, res: Response) => {
         // Use the decoded path to ensure proper URL construction
         const fullR2Url = `https://files.localcooks.ca/${decodedPath}`;
 
-        console.log(`[R2 Images Proxy] Request for: ${decodedPath} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'})`);
+        logger.info(`[R2 Images Proxy] Request for: ${decodedPath} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'})`);
 
         // Generate a presigned URL
         const presignedUrl = await getPresignedUrl(fullR2Url); // uses 1 hour expiry by default
@@ -200,7 +201,7 @@ router.get("/images/r2/:path(*)", async (req: Request, res: Response) => {
         // Redirect the client to the presigned URL
         res.redirect(307, presignedUrl);
     } catch (error) {
-        console.error("[R2 Images Proxy] Error:", error);
+        logger.error("[R2 Images Proxy] Error:", error);
         res.status(404).send("File not found or access denied");
     }
 });
@@ -218,7 +219,7 @@ router.get("/r2-proxy", async (req: Request, res: Response) => {
             const isImage = /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i.test(filename);
             const folder = isImage ? 'images' : 'documents';
             targetUrl = `https://files.localcooks.ca/${folder}/${filename}`;
-            console.log(`[R2 Proxy] Resolved filename "${filename}" to: ${targetUrl}`);
+            logger.info(`[R2 Proxy] Resolved filename "${filename}" to: ${targetUrl}`);
         } else if (url && typeof url === 'string') {
             targetUrl = url;
         } else {
@@ -227,7 +228,7 @@ router.get("/r2-proxy", async (req: Request, res: Response) => {
 
         // HIGH-6 Security: SSRF protection — only allow our R2 domain
         if (!isAllowedR2Url(targetUrl)) {
-            console.warn(`[R2 Proxy] SSRF blocked: ${targetUrl}`);
+            logger.warn(`[R2 Proxy] SSRF blocked: ${targetUrl}`);
             return res.status(400).send("Invalid URL domain");
         }
 
@@ -238,21 +239,21 @@ router.get("/r2-proxy", async (req: Request, res: Response) => {
         const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i.test(targetUrl);
         const isPublic = isPublicPath || isImageFile;
 
-        console.log(`[R2 Proxy] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
+        logger.info(`[R2 Proxy] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
 
         if (!isPublic && !req.neonUser) {
-            console.log(`[R2 Proxy] Unauthorized access attempt for protected file: ${targetUrl}`);
+            logger.info(`[R2 Proxy] Unauthorized access attempt for protected file: ${targetUrl}`);
             return res.status(401).send("Authentication required for protected files");
         }
 
-        console.log(`[R2 Proxy] Request for: ${targetUrl} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'}, public: ${isPublic})`);
+        logger.info(`[R2 Proxy] Request for: ${targetUrl} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'}, public: ${isPublic})`);
 
         // Generate a presigned URL (valid for 1 hour)
         const presignedUrl = await getPresignedUrl(targetUrl);
 
         res.redirect(307, presignedUrl);
     } catch (error) {
-        console.error("[R2 Proxy] Error:", error);
+        logger.error("[R2 Proxy] Error:", error);
         // HIGH-6 Security: Removed open redirect fallback to prevent SSRF
         res.status(500).send("Failed to proxy image");
     }
@@ -276,21 +277,21 @@ router.get("/r2-presigned", async (req: Request, res: Response) => {
         const isPublic = isPublicPath || isImageFile;
 
         // Debug logging for auth issues
-        console.log(`[R2 Presigned] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
+        logger.info(`[R2 Presigned] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
 
         if (!isPublic && !req.neonUser) {
-            console.log(`[R2 Presigned] Unauthorized access attempt for protected file: ${url}`);
+            logger.info(`[R2 Presigned] Unauthorized access attempt for protected file: ${url}`);
             return res.status(401).json({ error: "Not authenticated" });
         }
 
-        console.log(`[R2 Presigned] Request for: ${url} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'}, public: ${isPublic})`);
+        logger.info(`[R2 Presigned] Request for: ${url} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'}, public: ${isPublic})`);
 
         // Generate a presigned URL (valid for 1 hour)
         const presignedUrl = await getPresignedUrl(url);
 
         return res.json({ url: presignedUrl });
     } catch (error) {
-        console.error("[R2 Presigned] Error:", error);
+        logger.error("[R2 Presigned] Error:", error);
         res.status(500).json({ error: "Failed to generate presigned URL" });
     }
 });
@@ -333,7 +334,7 @@ router.get("/documents/:filename", optionalFirebaseAuth, async (req: Request, re
                     }
                 }
             } catch (error) {
-                console.error("Error verifying query token:", error);
+                logger.error("Error verifying query token:", error);
             }
         }
 
@@ -343,7 +344,7 @@ router.get("/documents/:filename", optionalFirebaseAuth, async (req: Request, re
         if (!userId) {
             // Log detailed auth info for debugging
             // ... (simplified log)
-            console.log('[FILE ACCESS] Authentication failed for:', filename);
+            logger.info('[FILE ACCESS] Authentication failed for:', filename);
 
             // Check if this is a "fallback" request where strict auth might be skipped if we want public access? 
             // But route logic says "Files must be accessed with authentication".
@@ -362,7 +363,7 @@ router.get("/documents/:filename", optionalFirebaseAuth, async (req: Request, re
             });
         }
 
-        console.log('[FILE ACCESS] Authenticated user:', userId, 'role:', userRole, 'accessing:', filename);
+        logger.info('[FILE ACCESS] Authenticated user:', userId, 'role:', userRole, 'accessing:', filename);
 
         // Check if this is a Cloudflare R2 URL (production)
         const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
@@ -385,7 +386,7 @@ router.get("/documents/:filename", optionalFirebaseAuth, async (req: Request, re
                         return res.redirect(presignedUrl);
                     }
                 } catch (error) {
-                    console.error("Error generating presigned URL:", error);
+                    logger.error("Error generating presigned URL:", error);
                     return res.status(500).json({ message: "Error accessing file" });
                 }
             }
@@ -451,11 +452,11 @@ router.get("/documents/:filename", optionalFirebaseAuth, async (req: Request, re
                     .limit(1);
 
                 if (kitchenMatch) {
-                    console.log(`[FILE ACCESS] Public access granted for kitchen image: ${filename}`);
+                    logger.info(`[FILE ACCESS] Public access granted for kitchen image: ${filename}`);
                     isPublicAccess = true;
                 }
             } catch (dbError) {
-                console.error("Error checking public access:", dbError);
+                logger.error("Error checking public access:", dbError);
                 // Fail safe - deny
             }
         }
@@ -501,10 +502,10 @@ router.get("/documents/:filename", optionalFirebaseAuth, async (req: Request, re
                     const fakeUrl = `https://r2.localcooks.com/documents/${filename}`;
                     const presignedUrl = await getPresignedUrl(fakeUrl, 3600);
 
-                    console.log(`[FILE ACCESS] Redirecting to R2 for: ${filename}`);
+                    logger.info(`[FILE ACCESS] Redirecting to R2 for: ${filename}`);
                     return res.redirect(307, presignedUrl);
                 } catch (r2Error) {
-                    console.error('[FILE ACCESS] R2 fallback failed:', r2Error);
+                    logger.error('[FILE ACCESS] R2 fallback failed:', r2Error);
                     return res.status(404).json({ message: "File not found" });
                 }
             } else {
@@ -512,7 +513,7 @@ router.get("/documents/:filename", optionalFirebaseAuth, async (req: Request, re
             }
         }
     } catch (error) {
-        console.error("Error serving file:", error);
+        logger.error("Error serving file:", error);
         return res.status(500).json({ message: "Internal server error" });
     }
 });

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -375,7 +376,7 @@ export const EmailCanvasDesigner: React.FC<EmailCanvasDesignerProps> = ({
         });
       }
     } catch (error) {
-      console.error('Image upload error:', error);
+      logger.error('Image upload error:', error);
     }
   };
 
@@ -511,7 +512,7 @@ export const EmailCanvasDesigner: React.FC<EmailCanvasDesignerProps> = ({
   const handleHeaderStylingChange = (property: string, value: string) => {
     // Prevent changes to header background color and image to maintain brand consistency
     if (property === 'backgroundColor' || property === 'backgroundImage') {
-      console.log('Header background changes are disabled to maintain brand consistency');
+      logger.info('Header background changes are disabled to maintain brand consistency');
       return;
     }
     

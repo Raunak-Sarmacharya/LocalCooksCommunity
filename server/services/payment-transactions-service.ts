@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 /**
  * Payment Transactions Service
  * 
@@ -462,7 +463,7 @@ export async function syncStripeAmountsToBookings(
     `);
 
     if (transactionResult.rows.length === 0) {
-      console.warn(`[Stripe Sync] No payment transaction found for PaymentIntent ${paymentIntentId}`);
+      logger.warn(`[Stripe Sync] No payment transaction found for PaymentIntent ${paymentIntentId}`);
       return;
     }
 
@@ -480,7 +481,7 @@ export async function syncStripeAmountsToBookings(
       ? (typeof transaction.metadata === 'string' ? JSON.parse(transaction.metadata) : transaction.metadata)
       : {};
     if (ptMetadata.partialCapture) {
-      console.log(`[Stripe Sync] Skipping booking table sync for partially captured PaymentIntent ${paymentIntentId} — capture engine already set correct values`);
+      logger.info(`[Stripe Sync] Skipping booking table sync for partially captured PaymentIntent ${paymentIntentId} — capture engine already set correct values`);
       return;
     }
 
@@ -625,9 +626,9 @@ export async function syncStripeAmountsToBookings(
       }
     }
 
-    console.log(`[Stripe Sync] Synced Stripe amounts to ${bookingType} booking(s) for PaymentIntent ${paymentIntentId}`);
+    logger.info(`[Stripe Sync] Synced Stripe amounts to ${bookingType} booking(s) for PaymentIntent ${paymentIntentId}`);
   } catch (error: any) {
-    console.error(`[Stripe Sync] Error syncing Stripe amounts to bookings for ${paymentIntentId}:`, error);
+    logger.error(`[Stripe Sync] Error syncing Stripe amounts to bookings for ${paymentIntentId}:`, error);
     // Don't throw - we don't want to fail the webhook if booking update fails
   }
 }
@@ -675,7 +676,7 @@ export async function syncExistingPaymentTransactionsFromStripe(
   }
 
   if (!getStripePaymentAmounts) {
-    console.error('[Stripe Sync] Failed to import stripe-service from all paths:', importPaths);
+    logger.error('[Stripe Sync] Failed to import stripe-service from all paths:', importPaths);
     throw new Error(`Cannot import stripe-service from any path. Last error: ${lastError?.message || 'Unknown'}`);
   }
 
@@ -722,7 +723,7 @@ export async function syncExistingPaymentTransactionsFromStripe(
 
     const transactions = result.rows;
 
-    console.log(`[Stripe Sync] Found ${transactions.length} payment transactions to sync for manager ${managerId}`);
+    logger.info(`[Stripe Sync] Found ${transactions.length} payment transactions to sync for manager ${managerId}`);
 
     let synced = 0;
     let failed = 0;
@@ -745,14 +746,14 @@ export async function syncExistingPaymentTransactionsFromStripe(
             managerConnectAccountId = (managerResult.rows[0] as any).stripe_connect_account_id;
           }
         } catch (error) {
-          console.warn(`[Stripe Sync] Could not fetch manager Connect account:`, error);
+          logger.warn(`[Stripe Sync] Could not fetch manager Connect account:`, error);
         }
 
         // Fetch actual Stripe amounts
         const stripeAmounts = await getStripePaymentAmounts(paymentIntentId, managerConnectAccountId);
 
         if (!stripeAmounts) {
-          console.warn(`[Stripe Sync] Could not fetch Stripe amounts for ${paymentIntentId}`);
+          logger.warn(`[Stripe Sync] Could not fetch Stripe amounts for ${paymentIntentId}`);
           failed++;
           errors.push({ paymentIntentId, error: 'Could not fetch Stripe amounts' });
           continue;
@@ -771,19 +772,19 @@ export async function syncExistingPaymentTransactionsFromStripe(
         await syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db);
 
         synced++;
-        console.log(`[Stripe Sync] Synced transaction ${transaction.id} (PaymentIntent: ${paymentIntentId})`);
+        logger.info(`[Stripe Sync] Synced transaction ${transaction.id} (PaymentIntent: ${paymentIntentId})`);
       } catch (error: any) {
-        console.error(`[Stripe Sync] Error syncing transaction ${transaction.id} (${paymentIntentId}):`, error);
+        logger.error(`[Stripe Sync] Error syncing transaction ${transaction.id} (${paymentIntentId}):`, error);
         failed++;
         errors.push({ paymentIntentId, error: error.message || 'Unknown error' });
       }
     }
 
-    console.log(`[Stripe Sync] Completed: ${synced} synced, ${failed} failed`);
+    logger.info(`[Stripe Sync] Completed: ${synced} synced, ${failed} failed`);
 
     return { synced, failed, errors };
   } catch (error: any) {
-    console.error(`[Stripe Sync] Error syncing existing transactions:`, error);
+    logger.error(`[Stripe Sync] Error syncing existing transactions:`, error);
     throw error;
   }
 }
@@ -1196,7 +1197,7 @@ export async function syncStripeFees(
         db
       );
       
-      console.log(`[Stripe Sync] ✅ Synced transaction ${transactionId}: fee=${stripeProcessingFee} cents`);
+      logger.info(`[Stripe Sync] ✅ Synced transaction ${transactionId}: fee=${stripeProcessingFee} cents`);
       synced++;
       
       // Rate limiting: wait 100ms between API calls to avoid hitting Stripe rate limits

@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import { Request, Response, Router } from "express";
 import { userService } from "../domains/users/user.service";
 import { microlearningService } from "../domains/microlearning/microlearning.service";
@@ -16,7 +17,7 @@ const hasApprovedApplication = async (userId: number) => {
     const applications = await applicationService.getApplicationsByUserId(userId);
     return applications.some(app => app.status === 'approved');
   } catch (error) {
-    console.error('Error checking application status:', error);
+    logger.error('Error checking application status:', error);
     return false;
   }
 };
@@ -48,7 +49,7 @@ router.get("/progress", async (req: Request, res: Response) => {
       isAdmin: isAdmin
     });
   } catch (error) {
-    console.error('Error fetching microlearning progress:', error);
+    logger.error('Error fetching microlearning progress:', error);
     res.status(500).json({ message: 'Failed to fetch progress' });
   }
 });
@@ -96,7 +97,7 @@ router.get("/progress/:userId", async (req: Request, res: Response) => {
       isAdmin: isAdmin
     });
   } catch (error) {
-    console.error('Error fetching microlearning progress:', error);
+    logger.error('Error fetching microlearning progress:', error);
     res.status(500).json({ message: 'Failed to fetch progress' });
   }
 });
@@ -160,7 +161,7 @@ router.post("/progress", async (req: Request, res: Response) => {
       message: 'Progress updated successfully'
     });
   } catch (error) {
-    console.error('Error updating video progress:', error);
+    logger.error('Error updating video progress:', error);
     res.status(500).json({ message: 'Failed to update progress' });
   }
 });
@@ -243,7 +244,7 @@ router.post("/complete", async (req: Request, res: Response) => {
           videoProgress
         });
       } catch (afsError) {
-        console.error('Always Food Safe API error:', afsError);
+        logger.error('Always Food Safe API error:', afsError);
         // Don't fail the request, just log the error
       }
     }
@@ -257,7 +258,7 @@ router.post("/complete", async (req: Request, res: Response) => {
       certificateUrl: alwaysFoodSafeResult?.certificateUrl
     });
   } catch (error) {
-    console.error('Error completing microlearning:', error);
+    logger.error('Error completing microlearning:', error);
     res.status(500).json({ message: 'Failed to complete microlearning' });
   }
 });
@@ -293,7 +294,7 @@ router.get("/completion/:userId", async (req: Request, res: Response) => {
 
     res.json(completion);
   } catch (error) {
-    console.error('Error getting microlearning completion status:', error);
+    logger.error('Error getting microlearning completion status:', error);
     res.status(500).json({ message: 'Failed to get completion status' });
   }
 });
@@ -332,7 +333,7 @@ router.get("/certificate/:userId", async (req: Request, res: Response) => {
       message: 'Certificate for skillpass.nl food safety training preparation - Complete your official certification at skillpass.nl'
     });
   } catch (error) {
-    console.error('Error generating certificate:', error);
+    logger.error('Error generating certificate:', error);
     res.status(500).json({ message: 'Failed to generate certificate' });
   }
 });

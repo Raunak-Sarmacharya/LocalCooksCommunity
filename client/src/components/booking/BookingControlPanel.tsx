@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useState, useMemo, useEffect } from "react";
 import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, Package, CalendarPlus, Search, ArrowUpDown, Download, Loader2, FileText } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -56,7 +57,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       };
     }
   } catch (error) {
-    console.error('Error getting Firebase token:', error);
+    logger.error('Error getting Firebase token:', error);
   }
   return {
     'Content-Type': 'application/json',
@@ -154,7 +155,7 @@ export default function BookingControlPanel({
             upcoming.push(booking);
           }
         } catch (fallbackError) {
-          console.error('Error processing booking:', booking, error);
+          logger.error('Error processing booking:', booking, error);
         }
       }
     });
@@ -184,7 +185,7 @@ export default function BookingControlPanel({
       }
     });
 
-    console.log('📅 BookingControlPanel: Categorized bookings', {
+    logger.info('📅 BookingControlPanel: Categorized bookings', {
       upcoming: upcoming.length,
       past: past.length,
       all: bookings.length
@@ -373,7 +374,7 @@ export default function BookingControlPanel({
       const date = new Date(dateOnly);
       
       if (isNaN(date.getTime())) {
-        console.warn('Invalid date string:', dateStr);
+        logger.warn('Invalid date string:', dateStr);
         return 'Invalid Date';
       }
       
@@ -384,7 +385,7 @@ export default function BookingControlPanel({
         day: "numeric",
       });
     } catch (error) {
-      console.error('Error formatting date:', dateStr, error);
+      logger.error('Error formatting date:', dateStr, error);
       return 'Invalid Date';
     }
   };
@@ -397,7 +398,7 @@ export default function BookingControlPanel({
       const date = new Date(`${dateOnly}T${timeStr}`);
       
       if (isNaN(date.getTime())) {
-        console.warn('Invalid date/time combination:', dateStr, timeStr);
+        logger.warn('Invalid date/time combination:', dateStr, timeStr);
         return 'Invalid Date';
       }
       
@@ -409,7 +410,7 @@ export default function BookingControlPanel({
         minute: "2-digit",
       });
     } catch (error) {
-      console.error('Error formatting date/time:', dateStr, timeStr, error);
+      logger.error('Error formatting date/time:', dateStr, timeStr, error);
       return 'Invalid Date';
     }
   };
@@ -462,13 +463,13 @@ export default function BookingControlPanel({
   const handleDownloadInvoice = async (bookingId: number, bookingDate: string) => {
     setDownloadingInvoiceId(bookingId);
     try {
-      console.log('Starting invoice download for booking:', bookingId);
+      logger.info('Starting invoice download for booking:', bookingId);
       
       const { auth } = await import('@/lib/firebase');
       const currentUser = auth.currentUser;
       
       if (!currentUser) {
-        console.error('No current user found for invoice download');
+        logger.error('No current user found for invoice download');
         toast.error("Authentication Required", {
           description: "Please log in to download invoice"
         });
@@ -476,11 +477,11 @@ export default function BookingControlPanel({
         return;
       }
 
-      console.log('Getting Firebase token for user:', currentUser.uid);
+      logger.info('Getting Firebase token for user:', currentUser.uid);
       const token = await currentUser.getIdToken();
       
       if (!token) {
-        console.error('Failed to get Firebase token');
+        logger.error('Failed to get Firebase token');
         toast.error("Authentication Error", {
           description: "Failed to get authentication token. Please try again."
         });
@@ -488,7 +489,7 @@ export default function BookingControlPanel({
         return;
       }
 
-      console.log('Fetching invoice from:', `/api/bookings/${bookingId}/invoice`);
+      logger.info('Fetching invoice from:', `/api/bookings/${bookingId}/invoice`);
       const response = await fetch(`/api/bookings/${bookingId}/invoice`, {
         credentials: 'include',
         headers: {
@@ -496,7 +497,7 @@ export default function BookingControlPanel({
         },
       });
       
-      console.log('Invoice response status:', response.status, response.statusText);
+      logger.info('Invoice response status:', response.status, response.statusText);
 
       if (!response.ok) {
         // Try to get error message from response
@@ -518,7 +519,7 @@ export default function BookingControlPanel({
           errorMessage = `Server returned ${response.status} ${response.statusText}`;
         }
         
-        console.error('Invoice download failed:', {
+        logger.error('Invoice download failed:', {
           status: response.status,
           statusText: response.statusText,
           errorMessage,
@@ -530,7 +531,7 @@ export default function BookingControlPanel({
       // Check if response is actually a PDF
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/pdf')) {
-        console.error('Unexpected content type:', contentType);
+        logger.error('Unexpected content type:', contentType);
         throw new Error('Server did not return a PDF file');
       }
 
@@ -553,7 +554,7 @@ export default function BookingControlPanel({
         description: "Your invoice has been downloaded successfully!"
       });
     } catch (err: any) {
-      console.error('Error downloading invoice:', err);
+      logger.error('Error downloading invoice:', err);
       toast.error("Download Failed", {
         description: err.message || "Failed to download invoice. Please try again."
       });
@@ -603,7 +604,7 @@ export default function BookingControlPanel({
         onCancelBooking(bookingId);
       }
     } catch (error) {
-      console.error('Error in handleCancel:', error);
+      logger.error('Error in handleCancel:', error);
       toast.error("Error", {
         description: "Failed to process cancellation. Please try again."
       });
@@ -786,7 +787,7 @@ export default function BookingControlPanel({
                   hoursUntilBooking >= cancellationHours;
               }
             } catch (error) {
-              console.error('Error processing booking date:', booking, error);
+              logger.error('Error processing booking date:', booking, error);
               bookingDateTime = new Date();
             }
 

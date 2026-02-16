@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { auth } from '@/lib/firebase';
 import { useState } from 'react';
@@ -10,13 +11,13 @@ export default function VerificationDebug() {
   const handleManualCheck = async () => {
     setIsChecking(true);
     try {
-      console.log('🔍 MANUAL VERIFICATION CHECK STARTED');
+      logger.info('🔍 MANUAL VERIFICATION CHECK STARTED');
       
       // Check Firebase user status
       const firebaseUser = auth.currentUser;
       if (firebaseUser) {
         await firebaseUser.reload();
-        console.log('🔥 Firebase user status:', {
+        logger.info('🔥 Firebase user status:', {
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           emailVerified: firebaseUser.emailVerified,
@@ -36,7 +37,7 @@ export default function VerificationDebug() {
         
         if (userResponse.ok) {
           const userData = await userResponse.json();
-          console.log('🗃️ Database user status:', {
+          logger.info('🗃️ Database user status:', {
             id: userData.id,
             email: userData.username,
             is_verified: userData.is_verified,
@@ -65,9 +66,9 @@ export default function VerificationDebug() {
       // Force verification update
       await updateUserVerification();
       
-      console.log('✅ MANUAL VERIFICATION CHECK COMPLETED');
+      logger.info('✅ MANUAL VERIFICATION CHECK COMPLETED');
     } catch (error) {
-      console.error('❌ Manual verification check failed:', error);
+      logger.error('❌ Manual verification check failed:', error);
     } finally {
       setIsChecking(false);
     }
