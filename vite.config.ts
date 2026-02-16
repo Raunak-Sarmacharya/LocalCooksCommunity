@@ -37,6 +37,9 @@ export default defineConfig({
   // Production deploys (main branch) strip console.log/debug — keeps warn/error
   esbuild: {
     pure: process.env.VERCEL_ENV === 'production' ? ['console.log', 'console.debug'] : [],
+    // Prevent jsxDEV debug metadata (fileName, lineNumber) from leaking
+    // source paths into production bundles
+    jsxDev: false,
   },
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
