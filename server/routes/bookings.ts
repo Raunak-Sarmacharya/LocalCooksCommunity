@@ -12,6 +12,7 @@ import {
 import { eq, and, or, desc, inArray } from "drizzle-orm";
 import { logger } from "../logger";
 import { requireChef, requireNoUnpaidPenalties } from "./middleware";
+import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { createPaymentIntent } from "../services/stripe-service";
 import { calculateKitchenBookingPrice } from "../services/pricing-service";
 import { userService } from "../domains/users/user.service";
@@ -129,6 +130,130 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
         res.status(500).json({
             error: error.message || 'Failed to create checkout session',
         });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Universal reference code lookup — resolves any reference code to its record
+// Accessible from ALL portals: chef, manager, admin
+// - Chef: sees only their own bookings (filter by chefId)
+// - Manager: sees bookings at their managed locations (filter by locations.managerId)
+// - Admin: sees everything (no filter)
+// Supports: KB-XXXXXX (kitchen), SB-XXXXXX (storage), EXT-XXXXXX (extension),
+//           OP-XXXXXX (overstay), DC-XXXXXX (damage claim)
+// ═══════════════════════════════════════════════════════════════════════════
+router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+        const { code } = req.params;
+        if (!code || code.length < 4) {
+            return res.status(400).json({ error: "Invalid reference code" });
+        }
+
+        const prefix = code.split('-')[0];
+        const user = req.neonUser!;
+        const role = user.role;
+        const isAdmin = role === 'admin';
+        const isManager = role === 'manager';
+        // Chef = anyone who isn't admin or manager (includes isChef flag users)
+
+        const { storageBookings: sb, pendingStorageExtensions, storageOverstayRecords, damageClaims, storageListings: sl } = await import("@shared/schema");
+
+        if (prefix === 'KB') {
+            let query = db.select({
+                id: kitchenBookings.id,
+                referenceCode: kitchenBookings.referenceCode,
+                status: kitchenBookings.status,
+                kitchenId: kitchenBookings.kitchenId,
+            })
+                .from(kitchenBookings)
+                .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(
+                    isAdmin
+                        ? eq(kitchenBookings.referenceCode, code)
+                        : isManager
+                            ? and(eq(kitchenBookings.referenceCode, code), eq(locations.managerId, user.id))
+                            : and(eq(kitchenBookings.referenceCode, code), eq(kitchenBookings.chefId, user.id))
+                )
+                .limit(1);
+            const [booking] = await query;
+            if (booking) {
+                const url = isAdmin
+                    ? `/admin?section=transactions&search=${booking.referenceCode}`
+                    : isManager
+                        ? `/manager/booking/${booking.id}`
+                        : `/booking/${booking.id}`;
+                return res.json({ type: 'kitchen_booking', id: booking.id, referenceCode: booking.referenceCode, url });
+            }
+        } else if (prefix === 'SB') {
+            const [booking] = await db.select({
+                id: sb.id,
+                referenceCode: sb.referenceCode,
+                status: sb.status,
+            })
+                .from(sb)
+                .innerJoin(sl, eq(sb.storageListingId, sl.id))
+                .innerJoin(kitchens, eq(sl.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(
+                    isAdmin
+                        ? eq(sb.referenceCode, code)
+                        : isManager
+                            ? and(eq(sb.referenceCode, code), eq(locations.managerId, user.id))
+                            : and(eq(sb.referenceCode, code), eq(sb.chefId, user.id))
+                )
+                .limit(1);
+            if (booking) return res.json({ type: 'storage_booking', id: booking.id, referenceCode: booking.referenceCode, url: isAdmin ? `/admin?section=transactions&search=${booking.referenceCode}` : `/dashboard` });
+        } else if (prefix === 'EXT') {
+            const [ext] = await db.select({ id: pendingStorageExtensions.id, referenceCode: pendingStorageExtensions.referenceCode })
+                .from(pendingStorageExtensions)
+                .innerJoin(sb, eq(pendingStorageExtensions.storageBookingId, sb.id))
+                .innerJoin(sl, eq(sb.storageListingId, sl.id))
+                .innerJoin(kitchens, eq(sl.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(
+                    isAdmin
+                        ? eq(pendingStorageExtensions.referenceCode, code)
+                        : isManager
+                            ? and(eq(pendingStorageExtensions.referenceCode, code), eq(locations.managerId, user.id))
+                            : and(eq(pendingStorageExtensions.referenceCode, code), eq(sb.chefId, user.id))
+                )
+                .limit(1);
+            if (ext) return res.json({ type: 'storage_extension', id: ext.id, referenceCode: ext.referenceCode, url: isAdmin ? `/admin?section=transactions&search=${ext.referenceCode}` : `/dashboard` });
+        } else if (prefix === 'OP') {
+            const [record] = await db.select({ id: storageOverstayRecords.id, referenceCode: storageOverstayRecords.referenceCode })
+                .from(storageOverstayRecords)
+                .innerJoin(sb, eq(storageOverstayRecords.storageBookingId, sb.id))
+                .innerJoin(sl, eq(sb.storageListingId, sl.id))
+                .innerJoin(kitchens, eq(sl.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(
+                    isAdmin
+                        ? eq(storageOverstayRecords.referenceCode, code)
+                        : isManager
+                            ? and(eq(storageOverstayRecords.referenceCode, code), eq(locations.managerId, user.id))
+                            : and(eq(storageOverstayRecords.referenceCode, code), eq(sb.chefId, user.id))
+                )
+                .limit(1);
+            if (record) return res.json({ type: 'overstay_penalty', id: record.id, referenceCode: record.referenceCode, url: isAdmin ? `/admin?section=overstay-penalties-history&search=${record.referenceCode}` : `/dashboard` });
+        } else if (prefix === 'DC') {
+            const [claim] = await db.select({ id: damageClaims.id, referenceCode: damageClaims.referenceCode })
+                .from(damageClaims)
+                .where(
+                    isAdmin
+                        ? eq(damageClaims.referenceCode, code)
+                        : isManager
+                            ? and(eq(damageClaims.referenceCode, code), eq(damageClaims.managerId, user.id))
+                            : and(eq(damageClaims.referenceCode, code), eq(damageClaims.chefId, user.id))
+                )
+                .limit(1);
+            if (claim) return res.json({ type: 'damage_claim', id: claim.id, referenceCode: claim.referenceCode, url: isAdmin ? `/admin?section=damage-claims&search=${claim.referenceCode}` : `/dashboard` });
+        }
+
+        return res.status(404).json({ error: "Reference not found" });
+    } catch (error) {
+        logger.error("Error looking up reference code:", error);
+        res.status(500).json({ error: "Failed to look up reference" });
     }
 });
 

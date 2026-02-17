@@ -1,5 +1,6 @@
 
 import { db } from "../../db";
+import { generateReferenceCode } from "../../reference-code";
 import {
     kitchenBookings,
     storageBookings,
@@ -563,9 +564,11 @@ export class BookingRepository {
         stripePaymentIntentId?: string;
         status: string;
     }) {
+        const extRefCode = await generateReferenceCode('storage_extension');
         const [extension] = await db
             .insert(pendingStorageExtensions)
             .values({
+                referenceCode: extRefCode,
                 storageBookingId: data.storageBookingId,
                 newEndDate: data.newEndDate,
                 extensionDays: data.extensionDays,
@@ -712,6 +715,7 @@ export class BookingRepository {
 function getKitchenBookingSelection() {
     return {
         id: kitchenBookings.id,
+        referenceCode: kitchenBookings.referenceCode,
         chefId: kitchenBookings.chefId,
         kitchenId: kitchenBookings.kitchenId,
         bookingDate: kitchenBookings.bookingDate,
@@ -732,6 +736,7 @@ function getKitchenBookingSelection() {
 function getStorageBookingSelection() {
     return {
         id: storageBookings.id,
+        referenceCode: storageBookings.referenceCode,
         storageListingId: storageBookings.storageListingId,
         kitchenBookingId: storageBookings.kitchenBookingId,
         chefId: storageBookings.chefId,

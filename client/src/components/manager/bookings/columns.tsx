@@ -46,6 +46,7 @@ export type EquipmentItem = {
 // Define the Booking type
 export type Booking = {
     id: number;
+    referenceCode?: string | null;
     kitchenId: number;
     chefId: number;
     bookingDate: string;
@@ -937,8 +938,8 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                                 View Details
                             </a>
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => navigator.clipboard.writeText(booking.id.toString())}>
-                            Copy Booking ID
+                        <DropdownMenuItem onClick={() => navigator.clipboard.writeText(booking.referenceCode || booking.id.toString())}>
+                            Copy Reference
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>

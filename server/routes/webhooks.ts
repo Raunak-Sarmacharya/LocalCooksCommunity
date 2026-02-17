@@ -17,6 +17,7 @@ import { logger } from "../logger";
 import * as Sentry from '@sentry/node';
 import { errorResponse } from "../api-response";
 import { notificationService } from "../services/notification.service";
+import { generateReferenceCode } from "../reference-code";
 
 const router = Router();
 
@@ -582,12 +583,14 @@ async function handleCheckoutSessionCompleted(
         // Direct insert is faster and more reliable in webhook context
         // AUTH-THEN-CAPTURE: For manual capture, paymentStatus = 'authorized' (held, not charged)
         const bookingPaymentStatus = isManualCapture ? "authorized" : "paid";
-        let booking: { id: number; kitchenId: number; chefId: number | null; bookingDate: Date; startTime: string; endTime: string; status: string; paymentStatus: string | null; paymentIntentId: string | null } | undefined;
+        let booking: { id: number; referenceCode: string | null; kitchenId: number; chefId: number | null; bookingDate: Date; startTime: string; endTime: string; status: string; paymentStatus: string | null; paymentIntentId: string | null } | undefined;
         
         try {
+          const kbRefCode = await generateReferenceCode('kitchen_booking');
           const [directBooking] = await db
             .insert(kitchenBookings)
             .values({
+              referenceCode: kbRefCode,
               kitchenId,
               chefId,
               bookingDate,
@@ -614,6 +617,7 @@ async function handleCheckoutSessionCompleted(
           if (directBooking) {
             booking = {
               id: directBooking.id,
+              referenceCode: directBooking.referenceCode,
               kitchenId: directBooking.kitchenId,
               chefId: directBooking.chefId,
               bookingDate: directBooking.bookingDate,
@@ -724,9 +728,11 @@ async function handleCheckoutSessionCompleted(
                 // 1. Accurate payment tracking across all booking types
                 // 2. Off-session charging for overstay penalties (needs stripeCustomerId + stripePaymentMethodId)
                 // 3. Dispute resolution (needs paymentIntentId to reference the original charge)
+                const sbRefCode = await generateReferenceCode('storage_booking');
                 const [storageBooking] = await db
                   .insert(storageBookings)
                   .values({
+                    referenceCode: sbRefCode,
                     kitchenBookingId: booking.id,
                     storageListingId: storageListing.id,
                     chefId,
@@ -997,6 +1003,7 @@ async function handleCheckoutSessionCompleted(
                   timezone: location.timezone || "America/St_Johns",
                   locationName: location.name,
                   bookingId: booking.id,
+                  referenceCode: booking.referenceCode,
                 });
                 const emailSent = await sendEmail(managerEmail, { trackingId: `booking_${booking.id}_manager` });
                 if (emailSent) {

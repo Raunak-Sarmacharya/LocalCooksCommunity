@@ -2955,6 +2955,8 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
                 OR k.name ILIKE ${like}
                 OR CAST(pt.id AS TEXT) = ${s}
                 OR CAST(pt.booking_id AS TEXT) = ${s}
+                OR COALESCE(kb.reference_code, '') ILIKE ${like}
+                OR COALESCE(sb.reference_code, '') ILIKE ${like}
                 ${isNum ? sql`OR pt.chef_id = ${numVal} OR pt.manager_id = ${numVal}` : sql``}
             )`);
         }
@@ -3039,7 +3041,12 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
                     WHEN pt.booking_type = 'kitchen' THEN k.name
                     WHEN pt.booking_type = 'storage' THEN sl.name
                     ELSE NULL
-                END as item_name
+                END as item_name,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN kb.reference_code
+                    WHEN pt.booking_type = 'storage' THEN sb.reference_code
+                    ELSE NULL
+                END as reference_code
             ${joinBlock}
             ${whereClause}
             ORDER BY pt.created_at DESC
@@ -3086,6 +3093,7 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
             kitchenId: tx.kitchen_id,
             kitchenName: tx.kitchen_name,
             itemName: tx.item_name,
+            referenceCode: tx.reference_code,
             bookingStart: tx.booking_start,
             bookingEnd: tx.booking_end,
             kitchenStartTime: tx.kitchen_start_time,

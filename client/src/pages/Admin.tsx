@@ -131,26 +131,32 @@ function AdminDashboard() {
     return "overview";
   });
 
+  // Track a key to force remount of section components when navigated with search params
+  const [sectionMountKey, setSectionMountKey] = useState(0);
+
   // Sync URL when section changes
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const currentSection = params.get('section');
     if (currentSection !== activeSection) {
+      // When manually switching sections (sidebar click), clear search and set new section
       window.history.replaceState({}, '', `/admin?section=${activeSection}`);
     }
   }, [activeSection]);
 
   // Handle browser back/forward
   useEffect(() => {
-    const handlePopState = () => {
+    const syncFromUrl = () => {
       const params = new URLSearchParams(window.location.search);
       const section = params.get('section');
       if (section && validSections.includes(section as AdminSection)) {
         setActiveSection(section as AdminSection);
+        // Force remount so child components re-read URL search params
+        setSectionMountKey(k => k + 1);
       }
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
   }, []);
 
   const [quickFilters, setQuickFilters] = useState({
@@ -1084,7 +1090,7 @@ function AdminDashboard() {
       case "transactions":
         return (
           <ErrorBoundary>
-            <AdminTransactionHistory getFirebaseToken={getFirebaseToken} />
+            <AdminTransactionHistory key={sectionMountKey} getFirebaseToken={getFirebaseToken} />
           </ErrorBoundary>
         );
 
@@ -1161,7 +1167,15 @@ function AdminDashboard() {
             navigate('/admin/manage-locations');
             return;
           }
-          setActiveSection(section);
+          // Check if URL has a search param (set by command menu ref code lookup)
+          const urlParams = new URLSearchParams(window.location.search);
+          const hasSearch = urlParams.has('search');
+          if (section === activeSection && hasSearch) {
+            // Same section but with new search param — force remount
+            setSectionMountKey(k => k + 1);
+          } else {
+            setActiveSection(section);
+          }
         }}
         onLogout={handleLogoutAction}
         onRefresh={forceAdminRefresh}

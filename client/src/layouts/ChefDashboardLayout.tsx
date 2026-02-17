@@ -19,8 +19,10 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useFirebaseAuth } from "@/hooks/use-auth"
-import { LogOut, User as UserIcon, ChevronDown } from "lucide-react"
+import { LogOut, User as UserIcon, ChevronDown, Command } from "lucide-react"
 import ChefNotificationCenter from "@/components/chef/ChefNotificationCenter"
+import { CommandMenu } from "@/components/command-menu"
+import { Button } from "@/components/ui/button"
 
 interface ChefDashboardLayoutProps {
     children: React.ReactNode
@@ -54,6 +56,7 @@ export default function ChefDashboardLayout({
     breadcrumbs,
 }: ChefDashboardLayoutProps) {
     const { user, logout } = useFirebaseAuth()
+    const [isCommandOpen, setIsCommandOpen] = React.useState(false)
 
     // Generate breadcrumbs based on active view if not provided
     const displayBreadcrumbs = breadcrumbs || [
@@ -116,6 +119,18 @@ export default function ChefDashboardLayout({
                     </div>
 
                     <div className="flex items-center gap-4">
+                        <Button
+                            variant="outline"
+                            className="hidden md:flex relative h-9 w-full justify-start rounded-[0.5rem] bg-background text-sm font-normal text-muted-foreground shadow-none sm:pr-12 md:w-40 lg:w-64"
+                            onClick={() => setIsCommandOpen(true)}
+                        >
+                            <span className="hidden lg:inline-flex">Search...</span>
+                            <span className="inline-flex lg:hidden">Search...</span>
+                            <kbd className="pointer-events-none absolute right-[0.3rem] top-[0.3rem] hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
+                                <span className="text-xs">⌘</span>K
+                            </kbd>
+                        </Button>
+
                         {/* Notification Bell */}
                         <ChefNotificationCenter />
                         
@@ -180,6 +195,13 @@ export default function ChefDashboardLayout({
                     </div>
                 </main>
             </SidebarInset>
+            <CommandMenu
+                open={isCommandOpen}
+                onOpenChange={setIsCommandOpen}
+                onViewChange={onViewChange}
+                onLogout={logout}
+                portalType="chef"
+            />
         </SidebarProvider>
     )
 }

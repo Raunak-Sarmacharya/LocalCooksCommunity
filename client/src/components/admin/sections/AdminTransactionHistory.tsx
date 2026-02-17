@@ -85,6 +85,7 @@ import {
   ExternalLink,
   AlertTriangle,
   Eye,
+  Hash,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDate as sharedFormatDate, formatTime as sharedFormatTime, formatCurrency as sharedFormatCurrency, formatPrice, downloadCSV as sharedDownloadCSV } from "@/lib/formatters";
@@ -140,6 +141,7 @@ interface AdminTransaction {
   bookingEnd: string | null;
   kitchenStartTime: string | null;
   kitchenEndTime: string | null;
+  referenceCode: string | null;
 }
 
 interface LocationOption {
@@ -366,7 +368,11 @@ function TransactionDetailSheet({
             Transaction #{tx.id}
           </SheetTitle>
           <SheetDescription>
-            {getBookingTypeLabel(tx.bookingType, tx.metadata)} — Booking #{tx.bookingId}
+            {getBookingTypeLabel(tx.bookingType, tx.metadata)} — {tx.referenceCode ? (
+              <span className="font-mono font-semibold text-primary">{tx.referenceCode}</span>
+            ) : (
+              <>Booking #{tx.bookingId}</>
+            )}
           </SheetDescription>
         </SheetHeader>
 
@@ -442,6 +448,10 @@ function TransactionDetailSheet({
           <div className="space-y-2">
             <h4 className="text-sm font-semibold">Location & Kitchen</h4>
             <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-sm">
+              {tx.referenceCode && (
+                <div className="flex justify-between"><span className="text-muted-foreground">Reference Code</span><span className="font-mono font-semibold text-primary">{tx.referenceCode}</span></div>
+              )}
+              <div className="flex justify-between"><span className="text-muted-foreground">Booking ID</span><span>#{tx.bookingId}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Location</span><span>{tx.locationName || "—"} {tx.locationId ? `(#${tx.locationId})` : ""}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Kitchen</span><span>{tx.kitchenName || "—"} {tx.kitchenId ? `(#${tx.kitchenId})` : ""}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Item</span><span>{tx.itemName || "—"}</span></div>
@@ -686,7 +696,14 @@ function getAdminTransactionColumns(
             {getBookingTypeIcon(tx.bookingType)}
             <div>
               <span className="text-sm font-medium">{label}</span>
-              <div className="text-xs text-muted-foreground">Booking #{tx.bookingId}</div>
+              {tx.referenceCode ? (
+                <div className="flex items-center gap-1 text-xs">
+                  <Hash className="h-3 w-3 text-muted-foreground" />
+                  <span className="font-mono font-medium text-primary">{tx.referenceCode}</span>
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground">Booking #{tx.bookingId}</div>
+              )}
             </div>
           </div>
         );
@@ -789,7 +806,7 @@ function getAdminTransactionColumns(
 // CSV Export
 function transactionsToCSV(transactions: AdminTransaction[]): string {
   const headers = [
-    "TX ID", "Booking ID", "Booking Type", "Status", "Stripe Status",
+    "TX ID", "Reference Code", "Booking ID", "Booking Type", "Status", "Stripe Status",
     "Chef Name", "Chef Email", "Chef ID", "Manager Email", "Manager ID",
     "Location", "Location ID", "Kitchen", "Kitchen ID",
     "Amount (CAD)", "Base Amount", "Service Fee", "Stripe Fee", "Manager Revenue", "Refund Amount", "Net Amount",
@@ -799,7 +816,7 @@ function transactionsToCSV(transactions: AdminTransaction[]): string {
     "Created At", "Paid At", "Refunded At",
   ];
   const rows = transactions.map((tx) => [
-    tx.id, tx.bookingId, tx.bookingType, tx.status, tx.stripeStatus || "",
+    tx.id, tx.referenceCode || "", tx.bookingId, tx.bookingType, tx.status, tx.stripeStatus || "",
     tx.chefName || "", tx.chefEmail || "", tx.chefId || "", tx.managerEmail || "", tx.managerId || "",
     tx.locationName || "", tx.locationId || "", tx.kitchenName || "", tx.kitchenId || "",
     formatPrice(tx.amount), formatPrice(tx.baseAmount), formatPrice(tx.serviceFee),
@@ -824,11 +841,17 @@ interface AdminTransactionHistoryProps {
 }
 
 export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHistoryProps) {
+  // Read initial search from URL params (e.g. /admin?section=transactions&search=KB-TAAHAM)
+  const initialSearch = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("search") || "";
+  }, []);
+
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [bookingTypeFilter, setBookingTypeFilter] = useState<string>("all");
   const [locationFilter, setLocationFilter] = useState<string>("all");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
     stripeProcessingFee: false,

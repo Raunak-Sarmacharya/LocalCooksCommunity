@@ -122,6 +122,7 @@ export function useKitchenBookings() {
       // IMPORTANT: Preserve location object with cancellation policy information
       const normalizedBookings = (Array.isArray(rawData) ? rawData : []).map((booking: any) => ({
         id: booking.id,
+        referenceCode: booking.referenceCode || booking.reference_code || null,
         chefId: booking.chef_id || booking.chefId,
         kitchenId: booking.kitchen_id || booking.kitchenId,
         bookingDate: booking.booking_date || booking.bookingDate,
