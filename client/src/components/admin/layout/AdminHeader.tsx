@@ -8,13 +8,14 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import type { AdminSection } from "./AdminSidebar";
 
 interface AdminHeaderProps {
   activeSection: AdminSection;
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  onSearchClick?: () => void;
 }
 
 const SECTION_META: Record<AdminSection, { category: string; title: string }> = {
@@ -38,7 +39,7 @@ const SECTION_META: Record<AdminSection, { category: string; title: string }> = 
   "security-settings": { category: "Settings", title: "Security & Rate Limits" },
 };
 
-export function AdminHeader({ activeSection, onRefresh, isRefreshing }: AdminHeaderProps) {
+export function AdminHeader({ activeSection, onRefresh, isRefreshing, onSearchClick }: AdminHeaderProps) {
   const meta = SECTION_META[activeSection];
 
   return (
@@ -57,6 +58,19 @@ export function AdminHeader({ activeSection, onRefresh, isRefreshing }: AdminHea
         </BreadcrumbList>
       </Breadcrumb>
       <div className="ml-auto flex items-center gap-2">
+        {onSearchClick && (
+          <Button
+            variant="outline"
+            className="hidden md:flex relative h-8 justify-start rounded-[0.5rem] bg-background text-sm font-normal text-muted-foreground shadow-none sm:pr-12 w-48 lg:w-64"
+            onClick={onSearchClick}
+          >
+            <Search className="mr-2 h-3.5 w-3.5" />
+            <span>Search or lookup ref...</span>
+            <kbd className="pointer-events-none absolute right-[0.3rem] top-[0.25rem] hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
+              <span className="text-xs">⌘</span>K
+            </kbd>
+          </Button>
+        )}
         {onRefresh && (
           <Button
             variant="ghost"

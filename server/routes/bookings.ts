@@ -12,6 +12,7 @@ import {
 import { eq, and, or, desc, inArray } from "drizzle-orm";
 import { logger } from "../logger";
 import { requireChef, requireNoUnpaidPenalties } from "./middleware";
+import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { createPaymentIntent } from "../services/stripe-service";
 import { calculateKitchenBookingPrice } from "../services/pricing-service";
 import { userService } from "../domains/users/user.service";
@@ -134,10 +135,14 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Universal reference code lookup — resolves any reference code to its record
+// Accessible from ALL portals: chef, manager, admin
+// - Chef: sees only their own bookings (filter by chefId)
+// - Manager: sees bookings at their managed locations (filter by locations.managerId)
+// - Admin: sees everything (no filter)
 // Supports: KB-XXXXXX (kitchen), SB-XXXXXX (storage), EXT-XXXXXX (extension),
 //           OP-XXXXXX (overstay), DC-XXXXXX (damage claim)
 // ═══════════════════════════════════════════════════════════════════════════
-router.get("/bookings/by-reference/:code", requireChef, async (req: Request, res: Response) => {
+router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
         const { code } = req.params;
         if (!code || code.length < 4) {
@@ -145,42 +150,98 @@ router.get("/bookings/by-reference/:code", requireChef, async (req: Request, res
         }
 
         const prefix = code.split('-')[0];
-        const chefId = req.neonUser!.id;
+        const user = req.neonUser!;
+        const role = user.role;
+        const isAdmin = role === 'admin';
+        const isManager = role === 'manager';
+        // Chef = anyone who isn't admin or manager (includes isChef flag users)
+
+        const { storageBookings: sb, pendingStorageExtensions, storageOverstayRecords, damageClaims, storageListings: sl } = await import("@shared/schema");
 
         if (prefix === 'KB') {
-            const [booking] = await db.select({ id: kitchenBookings.id, referenceCode: kitchenBookings.referenceCode, status: kitchenBookings.status })
+            let query = db.select({
+                id: kitchenBookings.id,
+                referenceCode: kitchenBookings.referenceCode,
+                status: kitchenBookings.status,
+                kitchenId: kitchenBookings.kitchenId,
+            })
                 .from(kitchenBookings)
-                .where(and(eq(kitchenBookings.referenceCode, code), eq(kitchenBookings.chefId, chefId)))
+                .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(
+                    isAdmin
+                        ? eq(kitchenBookings.referenceCode, code)
+                        : isManager
+                            ? and(eq(kitchenBookings.referenceCode, code), eq(locations.managerId, user.id))
+                            : and(eq(kitchenBookings.referenceCode, code), eq(kitchenBookings.chefId, user.id))
+                )
                 .limit(1);
-            if (booking) return res.json({ type: 'kitchen_booking', id: booking.id, referenceCode: booking.referenceCode, url: `/booking/${booking.id}` });
+            const [booking] = await query;
+            if (booking) {
+                const url = isManager ? `/manager/booking/${booking.id}` : `/booking/${booking.id}`;
+                return res.json({ type: 'kitchen_booking', id: booking.id, referenceCode: booking.referenceCode, url });
+            }
         } else if (prefix === 'SB') {
-            const { storageBookings } = await import("@shared/schema");
-            const [booking] = await db.select({ id: storageBookings.id, referenceCode: storageBookings.referenceCode, status: storageBookings.status })
-                .from(storageBookings)
-                .where(and(eq(storageBookings.referenceCode, code), eq(storageBookings.chefId, chefId)))
+            const [booking] = await db.select({
+                id: sb.id,
+                referenceCode: sb.referenceCode,
+                status: sb.status,
+            })
+                .from(sb)
+                .innerJoin(sl, eq(sb.storageListingId, sl.id))
+                .innerJoin(kitchens, eq(sl.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(
+                    isAdmin
+                        ? eq(sb.referenceCode, code)
+                        : isManager
+                            ? and(eq(sb.referenceCode, code), eq(locations.managerId, user.id))
+                            : and(eq(sb.referenceCode, code), eq(sb.chefId, user.id))
+                )
                 .limit(1);
             if (booking) return res.json({ type: 'storage_booking', id: booking.id, referenceCode: booking.referenceCode, url: `/dashboard` });
         } else if (prefix === 'EXT') {
-            const { pendingStorageExtensions, storageBookings: sb } = await import("@shared/schema");
             const [ext] = await db.select({ id: pendingStorageExtensions.id, referenceCode: pendingStorageExtensions.referenceCode })
                 .from(pendingStorageExtensions)
                 .innerJoin(sb, eq(pendingStorageExtensions.storageBookingId, sb.id))
-                .where(and(eq(pendingStorageExtensions.referenceCode, code), eq(sb.chefId, chefId)))
+                .innerJoin(sl, eq(sb.storageListingId, sl.id))
+                .innerJoin(kitchens, eq(sl.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(
+                    isAdmin
+                        ? eq(pendingStorageExtensions.referenceCode, code)
+                        : isManager
+                            ? and(eq(pendingStorageExtensions.referenceCode, code), eq(locations.managerId, user.id))
+                            : and(eq(pendingStorageExtensions.referenceCode, code), eq(sb.chefId, user.id))
+                )
                 .limit(1);
             if (ext) return res.json({ type: 'storage_extension', id: ext.id, referenceCode: ext.referenceCode, url: `/dashboard` });
         } else if (prefix === 'OP') {
-            const { storageOverstayRecords, storageBookings: sb } = await import("@shared/schema");
             const [record] = await db.select({ id: storageOverstayRecords.id, referenceCode: storageOverstayRecords.referenceCode })
                 .from(storageOverstayRecords)
                 .innerJoin(sb, eq(storageOverstayRecords.storageBookingId, sb.id))
-                .where(and(eq(storageOverstayRecords.referenceCode, code), eq(sb.chefId, chefId)))
+                .innerJoin(sl, eq(sb.storageListingId, sl.id))
+                .innerJoin(kitchens, eq(sl.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(
+                    isAdmin
+                        ? eq(storageOverstayRecords.referenceCode, code)
+                        : isManager
+                            ? and(eq(storageOverstayRecords.referenceCode, code), eq(locations.managerId, user.id))
+                            : and(eq(storageOverstayRecords.referenceCode, code), eq(sb.chefId, user.id))
+                )
                 .limit(1);
             if (record) return res.json({ type: 'overstay_penalty', id: record.id, referenceCode: record.referenceCode, url: `/dashboard` });
         } else if (prefix === 'DC') {
-            const { damageClaims } = await import("@shared/schema");
             const [claim] = await db.select({ id: damageClaims.id, referenceCode: damageClaims.referenceCode })
                 .from(damageClaims)
-                .where(and(eq(damageClaims.referenceCode, code), eq(damageClaims.chefId, chefId)))
+                .where(
+                    isAdmin
+                        ? eq(damageClaims.referenceCode, code)
+                        : isManager
+                            ? and(eq(damageClaims.referenceCode, code), eq(damageClaims.managerId, user.id))
+                            : and(eq(damageClaims.referenceCode, code), eq(damageClaims.chefId, user.id))
+                )
                 .limit(1);
             if (claim) return res.json({ type: 'damage_claim', id: claim.id, referenceCode: claim.referenceCode, url: `/dashboard` });
         }

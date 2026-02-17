@@ -171,6 +171,7 @@ export default function DashboardLayout({
                 onOpenChange={setIsCommandOpen}
                 onViewChange={onViewChange}
                 onLogout={logout}
+                portalType="manager"
             />
         </SidebarProvider>
     )
