@@ -194,7 +194,18 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                         <>
                             <CommandGroup heading="Reference Code Match">
                                 <CommandItem
-                                    onSelect={() => runCommand(() => navigate(refLookupResult.url))}
+                                    onSelect={() => runCommand(() => {
+                                        const url = refLookupResult.url
+                                        if (portalType === 'admin' && url.startsWith('/admin?')) {
+                                            // For admin: push URL with search param, then switch section via callback
+                                            window.history.pushState({}, '', url)
+                                            const params = new URLSearchParams(url.split('?')[1])
+                                            const section = params.get('section')
+                                            if (section) onViewChange?.(section)
+                                        } else {
+                                            navigate(url)
+                                        }
+                                    })}
                                     className="flex items-center gap-2"
                                 >
                                     <Hash className="mr-1 h-4 w-4 text-primary" />

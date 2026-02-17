@@ -178,7 +178,11 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                 .limit(1);
             const [booking] = await query;
             if (booking) {
-                const url = isManager ? `/manager/booking/${booking.id}` : `/booking/${booking.id}`;
+                const url = isAdmin
+                    ? `/admin?section=transactions&search=${booking.referenceCode}`
+                    : isManager
+                        ? `/manager/booking/${booking.id}`
+                        : `/booking/${booking.id}`;
                 return res.json({ type: 'kitchen_booking', id: booking.id, referenceCode: booking.referenceCode, url });
             }
         } else if (prefix === 'SB') {
@@ -199,7 +203,7 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                             : and(eq(sb.referenceCode, code), eq(sb.chefId, user.id))
                 )
                 .limit(1);
-            if (booking) return res.json({ type: 'storage_booking', id: booking.id, referenceCode: booking.referenceCode, url: `/dashboard` });
+            if (booking) return res.json({ type: 'storage_booking', id: booking.id, referenceCode: booking.referenceCode, url: isAdmin ? `/admin?section=transactions&search=${booking.referenceCode}` : `/dashboard` });
         } else if (prefix === 'EXT') {
             const [ext] = await db.select({ id: pendingStorageExtensions.id, referenceCode: pendingStorageExtensions.referenceCode })
                 .from(pendingStorageExtensions)
@@ -215,7 +219,7 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                             : and(eq(pendingStorageExtensions.referenceCode, code), eq(sb.chefId, user.id))
                 )
                 .limit(1);
-            if (ext) return res.json({ type: 'storage_extension', id: ext.id, referenceCode: ext.referenceCode, url: `/dashboard` });
+            if (ext) return res.json({ type: 'storage_extension', id: ext.id, referenceCode: ext.referenceCode, url: isAdmin ? `/admin?section=transactions&search=${ext.referenceCode}` : `/dashboard` });
         } else if (prefix === 'OP') {
             const [record] = await db.select({ id: storageOverstayRecords.id, referenceCode: storageOverstayRecords.referenceCode })
                 .from(storageOverstayRecords)
@@ -231,7 +235,7 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                             : and(eq(storageOverstayRecords.referenceCode, code), eq(sb.chefId, user.id))
                 )
                 .limit(1);
-            if (record) return res.json({ type: 'overstay_penalty', id: record.id, referenceCode: record.referenceCode, url: `/dashboard` });
+            if (record) return res.json({ type: 'overstay_penalty', id: record.id, referenceCode: record.referenceCode, url: isAdmin ? `/admin?section=overstay-penalties-history&search=${record.referenceCode}` : `/dashboard` });
         } else if (prefix === 'DC') {
             const [claim] = await db.select({ id: damageClaims.id, referenceCode: damageClaims.referenceCode })
                 .from(damageClaims)
@@ -243,7 +247,7 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                             : and(eq(damageClaims.referenceCode, code), eq(damageClaims.chefId, user.id))
                 )
                 .limit(1);
-            if (claim) return res.json({ type: 'damage_claim', id: claim.id, referenceCode: claim.referenceCode, url: `/dashboard` });
+            if (claim) return res.json({ type: 'damage_claim', id: claim.id, referenceCode: claim.referenceCode, url: isAdmin ? `/admin?section=damage-claims&search=${claim.referenceCode}` : `/dashboard` });
         }
 
         return res.status(404).json({ error: "Reference not found" });
