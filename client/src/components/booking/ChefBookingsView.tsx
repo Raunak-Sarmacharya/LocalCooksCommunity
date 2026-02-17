@@ -767,6 +767,7 @@ interface StorageBookingColumnsProps {
   onCancelStorage: (storageBookingId: number) => void
   downloadingInvoiceId: number | null
   now: Date
+  kitchenBookings: Booking[]
 }
 
 const getStorageBookingColumns = ({
@@ -777,6 +778,7 @@ const getStorageBookingColumns = ({
   onCancelStorage,
   downloadingInvoiceId,
   now,
+  kitchenBookings,
 }: StorageBookingColumnsProps): ColumnDef<StorageBooking>[] => [
   {
     accessorKey: "storageName",
@@ -838,6 +840,7 @@ const getStorageBookingColumns = ({
       const daysUntilExpiry = differenceInDays(endDate, now)
       const isExpiringSoon = daysUntilExpiry >= 0 && daysUntilExpiry <= 7
       const isExpired = daysUntilExpiry < 0
+      const isActive = storageBooking.status === 'confirmed' || storageBooking.status === 'pending' || storageBooking.status === 'cancellation_requested'
 
       return (
         <div className="flex flex-col">
@@ -845,12 +848,12 @@ const getStorageBookingColumns = ({
             <Calendar className="h-3 w-3 mr-2 text-muted-foreground" />
             {format(new Date(storageBooking.startDate), "MMM d")} - {format(endDate, "MMM d, yyyy")}
           </div>
-          {isExpiringSoon && !isExpired && (
+          {isActive && isExpiringSoon && !isExpired && (
             <div className="text-xs text-amber-600 mt-0.5 ml-5">
               Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}
             </div>
           )}
-          {isExpired && (
+          {isActive && isExpired && (
             <div className="text-xs text-red-600 mt-0.5 ml-5">
               Expired {Math.abs(daysUntilExpiry)} day{Math.abs(daysUntilExpiry) !== 1 ? 's' : ''} ago
             </div>
@@ -885,6 +888,19 @@ const getStorageBookingColumns = ({
       // Cancelled bookings — distinguish by cause for intuitive labels
       // Industry standard: Expired (payment failed), Cancelled (chef-initiated), Declined (manager rejected)
       } else if (status === 'cancelled' && storageBooking.paymentStatus === 'failed') {
+        // Distinguish auth-expired (whole booking died) vs manager-declined (parent KB still confirmed)
+        const parentKB = storageBooking.kitchenBookingId
+          ? kitchenBookings.find(b => b.id === storageBooking.kitchenBookingId)
+          : null
+        const isManagerDeclined = parentKB && (parentKB.status === 'confirmed' || parentKB.paymentStatus === 'paid')
+        if (isManagerDeclined) {
+          return (
+            <Badge variant="outline" className="text-destructive border-destructive/30">
+              <XCircle className="h-3 w-3 mr-1" />
+              Declined
+            </Badge>
+          )
+        }
         // Payment auth expired or failed — never charged
         return (
           <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
@@ -1438,8 +1454,9 @@ export default function ChefBookingsView({
       onCancelStorage: handleCancelStorage,
       downloadingInvoiceId,
       now,
+      kitchenBookings: bookings,
     }),
-    [downloadingInvoiceId, now, storageBookings]
+    [downloadingInvoiceId, now, storageBookings, bookings]
   )
 
   // TanStack Table instance for kitchen bookings
