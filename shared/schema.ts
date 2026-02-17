@@ -406,6 +406,7 @@ export const kitchenDateOverrides = pgTable("kitchen_date_overrides", {
 // Define kitchen bookings table
 export const kitchenBookings = pgTable("kitchen_bookings", {
   id: serial("id").primaryKey(),
+  referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. KB-A7K9MX
   chefId: integer("chef_id").references(() => users.id), // Nullable for external/third-party bookings
   kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
   bookingDate: timestamp("booking_date").notNull(),
@@ -1048,6 +1049,7 @@ export type UpdateEquipmentListingStatus = z.infer<typeof updateEquipmentListing
 
 export const storageBookings = pgTable("storage_bookings", {
   id: serial("id").primaryKey(),
+  referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. SB-X3P2NR
   storageListingId: integer("storage_listing_id").references(() => storageListings.id, { onDelete: "cascade" }).notNull(),
   kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }), // NULLABLE - storage can be booked independently
   chefId: integer("chef_id").references(() => users.id, { onDelete: "set null" }), // Chef making the booking
@@ -1447,6 +1449,7 @@ export type PaymentHistory = typeof paymentHistory.$inferSelect;
 // Tracks pending storage extension requests awaiting payment and manager approval
 export const pendingStorageExtensions = pgTable("pending_storage_extensions", {
   id: serial("id").primaryKey(),
+  referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. EXT-B4R7TY
   storageBookingId: integer("storage_booking_id").references(() => storageBookings.id, { onDelete: "cascade" }).notNull(),
   newEndDate: timestamp("new_end_date").notNull(),
   extensionDays: integer("extension_days").notNull(),
@@ -1490,6 +1493,7 @@ export const overstayStatusEnum = pgEnum('overstay_status', [
 // CRITICAL: Penalties are NEVER auto-charged - manager must approve
 export const storageOverstayRecords = pgTable("storage_overstay_records", {
   id: serial("id").primaryKey(),
+  referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. OP-C8M2WE
   storageBookingId: integer("storage_booking_id").references(() => storageBookings.id, { onDelete: "cascade" }).notNull(),
   
   // Detection info
@@ -1629,6 +1633,7 @@ export const evidenceTypeEnum = pgEnum('evidence_type', [
 // Tracks damage claims with full workflow for chef response and admin review
 export const damageClaims = pgTable("damage_claims", {
   id: serial("id").primaryKey(),
+  referenceCode: text("reference_code").unique(), // Human-friendly reference e.g. DC-D9F3QH
   
   // Booking reference (polymorphic for kitchen or storage bookings)
   bookingType: text("booking_type").notNull(), // 'kitchen' or 'storage'

@@ -12,6 +12,7 @@
  */
 
 import { db } from "../db";
+import { generateReferenceCode } from "../reference-code";
 import {
   damageClaims,
   damageEvidence,
@@ -339,7 +340,9 @@ export async function createDamageClaim(input: CreateDamageClaimInput): Promise<
     }
 
     // Create the claim
+    const dcRefCode = await generateReferenceCode('damage_claim');
     const [claim] = await db.insert(damageClaims).values({
+      referenceCode: dcRefCode,
       bookingType: input.bookingType,
       kitchenBookingId: input.kitchenBookingId || null,
       storageBookingId: input.storageBookingId || null,

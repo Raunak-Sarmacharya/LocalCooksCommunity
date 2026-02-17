@@ -354,7 +354,7 @@ export async function generateInvoicePDF(
         month: 'long',
         day: 'numeric'
       });
-      const invoiceNumber = `LC-${booking.id}-${new Date().getFullYear()}`;
+      const invoiceNumber = booking.reference_code || booking.referenceCode || `LC-${booking.id}-${new Date().getFullYear()}`;
 
       // Right-align invoice details in top right corner
       const pageWidth = doc.page.width;
@@ -702,14 +702,16 @@ export async function generateStorageInvoicePDF(
       const displayDays = extensionDays || 1;
       const displayDailyRate = dailyRateCents || (displayDays > 0 ? Math.round(displayBaseAmount / displayDays) : displayBaseAmount);
 
-      // Generate standardized invoice ID: LC-STR-YYYY-XXXXXX (LC = LocalCook, STR = Storage)
-      // LC-EXT = Storage Extension, LC-OP = Overstay Penalty, LC-STR = Storage Booking
+      // Use reference_code as invoice ID when available, fallback to legacy format
       const invoiceDate = new Date(transaction.paidAt || transaction.paid_at || transaction.createdAt || transaction.created_at);
       const year = invoiceDate.getFullYear();
       const bookingIdPadded = String(storageBooking.id).padStart(6, '0');
       const isOverstayPenalty = extensionDetails?.is_overstay_penalty === true;
+      const storageRefCode = storageBooking.reference_code || storageBooking.referenceCode;
       let invoiceId: string;
-      if (isOverstayPenalty) {
+      if (storageRefCode) {
+        invoiceId = storageRefCode;
+      } else if (isOverstayPenalty) {
         invoiceId = `LC-OP-${year}-${bookingIdPadded}`;
       } else if (isExtension) {
         invoiceId = `LC-EXT-${year}-${bookingIdPadded}`;
@@ -921,6 +923,7 @@ export async function generateStorageInvoicePDF(
 export async function generateDamageClaimInvoicePDF(
   claim: {
     id: number;
+    referenceCode?: string | null;
     claimTitle: string;
     claimDescription: string;
     damageDate: string | Date;
@@ -1097,7 +1100,10 @@ export async function generateDamageClaimInvoicePDF(
       doc.fontSize(10).font('Helvetica');
       doc.text('Payment Method: Credit/Debit Card');
       doc.text(`Transaction Date: ${chargeDate.toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`);
-      if (claim.stripePaymentIntentId) {
+      const dcRef = claim.referenceCode;
+      if (dcRef) {
+        doc.text(`Reference: ${dcRef}`);
+      } else if (claim.stripePaymentIntentId) {
         doc.text(`Reference: ${claim.stripePaymentIntentId.slice(-8).toUpperCase()}`);
       }
 

@@ -83,6 +83,7 @@ import { cn } from "@/lib/utils"
 // Types
 interface Booking {
   id: number
+  referenceCode?: string | null
   chefId: number
   kitchenId: number
   bookingDate: string
@@ -115,6 +116,7 @@ interface Booking {
 
 interface StorageBooking {
   id: number
+  referenceCode?: string | null
   storageListingId?: number
   kitchenBookingId?: number
   storageName?: string

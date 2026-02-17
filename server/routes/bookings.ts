@@ -132,6 +132,66 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
     }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Universal reference code lookup — resolves any reference code to its record
+// Supports: KB-XXXXXX (kitchen), SB-XXXXXX (storage), EXT-XXXXXX (extension),
+//           OP-XXXXXX (overstay), DC-XXXXXX (damage claim)
+// ═══════════════════════════════════════════════════════════════════════════
+router.get("/bookings/by-reference/:code", requireChef, async (req: Request, res: Response) => {
+    try {
+        const { code } = req.params;
+        if (!code || code.length < 4) {
+            return res.status(400).json({ error: "Invalid reference code" });
+        }
+
+        const prefix = code.split('-')[0];
+        const chefId = req.neonUser!.id;
+
+        if (prefix === 'KB') {
+            const [booking] = await db.select({ id: kitchenBookings.id, referenceCode: kitchenBookings.referenceCode, status: kitchenBookings.status })
+                .from(kitchenBookings)
+                .where(and(eq(kitchenBookings.referenceCode, code), eq(kitchenBookings.chefId, chefId)))
+                .limit(1);
+            if (booking) return res.json({ type: 'kitchen_booking', id: booking.id, referenceCode: booking.referenceCode, url: `/booking/${booking.id}` });
+        } else if (prefix === 'SB') {
+            const { storageBookings } = await import("@shared/schema");
+            const [booking] = await db.select({ id: storageBookings.id, referenceCode: storageBookings.referenceCode, status: storageBookings.status })
+                .from(storageBookings)
+                .where(and(eq(storageBookings.referenceCode, code), eq(storageBookings.chefId, chefId)))
+                .limit(1);
+            if (booking) return res.json({ type: 'storage_booking', id: booking.id, referenceCode: booking.referenceCode, url: `/dashboard` });
+        } else if (prefix === 'EXT') {
+            const { pendingStorageExtensions, storageBookings: sb } = await import("@shared/schema");
+            const [ext] = await db.select({ id: pendingStorageExtensions.id, referenceCode: pendingStorageExtensions.referenceCode })
+                .from(pendingStorageExtensions)
+                .innerJoin(sb, eq(pendingStorageExtensions.storageBookingId, sb.id))
+                .where(and(eq(pendingStorageExtensions.referenceCode, code), eq(sb.chefId, chefId)))
+                .limit(1);
+            if (ext) return res.json({ type: 'storage_extension', id: ext.id, referenceCode: ext.referenceCode, url: `/dashboard` });
+        } else if (prefix === 'OP') {
+            const { storageOverstayRecords, storageBookings: sb } = await import("@shared/schema");
+            const [record] = await db.select({ id: storageOverstayRecords.id, referenceCode: storageOverstayRecords.referenceCode })
+                .from(storageOverstayRecords)
+                .innerJoin(sb, eq(storageOverstayRecords.storageBookingId, sb.id))
+                .where(and(eq(storageOverstayRecords.referenceCode, code), eq(sb.chefId, chefId)))
+                .limit(1);
+            if (record) return res.json({ type: 'overstay_penalty', id: record.id, referenceCode: record.referenceCode, url: `/dashboard` });
+        } else if (prefix === 'DC') {
+            const { damageClaims } = await import("@shared/schema");
+            const [claim] = await db.select({ id: damageClaims.id, referenceCode: damageClaims.referenceCode })
+                .from(damageClaims)
+                .where(and(eq(damageClaims.referenceCode, code), eq(damageClaims.chefId, chefId)))
+                .limit(1);
+            if (claim) return res.json({ type: 'damage_claim', id: claim.id, referenceCode: claim.referenceCode, url: `/dashboard` });
+        }
+
+        return res.status(404).json({ error: "Reference not found" });
+    } catch (error) {
+        logger.error("Error looking up reference code:", error);
+        res.status(500).json({ error: "Failed to look up reference" });
+    }
+});
+
 // Get chef's storage bookings
 router.get("/chef/storage-bookings", requireChef, async (req: Request, res: Response) => {
     try {

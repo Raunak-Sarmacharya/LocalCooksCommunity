@@ -12,6 +12,7 @@
  */
 
 import { db } from "../db";
+import { generateReferenceCode } from "../reference-code";
 import { 
   storageBookings, 
   storageListings, 
@@ -246,9 +247,11 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
         });
       } else {
         // Create new overstay record
+        const opRefCode = await generateReferenceCode('overstay_penalty');
         const [newRecord] = await db
           .insert(storageOverstayRecords)
           .values({
+            referenceCode: opRefCode,
             storageBookingId: booking.id,
             endDate: booking.endDate,
             daysOverdue,

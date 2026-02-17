@@ -49,6 +49,7 @@ import {
 
 interface BookingDetails {
   id: number;
+  referenceCode?: string | null;
   chefId: number;
   kitchenId: number;
   bookingDate: string;
@@ -833,20 +834,13 @@ export default function BookingDetailsPage() {
       <div className="mb-8">
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
           <Hash className="h-3 w-3" />
-          <span className="font-mono">{booking.id}</span>
+          {booking.referenceCode ? (
+            <span className="font-mono font-medium text-foreground">{booking.referenceCode}</span>
+          ) : (
+            <span className="font-mono">{booking.id}</span>
+          )}
           <span className="text-border">·</span>
           <span>{formatShortDate(booking.createdAt)}</span>
-          {booking.paymentIntentId && (
-            <>
-              <span className="text-border">·</span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="font-mono cursor-help">ref …{booking.paymentIntentId.slice(-8)}</span>
-                </TooltipTrigger>
-                <TooltipContent>Payment Reference</TooltipContent>
-              </Tooltip>
-            </>
-          )}
         </div>
 
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
