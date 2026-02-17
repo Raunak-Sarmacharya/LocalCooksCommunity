@@ -1200,7 +1200,7 @@ export default function ChefBookingsView({
       filtered = filtered.filter((b) => b.status === statusFilter)
     }
 
-    // Search filter
+    // Search filter (includes reference code for lookup)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim()
       filtered = filtered.filter((b) => {
@@ -1212,6 +1212,7 @@ export default function ChefBookingsView({
           locationName,
           formatDate(b.bookingDate),
           b.specialNotes || '',
+          b.referenceCode || '',
         ].join(' ').toLowerCase()
         return searchableText.includes(query)
       })

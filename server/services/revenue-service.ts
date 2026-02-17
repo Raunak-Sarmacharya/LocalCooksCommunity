@@ -944,6 +944,7 @@ export async function getTransactionHistory(
         COALESCE(cka.email, u.username) as chef_email,
         kb.created_at,
         kb.updated_at,
+        kb.reference_code,
         -- Actual amount from payment_transactions (what was actually charged to Stripe)
         pt.amount as pt_amount,
         -- Actual Stripe fee from payment_transactions (fetched from Stripe Balance Transaction API)
@@ -1070,6 +1071,7 @@ export async function getTransactionHistory(
         locationName: row.location_name,
         chefName: row.chef_name || 'Guest',
         chefEmail: row.chef_email,
+        referenceCode: row.reference_code,
         createdAt: row.created_at,
         paidAt: row.pt_paid_at || null,
         refundAmount: ptRefundAmount,

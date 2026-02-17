@@ -1066,7 +1066,12 @@ export async function getChefPaymentTransactions(
         WHEN pt.booking_type = 'storage' THEN sl.name
         ELSE NULL
       END as item_name,
-      l.name as location_name
+      l.name as location_name,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN kb.reference_code
+        WHEN pt.booking_type = 'storage' THEN sb.reference_code
+        ELSE NULL
+      END as reference_code
     FROM payment_transactions pt
     LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
     LEFT JOIN kitchens k ON kb.kitchen_id = k.id

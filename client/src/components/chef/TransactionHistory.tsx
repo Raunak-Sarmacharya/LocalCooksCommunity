@@ -26,6 +26,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -55,6 +56,9 @@ import {
   Calendar,
   Receipt,
   ChefHat,
+  Search,
+  X,
+  Hash,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
@@ -64,6 +68,7 @@ interface Transaction {
   id: number;
   bookingId: number;
   bookingType: 'kitchen' | 'storage' | 'equipment' | 'bundle';
+  referenceCode: string | null;
   amount: number;
   baseAmount: number;
   serviceFee: number;
@@ -297,6 +302,7 @@ function getTransactionColumns(): ColumnDef<Transaction>[] {
 export function TransactionHistory() {
   const [viewType, setViewType] = useState<TransactionViewType>("all");
   const [bookingTypeFilter, setBookingTypeFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [sorting, setSorting] = useState<SortingState>([{ id: "paidAt", desc: true }]);
 
   // Fetch transactions
@@ -330,14 +336,38 @@ export function TransactionHistory() {
     return { succeededTx: succeeded, refundedTx: refunded, pendingTx: pending, canceledTx: canceled };
   }, [transactions]);
 
-  // Get current view data
+  // Get current view data with search filter
   const currentViewData = useMemo(() => {
-    if (viewType === "succeeded") return succeededTx;
-    if (viewType === "refunded") return refundedTx;
-    if (viewType === "pending") return pendingTx;
-    if (viewType === "canceled") return canceledTx;
-    return transactions;
-  }, [viewType, succeededTx, refundedTx, pendingTx, canceledTx, transactions]);
+    let data = transactions;
+    if (viewType === "succeeded") data = succeededTx;
+    else if (viewType === "refunded") data = refundedTx;
+    else if (viewType === "pending") data = pendingTx;
+    else if (viewType === "canceled") data = canceledTx;
+    
+    // Search filter (includes reference code for lookup)
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      data = data.filter((t) => {
+        const searchableText = [
+          t.bookingId.toString(),
+          t.paymentIntentId || '',
+          t.chargeId || '',
+          t.refundId || '',
+          t.itemName || '',
+          t.locationName || '',
+          t.referenceCode || '',
+        ].join(' ').toLowerCase();
+        return searchableText.includes(query);
+      });
+    }
+    
+    // Booking type filter
+    if (bookingTypeFilter !== 'all') {
+      data = data.filter(t => t.bookingType === bookingTypeFilter);
+    }
+    
+    return data;
+  }, [viewType, succeededTx, refundedTx, pendingTx, canceledTx, transactions, searchQuery, bookingTypeFilter]);
 
   // Calculate totals
   const totals = useMemo(() => {
@@ -466,6 +496,27 @@ export function TransactionHistory() {
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
+              {/* Search Input */}
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Search by ref code, ID..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 pr-8 w-[180px] lg:w-[220px]"
+                />
+                {searchQuery && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-1/2 -translate-y-1/2 h-7 w-7"
+                    onClick={() => setSearchQuery('')}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
               <Select value={bookingTypeFilter} onValueChange={setBookingTypeFilter}>
                 <SelectTrigger className="w-[160px]">
                   <SelectValue placeholder="All Types" />

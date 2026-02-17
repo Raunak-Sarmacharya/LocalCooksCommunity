@@ -70,6 +70,7 @@ export interface EnrichedBooking {
     cancellationPolicyHours?: number;
     cancellationPolicyMessage?: string;
   };
+  bookingDate: string;
   startTime: string;
   endTime: string;
   status: string;

@@ -1,7 +1,7 @@
 import { logger } from "@/lib/logger";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle, Search, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import { StorageExtensionApprovals } from "@/components/manager/StorageExtensionApprovals";
@@ -42,6 +42,7 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast, createBookingDateTime, getNowInTimezone } from "@/utils/timezone-utils";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { DataTable } from "@/components/ui/data-table";
+import { Input } from "@/components/ui/input";
 import { getBookingColumns, Booking } from "@/components/manager/bookings/columns";
 import { auth } from "@/lib/firebase";
 
@@ -84,6 +85,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
   const { locations } = useManagerDashboard();
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [locationFilter, setLocationFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
@@ -855,8 +857,23 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       filtered = filtered.filter((booking: Booking) => booking.locationName === locationFilter);
     }
 
+    // Apply search filter (includes reference code for lookup)
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter((booking: Booking) => {
+        const searchableText = [
+          booking.referenceCode || '',
+          booking.id.toString(),
+          booking.chefName || '',
+          booking.kitchenName || '',
+          booking.locationName || '',
+        ].join(' ').toLowerCase();
+        return searchableText.includes(query);
+      });
+    }
+
     return filtered;
-  }, [bookings, statusFilter, locationFilter, upcomingBookings, pastBookings]);
+  }, [bookings, statusFilter, locationFilter, searchQuery, upcomingBookings, pastBookings]);
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
@@ -920,6 +937,30 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
             </select>
           </div>
         )}
+
+        {/* Search Input */}
+        <div className="flex items-center gap-2 mb-4">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search by ref code, booking ID, chef..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-8"
+            />
+            {searchQuery && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-0 top-1/2 -translate-y-1/2 h-7 w-7"
+                onClick={() => setSearchQuery('')}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        </div>
 
         {/* Filter Tabs */}
         <Tabs value={statusFilter} onValueChange={setStatusFilter} className="w-full mb-6">

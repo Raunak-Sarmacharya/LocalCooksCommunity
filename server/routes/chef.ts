@@ -680,6 +680,7 @@ router.get("/transactions", requireChef, async (req: Request, res: Response) => 
             locationName: tx.location_name,
             bookingStart: tx.booking_start,
             bookingEnd: tx.booking_end,
+            referenceCode: tx.reference_code,
             // Metadata for additional context
             metadata: tx.metadata,
         }));
