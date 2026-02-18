@@ -302,12 +302,13 @@ export default function Header() {
               </a>
             </li>
             <li>
-              <Link
-                href="/resources"
+              <a
+                href="#resources"
                 className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
+                onClick={(e) => scrollToSection("resources", e)}
               >
                 Resources
-              </Link>
+              </a>
             </li>
             {user && user.role !== 'admin' && (user as any).isChef && (
               <li>
@@ -453,13 +454,16 @@ export default function Header() {
                 </a>
               </li>
               <li>
-                <Link
-                  href="/resources"
+                <a
+                  href="#resources"
                   className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                  onClick={closeMenu}
+                  onClick={(e) => {
+                    scrollToSection("resources", e);
+                    closeMenu();
+                  }}
                 >
                   Resources
-                </Link>
+                </a>
               </li>
               {user && (
                 <>

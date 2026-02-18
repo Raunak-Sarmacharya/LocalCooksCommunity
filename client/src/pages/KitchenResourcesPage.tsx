@@ -1,5 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
-import { Link } from "wouter";
+import { useState, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import SEOHead from "@/components/SEO/SEOHead";
@@ -9,13 +8,13 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   ExternalLink, Shield, FileText,
   Scale, ClipboardCheck, BadgeCheck, Flame,
-  CheckCircle2, AlertTriangle, Info, ChevronDown,
+  CheckCircle2, AlertTriangle, Info, ChevronRight,
   Menu, DollarSign, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -337,10 +336,10 @@ function InteractiveChecklist({ storageKey, phases }: { storageKey: string; phas
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SIDEBAR NAVIGATION
+// SIDEBAR NAVIGATION — Clean docs-style, collapsible sections
 // ═══════════════════════════════════════════════════════════════
 
-function SidebarNav({ activeSection, onNavigate }: { activeSection: string; onNavigate: (id: string) => void }) {
+function SidebarNav({ onNavigate, onItemClick }: { onNavigate: (id: string) => void; onItemClick?: () => void }) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   const toggleSection = (id: string) => {
@@ -352,64 +351,42 @@ function SidebarNav({ activeSection, onNavigate }: { activeSection: string; onNa
     });
   };
 
-  // Auto-expand via render-phase computation
-  const expandedWithActive = (() => {
-    let needsUpdate = false;
-    const next = new Set(expandedSections);
-    for (const section of SECTIONS) {
-      if ((section.id === activeSection || section.subsections?.some((s) => s.id === activeSection)) && !next.has(section.id)) {
-        next.add(section.id);
-        needsUpdate = true;
-      }
-    }
-    return needsUpdate ? next : expandedSections;
-  })();
-  if (expandedWithActive !== expandedSections) {
-    setExpandedSections(expandedWithActive);
-  }
+  const navigateAndClose = (id: string) => {
+    onNavigate(id);
+    onItemClick?.();
+  };
 
   return (
     <nav className="space-y-1">
       {SECTIONS.map((section) => {
-        const isActive = section.id === activeSection;
-        const hasActiveSub = section.subsections?.some((s) => s.id === activeSection);
-        const isExpanded = expandedSections.has(section.id) || isActive || hasActiveSub;
-        const SectionIcon = section.icon;
+        const hasSubs = section.subsections && section.subsections.length > 0;
+        const isExpanded = expandedSections.has(section.id);
 
         return (
           <div key={section.id}>
-            <button
-              onClick={() => {
-                onNavigate(section.id);
-                if (section.subsections && section.subsections.length > 0) {
-                  toggleSection(section.id);
-                }
-              }}
-              className={cn(
-                "w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150",
-                isActive || hasActiveSub
-                  ? "bg-primary/10 text-primary"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-              )}
-            >
-              <SectionIcon className="h-4 w-4 flex-shrink-0" />
-              <span className="flex-1 truncate">{section.title}</span>
-              {section.subsections && section.subsections.length > 0 && (
-                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform flex-shrink-0", isExpanded && "rotate-180")} />
-              )}
-            </button>
-            {isExpanded && section.subsections && section.subsections.length > 0 && (
-              <div className="ml-6 mt-1 space-y-0.5 border-l-2 border-gray-200 pl-3">
-                {section.subsections.map((sub) => (
+            {hasSubs ? (
+              <button
+                onClick={() => toggleSection(section.id)}
+                className="group w-full text-left flex items-center justify-between px-2.5 py-2 rounded-md text-[13px] font-semibold text-foreground/70 hover:text-foreground hover:bg-muted/50 transition-colors"
+              >
+                <span className="truncate">{section.title}</span>
+                <ChevronRight className={cn("h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform duration-200", isExpanded && "rotate-90")} />
+              </button>
+            ) : (
+              <button
+                onClick={() => navigateAndClose(section.id)}
+                className="group w-full text-left flex items-center px-2.5 py-2 rounded-md text-[13px] font-medium text-foreground/80 hover:text-foreground hover:bg-muted/60 transition-colors"
+              >
+                <span className="truncate">{section.title}</span>
+              </button>
+            )}
+            {isExpanded && hasSubs && (
+              <div className="ml-3 border-l-2 border-border/60 pl-3 py-1 space-y-0.5">
+                {section.subsections!.map((sub) => (
                   <button
                     key={sub.id}
-                    onClick={() => onNavigate(sub.id)}
-                    className={cn(
-                      "w-full text-left px-2 py-1.5 rounded text-xs transition-all duration-150",
-                      sub.id === activeSection
-                        ? "text-primary font-medium bg-primary/5"
-                        : "text-gray-500 hover:text-gray-800"
-                    )}
+                    onClick={() => navigateAndClose(sub.id)}
+                    className="w-full text-left px-2.5 py-1.5 rounded-md text-[12px] text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
                   >
                     {sub.title}
                   </button>
@@ -423,24 +400,36 @@ function SidebarNav({ activeSection, onNavigate }: { activeSection: string; onNa
   );
 }
 
-function MobileSidebar({ activeSection, onNavigate }: { activeSection: string; onNavigate: (id: string) => void }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const handleNavigate = (id: string) => { onNavigate(id); setIsOpen(false); };
+// ═══════════════════════════════════════════════════════════════
+// MOBILE NAV — Sheet drawer from left
+// ═══════════════════════════════════════════════════════════════
+
+function MobileNav({ onNavigate }: { onNavigate: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="lg:hidden sticky top-[64px] z-30 bg-white border-b">
-      <CollapsibleTrigger asChild>
-        <Button variant="ghost" className="w-full flex items-center justify-between px-4 py-3 rounded-none h-auto text-sm font-medium">
-          <span className="flex items-center gap-2"><Menu className="h-4 w-4" />On this page</span>
-          <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen && "rotate-180")} />
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="px-4 pb-4 max-h-[60vh] overflow-y-auto">
-          <SidebarNav activeSection={activeSection} onNavigate={handleNavigate} />
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+    <div className="lg:hidden sticky top-16 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+      <div className="container mx-auto max-w-7xl px-4">
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="sm" className="gap-2 -ml-2 h-10 text-[13px] font-medium text-muted-foreground hover:text-foreground">
+              <Menu className="h-4 w-4" />
+              Navigation
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-72 p-0">
+            <SheetHeader className="px-4 pt-4 pb-3 border-b">
+              <SheetTitle className="text-sm font-semibold">On this page</SheetTitle>
+            </SheetHeader>
+            <ScrollArea className="h-[calc(100vh-60px)]">
+              <div className="p-3">
+                <SidebarNav onNavigate={onNavigate} onItemClick={() => setOpen(false)} />
+              </div>
+            </ScrollArea>
+          </SheetContent>
+        </Sheet>
+      </div>
+    </div>
   );
 }
 
@@ -449,22 +438,6 @@ function MobileSidebar({ activeSection, onNavigate }: { activeSection: string; o
 // ═══════════════════════════════════════════════════════════════
 
 export default function KitchenResourcesPage() {
-  const [activeSection, setActiveSection] = useState("legal-foundation");
-
-  useEffect(() => {
-    const allIds = SECTIONS.flatMap((s) => [s.id, ...(s.subsections?.map((sub) => sub.id) || [])]);
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) { setActiveSection(entry.target.id); break; }
-        }
-      },
-      { rootMargin: "-100px 0px -60% 0px", threshold: 0 }
-    );
-    allIds.forEach((id) => { const el = document.getElementById(id); if (el) observer.observe(el); });
-    return () => observer.disconnect();
-  }, []);
-
   const scrollToSection = useCallback((id: string) => {
     const el = document.getElementById(id);
     if (el) {
@@ -475,7 +448,7 @@ export default function KitchenResourcesPage() {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-background">
       <SEOHead
         title="Kitchen Manager Resources — Operating a Shared Commercial Kitchen in Canada"
         description="Complete guide to licensing, insurance, risk assessment, operations, and pricing for shared commercial kitchens in Newfoundland & Labrador and across Canada."
@@ -501,80 +474,51 @@ export default function KitchenResourcesPage() {
       />
       <Header />
 
-      {/* Hero Section — matches landing page premium design */}
-      <section className="relative overflow-hidden">
-        {/* Warm gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#FFF8F5] via-[#FFFAF8] to-white" />
-        <div className="absolute -top-[20%] -right-[10%] w-[600px] h-[600px] rounded-full" style={{ background: "radial-gradient(circle, rgba(245,16,66,0.06) 0%, transparent 70%)" }} />
-        <div className="absolute bottom-[10%] left-[5%] w-[400px] h-[400px] rounded-full" style={{ background: "radial-gradient(circle, rgba(255,215,0,0.08) 0%, transparent 70%)" }} />
-        {/* Subtle pattern */}
-        <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")` }} />
+      {/* Mobile navigation — Sheet drawer */}
+      <MobileNav onNavigate={scrollToSection} />
 
-        <div className="relative z-10 container mx-auto max-w-5xl px-4 sm:px-6 pt-28 sm:pt-32 pb-16 sm:pb-20">
-          {/* Breadcrumb */}
-          <Breadcrumb className="mb-6">
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink asChild>
-                  <Link href="/" className="text-[#6B6B6B] hover:text-[#F51042] transition-colors">Home</Link>
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage className="text-[#2C2C2C] font-medium">Kitchen Manager Resources</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-
-          {/* Category pill */}
-          <div className="mb-6">
-            <span className="inline-flex items-center gap-2 bg-[#F51042] text-white px-4 py-2 rounded-full text-xs font-semibold tracking-wide">
-              <ClipboardCheck className="h-3.5 w-3.5" />
-              Kitchen Manager Guide
-            </span>
-          </div>
-
-          {/* Title */}
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-[#2C2C2C] mb-5 leading-[1.15] max-w-3xl">
-            The Complete Guide to Operating a{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
-              Shared Commercial Kitchen
-            </span>
-          </h1>
-
-          {/* Subtitle */}
-          <p className="text-[#6B6B6B] text-base sm:text-lg leading-relaxed max-w-2xl mb-8">
-            Currently serving Newfoundland &amp; Labrador — built to scale across Canada. Licensing, insurance, risk assessment, operations, and pricing for facility stewards.
-          </p>
-
-          {/* Trust indicators */}
-          <div className="flex flex-wrap gap-x-6 gap-y-3">
-            {[
-              { icon: Shield, text: "Government-verified sources" },
-              { icon: CheckCircle2, text: "Updated February 2026" },
-              { icon: ClipboardCheck, text: "15-minute read" },
-            ].map((item, i) => (
-              <span key={i} className="flex items-center gap-2 text-[#6B6B6B] text-sm">
-                <item.icon className="h-4 w-4 text-emerald-500 flex-shrink-0" />
-                {item.text}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <MobileSidebar activeSection={activeSection} onNavigate={scrollToSection} />
-
-      <div className="container mx-auto max-w-7xl px-4 py-8 lg:py-12">
-        <div className="flex gap-10">
-          <aside className="hidden lg:block w-64 flex-shrink-0">
-            <div className="sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto pr-2 pb-8">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4 px-3">On this page</p>
-              <SidebarNav activeSection={activeSection} onNavigate={scrollToSection} />
+      {/* Main layout — left sidebar + content */}
+      <div className="container mx-auto max-w-7xl px-4 sm:px-6 pt-24 sm:pt-28">
+        <div className="flex gap-0 lg:gap-10">
+          {/* Desktop Sidebar — sticky left nav */}
+          <aside className="hidden lg:block w-56 xl:w-60 flex-shrink-0">
+            <div className="sticky top-24">
+              <ScrollArea className="h-[calc(100vh-7rem)] pr-3">
+                <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-widest mb-3 px-2">On this page</p>
+                <SidebarNav onNavigate={scrollToSection} />
+              </ScrollArea>
             </div>
           </aside>
 
-          <main className="flex-1 min-w-0 max-w-3xl">
+          {/* Content area */}
+          <main className="flex-1 min-w-0 max-w-3xl py-8 lg:py-12 lg:border-l lg:pl-10">
+            {/* Compact hero — integrated into content flow */}
+            <div className="mb-10">
+              <Badge variant="secondary" className="mb-4 bg-[#F51042] text-white hover:bg-[#F51042]/90 text-xs font-semibold tracking-wide px-3 py-1">
+                <ClipboardCheck className="h-3 w-3 mr-1.5" />
+                Kitchen Manager Guide
+              </Badge>
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-3 leading-tight">
+                The Complete Guide to Operating a{" "}
+                <span className="text-[#F51042]">Shared Commercial Kitchen</span>
+              </h1>
+              <p className="text-muted-foreground text-sm sm:text-base leading-relaxed max-w-2xl mb-4">
+                Currently serving Newfoundland &amp; Labrador — built to scale across Canada. Licensing, insurance, risk assessment, operations, and pricing for facility stewards.
+              </p>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                {[
+                  { icon: CheckCircle2, text: "Updated February 2026" },
+                  { icon: ClipboardCheck, text: "15-minute read" },
+                ].map((item, i) => (
+                  <span key={i} className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                    <item.icon className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                    {item.text}
+                  </span>
+                ))}
+              </div>
+              <Separator className="mt-8" />
+            </div>
+
             <div className="prose-sm sm:prose prose-gray max-w-none prose-table:my-0 prose-thead:border-0 prose-tr:border-0 prose-th:p-0 prose-td:p-0">
 
               {/* ── Legal Foundation ── */}

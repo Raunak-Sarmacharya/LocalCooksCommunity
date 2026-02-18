@@ -34676,7 +34676,9 @@ function registerSecurityMiddleware(app2) {
           ...isProduction2 ? [] : ["http://localhost:*"]
         ],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:", "https://r2cdn.perplexity.ai"],
+        workerSrc: ["'self'", "blob:"],
+        // Required for Sentry tracing worker
         imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
         connectSrc: [
           "'self'",

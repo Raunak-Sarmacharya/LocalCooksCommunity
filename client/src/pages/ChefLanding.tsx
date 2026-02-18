@@ -14,7 +14,7 @@ import {
   Building2, ArrowRight, CheckCircle2, Check, X, Sparkles,
   Heart, Rocket, Star, Zap, Shield, MessageCircle,
   CreditCard, Truck, Instagram, Phone, Calendar, ChevronLeft, ChevronRight,
-  HeartHandshake, HandCoins
+  HeartHandshake, HandCoins, BadgeCheck, Scale
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -2069,6 +2069,123 @@ export default function ChefLanding() {
             TESTIMONIALS CAROUSEL - Thrive Childcare Centers Style
         ═══════════════════════════════════════════════════════════════════════ */}
         <TestimonialCarouselSection />
+
+        {/* ═══════════════════════════════════════════════════════════════════════
+            RESOURCES — Preview section linking to full Chef Resources page
+        ═══════════════════════════════════════════════════════════════════════ */}
+        <section id="resources" className="scroll-mt-24 py-20 md:py-28 px-4 bg-gradient-to-b from-gray-50/80 to-white relative overflow-hidden">
+          {/* Subtle decorative elements */}
+          <div className="absolute top-0 right-0 w-96 h-96 rounded-full opacity-[0.03]" style={{ background: "radial-gradient(circle, #F51042 0%, transparent 70%)" }} />
+          <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full opacity-[0.04]" style={{ background: "radial-gradient(circle, #FFD700 0%, transparent 70%)" }} />
+
+          <div className="container mx-auto max-w-6xl relative z-10">
+            <FadeInSection>
+              <div className="text-center mb-16">
+                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-[#F51042]/10 rounded-full">
+                  Knowledge Base
+                </span>
+                <motion.h2
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.7, delay: 0.1 }}
+                  className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-4"
+                >
+                  Everything You Need to{" "}
+                  <span className="relative inline-block">
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
+                      Get Started
+                    </span>
+                    <motion.svg
+                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
+                      viewBox="0 0 250 12"
+                      fill="none"
+                      initial={{ pathLength: 0, opacity: 0 }}
+                      whileInView={{ pathLength: 1, opacity: 1 }}
+                      transition={{ duration: 1.2, delay: 0.6 }}
+                      viewport={{ once: true }}
+                    >
+                      <motion.path
+                        d="M2 8C40 4 90 4 125 6C160 8 210 5 248 8"
+                        stroke="#F51042"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        initial={{ pathLength: 0 }}
+                        whileInView={{ pathLength: 1 }}
+                        transition={{ duration: 1.2, delay: 0.6 }}
+                        viewport={{ once: true }}
+                      />
+                    </motion.svg>
+                  </span>
+                </motion.h2>
+                <p className="text-[#6B6B6B] text-base md:text-lg max-w-2xl mx-auto leading-relaxed">
+                  From food safety certification to your first kitchen booking — our resource guide covers every step of launching your food business in Canada.
+                </p>
+              </div>
+            </FadeInSection>
+
+            <FadeInSection delay={1}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
+                {[
+                  {
+                    icon: Shield,
+                    title: "Regulatory Landscape",
+                    description: "Understand federal, provincial, and municipal food regulations that apply to your business.",
+                    color: "bg-blue-50 text-blue-600",
+                  },
+                  {
+                    icon: BadgeCheck,
+                    title: "Food Safety Certification",
+                    description: "Get certified for free through SkillsPass NL — your food handler training made simple.",
+                    color: "bg-emerald-50 text-emerald-600",
+                  },
+                  {
+                    icon: Building2,
+                    title: "Business Registration",
+                    description: "Register as sole proprietor or corporation. Home-based or commercial — we cover both paths.",
+                    color: "bg-amber-50 text-amber-600",
+                  },
+                  {
+                    icon: Scale,
+                    title: "Insurance & Licensing",
+                    description: "Liability coverage from $199/year with FLIP. Get your food establishment licence sorted.",
+                    color: "bg-purple-50 text-purple-600",
+                  },
+                ].map((item, i) => (
+                  <Card key={i} className="group border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-300 bg-white">
+                    <CardContent className="p-6">
+                      <div className={`w-10 h-10 rounded-lg ${item.color} flex items-center justify-center mb-4`}>
+                        <item.icon className="h-5 w-5" />
+                      </div>
+                      <h3 className="font-semibold text-[#2C2C2C] text-sm mb-2">{item.title}</h3>
+                      <p className="text-[#6B6B6B] text-xs leading-relaxed">{item.description}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </FadeInSection>
+
+            <FadeInSection delay={2}>
+              <div className="text-center">
+                <div className="inline-flex flex-col sm:flex-row items-center gap-4">
+                  <Link href="/resources">
+                    <Button
+                      size="lg"
+                      className="bg-[#F51042] hover:bg-[#D90935] text-white font-semibold py-6 px-10 text-base rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
+                    >
+                      Explore Full Resource Guide
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </Button>
+                  </Link>
+                  <span className="flex items-center gap-1.5 text-xs text-[#6B6B6B]">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                    10-minute read
+                  </span>
+                </div>
+              </div>
+            </FadeInSection>
+          </div>
+        </section>
 
         {/* ═══════════════════════════════════════════════════════════════════════
             FAQ

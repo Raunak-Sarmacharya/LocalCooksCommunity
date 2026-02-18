@@ -2,15 +2,16 @@ import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import FadeInSection from "@/components/ui/FadeInSection";
 import { 
   Building2, Calendar, ArrowRight, CheckCircle2, Shield, 
   Clock, DollarSign, Zap, TrendingUp, Lock,
   CreditCard, Package, Wrench, Sparkles, HandCoins, HeartHandshake,
-  Settings, Eye, BadgeCheck, Wallet, MessageCircle
+  Settings, Eye, BadgeCheck, Wallet, MessageCircle, Scale, ClipboardCheck
 } from "lucide-react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { motion, useScroll, useTransform, MotionValue } from "framer-motion";
 import emptyKitchenImage from "@assets/emptykitchen.png";
@@ -1579,6 +1580,123 @@ export default function KitchenLanding() {
                   </div>
                 </div>
               </motion.div>
+            </FadeInSection>
+          </div>
+        </section>
+
+        {/* ═══════════════════════════════════════════════════════════════════════
+            RESOURCES — Preview section linking to full Kitchen Resources page
+        ═══════════════════════════════════════════════════════════════════════ */}
+        <section id="resources" className="scroll-mt-24 py-20 md:py-28 px-4 bg-white relative overflow-hidden">
+          {/* Subtle decorative elements */}
+          <div className="absolute top-0 left-0 w-96 h-96 rounded-full opacity-[0.03]" style={{ background: "radial-gradient(circle, #F51042 0%, transparent 70%)" }} />
+          <div className="absolute bottom-0 right-0 w-72 h-72 rounded-full opacity-[0.04]" style={{ background: "radial-gradient(circle, #10B981 0%, transparent 70%)" }} />
+
+          <div className="container mx-auto max-w-6xl relative z-10">
+            <FadeInSection>
+              <div className="text-center mb-16">
+                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-rose-100 rounded-full">
+                  Knowledge Base
+                </span>
+                <motion.h2
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.7, delay: 0.1 }}
+                  className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-4"
+                >
+                  Run Your Kitchen{" "}
+                  <span className="relative inline-block">
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-red-500 to-rose-600">
+                      With Confidence
+                    </span>
+                    <motion.svg
+                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
+                      viewBox="0 0 350 12"
+                      fill="none"
+                      initial={{ pathLength: 0, opacity: 0 }}
+                      whileInView={{ pathLength: 1, opacity: 1 }}
+                      transition={{ duration: 1.2, delay: 0.6 }}
+                      viewport={{ once: true }}
+                    >
+                      <motion.path
+                        d="M2 8C50 3 120 3 175 6C230 9 300 5 348 8"
+                        stroke="#F43F5E"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        initial={{ pathLength: 0 }}
+                        whileInView={{ pathLength: 1 }}
+                        transition={{ duration: 1.2, delay: 0.6 }}
+                        viewport={{ once: true }}
+                      />
+                    </motion.svg>
+                  </span>
+                </motion.h2>
+                <p className="text-[#6B6B6B] text-base md:text-lg max-w-2xl mx-auto leading-relaxed">
+                  From licensing and insurance to risk assessment and pricing — our comprehensive guide covers everything you need to operate a shared commercial kitchen.
+                </p>
+              </div>
+            </FadeInSection>
+
+            <FadeInSection delay={1}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
+                {[
+                  {
+                    icon: Scale,
+                    title: "Legal Foundation",
+                    description: "Food establishment licences, municipal permits, and compliance requirements for your facility.",
+                    color: "bg-blue-50 text-blue-600",
+                  },
+                  {
+                    icon: Shield,
+                    title: "Insurance & Liability",
+                    description: "CGL coverage, tenant insurance requirements, and risk transfer strategies for shared spaces.",
+                    color: "bg-emerald-50 text-emerald-600",
+                  },
+                  {
+                    icon: ClipboardCheck,
+                    title: "Risk Assessment",
+                    description: "HACCP-based safety plans, sanitation protocols, and operational checklists for your kitchen.",
+                    color: "bg-amber-50 text-amber-600",
+                  },
+                  {
+                    icon: DollarSign,
+                    title: "Pricing & Operations",
+                    description: "Set competitive rates, manage bookings, and optimize occupancy to maximize your revenue.",
+                    color: "bg-purple-50 text-purple-600",
+                  },
+                ].map((item, i) => (
+                  <Card key={i} className="group border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-300 bg-white">
+                    <CardContent className="p-6">
+                      <div className={`w-10 h-10 rounded-lg ${item.color} flex items-center justify-center mb-4`}>
+                        <item.icon className="h-5 w-5" />
+                      </div>
+                      <h3 className="font-semibold text-[#2C2C2C] text-sm mb-2">{item.title}</h3>
+                      <p className="text-[#6B6B6B] text-xs leading-relaxed">{item.description}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </FadeInSection>
+
+            <FadeInSection delay={2}>
+              <div className="text-center">
+                <div className="inline-flex flex-col sm:flex-row items-center gap-4">
+                  <Link href="/resources">
+                    <Button
+                      size="lg"
+                      className="bg-[#F51042] hover:bg-[#D90935] text-white font-semibold py-6 px-10 text-base rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
+                    >
+                      Explore Full Resource Guide
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </Button>
+                  </Link>
+                  <span className="flex items-center gap-1.5 text-xs text-[#6B6B6B]">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                    15-minute read
+                  </span>
+                </div>
+              </div>
             </FadeInSection>
           </div>
         </section>
