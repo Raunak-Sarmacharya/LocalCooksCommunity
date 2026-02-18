@@ -515,6 +515,19 @@ export default function ChefResourcesPage() {
           "food entrepreneur guide", "food safety Newfoundland", "start food business",
           "FLIP insurance", "food establishment licence", "SkillsPass NL",
         ]}
+        faq={[
+          { question: "Do I need a food safety certificate to use LocalCooks?", answer: "Yes, all chefs using LocalCooks must complete a food safety certification. In Newfoundland & Labrador, you can get certified for free through SkillsPass NL, which covers food handler training." },
+          { question: "How do I register my food business in Newfoundland?", answer: "You can register as a sole proprietor or corporation through Service Newfoundland and Labrador. Home-based food businesses require additional registration through the Department of Health and Community Services." },
+          { question: "What insurance do I need as a food entrepreneur?", answer: "LocalCooks requires minimum $2 million liability coverage. FLIP (Food Liability Insurance Program) offers affordable coverage specifically for food entrepreneurs starting at $199/year." },
+          { question: "Can I operate a home-based food business in NL?", answer: "Yes, but you must register as a Home-Based Food Business and comply with specific restrictions. Low-risk baked goods and preserves are typically allowed, while high-risk items require a commercial kitchen." },
+          { question: "How long does it take to get approved on LocalCooks?", answer: "Most chef applications are reviewed and approved within 24 hours. You'll need to complete your food safety certification and provide government ID during the application process." },
+        ]}
+        siteNavigation={[
+          { name: "Apply as Chef", description: "Join LocalCooks — get approved in 24 hours, keep 100% during trial", url: "https://chef.localcooks.ca/apply" },
+          { name: "Book a Kitchen", description: "Browse and book commercial kitchens in St. John's, Newfoundland", url: "https://chef.localcooks.ca/book-kitchen" },
+          { name: "Compare Kitchens", description: "Compare commercial kitchen facilities, amenities, and pricing", url: "https://chef.localcooks.ca/compare-kitchens" },
+          { name: "Chef Resources", description: "Complete guide to starting your food business in Canada", url: "https://chef.localcooks.ca/resources" },
+        ]}
       />
       <Header />
 

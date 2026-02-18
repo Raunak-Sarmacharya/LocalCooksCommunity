@@ -485,6 +485,19 @@ export default function KitchenResourcesPage() {
           "food establishment licence NL", "commercial kitchen insurance", "kitchen manager guide",
           "HACCP shared kitchen", "commercial kitchen pricing", "kitchen rental agreement",
         ]}
+        faq={[
+          { question: "What licence do I need to operate a shared commercial kitchen in Newfoundland?", answer: "You need a Food Establishment Licence from the Department of Health and Community Services. For shared kitchen operations, you'll also need a HACCP-based food safety plan and must meet specific requirements for kitchen design, equipment, and sanitation." },
+          { question: "How much liability insurance do I need for my shared kitchen?", answer: "LocalCooks requires minimum $2 million liability coverage. It's recommended to have commercial general liability (CGL) insurance that covers food service operations, equipment damage, and tenant injuries." },
+          { question: "What should I include in a kitchen rental agreement?", answer: "A comprehensive agreement should cover: hourly/daily rates, security deposits, equipment usage rules, cleaning responsibilities, insurance requirements, cancellation policies, and liability provisions. LocalCooks provides standard agreement templates." },
+          { question: "How do I set pricing for my commercial kitchen?", answer: "Consider your costs (rent, utilities, equipment depreciation), market rates in your area, and target occupancy. Most shared kitchens charge $25-75/hour depending on amenities, location, and included equipment. LocalCooks provides pricing analytics to help optimize rates." },
+          { question: "What are the key operational requirements for a shared kitchen?", answer: "Key requirements include: proper food safety certifications, HACCP plan implementation, regular equipment maintenance, cleaning schedules, waste management, pest control, and proper record-keeping for all chef bookings and food preparation activities." },
+        ]}
+        siteNavigation={[
+          { name: "List Your Kitchen", description: "Monetize your commercial kitchen space — list in minutes", url: "https://kitchen.localcooks.ca/manager/setup" },
+          { name: "Kitchen Manager Resources", description: "Complete guide to operating a shared commercial kitchen in Canada", url: "https://kitchen.localcooks.ca/resources" },
+          { name: "Terms", description: "Terms of service for kitchen managers", url: "https://kitchen.localcooks.ca/terms" },
+          { name: "Privacy", description: "Privacy policy", url: "https://kitchen.localcooks.ca/privacy" },
+        ]}
       />
       <Header />
 
