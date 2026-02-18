@@ -169,6 +169,28 @@ function InfoCard({ children, variant = "info" }: { children: React.ReactNode; v
 }
 
 function ResourceTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
+  const makeLink = (text: string) => {
+    const urlWithPath = text.match(/^(https?:\/\/|www\.)[^\s]+/i);
+    if (urlWithPath) {
+      const fullUrl = urlWithPath[0].startsWith('http') ? urlWithPath[0] : `https://${urlWithPath[0]}`;
+      return (
+        <a href={fullUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+          {text}
+          <ExternalLink className="h-3 w-3" />
+        </a>
+      );
+    }
+    const domainOnly = text.match(/^[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z]{2,})+$/i);
+    if (domainOnly) {
+      return (
+        <a href={`https://${text}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+          {text}
+          <ExternalLink className="h-3 w-3" />
+        </a>
+      );
+    }
+    return text;
+  };
   return (
     <Card className="my-6 overflow-hidden border not-prose">
       <div className="overflow-x-auto">
@@ -184,7 +206,7 @@ function ResourceTable({ headers, rows }: { headers: string[]; rows: string[][] 
             {rows.map((row, ri) => (
               <tr key={ri} className="hover:bg-muted/30 transition-colors">
                 {row.map((cell, ci) => (
-                  <td key={ci} className={cn("px-4 py-3 text-muted-foreground", ci === 0 && "font-medium text-foreground whitespace-nowrap")}>{cell}</td>
+                  <td key={ci} className={cn("px-4 py-3 text-muted-foreground", ci === 0 && "font-medium text-foreground whitespace-nowrap")}>{makeLink(cell)}</td>
                 ))}
               </tr>
             ))}
@@ -220,6 +242,106 @@ function SubHeading({ id, children }: { id: string; children: React.ReactNode })
     <h3 id={id} className="text-lg font-semibold mt-10 mb-4 scroll-mt-24">
       {children}
     </h3>
+  );
+}
+
+function InteractiveChecklist({ storageKey, phases }: { storageKey: string; phases: { title: string; items: string[] }[] }) {
+  const [checked, setChecked] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+
+  const toggle = useCallback((key: string) => {
+    setChecked((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem(storageKey, JSON.stringify(next));
+      return next;
+    });
+  }, [storageKey]);
+
+  const resetAll = useCallback(() => {
+    setChecked({});
+    localStorage.removeItem(storageKey);
+  }, [storageKey]);
+
+  const totalItems = phases.reduce((sum, p) => sum + p.items.length, 0);
+  const totalChecked = Object.values(checked).filter(Boolean).length;
+  const overallPercent = totalItems > 0 ? Math.round((totalChecked / totalItems) * 100) : 0;
+
+  return (
+    <div className="space-y-6 my-6">
+      <Card className="bg-muted/30 border-dashed">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium">Overall Progress</span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-primary">{totalChecked}/{totalItems} complete</span>
+              {totalChecked > 0 && (
+                <button onClick={resetAll} className="text-xs text-muted-foreground hover:text-destructive transition-colors underline">
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+            <div
+              className={cn("h-full rounded-full transition-all duration-500 ease-out", overallPercent === 100 ? "bg-emerald-500" : "bg-primary")}
+              style={{ width: `${overallPercent}%` }}
+            />
+          </div>
+          {overallPercent === 100 && (
+            <p className="text-xs text-emerald-600 font-medium mt-2 flex items-center gap-1">
+              <CheckCircle2 className="h-3.5 w-3.5" /> All done — you&apos;re ready to launch!
+            </p>
+          )}
+        </CardContent>
+      </Card>
+      {phases.map((phase, pi) => {
+        const phaseChecked = phase.items.filter((_, ii) => checked[`${pi}-${ii}`]).length;
+        const phasePercent = phase.items.length > 0 ? Math.round((phaseChecked / phase.items.length) * 100) : 0;
+        return (
+          <Card key={pi}>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">{phase.title}</CardTitle>
+                <span className={cn("text-xs font-medium", phasePercent === 100 ? "text-emerald-600" : "text-muted-foreground")}>
+                  {phaseChecked}/{phase.items.length}
+                </span>
+              </div>
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden mt-1">
+                <div
+                  className={cn("h-full rounded-full transition-all duration-500 ease-out", phasePercent === 100 ? "bg-emerald-500" : "bg-primary/60")}
+                  style={{ width: `${phasePercent}%` }}
+                />
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <ul className="space-y-1">
+                {phase.items.map((item, ii) => {
+                  const key = `${pi}-${ii}`;
+                  const isChecked = !!checked[key];
+                  return (
+                    <li
+                      key={ii}
+                      onClick={() => toggle(key)}
+                      className={cn(
+                        "flex items-start gap-2.5 text-sm p-2 rounded-md cursor-pointer transition-colors select-none",
+                        isChecked ? "text-muted-foreground/60 line-through" : "text-foreground hover:bg-muted/50"
+                      )}
+                    >
+                      <Checkbox checked={isChecked} className="mt-0.5 pointer-events-none" tabIndex={-1} />
+                      <span>{item}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
   );
 }
 
@@ -808,30 +930,15 @@ export default function ChefResourcesPage() {
 
               {/* ── Launch Checklist ── */}
               <SectionHeading id="launch-checklist">Your Launch Checklist</SectionHeading>
-              <div className="space-y-6 my-6">
-                {[
+              <InteractiveChecklist
+                storageKey="chef-launch-checklist"
+                phases={[
                   { title: "Weeks 1\u20132: Foundation", items: ["Complete SkillsPass NL Food Handler course (free, online)", "Pass the certification exam and download your certificate", "Research which foods you want to prepare", "Decide: home-based or commercial kitchen", "Review the NL Food Premises Regulations"] },
                   { title: "Weeks 3\u20134: Insurance & Registration", items: ["Get a liability insurance quote from FLIP or alternative", "Purchase minimum $2M liability insurance", "Download your Certificate of Insurance", "Register home-based food business (if applicable)", "Set up a dedicated business bank account"] },
                   { title: "Weeks 5\u20136: Kitchen & Documentation", items: ["Browse commercial kitchens on Local Cooks", "Apply to kitchens that match your needs", "Connect with kitchen managers via messaging", "Exchange documentation (floor plans, licence info, COI)", "Add kitchen as Additional Insured on your insurance"] },
                   { title: "Weeks 7\u201310: Launch", items: ["Compile all documents for Food Establishment Licence", "Submit application to Service NL and pay fees", "Complete an in-person kitchen orientation", "Sign your rental agreement", "Book your first kitchen session"] },
-                ].map((phase, pi) => (
-                  <Card key={pi}>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">{phase.title}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <ul className="space-y-2">
-                        {phase.items.map((item, ii) => (
-                          <li key={ii} className="flex items-start gap-2.5 text-sm text-muted-foreground">
-                            <Checkbox disabled className="mt-0.5" />
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                ]}
+              />
 
               {/* ── Resources & Links ── */}
               <SectionHeading id="resources-links">Resources & Links</SectionHeading>
