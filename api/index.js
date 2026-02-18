@@ -25,7 +25,7 @@ function getTransport() {
         colorize: true,
         translateTime: "HH:MM:ss.l",
         ignore: "pid,hostname",
-        customLevels: "operational:35",
+        customLevels: "operational:45",
         customColors: "operational:bgCyan",
         useOnlyCustomProps: false
       }
@@ -47,7 +47,7 @@ var init_logger = __esm({
     isVercelProduction2 = process.env.VERCEL_ENV === "production";
     isVercelPreview = process.env.VERCEL_ENV === "preview";
     isLocalDev = process.env.NODE_ENV === "development" && !process.env.VERCEL;
-    customLevels = { operational: 35 };
+    customLevels = { operational: 45 };
     pinoLogger = pino({
       level: getLogLevel(),
       customLevels,
@@ -100,10 +100,27 @@ var init_logger = __esm({
           });
         } else if (error && typeof error === "object") {
           pinoLogger.error(error, msg);
+          Sentry2.addBreadcrumb({
+            category: "logger",
+            message: msg,
+            level: "error",
+            data: { detail: JSON.stringify(error) }
+          });
         } else if (error) {
           pinoLogger.error({ detail: String(error) }, msg);
+          Sentry2.addBreadcrumb({
+            category: "logger",
+            message: msg,
+            level: "error",
+            data: { detail: String(error) }
+          });
         } else {
           pinoLogger.error(msg);
+          Sentry2.addBreadcrumb({
+            category: "logger",
+            message: msg,
+            level: "error"
+          });
         }
       },
       debug(msg, ...args) {
@@ -116,15 +133,7 @@ var init_logger = __esm({
         }
       },
       operational(msg, data) {
-        if (isVercelProduction2) {
-          if (data) {
-            console.log(JSON.stringify({ level: "operational", time: (/* @__PURE__ */ new Date()).toISOString(), msg, ...data }));
-          } else {
-            console.log(JSON.stringify({ level: "operational", time: (/* @__PURE__ */ new Date()).toISOString(), msg }));
-          }
-        } else {
-          logOperational(pinoLogger, msg, data);
-        }
+        logOperational(pinoLogger, msg, data);
       },
       fatal(msg, data) {
         if (data) {
@@ -151,19 +160,41 @@ var init_logger = __esm({
           error: (msg, error) => {
             if (error instanceof Error) {
               childPino.error({ err: error }, msg);
+              Sentry2.addBreadcrumb({
+                category: "logger",
+                message: msg,
+                level: "error",
+                data: { errorMessage: error.message, ...bindings }
+              });
             } else if (error && typeof error === "object") {
               childPino.error(error, msg);
+              Sentry2.addBreadcrumb({
+                category: "logger",
+                message: msg,
+                level: "error",
+                data: { detail: JSON.stringify(error), ...bindings }
+              });
+            } else if (error) {
+              childPino.error({ detail: String(error) }, msg);
+              Sentry2.addBreadcrumb({
+                category: "logger",
+                message: msg,
+                level: "error",
+                data: { detail: String(error), ...bindings }
+              });
             } else {
               childPino.error(msg);
+              Sentry2.addBreadcrumb({
+                category: "logger",
+                message: msg,
+                level: "error",
+                data: { ...bindings }
+              });
             }
           },
           debug: (msg, data) => data ? childPino.debug(data, msg) : childPino.debug(msg),
           operational: (msg, data) => {
-            if (isVercelProduction2) {
-              console.log(JSON.stringify({ level: "operational", time: (/* @__PURE__ */ new Date()).toISOString(), msg, ...bindings, ...data }));
-            } else {
-              logOperational(childPino, msg, data);
-            }
+            logOperational(childPino, msg, data);
           }
         };
       }
@@ -843,6 +874,8 @@ var init_schema = __esm({
     });
     kitchenBookings = pgTable("kitchen_bookings", {
       id: serial("id").primaryKey(),
+      referenceCode: text("reference_code").unique(),
+      // Human-friendly reference e.g. KB-A7K9MX
       chefId: integer("chef_id").references(() => users.id),
       // Nullable for external/third-party bookings
       kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
@@ -1412,6 +1445,8 @@ var init_schema = __esm({
     });
     storageBookings = pgTable("storage_bookings", {
       id: serial("id").primaryKey(),
+      referenceCode: text("reference_code").unique(),
+      // Human-friendly reference e.g. SB-X3P2NR
       storageListingId: integer("storage_listing_id").references(() => storageListings.id, { onDelete: "cascade" }).notNull(),
       kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }),
       // NULLABLE - storage can be booked independently
@@ -1780,6 +1815,8 @@ var init_schema = __esm({
     });
     pendingStorageExtensions = pgTable("pending_storage_extensions", {
       id: serial("id").primaryKey(),
+      referenceCode: text("reference_code").unique(),
+      // Human-friendly reference e.g. EXT-B4R7TY
       storageBookingId: integer("storage_booking_id").references(() => storageBookings.id, { onDelete: "cascade" }).notNull(),
       newEndDate: timestamp("new_end_date").notNull(),
       extensionDays: integer("extension_days").notNull(),
@@ -1824,6 +1861,8 @@ var init_schema = __esm({
     ]);
     storageOverstayRecords = pgTable("storage_overstay_records", {
       id: serial("id").primaryKey(),
+      referenceCode: text("reference_code").unique(),
+      // Human-friendly reference e.g. OP-C8M2WE
       storageBookingId: integer("storage_booking_id").references(() => storageBookings.id, { onDelete: "cascade" }).notNull(),
       // Detection info
       detectedAt: timestamp("detected_at").defaultNow().notNull(),
@@ -1961,6 +2000,8 @@ var init_schema = __esm({
     ]);
     damageClaims = pgTable("damage_claims", {
       id: serial("id").primaryKey(),
+      referenceCode: text("reference_code").unique(),
+      // Human-friendly reference e.g. DC-D9F3QH
       // Booking reference (polymorphic for kitchen or storage bookings)
       bookingType: text("booking_type").notNull(),
       // 'kitchen' or 'storage'
@@ -2272,6 +2313,58 @@ var init_domain_error = __esm({
   }
 });
 
+// server/reference-code.ts
+import crypto from "crypto";
+import { sql } from "drizzle-orm";
+function generateCode(prefix) {
+  const bytes = crypto.randomBytes(CODE_LENGTH);
+  let code = "";
+  for (let i = 0; i < CODE_LENGTH; i++) {
+    code += SAFE_CHARS[bytes[i] % SAFE_CHARS.length];
+  }
+  return `${prefix}-${code}`;
+}
+async function generateReferenceCode(type) {
+  const prefix = REFERENCE_PREFIXES[type];
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = generateCode(prefix);
+    const result = await db.execute(sql`
+      SELECT 1 FROM (
+        SELECT reference_code FROM kitchen_bookings WHERE reference_code = ${code}
+        UNION ALL
+        SELECT reference_code FROM storage_bookings WHERE reference_code = ${code}
+        UNION ALL
+        SELECT reference_code FROM pending_storage_extensions WHERE reference_code = ${code}
+        UNION ALL
+        SELECT reference_code FROM storage_overstay_records WHERE reference_code = ${code}
+        UNION ALL
+        SELECT reference_code FROM damage_claims WHERE reference_code = ${code}
+      ) AS refs LIMIT 1
+    `);
+    if (result.rows.length === 0) {
+      return code;
+    }
+  }
+  const fallback = `${prefix}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+  return fallback;
+}
+var SAFE_CHARS, CODE_LENGTH, REFERENCE_PREFIXES;
+var init_reference_code = __esm({
+  "server/reference-code.ts"() {
+    "use strict";
+    init_db();
+    SAFE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    CODE_LENGTH = 6;
+    REFERENCE_PREFIXES = {
+      kitchen_booking: "KB",
+      storage_booking: "SB",
+      storage_extension: "EXT",
+      overstay_penalty: "OP",
+      damage_claim: "DC"
+    };
+  }
+});
+
 // server/services/overstay-defaults-service.ts
 var overstay_defaults_service_exports = {};
 __export(overstay_defaults_service_exports, {
@@ -2372,7 +2465,7 @@ var notification_service_exports = {};
 __export(notification_service_exports, {
   notificationService: () => notificationService
 });
-import { sql } from "drizzle-orm";
+import { sql as sql2 } from "drizzle-orm";
 import { format } from "date-fns";
 async function createNotification(params) {
   const {
@@ -2391,7 +2484,7 @@ async function createNotification(params) {
   try {
     let result;
     if (target === "manager") {
-      result = await db.execute(sql`
+      result = await db.execute(sql2`
         INSERT INTO manager_notifications 
         (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
         VALUES (
@@ -2410,7 +2503,7 @@ async function createNotification(params) {
       `);
       logger.info(`[NotificationService] Created ${type} notification for manager ${userId}`);
     } else {
-      result = await db.execute(sql`
+      result = await db.execute(sql2`
         INSERT INTO chef_notifications 
         (chef_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
         VALUES (
@@ -2691,7 +2784,7 @@ async function notifySystemAnnouncement(managerId, data) {
 }
 async function broadcastSystemAnnouncement(data) {
   try {
-    const result = await db.execute(sql`
+    const result = await db.execute(sql2`
       SELECT id FROM users WHERE is_manager = true
     `);
     const managerIds = result.rows.map((row) => row.id);
@@ -2817,7 +2910,7 @@ async function notifyChefMessage(data) {
 }
 async function broadcastChefAnnouncement(data) {
   try {
-    const result = await db.execute(sql`
+    const result = await db.execute(sql2`
       SELECT id FROM users WHERE is_chef = true OR role = 'chef'
     `);
     const chefIds = result.rows.map((row) => row.id);
@@ -3454,7 +3547,7 @@ __export(payment_transactions_service_exports, {
   syncStripeFees: () => syncStripeFees,
   updatePaymentTransaction: () => updatePaymentTransaction
 });
-import { sql as sql2 } from "drizzle-orm";
+import { sql as sql3 } from "drizzle-orm";
 async function createPaymentTransaction(params, db2) {
   const {
     bookingId,
@@ -3474,7 +3567,7 @@ async function createPaymentTransaction(params, db2) {
     metadata = {}
   } = params;
   const netAmount = amount;
-  const result = await db2.execute(sql2`
+  const result = await db2.execute(sql3`
     INSERT INTO payment_transactions (
       booking_id,
       booking_type,
@@ -3530,7 +3623,7 @@ async function createPaymentTransaction(params, db2) {
   return record;
 }
 async function updatePaymentTransaction(transactionId, params, db2) {
-  const currentResult = await db2.execute(sql2`
+  const currentResult = await db2.execute(sql3`
     SELECT status, refund_amount, amount
     FROM payment_transactions
     WHERE id = ${transactionId}
@@ -3544,76 +3637,76 @@ async function updatePaymentTransaction(transactionId, params, db2) {
   const currentAmount = parseFloat(current.amount || "0");
   const updates = [];
   if (params.status !== void 0) {
-    updates.push(sql2`status = ${params.status}`);
+    updates.push(sql3`status = ${params.status}`);
   }
   if (params.stripeStatus !== void 0) {
-    updates.push(sql2`stripe_status = ${params.stripeStatus}`);
+    updates.push(sql3`stripe_status = ${params.stripeStatus}`);
   }
   if (params.paymentIntentId !== void 0) {
-    updates.push(sql2`payment_intent_id = ${params.paymentIntentId}`);
+    updates.push(sql3`payment_intent_id = ${params.paymentIntentId}`);
   }
   if (params.paymentMethodId !== void 0) {
-    updates.push(sql2`payment_method_id = ${params.paymentMethodId}`);
+    updates.push(sql3`payment_method_id = ${params.paymentMethodId}`);
   }
   if (params.chargeId !== void 0) {
-    updates.push(sql2`charge_id = ${params.chargeId}`);
+    updates.push(sql3`charge_id = ${params.chargeId}`);
   }
   if (params.refundId !== void 0) {
-    updates.push(sql2`refund_id = ${params.refundId}`);
+    updates.push(sql3`refund_id = ${params.refundId}`);
   }
   if (params.amount !== void 0) {
-    updates.push(sql2`amount = ${params.amount.toString()}`);
+    updates.push(sql3`amount = ${params.amount.toString()}`);
   }
   if (params.refundAmount !== void 0) {
-    updates.push(sql2`refund_amount = ${params.refundAmount.toString()}`);
+    updates.push(sql3`refund_amount = ${params.refundAmount.toString()}`);
     const effectiveAmount = params.amount !== void 0 ? params.amount : currentAmount;
     const newRefundAmount = params.refundAmount;
     const netAmount = effectiveAmount - newRefundAmount;
-    updates.push(sql2`net_amount = ${netAmount.toString()}`);
+    updates.push(sql3`net_amount = ${netAmount.toString()}`);
   }
   if (params.refundReason !== void 0) {
-    updates.push(sql2`refund_reason = ${params.refundReason}`);
+    updates.push(sql3`refund_reason = ${params.refundReason}`);
   }
   if (params.failureReason !== void 0) {
-    updates.push(sql2`failure_reason = ${params.failureReason}`);
+    updates.push(sql3`failure_reason = ${params.failureReason}`);
   }
   if (params.paidAt !== void 0) {
-    updates.push(sql2`paid_at = ${params.paidAt}`);
+    updates.push(sql3`paid_at = ${params.paidAt}`);
   }
   if (params.refundedAt !== void 0) {
-    updates.push(sql2`refunded_at = ${params.refundedAt}`);
+    updates.push(sql3`refunded_at = ${params.refundedAt}`);
   }
   if (params.lastSyncedAt !== void 0) {
-    updates.push(sql2`last_synced_at = ${params.lastSyncedAt}`);
+    updates.push(sql3`last_synced_at = ${params.lastSyncedAt}`);
   }
   if (params.webhookEventId !== void 0) {
-    updates.push(sql2`webhook_event_id = ${params.webhookEventId}`);
+    updates.push(sql3`webhook_event_id = ${params.webhookEventId}`);
   }
   if (params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) {
     if (params.stripeAmount !== void 0) {
-      updates.push(sql2`amount = ${params.stripeAmount.toString()}`);
+      updates.push(sql3`amount = ${params.stripeAmount.toString()}`);
     }
     if (params.stripeNetAmount !== void 0) {
-      updates.push(sql2`net_amount = ${params.stripeNetAmount.toString()}`);
-      updates.push(sql2`manager_revenue = ${params.stripeNetAmount.toString()}`);
+      updates.push(sql3`net_amount = ${params.stripeNetAmount.toString()}`);
+      updates.push(sql3`manager_revenue = ${params.stripeNetAmount.toString()}`);
     }
     if (params.stripeProcessingFee !== void 0) {
-      updates.push(sql2`stripe_processing_fee = ${params.stripeProcessingFee.toString()}`);
+      updates.push(sql3`stripe_processing_fee = ${params.stripeProcessingFee.toString()}`);
     }
     if (params.stripePlatformFee !== void 0 && params.stripePlatformFee > 0) {
-      updates.push(sql2`service_fee = ${params.stripePlatformFee.toString()}`);
+      updates.push(sql3`service_fee = ${params.stripePlatformFee.toString()}`);
     } else if (params.stripeAmount !== void 0 && params.stripeNetAmount !== void 0) {
       const totalFees = params.stripeAmount - params.stripeNetAmount;
       const processingFee = params.stripeProcessingFee || 0;
       const actualPlatformFee = Math.max(0, totalFees - processingFee);
-      updates.push(sql2`service_fee = ${actualPlatformFee.toString()}`);
+      updates.push(sql3`service_fee = ${actualPlatformFee.toString()}`);
     }
     if (params.stripeAmount !== void 0) {
       const platformFee = params.stripePlatformFee || (params.stripeAmount !== void 0 && params.stripeNetAmount !== void 0 ? Math.max(0, params.stripeAmount - params.stripeNetAmount - (params.stripeProcessingFee || 0)) : 0);
       const baseAmount = params.stripeAmount - platformFee;
-      updates.push(sql2`base_amount = ${baseAmount.toString()}`);
+      updates.push(sql3`base_amount = ${baseAmount.toString()}`);
     }
-    const currentMetadataResult = await db2.execute(sql2`
+    const currentMetadataResult = await db2.execute(sql3`
       SELECT metadata FROM payment_transactions WHERE id = ${transactionId}
     `);
     const currentMetadata = currentMetadataResult.rows[0]?.metadata ? typeof currentMetadataResult.rows[0].metadata === "string" ? JSON.parse(currentMetadataResult.rows[0].metadata) : currentMetadataResult.rows[0].metadata : {};
@@ -3626,19 +3719,19 @@ async function updatePaymentTransaction(transactionId, params, db2) {
       ...currentMetadata,
       stripeFees
     };
-    updates.push(sql2`metadata = ${JSON.stringify(updatedMetadata)}`);
+    updates.push(sql3`metadata = ${JSON.stringify(updatedMetadata)}`);
   } else if (params.metadata !== void 0) {
-    updates.push(sql2`metadata = ${JSON.stringify(params.metadata)}`);
+    updates.push(sql3`metadata = ${JSON.stringify(params.metadata)}`);
   }
   if (updates.length === 0) {
-    const result2 = await db2.execute(sql2`
+    const result2 = await db2.execute(sql3`
       SELECT * FROM payment_transactions WHERE id = ${transactionId}
     `);
     return result2.rows[0];
   }
-  const result = await db2.execute(sql2`
+  const result = await db2.execute(sql3`
     UPDATE payment_transactions
-    SET ${sql2.join(updates, sql2`, `)}, updated_at = NOW()
+    SET ${sql3.join(updates, sql3`, `)}, updated_at = NOW()
     WHERE id = ${transactionId}
     RETURNING *
   `);
@@ -3714,7 +3807,7 @@ async function updatePaymentTransaction(transactionId, params, db2) {
 }
 async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) {
   try {
-    const transactionResult = await db2.execute(sql2`
+    const transactionResult = await db2.execute(sql3`
       SELECT 
         pt.id,
         pt.booking_id,
@@ -3740,17 +3833,17 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
       return;
     }
     if (bookingType === "bundle") {
-      const kitchenBooking = await db2.execute(sql2`
+      const kitchenBooking = await db2.execute(sql3`
         SELECT id, total_price, service_fee
         FROM kitchen_bookings
         WHERE id = ${bookingId}
       `);
-      const storageBookings2 = await db2.execute(sql2`
+      const storageBookings2 = await db2.execute(sql3`
         SELECT id, total_price, service_fee
         FROM storage_bookings
         WHERE kitchen_booking_id = ${bookingId}
       `);
-      const equipmentBookings2 = await db2.execute(sql2`
+      const equipmentBookings2 = await db2.execute(sql3`
         SELECT id, total_price, service_fee
         FROM equipment_bookings
         WHERE kitchen_booking_id = ${bookingId}
@@ -3768,7 +3861,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
         const kbStripeAmount = Math.round(stripeAmounts.stripeAmount * kbProportion);
         const kbStripeNet = Math.round(stripeAmounts.stripeNetAmount * kbProportion);
         const kbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * kbProportion) : Math.round((kbStripeAmount - kbStripeNet) * 0.5);
-        await db2.execute(sql2`
+        await db2.execute(sql3`
           UPDATE kitchen_bookings
           SET 
             total_price = ${kbStripeAmount.toString()},
@@ -3784,7 +3877,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
           const sbStripeAmount = Math.round(stripeAmounts.stripeAmount * sbProportion);
           const sbStripeNet = Math.round(stripeAmounts.stripeNetAmount * sbProportion);
           const sbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * sbProportion) : Math.round((sbStripeAmount - sbStripeNet) * 0.5);
-          await db2.execute(sql2`
+          await db2.execute(sql3`
             UPDATE storage_bookings
             SET 
               total_price = ${sbStripeAmount.toString()},
@@ -3801,7 +3894,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
           const ebStripeAmount = Math.round(stripeAmounts.stripeAmount * ebProportion);
           const ebStripeNet = Math.round(stripeAmounts.stripeNetAmount * ebProportion);
           const ebServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * ebProportion) : Math.round((ebStripeAmount - ebStripeNet) * 0.5);
-          await db2.execute(sql2`
+          await db2.execute(sql3`
             UPDATE equipment_bookings
             SET 
               total_price = ${ebStripeAmount.toString()},
@@ -3814,7 +3907,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
     } else {
       const serviceFee = stripeAmounts.stripePlatformFee > 0 ? stripeAmounts.stripePlatformFee : Math.max(0, stripeAmounts.stripeAmount - stripeAmounts.stripeNetAmount - stripeAmounts.stripeProcessingFee);
       if (bookingType === "kitchen") {
-        await db2.execute(sql2`
+        await db2.execute(sql3`
           UPDATE kitchen_bookings
           SET 
             total_price = ${stripeAmounts.stripeAmount.toString()},
@@ -3823,7 +3916,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
           WHERE id = ${bookingId}
         `);
       } else if (bookingType === "storage") {
-        await db2.execute(sql2`
+        await db2.execute(sql3`
           UPDATE storage_bookings
           SET 
             total_price = ${stripeAmounts.stripeAmount.toString()},
@@ -3832,7 +3925,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
           WHERE id = ${bookingId}
         `);
       } else if (bookingType === "equipment") {
-        await db2.execute(sql2`
+        await db2.execute(sql3`
           UPDATE equipment_bookings
           SET 
             total_price = ${stripeAmounts.stripeAmount.toString()},
@@ -3878,8 +3971,8 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options
   const onlyUnsynced = options?.onlyUnsynced !== false;
   try {
     const params = [managerId];
-    const unsyncedFilter = onlyUnsynced ? sql2` AND (pt.last_synced_at IS NULL OR pt.metadata->>'stripeFees' IS NULL)` : sql2``;
-    const result = await db2.execute(sql2`
+    const unsyncedFilter = onlyUnsynced ? sql3` AND (pt.last_synced_at IS NULL OR pt.metadata->>'stripeFees' IS NULL)` : sql3``;
+    const result = await db2.execute(sql3`
       SELECT 
         pt.id,
         pt.payment_intent_id,
@@ -3917,7 +4010,7 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options
       try {
         let managerConnectAccountId;
         try {
-          const managerResult = await db2.execute(sql2`
+          const managerResult = await db2.execute(sql3`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${transaction.manager_id || managerId} AND stripe_connect_account_id IS NOT NULL
@@ -3959,7 +4052,7 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options
   }
 }
 async function findPaymentTransactionByIntentId(paymentIntentId, db2) {
-  const result = await db2.execute(sql2`
+  const result = await db2.execute(sql3`
     SELECT * FROM payment_transactions
     WHERE payment_intent_id = ${paymentIntentId}
     LIMIT 1
@@ -3967,7 +4060,7 @@ async function findPaymentTransactionByIntentId(paymentIntentId, db2) {
   return result.rows[0];
 }
 async function findPaymentTransactionById(transactionId, db2) {
-  const result = await db2.execute(sql2`
+  const result = await db2.execute(sql3`
     SELECT * FROM payment_transactions
     WHERE id = ${transactionId}
     LIMIT 1
@@ -3975,7 +4068,7 @@ async function findPaymentTransactionById(transactionId, db2) {
   return result.rows[0];
 }
 async function findPaymentTransactionByBooking(bookingId, bookingType, db2) {
-  const result = await db2.execute(sql2`
+  const result = await db2.execute(sql3`
     SELECT * FROM payment_transactions
     WHERE booking_id = ${bookingId} AND booking_type = ${bookingType}
     ORDER BY created_at DESC
@@ -3984,7 +4077,7 @@ async function findPaymentTransactionByBooking(bookingId, bookingType, db2) {
   return result.rows[0];
 }
 async function findPaymentTransactionByMetadata(metadataKey, metadataValue, db2) {
-  const result = await db2.execute(sql2`
+  const result = await db2.execute(sql3`
     SELECT * FROM payment_transactions
     WHERE metadata->>${metadataKey} = ${metadataValue}
     ORDER BY created_at DESC
@@ -3993,7 +4086,7 @@ async function findPaymentTransactionByMetadata(metadataKey, metadataValue, db2)
   return result.rows[0];
 }
 async function addPaymentHistory(transactionId, history, db2) {
-  await db2.execute(sql2`
+  await db2.execute(sql3`
     INSERT INTO payment_history (
       transaction_id,
       previous_status,
@@ -4018,7 +4111,7 @@ async function addPaymentHistory(transactionId, history, db2) {
   `);
 }
 async function getPaymentHistory(transactionId, db2) {
-  const result = await db2.execute(sql2`
+  const result = await db2.execute(sql3`
     SELECT * FROM payment_history
     WHERE transaction_id = ${transactionId}
     ORDER BY created_at ASC
@@ -4026,12 +4119,12 @@ async function getPaymentHistory(transactionId, db2) {
   return result.rows;
 }
 async function getManagerPaymentTransactions(managerId, db2, filters) {
-  const whereConditions = [sql2`manager_id = ${managerId}`];
+  const whereConditions = [sql3`manager_id = ${managerId}`];
   if (filters?.status) {
-    whereConditions.push(sql2`status = ${filters.status}`);
+    whereConditions.push(sql3`status = ${filters.status}`);
   }
   if (filters?.startDate) {
-    whereConditions.push(sql2`
+    whereConditions.push(sql3`
       (
         (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at >= ${filters.startDate})
         OR (status != 'succeeded' AND created_at >= ${filters.startDate})
@@ -4039,21 +4132,21 @@ async function getManagerPaymentTransactions(managerId, db2, filters) {
     `);
   }
   if (filters?.endDate) {
-    whereConditions.push(sql2`
+    whereConditions.push(sql3`
       (
         (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at <= ${filters.endDate})
         OR (status != 'succeeded' AND created_at <= ${filters.endDate})
       )
     `);
   }
-  const whereClause = sql2`WHERE ${sql2.join(whereConditions, sql2` AND `)}`;
-  const countResult = await db2.execute(sql2`
+  const whereClause = sql3`WHERE ${sql3.join(whereConditions, sql3` AND `)}`;
+  const countResult = await db2.execute(sql3`
     SELECT COUNT(*) as total FROM payment_transactions ${whereClause}
   `);
   const total = parseInt(countResult.rows[0].total);
   const limit = filters?.limit || 50;
   const offset = filters?.offset || 0;
-  const result = await db2.execute(sql2`
+  const result = await db2.execute(sql3`
     SELECT * FROM payment_transactions
     ${whereClause}
     ORDER BY 
@@ -4070,15 +4163,15 @@ async function getManagerPaymentTransactions(managerId, db2, filters) {
   };
 }
 async function getChefPaymentTransactions(chefId, db2, filters) {
-  const whereConditions = [sql2`pt.chef_id = ${chefId}`];
+  const whereConditions = [sql3`pt.chef_id = ${chefId}`];
   if (filters?.status) {
-    whereConditions.push(sql2`pt.status = ${filters.status}`);
+    whereConditions.push(sql3`pt.status = ${filters.status}`);
   }
   if (filters?.bookingType) {
-    whereConditions.push(sql2`pt.booking_type = ${filters.bookingType}`);
+    whereConditions.push(sql3`pt.booking_type = ${filters.bookingType}`);
   }
   if (filters?.startDate) {
-    whereConditions.push(sql2`
+    whereConditions.push(sql3`
       (
         (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL AND pt.paid_at >= ${filters.startDate})
         OR (pt.status != 'succeeded' AND pt.created_at >= ${filters.startDate})
@@ -4086,21 +4179,21 @@ async function getChefPaymentTransactions(chefId, db2, filters) {
     `);
   }
   if (filters?.endDate) {
-    whereConditions.push(sql2`
+    whereConditions.push(sql3`
       (
         (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL AND pt.paid_at <= ${filters.endDate})
         OR (pt.status != 'succeeded' AND pt.created_at <= ${filters.endDate})
       )
     `);
   }
-  const whereClause = sql2`WHERE ${sql2.join(whereConditions, sql2` AND `)}`;
-  const countResult = await db2.execute(sql2`
+  const whereClause = sql3`WHERE ${sql3.join(whereConditions, sql3` AND `)}`;
+  const countResult = await db2.execute(sql3`
     SELECT COUNT(*) as total FROM payment_transactions pt ${whereClause}
   `);
   const total = parseInt(countResult.rows[0].total);
   const limit = filters?.limit || 50;
   const offset = filters?.offset || 0;
-  const result = await db2.execute(sql2`
+  const result = await db2.execute(sql3`
     SELECT 
       pt.*,
       CASE 
@@ -4118,7 +4211,12 @@ async function getChefPaymentTransactions(chefId, db2, filters) {
         WHEN pt.booking_type = 'storage' THEN sl.name
         ELSE NULL
       END as item_name,
-      l.name as location_name
+      l.name as location_name,
+      CASE 
+        WHEN pt.booking_type = 'kitchen' THEN kb.reference_code
+        WHEN pt.booking_type = 'storage' THEN sb.reference_code
+        ELSE NULL
+      END as reference_code
     FROM payment_transactions pt
     LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
     LEFT JOIN kitchens k ON kb.kitchen_id = k.id
@@ -4153,15 +4251,15 @@ async function syncStripeFees(db2, managerId, limit = 100) {
     apiVersion: "2025-12-15.clover"
   });
   const whereConditions = [
-    sql2`payment_intent_id IS NOT NULL`,
-    sql2`(stripe_processing_fee IS NULL OR stripe_processing_fee = '0')`,
-    sql2`status IN ('succeeded', 'partially_refunded')`
+    sql3`payment_intent_id IS NOT NULL`,
+    sql3`(stripe_processing_fee IS NULL OR stripe_processing_fee = '0')`,
+    sql3`status IN ('succeeded', 'partially_refunded')`
   ];
   if (managerId) {
-    whereConditions.push(sql2`manager_id = ${managerId}`);
+    whereConditions.push(sql3`manager_id = ${managerId}`);
   }
-  const whereClause = sql2`WHERE ${sql2.join(whereConditions, sql2` AND `)}`;
-  const result = await db2.execute(sql2`
+  const whereClause = sql3`WHERE ${sql3.join(whereConditions, sql3` AND `)}`;
+  const result = await db2.execute(sql3`
     SELECT id, payment_intent_id, amount, manager_id
     FROM payment_transactions
     ${whereClause}
@@ -4219,42 +4317,42 @@ async function syncStripeFees(db2, managerId, limit = 100) {
 async function getAdminPaymentTransactions(db2, filters) {
   const whereConditions = [];
   if (filters?.status) {
-    whereConditions.push(sql2`pt.status = ${filters.status}`);
+    whereConditions.push(sql3`pt.status = ${filters.status}`);
   }
   if (filters?.bookingType) {
-    whereConditions.push(sql2`pt.booking_type = ${filters.bookingType}`);
+    whereConditions.push(sql3`pt.booking_type = ${filters.bookingType}`);
   }
   if (filters?.locationId) {
-    whereConditions.push(sql2`(
+    whereConditions.push(sql3`(
       (pt.booking_type = 'kitchen' AND k.location_id = ${filters.locationId}) OR
       (pt.booking_type = 'storage' AND sk.location_id = ${filters.locationId}) OR
       (pt.booking_type = 'equipment' AND ek.location_id = ${filters.locationId})
     )`);
   }
   if (filters?.kitchenId) {
-    whereConditions.push(sql2`(
+    whereConditions.push(sql3`(
       (pt.booking_type = 'kitchen' AND kb.kitchen_id = ${filters.kitchenId}) OR
       (pt.booking_type = 'storage' AND sl.kitchen_id = ${filters.kitchenId}) OR
       (pt.booking_type = 'equipment' AND el.kitchen_id = ${filters.kitchenId})
     )`);
   }
   if (filters?.chefId) {
-    whereConditions.push(sql2`pt.chef_id = ${filters.chefId}`);
+    whereConditions.push(sql3`pt.chef_id = ${filters.chefId}`);
   }
   if (filters?.managerId) {
-    whereConditions.push(sql2`pt.manager_id = ${filters.managerId}`);
+    whereConditions.push(sql3`pt.manager_id = ${filters.managerId}`);
   }
   if (filters?.startDate) {
-    whereConditions.push(sql2`pt.created_at >= ${filters.startDate}`);
+    whereConditions.push(sql3`pt.created_at >= ${filters.startDate}`);
   }
   if (filters?.endDate) {
-    whereConditions.push(sql2`pt.created_at <= ${filters.endDate}`);
+    whereConditions.push(sql3`pt.created_at <= ${filters.endDate}`);
   }
   if (filters?.search) {
     const searchTerm = filters.search.trim();
     const numericSearch = parseInt(searchTerm);
     const isNumeric = !isNaN(numericSearch);
-    whereConditions.push(sql2`(
+    whereConditions.push(sql3`(
       pt.payment_intent_id ILIKE ${"%" + searchTerm + "%"}
       OR pt.charge_id ILIKE ${"%" + searchTerm + "%"}
       OR pt.refund_id ILIKE ${"%" + searchTerm + "%"}
@@ -4269,11 +4367,11 @@ async function getAdminPaymentTransactions(db2, filters) {
       OR k.name ILIKE ${"%" + searchTerm + "%"}
       OR CAST(pt.id AS TEXT) = ${searchTerm}
       OR CAST(pt.booking_id AS TEXT) = ${searchTerm}
-      ${isNumeric ? sql2`OR pt.chef_id = ${numericSearch} OR pt.manager_id = ${numericSearch}` : sql2``}
+      ${isNumeric ? sql3`OR pt.chef_id = ${numericSearch} OR pt.manager_id = ${numericSearch}` : sql3``}
     )`);
   }
-  const whereClause = whereConditions.length > 0 ? sql2`WHERE ${sql2.join(whereConditions, sql2` AND `)}` : sql2``;
-  const countResult = await db2.execute(sql2`
+  const whereClause = whereConditions.length > 0 ? sql3`WHERE ${sql3.join(whereConditions, sql3` AND `)}` : sql3``;
+  const countResult = await db2.execute(sql3`
     SELECT COUNT(*) as total 
     FROM payment_transactions pt
     LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
@@ -4296,7 +4394,7 @@ async function getAdminPaymentTransactions(db2, filters) {
   const total = parseInt(countResult.rows[0].total);
   const limit = filters?.limit || 50;
   const offset = filters?.offset || 0;
-  const result = await db2.execute(sql2`
+  const result = await db2.execute(sql3`
     SELECT 
       pt.id,
       pt.booking_id,
@@ -7425,6 +7523,7 @@ Notes: ${bookingData.specialNotes}` : ""}`;
       </div>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Booking Request Details:</p>
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        ${bookingData.referenceCode ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Reference:</span> <strong style="color: #1e293b; font-family: monospace;">${bookingData.referenceCode}</strong></p>` : ""}
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${bookingData.kitchenName}</strong></p>
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${bookingData.startTime} &#8211; ${bookingData.endTime}</strong></p>
@@ -10056,7 +10155,7 @@ __export(overstay_penalty_service_exports, {
   refundOverstayPenalty: () => refundOverstayPenalty,
   resolveOverstay: () => resolveOverstay
 });
-import { eq as eq3, and, lt, not, inArray, desc, asc, sql as sql3 } from "drizzle-orm";
+import { eq as eq3, and, lt, not, inArray, desc, asc, sql as sql4 } from "drizzle-orm";
 import Stripe2 from "stripe";
 async function detectOverstays() {
   const today = /* @__PURE__ */ new Date();
@@ -10151,7 +10250,9 @@ async function detectOverstays() {
           status: existingRecord.status
         });
       } else {
+        const opRefCode = await generateReferenceCode("overstay_penalty");
         const [newRecord] = await db.insert(storageOverstayRecords).values({
+          referenceCode: opRefCode,
           storageBookingId: booking.id,
           endDate: booking.endDate,
           daysOverdue,
@@ -11298,7 +11399,7 @@ async function hasChefUnpaidPenalties(chefId) {
     "charge_failed",
     "escalated"
   ];
-  const [result] = await db.select({ count: sql3`count(*)` }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).where(
+  const [result] = await db.select({ count: sql4`count(*)` }).from(storageOverstayRecords).innerJoin(storageBookings, eq3(storageOverstayRecords.storageBookingId, storageBookings.id)).where(
     and(
       eq3(storageBookings.chefId, chefId),
       inArray(storageOverstayRecords.status, blockingStatuses)
@@ -11491,6 +11592,7 @@ var init_overstay_penalty_service = __esm({
   "server/services/overstay-penalty-service.ts"() {
     "use strict";
     init_db();
+    init_reference_code();
     init_schema();
     init_logger();
     init_overstay_defaults_service();
@@ -11674,7 +11776,7 @@ __export(damage_claim_service_exports, {
   submitClaim: () => submitClaim,
   updateDraftClaim: () => updateDraftClaim
 });
-import { eq as eq5, and as and2, inArray as inArray2, desc as desc2, sql as sql4 } from "drizzle-orm";
+import { eq as eq5, and as and2, inArray as inArray2, desc as desc2, sql as sql5 } from "drizzle-orm";
 import Stripe3 from "stripe";
 import { format as format2 } from "date-fns";
 async function createHistoryEntry(damageClaimId, previousStatus, newStatus, action, actionBy, actionByUserId, notes, metadata) {
@@ -11809,7 +11911,9 @@ async function createDamageClaim(input) {
         }
       }
     }
+    const dcRefCode = await generateReferenceCode("damage_claim");
     const [claim] = await db.insert(damageClaims).values({
+      referenceCode: dcRefCode,
       bookingType: input.bookingType,
       kitchenBookingId: input.kitchenBookingId || null,
       storageBookingId: input.storageBookingId || null,
@@ -11940,7 +12044,7 @@ async function submitClaim(claimId, managerId) {
     if (claim.status !== "draft") {
       return { success: false, error: "Can only submit draft claims" };
     }
-    const evidenceCount = await db.select({ count: sql4`count(*)` }).from(damageEvidence).where(eq5(damageEvidence.damageClaimId, claimId));
+    const evidenceCount = await db.select({ count: sql5`count(*)` }).from(damageEvidence).where(eq5(damageEvidence.damageClaimId, claimId));
     if (!evidenceCount[0] || evidenceCount[0].count < 2) {
       return { success: false, error: "Minimum 2 pieces of evidence required" };
     }
@@ -13074,7 +13178,7 @@ async function processExpiredClaims() {
   try {
     const expiredClaims = await db.select().from(damageClaims).where(and2(
       eq5(damageClaims.status, "submitted"),
-      sql4`${damageClaims.chefResponseDeadline} < ${now}`
+      sql5`${damageClaims.chefResponseDeadline} < ${now}`
     ));
     logger.info(`[DamageClaimService] Found ${expiredClaims.length} expired claims to process`);
     for (const claim of expiredClaims) {
@@ -13275,7 +13379,7 @@ async function hasChefUnpaidDamageClaims(chefId) {
     "charge_failed",
     "escalated"
   ];
-  const [result] = await db.select({ count: sql4`count(*)` }).from(damageClaims).where(
+  const [result] = await db.select({ count: sql5`count(*)` }).from(damageClaims).where(
     and2(
       eq5(damageClaims.chefId, chefId),
       inArray2(damageClaims.status, blockingStatuses)
@@ -13339,6 +13443,7 @@ var init_damage_claim_service = __esm({
   "server/services/damage-claim-service.ts"() {
     "use strict";
     init_db();
+    init_reference_code();
     init_schema();
     init_logger();
     init_email();
@@ -14263,7 +14368,7 @@ var init_phone_utils = __esm({
 });
 
 // server/domains/microlearning/microlearning.repository.ts
-import { eq as eq9, desc as desc5, sql as sql5 } from "drizzle-orm";
+import { eq as eq9, desc as desc5, sql as sql6 } from "drizzle-orm";
 var MicrolearningRepository;
 var init_microlearning_repository = __esm({
   "server/domains/microlearning/microlearning.repository.ts"() {
@@ -14282,12 +14387,12 @@ var init_microlearning_repository = __esm({
         return db.insert(videoProgress).values(data).onConflictDoUpdate({
           target: [videoProgress.userId, videoProgress.videoId],
           set: {
-            progress: data.completed ? data.progress : sql5`GREATEST(${videoProgress.progress}, ${data.progress})`,
-            completed: data.completed ? sql5`true` : sql5`${videoProgress.completed}`,
-            watchedPercentage: sql5`GREATEST(${videoProgress.watchedPercentage}, ${data.watchedPercentage})`,
+            progress: data.completed ? data.progress : sql6`GREATEST(${videoProgress.progress}, ${data.progress})`,
+            completed: data.completed ? sql6`true` : sql6`${videoProgress.completed}`,
+            watchedPercentage: sql6`GREATEST(${videoProgress.watchedPercentage}, ${data.watchedPercentage})`,
             isRewatching: data.isRewatching,
             updatedAt: /* @__PURE__ */ new Date(),
-            completedAt: data.completedAt ? data.completedAt : sql5`${videoProgress.completedAt}`
+            completedAt: data.completedAt ? data.completedAt : sql6`${videoProgress.completedAt}`
           }
         });
       }
@@ -15191,7 +15296,7 @@ var init_location_service = __esm({
 });
 
 // server/domains/kitchens/kitchen.repository.ts
-import { eq as eq15, and as and9, desc as desc8, gte, lte, sql as sql7 } from "drizzle-orm";
+import { eq as eq15, and as and9, desc as desc8, gte, lte, sql as sql8 } from "drizzle-orm";
 var KitchenRepository;
 var init_kitchen_repository = __esm({
   "server/domains/kitchens/kitchen.repository.ts"() {
@@ -15583,7 +15688,7 @@ var init_kitchen_repository = __esm({
           const [override] = await db.select().from(kitchenDateOverrides).where(
             and9(
               eq15(kitchenDateOverrides.kitchenId, kitchenId),
-              sql7`DATE(${kitchenDateOverrides.specificDate}) = ${dateStr}::date`
+              sql8`DATE(${kitchenDateOverrides.specificDate}) = ${dateStr}::date`
             )
           ).limit(1);
           return override ? this.mapOverrideToDTO(override) : null;
@@ -18018,13 +18123,13 @@ var init_files = __esm({
             const searchPattern = `%${filename}`;
             const { kitchens: kitchens3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
             const { db: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-            const { or: or7, like, sql: sql21 } = await import("drizzle-orm");
+            const { or: or7, like, sql: sql22 } = await import("drizzle-orm");
             const [kitchenMatch] = await db2.select({ id: kitchens3.id }).from(kitchens3).where(
               or7(
                 like(kitchens3.imageUrl, searchPattern),
-                sql21`${kitchens3.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
+                sql22`${kitchens3.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
                 // also try with just filename if that's how it's stored in array
-                sql21`${kitchens3.galleryImages} @> ${JSON.stringify([filename])}::jsonb`
+                sql22`${kitchens3.galleryImages} @> ${JSON.stringify([filename])}::jsonb`
               )
             ).limit(1);
             if (kitchenMatch) {
@@ -18470,10 +18575,11 @@ var init_config = __esm({
 });
 
 // server/domains/bookings/booking.repository.ts
-import { eq as eq17, and as and11, desc as desc9, asc as asc2, lt as lt2, not as not2, or as or2, sql as sql8, ne as ne2 } from "drizzle-orm";
+import { eq as eq17, and as and11, desc as desc9, asc as asc2, lt as lt2, not as not2, or as or2, sql as sql9, ne as ne2 } from "drizzle-orm";
 function getKitchenBookingSelection() {
   return {
     id: kitchenBookings.id,
+    referenceCode: kitchenBookings.referenceCode,
     chefId: kitchenBookings.chefId,
     kitchenId: kitchenBookings.kitchenId,
     bookingDate: kitchenBookings.bookingDate,
@@ -18494,6 +18600,7 @@ function getKitchenBookingSelection() {
 function getStorageBookingSelection() {
   return {
     id: storageBookings.id,
+    referenceCode: storageBookings.referenceCode,
     storageListingId: storageBookings.storageListingId,
     kitchenBookingId: storageBookings.kitchenBookingId,
     chefId: storageBookings.chefId,
@@ -18524,6 +18631,7 @@ var init_booking_repository = __esm({
   "server/domains/bookings/booking.repository.ts"() {
     "use strict";
     init_db();
+    init_reference_code();
     init_schema();
     BookingRepository = class {
       // ===== DTO MAPPING HELPERS =====
@@ -18731,8 +18839,8 @@ var init_booking_repository = __esm({
       async getBookingsByKitchen(kitchenId) {
         return db.select({
           ...getKitchenBookingSelection(),
-          chefName: sql8`COALESCE(${chefKitchenApplications.fullName}, ${users.username})`.as("chef_name"),
-          chefEmail: sql8`COALESCE(${chefKitchenApplications.email}, ${users.username})`.as("chef_email")
+          chefName: sql9`COALESCE(${chefKitchenApplications.fullName}, ${users.username})`.as("chef_name"),
+          chefEmail: sql9`COALESCE(${chefKitchenApplications.email}, ${users.username})`.as("chef_email")
         }).from(kitchenBookings).innerJoin(kitchens, eq17(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq17(kitchens.locationId, locations.id)).leftJoin(users, eq17(kitchenBookings.chefId, users.id)).leftJoin(chefKitchenApplications, and11(
           eq17(chefKitchenApplications.chefId, kitchenBookings.chefId),
           eq17(chefKitchenApplications.locationId, locations.id)
@@ -18743,9 +18851,9 @@ var init_booking_repository = __esm({
         const conditions = [
           eq17(kitchenBookings.kitchenId, kitchenId),
           not2(eq17(kitchenBookings.status, "cancelled")),
-          sql8`DATE(${kitchenBookings.bookingDate}) = ${dateStr}::date`,
-          sql8`${kitchenBookings.startTime} < ${endTime}`,
-          sql8`${kitchenBookings.endTime} > ${startTime}`
+          sql9`DATE(${kitchenBookings.bookingDate}) = ${dateStr}::date`,
+          sql9`${kitchenBookings.startTime} < ${endTime}`,
+          sql9`${kitchenBookings.endTime} > ${startTime}`
         ];
         if (excludeBookingId) {
           conditions.push(not2(eq17(kitchenBookings.id, excludeBookingId)));
@@ -18784,7 +18892,7 @@ var init_booking_repository = __esm({
           chargeSucceededAt: storageOverstayRecords.chargeSucceededAt,
           stripeChargeId: storageOverstayRecords.stripeChargeId
         }).from(storageOverstayRecords).where(
-          sql8`${storageOverstayRecords.storageBookingId} IN (${sql8.join(bookingIds.map((id) => sql8`${id}`), sql8`, `)})`
+          sql9`${storageOverstayRecords.storageBookingId} IN (${sql9.join(bookingIds.map((id) => sql9`${id}`), sql9`, `)})`
         ) : [];
         const isPenaltyPaid = (p) => {
           return p.status === "charge_succeeded" || !!p.stripeChargeId || p.resolutionType === "paid" || !!p.chargeSucceededAt;
@@ -18892,7 +19000,9 @@ var init_booking_repository = __esm({
       }
       // ===== PENDING STORAGE EXTENSIONS =====
       async createPendingStorageExtension(data) {
+        const extRefCode = await generateReferenceCode("storage_extension");
         const [extension] = await db.insert(pendingStorageExtensions).values({
+          referenceCode: extRefCode,
           storageBookingId: data.storageBookingId,
           newEndDate: data.newEndDate,
           extensionDays: data.extensionDays,
@@ -20122,7 +20232,7 @@ var init_chef_service = __esm({
 });
 
 // server/domains/managers/manager.repository.ts
-import { eq as eq23, sql as sql9 } from "drizzle-orm";
+import { eq as eq23, sql as sql10 } from "drizzle-orm";
 var ManagerRepository, managerRepository;
 var init_manager_repository = __esm({
   "server/domains/managers/manager.repository.ts"() {
@@ -20149,7 +20259,7 @@ var init_manager_repository = __esm({
       // Moved from server/routes/manager.ts
       async findInvoices(managerId, filters) {
         const { startDate, endDate, locationId, limit = 50, offset = 0 } = filters;
-        const kitchenResult = await db.execute(sql9`
+        const kitchenResult = await db.execute(sql10`
             SELECT 
                 kb.id,
                 kb.booking_date,
@@ -20179,9 +20289,9 @@ var init_manager_repository = __esm({
             WHERE l.manager_id = ${managerId}
               AND kb.status != 'cancelled'
               AND kb.payment_status = 'paid'
-              ${startDate ? sql9`AND (DATE(kb.booking_date) >= ${Array.isArray(startDate) ? startDate[0] : String(startDate)}::date OR DATE(kb.created_at) >= ${Array.isArray(startDate) ? startDate[0] : String(startDate)}::date)` : sql9``}
-              ${endDate ? sql9`AND (DATE(kb.booking_date) <= ${Array.isArray(endDate) ? endDate[0] : String(endDate)}::date OR DATE(kb.created_at) <= ${Array.isArray(endDate) ? endDate[0] : String(endDate)}::date)` : sql9``}
-              ${locationId ? sql9`AND l.id = ${Number(locationId)}` : sql9``}
+              ${startDate ? sql10`AND (DATE(kb.booking_date) >= ${Array.isArray(startDate) ? startDate[0] : String(startDate)}::date OR DATE(kb.created_at) >= ${Array.isArray(startDate) ? startDate[0] : String(startDate)}::date)` : sql10``}
+              ${endDate ? sql10`AND (DATE(kb.booking_date) <= ${Array.isArray(endDate) ? endDate[0] : String(endDate)}::date OR DATE(kb.created_at) <= ${Array.isArray(endDate) ? endDate[0] : String(endDate)}::date)` : sql10``}
+              ${locationId ? sql10`AND l.id = ${Number(locationId)}` : sql10``}
             ORDER BY kb.created_at DESC, kb.booking_date DESC
             LIMIT ${limit}
             OFFSET ${offset}
@@ -20206,7 +20316,7 @@ var init_manager_repository = __esm({
           bookingType: row.booking_type
         }));
         logger.info(`[ManagerRepository] Kitchen invoices query for manager ${managerId}: Found ${rows.length} invoices`);
-        const storageRows = await db.execute(sql9`
+        const storageRows = await db.execute(sql10`
             SELECT 
                 pt.booking_id as id,
                 sb.start_date as booking_date,
@@ -20290,7 +20400,7 @@ __export(revenue_service_v2_exports, {
   getRevenueByLocationFromTransactions: () => getRevenueByLocationFromTransactions,
   getRevenueMetricsFromTransactions: () => getRevenueMetricsFromTransactions
 });
-import { sql as sql10 } from "drizzle-orm";
+import { sql as sql11 } from "drizzle-orm";
 async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endDate, locationId) {
   try {
     if (managerId === void 0 || managerId === null || isNaN(managerId)) {
@@ -20302,7 +20412,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       params.push(locationId);
     }
     logger.info("[Revenue Service V2] getRevenueMetricsFromTransactions params:", { managerId, locationId, startDate, endDate });
-    const tableCheck = await db2.execute(sql10`
+    const tableCheck = await db2.execute(sql11`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -20314,8 +20424,8 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       logger.info("[Revenue Service V2] payment_transactions table does not exist, will fallback to legacy method");
       throw new Error("payment_transactions table does not exist");
     }
-    const managerIdParam = sql10`${managerId}`;
-    const countCheck = await db2.execute(sql10`
+    const managerIdParam = sql11`${managerId}`;
+    const countCheck = await db2.execute(sql11`
       SELECT COUNT(*) as count
       FROM payment_transactions pt
       WHERE pt.manager_id = ${managerIdParam}
@@ -20324,7 +20434,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     `);
     const transactionCount = parseInt(countCheck.rows[0]?.count || "0");
     logger.info(`[Revenue Service V2] Found ${transactionCount} payment_transactions for manager ${managerId}`);
-    const bookingCountCheck = await db2.execute(sql10`
+    const bookingCountCheck = await db2.execute(sql11`
       SELECT 
         COUNT(DISTINCT kb.id) as total_bookings,
         COUNT(DISTINCT CASE WHEN pt_kitchen.id IS NOT NULL OR pt_bundle.id IS NOT NULL THEN kb.id END) as bookings_with_transactions
@@ -20352,7 +20462,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       logger.info(`[Revenue Service V2] Incomplete payment_transactions coverage (${bookingsWithTransactions}/${totalBookings}), falling back to legacy method`);
       throw new Error("Incomplete payment_transactions coverage");
     }
-    const metricsTimezoneResult = await db2.execute(sql10`
+    const metricsTimezoneResult = await db2.execute(sql11`
       SELECT COALESCE(l.timezone, 'America/St_Johns') as timezone
       FROM locations l
       WHERE l.manager_id = ${managerIdParam}
@@ -20360,15 +20470,15 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     `);
     const metricsTimezone = metricsTimezoneResult.rows[0]?.timezone || "America/St_Johns";
     const simpleWhereConditions = [
-      sql10`pt.manager_id = ${managerIdParam}`,
-      sql10`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`,
-      sql10`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`
+      sql11`pt.manager_id = ${managerIdParam}`,
+      sql11`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`,
+      sql11`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`
     ];
     if (startDate || endDate) {
       const start = startDate ? typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0] : null;
       const end = endDate ? typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0] : null;
       if (start && end) {
-        simpleWhereConditions.push(sql10`
+        simpleWhereConditions.push(sql11`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) >= ${start}::date AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) <= ${end}::date)
@@ -20378,7 +20488,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
           )
         `);
       } else if (start) {
-        simpleWhereConditions.push(sql10`
+        simpleWhereConditions.push(sql11`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) >= ${start}::date)
@@ -20388,7 +20498,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
           )
         `);
       } else if (end) {
-        simpleWhereConditions.push(sql10`
+        simpleWhereConditions.push(sql11`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) <= ${end}::date)
@@ -20399,7 +20509,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
         `);
       }
     }
-    simpleWhereConditions.push(sql10`
+    simpleWhereConditions.push(sql11`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -20410,8 +20520,8 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
         )
       )
     `);
-    const simpleWhereClause = sql10`WHERE ${sql10.join(simpleWhereConditions, sql10` AND `)}`;
-    const result = await db2.execute(sql10`
+    const simpleWhereClause = sql11`WHERE ${sql11.join(simpleWhereConditions, sql11` AND `)}`;
+    const result = await db2.execute(sql11`
       SELECT 
         COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
         -- Platform fee: use service_fee if available, otherwise calculate as amount - manager_revenue
@@ -20441,7 +20551,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       FROM payment_transactions pt
       ${simpleWhereClause}
     `);
-    const kitchenTaxResult = await db2.execute(sql10`
+    const kitchenTaxResult = await db2.execute(sql11`
       SELECT 
         COALESCE(SUM(
           CASE
@@ -20485,7 +20595,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       LEFT JOIN kitchens k ON kb.kitchen_id = k.id
       ${simpleWhereClause}
     `);
-    const storageTaxResult = await db2.execute(sql10`
+    const storageTaxResult = await db2.execute(sql11`
       SELECT 
         COALESCE(SUM(
           CASE 
@@ -20616,7 +20726,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
 }
 async function getRevenueByLocationFromTransactions(managerId, db2, startDate, endDate) {
   try {
-    const tableCheck = await db2.execute(sql10`
+    const tableCheck = await db2.execute(sql11`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -20626,10 +20736,10 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
     if (!tableCheck.rows[0]?.table_exists) {
       throw new Error("payment_transactions table does not exist");
     }
-    const whereConditions = [sql10`pt.manager_id = ${managerId}`];
-    whereConditions.push(sql10`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
-    whereConditions.push(sql10`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`);
-    whereConditions.push(sql10`
+    const whereConditions = [sql11`pt.manager_id = ${managerId}`];
+    whereConditions.push(sql11`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
+    whereConditions.push(sql11`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`);
+    whereConditions.push(sql11`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -20640,8 +20750,8 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
         )
       )
     `);
-    const whereClause = sql10`WHERE ${sql10.join(whereConditions, sql10` AND `)}`;
-    const result = await db2.execute(sql10`
+    const whereClause = sql11`WHERE ${sql11.join(whereConditions, sql11` AND `)}`;
+    const result = await db2.execute(sql11`
       SELECT 
         l.id as location_id,
         l.name as location_name,
@@ -20707,7 +20817,7 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
 }
 async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDate) {
   try {
-    const tableCheck = await db2.execute(sql10`
+    const tableCheck = await db2.execute(sql11`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -20717,7 +20827,7 @@ async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDa
     if (!tableCheck.rows[0]?.table_exists) {
       throw new Error("payment_transactions table does not exist");
     }
-    const tzResult = await db2.execute(sql10`
+    const tzResult = await db2.execute(sql11`
       SELECT COALESCE(l.timezone, 'America/St_Johns') as timezone
       FROM locations l
       WHERE l.manager_id = ${managerId}
@@ -20726,9 +20836,9 @@ async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDa
     const managerTimezone = tzResult.rows[0]?.timezone || "America/St_Johns";
     const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
     const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-    const whereConditions = [sql10`pt.manager_id = ${managerId}`];
-    whereConditions.push(sql10`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
-    whereConditions.push(sql10`
+    const whereConditions = [sql11`pt.manager_id = ${managerId}`];
+    whereConditions.push(sql11`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
+    whereConditions.push(sql11`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -20739,7 +20849,7 @@ async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDa
         )
       )
     `);
-    whereConditions.push(sql10`
+    whereConditions.push(sql11`
       (
         (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL 
           AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) >= ${start}::date 
@@ -20749,8 +20859,8 @@ async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDa
           AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) <= ${end}::date)
       )
     `);
-    const whereClause = sql10`WHERE ${sql10.join(whereConditions, sql10` AND `)}`;
-    const result = await db2.execute(sql10`
+    const whereClause = sql11`WHERE ${sql11.join(whereConditions, sql11` AND `)}`;
+    const result = await db2.execute(sql11`
       SELECT 
         DATE(
           CASE 
@@ -20821,7 +20931,7 @@ __export(revenue_service_exports, {
   getRevenueMetrics: () => getRevenueMetrics,
   getTransactionHistory: () => getTransactionHistory
 });
-import { sql as sql11 } from "drizzle-orm";
+import { sql as sql12 } from "drizzle-orm";
 function calculateManagerRevenue(totalRevenue, serviceFeeRate) {
   if (serviceFeeRate < 0 || serviceFeeRate > 1) {
     logger.warn(`Invalid service fee rate: ${serviceFeeRate}, using 0`);
@@ -20832,14 +20942,14 @@ function calculateManagerRevenue(totalRevenue, serviceFeeRate) {
 }
 async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId) {
   try {
-    const whereConditions = [sql11`l.manager_id = ${managerId}`, sql11`kb.status != 'cancelled'`];
+    const whereConditions = [sql12`l.manager_id = ${managerId}`, sql12`kb.status != 'cancelled'`];
     if (locationId) {
-      whereConditions.push(sql11`l.id = ${locationId}`);
+      whereConditions.push(sql12`l.id = ${locationId}`);
     }
-    const whereClause = sql11`WHERE ${sql11.join(whereConditions, sql11` AND `)}`;
+    const whereClause = sql12`WHERE ${sql12.join(whereConditions, sql12` AND `)}`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const debugQuery = await db2.execute(sql11`
+    const debugQuery = await db2.execute(sql12`
       SELECT 
         COUNT(*) as total_bookings,
         COUNT(CASE WHEN kb.total_price IS NOT NULL THEN 1 END) as bookings_with_price,
@@ -20862,7 +20972,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       startDate,
       endDate
     });
-    const result = await db2.execute(sql11`
+    const result = await db2.execute(sql12`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -20936,15 +21046,15 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       ${whereClause}
     `);
     const pendingWhereConditions = [
-      sql11`l.manager_id = ${managerId}`,
-      sql11`kb.status != 'cancelled'`,
-      sql11`kb.payment_status = 'processing'`
+      sql12`l.manager_id = ${managerId}`,
+      sql12`kb.status != 'cancelled'`,
+      sql12`kb.payment_status = 'processing'`
     ];
     if (locationId) {
-      pendingWhereConditions.push(sql11`l.id = ${locationId}`);
+      pendingWhereConditions.push(sql12`l.id = ${locationId}`);
     }
-    const pendingWhereClause = sql11`WHERE ${sql11.join(pendingWhereConditions, sql11` AND `)}`;
-    const pendingResult = await db2.execute(sql11`
+    const pendingWhereClause = sql12`WHERE ${sql12.join(pendingWhereConditions, sql12` AND `)}`;
+    const pendingResult = await db2.execute(sql12`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -20969,15 +21079,15 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       pendingAmount: pendingResult.rows[0]?.pending_payments_all || 0
     });
     const completedWhereConditions = [
-      sql11`l.manager_id = ${managerId}`,
-      sql11`kb.status != 'cancelled'`,
-      sql11`kb.payment_status = 'paid'`
+      sql12`l.manager_id = ${managerId}`,
+      sql12`kb.status != 'cancelled'`,
+      sql12`kb.payment_status = 'paid'`
     ];
     if (locationId) {
-      completedWhereConditions.push(sql11`l.id = ${locationId}`);
+      completedWhereConditions.push(sql12`l.id = ${locationId}`);
     }
-    const completedWhereClause = sql11`WHERE ${sql11.join(completedWhereConditions, sql11` AND `)}`;
-    const completedResult = await db2.execute(sql11`
+    const completedWhereClause = sql12`WHERE ${sql12.join(completedWhereConditions, sql12` AND `)}`;
+    const completedResult = await db2.execute(sql12`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -21015,7 +21125,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     }
     if (result.rows.length === 0) {
       logger.info("[Revenue Service] No bookings in date range, checking for payments outside date range...");
-      const pendingFeeResult = await db2.execute(sql11`
+      const pendingFeeResult = await db2.execute(sql12`
         SELECT 
           COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
           COALESCE(SUM(
@@ -21035,7 +21145,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
         JOIN locations l ON k.location_id = l.id
         ${pendingWhereClause}
       `);
-      const completedFeeResult = await db2.execute(sql11`
+      const completedFeeResult = await db2.execute(sql12`
         SELECT 
           COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
           COALESCE(SUM(
@@ -21068,7 +21178,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       const paidCount = parseInt(completedRow.completed_count_all) || 0;
       let actualStripeFeeFromDb = 0;
       try {
-        const feeResult = await db2.execute(sql11`
+        const feeResult = await db2.execute(sql12`
           SELECT COALESCE(SUM(stripe_processing_fee::numeric), 0)::bigint as total_stripe_fee
           FROM payment_transactions
           WHERE manager_id = ${managerId} AND status = 'succeeded' AND stripe_processing_fee > 0
@@ -21110,7 +21220,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     const totalRevenue = typeof row.total_revenue === "string" ? parseInt(row.total_revenue) : row.total_revenue ? parseInt(String(row.total_revenue)) : 0;
     const platformFee = typeof row.platform_fee === "string" ? parseInt(row.platform_fee) : row.platform_fee ? parseInt(String(row.platform_fee)) : 0;
     const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
-    const pendingFeeResult2 = await db2.execute(sql11`
+    const pendingFeeResult2 = await db2.execute(sql12`
       SELECT 
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
         COALESCE(SUM(
@@ -21130,7 +21240,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       JOIN locations l ON k.location_id = l.id
       ${pendingWhereClause}
     `);
-    const completedFeeResult2 = await db2.execute(sql11`
+    const completedFeeResult2 = await db2.execute(sql12`
       SELECT 
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
         COALESCE(SUM(
@@ -21164,14 +21274,14 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     let stripeFeeSource = "estimated";
     try {
       const stripeFeeConditions = [
-        sql11`pt.manager_id = ${managerId}`,
-        sql11`pt.status IN ('succeeded', 'partially_refunded')`,
+        sql12`pt.manager_id = ${managerId}`,
+        sql12`pt.status IN ('succeeded', 'partially_refunded')`,
         // Include partially refunded but not fully refunded
-        sql11`pt.stripe_processing_fee IS NOT NULL`,
-        sql11`pt.stripe_processing_fee > 0`
+        sql12`pt.stripe_processing_fee IS NOT NULL`,
+        sql12`pt.stripe_processing_fee > 0`
       ];
       if (locationId) {
-        stripeFeeConditions.push(sql11`EXISTS (
+        stripeFeeConditions.push(sql12`EXISTS (
           SELECT 1 FROM kitchen_bookings kb 
           JOIN kitchens k ON kb.kitchen_id = k.id 
           WHERE kb.id = pt.booking_id 
@@ -21179,7 +21289,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
           AND k.location_id = ${locationId}
         )`);
       }
-      const stripeFeeResult = await db2.execute(sql11`
+      const stripeFeeResult = await db2.execute(sql12`
         SELECT COALESCE(SUM(
           CASE 
             WHEN pt.amount::numeric > 0 THEN
@@ -21188,7 +21298,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
           END
         ), 0)::bigint as total_stripe_fee
         FROM payment_transactions pt
-        WHERE ${sql11.join(stripeFeeConditions, sql11` AND `)}
+        WHERE ${sql12.join(stripeFeeConditions, sql12` AND `)}
       `);
       const stripeFeeRow = stripeFeeResult.rows[0] || {};
       const storedStripeFee = typeof stripeFeeRow.total_stripe_fee === "string" ? parseInt(stripeFeeRow.total_stripe_fee) || 0 : stripeFeeRow.total_stripe_fee ? parseInt(String(stripeFeeRow.total_stripe_fee)) : 0;
@@ -21208,7 +21318,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     const refundedAmount = typeof row.refunded_amount === "string" ? isNaN(parseInt(row.refunded_amount)) ? 0 : parseInt(row.refunded_amount) || 0 : row.refunded_amount ? isNaN(parseInt(String(row.refunded_amount))) ? 0 : parseInt(String(row.refunded_amount)) : 0;
     let effectiveTaxAmount = 0;
     try {
-      const effectiveTaxResult = await db2.execute(sql11`
+      const effectiveTaxResult = await db2.execute(sql12`
         SELECT COALESCE(SUM(
           -- Tax = kb.total_price * tax_rate / 100 (same formula as transaction history)
           -- For partial refunds: multiply by (1 - refund_ratio) to get effective tax
@@ -21264,20 +21374,20 @@ async function getRevenueByLocation(managerId, db2, startDate, endDate) {
       logger.error("[Revenue Service] Invalid managerId:", managerId);
       throw new Error("Invalid manager ID");
     }
-    const managerIdParam = sql11`${managerId}`;
-    const whereConditions = [sql11`l.manager_id = ${managerIdParam}`, sql11`kb.status != 'cancelled'`];
+    const managerIdParam = sql12`${managerId}`;
+    const whereConditions = [sql12`l.manager_id = ${managerIdParam}`, sql12`kb.status != 'cancelled'`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      whereConditions.push(sql11`DATE(kb.booking_date) >= ${start}::date`);
+      whereConditions.push(sql12`DATE(kb.booking_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      whereConditions.push(sql11`DATE(kb.booking_date) <= ${end}::date`);
+      whereConditions.push(sql12`DATE(kb.booking_date) <= ${end}::date`);
     }
-    const whereClause = sql11`WHERE ${sql11.join(whereConditions, sql11` AND `)}`;
+    const whereClause = sql12`WHERE ${sql12.join(whereConditions, sql12` AND `)}`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const result = await db2.execute(sql11`
+    const result = await db2.execute(sql12`
       SELECT 
         l.id as location_id,
         l.name as location_name,
@@ -21328,13 +21438,13 @@ async function getRevenueByDate(managerId, db2, startDate, endDate) {
     }
     const start = typeof startDate === "string" ? startDate : startDate ? startDate.toISOString().split("T")[0] : null;
     const end = typeof endDate === "string" ? endDate : endDate ? endDate.toISOString().split("T")[0] : null;
-    const managerIdParam = sql11`${managerId}`;
+    const managerIdParam = sql12`${managerId}`;
     if (!start || !end) {
       logger.warn("[Revenue Service] Missing date parameters for getRevenueByDate");
     }
-    const startParam = start ? sql11`${start}::date` : sql11`CURRENT_DATE - INTERVAL '30 days'`;
-    const endParam = end ? sql11`${end}::date` : sql11`CURRENT_DATE`;
-    const tzResult = await db2.execute(sql11`
+    const startParam = start ? sql12`${start}::date` : sql12`CURRENT_DATE - INTERVAL '30 days'`;
+    const endParam = end ? sql12`${end}::date` : sql12`CURRENT_DATE`;
+    const tzResult = await db2.execute(sql12`
       SELECT COALESCE(l.timezone, 'America/St_Johns') as timezone
       FROM locations l
       WHERE l.manager_id = ${managerIdParam}
@@ -21343,7 +21453,7 @@ async function getRevenueByDate(managerId, db2, startDate, endDate) {
     const managerTimezone = tzResult.rows[0]?.timezone || "America/St_Johns";
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const result = await db2.execute(sql11`
+    const result = await db2.execute(sql12`
       SELECT 
         DATE(kb.booking_date AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone})::text as date,
         COALESCE(SUM(
@@ -21403,22 +21513,22 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       return status;
     };
     const kitchenWhereConditions = [
-      sql11`l.manager_id = ${managerId}`,
+      sql12`l.manager_id = ${managerId}`,
       // Show all non-cancelled bookings, PLUS cancelled bookings that have a payment transaction
       // (i.e., they were paid/refunded and should appear in transaction history)
-      sql11`(kb.status != 'cancelled' OR pt.id IS NOT NULL)`
+      sql12`(kb.status != 'cancelled' OR pt.id IS NOT NULL)`
     ];
     if (start) {
-      kitchenWhereConditions.push(sql11`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
+      kitchenWhereConditions.push(sql12`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
     }
     if (end) {
-      kitchenWhereConditions.push(sql11`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
+      kitchenWhereConditions.push(sql12`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
     }
     if (locationId) {
-      kitchenWhereConditions.push(sql11`l.id = ${locationId}`);
+      kitchenWhereConditions.push(sql12`l.id = ${locationId}`);
     }
-    const kitchenWhereClause = sql11`WHERE ${sql11.join(kitchenWhereConditions, sql11` AND `)}`;
-    const kitchenResult = await db2.execute(sql11`
+    const kitchenWhereClause = sql12`WHERE ${sql12.join(kitchenWhereConditions, sql12` AND `)}`;
+    const kitchenResult = await db2.execute(sql12`
       SELECT 
         kb.id,
         kb.booking_date,
@@ -21445,6 +21555,7 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         COALESCE(cka.email, u.username) as chef_email,
         kb.created_at,
         kb.updated_at,
+        kb.reference_code,
         -- Actual amount from payment_transactions (what was actually charged to Stripe)
         pt.amount as pt_amount,
         -- Actual Stripe fee from payment_transactions (fetched from Stripe Balance Transaction API)
@@ -21541,6 +21652,7 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         locationName: row.location_name,
         chefName: row.chef_name || "Guest",
         chefEmail: row.chef_email,
+        referenceCode: row.reference_code,
         createdAt: row.created_at,
         paidAt: row.pt_paid_at || null,
         refundAmount: ptRefundAmount,
@@ -21551,7 +21663,7 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         description
       };
     });
-    const storageResult = await db2.execute(sql11`
+    const storageResult = await db2.execute(sql12`
       SELECT 
         pt.id as transaction_id,
         pt.booking_id,
@@ -21712,20 +21824,20 @@ async function getCompleteRevenueMetrics(managerId, db2, startDate, endDate, loc
     }
     const kitchenMetrics = await getRevenueMetrics(managerId, db2, startDate, endDate, locationId);
     logger.info("[Revenue Service] Kitchen metrics:", kitchenMetrics);
-    const whereConditions = [sql11`l.manager_id = ${managerId}`];
+    const whereConditions = [sql12`l.manager_id = ${managerId}`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      whereConditions.push(sql11`DATE(sb.start_date) >= ${start}::date`);
+      whereConditions.push(sql12`DATE(sb.start_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      whereConditions.push(sql11`DATE(sb.start_date) <= ${end}::date`);
+      whereConditions.push(sql12`DATE(sb.start_date) <= ${end}::date`);
     }
     if (locationId) {
-      whereConditions.push(sql11`l.id = ${locationId}`);
+      whereConditions.push(sql12`l.id = ${locationId}`);
     }
-    const whereClause = sql11`WHERE ${sql11.join(whereConditions, sql11` AND `)}`;
-    const storageResult = await db2.execute(sql11`
+    const whereClause = sql12`WHERE ${sql12.join(whereConditions, sql12` AND `)}`;
+    const storageResult = await db2.execute(sql12`
       SELECT 
         COALESCE(SUM(COALESCE(sb.total_price, 0)::numeric), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(sb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
@@ -21740,20 +21852,20 @@ async function getCompleteRevenueMetrics(managerId, db2, startDate, endDate, loc
       ${whereClause}
         AND sb.status != 'cancelled'
     `);
-    const equipmentWhereConditions = [sql11`l.manager_id = ${managerId}`];
+    const equipmentWhereConditions = [sql12`l.manager_id = ${managerId}`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      equipmentWhereConditions.push(sql11`DATE(eb.start_date) >= ${start}::date`);
+      equipmentWhereConditions.push(sql12`DATE(eb.start_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      equipmentWhereConditions.push(sql11`DATE(eb.start_date) <= ${end}::date`);
+      equipmentWhereConditions.push(sql12`DATE(eb.start_date) <= ${end}::date`);
     }
     if (locationId) {
-      equipmentWhereConditions.push(sql11`l.id = ${locationId}`);
+      equipmentWhereConditions.push(sql12`l.id = ${locationId}`);
     }
-    const equipmentWhereClause = sql11`WHERE ${sql11.join(equipmentWhereConditions, sql11` AND `)}`;
-    const equipmentResult = await db2.execute(sql11`
+    const equipmentWhereClause = sql12`WHERE ${sql12.join(equipmentWhereConditions, sql12` AND `)}`;
+    const equipmentResult = await db2.execute(sql12`
       SELECT 
         COALESCE(SUM(COALESCE(eb.total_price, 0)::numeric), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(eb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
@@ -22405,7 +22517,7 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
         month: "long",
         day: "numeric"
       });
-      const invoiceNumber = `LC-${booking.id}-${(/* @__PURE__ */ new Date()).getFullYear()}`;
+      const invoiceNumber = booking.reference_code || booking.referenceCode || `LC-${booking.id}-${(/* @__PURE__ */ new Date()).getFullYear()}`;
       const pageWidth = doc.page.width;
       const rightMargin = pageWidth - 50;
       const labelWidth = 80;
@@ -22661,8 +22773,11 @@ async function generateStorageInvoicePDF(transaction, storageBooking, chef, exte
       const year = invoiceDate.getFullYear();
       const bookingIdPadded = String(storageBooking.id).padStart(6, "0");
       const isOverstayPenalty = extensionDetails?.is_overstay_penalty === true;
+      const storageRefCode = storageBooking.reference_code || storageBooking.referenceCode;
       let invoiceId;
-      if (isOverstayPenalty) {
+      if (storageRefCode) {
+        invoiceId = storageRefCode;
+      } else if (isOverstayPenalty) {
         invoiceId = `LC-OP-${year}-${bookingIdPadded}`;
       } else if (isExtension) {
         invoiceId = `LC-EXT-${year}-${bookingIdPadded}`;
@@ -22915,7 +23030,10 @@ async function generateDamageClaimInvoicePDF(claim, options) {
       doc.fontSize(10).font("Helvetica");
       doc.text("Payment Method: Credit/Debit Card");
       doc.text(`Transaction Date: ${chargeDate.toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}`);
-      if (claim.stripePaymentIntentId) {
+      const dcRef = claim.referenceCode;
+      if (dcRef) {
+        doc.text(`Reference: ${dcRef}`);
+      } else if (claim.stripePaymentIntentId) {
         doc.text(`Reference: ${claim.stripePaymentIntentId.slice(-8).toUpperCase()}`);
       }
       const dcPageHeight = doc.page.height;
@@ -23100,7 +23218,7 @@ __export(auth_expiry_service_exports, {
   lazyExpireStorageExtensionAuth: () => lazyExpireStorageExtensionAuth,
   processExpiredAuthorizations: () => processExpiredAuthorizations
 });
-import { eq as eq27, and as and15, lt as lt3, sql as sql12 } from "drizzle-orm";
+import { eq as eq27, and as and15, lt as lt3, sql as sql13 } from "drizzle-orm";
 async function lazyExpireKitchenBookingAuth(booking) {
   if (booking.paymentStatus !== "authorized" || booking.status !== "pending") return false;
   if (!booking.paymentIntentId || !booking.createdAt) return false;
@@ -23297,7 +23415,7 @@ async function processExpiredAuthorizations() {
       stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
       storageBookingId: pendingStorageExtensions.storageBookingId,
       createdAt: pendingStorageExtensions.createdAt,
-      chefId: sql12`(
+      chefId: sql13`(
           SELECT sb.chef_id FROM storage_bookings sb 
           WHERE sb.id = ${pendingStorageExtensions.storageBookingId}
         )`.as("chefId")
@@ -24767,6 +24885,7 @@ var init_bookings = __esm({
     init_schema();
     init_logger();
     init_middleware();
+    init_firebase_auth_middleware();
     init_stripe_service();
     init_pricing_service();
     init_user_service();
@@ -24844,6 +24963,63 @@ var init_bookings = __esm({
         res.status(500).json({
           error: error.message || "Failed to create checkout session"
         });
+      }
+    });
+    router14.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const { code } = req.params;
+        if (!code || code.length < 4) {
+          return res.status(400).json({ error: "Invalid reference code" });
+        }
+        const prefix = code.split("-")[0];
+        const user = req.neonUser;
+        const role = user.role;
+        const isAdmin = role === "admin";
+        const isManager = role === "manager";
+        const { storageBookings: sb, pendingStorageExtensions: pendingStorageExtensions2, storageOverstayRecords: storageOverstayRecords2, damageClaims: damageClaims2, storageListings: sl } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        if (prefix === "KB") {
+          let query = db.select({
+            id: kitchenBookings.id,
+            referenceCode: kitchenBookings.referenceCode,
+            status: kitchenBookings.status,
+            kitchenId: kitchenBookings.kitchenId
+          }).from(kitchenBookings).innerJoin(kitchens, eq29(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq29(kitchens.locationId, locations.id)).where(
+            isAdmin ? eq29(kitchenBookings.referenceCode, code) : isManager ? and17(eq29(kitchenBookings.referenceCode, code), eq29(locations.managerId, user.id)) : and17(eq29(kitchenBookings.referenceCode, code), eq29(kitchenBookings.chefId, user.id))
+          ).limit(1);
+          const [booking] = await query;
+          if (booking) {
+            const url = isAdmin ? `/admin?section=transactions&search=${booking.referenceCode}` : isManager ? `/manager/booking/${booking.id}` : `/booking/${booking.id}`;
+            return res.json({ type: "kitchen_booking", id: booking.id, referenceCode: booking.referenceCode, url });
+          }
+        } else if (prefix === "SB") {
+          const [booking] = await db.select({
+            id: sb.id,
+            referenceCode: sb.referenceCode,
+            status: sb.status
+          }).from(sb).innerJoin(sl, eq29(sb.storageListingId, sl.id)).innerJoin(kitchens, eq29(sl.kitchenId, kitchens.id)).innerJoin(locations, eq29(kitchens.locationId, locations.id)).where(
+            isAdmin ? eq29(sb.referenceCode, code) : isManager ? and17(eq29(sb.referenceCode, code), eq29(locations.managerId, user.id)) : and17(eq29(sb.referenceCode, code), eq29(sb.chefId, user.id))
+          ).limit(1);
+          if (booking) return res.json({ type: "storage_booking", id: booking.id, referenceCode: booking.referenceCode, url: isAdmin ? `/admin?section=transactions&search=${booking.referenceCode}` : `/dashboard` });
+        } else if (prefix === "EXT") {
+          const [ext] = await db.select({ id: pendingStorageExtensions2.id, referenceCode: pendingStorageExtensions2.referenceCode }).from(pendingStorageExtensions2).innerJoin(sb, eq29(pendingStorageExtensions2.storageBookingId, sb.id)).innerJoin(sl, eq29(sb.storageListingId, sl.id)).innerJoin(kitchens, eq29(sl.kitchenId, kitchens.id)).innerJoin(locations, eq29(kitchens.locationId, locations.id)).where(
+            isAdmin ? eq29(pendingStorageExtensions2.referenceCode, code) : isManager ? and17(eq29(pendingStorageExtensions2.referenceCode, code), eq29(locations.managerId, user.id)) : and17(eq29(pendingStorageExtensions2.referenceCode, code), eq29(sb.chefId, user.id))
+          ).limit(1);
+          if (ext) return res.json({ type: "storage_extension", id: ext.id, referenceCode: ext.referenceCode, url: isAdmin ? `/admin?section=transactions&search=${ext.referenceCode}` : `/dashboard` });
+        } else if (prefix === "OP") {
+          const [record] = await db.select({ id: storageOverstayRecords2.id, referenceCode: storageOverstayRecords2.referenceCode }).from(storageOverstayRecords2).innerJoin(sb, eq29(storageOverstayRecords2.storageBookingId, sb.id)).innerJoin(sl, eq29(sb.storageListingId, sl.id)).innerJoin(kitchens, eq29(sl.kitchenId, kitchens.id)).innerJoin(locations, eq29(kitchens.locationId, locations.id)).where(
+            isAdmin ? eq29(storageOverstayRecords2.referenceCode, code) : isManager ? and17(eq29(storageOverstayRecords2.referenceCode, code), eq29(locations.managerId, user.id)) : and17(eq29(storageOverstayRecords2.referenceCode, code), eq29(sb.chefId, user.id))
+          ).limit(1);
+          if (record) return res.json({ type: "overstay_penalty", id: record.id, referenceCode: record.referenceCode, url: isAdmin ? `/admin?section=overstay-penalties-history&search=${record.referenceCode}` : `/dashboard` });
+        } else if (prefix === "DC") {
+          const [claim] = await db.select({ id: damageClaims2.id, referenceCode: damageClaims2.referenceCode }).from(damageClaims2).where(
+            isAdmin ? eq29(damageClaims2.referenceCode, code) : isManager ? and17(eq29(damageClaims2.referenceCode, code), eq29(damageClaims2.managerId, user.id)) : and17(eq29(damageClaims2.referenceCode, code), eq29(damageClaims2.chefId, user.id))
+          ).limit(1);
+          if (claim) return res.json({ type: "damage_claim", id: claim.id, referenceCode: claim.referenceCode, url: isAdmin ? `/admin?section=damage-claims&search=${claim.referenceCode}` : `/dashboard` });
+        }
+        return res.status(404).json({ error: "Reference not found" });
+      } catch (error) {
+        logger.error("Error looking up reference code:", error);
+        res.status(500).json({ error: "Failed to look up reference" });
       }
     });
     router14.get("/chef/storage-bookings", requireChef, async (req, res) => {
@@ -27075,7 +27251,7 @@ var payment_transactions_backfill_exports = {};
 __export(payment_transactions_backfill_exports, {
   backfillPaymentTransactionsFromBookings: () => backfillPaymentTransactionsFromBookings
 });
-import { sql as sql13 } from "drizzle-orm";
+import { sql as sql14 } from "drizzle-orm";
 async function backfillPaymentTransactionsFromBookings(managerId, db2, options) {
   const limit = options?.limit || 100;
   const result = {
@@ -27084,7 +27260,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db2, options) 
     errors: []
   };
   try {
-    const kitchenBookingsResult = await db2.execute(sql13`
+    const kitchenBookingsResult = await db2.execute(sql14`
       SELECT 
         kb.id,
         kb.chef_id,
@@ -27141,7 +27317,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db2, options) 
         });
       }
     }
-    const storageBookingsResult = await db2.execute(sql13`
+    const storageBookingsResult = await db2.execute(sql14`
       SELECT 
         sb.id,
         sb.chef_id,
@@ -27197,7 +27373,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db2, options) 
         });
       }
     }
-    const equipmentBookingsResult = await db2.execute(sql13`
+    const equipmentBookingsResult = await db2.execute(sql14`
       SELECT 
         eb.id,
         eb.chef_id,
@@ -27466,12 +27642,13 @@ import {
   and as and18,
   desc as desc15,
   ne as ne4,
-  sql as sql14,
+  sql as sql15,
   or as or5,
   gte as gte3,
   lte as lte3
 } from "drizzle-orm";
 import { format as format5 } from "date-fns";
+import * as Sentry4 from "@sentry/node";
 async function verifyManagerOwnsOverstay(overstayRecordId, managerId) {
   const [row] = await db.select({ managerId: locations.managerId }).from(storageOverstayRecords).innerJoin(storageBookings, eq30(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq30(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq30(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq30(kitchens.locationId, locations.id)).where(eq30(storageOverstayRecords.id, overstayRecordId)).limit(1);
   return row?.managerId === managerId;
@@ -27611,7 +27788,7 @@ var init_manager = __esm({
           }
           let chef = null;
           if (booking.chefId) {
-            const chefResult = await db.execute(sql14`
+            const chefResult = await db.execute(sql15`
                 SELECT u.id, u.username, cka.full_name
                 FROM users u
                 LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -27803,7 +27980,7 @@ var init_manager = __esm({
           if (metadata?.storage_extension_id) {
             const extensionId = parseInt(String(metadata.storage_extension_id));
             if (!isNaN(extensionId)) {
-              const extensionResult = await db.execute(sql14`
+              const extensionResult = await db.execute(sql15`
                     SELECT 
                         pse.id,
                         pse.extension_days,
@@ -27827,7 +28004,7 @@ var init_manager = __esm({
           }
           let chef = null;
           if (storageBooking.chefId) {
-            const chefResult = await db.execute(sql14`
+            const chefResult = await db.execute(sql15`
                 SELECT u.id, u.username, cka.full_name
                 FROM users u
                 LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -27958,7 +28135,7 @@ var init_manager = __esm({
           }
           let chef = null;
           if (storageBooking.chefId) {
-            const chefResult = await db.execute(sql14`
+            const chefResult = await db.execute(sql15`
                 SELECT u.id, u.username, cka.full_name
                 FROM users u
                 LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -28569,7 +28746,7 @@ var init_manager = __esm({
         try {
           const managerId = req.neonUser.id;
           const fromSetup = req.body?.from === "setup" || req.query.from === "setup";
-          const userResult = await db.execute(sql14`
+          const userResult = await db.execute(sql15`
             SELECT id, username as email, stripe_connect_account_id 
             FROM users 
             WHERE id = ${managerId} 
@@ -28638,7 +28815,7 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const managerId = req.neonUser.id;
-          const userResult = await db.execute(sql14`
+          const userResult = await db.execute(sql15`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${managerId} 
@@ -28672,7 +28849,7 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const managerId = req.neonUser.id;
-          const userResult = await db.execute(sql14`
+          const userResult = await db.execute(sql15`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${managerId} 
@@ -28973,8 +29150,8 @@ var init_manager = __esm({
             and18(
               eq30(locations.managerId, managerId),
               eq30(kitchenBookings.paymentStatus, "paid"),
-              sql14`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
-              sql14`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
+              sql15`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
+              sql15`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
             )
           ).orderBy(desc15(kitchenBookings.bookingDate));
           res.json({
@@ -29062,8 +29239,8 @@ var init_manager = __esm({
             and18(
               eq30(locations.managerId, managerId),
               eq30(kitchenBookings.paymentStatus, "paid"),
-              sql14`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
-              sql14`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
+              sql15`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
+              sql15`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
             )
           ).orderBy(desc15(kitchenBookings.bookingDate));
           const { getBalanceTransactions: getBalanceTransactions2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
@@ -29927,6 +30104,7 @@ var init_manager = __esm({
           const user = req.neonUser;
           const id = parseInt(req.params.id);
           const { status, storageActions, equipmentActions, refundOnCancel } = req.body;
+          const bLog = logger.child({ bookingId: id, managerId: user.id, targetStatus: status });
           if (!["confirmed", "cancelled", "pending"].includes(status)) {
             return res.status(400).json({
               error: "Invalid status. Must be 'confirmed', 'cancelled', or 'pending'"
@@ -30189,7 +30367,7 @@ var init_manager = __esm({
                     amount: captureAmountCents,
                     metadata: captureMetadata
                   }, db);
-                  await db.execute(sql14`
+                  await db.execute(sql15`
                 UPDATE payment_transactions
                 SET base_amount = ${capturedBaseAmount.toString()},
                     service_fee = ${newApplicationFeeCents.toString()},
@@ -30203,7 +30381,11 @@ var init_manager = __esm({
                 logger.warn(`[Manager] Could not update payment_transactions after capture:`, ptErr);
               }
             } catch (captureError) {
-              logger.error(`[Manager] PARTIAL CAPTURE ENGINE: Failed for booking ${id}:`, captureError);
+              bLog.error(`[Manager] PARTIAL CAPTURE ENGINE: Failed for booking ${id}:`, captureError);
+              Sentry4.captureException(captureError, {
+                tags: { component: "partial_capture_engine", bookingId: String(id) },
+                extra: { managerId: user.id, paymentIntentId: bookingPaymentIntentId }
+              });
               return res.status(500).json({
                 error: "Failed to capture payment. The authorization may have expired. Please contact the chef to re-book.",
                 details: captureError.message
@@ -30284,9 +30466,9 @@ var init_manager = __esm({
                   id: storageBookings.id,
                   totalPrice: storageBookings.totalPrice
                 }).from(storageBookings).where(
-                  sql14`${storageBookings.id} IN (${sql14.join(
-                    rejectedStorageIds.map((rid) => sql14`${rid}`),
-                    sql14`, `
+                  sql15`${storageBookings.id} IN (${sql15.join(
+                    rejectedStorageIds.map((rid) => sql15`${rid}`),
+                    sql15`, `
                   )})`
                 );
                 for (const row of rejectedRows) {
@@ -30299,9 +30481,9 @@ var init_manager = __esm({
                   id: equipmentBookings.id,
                   totalPrice: equipmentBookings.totalPrice
                 }).from(equipmentBookings).where(
-                  sql14`${equipmentBookings.id} IN (${sql14.join(
-                    rejectedEquipmentIds.map((rid) => sql14`${rid}`),
-                    sql14`, `
+                  sql15`${equipmentBookings.id} IN (${sql15.join(
+                    rejectedEquipmentIds.map((rid) => sql15`${rid}`),
+                    sql15`, `
                   )})`
                 );
                 for (const row of rejectedEqRows) {
@@ -30432,10 +30614,14 @@ var init_manager = __esm({
                 }
               }
             } catch (refundError) {
-              logger.error(
+              bLog.error(
                 `[Manager] Failed to process refund for booking ${id}:`,
                 refundError
               );
+              Sentry4.captureException(refundError, {
+                tags: { component: "unified_refund_engine", bookingId: String(id) },
+                extra: { managerId: user.id, paymentIntentId: bookingPaymentIntentId }
+              });
             }
           }
           const cancelledStorageIdsFromActions = new Set(
@@ -30663,6 +30849,10 @@ var init_manager = __esm({
           res.json(responseData);
         } catch (e) {
           logger.error("Error updating booking status:", e);
+          Sentry4.captureException(e, {
+            tags: { component: "manager_booking_status" },
+            extra: { bookingId: req.params.id }
+          });
           res.status(500).json({ error: e.message || "Failed to update booking status" });
         }
       }
@@ -32719,7 +32909,7 @@ var init_manager = __esm({
               availabilityType: equipmentListings.availabilityType,
               status: equipmentBookings.status
             }).from(equipmentBookings).innerJoin(equipmentListings, eq30(equipmentBookings.equipmentListingId, equipmentListings.id)).where(
-              sql14`${equipmentBookings.kitchenBookingId} IN (${sql14.join(kitchenBookingIds.map((id) => sql14`${id}`), sql14`, `)})`
+              sql15`${equipmentBookings.kitchenBookingId} IN (${sql15.join(kitchenBookingIds.map((id) => sql15`${id}`), sql15`, `)})`
             );
             for (const eq_item of rentedEquipment) {
               const list = equipmentMap.get(eq_item.kitchenBookingId) || [];
@@ -32743,7 +32933,7 @@ var init_manager = __esm({
                 availabilityType: equipmentListings.availabilityType
               }).from(equipmentListings).where(
                 and18(
-                  sql14`${equipmentListings.kitchenId} IN (${sql14.join(kitchenIds.map((id) => sql14`${id}`), sql14`, `)})`,
+                  sql15`${equipmentListings.kitchenId} IN (${sql15.join(kitchenIds.map((id) => sql15`${id}`), sql15`, `)})`,
                   eq30(equipmentListings.availabilityType, "included"),
                   eq30(equipmentListings.isActive, true)
                 )
@@ -33172,7 +33362,7 @@ __export(notifications_exports, {
   markAsRead: () => markAsRead
 });
 import { Router as Router16 } from "express";
-import { sql as sql15 } from "drizzle-orm";
+import { sql as sql16 } from "drizzle-orm";
 async function createNotification2(params) {
   const {
     managerId,
@@ -33186,7 +33376,7 @@ async function createNotification2(params) {
     actionLabel,
     expiresAt
   } = params;
-  const result = await db.execute(sql15`
+  const result = await db.execute(sql16`
     INSERT INTO manager_notifications 
     (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
     VALUES (
@@ -33214,17 +33404,17 @@ async function getNotifications(managerId, options = {}) {
     locationId
   } = options;
   const offset = (page - 1) * limit;
-  let filterCondition = sql15`AND is_archived = false`;
+  let filterCondition = sql16`AND is_archived = false`;
   if (filter === "unread") {
-    filterCondition = sql15`AND is_read = false AND is_archived = false`;
+    filterCondition = sql16`AND is_read = false AND is_archived = false`;
   } else if (filter === "read") {
-    filterCondition = sql15`AND is_read = true AND is_archived = false`;
+    filterCondition = sql16`AND is_read = true AND is_archived = false`;
   } else if (filter === "archived") {
-    filterCondition = sql15`AND is_archived = true`;
+    filterCondition = sql16`AND is_archived = true`;
   }
-  const typeCondition = type ? sql15`AND type = ${type}::notification_type` : sql15``;
-  const locationCondition = locationId ? sql15`AND (location_id = ${locationId} OR location_id IS NULL)` : sql15``;
-  const notificationsResult = await db.execute(sql15`
+  const typeCondition = type ? sql16`AND type = ${type}::notification_type` : sql16``;
+  const locationCondition = locationId ? sql16`AND (location_id = ${locationId} OR location_id IS NULL)` : sql16``;
+  const notificationsResult = await db.execute(sql16`
     SELECT 
       id, manager_id, location_id, type, priority, title, message, 
       metadata, is_read, read_at, is_archived, archived_at, 
@@ -33244,7 +33434,7 @@ async function getNotifications(managerId, options = {}) {
     LIMIT ${limit}
     OFFSET ${offset}
   `);
-  const countResult = await db.execute(sql15`
+  const countResult = await db.execute(sql16`
     SELECT COUNT(*) as total
     FROM manager_notifications
     WHERE manager_id = ${managerId}
@@ -33266,8 +33456,8 @@ async function getNotifications(managerId, options = {}) {
   };
 }
 async function getUnreadCount(managerId, locationId) {
-  const locationCondition = locationId ? sql15`AND (location_id = ${locationId} OR location_id IS NULL)` : sql15``;
-  const result = await db.execute(sql15`
+  const locationCondition = locationId ? sql16`AND (location_id = ${locationId} OR location_id IS NULL)` : sql16``;
+  const result = await db.execute(sql16`
     SELECT COUNT(*) as count
     FROM manager_notifications
     WHERE manager_id = ${managerId}
@@ -33280,18 +33470,18 @@ async function getUnreadCount(managerId, locationId) {
 }
 async function markAsRead(managerId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql15`
+  const result = await db.execute(sql16`
     UPDATE manager_notifications
     SET is_read = true, read_at = NOW()
     WHERE manager_id = ${managerId}
-      AND id IN (${sql15.join(notificationIds.map((id) => sql15`${id}`), sql15`, `)})
+      AND id IN (${sql16.join(notificationIds.map((id) => sql16`${id}`), sql16`, `)})
       AND is_read = false
   `);
   return { updated: result.rowCount || 0 };
 }
 async function markAllAsRead(managerId, locationId) {
-  const locationCondition = locationId ? sql15`AND location_id = ${locationId}` : sql15``;
-  const result = await db.execute(sql15`
+  const locationCondition = locationId ? sql16`AND location_id = ${locationId}` : sql16``;
+  const result = await db.execute(sql16`
     UPDATE manager_notifications
     SET is_read = true, read_at = NOW()
     WHERE manager_id = ${managerId}
@@ -33302,31 +33492,31 @@ async function markAllAsRead(managerId, locationId) {
 }
 async function archiveNotifications(managerId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql15`
+  const result = await db.execute(sql16`
     UPDATE manager_notifications
     SET is_archived = true, archived_at = NOW()
     WHERE manager_id = ${managerId}
-      AND id IN (${sql15.join(notificationIds.map((id) => sql15`${id}`), sql15`, `)})
+      AND id IN (${sql16.join(notificationIds.map((id) => sql16`${id}`), sql16`, `)})
       AND is_archived = false
   `);
   return { updated: result.rowCount || 0 };
 }
 async function unarchiveNotifications(managerId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql15`
+  const result = await db.execute(sql16`
     UPDATE manager_notifications
     SET is_archived = false, archived_at = NULL
     WHERE manager_id = ${managerId}
-      AND id IN (${sql15.join(notificationIds.map((id) => sql15`${id}`), sql15`, `)})
+      AND id IN (${sql16.join(notificationIds.map((id) => sql16`${id}`), sql16`, `)})
       AND is_archived = true
   `);
   return { updated: result.rowCount || 0 };
 }
 async function cleanupOldNotifications(daysOld = 90) {
-  const result = await db.execute(sql15`
+  const result = await db.execute(sql16`
     DELETE FROM manager_notifications
     WHERE is_archived = true
-      AND archived_at < NOW() - INTERVAL '${sql15.raw(String(daysOld))} days'
+      AND archived_at < NOW() - INTERVAL '${sql16.raw(String(daysOld))} days'
   `);
   return { deleted: result.rowCount || 0 };
 }
@@ -33456,7 +33646,7 @@ var init_notifications = __esm({
       try {
         const managerId = req.neonUser.id;
         const notificationId = parseInt(req.params.id);
-        const result = await db.execute(sql15`
+        const result = await db.execute(sql16`
       DELETE FROM manager_notifications
       WHERE id = ${notificationId}
         AND manager_id = ${managerId}
@@ -33486,7 +33676,7 @@ __export(chef_notifications_exports, {
   notificationService: () => notificationService
 });
 import { Router as Router17 } from "express";
-import { sql as sql16 } from "drizzle-orm";
+import { sql as sql17 } from "drizzle-orm";
 async function getNotifications2(chefId, options = {}) {
   const {
     page = 1,
@@ -33495,16 +33685,16 @@ async function getNotifications2(chefId, options = {}) {
     type
   } = options;
   const offset = (page - 1) * limit;
-  let filterCondition = sql16`AND is_archived = false`;
+  let filterCondition = sql17`AND is_archived = false`;
   if (filter === "unread") {
-    filterCondition = sql16`AND is_read = false AND is_archived = false`;
+    filterCondition = sql17`AND is_read = false AND is_archived = false`;
   } else if (filter === "read") {
-    filterCondition = sql16`AND is_read = true AND is_archived = false`;
+    filterCondition = sql17`AND is_read = true AND is_archived = false`;
   } else if (filter === "archived") {
-    filterCondition = sql16`AND is_archived = true`;
+    filterCondition = sql17`AND is_archived = true`;
   }
-  const typeCondition = type ? sql16`AND type = ${type}::chef_notification_type` : sql16``;
-  const notificationsResult = await db.execute(sql16`
+  const typeCondition = type ? sql17`AND type = ${type}::chef_notification_type` : sql17``;
+  const notificationsResult = await db.execute(sql17`
     SELECT 
       id, chef_id, type, priority, title, message, 
       metadata, is_read, read_at, is_archived, archived_at, 
@@ -33523,7 +33713,7 @@ async function getNotifications2(chefId, options = {}) {
     LIMIT ${limit}
     OFFSET ${offset}
   `);
-  const countResult = await db.execute(sql16`
+  const countResult = await db.execute(sql17`
     SELECT COUNT(*) as total
     FROM chef_notifications
     WHERE chef_id = ${chefId}
@@ -33544,7 +33734,7 @@ async function getNotifications2(chefId, options = {}) {
   };
 }
 async function getUnreadCount2(chefId) {
-  const result = await db.execute(sql16`
+  const result = await db.execute(sql17`
     SELECT COUNT(*) as count
     FROM chef_notifications
     WHERE chef_id = ${chefId}
@@ -33556,17 +33746,17 @@ async function getUnreadCount2(chefId) {
 }
 async function markAsRead2(chefId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql16`
+  const result = await db.execute(sql17`
     UPDATE chef_notifications
     SET is_read = true, read_at = NOW()
     WHERE chef_id = ${chefId}
-      AND id IN (${sql16.join(notificationIds.map((id) => sql16`${id}`), sql16`, `)})
+      AND id IN (${sql17.join(notificationIds.map((id) => sql17`${id}`), sql17`, `)})
       AND is_read = false
   `);
   return { updated: result.rowCount || 0 };
 }
 async function markAllAsRead2(chefId) {
-  const result = await db.execute(sql16`
+  const result = await db.execute(sql17`
     UPDATE chef_notifications
     SET is_read = true, read_at = NOW()
     WHERE chef_id = ${chefId}
@@ -33577,11 +33767,11 @@ async function markAllAsRead2(chefId) {
 }
 async function archiveNotifications2(chefId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql16`
+  const result = await db.execute(sql17`
     UPDATE chef_notifications
     SET is_archived = true, archived_at = NOW()
     WHERE chef_id = ${chefId}
-      AND id IN (${sql16.join(notificationIds.map((id) => sql16`${id}`), sql16`, `)})
+      AND id IN (${sql17.join(notificationIds.map((id) => sql17`${id}`), sql17`, `)})
       AND is_archived = false
   `);
   return { updated: result.rowCount || 0 };
@@ -33682,7 +33872,7 @@ var init_chef_notifications = __esm({
       try {
         const chefId = req.neonUser.id;
         const notificationId = parseInt(req.params.id);
-        const result = await db.execute(sql16`
+        const result = await db.execute(sql17`
       DELETE FROM chef_notifications
       WHERE id = ${notificationId}
         AND chef_id = ${chefId}
@@ -34386,14 +34576,14 @@ __export(security_exports, {
 import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
-import { sql as sql17 } from "drizzle-orm";
+import { sql as sql18 } from "drizzle-orm";
 async function loadRateLimitConfig() {
   const now = Date.now();
   if (now - lastConfigFetch < CONFIG_CACHE_TTL) {
     return cachedConfig;
   }
   try {
-    const result = await db.execute(sql17`
+    const result = await db.execute(sql18`
       SELECT key, value FROM platform_settings 
       WHERE key LIKE 'rate_limit_%'
     `);
@@ -34632,7 +34822,7 @@ __export(admin_exports, {
   default: () => admin_default
 });
 import { Router as Router21 } from "express";
-import { eq as eq33, sql as sql18, ilike } from "drizzle-orm";
+import { eq as eq33, sql as sql19, ilike } from "drizzle-orm";
 import { getFirestore as getFirestore2 } from "firebase-admin/firestore";
 async function getFirestoreDisplayNames(firebaseUids) {
   const nameMap = {};
@@ -34742,16 +34932,16 @@ var init_admin = __esm({
           return;
         }
         const { startDate, endDate } = req.query;
-        const conditions = [sql18`pt.status = 'succeeded'`];
+        const conditions = [sql19`pt.status = 'succeeded'`];
         if (startDate) {
-          conditions.push(sql18`DATE(pt.paid_at) >= ${startDate}::date`);
+          conditions.push(sql19`DATE(pt.paid_at) >= ${startDate}::date`);
         }
         if (endDate) {
-          conditions.push(sql18`DATE(pt.paid_at) <= ${endDate}::date`);
+          conditions.push(sql19`DATE(pt.paid_at) <= ${endDate}::date`);
         }
-        const txnFilters = sql18.join(conditions, sql18` AND `);
+        const txnFilters = sql19.join(conditions, sql19` AND `);
         const managerRole = "manager";
-        const result = await db.execute(sql18`
+        const result = await db.execute(sql19`
         SELECT 
           u.id as manager_id,
           u.username as manager_name,
@@ -34789,17 +34979,17 @@ var init_admin = __esm({
           return;
         }
         const { startDate, endDate } = req.query;
-        const managerCountResult = await db.select({ count: sql18`count(*)::int` }).from(users).where(eq33(users.role, "manager"));
+        const managerCountResult = await db.select({ count: sql19`count(*)::int` }).from(users).where(eq33(users.role, "manager"));
         const totalManagers = managerCountResult[0]?.count || 0;
-        const conditions = [sql18`kb.status != 'cancelled'`];
+        const conditions = [sql19`kb.status != 'cancelled'`];
         if (startDate) {
-          conditions.push(sql18`kb.booking_date >= ${startDate}::date`);
+          conditions.push(sql19`kb.booking_date >= ${startDate}::date`);
         }
         if (endDate) {
-          conditions.push(sql18`kb.booking_date <= ${endDate}::date`);
+          conditions.push(sql19`kb.booking_date <= ${endDate}::date`);
         }
-        const bookingFilters = sql18.join(conditions, sql18` AND `);
-        const bookingResult = await db.execute(sql18`
+        const bookingFilters = sql19.join(conditions, sql19` AND `);
+        const bookingResult = await db.execute(sql19`
         SELECT 
           COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
           COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
@@ -35093,7 +35283,7 @@ var init_admin = __esm({
         if (user.role !== "admin") {
           return res.status(403).json({ error: "Admin access required" });
         }
-        const result = await db.execute(sql18`
+        const result = await db.execute(sql19`
             SELECT 
               u.id, 
               u.username, 
@@ -35250,7 +35440,7 @@ var init_admin = __esm({
     });
     router21.get("/locations/pending-licenses-count", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
-        const result = await db.select({ count: sql18`count(*)::int` }).from(locations).where(eq33(locations.kitchenLicenseStatus, "pending"));
+        const result = await db.select({ count: sql19`count(*)::int` }).from(locations).where(eq33(locations.kitchenLicenseStatus, "pending"));
         const count3 = result[0]?.count || 0;
         res.json({ count: count3 });
       } catch (error) {
@@ -36070,7 +36260,7 @@ var init_admin = __esm({
     router21.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const config = await getFeeConfig();
-        const settings = await db.select().from(platformSettings).where(sql18`key IN ('stripe_percentage_fee', 'stripe_flat_fee_cents', 'platform_commission_rate', 'minimum_application_fee_cents', 'use_stripe_platform_pricing')`);
+        const settings = await db.select().from(platformSettings).where(sql19`key IN ('stripe_percentage_fee', 'stripe_flat_fee_cents', 'platform_commission_rate', 'minimum_application_fee_cents', 'use_stripe_platform_pricing')`);
         const settingsMap = Object.fromEntries(settings.map((s) => [s.key, {
           value: s.value,
           description: s.description,
@@ -36514,8 +36704,8 @@ var init_admin = __esm({
       try {
         const statusFilter = req.query.status;
         const { damageEvidence: damageEvidence2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-        const statusCondition = statusFilter && statusFilter !== "all" ? sql18`AND dc.status = ${statusFilter}` : sql18``;
-        const claimsQuery = await db.execute(sql18`
+        const statusCondition = statusFilter && statusFilter !== "all" ? sql19`AND dc.status = ${statusFilter}` : sql19``;
+        const claimsQuery = await db.execute(sql19`
             SELECT 
                 dc.*,
                 chef_user.username as chef_email,
@@ -36740,8 +36930,8 @@ var init_admin = __esm({
     router21.get("/escalated-penalties", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const showAll = req.query.all === "true";
-        const overstayStatusFilter = showAll ? sql18`` : sql18`AND sor.status = 'escalated'`;
-        const overstayResult = await db.execute(sql18`
+        const overstayStatusFilter = showAll ? sql19`` : sql19`AND sor.status = 'escalated'`;
+        const overstayResult = await db.execute(sql19`
             SELECT 
                 sor.id,
                 sor.storage_booking_id as "storageBookingId",
@@ -36768,8 +36958,8 @@ var init_admin = __esm({
             ORDER BY sor.detected_at DESC
         `);
         const allOverstays = overstayResult.rows;
-        const claimStatusFilter = showAll ? sql18`` : sql18`AND dc.status = 'escalated'`;
-        const claimResult = await db.execute(sql18`
+        const claimStatusFilter = showAll ? sql19`` : sql19`AND dc.status = 'escalated'`;
+        const claimResult = await db.execute(sql19`
             SELECT 
                 dc.id,
                 dc.claim_title as "claimTitle",
@@ -36813,7 +37003,7 @@ var init_admin = __esm({
     });
     router21.get("/transactions/locations", requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
       try {
-        const result = await db.execute(sql18`
+        const result = await db.execute(sql19`
             SELECT id, name FROM locations ORDER BY name ASC
         `);
         res.json(result.rows);
@@ -36841,15 +37031,15 @@ var init_admin = __esm({
         const parsedOffset = parseInt(offset) || 0;
         const conditions = [];
         if (status && ["pending", "processing", "succeeded", "failed", "canceled", "refunded", "partially_refunded"].includes(status)) {
-          conditions.push(sql18`pt.status = ${status}`);
+          conditions.push(sql19`pt.status = ${status}`);
         }
         if (bookingType && ["kitchen", "storage", "equipment", "bundle"].includes(bookingType)) {
-          conditions.push(sql18`pt.booking_type = ${bookingType}`);
+          conditions.push(sql19`pt.booking_type = ${bookingType}`);
         }
         if (locationId) {
           const parsed = parseInt(locationId);
           if (!isNaN(parsed)) {
-            conditions.push(sql18`(
+            conditions.push(sql19`(
                     (pt.booking_type = 'kitchen' AND k.location_id = ${parsed}) OR
                     (pt.booking_type = 'storage' AND sk.location_id = ${parsed}) OR
                     (pt.booking_type = 'equipment' AND ek.location_id = ${parsed})
@@ -36859,7 +37049,7 @@ var init_admin = __esm({
         if (kitchenId) {
           const parsed = parseInt(kitchenId);
           if (!isNaN(parsed)) {
-            conditions.push(sql18`(
+            conditions.push(sql19`(
                     (pt.booking_type = 'kitchen' AND kb.kitchen_id = ${parsed}) OR
                     (pt.booking_type = 'storage' AND sl.kitchen_id = ${parsed}) OR
                     (pt.booking_type = 'equipment' AND el.kitchen_id = ${parsed})
@@ -36868,24 +37058,24 @@ var init_admin = __esm({
         }
         if (chefId) {
           const parsed = parseInt(chefId);
-          if (!isNaN(parsed)) conditions.push(sql18`pt.chef_id = ${parsed}`);
+          if (!isNaN(parsed)) conditions.push(sql19`pt.chef_id = ${parsed}`);
         }
         if (managerId) {
           const parsed = parseInt(managerId);
-          if (!isNaN(parsed)) conditions.push(sql18`pt.manager_id = ${parsed}`);
+          if (!isNaN(parsed)) conditions.push(sql19`pt.manager_id = ${parsed}`);
         }
         if (startDate) {
-          conditions.push(sql18`pt.created_at >= ${new Date(startDate)}`);
+          conditions.push(sql19`pt.created_at >= ${new Date(startDate)}`);
         }
         if (endDate) {
-          conditions.push(sql18`pt.created_at <= ${new Date(endDate)}`);
+          conditions.push(sql19`pt.created_at <= ${new Date(endDate)}`);
         }
         if (search && typeof search === "string" && search.trim()) {
           const s = search.trim();
           const like = "%" + s + "%";
           const numVal = parseInt(s);
           const isNum = !isNaN(numVal);
-          conditions.push(sql18`(
+          conditions.push(sql19`(
                 pt.payment_intent_id ILIKE ${like}
                 OR pt.charge_id ILIKE ${like}
                 OR pt.refund_id ILIKE ${like}
@@ -36899,11 +37089,13 @@ var init_admin = __esm({
                 OR k.name ILIKE ${like}
                 OR CAST(pt.id AS TEXT) = ${s}
                 OR CAST(pt.booking_id AS TEXT) = ${s}
-                ${isNum ? sql18`OR pt.chef_id = ${numVal} OR pt.manager_id = ${numVal}` : sql18``}
+                OR COALESCE(kb.reference_code, '') ILIKE ${like}
+                OR COALESCE(sb.reference_code, '') ILIKE ${like}
+                ${isNum ? sql19`OR pt.chef_id = ${numVal} OR pt.manager_id = ${numVal}` : sql19``}
             )`);
         }
-        const whereClause = conditions.length > 0 ? sql18`WHERE ${sql18.join(conditions, sql18` AND `)}` : sql18``;
-        const joinBlock = sql18`
+        const whereClause = conditions.length > 0 ? sql19`WHERE ${sql19.join(conditions, sql19` AND `)}` : sql19``;
+        const joinBlock = sql19`
             FROM payment_transactions pt
             LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
             LEFT JOIN kitchens k ON kb.kitchen_id = k.id
@@ -36922,10 +37114,10 @@ var init_admin = __esm({
             LEFT JOIN users manager_user ON pt.manager_id = manager_user.id
             LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = pt.chef_id AND cka.location_id = l.id
         `;
-        const countResult = await db.execute(sql18`SELECT COUNT(*) as total ${joinBlock} ${whereClause}`);
+        const countResult = await db.execute(sql19`SELECT COUNT(*) as total ${joinBlock} ${whereClause}`);
         const total = parseInt(countResult.rows[0].total);
         const atSign = "@";
-        const result = await db.execute(sql18`
+        const result = await db.execute(sql19`
             SELECT
                 pt.id, pt.booking_id, pt.booking_type, pt.chef_id, pt.manager_id,
                 pt.amount, pt.base_amount, pt.service_fee, pt.stripe_processing_fee,
@@ -36977,7 +37169,12 @@ var init_admin = __esm({
                     WHEN pt.booking_type = 'kitchen' THEN k.name
                     WHEN pt.booking_type = 'storage' THEN sl.name
                     ELSE NULL
-                END as item_name
+                END as item_name,
+                CASE
+                    WHEN pt.booking_type = 'kitchen' THEN kb.reference_code
+                    WHEN pt.booking_type = 'storage' THEN sb.reference_code
+                    ELSE NULL
+                END as reference_code
             ${joinBlock}
             ${whereClause}
             ORDER BY pt.created_at DESC
@@ -37023,6 +37220,7 @@ var init_admin = __esm({
           kitchenId: tx.kitchen_id,
           kitchenName: tx.kitchen_name,
           itemName: tx.item_name,
+          referenceCode: tx.reference_code,
           bookingStart: tx.booking_start,
           bookingEnd: tx.booking_end,
           kitchenStartTime: tx.kitchen_start_time,
@@ -37040,9 +37238,9 @@ var init_admin = __esm({
         const { status: statusFilter, locationId, limit = "200", offset = "0" } = req.query;
         const parsedLimit = Math.min(parseInt(limit) || 200, 500);
         const parsedOffset = parseInt(offset) || 0;
-        const statusClause = statusFilter ? sql18`AND sor.status = ${statusFilter}` : sql18``;
-        const locationClause = locationId ? sql18`AND loc.id = ${parseInt(locationId)}` : sql18``;
-        const result = await db.execute(sql18`
+        const statusClause = statusFilter ? sql19`AND sor.status = ${statusFilter}` : sql19``;
+        const locationClause = locationId ? sql19`AND loc.id = ${parseInt(locationId)}` : sql19``;
+        const result = await db.execute(sql19`
             SELECT 
                 sor.id,
                 sor.storage_booking_id as "storageBookingId",
@@ -37104,7 +37302,7 @@ var init_admin = __esm({
             ORDER BY sor.detected_at DESC
             LIMIT ${parsedLimit} OFFSET ${parsedOffset}
         `);
-        const countResult = await db.execute(sql18`
+        const countResult = await db.execute(sql19`
             SELECT COUNT(*) as total
             FROM storage_overstay_records sor
             INNER JOIN storage_bookings sb ON sor.storage_booking_id = sb.id
@@ -37124,7 +37322,7 @@ var init_admin = __esm({
       try {
         const overstayId = parseInt(req.params.id);
         if (isNaN(overstayId)) return res.status(400).json({ error: "Invalid ID" });
-        const result = await db.execute(sql18`
+        const result = await db.execute(sql19`
             SELECT 
                 soh.id,
                 soh.overstay_record_id as "overstayRecordId",
@@ -37153,10 +37351,10 @@ var init_admin = __esm({
         const { status: statusFilter, locationId, bookingType, limit = "200", offset = "0" } = req.query;
         const parsedLimit = Math.min(parseInt(limit) || 200, 500);
         const parsedOffset = parseInt(offset) || 0;
-        const statusClause = statusFilter ? sql18`AND dc.status = ${statusFilter}` : sql18``;
-        const locationClause = locationId ? sql18`AND dc.location_id = ${parseInt(locationId)}` : sql18``;
-        const bookingTypeClause = bookingType ? sql18`AND dc.booking_type = ${bookingType}` : sql18``;
-        const result = await db.execute(sql18`
+        const statusClause = statusFilter ? sql19`AND dc.status = ${statusFilter}` : sql19``;
+        const locationClause = locationId ? sql19`AND dc.location_id = ${parseInt(locationId)}` : sql19``;
+        const bookingTypeClause = bookingType ? sql19`AND dc.booking_type = ${bookingType}` : sql19``;
+        const result = await db.execute(sql19`
             SELECT 
                 dc.id,
                 dc.booking_type as "bookingType",
@@ -37212,7 +37410,7 @@ var init_admin = __esm({
             ORDER BY dc.created_at DESC
             LIMIT ${parsedLimit} OFFSET ${parsedOffset}
         `);
-        const countResult = await db.execute(sql18`
+        const countResult = await db.execute(sql19`
             SELECT COUNT(*) as total
             FROM damage_claims dc
             WHERE 1=1 ${statusClause} ${locationClause} ${bookingTypeClause}
@@ -37228,7 +37426,7 @@ var init_admin = __esm({
       try {
         const claimId = parseInt(req.params.id);
         if (isNaN(claimId)) return res.status(400).json({ error: "Invalid ID" });
-        const result = await db.execute(sql18`
+        const result = await db.execute(sql19`
             SELECT 
                 dch.id,
                 dch.damage_claim_id as "damageClaimId",
@@ -37256,7 +37454,7 @@ var init_admin = __esm({
       try {
         const claimId = parseInt(req.params.id);
         if (isNaN(claimId)) return res.status(400).json({ error: "Invalid ID" });
-        const result = await db.execute(sql18`
+        const result = await db.execute(sql19`
             SELECT 
                 de.id,
                 de.damage_claim_id as "damageClaimId",
@@ -37320,7 +37518,7 @@ var init_admin = __esm({
           return res.status(400).json({ error: "No valid settings provided" });
         }
         for (const { key, value } of updates) {
-          await db.execute(sql18`
+          await db.execute(sql19`
                 INSERT INTO platform_settings (key, value) 
                 VALUES (${key}, ${value})
                 ON CONFLICT (key) DO UPDATE SET value = ${value}
@@ -37345,7 +37543,7 @@ __export(stripe_checkout_transactions_service_exports, {
   getTransactionBySessionId: () => getTransactionBySessionId,
   updateTransactionBySessionId: () => updateTransactionBySessionId
 });
-import { sql as sql19 } from "drizzle-orm";
+import { sql as sql20 } from "drizzle-orm";
 async function createTransaction(params, db2) {
   const {
     bookingId,
@@ -37359,7 +37557,7 @@ async function createTransaction(params, db2) {
     managerReceivesCents,
     metadata = {}
   } = params;
-  const result = await db2.execute(sql19`
+  const result = await db2.execute(sql20`
     INSERT INTO transactions (
       booking_id,
       stripe_session_id,
@@ -37395,29 +37593,29 @@ async function createTransaction(params, db2) {
 async function updateTransactionBySessionId(sessionId, params, db2) {
   const updates = [];
   if (params.status !== void 0) {
-    updates.push(sql19`status = ${params.status}`);
+    updates.push(sql20`status = ${params.status}`);
   }
   if (params.stripePaymentIntentId !== void 0) {
-    updates.push(sql19`stripe_payment_intent_id = ${params.stripePaymentIntentId}`);
+    updates.push(sql20`stripe_payment_intent_id = ${params.stripePaymentIntentId}`);
   }
   if (params.stripeChargeId !== void 0) {
-    updates.push(sql19`stripe_charge_id = ${params.stripeChargeId}`);
+    updates.push(sql20`stripe_charge_id = ${params.stripeChargeId}`);
   }
   if (params.completedAt !== void 0) {
-    updates.push(sql19`completed_at = ${params.completedAt}`);
+    updates.push(sql20`completed_at = ${params.completedAt}`);
   }
   if (params.refundedAt !== void 0) {
-    updates.push(sql19`refunded_at = ${params.refundedAt}`);
+    updates.push(sql20`refunded_at = ${params.refundedAt}`);
   }
   if (params.metadata !== void 0) {
-    updates.push(sql19`metadata = ${JSON.stringify(params.metadata)}`);
+    updates.push(sql20`metadata = ${JSON.stringify(params.metadata)}`);
   }
   if (updates.length === 0) {
     return getTransactionBySessionId(sessionId, db2);
   }
-  const result = await db2.execute(sql19`
+  const result = await db2.execute(sql20`
     UPDATE transactions
-    SET ${sql19.join(updates, sql19`, `)}
+    SET ${sql20.join(updates, sql20`, `)}
     WHERE stripe_session_id = ${sessionId}
     RETURNING *
   `);
@@ -37427,7 +37625,7 @@ async function updateTransactionBySessionId(sessionId, params, db2) {
   return mapRowToTransaction(result.rows[0]);
 }
 async function getTransactionBySessionId(sessionId, db2) {
-  const result = await db2.execute(sql19`
+  const result = await db2.execute(sql20`
     SELECT * FROM transactions WHERE stripe_session_id = ${sessionId}
   `);
   if (result.rows.length === 0) {
@@ -37470,6 +37668,7 @@ __export(webhooks_exports, {
 import { Router as Router22 } from "express";
 import Stripe6 from "stripe";
 import { eq as eq34, and as and21, ne as ne5, notInArray } from "drizzle-orm";
+import * as Sentry5 from "@sentry/node";
 async function handleCheckoutSessionCompleted(session, webhookEventId) {
   if (!pool) {
     logger.error("Database pool not available for webhook");
@@ -37719,7 +37918,9 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
         const bookingPaymentStatus = isManualCapture ? "authorized" : "paid";
         let booking;
         try {
+          const kbRefCode = await generateReferenceCode("kitchen_booking");
           const [directBooking] = await db.insert(kitchenBookings).values({
+            referenceCode: kbRefCode,
             kitchenId,
             chefId,
             bookingDate,
@@ -37746,6 +37947,7 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
           if (directBooking) {
             booking = {
               id: directBooking.id,
+              referenceCode: directBooking.referenceCode,
               kitchenId: directBooking.kitchenId,
               chefId: directBooking.chefId,
               bookingDate: directBooking.bookingDate,
@@ -37769,6 +37971,10 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
             chefId,
             paymentIntentId
           });
+          Sentry5.captureException(insertError, {
+            tags: { component: "webhook_booking_creation" },
+            extra: { sessionId: session.id, kitchenId, chefId, paymentIntentId }
+          });
           throw insertError;
         }
         if (!booking || !booking.id) {
@@ -37778,8 +37984,13 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
         logger.operational(`[Webhook] Created booking ${booking.id} from checkout session ${session.id}`);
         const [verifiedBooking] = await db.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq34(kitchenBookings.id, booking.id)).limit(1);
         if (!verifiedBooking) {
+          const persistError = new Error(`Booking ${booking.id} was not persisted to database`);
           logger.error(`[Webhook] CRITICAL: Booking ${booking.id} was not persisted to database! Session: ${session.id}`);
-          throw new Error(`Booking ${booking.id} was not persisted to database`);
+          Sentry5.captureException(persistError, {
+            tags: { component: "webhook_booking_persist" },
+            extra: { bookingId: booking.id, sessionId: session.id }
+          });
+          throw persistError;
         }
         logger.info(`[Webhook] Verified booking ${booking.id} exists in database`);
         if (stripeCustomerId && chefId) {
@@ -37812,7 +38023,9 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
                 } else if (storageListing.pricingModel === "monthly-flat") {
                   priceCents = basePriceCents;
                 }
+                const sbRefCode = await generateReferenceCode("storage_booking");
                 const [storageBooking] = await db.insert(storageBookings).values({
+                  referenceCode: sbRefCode,
                   kitchenBookingId: booking.id,
                   storageListingId: storageListing.id,
                   chefId,
@@ -38007,7 +38220,8 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
                   specialNotes: specialNotes || void 0,
                   timezone: location.timezone || "America/St_Johns",
                   locationName: location.name,
-                  bookingId: booking.id
+                  bookingId: booking.id,
+                  referenceCode: booking.referenceCode
                 });
                 const emailSent = await sendEmail2(managerEmail, { trackingId: `booking_${booking.id}_manager` });
                 if (emailSent) {
@@ -38170,6 +38384,10 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
     }
   } catch (error) {
     logger.error(`[Webhook] Error handling checkout.session.completed:`, error);
+    Sentry5.captureException(error, {
+      tags: { component: "webhook_checkout_completed" },
+      extra: { sessionId: session.id }
+    });
   }
 }
 async function updateStorageBookingStripeIds(storageBookingId, chefId, stripeCustomerId, stripePaymentMethodId) {
@@ -39277,6 +39495,7 @@ var init_webhooks = __esm({
     init_logger();
     init_api_response();
     init_notification_service();
+    init_reference_code();
     router22 = Router22();
     router22.post("/stripe", async (req, res) => {
       logger.operational(`[Webhook] Received Stripe webhook request`);
@@ -39329,6 +39548,7 @@ var init_webhooks = __esm({
           logger.warn("\u26A0\uFE0F Processing webhook without signature verification (development mode)");
         }
         const webhookEventId = event.id;
+        const wLog = logger.child({ webhookEventId, eventType: event.type });
         switch (event.type) {
           case "checkout.session.completed":
             await handleCheckoutSessionCompleted(
@@ -39394,12 +39614,13 @@ var init_webhooks = __esm({
                 webhookEventId
               );
             } else {
-              logger.info(`Unhandled event type: ${event.type}`);
+              wLog.info(`Unhandled event type: ${event.type}`);
             }
         }
         res.json({ received: true });
       } catch (err) {
         logger.error("Unhandled webhook error:", err);
+        Sentry5.captureException(err, { tags: { component: "stripe_webhook" } });
         return errorResponse(res, err);
       }
     });
@@ -40140,7 +40361,7 @@ __export(chef_exports, {
   default: () => chef_default
 });
 import { Router as Router25 } from "express";
-import { sql as sql20, eq as eq37 } from "drizzle-orm";
+import { sql as sql21, eq as eq37 } from "drizzle-orm";
 import { and as and23, desc as desc20 } from "drizzle-orm";
 var router25, chef_default;
 var init_chef = __esm({
@@ -40162,7 +40383,7 @@ var init_chef = __esm({
       logger.info("[Chef Stripe Connect] Create request received for chef:", req.neonUser?.id);
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql20`
+        const userResult = await db.execute(sql21`
             SELECT id, username as email, stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -40209,7 +40430,7 @@ var init_chef = __esm({
     router25.get("/stripe-connect/onboarding-link", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql20`
+        const userResult = await db.execute(sql21`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -40233,7 +40454,7 @@ var init_chef = __esm({
     router25.get("/stripe-connect/dashboard-link", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql20`
+        const userResult = await db.execute(sql21`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -40385,7 +40606,7 @@ var init_chef = __esm({
         if (metadata?.storage_extension_id) {
           const extensionId = parseInt(String(metadata.storage_extension_id));
           if (!isNaN(extensionId)) {
-            const extensionResult = await db.execute(sql20`
+            const extensionResult = await db.execute(sql21`
                     SELECT 
                         pse.id,
                         pse.extension_days,
@@ -40408,7 +40629,7 @@ var init_chef = __esm({
           }
         }
         let chef = null;
-        const chefResult = await db.execute(sql20`
+        const chefResult = await db.execute(sql21`
             SELECT u.id, u.username, cka.full_name
             FROM users u
             LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -40514,7 +40735,7 @@ var init_chef = __esm({
           return res.status(404).json({ error: "No payment transaction found for this overstay penalty" });
         }
         let chef = null;
-        const chefResult = await db.execute(sql20`
+        const chefResult = await db.execute(sql21`
             SELECT u.id, u.username, cka.full_name
             FROM users u
             LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -40618,6 +40839,7 @@ var init_chef = __esm({
           locationName: tx.location_name,
           bookingStart: tx.booking_start,
           bookingEnd: tx.booking_end,
+          referenceCode: tx.reference_code,
           // Metadata for additional context
           metadata: tx.metadata
         }));
@@ -40646,10 +40868,22 @@ if (sentryDsn) {
     release: process.env.VERCEL_GIT_COMMIT_SHA || void 0,
     // Attach request headers + IP for user context
     sendDefaultPii: true,
-    // Performance: 100% in dev/preview, 20% in production (tune as traffic grows)
-    tracesSampleRate: isVercelProduction ? 0.2 : 1,
-    // Profile 10% of traced transactions in production for CPU/memory insights
-    profilesSampleRate: isVercelProduction ? 0.1 : 1,
+    // Performance sampling — FREE TIER BUDGET: 10K transactions/month
+    // At current traffic (~2K transactions/day), 5% production rate = ~3K/month (safe)
+    // Use tracesSampler for intelligent sampling instead of flat rate
+    tracesSampler(samplingContext) {
+      if (samplingContext.name?.includes("sentry-test")) return 1;
+      if (samplingContext.parentSampled) return 1;
+      if (samplingContext.name?.includes("/webhooks/")) return 0.5;
+      if (samplingContext.name?.includes("/bookings/")) return 0.2;
+      if (samplingContext.name?.includes("/payment")) return 0.2;
+      if (samplingContext.name?.includes("/api/")) {
+        return isVercelProduction ? 0.05 : 0.2;
+      }
+      return isVercelProduction ? 0.05 : 0.2;
+    },
+    // Profiling disabled on free tier (not included)
+    profilesSampleRate: 0,
     // Scrub sensitive data from breadcrumbs and events
     beforeSend(event) {
       if (event.request?.headers) {
@@ -40677,6 +40911,9 @@ if (sentryDsn) {
         "vercel.region": process.env.VERCEL_REGION || "unknown"
       }
     },
+    // ESM loader hooks — only wrap packages Sentry instruments (Express, pg, HTTP)
+    // Prevents import-in-the-middle from wrapping every module (performance + stability)
+    registerEsmLoaderHooks: true,
     // Serverless-optimized: flush events before function timeout
     // Vercel functions have 30s max duration
     ...isVercel ? {
@@ -40690,7 +40927,7 @@ init_logger();
 init_firebase_setup();
 import "dotenv/config";
 import express3 from "express";
-import * as Sentry4 from "@sentry/node";
+import * as Sentry6 from "@sentry/node";
 
 // server/firebase-routes.ts
 init_logger();
@@ -43899,7 +44136,7 @@ var initPromise = (async () => {
     log("[INIT] Starting route registration...");
     await registerRoutes(app);
     registerFirebaseRoutes(app);
-    Sentry4.setupExpressErrorHandler(app);
+    Sentry6.setupExpressErrorHandler(app);
     app.use((err, _req, res, _next) => {
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";
