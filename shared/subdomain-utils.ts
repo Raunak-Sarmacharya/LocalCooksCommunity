@@ -176,7 +176,8 @@ export function isRouteAccessibleFromSubdomain(subdomainType: SubdomainType, rou
 
   // Public routes - accessible from all
   if (routePath === '/' || routePath.startsWith('/terms') || routePath.startsWith('/privacy') || 
-      routePath.startsWith('/success') || routePath.startsWith('/email-action')) {
+      routePath.startsWith('/success') || routePath.startsWith('/email-action') ||
+      routePath.startsWith('/resources')) {
     return true;
   }
 

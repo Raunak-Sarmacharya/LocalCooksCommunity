@@ -151,6 +151,14 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                       </button>
                     </li>
                     <li>
+                      <Link
+                        href="/resources"
+                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
+                      >
+                        Resources
+                      </Link>
+                    </li>
+                    <li>
                       <button
                         onClick={handleCTAClick}
                         disabled={isLoading}
@@ -193,6 +201,14 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                       >
                         FAQ
                       </button>
+                    </li>
+                    <li>
+                      <Link
+                        href="/resources"
+                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
+                      >
+                        Resources
+                      </Link>
                     </li>
                   </>
                 ) : (
