@@ -3,10 +3,17 @@ import { Link } from "wouter";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import SEOHead from "@/components/SEO/SEOHead";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  ChevronRight, ExternalLink, BookOpen, Shield, Building2, FileText,
+  ExternalLink, BookOpen, Shield, Building2, FileText,
   GraduationCap, Scale, Globe, ClipboardCheck, BadgeCheck, Home,
   CheckCircle2, AlertTriangle, Info, ChevronDown,
   Menu,
@@ -141,42 +148,43 @@ const SECTIONS: Section[] = [
 
 function InfoCard({ children, variant = "info" }: { children: React.ReactNode; variant?: "info" | "warning" | "tip" }) {
   const styles = {
-    info: "bg-blue-50 border-blue-200 text-blue-900",
-    warning: "bg-amber-50 border-amber-200 text-amber-900",
-    tip: "bg-emerald-50 border-emerald-200 text-emerald-900",
+    info: "bg-blue-50 border-blue-200 text-blue-900 [&>svg]:text-blue-500",
+    warning: "bg-amber-50 border-amber-200 text-amber-900 [&>svg]:text-amber-500",
+    tip: "bg-emerald-50 border-emerald-200 text-emerald-900 [&>svg]:text-emerald-500",
   };
   const icons = {
-    info: <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />,
-    warning: <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />,
-    tip: <CheckCircle2 className="h-5 w-5 text-emerald-500 flex-shrink-0 mt-0.5" />,
+    info: Info,
+    warning: AlertTriangle,
+    tip: CheckCircle2,
   };
+  const Icon = icons[variant];
   return (
-    <Card className={cn("my-6", styles[variant])}>
-      <CardContent className={cn("p-4 flex gap-3", styles[variant].replace(/bg-|border-/, "") === "blue-900" ? "text-blue-900" : styles[variant].includes("bg-amber") ? "text-amber-900" : "text-emerald-900")}>
-        {icons[variant]}
-        <div className="text-sm leading-relaxed">{children}</div>
-      </CardContent>
-    </Card>
+    <Alert className={cn("my-6", styles[variant])}>
+      <Icon className="h-5 w-5" />
+      <AlertDescription className="text-sm leading-relaxed">
+        {children}
+      </AlertDescription>
+    </Alert>
   );
 }
 
 function ResourceTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
   return (
-    <Card className="my-6 overflow-hidden">
+    <Card className="my-6 overflow-hidden border not-prose">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="min-w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-muted/50 border-b">
+            <tr className="bg-muted/60 border-b">
               {headers.map((h, i) => (
-                <th key={i} className="text-left px-4 py-3 font-semibold">{h}</th>
+                <th key={i} className="text-left px-4 py-3 font-semibold text-foreground text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y">
             {rows.map((row, ri) => (
-              <tr key={ri} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+              <tr key={ri} className="hover:bg-muted/30 transition-colors">
                 {row.map((cell, ci) => (
-                  <td key={ci} className="px-4 py-3">{cell}</td>
+                  <td key={ci} className={cn("px-4 py-3 text-muted-foreground", ci === 0 && "font-medium text-foreground whitespace-nowrap")}>{cell}</td>
                 ))}
               </tr>
             ))}
@@ -316,23 +324,22 @@ function MobileSidebar({ activeSection, onNavigate }: { activeSection: string; o
   };
 
   return (
-    <div className="lg:hidden sticky top-[64px] z-30 bg-white border-b border-gray-200">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700"
-      >
-        <span className="flex items-center gap-2">
-          <Menu className="h-4 w-4" />
-          On this page
-        </span>
-        <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen && "rotate-180")} />
-      </button>
-      {isOpen && (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="lg:hidden sticky top-[64px] z-30 bg-white border-b">
+      <CollapsibleTrigger asChild>
+        <Button variant="ghost" className="w-full flex items-center justify-between px-4 py-3 rounded-none h-auto text-sm font-medium">
+          <span className="flex items-center gap-2">
+            <Menu className="h-4 w-4" />
+            On this page
+          </span>
+          <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen && "rotate-180")} />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
         <div className="px-4 pb-4 max-h-[60vh] overflow-y-auto">
           <SidebarNav activeSection={activeSection} onNavigate={handleNavigate} />
         </div>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -369,7 +376,9 @@ export default function ChefResourcesPage() {
   const scrollToSection = useCallback((id: string) => {
     const el = document.getElementById(id);
     if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+      });
     }
   }, []);
 
@@ -387,26 +396,68 @@ export default function ChefResourcesPage() {
       />
       <Header />
 
-      {/* Hero Section */}
-      <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white pt-28 pb-16 px-4">
-        <div className="container mx-auto max-w-5xl">
-          <div className="flex items-center gap-2 text-gray-400 text-sm mb-4">
-            <Link href="/" className="hover:text-white transition-colors">Home</Link>
-            <ChevronRight className="h-3.5 w-3.5" />
-            <span className="text-white font-medium">Chef Resources</span>
+      {/* Hero Section — matches landing page premium design */}
+      <section className="relative overflow-hidden">
+        {/* Warm gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#FFF8F5] via-[#FFFAF8] to-white" />
+        <div className="absolute -top-[20%] -right-[10%] w-[600px] h-[600px] rounded-full" style={{ background: "radial-gradient(circle, rgba(245,16,66,0.06) 0%, transparent 70%)" }} />
+        <div className="absolute bottom-[10%] left-[5%] w-[400px] h-[400px] rounded-full" style={{ background: "radial-gradient(circle, rgba(255,215,0,0.08) 0%, transparent 70%)" }} />
+        {/* Subtle pattern */}
+        <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")` }} />
+
+        <div className="relative z-10 container mx-auto max-w-5xl px-4 sm:px-6 pt-28 sm:pt-32 pb-16 sm:pb-20">
+          {/* Breadcrumb */}
+          <Breadcrumb className="mb-6">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link href="/" className="text-[#6B6B6B] hover:text-[#F51042] transition-colors">Home</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage className="text-[#2C2C2C] font-medium">Chef Resources</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+
+          {/* Category pill */}
+          <div className="mb-6">
+            <span className="inline-flex items-center gap-2 bg-[#F51042] text-white px-4 py-2 rounded-full text-xs font-semibold tracking-wide">
+              <BookOpen className="h-3.5 w-3.5" />
+              Chef Resource Guide
+            </span>
           </div>
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4 leading-tight">
+
+          {/* Title */}
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-[#2C2C2C] mb-5 leading-[1.15] max-w-3xl">
             Your Guide to Starting a Legal{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-pink-400">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
               Food Business
             </span>{" "}
             in Canada
           </h1>
-          <p className="text-gray-300 text-lg max-w-2xl leading-relaxed">
-            Currently serving Newfoundland & Labrador — built to scale across Canada. Everything you need from food safety certification to your first kitchen booking.
+
+          {/* Subtitle */}
+          <p className="text-[#6B6B6B] text-base sm:text-lg leading-relaxed max-w-2xl mb-8">
+            Currently serving Newfoundland &amp; Labrador — built to scale across Canada. Everything you need from food safety certification to your first kitchen booking.
           </p>
+
+          {/* Trust indicators */}
+          <div className="flex flex-wrap gap-x-6 gap-y-3">
+            {[
+              { icon: Shield, text: "Government-verified sources" },
+              { icon: CheckCircle2, text: "Updated February 2026" },
+              { icon: BookOpen, text: "10-minute read" },
+            ].map((item, i) => (
+              <span key={i} className="flex items-center gap-2 text-[#6B6B6B] text-sm">
+                <item.icon className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                {item.text}
+              </span>
+            ))}
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* Mobile sidebar */}
       <MobileSidebar activeSection={activeSection} onNavigate={scrollToSection} />
@@ -424,7 +475,7 @@ export default function ChefResourcesPage() {
 
           {/* Content */}
           <main className="flex-1 min-w-0 max-w-3xl">
-            <div className="prose-sm sm:prose prose-gray max-w-none">
+            <div className="prose-sm sm:prose prose-gray max-w-none prose-table:my-0 prose-thead:border-0 prose-tr:border-0 prose-th:p-0 prose-td:p-0">
 
               {/* ── Regulatory Landscape ── */}
               <SectionHeading id="regulatory-landscape">Regulatory Landscape</SectionHeading>
@@ -437,7 +488,7 @@ export default function ChefResourcesPage() {
                 rows={[
                   ["Federal", "Canadian Food Inspection Agency (CFIA)", "Selling across provincial borders, importing, or exporting"],
                   ["Provincial", "Service NL (in Newfoundland & Labrador)", "All food businesses operating within the province"],
-                  ["Municipal", "City of St. John&apos;s (or your municipality)", "Zoning, business permits, market vending"],
+                  ["Municipal", "City of St. John\u2019s (or your municipality)", "Zoning, business permits, market vending"],
                 ]}
               />
               <InfoCard variant="info">
@@ -505,30 +556,38 @@ export default function ChefResourcesPage() {
 
               <SubHeading id="home-food-rules">What You Can & Cannot Make at Home</SubHeading>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-6">
-                <div className="border border-emerald-200 rounded-lg p-4 bg-emerald-50/50">
-                  <h4 className="font-semibold text-emerald-800 mb-2 flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4" /> Permitted (low-risk)
-                  </h4>
-                  <ul className="text-sm text-emerald-700 space-y-1">
-                    <li>Baked goods (cookies, cakes, breads, pastries)</li>
-                    <li>Jams, jellies, preserves (properly acidified)</li>
-                    <li>Candy and confections</li>
-                    <li>Granola and cereal products</li>
-                    <li>Spice blends and dry mixes</li>
-                  </ul>
-                </div>
-                <div className="border border-red-200 rounded-lg p-4 bg-red-50/50">
-                  <h4 className="font-semibold text-red-800 mb-2 flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4" /> Prohibited (high-risk)
-                  </h4>
-                  <ul className="text-sm text-red-700 space-y-1">
-                    <li>Raw meat, fish, shellfish, poultry</li>
-                    <li>Cut fruits and vegetables, fresh juices</li>
-                    <li>Fermented products (kimchi, kombucha)</li>
-                    <li>Cream pastries, cheesecakes</li>
-                    <li>Canned foods with pH ≥ 4.6</li>
-                  </ul>
-                </div>
+                <Card className="border-emerald-200 bg-emerald-50/50">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base text-emerald-800 flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4" /> Permitted (low-risk)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <ul className="text-sm text-emerald-700 space-y-1">
+                      <li>Baked goods (cookies, cakes, breads, pastries)</li>
+                      <li>Jams, jellies, preserves (properly acidified)</li>
+                      <li>Candy and confections</li>
+                      <li>Granola and cereal products</li>
+                      <li>Spice blends and dry mixes</li>
+                    </ul>
+                  </CardContent>
+                </Card>
+                <Card className="border-red-200 bg-red-50/50">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base text-red-800 flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4" /> Prohibited (high-risk)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <ul className="text-sm text-red-700 space-y-1">
+                      <li>Raw meat, fish, shellfish, poultry</li>
+                      <li>Cut fruits and vegetables, fresh juices</li>
+                      <li>Fermented products (kimchi, kombucha)</li>
+                      <li>Cream pastries, cheesecakes</li>
+                      <li>Canned foods with pH ≥ 4.6</li>
+                    </ul>
+                  </CardContent>
+                </Card>
               </div>
               <InfoCard variant="warning">
                 <strong>If your product falls in the prohibited category, you need a commercial kitchen.</strong> Renting commercial kitchen space at $20–$50/hour is often more practical than retrofitting a home kitchen to commercial standards ($10,000–$50,000+).
@@ -642,27 +701,21 @@ export default function ChefResourcesPage() {
 
               <SubHeading id="apply-and-connect">Apply & Connect</SubHeading>
               <div className="space-y-4 my-4">
-                <div className="flex gap-4 items-start p-4 rounded-lg border border-gray-200 bg-gray-50/50">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm flex-shrink-0">1</div>
-                  <div>
-                    <p className="font-medium text-gray-900">Create your profile and apply</p>
-                    <p className="text-sm text-gray-600 mt-1">Browse available commercial kitchens, apply to locations that match your needs, and upload your Food Handler Certificate and other documents as part of the application.</p>
-                  </div>
-                </div>
-                <div className="flex gap-4 items-start p-4 rounded-lg border border-gray-200 bg-gray-50/50">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm flex-shrink-0">2</div>
-                  <div>
-                    <p className="font-medium text-gray-900">Connect with your kitchen manager</p>
-                    <p className="text-sm text-gray-600 mt-1">Use the platform&apos;s built-in messaging system to exchange documentation needed for your Food Establishment Licence (kitchen address, floor plan, licence number). Provide your Certificate of Insurance with the kitchen named as Additional Insured.</p>
-                  </div>
-                </div>
-                <div className="flex gap-4 items-start p-4 rounded-lg border border-gray-200 bg-gray-50/50">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm flex-shrink-0">3</div>
-                  <div>
-                    <p className="font-medium text-gray-900">Complete approval stages</p>
-                    <p className="text-sm text-gray-600 mt-1">The approval process has multiple stages — managers verify your documents and qualifications before granting full booking access.</p>
-                  </div>
-                </div>
+                {[
+                  { step: "1", title: "Create your profile and apply", desc: "Browse available commercial kitchens, apply to locations that match your needs, and upload your Food Handler Certificate and other documents as part of the application." },
+                  { step: "2", title: "Connect with your kitchen manager", desc: "Use the platform\u2019s built-in messaging system to exchange documentation needed for your Food Establishment Licence (kitchen address, floor plan, licence number). Provide your Certificate of Insurance with the kitchen named as Additional Insured." },
+                  { step: "3", title: "Complete approval stages", desc: "The approval process has multiple stages \u2014 managers verify your documents and qualifications before granting full booking access." },
+                ].map((item) => (
+                  <Card key={item.step} className="bg-muted/30">
+                    <CardContent className="p-4 flex gap-4 items-start">
+                      <Badge className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 text-sm">{item.step}</Badge>
+                      <div>
+                        <p className="font-medium">{item.title}</p>
+                        <p className="text-sm text-muted-foreground mt-1">{item.desc}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
 
               <SubHeading id="book-and-operate">Book & Operate</SubHeading>
@@ -706,7 +759,7 @@ export default function ChefResourcesPage() {
                 The Canada Revenue Agency requires you to keep business records for <strong>6 years</strong>. Track: ingredient purchases, kitchen rental payments, insurance premiums, equipment and supplies, sales revenue by channel, and transportation costs.
               </p>
 
-              <SubHeading id="workplace-nl-chef">WorkplaceNL (Workers' Compensation)</SubHeading>
+              <SubHeading id="workplace-nl-chef">WorkplaceNL (Workers&apos; Compensation)</SubHeading>
               <p className="text-gray-600 leading-relaxed">
                 If you hire even one assistant — casual, part-time, or contract — you must register with <strong>WorkplaceNL</strong>. Assessment rate: $1.28 per $100 of payroll for food services (NIC&nbsp;9210).
               </p>
@@ -737,45 +790,46 @@ export default function ChefResourcesPage() {
 
               {/* ── FAQ ── */}
               <SectionHeading id="faq">Frequently Asked Questions</SectionHeading>
-              <div className="space-y-4 my-6">
+              <Accordion type="single" collapsible className="my-6">
                 {[
-                  { q: "How long does it take to go from zero to first legal sale?", a: "Typically 4–10 weeks: Food Handler Certificate (1 day), insurance (instant), home business registration (1–2 weeks), Food Establishment Licence (2–8 weeks)." },
+                  { q: "How long does it take to go from zero to first legal sale?", a: "Typically 4\u201310 weeks: Food Handler Certificate (1 day), insurance (instant), home business registration (1\u20132 weeks), Food Establishment Licence (2\u20138 weeks)." },
                   { q: "Can I start selling before I have all licences?", a: "No. All required certifications, registrations, and licences must be in place before you legally sell food products." },
-                  { q: "Do I need a licence just for farmers&apos; markets?", a: "You need your Food Handler Certificate and business registration at minimum. Many markets also require proof of licensing and insurance. Submit documentation to organizers at least 14 days before the event (Service NL requirement)." },
+                  { q: "Do I need a licence just for farmers\u2019 markets?", a: "You need your Food Handler Certificate and business registration at minimum. Many markets also require proof of licensing and insurance. Submit documentation to organizers at least 14 days before the event (Service NL requirement)." },
                   { q: "What if I want to expand beyond Newfoundland?", a: "You will need a Safe Food for Canadians Licence from CFIA ($250 for 2 years) and must meet federal labelling, traceability, and preventive control requirements." },
                   { q: "Can I make some products at home and others in a commercial kitchen?", a: "Yes, but you need proper licensing for each location. Keep detailed records of where each product is prepared." },
-                  { q: "How do I add a kitchen as Additional Insured?", a: "Through your insurance provider portal. With FLIP, this is instant and free — enter the kitchen legal business name and address, then generate an updated Certificate of Insurance." },
+                  { q: "How do I add a kitchen as Additional Insured?", a: "Through your insurance provider portal. With FLIP, this is instant and free \u2014 enter the kitchen legal business name and address, then generate an updated Certificate of Insurance." },
                 ].map((item, i) => (
-                  <details key={i} className="group border border-gray-200 rounded-lg">
-                    <summary className="flex items-center justify-between px-4 py-3 cursor-pointer text-sm font-medium text-gray-900 hover:bg-gray-50 rounded-lg">
-                      {item.q}
-                      <ChevronDown className="h-4 w-4 text-gray-400 group-open:rotate-180 transition-transform flex-shrink-0 ml-2" />
-                    </summary>
-                    <p className="px-4 pb-3 text-sm text-gray-600 leading-relaxed">{item.a}</p>
-                  </details>
+                  <AccordionItem key={i} value={`faq-${i}`}>
+                    <AccordionTrigger className="text-sm font-medium text-left">{item.q}</AccordionTrigger>
+                    <AccordionContent className="text-sm text-muted-foreground leading-relaxed">{item.a}</AccordionContent>
+                  </AccordionItem>
                 ))}
-              </div>
+              </Accordion>
 
               {/* ── Launch Checklist ── */}
               <SectionHeading id="launch-checklist">Your Launch Checklist</SectionHeading>
               <div className="space-y-6 my-6">
                 {[
-                  { title: "Weeks 1–2: Foundation", items: ["Complete SkillsPass NL Food Handler course (free, online)", "Pass the certification exam and download your certificate", "Research which foods you want to prepare", "Decide: home-based or commercial kitchen", "Review the NL Food Premises Regulations"] },
-                  { title: "Weeks 3–4: Insurance & Registration", items: ["Get a liability insurance quote from FLIP or alternative", "Purchase minimum $2M liability insurance", "Download your Certificate of Insurance", "Register home-based food business (if applicable)", "Set up a dedicated business bank account"] },
-                  { title: "Weeks 5–6: Kitchen & Documentation", items: ["Browse commercial kitchens on Local Cooks", "Apply to kitchens that match your needs", "Connect with kitchen managers via messaging", "Exchange documentation (floor plans, licence info, COI)", "Add kitchen as Additional Insured on your insurance"] },
-                  { title: "Weeks 7–10: Launch", items: ["Compile all documents for Food Establishment Licence", "Submit application to Service NL and pay fees", "Complete an in-person kitchen orientation", "Sign your rental agreement", "Book your first kitchen session"] },
+                  { title: "Weeks 1\u20132: Foundation", items: ["Complete SkillsPass NL Food Handler course (free, online)", "Pass the certification exam and download your certificate", "Research which foods you want to prepare", "Decide: home-based or commercial kitchen", "Review the NL Food Premises Regulations"] },
+                  { title: "Weeks 3\u20134: Insurance & Registration", items: ["Get a liability insurance quote from FLIP or alternative", "Purchase minimum $2M liability insurance", "Download your Certificate of Insurance", "Register home-based food business (if applicable)", "Set up a dedicated business bank account"] },
+                  { title: "Weeks 5\u20136: Kitchen & Documentation", items: ["Browse commercial kitchens on Local Cooks", "Apply to kitchens that match your needs", "Connect with kitchen managers via messaging", "Exchange documentation (floor plans, licence info, COI)", "Add kitchen as Additional Insured on your insurance"] },
+                  { title: "Weeks 7\u201310: Launch", items: ["Compile all documents for Food Establishment Licence", "Submit application to Service NL and pay fees", "Complete an in-person kitchen orientation", "Sign your rental agreement", "Book your first kitchen session"] },
                 ].map((phase, pi) => (
-                  <div key={pi}>
-                    <h4 className="font-semibold text-gray-800 mb-2">{phase.title}</h4>
-                    <ul className="space-y-1.5">
-                      {phase.items.map((item, ii) => (
-                        <li key={ii} className="flex items-start gap-2 text-sm text-gray-600">
-                          <div className="w-4 h-4 rounded border border-gray-300 flex-shrink-0 mt-0.5" />
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  <Card key={pi}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">{phase.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <ul className="space-y-2">
+                        {phase.items.map((item, ii) => (
+                          <li key={ii} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+                            <Checkbox disabled className="mt-0.5" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
 
@@ -813,11 +867,14 @@ export default function ChefResourcesPage() {
               />
 
               {/* Disclaimer */}
-              <div className="mt-16 pt-8 border-t border-gray-200">
-                <p className="text-xs text-gray-400 leading-relaxed">
-                  <strong>Last Updated:</strong> February 2026. This guide is for informational purposes only and does not constitute legal, insurance, or professional advice. Regulations, fees, and requirements change — always verify current requirements with the official government sources linked above. Consult qualified legal, insurance, and food safety professionals for advice specific to your situation.
-                </p>
-              </div>
+              <Separator className="mt-16 mb-8" />
+              <Alert className="bg-muted/30">
+                <Info className="h-4 w-4" />
+                <AlertTitle className="text-xs font-semibold">Last Updated: February 2026</AlertTitle>
+                <AlertDescription className="text-xs text-muted-foreground leading-relaxed">
+                  This guide is for informational purposes only and does not constitute legal, insurance, or professional advice. Regulations, fees, and requirements change — always verify current requirements with the official government sources linked above. Consult qualified legal, insurance, and food safety professionals for advice specific to your situation.
+                </AlertDescription>
+              </Alert>
             </div>
           </main>
         </div>

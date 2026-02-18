@@ -3,10 +3,17 @@ import { Link } from "wouter";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import SEOHead from "@/components/SEO/SEOHead";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  ChevronRight, ExternalLink, Shield, FileText,
+  ExternalLink, Shield, FileText,
   Scale, ClipboardCheck, BadgeCheck, Flame,
   CheckCircle2, AlertTriangle, Info, ChevronDown,
   Menu, DollarSign, AlertCircle,
@@ -132,42 +139,43 @@ const SECTIONS: Section[] = [
 
 function InfoCard({ children, variant = "info" }: { children: React.ReactNode; variant?: "info" | "warning" | "tip" }) {
   const styles = {
-    info: "bg-blue-50 border-blue-200 text-blue-900",
-    warning: "bg-amber-50 border-amber-200 text-amber-900",
-    tip: "bg-emerald-50 border-emerald-200 text-emerald-900",
+    info: "bg-blue-50 border-blue-200 text-blue-900 [&>svg]:text-blue-500",
+    warning: "bg-amber-50 border-amber-200 text-amber-900 [&>svg]:text-amber-500",
+    tip: "bg-emerald-50 border-emerald-200 text-emerald-900 [&>svg]:text-emerald-500",
   };
   const icons = {
-    info: <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />,
-    warning: <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />,
-    tip: <CheckCircle2 className="h-5 w-5 text-emerald-500 flex-shrink-0 mt-0.5" />,
+    info: Info,
+    warning: AlertTriangle,
+    tip: CheckCircle2,
   };
+  const Icon = icons[variant];
   return (
-    <Card className={cn("my-6", styles[variant])}>
-      <CardContent className="p-4 flex gap-3">
-        {icons[variant]}
-        <div className="text-sm leading-relaxed">{children}</div>
-      </CardContent>
-    </Card>
+    <Alert className={cn("my-6", styles[variant])}>
+      <Icon className="h-5 w-5" />
+      <AlertDescription className="text-sm leading-relaxed">
+        {children}
+      </AlertDescription>
+    </Alert>
   );
 }
 
 function ResourceTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
   return (
-    <Card className="my-6 overflow-hidden">
+    <Card className="my-6 overflow-hidden border not-prose">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="min-w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-muted/50 border-b">
+            <tr className="bg-muted/60 border-b">
               {headers.map((h, i) => (
-                <th key={i} className="text-left px-4 py-3 font-semibold">{h}</th>
+                <th key={i} className="text-left px-4 py-3 font-semibold text-foreground text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y">
             {rows.map((row, ri) => (
-              <tr key={ri} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+              <tr key={ri} className="hover:bg-muted/30 transition-colors">
                 {row.map((cell, ci) => (
-                  <td key={ci} className="px-4 py-3">{cell}</td>
+                  <td key={ci} className={cn("px-4 py-3 text-muted-foreground", ci === 0 && "font-medium text-foreground whitespace-nowrap")}>{cell}</td>
                 ))}
               </tr>
             ))}
@@ -298,20 +306,19 @@ function MobileSidebar({ activeSection, onNavigate }: { activeSection: string; o
   const handleNavigate = (id: string) => { onNavigate(id); setIsOpen(false); };
 
   return (
-    <div className="lg:hidden sticky top-[64px] z-30 bg-white border-b border-gray-200">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700"
-      >
-        <span className="flex items-center gap-2"><Menu className="h-4 w-4" />On this page</span>
-        <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen && "rotate-180")} />
-      </button>
-      {isOpen && (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="lg:hidden sticky top-[64px] z-30 bg-white border-b">
+      <CollapsibleTrigger asChild>
+        <Button variant="ghost" className="w-full flex items-center justify-between px-4 py-3 rounded-none h-auto text-sm font-medium">
+          <span className="flex items-center gap-2"><Menu className="h-4 w-4" />On this page</span>
+          <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen && "rotate-180")} />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
         <div className="px-4 pb-4 max-h-[60vh] overflow-y-auto">
           <SidebarNav activeSection={activeSection} onNavigate={handleNavigate} />
         </div>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -338,7 +345,11 @@ export default function KitchenResourcesPage() {
 
   const scrollToSection = useCallback((id: string) => {
     const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (el) {
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+      });
+    }
   }, []);
 
   return (
@@ -355,25 +366,67 @@ export default function KitchenResourcesPage() {
       />
       <Header />
 
-      {/* Hero */}
-      <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white pt-28 pb-16 px-4">
-        <div className="container mx-auto max-w-5xl">
-          <div className="flex items-center gap-2 text-gray-400 text-sm mb-4">
-            <Link href="/" className="hover:text-white transition-colors">Home</Link>
-            <ChevronRight className="h-3.5 w-3.5" />
-            <span className="text-white font-medium">Kitchen Manager Resources</span>
+      {/* Hero Section — matches landing page premium design */}
+      <section className="relative overflow-hidden">
+        {/* Warm gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#FFF8F5] via-[#FFFAF8] to-white" />
+        <div className="absolute -top-[20%] -right-[10%] w-[600px] h-[600px] rounded-full" style={{ background: "radial-gradient(circle, rgba(245,16,66,0.06) 0%, transparent 70%)" }} />
+        <div className="absolute bottom-[10%] left-[5%] w-[400px] h-[400px] rounded-full" style={{ background: "radial-gradient(circle, rgba(255,215,0,0.08) 0%, transparent 70%)" }} />
+        {/* Subtle pattern */}
+        <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")` }} />
+
+        <div className="relative z-10 container mx-auto max-w-5xl px-4 sm:px-6 pt-28 sm:pt-32 pb-16 sm:pb-20">
+          {/* Breadcrumb */}
+          <Breadcrumb className="mb-6">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link href="/" className="text-[#6B6B6B] hover:text-[#F51042] transition-colors">Home</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage className="text-[#2C2C2C] font-medium">Kitchen Manager Resources</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+
+          {/* Category pill */}
+          <div className="mb-6">
+            <span className="inline-flex items-center gap-2 bg-[#F51042] text-white px-4 py-2 rounded-full text-xs font-semibold tracking-wide">
+              <ClipboardCheck className="h-3.5 w-3.5" />
+              Kitchen Manager Guide
+            </span>
           </div>
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4 leading-tight">
+
+          {/* Title */}
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-[#2C2C2C] mb-5 leading-[1.15] max-w-3xl">
             The Complete Guide to Operating a{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-pink-400">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
               Shared Commercial Kitchen
             </span>
           </h1>
-          <p className="text-gray-300 text-lg max-w-2xl leading-relaxed">
+
+          {/* Subtitle */}
+          <p className="text-[#6B6B6B] text-base sm:text-lg leading-relaxed max-w-2xl mb-8">
             Currently serving Newfoundland &amp; Labrador — built to scale across Canada. Licensing, insurance, risk assessment, operations, and pricing for facility stewards.
           </p>
+
+          {/* Trust indicators */}
+          <div className="flex flex-wrap gap-x-6 gap-y-3">
+            {[
+              { icon: Shield, text: "Government-verified sources" },
+              { icon: CheckCircle2, text: "Updated February 2026" },
+              { icon: ClipboardCheck, text: "15-minute read" },
+            ].map((item, i) => (
+              <span key={i} className="flex items-center gap-2 text-[#6B6B6B] text-sm">
+                <item.icon className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                {item.text}
+              </span>
+            ))}
+          </div>
         </div>
-      </div>
+      </section>
 
       <MobileSidebar activeSection={activeSection} onNavigate={scrollToSection} />
 
@@ -387,7 +440,7 @@ export default function KitchenResourcesPage() {
           </aside>
 
           <main className="flex-1 min-w-0 max-w-3xl">
-            <div className="prose-sm sm:prose prose-gray max-w-none">
+            <div className="prose-sm sm:prose prose-gray max-w-none prose-table:my-0 prose-thead:border-0 prose-tr:border-0 prose-th:p-0 prose-td:p-0">
 
               {/* ── Legal Foundation ── */}
               <SectionHeading id="legal-foundation">Your Legal Foundation</SectionHeading>
@@ -497,10 +550,24 @@ export default function KitchenResourcesPage() {
                 Assess every applicant across four hazard categories:
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-6">
-                <div className="border rounded-lg p-4"><h4 className="font-semibold text-gray-800 mb-2">Biological Risks</h4><p className="text-sm text-gray-600">Raw meat, poultry, seafood, dairy. Cross-contamination potential with existing renters.</p></div>
-                <div className="border rounded-lg p-4"><h4 className="font-semibold text-gray-800 mb-2">Chemical Risks</h4><p className="text-sm text-gray-600">Processing chemicals must be locked, labelled, separated from food areas.</p></div>
-                <div className="border rounded-lg p-4"><h4 className="font-semibold text-gray-800 mb-2">Physical Risks</h4><p className="text-sm text-gray-600">Glass packaging, sharp equipment, hazards for other users.</p></div>
-                <div className="border rounded-lg p-4 border-red-200 bg-red-50/50"><h4 className="font-semibold text-red-800 mb-2">Allergen Risks (Critical)</h4><p className="text-sm text-red-700">Highest-stakes risk. No renter should make &ldquo;allergen-free&rdquo; claims in a shared kitchen.</p></div>
+                {[
+                  { title: "Biological Risks", desc: "Raw meat, poultry, seafood, dairy. Cross-contamination potential with existing renters.", critical: false },
+                  { title: "Chemical Risks", desc: "Processing chemicals must be locked, labelled, separated from food areas.", critical: false },
+                  { title: "Physical Risks", desc: "Glass packaging, sharp equipment, hazards for other users.", critical: false },
+                  { title: "Allergen Risks (Critical)", desc: "Highest-stakes risk. No renter should make \u201Callergen-free\u201D claims in a shared kitchen.", critical: true },
+                ].map((risk) => (
+                  <Card key={risk.title} className={risk.critical ? "border-red-200 bg-red-50/50" : ""}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className={cn("text-base", risk.critical ? "text-red-800" : "")}>
+                        {risk.critical && <Badge variant="destructive" className="mr-2 text-[10px]">Critical</Badge>}
+                        {risk.title}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <p className={cn("text-sm", risk.critical ? "text-red-700" : "text-muted-foreground")}>{risk.desc}</p>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
               <p className="text-gray-600 text-sm">
                 <strong>Priority allergens in Canada (Health Canada):</strong> Peanuts, tree nuts, milk, eggs, wheat/triticale, soy, sesame, mustard, crustaceans, molluscs, fish, and sulphites.
@@ -508,25 +575,36 @@ export default function KitchenResourcesPage() {
 
               <SubHeading id="pre-rental-screening">Pre-Rental Screening Checklist</SubHeading>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-6">
-                <div className="border border-red-200 rounded-lg p-4 bg-red-50/30">
-                  <h4 className="font-semibold text-red-800 mb-2">Tier 1: Non-Negotiable</h4>
-                  <ul className="text-sm text-gray-600 space-y-1">
-                    <li>Valid Food Handler Certificate</li>
-                    <li>Certificate of Insurance ($2M CGL, additional insured)</li>
-                    <li>Signed rental agreement</li>
-                    <li>Completed risk assessment</li>
-                  </ul>
-                </div>
-                <div className="border border-amber-200 rounded-lg p-4 bg-amber-50/30">
-                  <h4 className="font-semibold text-amber-800 mb-2">Tier 2: Before Operations</h4>
-                  <ul className="text-sm text-gray-600 space-y-1">
-                    <li>Business registration or licence</li>
-                    <li>Food Establishment Licence (or proof of application)</li>
-                    <li>Emergency contact info</li>
-                    <li>Full ingredient/allergen declarations</li>
-                    <li>Orientation completion acknowledgment</li>
-                  </ul>
-                </div>
+                <Card className="border-red-200 bg-red-50/30">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base text-red-800 flex items-center gap-2">
+                      <Badge variant="destructive" className="text-[10px]">Required</Badge>
+                      Tier 1: Non-Negotiable
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      <li>Valid Food Handler Certificate</li>
+                      <li>Certificate of Insurance ($2M CGL, additional insured)</li>
+                      <li>Signed rental agreement</li>
+                      <li>Completed risk assessment</li>
+                    </ul>
+                  </CardContent>
+                </Card>
+                <Card className="border-amber-200 bg-amber-50/30">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base text-amber-800">Tier 2: Before Operations</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      <li>Business registration or licence</li>
+                      <li>Food Establishment Licence (or proof of application)</li>
+                      <li>Emergency contact info</li>
+                      <li>Full ingredient/allergen declarations</li>
+                      <li>Orientation completion acknowledgment</li>
+                    </ul>
+                  </CardContent>
+                </Card>
               </div>
 
               {/* ── Onboarding ── */}
@@ -543,26 +621,34 @@ export default function KitchenResourcesPage() {
               <SubHeading id="info-exchange">Step 2: Information Exchange (Days 3–10)</SubHeading>
               <p className="text-gray-600 mb-3">Use the platform&apos;s messaging system to exchange:</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">
-                <div className="border rounded-lg p-4">
-                  <h4 className="font-semibold text-gray-800 mb-2">You Provide</h4>
-                  <ul className="text-sm text-gray-600 space-y-1">
-                    <li>Legal business name and address</li>
-                    <li>Food Establishment Licence number</li>
-                    <li>Floor plan, equipment list</li>
-                    <li>Kitchen rules, hours, pricing</li>
-                    <li>Insurance requirements</li>
-                  </ul>
-                </div>
-                <div className="border rounded-lg p-4">
-                  <h4 className="font-semibold text-gray-800 mb-2">You Request</h4>
-                  <ul className="text-sm text-gray-600 space-y-1">
-                    <li>COI with your kitchen as additional insured</li>
-                    <li>Business registration details</li>
-                    <li>Food Establishment Licence (or proof)</li>
-                    <li>Full ingredient and allergen list</li>
-                    <li>Emergency contact info</li>
-                  </ul>
-                </div>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">You Provide</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      <li>Legal business name and address</li>
+                      <li>Food Establishment Licence number</li>
+                      <li>Floor plan, equipment list</li>
+                      <li>Kitchen rules, hours, pricing</li>
+                      <li>Insurance requirements</li>
+                    </ul>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">You Request</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      <li>COI with your kitchen as additional insured</li>
+                      <li>Business registration details</li>
+                      <li>Food Establishment Licence (or proof)</li>
+                      <li>Full ingredient and allergen list</li>
+                      <li>Emergency contact info</li>
+                    </ul>
+                  </CardContent>
+                </Card>
               </div>
 
               <SubHeading id="document-verification">Step 3: Document Verification (Days 10–14)</SubHeading>
@@ -664,30 +750,38 @@ export default function KitchenResourcesPage() {
 
               <SubHeading id="what-to-keep">What to Keep (minimum 6 years for tax records)</SubHeading>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-6">
-                <div className="border rounded-lg p-4">
-                  <h4 className="font-semibold text-gray-800 mb-2">Facility Records</h4>
-                  <ul className="text-sm text-gray-600 space-y-1">
-                    <li>Food Establishment Licence (current + previous)</li>
-                    <li>Floor plans and equipment specs</li>
-                    <li>Maintenance and calibration logs</li>
-                    <li>Temperature monitoring records</li>
-                    <li>Cleaning checklists, pest control records</li>
-                    <li>Fire suppression inspection certificates</li>
-                    <li>Insurance policies, inspection reports</li>
-                  </ul>
-                </div>
-                <div className="border rounded-lg p-4">
-                  <h4 className="font-semibold text-gray-800 mb-2">Per-Renter Records</h4>
-                  <ul className="text-sm text-gray-600 space-y-1">
-                    <li>Signed rental agreement</li>
-                    <li>Food Handler Certificate with expiry</li>
-                    <li>COI with additional insured verification</li>
-                    <li>Business registration/licence</li>
-                    <li>Risk assessment documentation</li>
-                    <li>Orientation acknowledgment</li>
-                    <li>Allergen declarations, incident reports</li>
-                  </ul>
-                </div>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Facility Records</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      <li>Food Establishment Licence (current + previous)</li>
+                      <li>Floor plans and equipment specs</li>
+                      <li>Maintenance and calibration logs</li>
+                      <li>Temperature monitoring records</li>
+                      <li>Cleaning checklists, pest control records</li>
+                      <li>Fire suppression inspection certificates</li>
+                      <li>Insurance policies, inspection reports</li>
+                    </ul>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Per-Renter Records</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      <li>Signed rental agreement</li>
+                      <li>Food Handler Certificate with expiry</li>
+                      <li>COI with additional insured verification</li>
+                      <li>Business registration/licence</li>
+                      <li>Risk assessment documentation</li>
+                      <li>Orientation acknowledgment</li>
+                      <li>Allergen declarations, incident reports</li>
+                    </ul>
+                  </CardContent>
+                </Card>
               </div>
 
               <SubHeading id="inspection-ready">Staying Inspection-Ready</SubHeading>
@@ -705,20 +799,24 @@ export default function KitchenResourcesPage() {
               {/* ── Emergency Protocols ── */}
               <SectionHeading id="emergency-protocols">Emergency Protocols</SectionHeading>
               <p className="text-gray-600 mb-4">Develop written procedures for each scenario and post them visibly:</p>
-              {[
-                { title: "Power Outage", items: ["Do not open refrigerators/freezers unnecessarily", "Food in closed fridge stays safe ~4 hours; full freezer ~48 hours", "Contact Environmental Health if outage exceeds safe limits", "Document everything"] },
-                { title: "Water Supply Disruption", items: ["Cease food preparation immediately", "Notify all booked renters", "Contact utility and Environmental Health"] },
-                { title: "Fire", items: ["Evacuate immediately, call 911", "Suppression system activates automatically", "Do not re-enter until cleared by fire department", "Document, contact insurance, notify Service NL"] },
-                { title: "Foodborne Illness Complaint", items: ["Document thoroughly", "Identify the renter responsible", "Notify Environmental Health immediately", "Preserve remaining food samples"] },
-                { title: "Equipment Failure", items: ["Remove from service immediately", "If refrigeration fails, monitor temps and relocate food", "Contact service provider, document with photos", "Notify affected renters"] },
-              ].map((protocol, i) => (
-                <div key={i} className="mb-4">
-                  <h4 className="font-semibold text-gray-800 mb-1">{protocol.title}</h4>
-                  <ul className="list-disc pl-5 text-gray-600 text-sm space-y-0.5">
-                    {protocol.items.map((item, j) => <li key={j}>{item}</li>)}
-                  </ul>
-                </div>
-              ))}
+              <Accordion type="single" collapsible className="my-6">
+                {[
+                  { title: "Power Outage", items: ["Do not open refrigerators/freezers unnecessarily", "Food in closed fridge stays safe ~4 hours; full freezer ~48 hours", "Contact Environmental Health if outage exceeds safe limits", "Document everything"] },
+                  { title: "Water Supply Disruption", items: ["Cease food preparation immediately", "Notify all booked renters", "Contact utility and Environmental Health"] },
+                  { title: "Fire", items: ["Evacuate immediately, call 911", "Suppression system activates automatically", "Do not re-enter until cleared by fire department", "Document, contact insurance, notify Service NL"] },
+                  { title: "Foodborne Illness Complaint", items: ["Document thoroughly", "Identify the renter responsible", "Notify Environmental Health immediately", "Preserve remaining food samples"] },
+                  { title: "Equipment Failure", items: ["Remove from service immediately", "If refrigeration fails, monitor temps and relocate food", "Contact service provider, document with photos", "Notify affected renters"] },
+                ].map((protocol, i) => (
+                  <AccordionItem key={i} value={`protocol-${i}`}>
+                    <AccordionTrigger className="text-sm font-semibold text-left">{protocol.title}</AccordionTrigger>
+                    <AccordionContent>
+                      <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-0.5">
+                        {protocol.items.map((item, j) => <li key={j}>{item}</li>)}
+                      </ul>
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
 
               {/* ── Legal Considerations ── */}
               <SectionHeading id="legal-considerations">Legal Considerations</SectionHeading>
@@ -754,25 +852,31 @@ export default function KitchenResourcesPage() {
 
               {/* ── Compliance Checklist ── */}
               <SectionHeading id="compliance-checklist">Master Compliance Checklist</SectionHeading>
-              {[
-                { title: "Before Opening", items: ["Food Establishment Licence obtained", "Pre-opening inspection passed", "CGL insurance ($5M+ recommended)", "Fire suppression installed and inspected", "WorkplaceNL registered (if applicable)", "Rental agreement template lawyer-reviewed", "Allergen policy, emergency protocols, cleaning protocols documented", "Pest control contract in place", "Local Cooks profile created"] },
-                { title: "Before Each New Renter", items: ["Application reviewed", "HACCP risk assessment completed", "Food Handler Certificate verified", "COI verified (limits, coverages, additional insured)", "Rental agreement signed", "Full allergen list received", "No conflicts with existing renters", "Orientation scheduled"] },
-                { title: "Monthly", items: ["Maintenance per PM schedule", "Temperature logs reviewed", "Cleaning spot-checked", "Insurance expiry dates reviewed", "Self-inspection completed"] },
-                { title: "Semi-Annual", items: ["Fire suppression inspection", "Hood/vent professional cleaning", "Review all renter COIs"] },
-                { title: "Annual", items: ["Renew Food Establishment Licence", "Renew all insurance policies", "Collect updated COIs", "Review rental agreement terms", "Full equipment service", "WorkplaceNL statement submitted", "Review pricing"] },
-              ].map((phase, pi) => (
-                <div key={pi} className="mb-6">
-                  <h4 className="font-semibold text-gray-800 mb-2">{phase.title}</h4>
-                  <ul className="space-y-1.5">
-                    {phase.items.map((item, ii) => (
-                      <li key={ii} className="flex items-start gap-2 text-sm text-gray-600">
-                        <div className="w-4 h-4 rounded border border-gray-300 flex-shrink-0 mt-0.5" />
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+              <div className="space-y-6 my-6">
+                {[
+                  { title: "Before Opening", items: ["Food Establishment Licence obtained", "Pre-opening inspection passed", "CGL insurance ($5M+ recommended)", "Fire suppression installed and inspected", "WorkplaceNL registered (if applicable)", "Rental agreement template lawyer-reviewed", "Allergen policy, emergency protocols, cleaning protocols documented", "Pest control contract in place", "Local Cooks profile created"] },
+                  { title: "Before Each New Renter", items: ["Application reviewed", "HACCP risk assessment completed", "Food Handler Certificate verified", "COI verified (limits, coverages, additional insured)", "Rental agreement signed", "Full allergen list received", "No conflicts with existing renters", "Orientation scheduled"] },
+                  { title: "Monthly", items: ["Maintenance per PM schedule", "Temperature logs reviewed", "Cleaning spot-checked", "Insurance expiry dates reviewed", "Self-inspection completed"] },
+                  { title: "Semi-Annual", items: ["Fire suppression inspection", "Hood/vent professional cleaning", "Review all renter COIs"] },
+                  { title: "Annual", items: ["Renew Food Establishment Licence", "Renew all insurance policies", "Collect updated COIs", "Review rental agreement terms", "Full equipment service", "WorkplaceNL statement submitted", "Review pricing"] },
+                ].map((phase, pi) => (
+                  <Card key={pi}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">{phase.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <ul className="space-y-2">
+                        {phase.items.map((item, ii) => (
+                          <li key={ii} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+                            <Checkbox disabled className="mt-0.5" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
 
               {/* ── Resources & Links ── */}
               <SectionHeading id="km-resources-links">Resources &amp; Links</SectionHeading>
@@ -808,11 +912,14 @@ export default function KitchenResourcesPage() {
               />
 
               {/* Disclaimer */}
-              <div className="mt-16 pt-8 border-t border-gray-200">
-                <p className="text-xs text-gray-400 leading-relaxed">
-                  <strong>Last Updated:</strong> February 2026. This guide is for informational purposes only and does not constitute legal, insurance, or professional advice. Regulations, fees, and requirements change — always verify current requirements with the official government sources linked above.
-                </p>
-              </div>
+              <Separator className="mt-16 mb-8" />
+              <Alert className="bg-muted/30">
+                <Info className="h-4 w-4" />
+                <AlertTitle className="text-xs font-semibold">Last Updated: February 2026</AlertTitle>
+                <AlertDescription className="text-xs text-muted-foreground leading-relaxed">
+                  This guide is for informational purposes only and does not constitute legal, insurance, or professional advice. Regulations, fees, and requirements change — always verify current requirements with the official government sources linked above.
+                </AlertDescription>
+              </Alert>
             </div>
           </main>
         </div>
