@@ -83,6 +83,7 @@ import { TransactionHistory } from "@/components/chef/TransactionHistory";
 import TidioController from "@/components/chat/TidioController";
 import OutstandingDuesBanner from "@/components/chef/OutstandingDuesBanner";
 import ChefProfileSettings from "@/components/chef/ChefProfileSettings";
+import ChefSellerRevenue from "@/components/chef/seller-revenue/ChefSellerRevenue";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
 import DocumentUpload, { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
 import { SellerApplicationCard, KitchenApplicationCard } from "@/components/chef/applications";
@@ -117,7 +118,7 @@ export default function ApplicantDashboard() {
   const getInitialTab = () => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages', 'support', 'feedback'].includes(view)) {
+    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages', 'support', 'feedback', 'seller-revenue'].includes(view)) {
       return view;
     }
     return 'overview';
@@ -150,7 +151,7 @@ export default function ApplicantDashboard() {
     const view = params.get('view');
     const action = params.get('action');
 
-    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages', 'support', 'feedback', 'damage-claims', 'profile'].includes(view)) {
+    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages', 'support', 'feedback', 'damage-claims', 'profile', 'seller-revenue'].includes(view)) {
       setActiveTabState(view);
 
       // If navigating to applications with action=new, open the form
@@ -1187,6 +1188,12 @@ export default function ApplicantDashboard() {
         return (
           <div className="space-y-8 animate-in fade-in-50 duration-500">
             <TransactionHistory />
+          </div>
+        );
+      case "seller-revenue":
+        return (
+          <div className="space-y-8 animate-in fade-in-50 duration-500">
+            <ChefSellerRevenue />
           </div>
         );
       case "profile":

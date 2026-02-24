@@ -12,6 +12,7 @@ import { sql, eq } from "drizzle-orm";
 import { users } from "@shared/schema";
 import { errorResponse } from "../api-response";
 import { getAppBaseUrl } from "../config";
+import * as phpBridge from '../services/php-bridge-service';
 
 const router = Router();
 
@@ -688,6 +689,192 @@ router.get("/transactions", requireChef, async (req: Request, res: Response) => 
         res.json({ transactions: formattedTransactions, total });
     } catch (error) {
         logger.error('[Chef Transactions] Error:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// ===================================
+// SELLER REVENUE (PHP Bridge Integration)
+// ===================================
+// Cross-platform integration: React fetches food order revenue data
+// from the PHP backend via HMAC-authenticated bridge API.
+// Only available to fully verified chefs with linked PHP shops.
+
+// Check if chef has linked their PHP shop account
+router.get("/seller/shop-status", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+
+        const [chef] = await db
+            .select({
+                id: users.id,
+                username: users.username,
+                phpShopId: users.phpShopId,
+                phpShopStripeAccountId: users.phpShopStripeAccountId,
+                phpShopLinkedAt: users.phpShopLinkedAt,
+            })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+        if (!chef) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        res.json({
+            linked: !!chef.phpShopId,
+            phpShopId: chef.phpShopId,
+            phpShopStripeAccountId: chef.phpShopStripeAccountId,
+            linkedAt: chef.phpShopLinkedAt,
+        });
+    } catch (error) {
+        logger.error('[Seller Revenue] Error checking shop status:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Link PHP shop account (auto-match by email, or manual email entry)
+router.post("/seller/link-shop", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const { email: manualEmail } = req.body;
+
+        // Get chef's React email
+        const [chef] = await db
+            .select({
+                id: users.id,
+                username: users.username,
+                phpShopId: users.phpShopId,
+            })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+        if (!chef) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        if (chef.phpShopId) {
+            return res.status(400).json({ error: "Shop already linked. Contact admin to re-link." });
+        }
+
+        // Try auto-match first, then manual email
+        const emailToLookup = manualEmail || chef.username;
+
+        const shopInfo = await phpBridge.lookupShopByEmail(emailToLookup);
+
+        if (!shopInfo) {
+            return res.status(404).json({
+                error: "NO_SHOP_FOUND",
+                message: `No approved shop found for email: ${emailToLookup}. Try entering the email you used on your LocalCooks seller account.`,
+                triedEmail: emailToLookup,
+            });
+        }
+
+        // Save the link
+        await db.update(users)
+            .set({
+                phpShopId: shopInfo.sid,
+                phpShopStripeAccountId: shopInfo.stripe_shop_id,
+                phpShopLinkedAt: new Date(),
+            })
+            .where(eq(users.id, chefId));
+
+        logger.info(`[Seller Revenue] Chef ${chefId} linked to PHP shop ${shopInfo.sid} (${shopInfo.sname})`);
+
+        res.json({
+            success: true,
+            shop: {
+                sid: shopInfo.sid,
+                sname: shopInfo.sname,
+                sowner: shopInfo.sowner,
+                stripe_connected: shopInfo.stripe_connected,
+            },
+        });
+    } catch (error) {
+        logger.error('[Seller Revenue] Error linking shop:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Get earnings summary from PHP bridge
+router.get("/seller/earnings-summary", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const period = (req.query.period as string) || 'all';
+
+        const [chef] = await db
+            .select({ phpShopId: users.phpShopId })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+        if (!chef?.phpShopId) {
+            return res.status(400).json({ error: "NO_SHOP_LINKED", message: "Link your seller account first." });
+        }
+
+        const data = await phpBridge.getEarningsSummary(chef.phpShopId, period);
+        res.json(data);
+    } catch (error) {
+        logger.error('[Seller Revenue] Error fetching earnings summary:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Get paginated orders from PHP bridge
+router.get("/seller/orders", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+
+        const [chef] = await db
+            .select({ phpShopId: users.phpShopId })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+        if (!chef?.phpShopId) {
+            return res.status(400).json({ error: "NO_SHOP_LINKED", message: "Link your seller account first." });
+        }
+
+        const data = await phpBridge.getSellerOrders(chef.phpShopId, {
+            type: (req.query.type as 'all' | 'orders' | 'pre_orders') || 'all',
+            status: (req.query.status as 'due' | 'paid' | 'all') || 'all',
+            page: parseInt(req.query.page as string) || 1,
+            limit: parseInt(req.query.limit as string) || 25,
+            startDate: req.query.start_date as string,
+            endDate: req.query.end_date as string,
+        });
+
+        res.json(data);
+    } catch (error) {
+        logger.error('[Seller Revenue] Error fetching orders:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Get Stripe Express Dashboard link via PHP bridge
+router.get("/seller/stripe-dashboard", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+
+        const [chef] = await db
+            .select({ phpShopId: users.phpShopId, phpShopStripeAccountId: users.phpShopStripeAccountId })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+        if (!chef?.phpShopId) {
+            return res.status(400).json({ error: "NO_SHOP_LINKED", message: "Link your seller account first." });
+        }
+
+        if (!chef.phpShopStripeAccountId) {
+            return res.status(400).json({ error: "NO_STRIPE_ACCOUNT", message: "No Stripe account connected on your seller profile." });
+        }
+
+        const data = await phpBridge.getStripeDashboardLink(chef.phpShopId);
+        res.json(data);
+    } catch (error) {
+        logger.error('[Seller Revenue] Error fetching Stripe dashboard link:', error);
         return errorResponse(res, error);
     }
 });

@@ -46,6 +46,7 @@ const viewLabels: Record<string, string> = {
     support: "Support",
     feedback: "Feedback",
     "damage-claims": "Damage Claims",
+    "seller-revenue": "Seller Revenue",
 }
 
 export default function ChefDashboardLayout({

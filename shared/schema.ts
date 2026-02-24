@@ -82,6 +82,10 @@ export const users = pgTable("users", {
   stripeConnectOnboardingStatus: text("stripe_connect_onboarding_status").default("not_started").notNull(), // Status: 'not_started', 'in_progress', 'complete', 'failed'
   // Stripe Customer ID for off-session payments (penalties, recurring charges)
   stripeCustomerId: text("stripe_customer_id").unique(),
+  // PHP shop linkage (for chef seller revenue - cross-platform)
+  phpShopId: integer("php_shop_id"),                          // MySQL shop.sid
+  phpShopStripeAccountId: text("php_shop_stripe_account_id"), // shop.stripe_shop_id (Stripe Connect on PHP platform)
+  phpShopLinkedAt: timestamp("php_shop_linked_at"),           // When the link was established
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

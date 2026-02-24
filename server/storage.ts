@@ -101,6 +101,9 @@ export class MemStorage implements IStorage {
       managerProfileData: {},
       welcomeEmailSentAt: null,
       stripeCustomerId: null,
+      phpShopId: null,
+      phpShopStripeAccountId: null,
+      phpShopLinkedAt: null,
     };
     this.users.set(adminUser.id, adminUser);
     logger.info("Development: Default admin user created (username: admin, password: localcooks)");
@@ -181,6 +184,9 @@ export class MemStorage implements IStorage {
       updatedAt: new Date(),
       welcomeEmailSentAt: (insertUser as any).welcomeEmailSentAt || null,
       stripeCustomerId: null,
+      phpShopId: null,
+      phpShopStripeAccountId: null,
+      phpShopLinkedAt: null,
     };
 
     this.users.set(user.id, user);
