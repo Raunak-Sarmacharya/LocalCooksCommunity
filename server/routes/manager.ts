@@ -5486,6 +5486,45 @@ router.post(
       };
 
       res.status(201).json(mappedLocation);
+
+      // Send email to admin when manager creates a location with a kitchen license
+      if (kitchenLicenseUrl) {
+        try {
+          const { generateKitchenLicenseSubmittedAdminEmail } = await import(
+            "../email"
+          );
+
+          // Get admin emails
+          const admins = await db
+            .select({ username: users.username })
+            .from(users)
+            .where(eq(users.role, "admin"));
+
+          for (const admin of admins) {
+            if (admin.username) {
+              const adminEmail = generateKitchenLicenseSubmittedAdminEmail({
+                adminEmail: admin.username,
+                managerName: user.username,
+                managerEmail: user.username,
+                locationName: name || "Kitchen Location",
+                locationId: (location as any).id,
+                submittedAt: new Date(),
+              });
+              await sendEmail(adminEmail, {
+                trackingId: `kitchen_license_submitted_${(location as any).id}_${Date.now()}`,
+              });
+            }
+          }
+          logger.info(
+            `[Manager] Sent kitchen license submission notification to admins for new location ${(location as any).id}`,
+          );
+        } catch (emailError) {
+          logger.error(
+            "Error sending kitchen license submission email to admin:",
+            emailError,
+          );
+        }
+      }
     } catch (error: any) {
       logger.error("Error creating location:", error);
       logger.error("Error details:", error);
