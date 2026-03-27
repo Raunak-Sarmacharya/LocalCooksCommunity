@@ -606,7 +606,7 @@ textarea:focus {
 }
 
 /* Mobile-friendly button size */
-button:not([data-radix-collection-item]),
+button:not([data-radix-collection-item]):not([role="checkbox"]):not([role="switch"]),
 .button,
 a[role="button"],
 [type="button"],
@@ -670,7 +670,7 @@ a[role="button"],
 
   /* Touch-friendly buttons */
   .btn,
-  button {
+  button:not([role="checkbox"]):not([role="switch"]):not([role="radio"]) {
     min-height: 44px;
     min-width: 44px;
   }

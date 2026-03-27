@@ -124,7 +124,8 @@ export function TransactionTable({
                 t.chefName?.toLowerCase().includes(query) ||
                 t.kitchenName?.toLowerCase().includes(query) ||
                 t.locationName?.toLowerCase().includes(query) ||
-                t.paymentIntentId?.toLowerCase().includes(query)
+                t.paymentIntentId?.toLowerCase().includes(query) ||
+                t.referenceCode?.toLowerCase().includes(query)
             )
         }
 

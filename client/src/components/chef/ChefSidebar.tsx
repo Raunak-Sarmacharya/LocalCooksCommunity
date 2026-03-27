@@ -13,6 +13,7 @@ import {
     AlertTriangle,
     ChefHat,
     CreditCard,
+    DollarSign,
 } from "lucide-react"
 
 import {
@@ -66,6 +67,11 @@ const navGroups: NavGroup[] = [
                 id: "applications",
                 label: "My Application",
                 icon: FileText,
+            },
+            {
+                id: "seller-revenue",
+                label: "Seller Revenue",
+                icon: DollarSign,
             },
             {
                 id: "training",

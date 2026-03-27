@@ -71,6 +71,8 @@ const KitchenRequirementsPage = lazy(() => import("@/pages/KitchenRequirementsPa
 const StripeConnectReturn = lazy(() => import("@/pages/StripeConnectReturn"));
 const StripeConnectRefresh = lazy(() => import("@/pages/StripeConnectRefresh"));
 const ManagerOverstaysPage = lazy(() => import("@/pages/ManagerOverstaysPage"));
+const ChefResourcesPage = lazy(() => import("@/pages/ChefResourcesPage"));
+const KitchenResourcesPage = lazy(() => import("@/pages/KitchenResourcesPage"));
 
 
 // Loading component
@@ -216,6 +218,9 @@ function Router() {
         <Route path="/password-reset" component={PasswordReset} />
         <Route path="/terms" component={Terms} />
         <Route path="/privacy" component={Privacy} />
+        <Route path="/resources">
+          {subdomain === 'kitchen' ? <KitchenResourcesPage /> : <ChefResourcesPage />}
+        </Route>
         <Route path="/unsubscribe" component={UnsubscribePage} />
         
         <Route path="/email-verification-test" component={EmailVerificationTest} />

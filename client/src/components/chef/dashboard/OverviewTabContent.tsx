@@ -10,8 +10,7 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
-import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Bar, BarChart, XAxis, YAxis } from "recharts";
+import { formatDate, formatTime } from "@/lib/formatters";
 import {
   BookOpen,
   Building,
@@ -24,7 +23,6 @@ import {
   Utensils,
   TrendingUp,
   MessageCircle,
-  Activity,
 } from "lucide-react";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
 import type { 
@@ -361,50 +359,139 @@ export default function OverviewTabContent({
         </Card>
       </div>
 
-      {/* Booking Status Chart + Recent Activity */}
+      {/* Upcoming Bookings + Recent Activity */}
       {(enrichedBookings?.length > 0 || applications?.length > 0 || kitchenApplications.length > 0) && (
         <div className="grid gap-6 md:grid-cols-2">
-          {/* Booking Status Distribution */}
+          {/* Upcoming Bookings — Airbnb/Calendly pattern */}
           {enrichedBookings?.length > 0 && (() => {
+            const statusBadgeConfig: Record<string, { label: string; dotColor: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" }> = {
+              confirmed: { label: 'Confirmed', dotColor: 'bg-green-500', variant: 'success' },
+              pending: { label: 'Awaiting Approval', dotColor: 'bg-amber-500', variant: 'secondary' },
+              completed: { label: 'Completed', dotColor: 'bg-blue-500', variant: 'default' },
+              cancelled: { label: 'Cancelled', dotColor: 'bg-red-400', variant: 'destructive' },
+            };
+
+            // Sort: pending first, then confirmed, then by booking date ascending
+            const sortedBookings = [...enrichedBookings].sort((a, b) => {
+              const priority: Record<string, number> = { pending: 0, confirmed: 1, completed: 2, cancelled: 3 };
+              const pa = priority[a.status] ?? 4;
+              const pb = priority[b.status] ?? 4;
+              if (pa !== pb) return pa - pb;
+              const dateA = a.bookingDate || '';
+              const dateB = b.bookingDate || '';
+              return dateA.localeCompare(dateB) || (a.startTime || '').localeCompare(b.startTime || '');
+            });
+
+            const displayBookings = sortedBookings.slice(0, 4);
+
+            // Status summary counts
             const statusCounts: Record<string, number> = {};
             enrichedBookings.forEach((b) => {
               const s = b.status || 'unknown';
               statusCounts[s] = (statusCounts[s] || 0) + 1;
             });
-            const chartData = Object.entries(statusCounts).map(([status, count]) => ({
-              status: status.charAt(0).toUpperCase() + status.slice(1),
-              count,
-              fill: status === 'confirmed' ? 'var(--chart-1)'
-                : status === 'pending' ? 'var(--chart-2)'
-                : status === 'completed' ? 'var(--chart-3)'
-                : status === 'cancelled' ? 'var(--chart-4)'
-                : 'var(--chart-5)',
-            }));
-            const chartConfig: ChartConfig = {
-              count: { label: 'Bookings' },
-            };
+
             return (
-              <Card className="border-border/50 shadow-sm">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-                      <Activity className="h-5 w-5 text-blue-600" />
+              <Card className="border-border/50 shadow-sm overflow-hidden">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
+                        <Calendar className="h-5 w-5 text-amber-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">Your Bookings</CardTitle>
+                        <CardDescription>{enrichedBookings.length} total</CardDescription>
+                      </div>
                     </div>
-                    <div>
-                      <CardTitle className="text-lg">Booking Overview</CardTitle>
-                      <CardDescription>{enrichedBookings.length} total booking{enrichedBookings.length !== 1 ? 's' : ''}</CardDescription>
-                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => onSetActiveTab("bookings")}
+                    >
+                      View all
+                      <ArrowRight className="ml-1 h-3 w-3" />
+                    </Button>
+                  </div>
+                  {/* Inline status summary — Linear-style dot + count row */}
+                  <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border/40">
+                    {Object.entries(statusCounts).map(([status, count]) => {
+                      const config = statusBadgeConfig[status] || { label: status, dotColor: 'bg-muted-foreground' };
+                      return (
+                        <div key={status} className="flex items-center gap-1.5">
+                          <span className={cn("h-2 w-2 rounded-full", config.dotColor)} />
+                          <span className="text-xs text-muted-foreground">
+                            {count} {config.label}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <ChartContainer config={chartConfig} className="h-[200px] w-full">
-                    <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 16, top: 8, bottom: 8 }}>
-                      <XAxis type="number" hide />
-                      <YAxis type="category" dataKey="status" width={80} tickLine={false} axisLine={false} className="text-xs" />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="count" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ChartContainer>
+                <CardContent className="pt-0">
+                  <div className="space-y-1">
+                    {displayBookings.map((booking, idx) => {
+                      const config = statusBadgeConfig[booking.status] || { label: booking.status, dotColor: 'bg-muted-foreground', variant: 'outline' as const };
+                      const bookingDateObj = booking.bookingDate ? new Date(booking.bookingDate + 'T00:00:00') : null;
+                      const today = new Date();
+                      const tomorrow = new Date(Date.now() + 86400000);
+                      const isToday = bookingDateObj ? today.toDateString() === bookingDateObj.toDateString() : false;
+                      const isTomorrow = bookingDateObj ? tomorrow.toDateString() === bookingDateObj.toDateString() : false;
+                      
+                      const dateLabel = !bookingDateObj ? '—' : isToday ? 'Today' : isTomorrow ? 'Tomorrow' : formatDate(booking.bookingDate, 'short');
+                      const timeLabel = booking.startTime && booking.endTime ? `${formatTime(booking.startTime)} – ${formatTime(booking.endTime)}` : '';
+
+                      return (
+                        <div 
+                          key={booking.id}
+                          className={cn(
+                            "flex items-center gap-3 p-3 rounded-lg transition-colors hover:bg-muted/50 cursor-pointer",
+                            idx < displayBookings.length - 1 && "border-b border-border/30"
+                          )}
+                          onClick={() => onSetActiveTab("bookings")}
+                        >
+                          {/* Date block */}
+                          <div className="flex-shrink-0 w-12 text-center">
+                            <p className={cn(
+                              "text-xs font-semibold uppercase tracking-wide",
+                              isToday ? "text-primary" : "text-muted-foreground"
+                            )}>
+                              {dateLabel}
+                            </p>
+                            {booking.startTime && (
+                              <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                                {formatTime(booking.startTime)}
+                              </p>
+                            )}
+                          </div>
+                          {/* Vertical accent line */}
+                          <div className={cn("w-0.5 h-10 rounded-full flex-shrink-0", config.dotColor)} />
+                          {/* Booking details */}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">
+                              {booking.kitchenName || booking.locationName || 'Kitchen Session'}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">{timeLabel}</p>
+                          </div>
+                          {/* Status badge */}
+                          <Badge variant={config.variant} className="text-[10px] flex-shrink-0">
+                            {config.label}
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {enrichedBookings.length > 4 && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full mt-3 text-xs"
+                      onClick={() => onSetActiveTab("bookings")}
+                    >
+                      +{enrichedBookings.length - 4} more booking{enrichedBookings.length - 4 !== 1 ? 's' : ''}
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -430,22 +517,22 @@ export default function OverviewTabContent({
                   icon: Store,
                   color: 'text-primary',
                   label: `Seller application ${app.status === 'approved' ? 'approved' : app.status === 'inReview' ? 'submitted' : app.status}`,
-                  time: app.createdAt ? new Date(app.createdAt).toLocaleDateString() : '',
+                  time: app.createdAt ? formatDate(app.createdAt, 'short') : '',
                   sortDate: app.createdAt ? new Date(app.createdAt).getTime() : 0,
                 })),
                 ...kitchenApplications.map(app => ({
                   icon: Building,
                   color: 'text-blue-600',
                   label: `Applied to ${app.location?.name || 'kitchen'}`,
-                  time: app.createdAt ? new Date(app.createdAt).toLocaleDateString() : '',
+                  time: app.createdAt ? formatDate(app.createdAt, 'short') : '',
                   sortDate: app.createdAt ? new Date(app.createdAt).getTime() : 0,
                 })),
                 ...(enrichedBookings || []).slice(0, 3).map(b => ({
                   icon: Calendar,
                   color: 'text-amber-600',
                   label: `Booking at ${b.kitchenName || b.locationName || 'kitchen'} — ${b.status}`,
-                  time: b.startTime ? new Date(b.startTime).toLocaleDateString() : '',
-                  sortDate: b.startTime ? new Date(b.startTime).getTime() : 0,
+                  time: b.bookingDate ? formatDate(b.bookingDate, 'short') : '',
+                  sortDate: b.bookingDate ? new Date(b.bookingDate + 'T00:00:00').getTime() : 0,
                 })),
                 ].sort((a, b) => b.sortDate - a.sortDate).slice(0, 5).map((item, idx) => (
                   <div key={idx} className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">

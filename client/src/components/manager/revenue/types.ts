@@ -41,6 +41,7 @@ export interface Transaction {
     locationName: string;
     itemName?: string | null;
     description?: string | null; // Description for special transaction types (damage claims, extensions, etc.)
+    referenceCode?: string | null; // Booking reference code for lookup
     totalPrice: number;        // Amount in cents - gross amount charged
     managerRevenue: number;    // Amount in cents after fees
     platformFee: number;       // Platform fee in cents - DEPRECATED, use taxAmount
