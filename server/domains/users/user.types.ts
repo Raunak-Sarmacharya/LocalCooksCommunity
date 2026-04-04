@@ -48,6 +48,10 @@ export interface UpdateUserDTO {
   // Chef onboarding fields (informative onboarding - no restrictions)
   chefOnboardingCompleted?: boolean;
   chefOnboardingPaths?: string[];
+  // PHP shop linkage
+  phpShopId?: number | null;
+  phpShopStripeAccountId?: string | null;
+  phpShopLinkedAt?: Date | null;
 }
 
 /**
@@ -70,9 +74,13 @@ export interface UserDTO {
   managerOnboardingCompleted: boolean;
   managerOnboardingSkipped: boolean;
   managerOnboardingStepsCompleted: Record<string, boolean>;
-  managerProfileData: Record<string, any>;
+  managerProfileData: Record<string, unknown>;
   stripeConnectAccountId?: string;
   stripeConnectOnboardingStatus: string;
+  // PHP shop linkage
+  phpShopId: number | null;
+  phpShopStripeAccountId: string | null;
+  phpShopLinkedAt: Date | null;
 }
 
 /**

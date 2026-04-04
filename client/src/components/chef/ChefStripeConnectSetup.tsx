@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CreditCard, AlertCircle, ExternalLink, Lock } from 'lucide-react';
 
 // PHP app URL for chef Stripe Connect setup (vendor onboarding)
-const CHEF_STRIPE_CONNECT_URL = 'https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php';
+const CHEF_STRIPE_CONNECT_URL = 'https://stagingwebapp.localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Fstagingwebapp.localcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php';
 
 interface ChefStripeConnectSetupProps {
   isApproved?: boolean; // Whether the chef's seller application is approved

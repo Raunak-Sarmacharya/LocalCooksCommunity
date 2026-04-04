@@ -88,7 +88,7 @@ export default function Home() {
           { name: "For Chefs", description: "Launch your food business with commercial kitchen access and compliance support", url: "https://chef.localcooks.ca/" },
           { name: "For Kitchen Owners", description: "Turn idle commercial kitchen hours into revenue with automated booking", url: "https://kitchen.localcooks.ca/" },
           { name: "Book a Kitchen", description: "Browse and book commercial kitchens in St. John's, Newfoundland", url: "https://chef.localcooks.ca/book-kitchen" },
-          { name: "Order Food", description: "Order authentic homemade meals from local chefs in St. John's", url: "https://localcook.shop/app/index.php" },
+          { name: "Order Food", description: "Order authentic homemade meals from local chefs in St. John's", url: "https://localcook.shop/" },
           { name: "Blog", description: "Stories about local chefs, food trends, and community updates", url: "https://www.localcooks.ca/blog" },
           { name: "Contact", description: "Get in touch with LocalCooks for questions or partnerships", url: "https://www.localcooks.ca/contact" },
         ]}

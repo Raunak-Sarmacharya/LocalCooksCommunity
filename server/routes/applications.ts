@@ -20,8 +20,11 @@ import {
     generateApplicationWithDocumentsEmail,
     generateApplicationWithoutDocumentsEmail,
     generateFullVerificationEmail,
+    generateVendorCredentials,
+    generateChefAllDocumentsApprovedEmail,
+    generateDocumentStatusChangeEmail,
 } from "../email";
-import { normalizePhoneForStorage } from "../phone-utils";
+import { normalizePhoneForStorage, stripCountryCode } from "../phone-utils";
 import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { notificationService } from "../services/notification.service";
 
@@ -32,6 +35,7 @@ import { UserRepository } from "../domains/users/user.repository";
 import { UserService } from "../domains/users/user.service";
 import { CreateApplicationDTO } from "../domains/applications/application.types";
 import { DomainError } from "../shared/errors/domain-error";
+import * as phpBridge from "../services/php-bridge-service";
 
 const router = Router();
 
@@ -95,6 +99,8 @@ router.post("/",
                 // Map fields from parsedData to CreateApplicationDTO
                 userId: req.neonUser!.id,
                 fullName: parsedData.data.fullName,
+                shopName: parsedData.data.shopName,
+                shopAddress: parsedData.data.shopAddress,
                 email: parsedData.data.email,
                 phone: normalizePhoneForStorage(parsedData.data.phone) || parsedData.data.phone,
                 foodSafetyLicense: parsedData.data.foodSafetyLicense,
@@ -524,6 +530,31 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
         // Update the application document verification via Service
         const updatedApplication = await appService.verifyDocuments(verifyDto);
 
+        // Send individual document status email for the specific document that changed
+        try {
+            const changedField = parsedData.data.foodSafetyLicenseStatus ? 'foodSafetyLicenseStatus' : 
+                                 parsedData.data.foodEstablishmentCertStatus ? 'foodEstablishmentCertStatus' : null;
+            const changedStatus = parsedData.data.foodSafetyLicenseStatus || parsedData.data.foodEstablishmentCertStatus;
+            
+            if (changedField && changedStatus && (changedStatus === 'approved' || changedStatus === 'rejected') && updatedApplication.email) {
+                const emailContent = generateDocumentStatusChangeEmail({
+                    fullName: updatedApplication.fullName || "Applicant",
+                    email: updatedApplication.email,
+                    documentType: changedField,
+                    status: changedStatus,
+                    adminFeedback: updatedApplication.documentsAdminFeedback || undefined
+                });
+
+                await sendEmail(emailContent, {
+                    trackingId: `doc_status_${changedField}_${changedStatus}_${updatedApplication.id}_${Date.now()}`
+                });
+
+                logger.info(`✅ Individual document status email sent: ${changedField}=${changedStatus} for application ${updatedApplication.id}`);
+            }
+        } catch (emailError) {
+            logger.error("Error sending individual document status email:", emailError);
+        }
+
         // Check if both documents are approved, then update user verification status
         if (updatedApplication.foodSafetyLicenseStatus === "approved" &&
             (!updatedApplication.foodEstablishmentCertUrl || updatedApplication.foodEstablishmentCertStatus === "approved")) {
@@ -532,22 +563,31 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
             if (updatedApplication.userId) {
                 await userService.verifyUser(updatedApplication.userId, true);
                 logger.info(`User ${updatedApplication.userId} has been fully verified`);
-
-                // Send full verification email with login credentials for localcook.shop
+                
+                // Send "All Documents Approved" email — only list actually uploaded+approved docs
                 try {
-                    if (updatedApplication.email && updatedApplication.fullName && updatedApplication.phone) {
-                        const emailContent = generateFullVerificationEmail({
-                            fullName: updatedApplication.fullName,
-                            email: updatedApplication.email,
-                            phone: updatedApplication.phone
-                        });
-                        await sendEmail(emailContent, {
-                            trackingId: `full_verification_${updatedApplication.id}_${Date.now()}`
-                        });
-                        logger.info(`✅ Full verification email with login credentials sent to ${updatedApplication.email}`);
+                    const approvedDocuments = [];
+                    if (updatedApplication.foodSafetyLicenseUrl && updatedApplication.foodSafetyLicenseStatus === "approved") {
+                        approvedDocuments.push("Food Safety License");
                     }
+                    if (updatedApplication.foodEstablishmentCertUrl && updatedApplication.foodEstablishmentCertStatus === "approved") {
+                        approvedDocuments.push("Food Establishment Certificate");
+                    }
+
+                    const emailContent = generateChefAllDocumentsApprovedEmail({
+                        fullName: updatedApplication.fullName || "Applicant",
+                        email: updatedApplication.email,
+                        approvedDocuments,
+                        adminFeedback: updatedApplication.documentsAdminFeedback || undefined
+                    });
+
+                    await sendEmail(emailContent, {
+                        trackingId: `all_docs_approved_${updatedApplication.id}_${Date.now()}`
+                    });
+                    
+                    logger.info(`✅ 'All Documents Approved' email sent to chef ${updatedApplication.email}`);
                 } catch (emailError) {
-                    logger.error('❌ Error sending full verification email:', emailError);
+                    logger.error("Error sending 'All Documents Approved' email:", emailError);
                 }
             }
         }
@@ -594,6 +634,172 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
             return res.status(error.statusCode).json({ message: error.message });
         }
         return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+// Create PHP Shop for an application (admin only)
+router.post("/:id/create-shop", async (req: Request, res: Response) => {
+    try {
+        if (!req.neonUser || req.neonUser.role !== "admin") {
+            return res.status(403).json({ message: "Admin access required" });
+        }
+
+        const id = parseInt(req.params.id);
+        let application = await appService.getApplicationById(id);
+        if (!application) {
+            return res.status(404).json({ message: "Application not found" });
+        }
+
+        if (application.phpShopCreated) {
+            return res.status(400).json({ message: "Shop already created for this application" });
+        }
+
+        // Accept shopName and shopAddress from admin request body
+        // Save to application record if provided
+        const bodyShopName = req.body.shopName?.trim();
+        const bodyShopAddress = req.body.shopAddress?.trim();
+        const bodyLat = req.body.lat;
+        const bodySlong = req.body.slong;
+
+        if (bodyShopName || bodyShopAddress || bodyLat || bodySlong) {
+            const updates: Record<string, any> = {};
+            if (bodyShopName) updates.shopName = bodyShopName;
+            if (bodyShopAddress) updates.shopAddress = bodyShopAddress;
+            if (bodyLat !== undefined) updates.lat = String(bodyLat);
+            if (bodySlong !== undefined) updates.slong = String(bodySlong);
+            
+            logger.info(`[AdminShopCreate] Updating application ${id} with:`, updates);
+            application = await appService.updateApplication(id, updates);
+            logger.info(`[AdminShopCreate] Updated application state:`, { 
+                id: application.id, 
+                shopName: application.shopName, 
+                shopAddress: application.shopAddress, 
+                lat: application.lat, 
+                slong: application.slong 
+            });
+        }
+
+        // Validate shop name and address (use updated values)
+        const shopName = application.shopName?.trim();
+        const shopAddress = application.shopAddress?.trim();
+
+        if (!shopName || shopName === "Shop Not Named") {
+            return res.status(400).json({ message: "A valid shop name is required. Please provide a shop name." });
+        }
+
+        if (!shopAddress || shopAddress === "Address Not Provided") {
+            return res.status(400).json({ message: "A valid shop address is required. Please provide a shop address." });
+        }
+
+        // Clean phone number (remove country code and non-digits)
+        const cleanPhone = stripCountryCode(application.phone || "");
+        if (cleanPhone.length < 10) {
+            return res.status(400).json({ message: "Invalid phone number on application. Must be at least 10 digits." });
+        }
+
+        // Verify phone number uniqueness across all approved shops
+        const allApplications = await appRepo.getAll();
+        const phoneCollision = allApplications.find(app => 
+            app.phpShopCreated && stripCountryCode(app.phone) === cleanPhone
+        );
+
+        if (phoneCollision && phoneCollision.id !== application.id) {
+            return res.status(400).json({ 
+                message: "This phone number is already being used by another shop.",
+                shopApplicationId: phoneCollision.id
+            });
+        }
+
+        // Generate credentials using shop name for the password prefix
+        const { username, password } = generateVendorCredentials(
+            shopName,
+            cleanPhone
+        );
+
+        // Call PHP Bridge
+        // Use saved application lat/slong (saved earlier when admin set address)
+        // Fall back to req.body for backward compatibility
+        const latValue = req.body.lat !== undefined ? req.body.lat : (application.lat ? parseFloat(application.lat) : undefined);
+        const slongValue = req.body.slong !== undefined ? req.body.slong : (application.slong ? parseFloat(application.slong) : undefined);
+        
+        logger.info(`Creating PHP shop for application ${id} ("${shopName}") with lat=${latValue}, slong=${slongValue}...`);
+        const result = await phpBridge.createShop({
+            shopName: shopName,
+            ownerName: application.fullName || "",
+            email: application.email || "",
+            phone: cleanPhone,
+            username: username,
+            password: password,
+            address: shopAddress,
+            lat: latValue,
+            slong: slongValue
+        });
+
+        // Update application state
+        await appService.updateApplication(id, { 
+            phpShopCreated: true,
+            status: "approved" // Ensure status is approved if not already
+        });
+
+        // Link shop to user if userId is present
+        if (application.userId) {
+            const { userService } = await import("../domains/users/user.service");
+            await userService.updateUser(application.userId, { 
+                phpShopId: result.sid,
+                phpShopLinkedAt: new Date()
+            });
+        }
+
+        logger.info(`✅ PHP shop created for application ${id}: SID ${result.sid}`);
+        return res.json({ success: true, sid: result.sid, slug: result.slug });
+    } catch (error) {
+        logger.error("Error creating PHP shop:", error);
+        return res.status(500).json({ 
+            message: error instanceof Error ? error.message : "Failed to create shop on PHP backend" 
+        });
+    }
+});
+
+// Send manual verification email (admin only)
+router.post("/:id/send-verification-email", async (req: Request, res: Response) => {
+    try {
+        if (!req.neonUser || req.neonUser.role !== "admin") {
+            return res.status(403).json({ message: "Admin access required" });
+        }
+
+        const id = parseInt(req.params.id);
+        const application = await appService.getApplicationById(id);
+        if (!application) {
+            return res.status(404).json({ message: "Application not found" });
+        }
+
+        if (!application.phpShopCreated) {
+            return res.status(400).json({ message: "Shop must be created before sending credentials" });
+        }
+
+        if (application.email && application.fullName && application.phone) {
+            const emailContent = generateFullVerificationEmail({
+                fullName: application.fullName,
+                email: application.email,
+                phone: stripCountryCode(application.phone),
+                shopName: application.shopName || "Your Shop"
+            });
+            
+            await sendEmail(emailContent, {
+                trackingId: `full_verification_manual_${id}_${Date.now()}`
+            });
+
+            // Update timestamp
+            await appService.updateApplication(id, { verificationEmailSentAt: new Date() });
+
+            logger.info(`✅ Manual verification email sent to ${application.email}`);
+            return res.json({ success: true, message: "Verification email sent successfully" });
+        } else {
+            return res.status(400).json({ message: "Applicant missing required contact info" });
+        }
+    } catch (error) {
+        logger.error("Error sending manual verification email:", error);
+        return res.status(500).json({ message: "Failed to send verification email" });
     }
 });
 

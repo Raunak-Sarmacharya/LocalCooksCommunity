@@ -161,3 +161,19 @@ export function normalizePhoneForStorage(phone: string | null | undefined): stri
   return validateAndNormalizePhone(phone);
 }
 
+/**
+ * Strips country code (+1) and leading '1' from US/Canada phone numbers
+ * Returns a 10-digit phone number string
+ */
+export function stripCountryCode(phone: string | null | undefined): string {
+  if (!phone) return "";
+  let clean = phone.replace(/\D/g, "");
+  if (clean.length === 11 && clean.startsWith("1")) {
+    clean = clean.substring(1);
+  } else if (clean.length > 10 && clean.startsWith("1")) {
+    // Just in case of longer numbers starting with 1
+    clean = clean.substring(1);
+  }
+  return clean;
+}
+

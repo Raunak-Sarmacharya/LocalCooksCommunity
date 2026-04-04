@@ -10,7 +10,8 @@ import { logger } from '../logger.js';
  * Server-to-server only — browser never calls PHP directly.
  */
 
-const PHP_BRIDGE_API_URL = process.env.PHP_BRIDGE_API_URL || 'https://stagingwebapp.localcook.shop/app/controllers/bridge/chef_revenue_api.php';
+const PHP_BRIDGE_API_URL = process.env.PHP_BRIDGE_API_URL;
+const PHP_ADMIN_BRIDGE_API_URL = process.env.PHP_ADMIN_BRIDGE_API_URL
 const PHP_BRIDGE_API_SECRET = process.env.PHP_BRIDGE_API_SECRET;
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -112,12 +113,17 @@ function signRequest(queryString: string): { signature: string; timestamp: strin
 
 // ─── HTTP Helper ────────────────────────────────────────────────────────────────
 
-async function bridgeRequest<T>(params: Record<string, string>): Promise<T> {
+async function bridgeRequest<T>(
+  params: Record<string, string>,
+  method: 'GET' | 'POST' = 'GET',
+  body?: unknown,
+  baseUrl: string | undefined = PHP_BRIDGE_API_URL
+): Promise<T> {
   if (!PHP_BRIDGE_API_SECRET) {
     throw new Error('PHP_BRIDGE_API_SECRET is not configured. Add it to your .env file.');
   }
 
-  // Build sorted query string (must match PHP side)
+  // Build sorted query string (must match PHP side) for signing
   const sortedParams = Object.keys(params).sort().reduce((acc, key) => {
     acc[key] = params[key];
     return acc;
@@ -126,17 +132,19 @@ async function bridgeRequest<T>(params: Record<string, string>): Promise<T> {
   const queryString = new URLSearchParams(sortedParams).toString();
   const { signature, timestamp } = signRequest(queryString);
 
-  const url = `${PHP_BRIDGE_API_URL}?${queryString}`;
+  const url = `${baseUrl}?${queryString}`;
 
-  logger.info(`[PhpBridge] ${params.action} → ${url.substring(0, 120)}...`);
+  logger.info(`[PhpBridge] ${method} ${params.action} → ${url.substring(0, 120)}...`);
 
   const response = await fetch(url, {
-    method: 'GET',
+    method,
     headers: {
       'X-Bridge-Timestamp': timestamp,
       'X-Bridge-Signature': signature,
       'Accept': 'application/json',
+      'Content-Type': 'application/json',
     },
+    body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(15000), // 15 second timeout
   });
 
@@ -159,10 +167,37 @@ async function bridgeRequest<T>(params: Record<string, string>): Promise<T> {
     throw new Error(data.message || data.error || 'PHP bridge API returned an error');
   }
 
-  return data.data as T;
+  // Handle case where message/success is at top level but data is missing
+  if (data.data === undefined) {
+    return data as T;
+  }
+
+  return data.data;
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────────
+
+/**
+ * Create a new shop on the PHP backend.
+ */
+export async function createShop(shopData: {
+  shopName: string;
+  ownerName: string;
+  email: string;
+  phone: string;
+  username: string;
+  password: string;
+  address: string;
+  lat?: number;
+  slong?: number;
+}): Promise<{ sid: number; slug: string }> {
+  return bridgeRequest<{ sid: number; slug: string }>(
+    { action: 'create-shop' },
+    'POST',
+    shopData,
+    PHP_ADMIN_BRIDGE_API_URL
+  );
+}
 
 /**
  * Look up a PHP shop by email address (for account linking).

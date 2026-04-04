@@ -97,6 +97,14 @@ export class ApplicationService {
     }
     return app;
   }
+
+  async updateApplication(id: number, updates: any): Promise<ApplicationDTO> {
+    const app = await this.repo.update(id, updates);
+    if (!app) {
+      throw new DomainError("APPLICATION_NOT_FOUND", `Application ${id} not found`, 404);
+    }
+    return app;
+  }
 }
 
 export const applicationService = new ApplicationService();

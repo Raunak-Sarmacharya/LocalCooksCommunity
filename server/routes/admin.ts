@@ -750,6 +750,7 @@ router.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, asy
             kitchenLicenseApprovedAt: locations.kitchenLicenseApprovedAt,
             kitchenTermsUrl: locations.kitchenTermsUrl,
             kitchenTermsUploadedAt: locations.kitchenTermsUploadedAt,
+            createdAt: locations.createdAt,
             managerName: users.username,
             managerEmail: users.username // simplified for now
         })

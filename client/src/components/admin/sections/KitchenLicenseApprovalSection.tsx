@@ -19,6 +19,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { LicenseProgressTracker } from "@/components/admin/ApplicationProgressTracker";
 
 export function KitchenLicenseApprovalSection() {
   const { toast } = useToast();
@@ -215,6 +216,16 @@ export function KitchenLicenseApprovalSection() {
                             )}
                           </div>
                         </div>
+
+                        {/* Pipeline Progress Tracker */}
+                        <LicenseProgressTracker
+                          licenseStatus={license.kitchenLicenseStatus}
+                          licenseUrl={license.kitchenLicenseUrl}
+                          termsUrl={license.kitchenTermsUrl}
+                          submittedAt={license.kitchenTermsUploadedAt || license.createdAt}
+                          approvedAt={license.kitchenLicenseApprovedAt}
+                          className="py-2 px-1 mb-4 bg-muted/30 rounded-lg border border-muted-foreground/10"
+                        />
 
                         {/* License Document Details */}
                         <div className="mb-4 space-y-2">
