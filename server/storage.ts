@@ -104,6 +104,7 @@ export class MemStorage implements IStorage {
       phpShopId: null,
       phpShopStripeAccountId: null,
       phpShopLinkedAt: null,
+      createdAt: new Date(),
     };
     this.users.set(adminUser.id, adminUser);
     logger.info("Development: Default admin user created (username: admin, password: localcooks)");
@@ -187,6 +188,7 @@ export class MemStorage implements IStorage {
       phpShopId: null,
       phpShopStripeAccountId: null,
       phpShopLinkedAt: null,
+      createdAt: new Date(),
     };
 
     this.users.set(user.id, user);
@@ -233,6 +235,11 @@ export class MemStorage implements IStorage {
       documentsAdminFeedback: null,
       documentsReviewedBy: null,
       documentsReviewedAt: null,
+
+      shopName: insertApplication.shopName || "Shop Not Named",
+      shopAddress: insertApplication.shopAddress || "Address Not Provided",
+      phpShopCreated: false,
+      verificationEmailSentAt: null,
 
       createdAt: now,
     };

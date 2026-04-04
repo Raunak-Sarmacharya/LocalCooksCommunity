@@ -140,12 +140,14 @@ interface ChefSidebarProps extends React.ComponentProps<typeof Sidebar> {
     activeView: string
     onViewChange: (view: string) => void
     messageBadgeCount?: number
+    hiddenItems?: string[]
 }
 
 export function ChefSidebar({
     activeView,
     onViewChange,
     messageBadgeCount = 0,
+    hiddenItems = [],
     ...props
 }: ChefSidebarProps) {
     const { user } = useFirebaseAuth()
@@ -192,7 +194,7 @@ export function ChefSidebar({
                     <SidebarGroup key={group.title}>
                         <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
                         <SidebarMenu>
-                            {group.items.map((item) => {
+                            {group.items.filter((item) => !hiddenItems.includes(item.id)).map((item) => {
                                 const isActive = activeView === item.id
                                 const badge = item.id === "messages" ? messageBadgeCount : undefined
 

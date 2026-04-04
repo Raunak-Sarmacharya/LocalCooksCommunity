@@ -23,7 +23,7 @@ export class ChefApplicationService {
                         id: users.id,
                         username: users.username,
                         role: users.role,
-                        // Not selecting fullName/email if not guaranteed on users table
+                        createdAt: users.createdAt, // When the chef account was created
                     }
                 })
                 .from(chefKitchenApplications)
@@ -175,7 +175,7 @@ export class ChefApplicationService {
                         id: users.id,
                         username: users.username,
                         role: users.role,
-                        // Using safe fields
+                        createdAt: users.createdAt, // When the chef account was created
                     },
                     location: {
                         id: locations.id,

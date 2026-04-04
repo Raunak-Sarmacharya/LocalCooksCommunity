@@ -985,7 +985,7 @@ export default function ChefLanding() {
           { name: "Book a Kitchen", description: "Browse and book commercial kitchens in St. John's, Newfoundland", url: "https://chef.localcooks.ca/book-kitchen" },
           { name: "Compare Kitchens", description: "Compare commercial kitchen facilities, amenities, and pricing", url: "https://chef.localcooks.ca/compare-kitchens" },
           { name: "For Kitchen Owners", description: "Turn idle commercial kitchen hours into revenue with automated booking", url: "https://kitchen.localcooks.ca/" },
-          { name: "Order Food", description: "Order authentic homemade meals from local chefs in St. John's", url: "https://localcook.shop/app/index.php" },
+          { name: "Order Food", description: "Order authentic homemade meals from local chefs in St. John's", url: "https://localcook.shop" },
           { name: "Blog", description: "Stories about local chefs, food trends, and community updates", url: "https://www.localcooks.ca/blog" },
         ]}
       />

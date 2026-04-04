@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { Plus, Users, Edit, Trash2, Loader2, MapPin, ChefHat, Building2, Mail, MoreHorizontal } from "lucide-react";
+import { Plus, Users, Edit, Trash2, Loader2, MapPin, ChefHat, Building2, Mail, MoreHorizontal, Eye, Wrench, Package } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "@/hooks/use-toast";
@@ -21,6 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AdminLayout } from "@/components/admin/layout/AdminLayout";
 import type { AdminSection } from "@/components/admin/layout/AdminSidebar";
+import { LocationDetailSheet } from "@/components/admin/LocationDetailSheet";
 import { auth } from "@/lib/firebase";
 
 
@@ -51,6 +52,8 @@ export default function AdminManageLocations() {
   const [editingKitchen, setEditingKitchen] = useState<any | null>(null);
   const [editingManager, setEditingManager] = useState<any | null>(null);
   const [deletingItem, setDeletingItem] = useState<{ type: 'location' | 'kitchen' | 'manager', id: number, name: string } | null>(null);
+  const [detailLocationId, setDetailLocationId] = useState<number | null>(null);
+  const [showDetailSheet, setShowDetailSheet] = useState(false);
 
   const [locations, setLocations] = useState<any[]>([]);
   const [kitchens, setKitchens] = useState<any[]>([]);
@@ -888,6 +891,9 @@ export default function AdminManageLocations() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => { setDetailLocationId(location.id); setShowDetailSheet(true); }}>
+                                    <Eye className="h-4 w-4 mr-2" /> View Details
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => handleEditLocation(location)}>
                                     <Edit className="h-4 w-4 mr-2" /> Edit
                                   </DropdownMenuItem>
@@ -973,7 +979,9 @@ export default function AdminManageLocations() {
                       <TableRow>
                         <TableHead>Kitchen Name</TableHead>
                         <TableHead>Location</TableHead>
-                        <TableHead>Description</TableHead>
+                        <TableHead>Rate</TableHead>
+                        <TableHead>Equipment</TableHead>
+                        <TableHead>Storage</TableHead>
                         <TableHead>Tax Rate</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="w-[80px]">Actions</TableHead>
@@ -1004,8 +1012,30 @@ export default function AdminManageLocations() {
                                 <span className="text-xs text-muted-foreground italic">Unknown</span>
                               )}
                             </TableCell>
-                            <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                              {kitchen.description || <span className="italic">No description</span>}
+                            <TableCell className="text-sm">
+                              {kitchen.hourlyRate || kitchen.hourly_rate ? (
+                                <span>${(parseFloat(kitchen.hourlyRate || kitchen.hourly_rate) / 100).toFixed(0)}/{kitchen.pricingModel || kitchen.pricing_model || 'hr'}</span>
+                              ) : (
+                                <span className="text-muted-foreground italic">Not set</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {(kitchen.equipmentCount || 0) > 0 ? (
+                                <Badge variant="outline" className="text-xs">
+                                  <Wrench className="h-3 w-3 mr-0.5" />{kitchen.equipmentCount}
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">0</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {(kitchen.storageCount || 0) > 0 ? (
+                                <Badge variant="outline" className="text-xs">
+                                  <Package className="h-3 w-3 mr-0.5" />{kitchen.storageCount}
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">0</span>
+                              )}
                             </TableCell>
                             <TableCell className="text-sm">
                               {taxRate ? `${taxRate}%` : <span className="text-muted-foreground italic">Not set</span>}
@@ -1023,6 +1053,12 @@ export default function AdminManageLocations() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => {
+                                    const locId = kitchen.locationId || kitchen.location_id;
+                                    if (locId) { setDetailLocationId(locId); setShowDetailSheet(true); }
+                                  }}>
+                                    <Eye className="h-4 w-4 mr-2" /> View Location Details
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => handleEditKitchen(kitchen)}>
                                     <Edit className="h-4 w-4 mr-2" /> Edit
                                   </DropdownMenuItem>
@@ -1345,6 +1381,13 @@ export default function AdminManageLocations() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Location Detail Sheet */}
+      <LocationDetailSheet
+        locationId={detailLocationId}
+        open={showDetailSheet}
+        onOpenChange={setShowDetailSheet}
+      />
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deletingItem} onOpenChange={(open) => { if (!open) setDeletingItem(null); }}>

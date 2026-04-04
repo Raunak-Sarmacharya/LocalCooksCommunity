@@ -86,6 +86,7 @@ export const users = pgTable("users", {
   phpShopId: integer("php_shop_id"),                          // MySQL shop.sid
   phpShopStripeAccountId: text("php_shop_stripe_account_id"), // shop.stripe_shop_id (Stripe Connect on PHP platform)
   phpShopLinkedAt: timestamp("php_shop_linked_at"),           // When the link was established
+  createdAt: timestamp("created_at").defaultNow().notNull(),  // When the user account was created
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
@@ -94,6 +95,8 @@ export const applications = pgTable("applications", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id),
   fullName: text("full_name").notNull(),
+  shopName: text("shop_name").notNull().default("Shop Not Named"),
+  shopAddress: text("shop_address").notNull().default("Address Not Provided"),
   email: text("email").notNull(),
   phone: text("phone").notNull(),
   foodSafetyLicense: certificationStatusEnum("food_safety_license").notNull(),
@@ -110,6 +113,10 @@ export const applications = pgTable("applications", {
   documentsAdminFeedback: text("documents_admin_feedback"),
   documentsReviewedBy: integer("documents_reviewed_by").references(() => users.id),
   documentsReviewedAt: timestamp("documents_reviewed_at"),
+  phpShopCreated: boolean("php_shop_created").default(false).notNull(),
+  verificationEmailSentAt: timestamp("verification_email_sent_at"),
+  lat: text("lat"),
+  slong: text("slong"),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -118,6 +125,8 @@ export const applications = pgTable("applications", {
 // Define the Zod schema for inserting an application
 export const insertApplicationSchema = createInsertSchema(applications, {
   fullName: z.string().min(2, "Name must be at least 2 characters"),
+  shopName: z.string().min(2, "Shop name must be at least 2 characters").optional(),
+  shopAddress: z.string().min(5, "Shop address must be at least 5 characters").optional(),
   email: z.string().email("Please enter a valid email address"),
   phone: phoneNumberSchema, // Uses shared phone validation
   foodSafetyLicense: z.enum(["yes", "no", "notSure"]),
@@ -138,6 +147,8 @@ export const insertApplicationSchema = createInsertSchema(applications, {
   documentsAdminFeedback: true,
   documentsReviewedBy: true,
   documentsReviewedAt: true,
+  phpShopCreated: true,
+  verificationEmailSentAt: true,
 });
 
 // Define the Zod schema for updating the status of an application
@@ -1252,6 +1263,8 @@ export const chefKitchenApplications = pgTable("chef_kitchen_applications", {
 
   // Personal Info (collected per application)
   fullName: text("full_name").notNull(),
+  shopName: text("shop_name").notNull().default("Shop Not Named"),
+  shopAddress: text("shop_address").notNull().default("Address Not Provided"),
   email: text("email").notNull(),
   phone: text("phone").notNull(),
 
@@ -1307,6 +1320,8 @@ export const insertChefKitchenApplicationSchema = createInsertSchema(chefKitchen
   chefId: z.number(),
   locationId: z.number(),
   fullName: z.string().min(1, "Name is required"), // Minimum validation, but requirement checked in API
+  shopName: z.string().min(1, "Shop name is required"),
+  shopAddress: z.string().min(1, "Shop address is required"),
   email: z.string().email("Please enter a valid email address"), // Email format validation, but requirement checked in API
   phone: z.string(), // Accept any string (including empty) - requirement and format validation happens in API
   kitchenPreference: z.enum(["commercial", "home", "notSure"]),

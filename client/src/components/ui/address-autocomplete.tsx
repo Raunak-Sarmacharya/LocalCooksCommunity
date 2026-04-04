@@ -15,7 +15,7 @@ interface Prediction {
 
 interface AddressAutocompleteProps {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, lat?: number, lng?: number) => void;
   placeholder?: string;
   className?: string;
   disabled?: boolean;
@@ -154,8 +154,10 @@ export default function AddressAutocomplete({
 
       if (data.status === 'OK' && data.result) {
         const formattedAddress = data.result.formatted_address || place.description;
+        const lat = data.result.geometry?.location?.lat;
+        const lng = data.result.geometry?.location?.lng;
         setInputValue(formattedAddress);
-        onChange(formattedAddress);
+        onChange(formattedAddress, lat, lng);
       } else {
         // Fallback to description if details fail
         setInputValue(place.description);

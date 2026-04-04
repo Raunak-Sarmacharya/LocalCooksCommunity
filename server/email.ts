@@ -1,4 +1,5 @@
 import { logger } from "./logger.js";
+import { stripCountryCode } from "./phone-utils";
 import nodemailer from 'nodemailer';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
@@ -980,15 +981,13 @@ The Local Cooks Team
 };
 
 // Generate vendor login credentials
-const generateVendorCredentials = (fullName: string, phone: string) => {
-  // Clean phone number and remove country code (1) if present
-  let cleanPhone = phone.replace(/[^0-9]/g, ''); // Remove all non-digits
-  // If phone starts with '1' and has 11 digits, remove the leading '1' (US/Canada country code)
-  if (cleanPhone.length === 11 && cleanPhone.startsWith('1')) {
-    cleanPhone = cleanPhone.substring(1);
-  }
+export const generateVendorCredentials = (name: string, phone: string) => {
+  // Clean phone number: remove all non-digits, and leading '1' (US/Canada country code)
+  const cleanPhone = stripCountryCode(phone);
+
   const username = cleanPhone;
-  const namePrefix = fullName.replace(/[^a-zA-Z]/g, '').toLowerCase().substring(0, 3) || 'usr';
+  // Use the name (shop name preferred) for the prefix
+  const namePrefix = name.replace(/[^a-zA-Z]/g, '').toLowerCase().substring(0, 3) || 'usr';
   const phoneSuffix = cleanPhone.slice(-4) || '0000';
   const password = namePrefix + phoneSuffix;
   return { username, password };
@@ -1000,9 +999,10 @@ export const generateFullVerificationEmail = (
     fullName: string;
     email: string;
     phone: string;
+    shopName?: string;
   }
 ): EmailContent => {
-  const { username, password } = generateVendorCredentials(userData.fullName, userData.phone);
+  const { username, password } = generateVendorCredentials(userData.shopName || userData.fullName, userData.phone);
   const firstName = userData.fullName.split(' ')[0];
 
   const html = `
@@ -1046,7 +1046,7 @@ export const generateFullVerificationEmail = (
         </tr>
       </table>
       <div style="text-align: center; margin: 0 0 8px 0;">
-        <a href="https://localcook.shop/app/shop/index.php" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0 8px 8px 0;">Access Chef Dashboard</a>
+        <a href="https://stagingwebapp.localcook.shop/app/shop/index.php" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0 8px 8px 0;">Access Chef Dashboard</a>
         <a href="${getVendorDashboardUrl()}" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 0 8px 0;">Set Up Stripe Payments</a>
       </div>
       <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
@@ -1076,7 +1076,7 @@ Important: Please change your password after your first login for security.
 
 Next steps:
 • Chef Dashboard — use your credentials above to manage your profile, products, and orders
-  Access: https://localcook.shop/app/shop/index.php
+  Access: https://stagingwebapp.localcook.shop/app/shop/index.php
 • Stripe Payments — set up payment processing to start receiving payments
   Access: ${getVendorDashboardUrl()}
 
@@ -1876,12 +1876,12 @@ const getPrivacyUrl = (): string => {
 
 // Helper function to get vendor dashboard URL
 const getVendorDashboardUrl = (): string => {
-  return process.env.VENDOR_DASHBOARD_URL || 'https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php';
+  return process.env.VENDOR_DASHBOARD_URL || 'https://stagingwebapp.localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Fstagingwebapp.localcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php';
 };
 
 // Helper function to get the correct promo URL for customer app
 const getPromoUrl = (): string => {
-  return 'https://localcook.shop/app/index.php';
+  return 'https://localcook.shop/';
 };
 
 // Generate document update email with unified design

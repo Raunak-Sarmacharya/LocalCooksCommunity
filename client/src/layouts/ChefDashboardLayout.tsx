@@ -30,6 +30,7 @@ interface ChefDashboardLayoutProps {
     onViewChange: (view: string) => void
     messageBadgeCount?: number
     breadcrumbs?: Array<{ label: string; href?: string; onClick?: () => void }>
+    hiddenItems?: string[]
 }
 
 // View labels for breadcrumb generation
@@ -55,6 +56,7 @@ export default function ChefDashboardLayout({
     onViewChange,
     messageBadgeCount = 0,
     breadcrumbs,
+    hiddenItems = [],
 }: ChefDashboardLayoutProps) {
     const { user, logout } = useFirebaseAuth()
     const [isCommandOpen, setIsCommandOpen] = React.useState(false)
@@ -81,6 +83,7 @@ export default function ChefDashboardLayout({
                 activeView={activeView}
                 onViewChange={onViewChange}
                 messageBadgeCount={messageBadgeCount}
+                hiddenItems={hiddenItems}
             />
             <SidebarInset>
                 <header className="flex h-16 shrink-0 items-center justify-between gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">

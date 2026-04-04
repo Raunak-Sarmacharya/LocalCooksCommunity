@@ -1075,11 +1075,22 @@ export default function ChefSellerRevenue() {
             </div>
           </div>
 
+          {!shopStatus?.phpShopStripeAccountId && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50/70 border border-amber-200/50 text-sm text-amber-700">
+              <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <p>
+                Your seller account doesn&apos;t have Stripe connected yet. Set up Stripe on your
+                LocalCooks seller account to receive payouts and access your Stripe dashboard here.
+                Your order revenue data is still available below.
+              </p>
+            </div>
+          )}
+
           <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50/70 border border-blue-200/50 text-sm text-blue-700">
             <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
             <p>
-              This shows revenue from your LocalCooks food orders. For detailed payout history and bank transfers,
-              click <strong>View Stripe Dashboard</strong> above.
+              This shows revenue from your LocalCooks food orders.{shopStatus?.phpShopStripeAccountId ? <> For detailed payout history and bank transfers,
+              click <strong>View Stripe Dashboard</strong> above.</> : <> Connect Stripe on your seller account to access payout details.</>}
             </p>
           </div>
 

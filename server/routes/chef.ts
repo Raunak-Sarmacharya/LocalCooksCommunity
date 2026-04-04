@@ -1,5 +1,5 @@
 import { logger } from "../logger";
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { inventoryService } from "../domains/inventory/inventory.service";
 import { locationService } from "../domains/locations/location.service";
 import { kitchenService } from "../domains/kitchens/kitchen.service";
@@ -8,8 +8,8 @@ import { userService } from "../domains/users/user.service";
 import { requireChef } from "./middleware";
 import { storage } from "../storage";
 import { pool, db } from "../db";
-import { sql, eq } from "drizzle-orm";
-import { users } from "@shared/schema";
+import { sql, eq, desc, and } from "drizzle-orm";
+import { users, applications } from "@shared/schema";
 import { errorResponse } from "../api-response";
 import { getAppBaseUrl } from "../config";
 import * as phpBridge from '../services/php-bridge-service';
@@ -276,7 +276,6 @@ router.get("/locations", requireChef, async (req: Request, res: Response) => {
 // ============================================================================
 
 import { paymentTransactions } from "@shared/schema";
-import { and, desc } from "drizzle-orm";
 
 // Download invoice PDF for storage extension (chef view)
 router.get("/invoices/storage/:storageBookingId", requireChef, async (req: Request, res: Response) => {
@@ -700,8 +699,40 @@ router.get("/transactions", requireChef, async (req: Request, res: Response) => 
 // from the PHP backend via HMAC-authenticated bridge API.
 // Only available to fully verified chefs with linked PHP shops.
 
+// Middleware: Require chef's seller application to be fully approved
+async function requireApprovedSeller(req: Request, res: Response, next: NextFunction) {
+    try {
+        const chefId = req.neonUser!.id;
+
+        const [app] = await db
+            .select({
+                status: applications.status,
+                foodSafetyLicenseStatus: applications.foodSafetyLicenseStatus,
+                foodEstablishmentCertUrl: applications.foodEstablishmentCertUrl,
+                foodEstablishmentCertStatus: applications.foodEstablishmentCertStatus,
+            })
+            .from(applications)
+            .where(eq(applications.userId, chefId))
+            .orderBy(desc(applications.id))
+            .limit(1);
+
+        if (!app || app.status !== 'approved' || app.foodSafetyLicenseStatus !== 'approved') {
+            return res.status(403).json({ error: 'SELLER_NOT_APPROVED', message: 'Your seller application must be fully approved to access this feature.' });
+        }
+
+        if (app.foodEstablishmentCertUrl && app.foodEstablishmentCertStatus !== 'approved') {
+            return res.status(403).json({ error: 'SELLER_NOT_APPROVED', message: 'Your seller application must be fully approved to access this feature.' });
+        }
+
+        next();
+    } catch (error) {
+        logger.error('[requireApprovedSeller] Error checking approval:', error);
+        return res.status(500).json({ error: 'Failed to verify seller approval status' });
+    }
+}
+
 // Check if chef has linked their PHP shop account
-router.get("/seller/shop-status", requireChef, async (req: Request, res: Response) => {
+router.get("/seller/shop-status", requireChef, requireApprovedSeller, async (req: Request, res: Response) => {
     try {
         const chefId = req.neonUser!.id;
 
@@ -721,10 +752,28 @@ router.get("/seller/shop-status", requireChef, async (req: Request, res: Respons
             return res.status(404).json({ error: "User not found" });
         }
 
+        // Lazy-sync: If shop is linked but Stripe account ID is missing,
+        // try to fetch it from PHP (chef may have connected Stripe after shop creation)
+        let stripeAccountId = chef.phpShopStripeAccountId;
+        if (chef.phpShopId && !stripeAccountId) {
+            try {
+                const shopInfo = await phpBridge.lookupShopByEmail(chef.username);
+                if (shopInfo && shopInfo.stripe_shop_id) {
+                    stripeAccountId = shopInfo.stripe_shop_id;
+                    await db.update(users)
+                        .set({ phpShopStripeAccountId: shopInfo.stripe_shop_id })
+                        .where(eq(users.id, chefId));
+                    logger.info(`[Seller Revenue] Lazy-synced Stripe account ${shopInfo.stripe_shop_id} for chef ${chefId}`);
+                }
+            } catch (syncError) {
+                logger.warn('[Seller Revenue] Failed to lazy-sync Stripe account ID:', syncError);
+            }
+        }
+
         res.json({
             linked: !!chef.phpShopId,
             phpShopId: chef.phpShopId,
-            phpShopStripeAccountId: chef.phpShopStripeAccountId,
+            phpShopStripeAccountId: stripeAccountId,
             linkedAt: chef.phpShopLinkedAt,
         });
     } catch (error) {
@@ -734,7 +783,7 @@ router.get("/seller/shop-status", requireChef, async (req: Request, res: Respons
 });
 
 // Link PHP shop account (auto-match by email, or manual email entry)
-router.post("/seller/link-shop", requireChef, async (req: Request, res: Response) => {
+router.post("/seller/link-shop", requireChef, requireApprovedSeller, async (req: Request, res: Response) => {
     try {
         const chefId = req.neonUser!.id;
         const { email: manualEmail } = req.body;
@@ -798,7 +847,7 @@ router.post("/seller/link-shop", requireChef, async (req: Request, res: Response
 });
 
 // Get earnings summary from PHP bridge
-router.get("/seller/earnings-summary", requireChef, async (req: Request, res: Response) => {
+router.get("/seller/earnings-summary", requireChef, requireApprovedSeller, async (req: Request, res: Response) => {
     try {
         const chefId = req.neonUser!.id;
         const period = (req.query.period as string) || 'all';
@@ -822,7 +871,7 @@ router.get("/seller/earnings-summary", requireChef, async (req: Request, res: Re
 });
 
 // Get paginated orders from PHP bridge
-router.get("/seller/orders", requireChef, async (req: Request, res: Response) => {
+router.get("/seller/orders", requireChef, requireApprovedSeller, async (req: Request, res: Response) => {
     try {
         const chefId = req.neonUser!.id;
 
@@ -853,7 +902,7 @@ router.get("/seller/orders", requireChef, async (req: Request, res: Response) =>
 });
 
 // Get Stripe Express Dashboard link via PHP bridge
-router.get("/seller/stripe-dashboard", requireChef, async (req: Request, res: Response) => {
+router.get("/seller/stripe-dashboard", requireChef, requireApprovedSeller, async (req: Request, res: Response) => {
     try {
         const chefId = req.neonUser!.id;
 
@@ -867,8 +916,28 @@ router.get("/seller/stripe-dashboard", requireChef, async (req: Request, res: Re
             return res.status(400).json({ error: "NO_SHOP_LINKED", message: "Link your seller account first." });
         }
 
-        if (!chef.phpShopStripeAccountId) {
-            return res.status(400).json({ error: "NO_STRIPE_ACCOUNT", message: "No Stripe account connected on your seller profile." });
+        // Lazy-sync: If Stripe account ID is missing, try fetching from PHP before failing
+        let stripeAccountId = chef.phpShopStripeAccountId;
+        if (!stripeAccountId) {
+            try {
+                const [chefUser] = await db.select({ username: users.username }).from(users).where(eq(users.id, chefId)).limit(1);
+                if (chefUser) {
+                    const shopInfo = await phpBridge.lookupShopByEmail(chefUser.username);
+                    if (shopInfo?.stripe_shop_id) {
+                        stripeAccountId = shopInfo.stripe_shop_id;
+                        await db.update(users)
+                            .set({ phpShopStripeAccountId: shopInfo.stripe_shop_id })
+                            .where(eq(users.id, chefId));
+                        logger.info(`[Seller Revenue] Lazy-synced Stripe account ${shopInfo.stripe_shop_id} for chef ${chefId} (via dashboard request)`);
+                    }
+                }
+            } catch (syncError) {
+                logger.warn('[Seller Revenue] Failed to lazy-sync Stripe account ID:', syncError);
+            }
+        }
+
+        if (!stripeAccountId) {
+            return res.status(400).json({ error: "NO_STRIPE_ACCOUNT", message: "No Stripe account connected on your seller profile. Please set up Stripe on your LocalCooks seller account first." });
         }
 
         const data = await phpBridge.getStripeDashboardLink(chef.phpShopId);

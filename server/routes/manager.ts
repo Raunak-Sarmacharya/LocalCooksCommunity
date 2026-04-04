@@ -3155,7 +3155,7 @@ router.get(
           name: app.location.name,
           address: app.location.address,
         },
-        user: { id: app.user.id, username: app.user.username },
+        user: { id: app.user.id, username: app.user.username, createdAt: app.user.createdAt },
         // fields mapped from joins
         id: app.application.id, // Ensure ID is correct
       }));

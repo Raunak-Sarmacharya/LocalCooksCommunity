@@ -86,4 +86,13 @@ export class ApplicationRepository {
       .returning();
     return updated || null;
   }
+
+  async update(id: number, updates: Partial<Application>): Promise<Application | null> {
+    const [updated] = await db
+      .update(applications)
+      .set(updates as any)
+      .where(eq(applications.id, id))
+      .returning();
+    return updated || null;
+  }
 }

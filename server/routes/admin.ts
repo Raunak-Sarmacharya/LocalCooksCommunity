@@ -10,8 +10,13 @@ import {
     locations,
     chefLocationAccess,
     platformSettings,
+    kitchens,
+    kitchenAvailability,
+    storageListings,
+    equipmentListings,
+    locationRequirements,
 } from "@shared/schema";
-import { eq, sql, desc, ilike } from "drizzle-orm";
+import { eq, sql, desc, ilike, and } from "drizzle-orm";
 
 // Import Domain Services
 
@@ -750,6 +755,7 @@ router.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, asy
             kitchenLicenseApprovedAt: locations.kitchenLicenseApprovedAt,
             kitchenTermsUrl: locations.kitchenTermsUrl,
             kitchenTermsUploadedAt: locations.kitchenTermsUploadedAt,
+            createdAt: locations.createdAt,
             managerName: users.username,
             managerEmail: users.username // simplified for now
         })
@@ -976,6 +982,154 @@ router.get("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req: 
     }
 });
 
+// Get full details for a single location (admin) — all kitchens, equipment, storage, availability, manager info from DB
+router.get("/locations/:id/full-details", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const locationId = parseInt(req.params.id);
+        if (isNaN(locationId) || locationId <= 0) {
+            return res.status(400).json({ error: "Invalid location ID" });
+        }
+
+        // 1. Get location with all fields directly from DB
+        const [location] = await db
+            .select()
+            .from(locations)
+            .where(eq(locations.id, locationId));
+
+        if (!location) {
+            return res.status(404).json({ error: "Location not found" });
+        }
+
+        // 2. Get manager details including Stripe Connect status
+        let manager = null;
+        if (location.managerId) {
+            const [managerRow] = await db
+                .select({
+                    id: users.id,
+                    username: users.username,
+                    role: users.role,
+                    firebaseUid: users.firebaseUid,
+                    stripeConnectAccountId: users.stripeConnectAccountId,
+                    stripeConnectOnboardingStatus: users.stripeConnectOnboardingStatus,
+                    managerProfileData: users.managerProfileData,
+                    managerOnboardingCompleted: users.managerOnboardingCompleted,
+                    createdAt: users.createdAt,
+                })
+                .from(users)
+                .where(eq(users.id, location.managerId));
+
+            if (managerRow) {
+                // Resolve display name from Firestore if available
+                let resolvedDisplayName = managerRow.username;
+                if (managerRow.firebaseUid) {
+                    const firestoreNames = await getFirestoreDisplayNames([managerRow.firebaseUid]);
+                    if (firestoreNames[managerRow.firebaseUid]) {
+                        resolvedDisplayName = firestoreNames[managerRow.firebaseUid];
+                    }
+                }
+
+                manager = {
+                    id: managerRow.id,
+                    username: managerRow.username,
+                    displayName: resolvedDisplayName,
+                    role: managerRow.role,
+                    stripeConnectAccountId: managerRow.stripeConnectAccountId,
+                    stripeConnectOnboardingStatus: managerRow.stripeConnectOnboardingStatus,
+                    managerProfileData: managerRow.managerProfileData,
+                    managerOnboardingCompleted: managerRow.managerOnboardingCompleted,
+                    createdAt: managerRow.createdAt,
+                };
+            }
+        }
+
+        // 3. Get location requirements
+        const [requirements] = await db
+            .select()
+            .from(locationRequirements)
+            .where(eq(locationRequirements.locationId, locationId));
+
+        // 4. Get all kitchens for this location directly from DB
+        const locationKitchens = await db
+            .select()
+            .from(kitchens)
+            .where(eq(kitchens.locationId, locationId));
+
+        // 5. For each kitchen, get equipment listings, storage listings, and availability
+        const kitchenIds = locationKitchens.map(k => k.id);
+
+        let allEquipment: any[] = [];
+        let allStorage: any[] = [];
+        let allAvailability: any[] = [];
+
+        if (kitchenIds.length > 0) {
+            // Batch query all equipment for all kitchens at this location
+            allEquipment = await db
+                .select()
+                .from(equipmentListings)
+                .where(sql`${equipmentListings.kitchenId} IN (${sql.join(kitchenIds.map(id => sql`${id}`), sql`, `)})`);
+
+            // Batch query all storage for all kitchens at this location
+            allStorage = await db
+                .select()
+                .from(storageListings)
+                .where(sql`${storageListings.kitchenId} IN (${sql.join(kitchenIds.map(id => sql`${id}`), sql`, `)})`);
+
+            // Batch query all availability for all kitchens at this location
+            allAvailability = await db
+                .select()
+                .from(kitchenAvailability)
+                .where(sql`${kitchenAvailability.kitchenId} IN (${sql.join(kitchenIds.map(id => sql`${id}`), sql`, `)})`);
+        }
+
+        // 6. Group equipment, storage, availability by kitchenId
+        const equipmentByKitchen = new Map<number, any[]>();
+        const storageByKitchen = new Map<number, any[]>();
+        const availabilityByKitchen = new Map<number, any[]>();
+
+        for (const eq of allEquipment) {
+            const kId = eq.kitchenId;
+            if (!equipmentByKitchen.has(kId)) equipmentByKitchen.set(kId, []);
+            equipmentByKitchen.get(kId)!.push(eq);
+        }
+        for (const sl of allStorage) {
+            const kId = sl.kitchenId;
+            if (!storageByKitchen.has(kId)) storageByKitchen.set(kId, []);
+            storageByKitchen.get(kId)!.push(sl);
+        }
+        for (const av of allAvailability) {
+            const kId = av.kitchenId;
+            if (!availabilityByKitchen.has(kId)) availabilityByKitchen.set(kId, []);
+            availabilityByKitchen.get(kId)!.push(av);
+        }
+
+        // 7. Assemble response
+        const kitchensWithDetails = locationKitchens.map(kitchen => ({
+            ...kitchen,
+            equipmentListings: equipmentByKitchen.get(kitchen.id) || [],
+            storageListings: storageByKitchen.get(kitchen.id) || [],
+            availability: availabilityByKitchen.get(kitchen.id) || [],
+        }));
+
+        res.json({
+            location,
+            manager,
+            requirements: requirements || null,
+            kitchens: kitchensWithDetails,
+            summary: {
+                totalKitchens: locationKitchens.length,
+                activeKitchens: locationKitchens.filter(k => k.isActive).length,
+                totalEquipment: allEquipment.length,
+                totalStorage: allStorage.length,
+                includedEquipment: allEquipment.filter(e => e.availabilityType === 'included').length,
+                rentalEquipment: allEquipment.filter(e => e.availabilityType === 'rental').length,
+            },
+        });
+    } catch (error: any) {
+        logger.error("Error fetching location full details:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch location details" });
+    }
+});
+
 // Create location (admin)
 router.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
@@ -1053,7 +1207,40 @@ router.get("/kitchens", async (req: Request, res: Response) => {
         }
 
         const allKitchens = await kitchenService.getAllKitchensWithLocation();
-        res.json(allKitchens);
+
+        // Enrich with equipment and storage counts from DB
+        const kitchenIds = allKitchens.map(k => k.id);
+        const equipCounts: Record<number, number> = {};
+        const storageCounts: Record<number, number> = {};
+
+        if (kitchenIds.length > 0) {
+            const equipRows = await db
+                .select({ kitchenId: equipmentListings.kitchenId, count: sql<number>`count(*)::int` })
+                .from(equipmentListings)
+                .where(sql`${equipmentListings.kitchenId} IN (${sql.join(kitchenIds.map(id => sql`${id}`), sql`, `)})`)
+                .groupBy(equipmentListings.kitchenId);
+
+            const storageRows = await db
+                .select({ kitchenId: storageListings.kitchenId, count: sql<number>`count(*)::int` })
+                .from(storageListings)
+                .where(sql`${storageListings.kitchenId} IN (${sql.join(kitchenIds.map(id => sql`${id}`), sql`, `)})`)
+                .groupBy(storageListings.kitchenId);
+
+            for (const row of equipRows) {
+                equipCounts[row.kitchenId] = row.count;
+            }
+            for (const row of storageRows) {
+                storageCounts[row.kitchenId] = row.count;
+            }
+        }
+
+        const enrichedKitchens = allKitchens.map(k => ({
+            ...k,
+            equipmentCount: equipCounts[k.id] || 0,
+            storageCount: storageCounts[k.id] || 0,
+        }));
+
+        res.json(enrichedKitchens);
     } catch (error: any) {
         logger.error("Error fetching all kitchens:", error);
         res.status(500).json({ error: error.message || "Failed to fetch kitchens" });

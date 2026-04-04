@@ -5,7 +5,6 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { useChefKitchenApplications } from "@/hooks/use-chef-kitchen-applications";
-import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import ChatPanel from "@/components/chat/ChatPanel";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import { useSubdomain } from "@/hooks/use-subdomain";
@@ -21,7 +20,6 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
 import {
   Card,
   CardContent,
@@ -38,10 +36,7 @@ import { Application, UserWithFlags } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import {
   ChevronRight,
-  ChevronDown,
-  BookOpen,
   Building,
-  Calendar,
   CheckCircle,
   ChefHat,
   Clock,
@@ -52,29 +47,15 @@ import {
   MessageCircle,
   Store,
   ArrowRight,
-  Utensils,
-  TrendingUp,
-  MapPin,
-  Snowflake,
-  Thermometer,
-  Package,
 } from "lucide-react";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import ChefStripeConnectSetup from "@/components/chef/ChefStripeConnectSetup";
 import { useChefOnboardingStatus } from "@/hooks/use-chef-onboarding-status";
 import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
 import KitchenBookingSheet from "@/components/booking/KitchenBookingSheet";
-import { AspectRatio } from "@/components/ui/aspect-ratio";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
 import ApplicationFormPanel from "@/components/application/ApplicationFormPanel";
 import ChefSupportPage from "@/components/chef/ChefSupportPage";
@@ -85,12 +66,11 @@ import OutstandingDuesBanner from "@/components/chef/OutstandingDuesBanner";
 import ChefProfileSettings from "@/components/chef/ChefProfileSettings";
 import ChefSellerRevenue from "@/components/chef/seller-revenue/ChefSellerRevenue";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
-import DocumentUpload, { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
+import { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
 import { SellerApplicationCard, KitchenApplicationCard } from "@/components/chef/applications";
 import {
   OverviewTabContent,
   MyKitchensTabContent,
-  EmptyApplicationState,
   DocumentVerificationView,
   type PublicKitchen,
   type KitchenApplicationWithLocation,
@@ -177,7 +157,7 @@ export default function ApplicantDashboard() {
   const [showDocumentModal, setShowDocumentModal] = useState(false);
 
   // Get document verification status for seller application
-  const { verification: documentVerification, loading: docVerificationLoading } = useDocumentVerification();
+  const { verification: docData, error: docError, forceRefresh: refetchDocs } = useDocumentVerification();
 
   // Get chef applications for chat access
   const { applications: kitchenApplications } = useChefKitchenApplications();
@@ -402,6 +382,8 @@ export default function ApplicantDashboard() {
         id: app.id,
         userId: app.user_id || app.userId,
         fullName: app.full_name || app.fullName,
+        shopName: app.shop_name || app.shopName,
+        shopAddress: app.shop_address || app.shopAddress,
         email: app.email,
         phone: app.phone,
         foodSafetyLicense: app.food_safety_license || app.foodSafetyLicense,
@@ -414,7 +396,11 @@ export default function ApplicantDashboard() {
         foodEstablishmentCertUrl: app.food_establishment_cert_url || app.foodEstablishmentCertUrl,
         foodSafetyLicenseStatus: app.food_safety_license_status || app.foodSafetyLicenseStatus,
         foodEstablishmentCertStatus: app.food_establishment_cert_status || app.foodEstablishmentCertStatus,
-      })) as Application[];
+        documentsAdminFeedback: app.documents_admin_feedback || app.documentsAdminFeedback,
+        documentsReviewedAt: app.documents_reviewed_at || app.documentsReviewedAt,
+        phpShopCreated: app.php_shop_created || app.phpShopCreated || false,
+        verificationEmailSentAt: app.verification_email_sent_at || app.verificationEmailSentAt,
+      })) as unknown as Application[];
     },
     enabled: !!user && user.role !== "admin" && !!user?.isChef,
   });
@@ -446,14 +432,12 @@ export default function ApplicantDashboard() {
   }, [user, applications, isLoading, error]);
 
   // Helper function to get the most recent application
-  const getMostRecentApplication = () => {
-    if (!userDisplayInfo.applications || userDisplayInfo.applications.length === 0) return null;
-    return userDisplayInfo.applications.reduce((latest: AnyApplication, current: AnyApplication) => {
-      const latestDate = new Date(latest.createdAt || 0);
-      const currentDate = new Date(current.createdAt || 0);
-      return currentDate > latestDate ? current : latest;
-    });
-  };
+  const getMostRecentApplication = useCallback(() => {
+    if (!applications || applications.length === 0) return null;
+    return [...applications].sort((a, b) => 
+      new Date(b.createdAt as unknown as string).getTime() - new Date(a.createdAt as unknown as string).getTime()
+    )[0];
+  }, [applications]);
 
   /**
    * Enterprise-grade seller application approval check
@@ -474,19 +458,11 @@ export default function ApplicantDashboard() {
 
     const app = mostRecentApp as Application;
 
-    // Application must be approved
-    if (app.status !== 'approved') return false;
+    const fslApproved = app.foodSafetyLicenseStatus === "approved";
+    const fecApproved = !app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved";
 
-    // Food Safety License must be approved (required document)
-    if (app.foodSafetyLicenseStatus !== 'approved') return false;
-
-    // Food Establishment Cert is optional - only check if URL was provided
-    if (app.foodEstablishmentCertUrl && app.foodEstablishmentCertStatus !== 'approved') {
-      return false;
-    }
-
-    return true;
-  }, [userDisplayInfo.applications]);
+    return app.status === "approved" && fslApproved && fecApproved;
+  }, [getMostRecentApplication]);
 
   const getApplicationStatus = () => {
     const mostRecentApp = getMostRecentApplication();
@@ -725,7 +701,7 @@ export default function ApplicantDashboard() {
     <ApplicationFormPanel onBack={() => setApplicationViewMode('list')} />
   ) : applicationViewMode === 'documents' ? (
     <DocumentVerificationView
-      documentVerification={documentVerification}
+      documentVerification={docData || undefined}
       onBack={() => setApplicationViewMode('list')}
     />
   ) : (
@@ -1191,6 +1167,9 @@ export default function ApplicantDashboard() {
           </div>
         );
       case "seller-revenue":
+        if (!isSellerApplicationFullyApproved) {
+          return <div className="space-y-8 animate-in fade-in-50 duration-500">{overviewTabContent}</div>;
+        }
         return (
           <div className="space-y-8 animate-in fade-in-50 duration-500">
             <ChefSellerRevenue />
@@ -1257,6 +1236,7 @@ export default function ApplicantDashboard() {
       }}
       messageBadgeCount={0}
       breadcrumbs={getBreadcrumbs()}
+      hiddenItems={isSellerApplicationFullyApproved ? [] : ['seller-revenue']}
     >
       {/* ⌘K Command Palette */}
       <ChefCommandPalette onNavigate={(view) => {
@@ -1335,7 +1315,7 @@ export default function ApplicantDashboard() {
           <div className="p-8 pt-0 space-y-6">
             <div className="space-y-3">
               <Button asChild className="w-full h-12 text-base font-semibold shadow-lg shadow-primary/10 rounded-xl" onClick={handleCloseVendorPopup}>
-                <a href="https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2">
+                <a href="https://stagingwebapp.localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Fstagingwebapp.localcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2">
                   <Shield className="h-5 w-5" />
                   Proceed to Vendor Storefront
                 </a>
