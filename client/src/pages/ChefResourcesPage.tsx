@@ -179,8 +179,8 @@ function ResourceTable({ headers, rows }: { headers: string[]; rows: string[][] 
         </a>
       );
     }
-    const domainOnly = text.match(/^[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z]{2,})+$/i);
-    if (domainOnly) {
+    const domainWithPath = text.match(/^[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z]{2,})+([/][^\s]*)?$/i);
+    if (domainWithPath) {
       return (
         <a href={`https://${text}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
           {text}
