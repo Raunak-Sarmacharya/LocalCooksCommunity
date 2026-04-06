@@ -385,14 +385,13 @@ const chaosNotifications = [
 ];
 
 const localCooksNotifications = [
-  { id: 1, amount: "$112.50", order: "#00198", type: "Delivery" },
-  { id: 2, amount: "$42.88", order: "#00197", type: "Pickup" },
-  { id: 3, amount: "$78.33", order: "#00196", type: "Pickup" },
-  { id: 4, amount: "$31.29", order: "#00195", type: "Delivery" },
-  { id: 5, amount: "$67.50", order: "#00194", type: "Pickup" },
-  { id: 6, amount: "$95.00", order: "#00193", type: "Delivery" },
-  { id: 7, amount: "$54.25", order: "#00192", type: "Pickup" },
-  { id: 8, amount: "$123.75", order: "#00191", type: "Delivery" },
+  { id: 1, amount: "$112.50", order: "#00198", type: "Delivery", headline: "Cha-ching!", subtext: "New order from Downtown" },
+  { id: 2, amount: "$42.88", order: "#00197", type: "Pickup", headline: "Repeat customer!", subtext: "Mike ordered Butter Chicken again" },
+  { id: 3, amount: "$78.33", order: "#00196", type: "Pickup", headline: "Pre-order confirmed", subtext: "Ready for pickup tomorrow 6PM" },
+  { id: 4, amount: "$31.29", order: "#00195", type: "Delivery", headline: "$10 tip received!", subtext: "Thanks for the amazing food" },
+  { id: 5, amount: "$95.00", order: "#00193", type: "Delivery", headline: "5★ review posted!", subtext: '"Best homemade biryani ever!"' },
+  { id: 6, amount: "$54.25", order: "#00192", type: "Pickup", headline: "20 orders this week!", subtext: "You're trending in your area" },
+  { id: 7, amount: "$123.75", order: "#00191", type: "Express", headline: "Express order!", subtext: "VIP customer — 30 min prep" },
 ];
 
 // Chaos Notification Feed Component
@@ -734,8 +733,8 @@ function LocalCooksNotificationFeed() {
                     <span className="text-[10px] font-bold text-white">LocalCooks</span>
                     <span className="text-[9px] text-white/70">now</span>
                   </div>
-                  <p className="text-[12px] font-bold text-white">Cha-ching! {notif.data.amount}</p>
-                  <p className="text-[10px] text-white/80">{notif.data.type} order {notif.data.order}</p>
+                  <p className="text-[12px] font-bold text-white">{notif.data.headline} {notif.data.amount}</p>
+                  <p className="text-[10px] text-white/80">{notif.data.subtext}</p>
                 </div>
               </div>
             </div>
