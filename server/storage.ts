@@ -240,6 +240,8 @@ export class MemStorage implements IStorage {
       shopAddress: insertApplication.shopAddress || "Address Not Provided",
       phpShopCreated: false,
       verificationEmailSentAt: null,
+      lat: insertApplication.lat || null,
+      slong: insertApplication.slong || null,
 
       createdAt: now,
     };

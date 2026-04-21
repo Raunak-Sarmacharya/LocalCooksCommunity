@@ -44,7 +44,7 @@ import {
 // Initialize Stripe
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
-  apiVersion: '2025-12-15.clover',
+  apiVersion: '2026-02-25.clover',
 }) : null;
 
 // ============================================================================
@@ -2480,7 +2480,7 @@ export async function refundDamageClaim(
       }
     }
 
-    // Send refund notification email to chef
+    // Send refund notification email + in-app notification to chef
     try {
       const [chef] = await db
         .select({ email: users.username })
@@ -2503,6 +2503,35 @@ export async function refundDamageClaim(
           text: `Damage Claim Refund\n\nA ${isFullRefund ? 'full' : 'partial'} refund of $${(refundAmount/100).toFixed(2)} has been issued for your damage claim.\n\nClaim: ${claim.claimTitle}\nReason: ${refundReason}`,
         });
         logger.info(`[DamageClaimService] Sent refund notification email to chef ${chef.email}`);
+      }
+
+      // In-app notification
+      try {
+        const { notificationService } = await import('./notification.service');
+        // Get location name for notification
+        let locationName = 'Location';
+        try {
+          const [loc] = await db
+            .select({ name: locations.name })
+            .from(locations)
+            .where(eq(locations.id, claim.locationId))
+            .limit(1);
+          locationName = loc?.name || 'Location';
+        } catch {}
+
+        await notificationService.notifyChefDamageClaimRefunded({
+          chefId: claim.chefId,
+          claimId: claim.id,
+          claimTitle: claim.claimTitle,
+          amountCents: chargedAmount,
+          refundAmountCents: refundAmount,
+          refundReason,
+          locationName,
+          bookingType: claim.bookingType,
+        });
+        logger.info(`[DamageClaimService] Sent refund in-app notification to chef for claim ${claimId}`);
+      } catch (notifError) {
+        logger.error(`[DamageClaimService] Error sending refund in-app notification:`, notifError);
       }
     } catch (emailError) {
       logger.error(`[DamageClaimService] Error sending refund notification email:`, emailError);

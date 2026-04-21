@@ -1119,7 +1119,7 @@ export async function syncStripeFees(
   }
   
   const stripe = new Stripe(stripeSecretKey, {
-    apiVersion: '2025-12-15.clover' as any,
+    apiVersion: '2026-02-25.clover',
   });
   
   // Find transactions with missing Stripe fees

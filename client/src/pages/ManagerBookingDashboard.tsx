@@ -30,6 +30,8 @@ import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import { OverstayPenaltyQueue } from "@/components/manager/overstays/OverstayPenaltyQueue";
 import { DamageClaimQueue } from "@/components/manager/damage-claims/DamageClaimQueue";
 import { PendingStorageCheckouts } from "@/components/manager/PendingStorageCheckouts";
+import { PendingStorageCheckins } from "@/components/manager/PendingStorageCheckins";
+import { TodaysKitchenBookings } from "@/components/manager/TodaysKitchenBookings";
 import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
@@ -41,6 +43,8 @@ import {
   KitchensManagement,
   NotificationsSettings,
   FacilityDocsSettings,
+  CheckinCheckoutSettings,
+  StorageCheckinCheckoutSettings,
 } from "@/components/manager/settings";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -156,7 +160,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'application-requirements' | 'notifications' | 'overstays' | 'damage-claims' | 'storage-checkouts';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'overstays' | 'damage-claims' | 'storage-checkouts';
 
 
 export default function ManagerBookingDashboard() {
@@ -170,7 +174,11 @@ export default function ManagerBookingDashboard() {
   const [activeView, setActiveView] = useState<ViewType>(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
+    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
+    // Back-compat: redirect legacy 'settings-storage-checkout' URLs to the new combined page.
+    if (view === 'settings-storage-checkout') {
+      return 'settings-storage-checkin-checkout';
+    }
     if (view && validViews.includes(view as ViewType)) {
       return view as ViewType;
     }
@@ -238,7 +246,12 @@ export default function ManagerBookingDashboard() {
     const handleLocationChange = () => {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
-      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
+      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
+      // Back-compat: redirect legacy URL to the new combined page.
+      if (view === 'settings-storage-checkout') {
+        setActiveView('settings-storage-checkin-checkout');
+        return;
+      }
       if (view && validViews.includes(view as ViewType)) {
         setActiveView(view as ViewType);
       }
@@ -574,6 +587,8 @@ export default function ManagerBookingDashboard() {
 
 
 
+          <TodaysKitchenBookings />
+
           <KitchenDashboardOverview
             selectedLocation={selectedLocation}
             locations={locations}
@@ -676,6 +691,7 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'storage-checkouts' && (
         <div className="space-y-6">
+          <PendingStorageCheckins />
           <PendingStorageCheckouts />
         </div>
       )}
@@ -803,6 +819,34 @@ export default function ManagerBookingDashboard() {
           <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
           <p className="text-gray-500">Choose a location to manage notification settings</p>
+        </div>
+      )}
+
+      {activeView === 'settings-checkin-checkout' && selectedLocation && (
+        <CheckinCheckoutSettings
+          location={locationDetails || selectedLocation}
+        />
+      )}
+
+      {activeView === 'settings-checkin-checkout' && !selectedLocation && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+          <p className="text-gray-500">Choose a location to manage check-in/check-out settings</p>
+        </div>
+      )}
+
+      {activeView === 'settings-storage-checkin-checkout' && selectedLocation && (
+        <StorageCheckinCheckoutSettings
+          location={locationDetails || selectedLocation}
+        />
+      )}
+
+      {activeView === 'settings-storage-checkin-checkout' && !selectedLocation && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+          <p className="text-gray-500">Choose a location to manage storage check-in / check-out settings</p>
         </div>
       )}
 

@@ -50,7 +50,7 @@ router.post("/stripe", async (req: Request, res: Response) => {
     }
 
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2025-12-15.clover",
+      apiVersion: "2026-02-25.clover",
     });
 
     if (!webhookSecret) {
@@ -206,7 +206,7 @@ router.post("/stripe/manual-process-session", async (req: Request, res: Response
     }
 
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2025-12-15.clover",
+      apiVersion: "2026-02-25.clover",
     });
 
     // Retrieve the session from Stripe
@@ -262,7 +262,7 @@ async function handleCheckoutSessionCompleted(
     }
 
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2025-12-15.clover",
+      apiVersion: "2026-02-25.clover",
     });
 
     const expandedSession = await stripe.checkout.sessions.retrieve(
@@ -2579,6 +2579,92 @@ async function handleOverstayPenaltyPaymentCompleted(
       penaltyAmountCents,
     });
 
+    // Send in-app notifications and email to chef + manager notification
+    try {
+      const { notificationService } = await import("../services/notification.service");
+      const { sendEmail, generatePenaltyChargedEmail } = await import("../email");
+
+      // Get storage/kitchen name for notifications
+      let storageName = 'Storage';
+      let kitchenNameForNotif = 'Kitchen';
+      try {
+        const [booking] = await db
+          .select({ storageListingId: storageBookings.storageListingId })
+          .from(storageBookings)
+          .where(eq(storageBookings.id, overstayRecord.storageBookingId))
+          .limit(1);
+        if (booking?.storageListingId) {
+          const [listingInfo] = await db
+            .select({ name: storageListings.name, kitchenId: storageListings.kitchenId })
+            .from(storageListings)
+            .where(eq(storageListings.id, booking.storageListingId))
+            .limit(1);
+          storageName = listingInfo?.name || 'Storage';
+          if (listingInfo?.kitchenId) {
+            const [kitchenInfo] = await db
+              .select({ name: kitchens.name })
+              .from(kitchens)
+              .where(eq(kitchens.id, listingInfo.kitchenId))
+              .limit(1);
+            kitchenNameForNotif = kitchenInfo?.name || 'Kitchen';
+          }
+        }
+      } catch (nameErr) {
+        logger.warn(`[Webhook] Could not fetch storage/kitchen name for overstay notification`);
+      }
+
+      // Chef notification
+      if (!isNaN(chefId)) {
+        await notificationService.notifyChefPenaltyCharged({
+          chefId,
+          overstayId: overstayRecordId,
+          storageName,
+          kitchenName: kitchenNameForNotif,
+          daysOverdue: overstayRecord.daysOverdue,
+          penaltyAmountCents,
+        });
+
+        // Chef email
+        const [chefUser] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, chefId))
+          .limit(1);
+        if (chefUser?.username) {
+          await sendEmail(generatePenaltyChargedEmail({
+            chefEmail: chefUser.username,
+            chefName: chefUser.username.split('@')[0],
+            storageName,
+            penaltyAmountCents,
+            daysOverdue: overstayRecord.daysOverdue,
+            chargeDate: new Date(),
+          }));
+          logger.info(`[Webhook] Sent penalty charged email to chef for overstay ${overstayRecordId}`);
+        }
+      }
+
+      // Manager notification
+      if (managerId) {
+        const [chefUser] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, chefId))
+          .limit(1);
+        await notificationService.notifyManagerPenaltyReceived({
+          managerId,
+          locationId: 0,
+          chefName: chefUser?.username?.split('@')[0] || 'A chef',
+          overstayId: overstayRecordId,
+          storageName,
+          kitchenName: kitchenNameForNotif,
+          daysOverdue: overstayRecord.daysOverdue,
+          penaltyAmountCents,
+        });
+      }
+    } catch (notifError) {
+      logger.error(`[Webhook] Error sending overstay payment notifications:`, notifError);
+    }
+
   } catch (error) {
     logger.error(`[Webhook] Error handling overstay penalty payment:`, error);
   }
@@ -2733,6 +2819,77 @@ async function handleDamageClaimPaymentCompleted(
       chargeAmount,
     });
 
+    // Send in-app notifications and email to chef + manager notification
+    try {
+      const { notificationService } = await import("../services/notification.service");
+      const { sendEmail, generateDamageClaimChargedEmail } = await import("../email");
+
+      // Get location name for notifications
+      let locationName = 'Location';
+      try {
+        const { locations: locTable } = await import("@shared/schema");
+        const [loc] = await db
+          .select({ name: locTable.name })
+          .from(locTable)
+          .where(eq(locTable.id, claim.locationId))
+          .limit(1);
+        locationName = loc?.name || 'Location';
+      } catch {}
+
+      const claimTitle = claim.claimTitle || 'Damage Claim';
+
+      // Chef notification
+      if (!isNaN(chefId)) {
+        await notificationService.notifyChefDamageClaimCharged({
+          chefId,
+          claimId,
+          claimTitle,
+          amountCents: chargeAmount,
+          locationName,
+          bookingType: claim.bookingType || 'kitchen',
+        });
+
+        // Chef email
+        const [chefUser] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, chefId))
+          .limit(1);
+        if (chefUser?.username) {
+          await sendEmail(generateDamageClaimChargedEmail({
+            chefEmail: chefUser.username,
+            chefName: chefUser.username.split('@')[0],
+            claimTitle,
+            chargedAmount: `$${(chargeAmount / 100).toFixed(2)} CAD`,
+            locationName,
+            claimId,
+          }));
+          logger.info(`[Webhook] Sent damage claim charged email to chef for claim ${claimId}`);
+        }
+      }
+
+      // Manager notification
+      if (claim.managerId) {
+        const [chefUser] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, chefId))
+          .limit(1);
+        await notificationService.notifyManagerDamageClaimReceived({
+          managerId: claim.managerId,
+          locationId: claim.locationId || 0,
+          chefName: chefUser?.username?.split('@')[0] || 'A chef',
+          claimId,
+          claimTitle,
+          amountCents: chargeAmount,
+          locationName,
+          bookingType: claim.bookingType || 'kitchen',
+        });
+      }
+    } catch (notifError) {
+      logger.error(`[Webhook] Error sending damage claim payment notifications:`, notifError);
+    }
+
   } catch (error) {
     logger.error(`[Webhook] Error handling damage claim payment:`, error);
   }
@@ -2805,7 +2962,7 @@ async function handleChargeUpdated(
     }
 
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2025-12-15.clover",
+      apiVersion: "2026-02-25.clover",
     });
 
     const balanceTransactionId = typeof charge.balance_transaction === 'string'

@@ -1462,7 +1462,7 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
-        const { name, description, isActive, locationId, taxRatePercent } = req.body;
+        const { name, description, isActive, locationId, taxRatePercent, smartLockAvailable } = req.body;
 
         const updates: any = {};
         const changesList: string[] = [];
@@ -1500,6 +1500,21 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
                  updates.taxRatePercent = newRate;
                  changesList.push(`Tax rate changed to ${newRate ? newRate + '%' : 'None'}`);
              }
+        }
+        // Admin-controlled smart lock capability gate.
+        // When disabled, cascade-disable the manager's smart_lock_enabled flag so
+        // no stale "enabled" state survives the capability being revoked.
+        if (smartLockAvailable !== undefined) {
+            const newAvailable = Boolean(smartLockAvailable);
+            if (newAvailable !== currentKitchen.smartLockAvailable) {
+                updates.smartLockAvailable = newAvailable;
+                changesList.push(`Smart door ${newAvailable ? 'enabled' : 'disabled'} by admin`);
+
+                // Cascade: revoking the capability forces the operational flag off.
+                if (!newAvailable && currentKitchen.smartLockEnabled) {
+                    updates.smartLockEnabled = false;
+                }
+            }
         }
 
         if (Object.keys(updates).length === 0) {
@@ -3646,6 +3661,178 @@ router.put("/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, a
     } catch (error: any) {
         logger.error('[Admin Security] Error updating rate limits:', error?.message || error);
         res.status(500).json({ error: "Failed to update rate limit settings" });
+    }
+});
+
+// ============================================================================
+// PHASE 4: ACCESS CODE ADMIN ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /admin/access-codes/active
+ * List all currently active access codes across all kitchens.
+ * Supports ?kitchenId= filter and ?page/&limit pagination.
+ */
+router.get("/access-codes/active", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const kitchenId = req.query.kitchenId ? parseInt(req.query.kitchenId as string) : undefined;
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+        const offset = (page - 1) * limit;
+
+        const { kitchenBookings, kitchens, locations, users } = await import('@shared/schema');
+        const { desc } = await import('drizzle-orm');
+
+        const conditions = [
+            eq(kitchenBookings.status, 'confirmed'),
+            sql`access_code_hash IS NOT NULL`,
+            sql`access_code_valid_until > NOW()`,
+        ];
+        if (kitchenId) {
+            conditions.push(eq(kitchenBookings.kitchenId, kitchenId));
+        }
+
+        const codes = await db
+            .select({
+                bookingId: kitchenBookings.id,
+                kitchenId: kitchenBookings.kitchenId,
+                kitchenName: kitchens.name,
+                locationName: locations.name,
+                chefId: kitchenBookings.chefId,
+                chefEmail: users.username,
+                accessCodeFormat: kitchenBookings.accessCodeFormat,
+                accessCodeValidFrom: kitchenBookings.accessCodeValidFrom,
+                accessCodeValidUntil: kitchenBookings.accessCodeValidUntil,
+                bookingDate: kitchenBookings.bookingDate,
+                startTime: kitchenBookings.startTime,
+                endTime: kitchenBookings.endTime,
+                checkinStatus: kitchenBookings.checkinStatus,
+            })
+            .from(kitchenBookings)
+            .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .leftJoin(users, eq(kitchenBookings.chefId, users.id))
+            .where(and(...conditions))
+            .orderBy(desc(kitchenBookings.accessCodeValidUntil))
+            .limit(limit)
+            .offset(offset);
+
+        // Total count for pagination
+        const [{ count }] = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(kitchenBookings)
+            .where(and(...conditions));
+
+        res.json({
+            codes,
+            pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
+        });
+    } catch (error: any) {
+        logger.error('[Admin Access Codes] Error listing active codes:', error?.message || error);
+        res.status(500).json({ error: "Failed to list active access codes" });
+    }
+});
+
+/**
+ * GET /admin/access-codes/audit
+ * Access code audit trail with filtering.
+ * Supports ?bookingId=, ?kitchenId=, ?action=, ?dateFrom=, ?dateTo=, ?page/&limit.
+ */
+router.get("/access-codes/audit", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const bookingId = req.query.bookingId ? parseInt(req.query.bookingId as string) : undefined;
+        const kitchenId = req.query.kitchenId ? parseInt(req.query.kitchenId as string) : undefined;
+        const action = req.query.action as string | undefined;
+        const dateFrom = req.query.dateFrom as string | undefined;
+        const dateTo = req.query.dateTo as string | undefined;
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+        const offset = (page - 1) * limit;
+
+        const { accessCodeAudit } = await import('@shared/schema');
+        const { desc } = await import('drizzle-orm');
+
+        const conditions: any[] = [];
+        if (bookingId) conditions.push(eq(accessCodeAudit.bookingId, bookingId));
+        if (kitchenId) conditions.push(eq(accessCodeAudit.kitchenId, kitchenId));
+        if (action) conditions.push(eq(accessCodeAudit.action, action));
+        if (dateFrom) conditions.push(sql`${accessCodeAudit.createdAt} >= ${dateFrom}::timestamp`);
+        if (dateTo) conditions.push(sql`${accessCodeAudit.createdAt} <= ${dateTo}::timestamp`);
+
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+        const entries = await db
+            .select()
+            .from(accessCodeAudit)
+            .where(whereClause)
+            .orderBy(desc(accessCodeAudit.createdAt))
+            .limit(limit)
+            .offset(offset);
+
+        const [{ count }] = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(accessCodeAudit)
+            .where(whereClause);
+
+        res.json({
+            entries,
+            pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
+        });
+    } catch (error: any) {
+        logger.error('[Admin Access Codes] Error listing audit trail:', error?.message || error);
+        res.status(500).json({ error: "Failed to list audit trail" });
+    }
+});
+
+/**
+ * GET /admin/access-codes/analytics
+ * Aggregate analytics for access code usage.
+ * Supports ?kitchenId=, ?dateFrom=, ?dateTo=.
+ */
+router.get("/access-codes/analytics", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { getAccessCodeAnalytics } = await import('../services/kitchen-checkout-service');
+        const analytics = await getAccessCodeAnalytics({
+            kitchenId: req.query.kitchenId ? parseInt(req.query.kitchenId as string) : undefined,
+            dateFrom: req.query.dateFrom as string | undefined,
+            dateTo: req.query.dateTo as string | undefined,
+        });
+        res.json(analytics);
+    } catch (error: any) {
+        logger.error('[Admin Access Codes] Error getting analytics:', error?.message || error);
+        res.status(500).json({ error: "Failed to get analytics" });
+    }
+});
+
+/**
+ * POST /admin/access-codes/emergency-revoke
+ * Emergency revoke all active access codes for a kitchen or specific booking.
+ * Body: { kitchenId?: number, bookingId?: number, reason: string }
+ * At least one of kitchenId or bookingId must be provided.
+ */
+router.post("/access-codes/emergency-revoke", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { kitchenId, bookingId, reason } = req.body;
+        if (!kitchenId && !bookingId) {
+            return res.status(400).json({ error: "Must specify kitchenId or bookingId" });
+        }
+        if (!reason || reason.trim().length < 5) {
+            return res.status(400).json({ error: "Reason must be at least 5 characters" });
+        }
+
+        const { emergencyRevokeAccessCodes } = await import('../services/kitchen-checkout-service');
+        const result = await emergencyRevokeAccessCodes({
+            kitchenId,
+            bookingId,
+            reason: reason.trim(),
+            revokedBy: req.neonUser!.id,
+        });
+
+        logger.info(`[Admin Access Codes] Emergency revocation by admin ${req.neonUser?.id}: ${result.revoked} codes revoked (reason: ${reason})`);
+        res.json(result);
+    } catch (error: any) {
+        logger.error('[Admin Access Codes] Error in emergency revocation:', error?.message || error);
+        res.status(500).json({ error: "Failed to revoke access codes" });
     }
 });
 

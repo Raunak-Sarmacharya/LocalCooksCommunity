@@ -483,6 +483,34 @@ async function sendAuthExpiryNotification(
     } catch {
       // Notification service may not support this yet — skip silently
     }
+
+    // Send email notification to chef
+    try {
+      const { sendEmail } = await import("../email");
+      const dashboardUrl = process.env.VITE_APP_URL || 'https://localcooks.ca';
+      const isKitchen = type === "kitchen_booking";
+      await sendEmail({
+        to: chef.username,
+        subject: isKitchen
+          ? `Booking Authorization Expired - ${kitchenName}`
+          : `Storage Extension Request Expired`,
+        html: `
+          <h2>${isKitchen ? 'Booking Authorization Expired' : 'Storage Extension Request Expired'}</h2>
+          <p>${isKitchen
+            ? `Your kitchen booking at <strong>${kitchenName}</strong> was automatically cancelled because the manager did not respond within 24 hours.`
+            : `Your storage extension request was automatically cancelled because the manager did not respond within 24 hours.`}</p>
+          <p><strong>Your card has not been charged.</strong> The payment hold has been released.</p>
+          <p>You can book again at any time from your dashboard.</p>
+          <p><a href="${dashboardUrl}/dashboard" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to Dashboard</a></p>
+        `,
+        text: isKitchen
+          ? `Booking Authorization Expired\n\nYour kitchen booking at ${kitchenName} was automatically cancelled because the manager did not respond within 24 hours.\n\nYour card has NOT been charged. The payment hold has been released.\n\nYou can book again at any time from your dashboard.`
+          : `Storage Extension Request Expired\n\nYour storage extension request was automatically cancelled because the manager did not respond within 24 hours.\n\nYour card has NOT been charged. The payment hold has been released.`,
+      });
+      logger.info(`[AuthExpiry] Sent expiry email to chef ${chef.username}`);
+    } catch (emailErr: any) {
+      logger.warn(`[AuthExpiry] Could not send expiry email to chef ${chefId}:`, emailErr);
+    }
   } catch (err: any) {
     logger.warn(`[AuthExpiry] Error sending notification to chef ${chefId}:`, err);
   }

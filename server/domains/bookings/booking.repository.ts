@@ -380,6 +380,7 @@ export class BookingRepository {
                 basePrice: storageListings.basePrice,
                 minimumBookingDuration: storageListings.minimumBookingDuration,
                 // ENTERPRISE STANDARD: Include location data to prevent "Unknown Location" on chef UI
+                locationId: locations.id,
                 locationName: locations.name,
                 locationAddress: locations.address,
             })
@@ -730,6 +731,17 @@ function getKitchenBookingSelection() {
         paymentStatus: kitchenBookings.paymentStatus,
         createdAt: kitchenBookings.createdAt,
         cancellationRequestedAt: kitchenBookings.cancellationRequestedAt,
+        // Kitchen check-in/check-out fields
+        checkinStatus: kitchenBookings.checkinStatus,
+        checkedInAt: kitchenBookings.checkedInAt,
+        checkedInMethod: kitchenBookings.checkedInMethod,
+        checkoutRequestedAt: kitchenBookings.checkoutRequestedAt,
+        checkedOutAt: kitchenBookings.checkedOutAt,
+        noShowDetectedAt: kitchenBookings.noShowDetectedAt,
+        actualStartTime: kitchenBookings.actualStartTime,
+        actualEndTime: kitchenBookings.actualEndTime,
+        accessCodeValidFrom: kitchenBookings.accessCodeValidFrom,
+        accessCodeValidUntil: kitchenBookings.accessCodeValidUntil,
     };
 }
 
@@ -759,6 +771,13 @@ function getStorageBookingSelection() {
         checkoutDenialReason: storageBookings.checkoutDenialReason,
         checkoutNotes: storageBookings.checkoutNotes,
         checkoutPhotoUrls: storageBookings.checkoutPhotoUrls,
+        // Check-in workflow fields (move-in inspection)
+        checkinStatus: storageBookings.checkinStatus,
+        checkinRequestedAt: storageBookings.checkinRequestedAt,
+        checkinCompletedAt: storageBookings.checkinCompletedAt,
+        checkinNotes: storageBookings.checkinNotes,
+        checkinPhotoUrls: storageBookings.checkinPhotoUrls,
+        checkinChecklistItems: storageBookings.checkinChecklistItems,
         cancellationRequestedAt: storageBookings.cancellationRequestedAt,
     };
 }

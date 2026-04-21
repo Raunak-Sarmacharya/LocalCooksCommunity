@@ -19,7 +19,7 @@ if (!stripeSecretKey) {
 }
 
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
-  apiVersion: '2025-12-15.clover',
+  apiVersion: '2026-02-25.clover',
 }) : null;
 
 export interface CreateCheckoutSessionParams {

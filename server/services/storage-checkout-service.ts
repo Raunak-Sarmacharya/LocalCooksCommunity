@@ -20,7 +20,10 @@ import {
   kitchens,
   locations,
   users,
-  type CheckoutStatus
+  type CheckoutStatus,
+  type StorageCheckinStatus,
+  storageCheckinStatusEnum,
+  damageEvidence,
 } from "@shared/schema";
 import { eq, desc, and, or, inArray, lt } from "drizzle-orm";
 import { logger } from "../logger";
@@ -34,6 +37,43 @@ export interface CheckoutRequestResult {
   error?: string;
   storageBookingId?: number;
   checkoutStatus?: CheckoutStatus;
+}
+
+export interface CheckinRequestResult {
+  success: boolean;
+  error?: string;
+  storageBookingId?: number;
+  checkinStatus?: StorageCheckinStatus;
+}
+
+export interface CheckinReviewResult {
+  success: boolean;
+  error?: string;
+  storageBookingId?: number;
+  checkinStatus?: StorageCheckinStatus;
+}
+
+export interface PendingCheckinReview {
+  storageBookingId: number;
+  storageListingId: number;
+  storageName: string;
+  storageType: string;
+  kitchenId: number;
+  kitchenName: string;
+  locationId: number;
+  locationName: string;
+  chefId: number | null;
+  chefEmail: string | null;
+  chefName: string | null;
+  startDate: Date;
+  endDate: Date;
+  totalPrice: string;
+  checkinStatus: StorageCheckinStatus;
+  checkinRequestedAt: Date | null;
+  checkinCompletedAt: Date | null;
+  checkinNotes: string | null;
+  checkinPhotoUrls: string[];
+  checkinChecklistItems: Array<{ id: string; label: string; checked: boolean }>;
 }
 
 export interface CheckoutReviewResult {
@@ -96,7 +136,8 @@ export async function requestStorageCheckout(
   storageBookingId: number,
   chefId: number,
   checkoutNotes?: string,
-  checkoutPhotoUrls?: string[]
+  checkoutPhotoUrls?: string[],
+  checkoutChecklistItems?: Array<{ id: string; label: string; checked: boolean }>,
 ): Promise<CheckoutRequestResult> {
   try {
     // Validate input
@@ -107,10 +148,15 @@ export async function requestStorageCheckout(
       return { success: false, error: 'Invalid chef ID' };
     }
 
-    // Get the storage booking
+    // Get the storage booking + owning location (for checklist lookup)
     const [booking] = await db
-      .select()
+      .select({
+        booking: storageBookings,
+        locationId: kitchens.locationId,
+      })
       .from(storageBookings)
+      .innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId))
+      .innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId))
       .where(eq(storageBookings.id, storageBookingId))
       .limit(1);
 
@@ -118,31 +164,34 @@ export async function requestStorageCheckout(
       return { success: false, error: 'Storage booking not found' };
     }
 
+    const row = booking.booking;
+    const locationId = booking.locationId;
+
     // Verify ownership
-    if (booking.chefId !== chefId) {
+    if (row.chefId !== chefId) {
       return { success: false, error: 'You do not have permission to checkout this storage booking' };
     }
 
     // Verify booking status allows checkout - must be confirmed (not pending, cancelled, or completed)
-    if (booking.status === 'cancelled') {
+    if (row.status === 'cancelled') {
       return { success: false, error: 'Cannot checkout a cancelled booking' };
     }
-    if (booking.status === 'completed') {
+    if (row.status === 'completed') {
       return { success: false, error: 'This booking has already been checked out' };
     }
-    if (booking.status === 'pending') {
+    if (row.status === 'pending') {
       return { success: false, error: 'Cannot checkout a pending booking. The booking must be confirmed first.' };
     }
-    
+
     // Verify the booking has started (start date must be in the past or today)
     const now = new Date();
-    const startDate = new Date(booking.startDate);
+    const startDate = new Date(row.startDate);
     if (startDate > now) {
       return { success: false, error: 'Cannot checkout before the booking start date. Please wait until your booking period begins.' };
     }
 
     // Verify checkout status allows request
-    const currentCheckoutStatus = booking.checkoutStatus as CheckoutStatus | null;
+    const currentCheckoutStatus = row.checkoutStatus as CheckoutStatus | null;
     if (currentCheckoutStatus === 'checkout_requested') {
       return { success: false, error: 'Checkout has already been requested for this booking' };
     }
@@ -153,6 +202,26 @@ export async function requestStorageCheckout(
       return { success: false, error: 'This booking has already been completed' };
     }
 
+    // Verify check-in has been completed before allowing checkout.
+    // You cannot check out of a storage unit you haven't checked into.
+    const currentCheckinStatus = (row.checkinStatus ?? 'not_checked_in') as string;
+    if (currentCheckinStatus === 'not_checked_in' || currentCheckinStatus === 'checkin_requested') {
+      return { success: false, error: 'You must complete check-in before requesting checkout. Please submit your move-in inspection first.' };
+    }
+
+    // Enforce photo requirements against the manager-configured checklist.
+    const { validateRequiredPhotos, validateRequiredChecklistItems } = await import('./kitchen-checkout-service');
+    const photoValidation = await validateRequiredPhotos(locationId, 'storage_checkout', checkoutPhotoUrls);
+    if (!photoValidation.valid) {
+      return { success: false, error: photoValidation.error };
+    }
+
+    // Enforce checklist item requirements against the manager-configured checklist.
+    const checklistValidation = await validateRequiredChecklistItems(locationId, 'storage_checkout', checkoutChecklistItems);
+    if (!checklistValidation.valid) {
+      return { success: false, error: checklistValidation.error };
+    }
+
     // Update the booking with checkout request
     await db
       .update(storageBookings)
@@ -161,6 +230,7 @@ export async function requestStorageCheckout(
         checkoutRequestedAt: new Date(),
         checkoutNotes: checkoutNotes || null,
         checkoutPhotoUrls: checkoutPhotoUrls || [],
+        checkoutChecklistItems: checkoutChecklistItems || null,
         // Clear any previous denial
         checkoutDeniedAt: null,
         checkoutDeniedBy: null,
@@ -190,6 +260,212 @@ export async function requestStorageCheckout(
   } catch (error) {
     logger.error(`[StorageCheckout] Error requesting checkout:`, error);
     return { success: false, error: 'Failed to request checkout' };
+  }
+}
+
+// ============================================================================
+// CHEF CHECK-IN REQUEST (Move-In Inspection)
+// ============================================================================
+
+/**
+ * Chef initiates check-in for a storage booking (move-in inspection)
+ * 
+ * @param storageBookingId - ID of the storage booking
+ * @param chefId - ID of the chef making the request
+ * @param checkinNotes - Optional notes from chef
+ * @param checkinPhotoUrls - Optional array of R2 URLs for move-in photos
+ * @param checkinChecklistItems - Optional array of completed checklist items
+ */
+export async function requestStorageCheckin(
+  storageBookingId: number,
+  chefId: number,
+  checkinNotes?: string,
+  checkinPhotoUrls?: string[],
+  checkinChecklistItems?: Array<{ id: string; label: string; checked: boolean }>,
+): Promise<CheckinRequestResult> {
+  try {
+    // Validate input
+    if (!storageBookingId || storageBookingId <= 0) {
+      return { success: false, error: 'Invalid storage booking ID' };
+    }
+    if (!chefId || chefId <= 0) {
+      return { success: false, error: 'Invalid chef ID' };
+    }
+
+    // Get the storage booking + owning location (for checklist lookup)
+    const [booking] = await db
+      .select({
+        booking: storageBookings,
+        locationId: kitchens.locationId,
+      })
+      .from(storageBookings)
+      .innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId))
+      .innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId))
+      .where(eq(storageBookings.id, storageBookingId))
+      .limit(1);
+
+    if (!booking) {
+      return { success: false, error: 'Storage booking not found' };
+    }
+
+    const row = booking.booking;
+    const locationId = booking.locationId;
+
+    // Verify ownership
+    if (row.chefId !== chefId) {
+      return { success: false, error: 'You do not have permission to checkin this storage booking' };
+    }
+
+    // Verify booking status allows check-in - must be confirmed (not pending, cancelled, or completed)
+    if (row.status === 'cancelled') {
+      return { success: false, error: 'Cannot checkin a cancelled booking' };
+    }
+    if (row.status === 'completed') {
+      return { success: false, error: 'This booking has already been completed' };
+    }
+    if (row.status === 'pending') {
+      return { success: false, error: 'Cannot checkin a pending booking. The booking must be confirmed first.' };
+    }
+
+    // Verify the booking has started (start date must be in the past or today)
+    const now = new Date();
+    const startDate = new Date(row.startDate);
+    if (startDate > now) {
+      return { success: false, error: 'Cannot checkin before the booking start date. Please wait until your booking period begins.' };
+    }
+
+    // Verify check-in status allows request
+    const currentCheckinStatus = (row.checkinStatus ?? 'not_checked_in') as StorageCheckinStatus;
+    if (currentCheckinStatus === 'checkin_requested') {
+      return { success: false, error: 'Check-in has already been requested for this booking' };
+    }
+    if (currentCheckinStatus === 'checkin_completed') {
+      return { success: false, error: 'This booking has already been checked in' };
+    }
+
+    // Enforce photo requirements against the manager-configured check-in checklist.
+    const { validateRequiredPhotos, validateRequiredChecklistItems } = await import('./kitchen-checkout-service');
+    const photoValidation = await validateRequiredPhotos(locationId, 'storage_checkin', checkinPhotoUrls);
+    if (!photoValidation.valid) {
+      return { success: false, error: photoValidation.error };
+    }
+
+    // Enforce checklist item requirements against the manager-configured check-in checklist.
+    const checklistValidation = await validateRequiredChecklistItems(locationId, 'storage_checkin', checkinChecklistItems);
+    if (!checklistValidation.valid) {
+      return { success: false, error: checklistValidation.error };
+    }
+
+    // Update the booking with check-in request
+    await db
+      .update(storageBookings)
+      .set({
+        checkinStatus: 'checkin_requested',
+        checkinRequestedAt: new Date(),
+        checkinNotes: checkinNotes || null,
+        checkinPhotoUrls: checkinPhotoUrls || [],
+        checkinChecklistItems: checkinChecklistItems || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(storageBookings.id, storageBookingId));
+
+    logger.info(`[StorageCheckin] Chef ${chefId} requested check-in for storage booking ${storageBookingId}`, {
+      hasPhotos: (checkinPhotoUrls?.length || 0) > 0,
+      photoCount: checkinPhotoUrls?.length || 0,
+    });
+
+    // Store check-in photos as photo_before evidence for potential future claims
+    try {
+      await storeCheckinPhotosAsEvidence(storageBookingId, chefId, checkinPhotoUrls || []);
+    } catch (evidenceError) {
+      logger.error(`[StorageCheckin] Error storing check-in photos as evidence:`, evidenceError);
+      // Don't fail the request if evidence storage fails
+    }
+
+    // Send notification to manager
+    try {
+      await sendCheckoutRequestNotification(storageBookingId, chefId);
+    } catch (notifyError) {
+      logger.error(`[StorageCheckin] Error sending check-in notification:`, notifyError);
+      // Don't fail the request if notification fails
+    }
+
+    return {
+      success: true,
+      storageBookingId,
+      checkinStatus: 'checkin_requested',
+    };
+  } catch (error) {
+    logger.error(`[StorageCheckin] Error requesting check-in:`, error);
+    return { success: false, error: 'Failed to request check-in' };
+  }
+}
+
+/**
+ * Chef adds additional photos to an existing check-in request
+ */
+export async function addCheckinPhotos(
+  storageBookingId: number,
+  chefId: number,
+  newPhotoUrls: string[]
+): Promise<CheckinRequestResult> {
+  try {
+    // Get the storage booking
+    const [booking] = await db
+      .select()
+      .from(storageBookings)
+      .where(eq(storageBookings.id, storageBookingId))
+      .limit(1);
+
+    if (!booking) {
+      return { success: false, error: 'Storage booking not found' };
+    }
+
+    // Verify ownership
+    if (booking.chefId !== chefId) {
+      return { success: false, error: 'You do not have permission to modify this booking' };
+    }
+
+    // Only allow adding photos if check-in is requested (not yet completed)
+    const currentCheckinStatus = (booking.checkinStatus ?? 'not_checked_in') as StorageCheckinStatus;
+    if (currentCheckinStatus !== 'checkin_requested') {
+      return { success: false, error: 'Can only add photos to pending check-in requests' };
+    }
+
+    // Merge existing photos with new ones
+    const existingPhotos = (booking.checkinPhotoUrls as string[]) || [];
+    const allPhotos = [...existingPhotos, ...newPhotoUrls];
+
+    // Limit to 10 photos max
+    if (allPhotos.length > 10) {
+      return { success: false, error: 'Maximum 10 check-in photos allowed' };
+    }
+
+    await db
+      .update(storageBookings)
+      .set({
+        checkinPhotoUrls: allPhotos,
+        updatedAt: new Date(),
+      })
+      .where(eq(storageBookings.id, storageBookingId));
+
+    // Store new photos as evidence
+    try {
+      await storeCheckinPhotosAsEvidence(storageBookingId, chefId, newPhotoUrls);
+    } catch (evidenceError) {
+      logger.error(`[StorageCheckin] Error storing additional check-in photos as evidence:`, evidenceError);
+    }
+
+    logger.info(`[StorageCheckin] Added ${newPhotoUrls.length} photos to check-in request for booking ${storageBookingId}`);
+
+    return {
+      success: true,
+      storageBookingId,
+      checkinStatus: 'checkin_requested',
+    };
+  } catch (error) {
+    logger.error(`[StorageCheckin] Error adding check-in photos:`, error);
+    return { success: false, error: 'Failed to add check-in photos' };
   }
 }
 
@@ -289,6 +565,7 @@ async function sendCheckoutRequestNotification(storageBookingId: number, chefId:
         storageName: storageListings.name,
         kitchenName: kitchens.name,
         locationName: locations.name,
+        locationId: locations.id,
         managerId: locations.managerId,
         notificationEmail: locations.notificationEmail,
         endDate: storageBookings.endDate,
@@ -350,6 +627,20 @@ async function sendCheckoutRequestNotification(storageBookingId: number, chefId:
 
     await sendEmail(emailContent);
     logger.info(`[StorageCheckout] Sent checkout request notification to manager ${managerEmail}`);
+
+    // In-app notification for manager
+    try {
+      const { notificationService } = await import('./notification.service');
+      await notificationService.notifyManagerStorageCheckoutRequested({
+        managerId: booking.managerId,
+        locationId: booking.locationId || 0,
+        chefName: chefEmail.split('@')[0],
+        storageName: booking.storageName || 'Storage',
+        storageBookingId,
+      });
+    } catch (notifError) {
+      logger.error(`[StorageCheckout] Error sending checkout request in-app notification:`, notifError);
+    }
   } catch (error) {
     logger.error(`[StorageCheckout] Error sending checkout request notification:`, error);
   }
@@ -407,6 +698,19 @@ async function sendCheckoutClearedNotification(
       text: `Storage Checkout Complete\n\nYour storage checkout has been cleared ${clearedBy}.\n\nStorage: ${booking.storageName}\nKitchen: ${booking.kitchenName}\nStatus: Storage Cleared \u2014 No Issues\n\nThank you for using Local Cooks!`,
     };
     await sendEmail(emailContent);
+
+    // In-app notification for chef
+    try {
+      const { notificationService } = await import('./notification.service');
+      await notificationService.notifyChefStorageCheckoutCleared({
+        chefId,
+        storageName: booking.storageName || 'Storage',
+        storageBookingId,
+        isAutoClear,
+      });
+    } catch (notifError) {
+      logger.error(`[StorageCheckout] Error sending cleared in-app notification:`, notifError);
+    }
 
     logger.info(`[StorageCheckout] Sent cleared notification to chef ${chef.username} (autoClear: ${isAutoClear})`);
   } catch (error) {
@@ -466,6 +770,20 @@ async function sendCheckoutClaimNotification(
       text: `Storage Checkout Complete \u2014 Claim Filed\n\nYour storage checkout has been processed. The kitchen has filed a damage/cleaning claim "${claimTitle}".\n\nStorage: ${booking.storageName}\nKitchen: ${booking.kitchenName}\n\nPlease review the claim in your dashboard.`,
     };
     await sendEmail(emailContent);
+
+    // In-app notification for chef
+    try {
+      const { notificationService } = await import('./notification.service');
+      await notificationService.notifyChefStorageCheckoutClaimFiled({
+        chefId,
+        storageName: booking.storageName || 'Storage',
+        storageBookingId,
+        claimId,
+        claimTitle,
+      });
+    } catch (notifError) {
+      logger.error(`[StorageCheckout] Error sending claim in-app notification:`, notifError);
+    }
 
     logger.info(`[StorageCheckout] Sent claim notification to chef ${chef.username} for claim #${claimId}`);
   } catch (error) {
@@ -725,6 +1043,23 @@ async function processCheckoutStartClaim(
   } catch (evidenceError) {
     // Non-blocking: claim still valid even if photo attachment fails
     logger.error(`[StorageCheckout] Error auto-attaching checkout photos to claim #${claimId}:`, evidenceError);
+  }
+
+  // Auto-attach check-in baseline photos as photo_before evidence — establishes
+  // the move-in baseline for the claim so managers can prove damage was new.
+  try {
+    const linkedCount = await linkCheckinPhotosToClaim(storageBookingId, claimId);
+    if (linkedCount > 0) {
+      logger.info(
+        `[StorageCheckout] Auto-attached ${linkedCount} check-in baseline photos as photo_before for claim #${claimId}`,
+      );
+    }
+  } catch (baselineError) {
+    // Non-blocking: claim still valid even if baseline linking fails
+    logger.error(
+      `[StorageCheckout] Error auto-linking check-in baseline photos to claim #${claimId}:`,
+      baselineError,
+    );
   }
 
   // Update checkout status to claim_filed
@@ -1105,6 +1440,298 @@ export async function getCheckoutHistory(locationIds: number[], limit: number = 
   }
 }
 
+// ============================================================================
+// HELPER FUNCTIONS FOR STORAGE CHECK-IN
+// ============================================================================
+
+/**
+ * Store check-in photos as photo_before evidence. These are kept with the
+ * booking and auto-linked when/if a damage claim is filed against the booking
+ * at checkout — establishing an enterprise-grade baseline for the claim.
+ *
+ * We record them in a lightweight log; the actual `damage_evidence` row is
+ * created lazily when a claim exists (to preserve FK integrity), via
+ * `linkCheckinPhotosToClaim()` below.
+ */
+async function storeCheckinPhotosAsEvidence(
+  storageBookingId: number,
+  chefId: number,
+  photoUrls: string[]
+): Promise<void> {
+  if (!photoUrls || photoUrls.length === 0) return;
+  logger.info(
+    `[StorageCheckin] Baseline evidence recorded: ${photoUrls.length} photos for booking ${storageBookingId} by chef ${chefId}`,
+  );
+  // Photos are already persisted on storage_bookings.checkinPhotoUrls and will
+  // be auto-linked to any damage claim filed at checkout via linkCheckinPhotosToClaim().
+}
+
+/**
+ * Auto-link check-in photos as `photo_before` evidence on a damage claim.
+ * Called from the checkout claim flow so every claim inherits the move-in
+ * baseline without the manager needing to re-upload.
+ */
+export async function linkCheckinPhotosToClaim(
+  storageBookingId: number,
+  damageClaimId: number,
+): Promise<number> {
+  try {
+    const [booking] = await db
+      .select({ checkinPhotoUrls: storageBookings.checkinPhotoUrls })
+      .from(storageBookings)
+      .where(eq(storageBookings.id, storageBookingId))
+      .limit(1);
+
+    const photoUrls = Array.isArray(booking?.checkinPhotoUrls)
+      ? (booking!.checkinPhotoUrls as string[])
+      : [];
+
+    if (photoUrls.length === 0) {
+      logger.info(
+        `[StorageCheckin] No baseline photos to link for booking ${storageBookingId} → claim ${damageClaimId}`,
+      );
+      return 0;
+    }
+
+    for (const url of photoUrls) {
+      await db.insert(damageEvidence).values({
+        damageClaimId,
+        evidenceType: 'photo_before',
+        fileUrl: url,
+        fileName: null,
+        fileSize: null,
+        uploadedBy: null,
+        uploadedAt: new Date(),
+      } as any);
+    }
+
+    logger.info(
+      `[StorageCheckin] Linked ${photoUrls.length} baseline photos to claim ${damageClaimId} for booking ${storageBookingId}`,
+    );
+    return photoUrls.length;
+  } catch (error) {
+    logger.error(`[StorageCheckin] Error linking baseline photos to claim:`, error);
+    return 0;
+  }
+}
+
+/**
+ * Send check-in request notification to manager. Currently reuses the
+ * storage-checkout notification template with slightly adjusted copy.
+ */
+async function sendCheckinRequestNotification(
+  storageBookingId: number,
+  chefId: number
+): Promise<void> {
+  try {
+    await sendCheckoutRequestNotification(storageBookingId, chefId);
+    logger.info(
+      `[StorageCheckin] Notification sent for booking ${storageBookingId} check-in request by chef ${chefId}`,
+    );
+  } catch (error) {
+    logger.error(`[StorageCheckin] Failed to send check-in notification:`, error);
+  }
+}
+
+// ============================================================================
+// MANAGER CHECK-IN REVIEW (Approve / Deny)
+// ============================================================================
+
+/**
+ * Manager approves a chef-submitted storage check-in (move-in inspection).
+ * This records the baseline and transitions the booking to `checkin_completed`.
+ * Baseline photos remain on the booking for auto-linking to any future claim.
+ */
+export async function approveStorageCheckin(
+  storageBookingId: number,
+  managerId: number,
+): Promise<CheckinReviewResult> {
+  try {
+    if (!storageBookingId || storageBookingId <= 0) {
+      return { success: false, error: 'Invalid storage booking ID' };
+    }
+    if (!managerId || managerId <= 0) {
+      return { success: false, error: 'Invalid manager ID' };
+    }
+
+    const [row] = await db
+      .select({
+        booking: storageBookings,
+        managerIdForLocation: locations.managerId,
+      })
+      .from(storageBookings)
+      .innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId))
+      .innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId))
+      .innerJoin(locations, eq(locations.id, kitchens.locationId))
+      .where(eq(storageBookings.id, storageBookingId))
+      .limit(1);
+
+    if (!row) {
+      return { success: false, error: 'Storage booking not found' };
+    }
+    if (row.managerIdForLocation !== managerId) {
+      return { success: false, error: 'You do not manage this location' };
+    }
+
+    const current = (row.booking.checkinStatus ?? 'not_checked_in') as StorageCheckinStatus;
+    if (current !== 'checkin_requested') {
+      return {
+        success: false,
+        error: `Cannot approve check-in — current status is '${current}'`,
+      };
+    }
+
+    await db
+      .update(storageBookings)
+      .set({
+        checkinStatus: 'checkin_completed',
+        checkinCompletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(storageBookings.id, storageBookingId));
+
+    logger.info(
+      `[StorageCheckin] Manager ${managerId} approved check-in for booking ${storageBookingId}`,
+    );
+
+    return {
+      success: true,
+      storageBookingId,
+      checkinStatus: 'checkin_completed',
+    };
+  } catch (error) {
+    logger.error(`[StorageCheckin] Error approving check-in:`, error);
+    return { success: false, error: 'Failed to approve check-in' };
+  }
+}
+
+/**
+ * Manager skips the check-in step (e.g. chef moved in without submitting, or
+ * this booking predates the feature). Transitions to `skipped`.
+ */
+export async function skipStorageCheckin(
+  storageBookingId: number,
+  managerId: number,
+): Promise<CheckinReviewResult> {
+  try {
+    const [row] = await db
+      .select({
+        booking: storageBookings,
+        managerIdForLocation: locations.managerId,
+      })
+      .from(storageBookings)
+      .innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId))
+      .innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId))
+      .innerJoin(locations, eq(locations.id, kitchens.locationId))
+      .where(eq(storageBookings.id, storageBookingId))
+      .limit(1);
+
+    if (!row) {
+      return { success: false, error: 'Storage booking not found' };
+    }
+    if (row.managerIdForLocation !== managerId) {
+      return { success: false, error: 'You do not manage this location' };
+    }
+
+    await db
+      .update(storageBookings)
+      .set({
+        checkinStatus: 'skipped',
+        updatedAt: new Date(),
+      })
+      .where(eq(storageBookings.id, storageBookingId));
+
+    logger.info(
+      `[StorageCheckin] Manager ${managerId} skipped check-in for booking ${storageBookingId}`,
+    );
+
+    return {
+      success: true,
+      storageBookingId,
+      checkinStatus: 'skipped',
+    };
+  } catch (error) {
+    logger.error(`[StorageCheckin] Error skipping check-in:`, error);
+    return { success: false, error: 'Failed to skip check-in' };
+  }
+}
+
+/**
+ * List all storage bookings whose chef has requested check-in and are awaiting
+ * this manager's review. Scoped to locations the manager owns.
+ */
+export async function getPendingStorageCheckinsForManager(
+  managerId: number,
+): Promise<PendingCheckinReview[]> {
+  try {
+    const rows = await db
+      .select({
+        storageBookingId: storageBookings.id,
+        storageListingId: storageBookings.storageListingId,
+        storageName: storageListings.name,
+        storageType: storageListings.storageType,
+        kitchenId: storageListings.kitchenId,
+        kitchenName: kitchens.name,
+        locationId: kitchens.locationId,
+        locationName: locations.name,
+        chefId: storageBookings.chefId,
+        chefEmail: users.username,
+        chefName: users.username,
+        startDate: storageBookings.startDate,
+        endDate: storageBookings.endDate,
+        totalPrice: storageBookings.totalPrice,
+        checkinStatus: storageBookings.checkinStatus,
+        checkinRequestedAt: storageBookings.checkinRequestedAt,
+        checkinCompletedAt: storageBookings.checkinCompletedAt,
+        checkinNotes: storageBookings.checkinNotes,
+        checkinPhotoUrls: storageBookings.checkinPhotoUrls,
+        checkinChecklistItems: storageBookings.checkinChecklistItems,
+      })
+      .from(storageBookings)
+      .innerJoin(storageListings, eq(storageListings.id, storageBookings.storageListingId))
+      .innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId))
+      .innerJoin(locations, eq(locations.id, kitchens.locationId))
+      .leftJoin(users, eq(users.id, storageBookings.chefId))
+      .where(
+        and(
+          eq(locations.managerId, managerId),
+          eq(storageBookings.checkinStatus, 'checkin_requested'),
+        ),
+      )
+      .orderBy(desc(storageBookings.checkinRequestedAt));
+
+    return rows.map((r) => ({
+      storageBookingId: r.storageBookingId,
+      storageListingId: r.storageListingId,
+      storageName: r.storageName,
+      storageType: r.storageType,
+      kitchenId: r.kitchenId,
+      kitchenName: r.kitchenName,
+      locationId: r.locationId,
+      locationName: r.locationName,
+      chefId: r.chefId,
+      chefEmail: r.chefEmail,
+      chefName: r.chefName,
+      startDate: r.startDate,
+      endDate: r.endDate,
+      totalPrice: String(r.totalPrice ?? ''),
+      checkinStatus: (r.checkinStatus ?? 'checkin_requested') as StorageCheckinStatus,
+      checkinRequestedAt: r.checkinRequestedAt,
+      checkinCompletedAt: r.checkinCompletedAt,
+      checkinNotes: r.checkinNotes,
+      checkinPhotoUrls: Array.isArray(r.checkinPhotoUrls)
+        ? (r.checkinPhotoUrls as string[])
+        : [],
+      checkinChecklistItems: Array.isArray(r.checkinChecklistItems)
+        ? (r.checkinChecklistItems as Array<{ id: string; label: string; checked: boolean }>)
+        : [],
+    }));
+  } catch (error) {
+    logger.error(`[StorageCheckin] Error fetching pending check-ins for manager ${managerId}:`, error);
+    return [];
+  }
+}
+
 /**
  * Get checkout status for a specific storage booking.
  * Includes review deadline and extended claim window info.
@@ -1203,6 +1830,84 @@ export async function getCheckoutStatus(storageBookingId: number): Promise<{
   } catch (error) {
     logger.error(`[StorageCheckout] Error getting checkout status:`, error);
     return null;
+  }
+}
+
+/**
+ * Get check-in history (approved and skipped) for manager's locations.
+ * Symmetric with getCheckoutHistory.
+ */
+export async function getCheckinHistory(locationIds: number[], limit: number = 20): Promise<PendingCheckinReview[]> {
+  try {
+    const results = await db
+      .select({
+        storageBookingId: storageBookings.id,
+        storageListingId: storageBookings.storageListingId,
+        storageName: storageListings.name,
+        storageType: storageListings.storageType,
+        kitchenId: storageListings.kitchenId,
+        kitchenName: kitchens.name,
+        locationId: kitchens.locationId,
+        locationName: locations.name,
+        chefId: storageBookings.chefId,
+        chefEmail: users.username,
+        chefName: users.username,
+        startDate: storageBookings.startDate,
+        endDate: storageBookings.endDate,
+        totalPrice: storageBookings.totalPrice,
+        checkinStatus: storageBookings.checkinStatus,
+        checkinRequestedAt: storageBookings.checkinRequestedAt,
+        checkinCompletedAt: storageBookings.checkinCompletedAt,
+        checkinNotes: storageBookings.checkinNotes,
+        checkinPhotoUrls: storageBookings.checkinPhotoUrls,
+        checkinChecklistItems: storageBookings.checkinChecklistItems,
+      })
+      .from(storageBookings)
+      .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+      .innerJoin(kitchens, eq(kitchens.id, storageListings.kitchenId))
+      .innerJoin(locations, eq(locations.id, kitchens.locationId))
+      .leftJoin(users, eq(users.id, storageBookings.chefId))
+      .where(
+        and(
+          inArray(locations.id, locationIds),
+          or(
+            eq(storageBookings.checkinStatus, 'checkin_completed'),
+            eq(storageBookings.checkinStatus, 'skipped'),
+          )
+        )
+      )
+      .orderBy(desc(storageBookings.checkinCompletedAt))
+      .limit(limit);
+
+    return results.map(r => ({
+      storageBookingId: r.storageBookingId,
+      storageListingId: r.storageListingId,
+      storageName: r.storageName || 'Storage',
+      storageType: r.storageType || 'dry',
+      kitchenId: r.kitchenId,
+      kitchenName: r.kitchenName || 'Kitchen',
+      locationId: r.locationId,
+      locationName: r.locationName || 'Location',
+      chefId: r.chefId,
+      chefEmail: r.chefEmail,
+      chefName: r.chefName,
+      startDate: r.startDate,
+      endDate: r.endDate,
+      totalPrice: String(r.totalPrice ?? ''),
+      checkinStatus: (r.checkinStatus ?? 'checkin_completed') as StorageCheckinStatus,
+      checkinRequestedAt: r.checkinRequestedAt,
+      checkinCompletedAt: r.checkinCompletedAt,
+      checkinNotes: r.checkinNotes,
+      checkinPhotoUrls: Array.isArray(r.checkinPhotoUrls)
+        ? (r.checkinPhotoUrls as string[])
+        : [],
+      checkinChecklistItems: Array.isArray(r.checkinChecklistItems)
+        ? (r.checkinChecklistItems as Array<{ id: string; label: string; checked: boolean }>)
+        : [],
+    }));
+  } catch (error) {
+    logger.error(`[StorageCheckin] Error getting check-in history:`, error);
+    return [];
   }
 }
 

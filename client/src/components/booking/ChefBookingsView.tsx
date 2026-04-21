@@ -35,6 +35,7 @@ import {
   X,
   Package,
   CalendarPlus,
+  LogIn,
   LogOut,
   Building2,
 } from "lucide-react"
@@ -71,10 +72,13 @@ import { DEFAULT_TIMEZONE, isBookingPast } from "@/utils/timezone-utils"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { StorageExtensionDialog } from "./StorageExtensionDialog"
 import { StorageCheckoutDialog } from "./StorageCheckoutDialog"
+import { StorageCheckinDialog } from "./StorageCheckinDialog"
 import { CheckoutStatusTracker } from "./CheckoutStatusTracker"
+import { CheckinStatusTracker } from "./CheckinStatusTracker"
 import { ExpiringStorageNotification } from "./ExpiringStorageNotification"
 import { PendingOverstayPenalties } from "../chef/PendingOverstayPenalties"
 import { CancellationRequestSheet, type CancellationTarget } from "./CancellationRequestSheet"
+import { KitchenCheckinTracker } from "./KitchenCheckinTracker"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
 import { format, differenceInDays } from "date-fns"
@@ -112,6 +116,16 @@ interface Booking {
   refundAmount?: number            // Actual refund amount in cents (from PT)
   chargedAmount?: number | null     // Tax-inclusive amount from PT (what chef actually paid/authorized)
   cancellationRequestedAt?: string
+  // ── Kitchen Check-In/Checkout Lifecycle ──────────────────────────────────
+  checkinStatus?: string | null
+  checkedInAt?: string | null
+  checkedInMethod?: string | null
+  checkoutRequestedAt?: string | null
+  checkedOutAt?: string | null
+  checkoutApprovedAt?: string | null
+  noShowDetectedAt?: string | null
+  accessCodeValidFrom?: string | null
+  accessCodeValidUntil?: string | null
 }
 
 interface StorageBooking {
@@ -121,6 +135,7 @@ interface StorageBooking {
   kitchenBookingId?: number
   storageName?: string
   storageType?: string
+  locationId?: number
   locationName?: string
   kitchenName?: string
   startDate: string
@@ -130,6 +145,9 @@ interface StorageBooking {
   checkoutStatus?: string
   checkoutRequestedAt?: string
   checkoutApprovedAt?: string
+  checkinStatus?: string
+  checkinRequestedAt?: string
+  checkinCompletedAt?: string
   cancellationRequestedAt?: string
   totalPrice?: number
   serviceFee?: number
@@ -271,6 +289,7 @@ interface BookingColumnsProps {
   onCancelBooking: (bookingId: number) => void
   onDownloadInvoice: (bookingId: number, bookingDate: string) => void | Promise<void>
   onNavigate: (path: string) => void
+  onCheckinTracker: (bookingId: number) => void
   downloadingInvoiceId: number | null
   now: Date
   kitchens: Array<{ id: number; name: string; locationName?: string }>
@@ -282,6 +301,7 @@ const getChefBookingColumns = ({
   onCancelBooking,
   onDownloadInvoice,
   onNavigate,
+  onCheckinTracker,
   downloadingInvoiceId,
   now,
   kitchens,
@@ -347,6 +367,11 @@ const getChefBookingColumns = ({
           icon = <XCircle className="h-3 w-3 mr-1" />
           label = "Declined"
         }
+      } else if (status === 'completed') {
+        variant = "default"
+        icon = <CheckCircle className="h-3 w-3 mr-1" />
+        className = "bg-blue-600 hover:bg-blue-700"
+        label = "Completed"
       } else if (status === 'cancellation_requested') {
         variant = "secondary"
         icon = <Clock className="h-3 w-3 mr-1" />
@@ -393,6 +418,23 @@ const getChefBookingColumns = ({
       const isVoided = booking.isVoidedAuthorization === true
       const isAuthHold = booking.isAuthorizedHold === true
 
+      // ── Kitchen Check-In/Check-Out lifecycle badge (chef-facing) ──────────
+      const checkinStatus = booking.checkinStatus
+      let checkinBadge: { label: string; bg: string; text: string; border: string; icon: React.ReactNode } | null = null
+      if ((status === 'confirmed' || status === 'completed') && checkinStatus) {
+        if (checkinStatus === 'checked_in') {
+          checkinBadge = { label: 'Checked In', bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', icon: <LogIn className="h-2.5 w-2.5" /> }
+        } else if (checkinStatus === 'checkout_requested') {
+          checkinBadge = { label: 'Checkout Pending Review', bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', icon: <Clock className="h-2.5 w-2.5" /> }
+        } else if (checkinStatus === 'checked_out') {
+          checkinBadge = { label: 'Checked Out', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: <CheckCircle className="h-2.5 w-2.5" /> }
+        } else if (checkinStatus === 'no_show') {
+          checkinBadge = { label: 'No-Show', bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', icon: <XCircle className="h-2.5 w-2.5" /> }
+        } else if (checkinStatus === 'checkout_claim_filed') {
+          checkinBadge = { label: 'Claim Filed', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', icon: <AlertTriangle className="h-2.5 w-2.5" /> }
+        }
+      }
+
       return (
         <div className="flex flex-col gap-1">
           <div className="flex items-center">
@@ -402,6 +444,12 @@ const getChefBookingColumns = ({
             </Badge>
             {timeBadge}
           </div>
+          {checkinBadge && (
+            <div className={cn("flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border w-fit", checkinBadge.bg, checkinBadge.text, checkinBadge.border)}>
+              {checkinBadge.icon}
+              {checkinBadge.label}
+            </div>
+          )}
           {isVoided && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded border border-border w-fit">
               <XCircle className="h-2.5 w-2.5" />
@@ -723,6 +771,19 @@ const getChefBookingColumns = ({
               View Details
             </DropdownMenuItem>
 
+            {(booking.status === 'confirmed' || booking.status === 'completed') && (
+              <DropdownMenuItem onClick={() => onCheckinTracker(booking.id)}>
+                <LogIn className="h-4 w-4 mr-2" />
+                {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
+                  ? 'Check In'
+                  : booking.status === 'completed'
+                    ? 'View Session Summary'
+                    : booking.checkinStatus === 'checked_in'
+                      ? 'View Check-In Status'
+                      : 'Check-In / Checkout Status'}
+              </DropdownMenuItem>
+            )}
+
             {canDownloadInvoice && (
               <DropdownMenuItem
                 onClick={() => onDownloadInvoice(booking.id, booking.bookingDate)}
@@ -765,7 +826,9 @@ interface StorageBookingColumnsProps {
   onExtend: (storageBookingId: number) => void
   onDownloadInvoice: (storageBookingId: number) => void | Promise<void>
   onCheckout: (storageBookingId: number) => void
+  onCheckin: (storageBookingId: number) => void
   onViewCheckoutStatus: (storageBookingId: number) => void
+  onViewCheckinStatus: (storageBookingId: number) => void
   onCancelStorage: (storageBookingId: number) => void
   downloadingInvoiceId: number | null
   now: Date
@@ -776,7 +839,9 @@ const getStorageBookingColumns = ({
   onExtend,
   onDownloadInvoice,
   onCheckout,
+  onCheckin,
   onViewCheckoutStatus,
+  onViewCheckinStatus,
   onCancelStorage,
   downloadingInvoiceId,
   now,
@@ -994,13 +1059,35 @@ const getStorageBookingColumns = ({
       const isCompleted = storageBooking.status === 'completed'
       const isCancellationRequested = storageBooking.status === 'cancellation_requested'
       const canCancel = (isConfirmed || storageBooking.status === 'pending') && !isCancellationRequested
-      const canCheckout = storageBooking.checkoutStatus === 'active'
+      const checkoutStatusActive = storageBooking.checkoutStatus === 'active'
       const bookingEndDate = new Date(storageBooking.endDate)
       bookingEndDate.setHours(0, 0, 0, 0)
       const todayStart = new Date()
       todayStart.setHours(0, 0, 0, 0)
       const isExpired = bookingEndDate < todayStart
-      const canExtend = isConfirmed && canCheckout && !isCompleted && !isExpired
+
+      // Storage Check-In: available once the booking has started and before
+      // check-in has been completed. Symmetric with the checkout gate below.
+      const bookingStartDate = new Date(storageBooking.startDate)
+      bookingStartDate.setHours(0, 0, 0, 0)
+      const hasStarted = bookingStartDate <= todayStart
+      const checkinStatus = storageBooking.checkinStatus || 'not_checked_in'
+      const checkinCompleted = checkinStatus === 'checkin_completed' || checkinStatus === 'skipped'
+      const canCheckin =
+        isConfirmed &&
+        checkoutStatusActive &&
+        hasStarted &&
+        !checkinCompleted
+
+      // Storage Check-Out: only available AFTER check-in is completed.
+      // You cannot check out of a storage unit you haven't checked into.
+      const canCheckout =
+        isConfirmed &&
+        checkoutStatusActive &&
+        checkinCompleted
+
+      const canExtend = isConfirmed && checkoutStatusActive && !isCompleted && !isExpired
+      const checkinSubmitted = checkinStatus === 'checkin_requested'
 
       return (
         <DropdownMenu>
@@ -1028,6 +1115,36 @@ const getStorageBookingColumns = ({
               )}
               Download Invoice
             </DropdownMenuItem>
+
+            {canCheckin && !checkinSubmitted && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onCheckin(storageBooking.id)}>
+                  <LogIn className="h-4 w-4 mr-2" />
+                  Request Check-In
+                </DropdownMenuItem>
+              </>
+            )}
+
+            {checkinSubmitted && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onViewCheckinStatus(storageBooking.id)}>
+                  <Clock className="h-4 w-4 mr-2 text-blue-600" />
+                  View Check-In Status
+                </DropdownMenuItem>
+              </>
+            )}
+
+            {checkinCompleted && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onViewCheckinStatus(storageBooking.id)}>
+                  <CheckCircle className="h-4 w-4 mr-2 text-emerald-600" />
+                  View Check-In History
+                </DropdownMenuItem>
+              </>
+            )}
 
             {isConfirmed && canCheckout && (
               <>
@@ -1086,8 +1203,11 @@ export default function ChefBookingsView({
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<number | null>(null)
   const [extendDialogOpen, setExtendDialogOpen] = useState<number | null>(null)
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState<number | null>(null)
+  const [checkinDialogOpen, setCheckinDialogOpen] = useState<number | null>(null)
   const [checkoutStatusBookingId, setCheckoutStatusBookingId] = useState<number | null>(null)
+  const [checkinStatusBookingId, setCheckinStatusBookingId] = useState<number | null>(null)
   const [cancellationTarget, setCancellationTarget] = useState<CancellationTarget | null>(null)
+  const [checkinTrackerBookingId, setCheckinTrackerBookingId] = useState<number | null>(null)
 
   // TanStack Table state
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }])
@@ -1438,6 +1558,7 @@ export default function ChefBookingsView({
       onCancelBooking: handleCancel,
       onDownloadInvoice: handleDownloadInvoice,
       onNavigate: navigate,
+      onCheckinTracker: (id) => setCheckinTrackerBookingId(id),
       downloadingInvoiceId,
       now,
       kitchens,
@@ -1453,7 +1574,9 @@ export default function ChefBookingsView({
       onExtend: (id) => setExtendDialogOpen(id),
       onDownloadInvoice: handleDownloadStorageInvoice,
       onCheckout: (id) => setCheckoutDialogOpen(id),
+      onCheckin: (id) => setCheckinDialogOpen(id),
       onViewCheckoutStatus: (id) => setCheckoutStatusBookingId(id),
+      onViewCheckinStatus: (id) => setCheckinStatusBookingId(id),
       onCancelStorage: handleCancelStorage,
       downloadingInvoiceId,
       now,
@@ -1504,6 +1627,45 @@ export default function ChefBookingsView({
     cancellation_requested: { variant: "secondary" as const, className: "bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200" },
   }
 
+  // ── Compute bookings needing check-in/check-out action ──────────────────
+  const needsCheckinBookings = useMemo(() => {
+    const now = new Date()
+    return upcomingBookings.filter(b => {
+      if (b.status !== 'confirmed') return false
+      if (b.checkinStatus && b.checkinStatus !== 'not_checked_in') return false
+      // Show for bookings happening today or within 1 hour
+      const dateStr = b.bookingDate.split('T')[0]
+      const bookingStart = new Date(`${dateStr}T${b.startTime}`)
+      const hoursUntil = (bookingStart.getTime() - now.getTime()) / (1000 * 60 * 60)
+      return hoursUntil <= 2 // Within 2 hours of start time
+    })
+  }, [upcomingBookings])
+
+  const needsCheckoutBookings = useMemo(() => {
+    return upcomingBookings.filter(b => {
+      if (b.status !== 'confirmed') return false
+      return b.checkinStatus === 'checked_in'
+    })
+  }, [upcomingBookings])
+
+  const needsStorageCheckin = useMemo(() => {
+    const now = new Date()
+    const todayStr = now.toISOString().split('T')[0]
+    return (storageBookings as StorageBooking[]).filter(sb => {
+      if (sb.status !== 'confirmed') return false
+      if (sb.checkinStatus && sb.checkinStatus !== 'not_checked_in') return false
+      const sd = String(sb.startDate).split('T')[0]
+      return sd <= todayStr // Start date is today or earlier
+    })
+  }, [storageBookings])
+
+  const needsStorageCheckout = useMemo(() => {
+    return (storageBookings as StorageBooking[]).filter(sb => {
+      if (sb.status !== 'confirmed') return false
+      return sb.checkinStatus === 'checkin_completed' && (!sb.checkoutStatus || sb.checkoutStatus === 'active')
+    })
+  }, [storageBookings])
+
   return (
     <div className="space-y-6">
       {/* Pending Overstay Penalties */}
@@ -1511,6 +1673,151 @@ export default function ChefBookingsView({
 
       {/* Expiring Storage Notifications */}
       <ExpiringStorageNotification />
+
+      {/* ── Check-In Action Banner ──────────────────────────────────────── */}
+      {needsCheckinBookings.length > 0 && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <div className="flex items-start gap-3">
+            <LogIn className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-blue-900">
+                {needsCheckinBookings.length === 1
+                  ? "Time to Check In!"
+                  : `${needsCheckinBookings.length} Bookings Need Check-In`}
+              </h3>
+              <p className="text-xs text-blue-700 mt-1">
+                You must check in when you arrive at the kitchen. Complete a quick checklist and snap photos to document the condition — this protects you if any issues arise.
+              </p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                {needsCheckinBookings.map(b => {
+                  const kitchen = kitchens.find(k => k.id === b.kitchenId)
+                  const kitchenName = kitchen?.name || b.kitchenName || `Kitchen #${b.kitchenId}`
+                  return (
+                    <Button
+                      key={b.id}
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={() => setCheckinTrackerBookingId(b.id)}
+                    >
+                      <LogIn className="h-3.5 w-3.5 mr-1.5" />
+                      Check In — {kitchenName}
+                    </Button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Check-Out Action Banner ─────────────────────────────────────── */}
+      {needsCheckoutBookings.length > 0 && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex items-start gap-3">
+            <LogOut className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-emerald-900">
+                {needsCheckoutBookings.length === 1
+                  ? "Ready to Check Out?"
+                  : `${needsCheckoutBookings.length} Bookings Need Check-Out`}
+              </h3>
+              <p className="text-xs text-emerald-700 mt-1">
+                Submit your check-out photos when you're done. The manager will review and clear your session.
+              </p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                {needsCheckoutBookings.map(b => {
+                  const kitchen = kitchens.find(k => k.id === b.kitchenId)
+                  const kitchenName = kitchen?.name || b.kitchenName || `Kitchen #${b.kitchenId}`
+                  return (
+                    <Button
+                      key={b.id}
+                      size="sm"
+                      variant="outline"
+                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                      onClick={() => setCheckinTrackerBookingId(b.id)}
+                    >
+                      <LogOut className="h-3.5 w-3.5 mr-1.5" />
+                      Check Out — {kitchenName}
+                    </Button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Storage Check-In Action Banner (only when not checked in) ──── */}
+      {needsStorageCheckin.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <Package className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-amber-900">
+                {needsStorageCheckin.length === 1
+                  ? "Storage Move-In Inspection Due"
+                  : `${needsStorageCheckin.length} Storage Units Need Check-In`}
+              </h3>
+              <p className="text-xs text-amber-700 mt-1">
+                Complete the move-in checklist and upload photos of your storage unit. This establishes the baseline condition and protects you from unfair damage claims. You must check in before you can check out.
+              </p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                {needsStorageCheckin.map(sb => {
+                  const isSubmitted = sb.checkinStatus === 'checkin_requested'
+                  return (
+                    <Button
+                      key={`checkin-${sb.id}`}
+                      size="sm"
+                      className={isSubmitted ? "border-amber-300 text-amber-700 hover:bg-amber-100" : "bg-amber-600 hover:bg-amber-700 text-white"}
+                      variant={isSubmitted ? "outline" : "default"}
+                      onClick={() => isSubmitted ? setCheckinStatusBookingId(sb.id) : setCheckinDialogOpen(sb.id)}
+                    >
+                      {isSubmitted ? (
+                        <><Eye className="h-3.5 w-3.5 mr-1.5" />View Status — {sb.storageName || `Storage #${sb.id}`}</>
+                      ) : (
+                        <><LogIn className="h-3.5 w-3.5 mr-1.5" />Check In — {sb.storageName || `Storage #${sb.id}`}</>
+                      )}
+                    </Button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Storage Check-Out Action Banner (only after check-in completed) ── */}
+      {needsStorageCheckout.length > 0 && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex items-start gap-3">
+            <LogOut className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-emerald-900">
+                {needsStorageCheckout.length === 1
+                  ? "Ready to Move Out?"
+                  : `${needsStorageCheckout.length} Storage Units Ready for Check-Out`}
+              </h3>
+              <p className="text-xs text-emerald-700 mt-1">
+                Submit your check-out photos showing the unit is clean and empty. The manager will review and clear you.
+              </p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                {needsStorageCheckout.map(sb => (
+                  <Button
+                    key={`checkout-${sb.id}`}
+                    size="sm"
+                    variant="outline"
+                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                    onClick={() => setCheckoutDialogOpen(sb.id)}
+                  >
+                    <LogOut className="h-3.5 w-3.5 mr-1.5" />
+                    Check Out — {sb.storageName || `Storage #${sb.id}`}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Kitchen Bookings Table */}
       <Card>
@@ -1822,6 +2129,21 @@ export default function ChefBookingsView({
         />
       )}
 
+      {/* Storage Check-In Dialog (move-in inspection baseline) */}
+      {checkinDialogOpen && (
+        <StorageCheckinDialog
+          open={checkinDialogOpen !== null}
+          onOpenChange={(open) => !open && setCheckinDialogOpen(null)}
+          storageBooking={(storageBookings as StorageBooking[]).find((b) => b.id === checkinDialogOpen) || {
+            id: checkinDialogOpen,
+            storageName: 'Storage Unit',
+            storageType: 'dry',
+            startDate: new Date().toISOString(),
+          }}
+          onSuccess={() => setCheckinDialogOpen(null)}
+        />
+      )}
+
       {/* Checkout Status Tracker */}
       {checkoutStatusBookingId && (
         <CheckoutStatusTracker
@@ -1830,6 +2152,34 @@ export default function ChefBookingsView({
           storageBookingId={checkoutStatusBookingId}
           storageName={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkoutStatusBookingId)?.storageName}
           checkoutStatus={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkoutStatusBookingId)?.checkoutStatus}
+        />
+      )}
+
+      {/* Check-In Status Tracker (move-in inspection history) */}
+      {checkinStatusBookingId && (
+        <CheckinStatusTracker
+          open={checkinStatusBookingId !== null}
+          onOpenChange={(open) => !open && setCheckinStatusBookingId(null)}
+          storageBookingId={checkinStatusBookingId}
+          storageName={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkinStatusBookingId)?.storageName}
+          checkinStatus={(storageBookings as StorageBooking[]).find((sb) => sb.id === checkinStatusBookingId)?.checkinStatus}
+        />
+      )}
+
+      {/* Kitchen Check-In / Checkout Tracker */}
+      {checkinTrackerBookingId && (
+        <KitchenCheckinTracker
+          open={checkinTrackerBookingId !== null}
+          onOpenChange={(open) => !open && setCheckinTrackerBookingId(null)}
+          bookingId={checkinTrackerBookingId}
+          kitchenName={(() => {
+            const b = bookings.find(bk => bk.id === checkinTrackerBookingId)
+            if (!b) return undefined
+            return b.kitchenName || kitchens.find(k => k.id === b.kitchenId)?.name
+          })()}
+          bookingDate={bookings.find(bk => bk.id === checkinTrackerBookingId)?.bookingDate?.split('T')[0]}
+          startTime={bookings.find(bk => bk.id === checkinTrackerBookingId)?.startTime}
+          endTime={bookings.find(bk => bk.id === checkinTrackerBookingId)?.endTime}
         />
       )}
 

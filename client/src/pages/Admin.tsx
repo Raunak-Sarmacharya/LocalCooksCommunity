@@ -16,6 +16,7 @@ import { PlatformOverviewSection } from "@/components/admin/sections/PlatformOve
 import { AdminTransactionHistory } from "@/components/admin/sections/AdminTransactionHistory";
 import AdminOverstayPenalties from "@/components/admin/sections/AdminOverstayPenalties";
 import AdminDamageClaimsHistory from "@/components/admin/sections/AdminDamageClaimsHistory";
+import { AccessCodeDashboard } from "@/components/admin/sections/AccessCodeDashboard";
 import {
   formatApplicationStatus,
   formatCertificationStatus,
@@ -106,7 +107,7 @@ function AdminDashboard() {
     "platform-overview", "platform-settings", "overstay-settings",
     "damage-claim-settings", "account-settings", "overview", "transactions",
     "overstay-penalties-history", "damage-claims-history",
-    "security-settings",
+    "security-settings", "access-codes",
   ], []);
 
   const [activeSection, setActiveSection] = useState<AdminSection>(() => {
@@ -1159,6 +1160,13 @@ function AdminDashboard() {
 
       case "damage-claim-settings":
         return <DamageClaimSettings />;
+
+      case "access-codes":
+        return (
+          <ErrorBoundary>
+            <AccessCodeDashboard />
+          </ErrorBoundary>
+        );
 
       case "security-settings":
         return (

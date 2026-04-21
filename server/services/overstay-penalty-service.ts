@@ -32,7 +32,7 @@ import { getOverstayPlatformDefaults, getEffectivePenaltyConfig } from "./overst
 // Initialize Stripe
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
-  apiVersion: '2025-12-15.clover',
+  apiVersion: '2026-02-25.clover',
 }) : null;
 
 // ============================================================================
@@ -651,6 +651,118 @@ export async function processManagerDecision(decision: ManagerPenaltyDecision): 
     finalPenaltyCents: updateData.finalPenaltyCents,
   });
 
+  // Send in-app notifications and emails to chef about the decision
+  try {
+    const { notificationService } = await import('./notification.service');
+    const { sendEmail, generatePenaltyApprovedEmail, generatePenaltyWaivedEmail } = await import('../email');
+
+    // Get booking context for notification data
+    const [booking] = await db
+      .select({
+        chefId: storageBookings.chefId,
+        storageListingId: storageBookings.storageListingId,
+      })
+      .from(storageBookings)
+      .where(eq(storageBookings.id, record.storageBookingId))
+      .limit(1);
+
+    let storageName = 'Storage';
+    let kitchenNameForNotif = 'Kitchen';
+
+    if (booking?.storageListingId) {
+      const [listingInfo] = await db
+        .select({ name: storageListings.name, kitchenId: storageListings.kitchenId })
+        .from(storageListings)
+        .where(eq(storageListings.id, booking.storageListingId))
+        .limit(1);
+      storageName = listingInfo?.name || 'Storage';
+
+      if (listingInfo?.kitchenId) {
+        const [kitchenInfo] = await db
+          .select({ name: kitchens.name })
+          .from(kitchens)
+          .where(eq(kitchens.id, listingInfo.kitchenId))
+          .limit(1);
+        kitchenNameForNotif = kitchenInfo?.name || 'Kitchen';
+      }
+    }
+
+    if (action === 'approve' || action === 'adjust') {
+      // In-app notification to chef
+      if (booking?.chefId) {
+        await notificationService.notifyChefPenaltyApproved({
+          chefId: booking.chefId,
+          overstayId: overstayRecordId,
+          storageName,
+          kitchenName: kitchenNameForNotif,
+          daysOverdue: record.daysOverdue,
+          penaltyAmountCents: updateData.finalPenaltyCents || record.calculatedPenaltyCents,
+        });
+
+        // Email to chef
+        const [chefUser] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, booking.chefId))
+          .limit(1);
+
+        if (chefUser?.username) {
+          try {
+            await sendEmail(generatePenaltyApprovedEmail({
+              chefEmail: chefUser.username,
+              chefName: chefUser.username.split('@')[0],
+              storageName,
+              kitchenName: kitchenNameForNotif,
+              daysOverdue: record.daysOverdue,
+              penaltyAmountCents: updateData.finalPenaltyCents || record.calculatedPenaltyCents,
+            }));
+            logger.info(`[OverstayService] Sent penalty approved email to chef for overstay ${overstayRecordId}`);
+          } catch (emailError) {
+            logger.error(`[OverstayService] Error sending penalty approved email:`, emailError);
+          }
+        }
+      }
+    } else if (action === 'waive') {
+      // In-app notification to chef
+      if (booking?.chefId) {
+        await notificationService.notifyChefPenaltyWaived({
+          chefId: booking.chefId,
+          overstayId: overstayRecordId,
+          storageName,
+          kitchenName: kitchenNameForNotif,
+          daysOverdue: record.daysOverdue,
+          penaltyAmountCents: record.calculatedPenaltyCents,
+          waiveReason: waiveReason,
+        });
+
+        // Email to chef
+        const [chefUser] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, booking.chefId))
+          .limit(1);
+
+        if (chefUser?.username) {
+          try {
+            await sendEmail(generatePenaltyWaivedEmail({
+              chefEmail: chefUser.username,
+              chefName: chefUser.username.split('@')[0],
+              storageName,
+              kitchenName: kitchenNameForNotif,
+              daysOverdue: record.daysOverdue,
+              waiveReason,
+            }));
+            logger.info(`[OverstayService] Sent penalty waived email to chef for overstay ${overstayRecordId}`);
+          } catch (emailError) {
+            logger.error(`[OverstayService] Error sending penalty waived email:`, emailError);
+          }
+        }
+      }
+    }
+  } catch (notifError) {
+    logger.error(`[OverstayService] Error sending decision notifications:`, notifError);
+  }
+
   // ENTERPRISE STANDARD: Auto-complete the storage booking when penalty is waived.
   // The booking has expired and the manager has waived the penalty — it should no longer show as "Active".
   if (action === 'waive') {
@@ -1264,6 +1376,23 @@ async function sendEscalationPaymentLinkToChef(
         text: `Overstay Penalty — Payment Required\n\nReason: ${failureReason}\nAmount: $${penaltyAmount} CAD\nStorage: ${storageName}\nDays Overdue: ${record.daysOverdue}\n\nPay now: ${checkoutResult.checkoutUrl}\n\nThis link expires in 24 hours.`,
       });
       logger.info(`[OverstayService] Sent escalation payment link to chef ${chef.email} for overstay ${overstayRecordId}`);
+
+      // In-app notification to chef about payment required
+      try {
+        const { notificationService } = await import('./notification.service');
+        await notificationService.notifyChefPaymentRequired({
+          chefId,
+          overstayId: overstayRecordId,
+          storageName,
+          kitchenName: 'Kitchen',
+          daysOverdue: record.daysOverdue,
+          penaltyAmountCents: record.finalPenaltyCents || record.calculatedPenaltyCents || 0,
+          paymentUrl: 'checkoutUrl' in checkoutResult ? checkoutResult.checkoutUrl : undefined,
+        });
+        logger.info(`[OverstayService] Sent payment required in-app notification to chef for overstay ${overstayRecordId}`);
+      } catch (notifError) {
+        logger.error(`[OverstayService] Error sending payment required in-app notification:`, notifError);
+      }
 
       await createOverstayHistoryEntry(
         overstayRecordId,
@@ -2249,7 +2378,7 @@ export async function refundOverstayPenalty(
     }
 
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: '2025-12-15.clover',
+      apiVersion: '2026-02-25.clover',
     });
 
     // Issue Stripe refund
@@ -2324,7 +2453,7 @@ export async function refundOverstayPenalty(
       logger.warn(`[OverstayPenalty] Could not update payment_transactions for refund:`, ptError as Error);
     }
 
-    // Send refund notification email to chef
+    // Send refund notification email + in-app notification to chef
     try {
       const [booking] = await db
         .select({
@@ -2343,6 +2472,24 @@ export async function refundOverstayPenalty(
           .where(eq(users.id, booking.chefId))
           .limit(1);
 
+        // In-app notification
+        try {
+          const { notificationService } = await import('./notification.service');
+          await notificationService.notifyChefOverstayRefunded({
+            chefId: booking.chefId,
+            overstayId: overstayRecordId,
+            storageName: booking.storageName || 'Storage',
+            kitchenName: 'Kitchen',
+            daysOverdue: record.daysOverdue,
+            penaltyAmountCents: record.calculatedPenaltyCents,
+            refundAmountCents: refundAmount,
+            refundReason,
+          });
+        } catch (notifError) {
+          logger.error(`[OverstayPenalty] Error sending refund in-app notification:`, notifError);
+        }
+
+        // Email
         if (chef?.email) {
           const { sendEmail } = await import('../email');
           await sendEmail({

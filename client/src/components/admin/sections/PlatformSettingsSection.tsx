@@ -22,6 +22,16 @@ export function PlatformSettingsSection() {
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingCancellation, setIsSavingCancellation] = useState(false);
+  const [isSavingTimeWindows, setIsSavingTimeWindows] = useState(false);
+
+  // Kitchen time window defaults state.
+  // Checkout review window stays admin-only (no manager override). Kitchen
+  // overstay tracking has been removed from the product.
+  const [twDefaults, setTwDefaults] = useState({
+    checkinWindowMinutesBefore: '15',
+    noShowGraceMinutes: '30',
+    checkoutReviewWindowMinutes: '60',
+  });
   const [autoAcceptHours, setAutoAcceptHours] = useState('24');
   const [autoAcceptEnabled, setAutoAcceptEnabled] = useState(true);
 
@@ -94,6 +104,69 @@ export function PlatformSettingsSection() {
       setAutoAcceptEnabled(hours > 0);
     }
   }, [cancellationConfig]);
+
+  // Fetch kitchen time window defaults
+  const { data: timeWindowData, isLoading: timeWindowLoading } = useQuery<Record<string, { key: string; value: string; intValue: number; description: string | null; updatedAt: Date | null }>>({
+    queryKey: ['/api/admin/platform-settings/kitchen-time-windows'],
+    queryFn: async () => {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) throw new Error('Firebase user not available');
+      const token = await currentFirebaseUser.getIdToken();
+      const response = await fetch('/api/admin/platform-settings/kitchen-time-windows', {
+        credentials: 'include',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) throw new Error('Failed to fetch kitchen time window defaults');
+      return response.json();
+    },
+  });
+
+  useEffect(() => {
+    if (timeWindowData) {
+      setTwDefaults({
+        checkinWindowMinutesBefore: String(timeWindowData.checkinWindowMinutesBefore?.intValue ?? 15),
+        noShowGraceMinutes: String(timeWindowData.noShowGraceMinutes?.intValue ?? 30),
+        checkoutReviewWindowMinutes: String(timeWindowData.checkoutReviewWindowMinutes?.intValue ?? 60),
+      });
+    }
+  }, [timeWindowData]);
+
+  const timeWindowMutation = useMutation({
+    mutationFn: async (settings: { checkinWindowMinutesBefore?: number; noShowGraceMinutes?: number; checkoutReviewWindowMinutes?: number }) => {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) throw new Error('Firebase user not available');
+      const token = await currentFirebaseUser.getIdToken();
+      const response = await fetch('/api/admin/platform-settings/kitchen-time-windows', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to update kitchen time window defaults');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/platform-settings/kitchen-time-windows'] });
+      toast({ title: 'Success', description: data.message });
+      setIsSavingTimeWindows(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      setIsSavingTimeWindows(false);
+    },
+  });
+
+  const handleSaveTimeWindows = () => {
+    setIsSavingTimeWindows(true);
+    timeWindowMutation.mutate({
+      checkinWindowMinutesBefore: parseInt(twDefaults.checkinWindowMinutesBefore, 10),
+      noShowGraceMinutes: parseInt(twDefaults.noShowGraceMinutes, 10),
+      checkoutReviewWindowMinutes: parseInt(twDefaults.checkoutReviewWindowMinutes, 10),
+    });
+  };
 
   useEffect(() => {
     if (currentConfig?.config) {
@@ -455,6 +528,68 @@ export function PlatformSettingsSection() {
               <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Saving...</>
             ) : (
               <><Save className="h-4 w-4 mr-2" />Save Cancellation Policy</>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Kitchen Time Window Defaults Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100">
+              <Clock className="h-5 w-5 text-orange-600" />
+            </div>
+            <div>
+              <CardTitle>Kitchen Time Window Defaults</CardTitle>
+              <CardDescription>
+                Platform-wide defaults for kitchen check-in/out time windows. Managers can only override the check-in window and no-show grace; the checkout review window is fixed platform-wide.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label>Check-in Window (minutes before start)</Label>
+              <NumericInput
+                suffix="min"
+                value={twDefaults.checkinWindowMinutesBefore}
+                onValueChange={(val) => setTwDefaults({ ...twDefaults, checkinWindowMinutesBefore: val })}
+                className="max-w-32"
+              />
+              <p className="text-xs text-muted-foreground">How early before start time a chef can check in</p>
+            </div>
+            <div className="space-y-2">
+              <Label>No-Show Grace (minutes after start)</Label>
+              <NumericInput
+                suffix="min"
+                value={twDefaults.noShowGraceMinutes}
+                onValueChange={(val) => setTwDefaults({ ...twDefaults, noShowGraceMinutes: val })}
+                className="max-w-32"
+              />
+              <p className="text-xs text-muted-foreground">Grace period before marking as no-show</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Checkout Review Window (minutes after end)</Label>
+              <NumericInput
+                suffix="min"
+                value={twDefaults.checkoutReviewWindowMinutes}
+                onValueChange={(val) => setTwDefaults({ ...twDefaults, checkoutReviewWindowMinutes: val })}
+                className="max-w-32"
+              />
+              <p className="text-xs text-muted-foreground">How long manager has to review checkout before auto-clear (admin-only; no per-location override)</p>
+            </div>
+          </div>
+          <Button
+            onClick={handleSaveTimeWindows}
+            disabled={isSavingTimeWindows || timeWindowLoading}
+            size="sm"
+          >
+            {isSavingTimeWindows ? (
+              <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Saving...</>
+            ) : (
+              <><Save className="h-4 w-4 mr-2" />Save Time Window Defaults</>
             )}
           </Button>
         </CardContent>

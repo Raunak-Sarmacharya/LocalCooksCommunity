@@ -70,7 +70,18 @@ type NotificationType =
   // Cancellation request notifications
   | 'booking_cancellation_request'
   | 'booking_cancellation_accepted'
-  | 'booking_cancellation_declined';
+  | 'booking_cancellation_declined'
+  // Kitchen check-in/checkout notifications
+  | 'kitchen_checkin'
+  | 'kitchen_checkout_requested'
+  | 'kitchen_checkout_cleared'
+  | 'kitchen_no_show'
+  | 'kitchen_checkin_reminder'
+  // Storage checkout notifications
+  | 'storage_checkout_requested'
+  | 'storage_checkout_cleared'
+  | 'storage_checkout_claim_filed'
+  | 'storage_checkin_reminder';
 
 type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
 
@@ -597,14 +608,14 @@ async function notifyChefBookingConfirmed(data: ChefBookingNotificationData) {
     type: 'booking_confirmed',
     priority: 'high',
     title: 'Booking Confirmed!',
-    message: `Your booking at ${data.kitchenName} on ${data.bookingDate} from ${data.startTime} to ${data.endTime} has been confirmed.`,
+    message: `Your booking at ${data.kitchenName} on ${data.bookingDate} from ${data.startTime} to ${data.endTime} has been confirmed. Remember to check in when you arrive and check out when you're done — both are required for every session.`,
     metadata: {
       bookingId: data.bookingId,
       kitchenName: data.kitchenName,
       locationName: data.locationName,
       bookingDate: data.bookingDate
     },
-    actionUrl: `/dashboard?view=bookings`,
+    actionUrl: `/booking/${data.bookingId}`,
     actionLabel: 'View Booking'
   });
 }
@@ -627,6 +638,44 @@ async function notifyChefBookingCancelled(data: ChefBookingNotificationData & { 
     },
     actionUrl: `/dashboard?view=bookings`,
     actionLabel: 'View Details'
+  });
+}
+
+async function notifyChefKitchenCheckinReminder(data: { chefId: number; bookingId: number; kitchenName: string; bookingDate: string; startTime: string; endTime: string }) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'kitchen_checkin_reminder',
+    priority: 'high',
+    title: 'Time to Check In!',
+    message: `Your booking at ${data.kitchenName} starts at ${data.startTime}. Don't forget to check in when you arrive — complete the checklist and snap photos to protect yourself.`,
+    metadata: {
+      bookingId: data.bookingId,
+      kitchenName: data.kitchenName,
+      bookingDate: data.bookingDate,
+      startTime: data.startTime,
+      endTime: data.endTime
+    },
+    actionUrl: `/booking/${data.bookingId}`,
+    actionLabel: 'Check In Now',
+    expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000), // 12 hours
+  });
+}
+
+async function notifyChefStorageCheckinReminder(data: { chefId: number; storageBookingId: number; storageName: string; startDate: string }) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'storage_checkin_reminder',
+    priority: 'high',
+    title: 'Move-In Inspection Due',
+    message: `Your storage booking at ${data.storageName} starts today. Please check in by completing the move-in checklist and uploading photos — this establishes the baseline condition for your protection.`,
+    metadata: {
+      storageBookingId: data.storageBookingId,
+      storageName: data.storageName,
+      startDate: data.startDate
+    },
+    actionUrl: `/dashboard?view=bookings`,
+    actionLabel: 'Request Check-In',
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
   });
 }
 
@@ -694,6 +743,27 @@ async function notifyChefPaymentReceived(data: { chefId: number; amount: number;
   });
 }
 
+async function notifyChefPaymentRefunded(data: { chefId: number; refundAmountCents: number; currency?: string; bookingType: string; bookingName: string; reason?: string }) {
+  const formattedAmount = (data.refundAmountCents / 100).toFixed(2);
+  const currency = data.currency || 'CAD';
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'payment_refunded',
+    priority: 'normal',
+    title: 'Refund Processed',
+    message: `A refund of $${formattedAmount} ${currency} has been processed for your ${data.bookingType} booking${data.bookingName ? ` at ${data.bookingName}` : ''}.${data.reason ? ` Reason: ${data.reason}` : ''}`,
+    metadata: {
+      refundAmountCents: data.refundAmountCents,
+      currency,
+      bookingType: data.bookingType,
+      bookingName: data.bookingName,
+      reason: data.reason
+    },
+    actionUrl: `/dashboard?view=payments`,
+    actionLabel: 'View Details'
+  });
+}
+
 async function notifyChefMessage(data: { chefId: number; senderName: string; messagePreview: string; conversationId: string }) {
   return createChefNotification({
     chefId: data.chefId,
@@ -740,6 +810,54 @@ async function broadcastChefAnnouncement(data: SystemAnnouncementData) {
     logger.error(`[NotificationService] Failed to broadcast chef announcement:`, error);
     throw error;
   }
+}
+
+// ===================================
+// STORAGE CHECKOUT NOTIFICATIONS
+// ===================================
+
+// Manager: Chef requested storage checkout
+async function notifyManagerStorageCheckoutRequested(data: { managerId: number; locationId: number; chefName: string; storageName: string; storageBookingId: number }) {
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: 'storage_checkout_requested',
+    priority: 'high',
+    title: 'Storage Checkout Requested',
+    message: `${data.chefName} has requested checkout for storage "${data.storageName}". Please review.`,
+    metadata: { storageBookingId: data.storageBookingId, chefName: data.chefName, storageName: data.storageName },
+    actionUrl: `/manager/booking-dashboard?view=storage`,
+    actionLabel: 'Review Checkout',
+  });
+}
+
+// Chef: Storage checkout cleared (no issues)
+async function notifyChefStorageCheckoutCleared(data: { chefId: number; storageName: string; storageBookingId: number; isAutoClear?: boolean }) {
+  const clearedBy = data.isAutoClear ? 'automatically (review window expired with no issues)' : 'by the kitchen manager';
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'storage_checkout_cleared',
+    priority: 'normal',
+    title: 'Storage Checkout Complete',
+    message: `Your storage checkout for "${data.storageName}" has been cleared ${clearedBy}. Thank you!`,
+    metadata: { storageBookingId: data.storageBookingId, storageName: data.storageName, isAutoClear: data.isAutoClear },
+    actionUrl: `/dashboard?view=storage`,
+    actionLabel: 'View Storage',
+  });
+}
+
+// Chef: Storage checkout claim filed
+async function notifyChefStorageCheckoutClaimFiled(data: { chefId: number; storageName: string; storageBookingId: number; claimId: number; claimTitle: string }) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'storage_checkout_claim_filed',
+    priority: 'high',
+    title: 'Storage Claim Filed',
+    message: `A claim "${data.claimTitle}" has been filed for your storage checkout at "${data.storageName}". Please review in your dashboard.`,
+    metadata: { storageBookingId: data.storageBookingId, claimId: data.claimId, storageName: data.storageName, claimTitle: data.claimTitle },
+    actionUrl: `/dashboard?view=claims`,
+    actionLabel: 'View Claim',
+  });
 }
 
 // ===================================
@@ -1202,6 +1320,8 @@ export const notificationService = {
   // Chef: Booking
   notifyChefBookingConfirmed,
   notifyChefBookingCancelled,
+  notifyChefKitchenCheckinReminder,
+  notifyChefStorageCheckinReminder,
   
   // Chef: Application
   notifyChefApplicationApproved,
@@ -1210,8 +1330,14 @@ export const notificationService = {
   // Chef: Other
   notifyChefWelcome,
   notifyChefPaymentReceived,
+  notifyChefPaymentRefunded,
   notifyChefMessage,
   broadcastChefAnnouncement,
+  
+  // Storage Checkout
+  notifyManagerStorageCheckoutRequested,
+  notifyChefStorageCheckoutCleared,
+  notifyChefStorageCheckoutClaimFiled,
   
   // Storage Extension
   notifyManagerStorageExtensionPending,

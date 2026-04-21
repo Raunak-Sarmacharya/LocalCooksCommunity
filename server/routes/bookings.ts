@@ -5,9 +5,11 @@ import {
     kitchens,
     locations,
     users,
+    storageBookings,
     storageListings,
     equipmentListings,
     paymentTransactions,
+    checkinCheckoutChecklists,
 } from "@shared/schema";
 import { eq, and, or, desc, inArray } from "drizzle-orm";
 import { logger } from "../logger";
@@ -530,6 +532,46 @@ async function sendStorageCancellationNotification(
                 metadata: { storageBookingId: bookingId },
             });
         }
+
+        // Email notifications for storage cancellation
+        try {
+            const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('../email');
+            const formattedStartDate = new Date(booking.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            const cancellationReason = isCancellationRequest ? 'Cancellation requested by chef' : 'Storage booking cancelled by chef';
+
+            // Email to chef
+            if (chef?.username) {
+                await sendEmail(generateBookingCancellationEmail({
+                    chefEmail: chef.username,
+                    chefName: chef.username,
+                    kitchenName: storageName,
+                    bookingDate: formattedStartDate,
+                    startTime: '',
+                    endTime: '',
+                    cancellationReason,
+                }));
+                logger.info(`[Storage Cancel] Sent cancellation email to chef for storage booking ${bookingId}`);
+            }
+
+            // Email to manager
+            const managerEmail = booking.notificationEmail;
+            if (managerEmail) {
+                await sendEmail(generateBookingCancellationNotificationEmail({
+                    managerEmail,
+                    chefName: chef?.username || 'Chef',
+                    kitchenName: storageName,
+                    bookingDate: formattedStartDate,
+                    startTime: '',
+                    endTime: '',
+                    cancellationReason: isCancellationRequest
+                        ? `${chef?.username || 'A chef'} has requested to cancel their storage booking for ${storageName}.`
+                        : `${chef?.username || 'A chef'} has cancelled their storage booking for ${storageName}.`,
+                }));
+                logger.info(`[Storage Cancel] Sent cancellation notification email to manager for storage booking ${bookingId}`);
+            }
+        } catch (emailError) {
+            logger.error(`[Storage Cancel] Error sending cancellation emails for storage booking ${bookingId}:`, emailError);
+        }
     } catch (error) {
         logger.error(`[sendStorageCancellationNotification] Error for storage booking ${bookingId}:`, error);
     }
@@ -855,6 +897,137 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
         const cancellationAutoAcceptResults = await processExpiredCancellationRequests();
         logger.info("[Cron] Cancellation request auto-accept complete:", cancellationAutoAcceptResults);
 
+        // Task 6: Auto-clear expired kitchen checkout review windows
+        logger.info("[Cron] Task 6: Auto-clearing expired kitchen checkout reviews...");
+        const { processExpiredKitchenCheckoutReviews } = await import("../services/kitchen-checkout-service");
+        const kitchenCheckoutAutoClearResults = await processExpiredKitchenCheckoutReviews();
+        logger.info("[Cron] Kitchen checkout auto-clear complete:", kitchenCheckoutAutoClearResults);
+
+        // Task 7: Detect kitchen booking no-shows
+        logger.info("[Cron] Task 7: Detecting kitchen booking no-shows...");
+        const { detectKitchenNoShows } = await import("../services/kitchen-checkout-service");
+        const noShowResults = await detectKitchenNoShows();
+        logger.info("[Cron] Kitchen no-show detection complete:", noShowResults);
+
+        // Task 8: Expire access codes past their validity window
+        logger.info("[Cron] Task 8: Expiring access codes past validity window...");
+        const { expireAccessCodes } = await import("../services/kitchen-checkout-service");
+        const accessCodeExpiryResults = await expireAccessCodes();
+        logger.info("[Cron] Access code expiry complete:", accessCodeExpiryResults);
+
+        // Task 9: Send check-in reminders for today's confirmed bookings
+        logger.info("[Cron] Task 9: Sending check-in reminders...");
+        let checkinReminderResults = { kitchen: 0, storage: 0, errors: 0 };
+        try {
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+
+            // Kitchen bookings: confirmed + today + not checked in
+            const todaysKitchenBookings = await db
+                .select({
+                    id: kitchenBookings.id,
+                    chefId: kitchenBookings.chefId,
+                    kitchenId: kitchenBookings.kitchenId,
+                    bookingDate: kitchenBookings.bookingDate,
+                    startTime: kitchenBookings.startTime,
+                    endTime: kitchenBookings.endTime,
+                    checkinStatus: kitchenBookings.checkinStatus,
+                })
+                .from(kitchenBookings)
+                .where(
+                    and(
+                        eq(kitchenBookings.status, 'confirmed'),
+                        eq(kitchenBookings.checkinStatus, 'not_checked_in'),
+                    )
+                );
+
+            // Filter to today's bookings in JS (bookingDate is timestamp)
+            const todayBookings = todaysKitchenBookings.filter(b => {
+                const bd = b.bookingDate instanceof Date
+                    ? b.bookingDate.toISOString().split('T')[0]
+                    : String(b.bookingDate).split('T')[0];
+                return bd === todayStr;
+            });
+
+            // Get kitchen names for notifications
+            const kitchenIds = Array.from(new Set(todayBookings.map(b => b.kitchenId)));
+            const kitchenNames = new Map<number, string>();
+            if (kitchenIds.length > 0) {
+                const kitchenRows = await db.select({ id: kitchens.id, name: kitchens.name })
+                    .from(kitchens)
+                    .where(inArray(kitchens.id, kitchenIds));
+                kitchenRows.forEach(k => kitchenNames.set(k.id, k.name));
+            }
+
+            for (const booking of todayBookings) {
+                if (!booking.chefId) continue;
+                try {
+                    await notificationService.notifyChefKitchenCheckinReminder({
+                        chefId: booking.chefId,
+                        bookingId: booking.id,
+                        kitchenName: kitchenNames.get(booking.kitchenId) || `Kitchen #${booking.kitchenId}`,
+                        bookingDate: todayStr,
+                        startTime: booking.startTime,
+                        endTime: booking.endTime,
+                    });
+                    checkinReminderResults.kitchen++;
+                } catch (err) {
+                    logger.error(`[Cron] Failed to send kitchen check-in reminder for booking ${booking.id}:`, err);
+                    checkinReminderResults.errors++;
+                }
+            }
+
+            // Storage bookings: confirmed + start date today + not checked in
+            const todaysStorageBookings = await db
+                .select({
+                    id: storageBookings.id,
+                    chefId: storageBookings.chefId,
+                    startDate: storageBookings.startDate,
+                    checkinStatus: storageBookings.checkinStatus,
+                })
+                .from(storageBookings)
+                .where(
+                    and(
+                        eq(storageBookings.status, 'confirmed'),
+                        eq(storageBookings.checkinStatus, 'not_checked_in'),
+                    )
+                );
+
+            const todayStorage = todaysStorageBookings.filter(sb => {
+                const sd = sb.startDate instanceof Date
+                    ? sb.startDate.toISOString().split('T')[0]
+                    : String(sb.startDate).split('T')[0];
+                return sd === todayStr;
+            });
+
+            for (const sb of todayStorage) {
+                if (!sb.chefId) continue;
+                try {
+                    // Get storage name from listing
+                    const listingRow = await db.select({ name: storageListings.name })
+                        .from(storageBookings)
+                        .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+                        .where(eq(storageBookings.id, sb.id))
+                        .limit(1);
+                    const storageName = listingRow[0]?.name || `Storage #${sb.id}`;
+                    await notificationService.notifyChefStorageCheckinReminder({
+                        chefId: sb.chefId,
+                        storageBookingId: sb.id,
+                        storageName,
+                        startDate: todayStr,
+                    });
+                    checkinReminderResults.storage++;
+                } catch (err) {
+                    logger.error(`[Cron] Failed to send storage check-in reminder for booking ${sb.id}:`, err);
+                    checkinReminderResults.errors++;
+                }
+            }
+        } catch (err) {
+            logger.error("[Cron] Error in check-in reminder task:", err);
+            checkinReminderResults.errors++;
+        }
+        logger.info("[Cron] Check-in reminders complete:", checkinReminderResults);
+
         logger.info("[Cron] All daily scheduled tasks complete");
 
         res.json({
@@ -890,6 +1063,18 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
             },
             cancellationAutoAccept: {
                 summary: cancellationAutoAcceptResults,
+            },
+            kitchenCheckoutAutoClear: {
+                summary: kitchenCheckoutAutoClearResults,
+            },
+            kitchenNoShows: {
+                summary: noShowResults,
+            },
+            accessCodeExpiry: {
+                summary: accessCodeExpiryResults,
+            },
+            checkinReminders: {
+                summary: checkinReminderResults,
             },
         });
     } catch (error: unknown) {
@@ -1350,7 +1535,7 @@ router.post("/storage-extensions/:id/sync", requireChef, async (req: Request, re
             return res.status(500).json({ error: "Stripe not configured" });
         }
 
-        const stripe = new Stripe(stripeSecretKey, { apiVersion: "2025-12-15.clover" });
+        const stripe = new Stripe(stripeSecretKey, { apiVersion: "2026-02-25.clover" });
         const session = await stripe.checkout.sessions.retrieve(extension.stripeSessionId, {
             expand: ["payment_intent"],
         });
@@ -1487,7 +1672,7 @@ router.post("/chef/storage-bookings/:id/request-checkout", requireChef, async (r
             return res.status(400).json({ error: "Invalid storage booking ID" });
         }
 
-        const { checkoutNotes, checkoutPhotoUrls } = req.body;
+        const { checkoutNotes, checkoutPhotoUrls, checkoutChecklistItems } = req.body;
         const chefId = req.neonUser!.id;
 
         // Import the checkout service
@@ -1497,7 +1682,8 @@ router.post("/chef/storage-bookings/:id/request-checkout", requireChef, async (r
             id,
             chefId,
             checkoutNotes,
-            checkoutPhotoUrls
+            checkoutPhotoUrls,
+            checkoutChecklistItems
         );
 
         if (!result.success) {
@@ -1513,6 +1699,84 @@ router.post("/chef/storage-bookings/:id/request-checkout", requireChef, async (r
     } catch (error: any) {
         logger.error("Error requesting storage checkout:", error);
         res.status(500).json({ error: error.message || "Failed to request checkout" });
+    }
+});
+
+// ============================================================================
+// STORAGE CHECK-IN (Move-In Inspection)
+// ============================================================================
+
+// Chef requests check-in for a storage booking (move-in inspection)
+router.post("/chef/storage-bookings/:id/checkin", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        const { checkinNotes, checkinPhotoUrls, checkinChecklistItems } = req.body;
+        const chefId = req.neonUser!.id;
+
+        // Import the check-in service
+        const { requestStorageCheckin } = await import('../services/storage-checkout-service');
+        
+        const result = await requestStorageCheckin(
+            id,
+            chefId,
+            checkinNotes,
+            checkinPhotoUrls,
+            checkinChecklistItems
+        );
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({
+            success: true,
+            storageBookingId: result.storageBookingId,
+            checkinStatus: result.checkinStatus,
+            message: "Check-in request submitted successfully. The manager will verify your move-in inspection.",
+        });
+    } catch (error: any) {
+        logger.error("Error requesting storage check-in:", error);
+        res.status(500).json({ error: error.message || "Failed to request check-in" });
+    }
+});
+
+// Chef adds additional photos to an existing check-in request
+router.post("/chef/storage-bookings/:id/checkin-photos", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        const { photoUrls } = req.body;
+        if (!Array.isArray(photoUrls) || photoUrls.length === 0) {
+            return res.status(400).json({ error: "photoUrls must be a non-empty array" });
+        }
+
+        const chefId = req.neonUser!.id;
+
+        // Import the check-in service
+        const { addCheckinPhotos } = await import('../services/storage-checkout-service');
+        
+        const result = await addCheckinPhotos(id, chefId, photoUrls);
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({
+            success: true,
+            storageBookingId: result.storageBookingId,
+            checkinStatus: result.checkinStatus,
+            message: "Additional check-in photos added successfully.",
+        });
+    } catch (error: any) {
+        logger.error("Error adding storage check-in photos:", error);
+        res.status(500).json({ error: error.message || "Failed to add check-in photos" });
     }
 });
 
@@ -1547,6 +1811,56 @@ router.post("/chef/storage-bookings/:id/checkout-photos", requireChef, async (re
     } catch (error: any) {
         logger.error("Error adding checkout photos:", error);
         res.status(500).json({ error: error.message || "Failed to add checkout photos" });
+    }
+});
+
+// Get check-in status for a storage booking (move-in inspection progress)
+router.get("/chef/storage-bookings/:id/checkin-status", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        // Verify the booking belongs to this chef
+        const booking = await bookingService.getStorageBookingById(id);
+        if (!booking) {
+            return res.status(404).json({ error: "Storage booking not found" });
+        }
+
+        if (booking.chefId !== req.neonUser!.id) {
+            return res.status(403).json({ error: "You don't have permission to view this booking" });
+        }
+
+        const [row] = await db
+            .select({
+                checkinStatus: storageBookings.checkinStatus,
+                checkinRequestedAt: storageBookings.checkinRequestedAt,
+                checkinCompletedAt: storageBookings.checkinCompletedAt,
+                checkinPhotoUrls: storageBookings.checkinPhotoUrls,
+                checkinNotes: storageBookings.checkinNotes,
+                checkinChecklistItems: storageBookings.checkinChecklistItems,
+            })
+            .from(storageBookings)
+            .where(eq(storageBookings.id, id))
+            .limit(1);
+
+        if (!row) {
+            return res.status(404).json({ error: "Storage booking not found" });
+        }
+
+        res.json({
+            storageBookingId: id,
+            checkinStatus: row.checkinStatus || 'not_checked_in',
+            checkinRequestedAt: row.checkinRequestedAt,
+            checkinCompletedAt: row.checkinCompletedAt,
+            checkinPhotoUrls: row.checkinPhotoUrls || [],
+            checkinNotes: row.checkinNotes,
+            checkinChecklistItems: row.checkinChecklistItems,
+        });
+    } catch (error: any) {
+        logger.error("Error getting storage check-in status:", error);
+        res.status(500).json({ error: error.message || "Failed to get check-in status" });
     }
 });
 
@@ -2204,6 +2518,14 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                 .set({ status: 'cancelled', updatedAt: new Date() })
                 .where(eq(kitchenBookings.id, id));
 
+            // Phase 3: Remove access code from smart lock
+            try {
+                const { removeAccessCodeFromLock } = await import('../services/kitchen-checkout-service');
+                await removeAccessCodeFromLock(id, booking.kitchenId);
+            } catch (lockErr: any) {
+                logger.warn(`[Cancel Booking] Smart lock code removal failed for booking ${id}:`, lockErr);
+            }
+
             // Send notifications (fire-and-forget)
             sendCancellationNotifications(booking, id, 'cancelled').catch(err =>
                 logger.error(`[Cancel Booking] Notification error for booking ${id}:`, err)
@@ -2250,6 +2572,220 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
     } catch (error) {
         logger.error("Error cancelling booking:", error);
         res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel booking" });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KITCHEN CHECK-IN / CHECK-OUT (Chef-Side)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Chef checks in to kitchen booking
+router.post("/chef/bookings/:id/checkin", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) return res.status(400).json({ error: "Invalid booking ID" });
+
+        const { checkinNotes, checkinPhotoUrls, checkinChecklistItems } = req.body || {};
+        const { requestKitchenCheckin } = await import("../services/kitchen-checkout-service");
+
+        const result = await requestKitchenCheckin(
+            id,
+            req.neonUser!.id,
+            'self',
+            checkinNotes,
+            checkinPhotoUrls,
+            checkinChecklistItems,
+        );
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json(result);
+    } catch (error) {
+        logger.error("Error during kitchen check-in:", error);
+        res.status(500).json({ error: "Failed to check in" });
+    }
+});
+
+// Chef requests checkout from kitchen booking
+router.post("/chef/bookings/:id/checkout", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) return res.status(400).json({ error: "Invalid booking ID" });
+
+        const { checkoutNotes, checkoutPhotoUrls, checkoutChecklistItems } = req.body || {};
+        const { requestKitchenCheckout } = await import("../services/kitchen-checkout-service");
+
+        const result = await requestKitchenCheckout(
+            id,
+            req.neonUser!.id,
+            checkoutNotes,
+            checkoutPhotoUrls,
+            checkoutChecklistItems,
+        );
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json(result);
+    } catch (error) {
+        logger.error("Error during kitchen checkout request:", error);
+        res.status(500).json({ error: "Failed to request checkout" });
+    }
+});
+
+// Get check-in/check-out status for a kitchen booking
+router.get("/chef/bookings/:id/checkin-status", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) return res.status(400).json({ error: "Invalid booking ID" });
+
+        const [booking] = await db
+            .select({
+                id: kitchenBookings.id,
+                chefId: kitchenBookings.chefId,
+                kitchenId: kitchenBookings.kitchenId,
+                locationId: kitchens.locationId,
+                status: kitchenBookings.status,
+                checkinStatus: kitchenBookings.checkinStatus,
+                checkedInAt: kitchenBookings.checkedInAt,
+                checkedInMethod: kitchenBookings.checkedInMethod,
+                checkoutRequestedAt: kitchenBookings.checkoutRequestedAt,
+                checkedOutAt: kitchenBookings.checkedOutAt,
+                checkoutApprovedAt: kitchenBookings.checkoutApprovedAt,
+                noShowDetectedAt: kitchenBookings.noShowDetectedAt,
+                actualStartTime: kitchenBookings.actualStartTime,
+                actualEndTime: kitchenBookings.actualEndTime,
+                checkinChecklistItems: kitchenBookings.checkinChecklistItems,
+                checkoutChecklistItems: kitchenBookings.checkoutChecklistItems,
+                accessCodeValidFrom: kitchenBookings.accessCodeValidFrom,
+                accessCodeValidUntil: kitchenBookings.accessCodeValidUntil,
+                smartLockEnabled: kitchens.smartLockEnabled,
+                // Holds manager-typed access code + visibility settings.
+                // No provider API credentials are stored here anymore.
+                smartLockConfig: kitchens.smartLockConfig,
+                bookingDate: kitchenBookings.bookingDate,
+                startTime: kitchenBookings.startTime,
+                endTime: kitchenBookings.endTime,
+            })
+            .from(kitchenBookings)
+            .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
+            .where(and(
+                eq(kitchenBookings.id, id),
+                eq(kitchenBookings.chefId, req.neonUser!.id),
+            ))
+            .limit(1);
+
+        if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+        // Lazy evaluation: auto-clear expired kitchen checkout if applicable
+        if (booking.checkinStatus === 'checkout_requested' && booking.checkoutRequestedAt) {
+            const { autoCleanExpiredKitchenCheckout, getCheckinSettings } = await import("../services/kitchen-checkout-service");
+            const settings = await getCheckinSettings(booking.locationId);
+            const wasCleared = await autoCleanExpiredKitchenCheckout(
+                booking.id,
+                booking.chefId,
+                booking.checkoutRequestedAt,
+                settings.checkoutReviewWindowMinutes,
+            );
+            if (wasCleared) {
+                // Re-fetch with updated status
+                const [updated] = await db
+                    .select({
+                        checkinStatus: kitchenBookings.checkinStatus,
+                        checkedOutAt: kitchenBookings.checkedOutAt,
+                        checkoutApprovedAt: kitchenBookings.checkoutApprovedAt,
+                        status: kitchenBookings.status,
+                    })
+                    .from(kitchenBookings)
+                    .where(eq(kitchenBookings.id, id))
+                    .limit(1);
+                if (updated) {
+                    booking.checkinStatus = updated.checkinStatus;
+                    booking.checkedOutAt = updated.checkedOutAt;
+                    booking.checkoutApprovedAt = updated.checkoutApprovedAt;
+                    (booking as Record<string, unknown>).status = updated.status;
+                }
+            }
+        }
+
+        res.json(booking);
+    } catch (error) {
+        logger.error("Error fetching checkin status:", error);
+        res.status(500).json({ error: "Failed to fetch checkin status" });
+    }
+});
+
+// ============================================================================
+// CHEF-FACING CHECKLIST ENDPOINT
+// ============================================================================
+
+/**
+ * GET /chef/locations/:locationId/checklist
+ * Fetch the checkin/checkout checklists for a location (chef-facing).
+ * Returns only the fields relevant to chefs (items, photo requirements, instructions).
+ */
+router.get("/chef/locations/:locationId/checklist", requireChef, async (req: Request, res: Response) => {
+    try {
+        const locationId = parseInt(req.params.locationId);
+        if (isNaN(locationId) || locationId <= 0) {
+            return res.status(400).json({ error: "Invalid location ID" });
+        }
+
+        const [checklist] = await db
+            .select()
+            .from(checkinCheckoutChecklists)
+            .where(eq(checkinCheckoutChecklists.locationId, locationId));
+
+        if (!checklist) {
+            // No checklist configured — return empty defaults
+            return res.json({
+                locationId,
+                checkinEnabled: true,
+                checkinItems: [],
+                checkinPhotoRequirements: [],
+                checkinInstructions: null,
+                checkoutEnabled: true,
+                checkoutItems: [],
+                checkoutPhotoRequirements: [],
+                checkoutInstructions: null,
+                storageCheckoutEnabled: true,
+                storageCheckoutItems: [],
+                storageCheckoutPhotoRequirements: [],
+                storageCheckoutInstructions: null,
+                storageCheckinEnabled: true,
+                storageCheckinItems: [],
+                storageCheckinPhotoRequirements: [],
+                storageCheckinInstructions: null,
+                smartLockCheckinInstructions: null,
+            });
+        }
+
+        res.json({
+            locationId: checklist.locationId,
+            checkinEnabled: checklist.checkinEnabled,
+            checkinItems: checklist.checkinItems,
+            checkinPhotoRequirements: checklist.checkinPhotoRequirements,
+            checkinInstructions: checklist.checkinInstructions,
+            checkoutEnabled: checklist.checkoutEnabled,
+            checkoutItems: checklist.checkoutItems,
+            checkoutPhotoRequirements: checklist.checkoutPhotoRequirements,
+            checkoutInstructions: checklist.checkoutInstructions,
+            storageCheckoutEnabled: checklist.storageCheckoutEnabled,
+            storageCheckoutItems: checklist.storageCheckoutItems,
+            storageCheckoutPhotoRequirements: checklist.storageCheckoutPhotoRequirements,
+            storageCheckoutInstructions: checklist.storageCheckoutInstructions,
+            storageCheckinEnabled: checklist.storageCheckinEnabled,
+            storageCheckinItems: checklist.storageCheckinItems,
+            storageCheckinPhotoRequirements: checklist.storageCheckinPhotoRequirements,
+            storageCheckinInstructions: checklist.storageCheckinInstructions,
+            smartLockCheckinInstructions: checklist.smartLockCheckinInstructions,
+        });
+    } catch (error) {
+        logger.error("Error fetching chef checklist:", error);
+        res.status(500).json({ error: "Failed to fetch checklist" });
     }
 });
 
@@ -3160,7 +3696,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
         }
 
         const Stripe = (await import("stripe")).default;
-        const stripe = new Stripe(stripeSecretKey, { apiVersion: "2025-12-15.clover" });
+        const stripe = new Stripe(stripeSecretKey, { apiVersion: "2026-02-25.clover" });
         
         let session;
         try {

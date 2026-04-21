@@ -26,6 +26,7 @@ import {
   chefKitchenApplications,
   chefLocationProfiles,
   kitchens,
+  checkinCheckoutChecklists,
 } from "@shared/schema";
 
 // Import Domain Services
@@ -1084,6 +1085,39 @@ router.put(
                 "Your booking cancellation request has been accepted. A refund will be processed shortly.",
               metadata: { bookingId },
             });
+
+            // Send cancellation accepted email to chef
+            try {
+              const { sendEmail, generateCancellationAcceptedEmail } = await import("../email");
+              const [bookingDetails] = await db
+                .select({
+                  kitchenName: kitchens.name,
+                  locationName: locations.name,
+                  bookingDate: kitchenBookings.bookingDate,
+                  startTime: kitchenBookings.startTime,
+                  endTime: kitchenBookings.endTime,
+                })
+                .from(kitchenBookings)
+                .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(eq(kitchenBookings.id, bookingId))
+                .limit(1);
+              if (bookingDetails && chef.username) {
+                await sendEmail(generateCancellationAcceptedEmail({
+                  chefEmail: chef.username,
+                  chefName: chef.username.split('@')[0],
+                  kitchenName: bookingDetails.kitchenName,
+                  locationName: bookingDetails.locationName,
+                  bookingDate: bookingDetails.bookingDate,
+                  startTime: bookingDetails.startTime,
+                  endTime: bookingDetails.endTime,
+                  bookingType: 'kitchen',
+                }));
+                logger.info(`[Cancellation Request] Sent accepted email to chef for booking ${bookingId}`);
+              }
+            } catch (emailError) {
+              logger.error(`[Cancellation Request] Error sending accepted email:`, emailError);
+            }
           }
         } catch (notifError) {
           logger.error(
@@ -1127,6 +1161,44 @@ router.put(
                 "Your booking cancellation request was declined by the kitchen manager. Your booking remains confirmed.",
               metadata: { bookingId },
             });
+
+            // Send cancellation declined email to chef
+            try {
+              const { sendEmail, generateCancellationDeclinedEmail } = await import("../email");
+              const [chefUser] = await db
+                .select({ username: users.username })
+                .from(users)
+                .where(eq(users.id, booking.chefId))
+                .limit(1);
+              const [bookingDetails] = await db
+                .select({
+                  kitchenName: kitchens.name,
+                  locationName: locations.name,
+                  bookingDate: kitchenBookings.bookingDate,
+                  startTime: kitchenBookings.startTime,
+                  endTime: kitchenBookings.endTime,
+                })
+                .from(kitchenBookings)
+                .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(eq(kitchenBookings.id, bookingId))
+                .limit(1);
+              if (chefUser?.username && bookingDetails) {
+                await sendEmail(generateCancellationDeclinedEmail({
+                  chefEmail: chefUser.username,
+                  chefName: chefUser.username.split('@')[0],
+                  kitchenName: bookingDetails.kitchenName,
+                  locationName: bookingDetails.locationName,
+                  bookingDate: bookingDetails.bookingDate,
+                  startTime: bookingDetails.startTime,
+                  endTime: bookingDetails.endTime,
+                  bookingType: 'kitchen',
+                }));
+                logger.info(`[Cancellation Request] Sent declined email to chef for booking ${bookingId}`);
+              }
+            } catch (emailError) {
+              logger.error(`[Cancellation Request] Error sending declined email:`, emailError);
+            }
           }
         } catch (notifError) {
           logger.error(
@@ -1254,6 +1326,46 @@ router.put(
                 "Your storage cancellation request has been accepted. A refund will be processed shortly.",
               metadata: { storageBookingId },
             });
+
+            // Send cancellation accepted email to chef
+            try {
+              const { sendEmail, generateCancellationAcceptedEmail } = await import("../email");
+              const [chefUser] = await db
+                .select({ username: users.username })
+                .from(users)
+                .where(eq(users.id, booking.chefId))
+                .limit(1);
+              const [storageDetails] = await db
+                .select({
+                  storageName: storageListings.name,
+                  kitchenName: kitchens.name,
+                  locationName: locations.name,
+                  startDate: storageBookingsTable.startDate,
+                  endDate: storageBookingsTable.endDate,
+                })
+                .from(storageBookingsTable)
+                .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
+                .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(eq(storageBookingsTable.id, storageBookingId))
+                .limit(1);
+              if (chefUser?.username && storageDetails) {
+                await sendEmail(generateCancellationAcceptedEmail({
+                  chefEmail: chefUser.username,
+                  chefName: chefUser.username.split('@')[0],
+                  kitchenName: storageDetails.kitchenName,
+                  locationName: storageDetails.locationName,
+                  bookingDate: storageDetails.startDate,
+                  startTime: '',
+                  endTime: '',
+                  bookingType: 'storage',
+                  bookingName: storageDetails.storageName,
+                }));
+                logger.info(`[Storage Cancellation] Sent accepted email to chef for storage booking ${storageBookingId}`);
+              }
+            } catch (emailError) {
+              logger.error(`[Storage Cancellation] Error sending accepted email:`, emailError);
+            }
           }
         } catch (notifError) {
           logger.error(
@@ -1304,6 +1416,46 @@ router.put(
                 "Your storage cancellation request was declined by the kitchen manager. Your storage booking remains confirmed.",
               metadata: { storageBookingId },
             });
+
+            // Send cancellation declined email to chef
+            try {
+              const { sendEmail, generateCancellationDeclinedEmail } = await import("../email");
+              const [chefUser] = await db
+                .select({ username: users.username })
+                .from(users)
+                .where(eq(users.id, booking.chefId))
+                .limit(1);
+              const [storageDetails] = await db
+                .select({
+                  storageName: storageListings.name,
+                  kitchenName: kitchens.name,
+                  locationName: locations.name,
+                  startDate: storageBookingsTable.startDate,
+                  endDate: storageBookingsTable.endDate,
+                })
+                .from(storageBookingsTable)
+                .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
+                .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(eq(storageBookingsTable.id, storageBookingId))
+                .limit(1);
+              if (chefUser?.username && storageDetails) {
+                await sendEmail(generateCancellationDeclinedEmail({
+                  chefEmail: chefUser.username,
+                  chefName: chefUser.username.split('@')[0],
+                  kitchenName: storageDetails.kitchenName,
+                  locationName: storageDetails.locationName,
+                  bookingDate: storageDetails.startDate,
+                  startTime: '',
+                  endTime: '',
+                  bookingType: 'storage',
+                  bookingName: storageDetails.storageName,
+                }));
+                logger.info(`[Storage Cancellation] Sent declined email to chef for storage booking ${storageBookingId}`);
+              }
+            } catch (emailError) {
+              logger.error(`[Storage Cancellation] Error sending declined email:`, emailError);
+            }
           }
         } catch (notifError) {
           logger.error(
@@ -1578,6 +1730,87 @@ router.post(
           .update(equipmentBookingsTable)
           .set({ paymentStatus, updatedAt: new Date() })
           .where(eq(equipmentBookingsTable.id, transaction.booking_id));
+      }
+
+      // Send in-app notification + email to chef about the refund
+      try {
+        const chefId = transaction.chef_id;
+        if (chefId) {
+          const { notificationService } = await import("../services/notification.service");
+          const { sendEmail, generateBookingRefundEmail } = await import("../email");
+
+          // Look up booking name for notification context
+          let bookingName = 'Booking';
+          let locationName: string | undefined;
+          const bookingType = (transaction.booking_type as string) || 'kitchen';
+
+          if (bookingType === 'kitchen' || bookingType === 'bundle') {
+            const [kb] = await db
+              .select({ kitchenName: kitchens.name, locationName: locations.name })
+              .from(kitchenBookings)
+              .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+              .innerJoin(locations, eq(kitchens.locationId, locations.id))
+              .where(eq(kitchenBookings.id, transaction.booking_id))
+              .limit(1);
+            bookingName = kb?.kitchenName || 'Kitchen Booking';
+            locationName = kb?.locationName;
+          } else if (bookingType === 'storage') {
+            const [sb] = await db
+              .select({ storageName: storageListings.name, locationName: locations.name })
+              .from(storageBookingsTable)
+              .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
+              .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+              .innerJoin(locations, eq(kitchens.locationId, locations.id))
+              .where(eq(storageBookingsTable.id, transaction.booking_id))
+              .limit(1);
+            bookingName = sb?.storageName || 'Storage Booking';
+            locationName = sb?.locationName;
+          } else if (bookingType === 'equipment') {
+            const [eb] = await db
+              .select({ equipmentType: equipmentListings.equipmentType, brand: equipmentListings.brand, locationName: locations.name })
+              .from(equipmentBookingsTable)
+              .innerJoin(equipmentListings, eq(equipmentBookingsTable.equipmentListingId, equipmentListings.id))
+              .innerJoin(kitchens, eq(equipmentListings.kitchenId, kitchens.id))
+              .innerJoin(locations, eq(kitchens.locationId, locations.id))
+              .where(eq(equipmentBookingsTable.id, transaction.booking_id))
+              .limit(1);
+            bookingName = eb ? `${eb.brand ? eb.brand + ' ' : ''}${eb.equipmentType}` : 'Equipment Booking';
+            locationName = eb?.locationName;
+          }
+
+          // In-app notification
+          await notificationService.notifyChefPaymentRefunded({
+            chefId,
+            refundAmountCents: amountCents,
+            bookingType,
+            bookingName,
+            reason: refundReason,
+          });
+
+          // Email
+          const [chefUser] = await db
+            .select({ username: users.username })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+          if (chefUser?.username) {
+            const isFullRefund = newStatus === 'refunded';
+            await sendEmail(generateBookingRefundEmail({
+              chefEmail: chefUser.username,
+              chefName: chefUser.username.split('@')[0],
+              bookingType: bookingType as any,
+              bookingName,
+              locationName,
+              refundAmountCents: amountCents,
+              isFullRefund,
+              reason: refundReason,
+            }));
+            logger.info(`[Refund] Sent refund email to chef for transaction ${transactionId}`);
+          }
+        }
+      } catch (notifError) {
+        logger.error("[Refund] Error sending refund notification to chef:", notifError);
       }
 
       // Calculate new remaining amounts for response using unified model
@@ -2578,7 +2811,7 @@ router.put(
     try {
       const user = req.neonUser!;
       const kitchenId = parseInt(req.params.kitchenId);
-      const { name, description, features } = req.body;
+      const { name, description, features, smartLockEnabled } = req.body;
 
       const kitchen = await kitchenService.getKitchenById(kitchenId);
       if (!kitchen) {
@@ -2592,11 +2825,22 @@ router.put(
         return res.status(403).json({ error: "Access denied" });
       }
 
+      // Admin-gated capability: managers cannot enable smart lock unless admin
+      // has enabled the capability (`smartLockAvailable`) on this kitchen.
+      if (smartLockEnabled === true && !kitchen.smartLockAvailable) {
+        return res.status(403).json({
+          error: "Smart door lock is not available for this kitchen. Please contact an administrator to enable it.",
+          code: "SMART_LOCK_UNAVAILABLE",
+        });
+      }
+
       const updated = await kitchenService.updateKitchen({
         id: kitchenId,
         name,
         description,
         amenities: features,
+        // Force-off if admin has not enabled the capability, regardless of payload.
+        smartLockEnabled: kitchen.smartLockAvailable ? smartLockEnabled : false,
       });
 
       res.json(updated);
@@ -2605,6 +2849,357 @@ router.put(
       res
         .status(500)
         .json({ error: error.message || "Failed to update kitchen details" });
+    }
+  },
+);
+
+// ============================================================================
+// SMART LOCK — MANUAL ACCESS CODE CONFIGURATION
+// ============================================================================
+// No hardware API integration. Managers program their physical keypads
+// manually; these endpoints only persist the manager's access-code settings
+// (static code, format, visibility) and log revocations for audit purposes.
+
+/**
+ * PUT /manager/kitchens/:kitchenId/smart-lock/config
+ * Save smart lock settings for a kitchen (manual configuration).
+ * Accepts `{ enabled, config }` where `config` is a plain JSON blob of
+ * manager-controlled fields: `accessCode`, `accessCodeFormat`,
+ * `codeVisibility`, `codeSetAt`, etc.
+ */
+router.put(
+  "/kitchens/:kitchenId/smart-lock/config",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.neonUser!;
+      const kitchenId = parseInt(req.params.kitchenId);
+      const { config, enabled } = req.body;
+
+      const kitchen = await kitchenService.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const location = await locationService.getLocationById(kitchen.locationId);
+      if (!location || location.managerId !== user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      if (!kitchen.smartLockAvailable) {
+        return res.status(403).json({
+          error: "Smart door lock is not available for this kitchen. Please contact an administrator to enable it.",
+          code: "SMART_LOCK_UNAVAILABLE",
+        });
+      }
+
+      const updated = await kitchenService.updateKitchen({
+        id: kitchenId,
+        smartLockEnabled: enabled !== undefined ? Boolean(enabled) : kitchen.smartLockEnabled,
+        smartLockConfig: (config && typeof config === "object") ? config : {},
+      });
+
+      logger.info(`[Manager] Updated smart lock config for kitchen ${kitchenId}`);
+
+      res.json(updated);
+    } catch (error: any) {
+      logger.error("Error updating smart lock config:", error);
+      res.status(500).json({ error: error.message || "Failed to update smart lock config" });
+    }
+  },
+);
+
+/**
+ * POST /manager/kitchens/:kitchenId/smart-lock/revoke-code
+ * Revoke the access code for a specific booking (manager action).
+ */
+router.post(
+  "/kitchens/:kitchenId/smart-lock/revoke-code",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.neonUser!;
+      const kitchenId = parseInt(req.params.kitchenId);
+      const { bookingId } = req.body;
+
+      if (!bookingId) {
+        return res.status(400).json({ error: "bookingId is required" });
+      }
+
+      const kitchen = await kitchenService.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const location = await locationService.getLocationById(kitchen.locationId);
+      if (!location || location.managerId !== user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Get booking
+      const [booking] = await db
+        .select({
+          id: kitchenBookings.id,
+          accessCodeHash: kitchenBookings.accessCodeHash,
+          kitchenId: kitchenBookings.kitchenId,
+        })
+        .from(kitchenBookings)
+        .where(eq(kitchenBookings.id, bookingId))
+        .limit(1);
+
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+
+      // Expire the code in DB
+      await db
+        .update(kitchenBookings)
+        .set({
+          accessCodeValidUntil: new Date(), // Expire immediately
+          updatedAt: new Date(),
+        })
+        .where(eq(kitchenBookings.id, bookingId));
+
+      // Audit: revoked
+      const { kitchenCheckoutService } = await import("../services/kitchen-checkout-service");
+      await kitchenCheckoutService.logAccessCodeAudit({
+        bookingId: booking.id,
+        kitchenId: booking.kitchenId,
+        action: 'revoked',
+        accessCodeHash: booking.accessCodeHash || undefined,
+        source: 'manager_app',
+        metadata: { revokedBy: user.id },
+      });
+
+      logger.info(`[Manager] Revoked access code for booking ${bookingId} on kitchen ${kitchenId}`);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      logger.error("Error revoking access code:", error);
+      res.status(500).json({ error: error.message || "Failed to revoke code" });
+    }
+  },
+);
+
+// ============================================================================
+// CHECKIN/CHECKOUT CHECKLISTS (Location-Level Settings)
+// ============================================================================
+
+/**
+ * GET /manager/locations/:locationId/checkin-checkout-settings
+ * Fetch the checkin/checkout checklist settings for a location.
+ * Returns defaults if no settings exist yet.
+ */
+router.get(
+  "/locations/:locationId/checkin-checkout-settings",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.neonUser!;
+      const locationId = parseInt(req.params.locationId);
+
+      if (isNaN(locationId)) {
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+
+      // Verify manager owns this location
+      const [location] = await db
+        .select({
+          id: locations.id,
+          checkinWindowMinutesBefore: locations.checkinWindowMinutesBefore,
+          noShowGraceMinutes: locations.noShowGraceMinutes,
+        })
+        .from(locations)
+        .where(and(eq(locations.id, locationId), eq(locations.managerId, user.id)));
+
+      if (!location) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Fetch platform defaults for time windows
+      const { getCheckinSettings } = await import("../services/kitchen-checkout-service");
+      const platformDefaults = await getCheckinSettings();
+
+      // Fetch existing checklist settings or return defaults
+      const [existing] = await db
+        .select()
+        .from(checkinCheckoutChecklists)
+        .where(eq(checkinCheckoutChecklists.locationId, locationId));
+
+      const checklistSettings = existing || {
+        id: null,
+        locationId,
+        checkinEnabled: true,
+        checkinItems: [],
+        checkinPhotoRequirements: [],
+        checkinInstructions: null,
+        checkoutEnabled: true,
+        checkoutItems: [],
+        checkoutPhotoRequirements: [],
+        checkoutInstructions: null,
+        storageCheckoutEnabled: true,
+        storageCheckoutItems: [],
+        storageCheckoutPhotoRequirements: [],
+        storageCheckoutInstructions: null,
+        storageCheckinEnabled: true,
+        storageCheckinItems: [],
+        storageCheckinPhotoRequirements: [],
+        storageCheckinInstructions: null,
+        smartLockCheckinInstructions: null,
+      };
+
+      // Return checklist settings + time window overrides + platform defaults.
+      // Checkout review window is admin-only (not surfaced here); kitchen
+      // overstay tracking is no longer part of the product.
+      return res.json({
+        ...checklistSettings,
+        timeWindowSettings: {
+          checkinWindowMinutesBefore: location.checkinWindowMinutesBefore ?? null,
+          noShowGraceMinutes: location.noShowGraceMinutes ?? null,
+        },
+        platformDefaults: {
+          checkinWindowMinutesBefore: platformDefaults.checkinWindowMinutesBefore,
+          noShowGraceMinutes: platformDefaults.noShowGraceMinutes,
+        },
+      });
+    } catch (error: any) {
+      logger.error("Error fetching checkin/checkout settings:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch settings" });
+    }
+  },
+);
+
+/**
+ * PUT /manager/locations/:locationId/checkin-checkout-settings
+ * Create or update checkin/checkout checklist settings for a location.
+ * Uses upsert (INSERT ... ON CONFLICT UPDATE).
+ */
+router.put(
+  "/locations/:locationId/checkin-checkout-settings",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.neonUser!;
+      const locationId = parseInt(req.params.locationId);
+
+      if (isNaN(locationId)) {
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+
+      // Verify manager owns this location
+      const [location] = await db
+        .select({ id: locations.id })
+        .from(locations)
+        .where(and(eq(locations.id, locationId), eq(locations.managerId, user.id)));
+
+      if (!location) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const {
+        checkinEnabled,
+        checkinItems,
+        checkinPhotoRequirements,
+        checkinInstructions,
+        checkoutEnabled,
+        checkoutItems,
+        checkoutPhotoRequirements,
+        checkoutInstructions,
+        storageCheckoutEnabled,
+        storageCheckoutItems,
+        storageCheckoutPhotoRequirements,
+        storageCheckoutInstructions,
+        storageCheckinEnabled,
+        storageCheckinItems,
+        storageCheckinPhotoRequirements,
+        storageCheckinInstructions,
+        smartLockCheckinInstructions,
+        // Time window settings (stored on locations table)
+        timeWindowSettings,
+      } = req.body;
+
+      // Validate arrays are arrays
+      const arrayFields = [
+        { name: 'checkinItems', val: checkinItems },
+        { name: 'checkinPhotoRequirements', val: checkinPhotoRequirements },
+        { name: 'checkoutItems', val: checkoutItems },
+        { name: 'checkoutPhotoRequirements', val: checkoutPhotoRequirements },
+        { name: 'storageCheckoutItems', val: storageCheckoutItems },
+        { name: 'storageCheckoutPhotoRequirements', val: storageCheckoutPhotoRequirements },
+        { name: 'storageCheckinItems', val: storageCheckinItems },
+        { name: 'storageCheckinPhotoRequirements', val: storageCheckinPhotoRequirements },
+      ];
+      for (const field of arrayFields) {
+        if (field.val && !Array.isArray(field.val)) {
+          return res.status(400).json({ error: `${field.name} must be an array` });
+        }
+      }
+
+      // Build update payload (only set fields that were provided)
+      const payload: Record<string, unknown> = {
+        locationId,
+        updatedAt: new Date(),
+      };
+      if (checkinEnabled !== undefined) payload.checkinEnabled = checkinEnabled;
+      if (checkinItems !== undefined) payload.checkinItems = checkinItems;
+      if (checkinPhotoRequirements !== undefined) payload.checkinPhotoRequirements = checkinPhotoRequirements;
+      if (checkinInstructions !== undefined) payload.checkinInstructions = checkinInstructions;
+      if (checkoutEnabled !== undefined) payload.checkoutEnabled = checkoutEnabled;
+      if (checkoutItems !== undefined) payload.checkoutItems = checkoutItems;
+      if (checkoutPhotoRequirements !== undefined) payload.checkoutPhotoRequirements = checkoutPhotoRequirements;
+      if (checkoutInstructions !== undefined) payload.checkoutInstructions = checkoutInstructions;
+      if (storageCheckoutEnabled !== undefined) payload.storageCheckoutEnabled = storageCheckoutEnabled;
+      if (storageCheckoutItems !== undefined) payload.storageCheckoutItems = storageCheckoutItems;
+      if (storageCheckoutPhotoRequirements !== undefined) payload.storageCheckoutPhotoRequirements = storageCheckoutPhotoRequirements;
+      if (storageCheckoutInstructions !== undefined) payload.storageCheckoutInstructions = storageCheckoutInstructions;
+      if (storageCheckinEnabled !== undefined) payload.storageCheckinEnabled = storageCheckinEnabled;
+      if (storageCheckinItems !== undefined) payload.storageCheckinItems = storageCheckinItems;
+      if (storageCheckinPhotoRequirements !== undefined) payload.storageCheckinPhotoRequirements = storageCheckinPhotoRequirements;
+      if (storageCheckinInstructions !== undefined) payload.storageCheckinInstructions = storageCheckinInstructions;
+      if (smartLockCheckinInstructions !== undefined) payload.smartLockCheckinInstructions = smartLockCheckinInstructions;
+
+      // Upsert: insert if not exists, update if exists
+      const [result] = await db
+        .insert(checkinCheckoutChecklists)
+        .values(payload as any)
+        .onConflictDoUpdate({
+          target: checkinCheckoutChecklists.locationId,
+          set: payload as any,
+        })
+        .returning();
+
+      logger.info(`[Manager] Updated checkin/checkout settings for location ${locationId}`);
+
+      // Update time window settings on locations table (if provided).
+      // Only the chef-facing windows (check-in window, no-show grace) are
+      // manager-overridable. Checkout review window is admin-only; kitchen
+      // overstay tracking has been removed. Any other keys are ignored.
+      if (timeWindowSettings && typeof timeWindowSettings === 'object') {
+        const locationUpdate: Record<string, unknown> = { updatedAt: new Date() };
+        if (timeWindowSettings.checkinWindowMinutesBefore !== undefined) {
+          locationUpdate.checkinWindowMinutesBefore = timeWindowSettings.checkinWindowMinutesBefore;
+        }
+        if (timeWindowSettings.noShowGraceMinutes !== undefined) {
+          locationUpdate.noShowGraceMinutes = timeWindowSettings.noShowGraceMinutes;
+        }
+
+        if (Object.keys(locationUpdate).length > 1) { // More than just updatedAt
+          await db
+            .update(locations)
+            .set(locationUpdate)
+            .where(eq(locations.id, locationId));
+          logger.info(`[Manager] Updated time window settings for location ${locationId}`);
+        }
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      logger.error("Error updating checkin/checkout settings:", error);
+      res.status(500).json({ error: error.message || "Failed to update settings" });
     }
   },
 );
@@ -3260,6 +3855,127 @@ router.get(
   },
 );
 
+/**
+ * GET /manager/bookings/today
+ * Get today's kitchen bookings with check-in status for the manager's live dashboard.
+ * Returns confirmed bookings for today with checkinStatus and timing info.
+ * NOTE: Must be defined BEFORE /bookings/:id to prevent Express matching "today" as :id
+ */
+router.get(
+  "/bookings/today",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+      const { gte: gteOp, lt: ltOp } = await import("drizzle-orm");
+
+      const todaysBookings = await db
+        .select({
+          id: kitchenBookings.id,
+          referenceCode: kitchenBookings.referenceCode,
+          chefId: kitchenBookings.chefId,
+          kitchenId: kitchenBookings.kitchenId,
+          bookingDate: kitchenBookings.bookingDate,
+          startTime: kitchenBookings.startTime,
+          endTime: kitchenBookings.endTime,
+          status: kitchenBookings.status,
+          checkinStatus: kitchenBookings.checkinStatus,
+          checkedInAt: kitchenBookings.checkedInAt,
+          checkedInMethod: kitchenBookings.checkedInMethod,
+          checkoutRequestedAt: kitchenBookings.checkoutRequestedAt,
+          checkedOutAt: kitchenBookings.checkedOutAt,
+          noShowDetectedAt: kitchenBookings.noShowDetectedAt,
+          actualStartTime: kitchenBookings.actualStartTime,
+          actualEndTime: kitchenBookings.actualEndTime,
+          // Photos + notes for manager verification
+          checkinPhotoUrls: kitchenBookings.checkinPhotoUrls,
+          checkoutPhotoUrls: kitchenBookings.checkoutPhotoUrls,
+          checkinNotes: kitchenBookings.checkinNotes,
+          checkoutNotes: kitchenBookings.checkoutNotes,
+          checkinChecklistItems: kitchenBookings.checkinChecklistItems,
+          checkoutChecklistItems: kitchenBookings.checkoutChecklistItems,
+          accessCodeFormat: kitchenBookings.accessCodeFormat,
+          accessCodeValidFrom: kitchenBookings.accessCodeValidFrom,
+          accessCodeValidUntil: kitchenBookings.accessCodeValidUntil,
+          hasAccessCodeHash: sql<boolean>`${kitchenBookings.accessCodeHash} IS NOT NULL`,
+          smartLockEnabled: kitchens.smartLockEnabled,
+          kitchenName: kitchens.name,
+          locationName: locations.name,
+          chefEmail: users.username,
+          locationId: locations.id,
+        })
+        .from(kitchenBookings)
+        .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .leftJoin(users, eq(kitchenBookings.chefId, users.id))
+        .where(
+          and(
+            eq(locations.managerId, managerId),
+            eq(kitchenBookings.status, 'confirmed'),
+            gteOp(kitchenBookings.bookingDate, todayStart),
+            ltOp(kitchenBookings.bookingDate, todayEnd),
+          )
+        )
+        .orderBy(kitchenBookings.startTime);
+
+      // Lazy evaluation: detect no-shows inline (location-aware settings)
+      const { getCheckinSettings } = await import("../services/kitchen-checkout-service");
+
+      for (const booking of todaysBookings) {
+        if (booking.checkinStatus === 'not_checked_in') {
+          const bookingSettings = await getCheckinSettings(booking.locationId);
+          const dateStr = booking.bookingDate.toISOString().split('T')[0];
+          const bookingStart = new Date(`${dateStr}T${booking.startTime}:00`);
+          const noShowCutoff = new Date(bookingStart.getTime() + bookingSettings.noShowGraceMinutes * 60 * 1000);
+
+          if (now > noShowCutoff) {
+            // Mark as no-show inline (lazy evaluation)
+            try {
+              await db
+                .update(kitchenBookings)
+                .set({
+                  checkinStatus: 'no_show',
+                  noShowDetectedAt: now,
+                  updatedAt: now,
+                })
+                .where(
+                  and(
+                    eq(kitchenBookings.id, booking.id),
+                    eq(kitchenBookings.checkinStatus, 'not_checked_in'),
+                  )
+                );
+              (booking as Record<string, unknown>).checkinStatus = 'no_show';
+              (booking as Record<string, unknown>).noShowDetectedAt = now;
+            } catch (err) {
+              logger.error(`[Today's Bookings] Error lazy-marking no-show for booking ${booking.id}:`, err);
+            }
+          }
+        }
+      }
+
+      // Fetch platform defaults for the settings response
+      const platformSettings = await getCheckinSettings();
+
+      res.json({
+        bookings: todaysBookings,
+        settings: {
+          noShowGraceMinutes: platformSettings.noShowGraceMinutes,
+          checkoutReviewWindowMinutes: platformSettings.checkoutReviewWindowMinutes,
+          checkinWindowMinutesBefore: platformSettings.checkinWindowMinutesBefore,
+        },
+      });
+    } catch (error) {
+      logger.error("Error fetching today's bookings:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
 // Get single booking with details
 router.get(
   "/bookings/:id",
@@ -3719,6 +4435,16 @@ router.put(
       const previousStatus = booking.status; // Status BEFORE the update
       const isCancellation = previousStatus === "confirmed" && status === "cancelled";
       const isFromPending = previousStatus === "pending";
+
+      // ── Phase 3: Remove access code from smart lock on cancellation ──────────
+      if (isCancellation || (isFromPending && status === "cancelled")) {
+        try {
+          const { removeAccessCodeFromLock } = await import("../services/kitchen-checkout-service");
+          await removeAccessCodeFromLock(id, (booking as any).kitchenId);
+        } catch (lockErr: any) {
+          logger.warn(`[Manager] Smart lock code removal failed for booking ${id}:`, lockErr);
+        }
+      }
 
       const bookingPaymentIntentId = (booking as any).paymentIntentId;
       const bookingPaymentStatus = (booking as any).paymentStatus;
@@ -4495,6 +5221,24 @@ router.put(
               );
             }
 
+            // Chef in-app notification for booking confirmation
+            try {
+              await notificationService.notifyChefBookingConfirmed({
+                chefId: booking.chefId,
+                bookingId: id,
+                kitchenName: kitchen.name,
+                locationName: location.name,
+                bookingDate:
+                  booking.bookingDate instanceof Date
+                    ? booking.bookingDate.toISOString().split("T")[0]
+                    : String(booking.bookingDate).split("T")[0],
+                startTime: booking.startTime,
+                endTime: booking.endTime,
+              });
+            } catch (notifError) {
+              logger.error("Error creating booking confirmation notification for chef:", notifError);
+            }
+
             // Send confirmation email to manager
             if (location.notificationEmail) {
               try {
@@ -4613,6 +5357,22 @@ router.put(
                 startTime: booking.startTime,
                 endTime: booking.endTime,
                 cancelledBy: "manager",
+              });
+
+              // Chef in-app notification for booking rejection
+              await notificationService.notifyChefBookingCancelled({
+                chefId: booking.chefId,
+                bookingId: id,
+                kitchenName: kitchen.name,
+                locationName: location.name,
+                bookingDate:
+                  booking.bookingDate instanceof Date
+                    ? booking.bookingDate.toISOString().split("T")[0]
+                    : String(booking.bookingDate).split("T")[0],
+                startTime: booking.startTime,
+                endTime: booking.endTime,
+                cancelledBy: 'manager',
+                reason: 'Booking was declined by the kitchen manager',
               });
             } catch (notifError) {
               logger.error(
@@ -6298,10 +7058,37 @@ router.post(
               day: "numeric",
             }),
           });
+
+          // Email notification to chef
+          const [chefUser] = await db
+            .select({ username: users.username })
+            .from(users)
+            .where(eq(users.id, extension.chefId))
+            .limit(1);
+          if (chefUser?.username) {
+            const { sendEmail } = await import("../email");
+            const dashboardUrl = process.env.VITE_APP_URL || 'https://localcooks.ca';
+            const formattedEndDate = extension.newEndDate.toLocaleDateString("en-US", {
+              year: "numeric", month: "long", day: "numeric",
+            });
+            await sendEmail({
+              to: chefUser.username,
+              subject: `Storage Extension Approved - ${extension.storageName}`,
+              html: `
+                <h2>Storage Extension Approved!</h2>
+                <p>Your ${extension.extensionDays}-day extension for <strong>${extension.storageName}</strong> has been approved.</p>
+                <p><strong>New End Date:</strong> ${formattedEndDate}</p>
+                <p>You can view your updated storage booking in your dashboard.</p>
+                <p><a href="${dashboardUrl}/dashboard?view=storage" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Storage</a></p>
+              `,
+              text: `Storage Extension Approved!\n\nYour ${extension.extensionDays}-day extension for ${extension.storageName} has been approved.\nNew End Date: ${formattedEndDate}\n\nView your storage booking in your dashboard.`,
+            });
+            logger.info(`[Manager] Sent storage extension approval email to chef ${chefUser.username}`);
+          }
         }
       } catch (notifError) {
         logger.error(
-          "Error sending storage extension approval in-app notification:",
+          "Error sending storage extension approval notification:",
           notifError,
         );
       }
@@ -6587,10 +7374,36 @@ router.post(
             newEndDate: "",
             reason: reason || "Extension request declined by manager",
           });
+
+          // Email notification to chef
+          const [chefUser] = await db
+            .select({ username: users.username })
+            .from(users)
+            .where(eq(users.id, extension.chefId))
+            .limit(1);
+          if (chefUser?.username) {
+            const { sendEmail } = await import("../email");
+            const dashboardUrl = process.env.VITE_APP_URL || 'https://localcooks.ca';
+            const storageName = (extension as any).storageName || "Storage";
+            const rejectionReason = reason || "Extension request declined by manager";
+            await sendEmail({
+              to: chefUser.username,
+              subject: `Storage Extension Declined - ${storageName}`,
+              html: `
+                <h2>Storage Extension Declined</h2>
+                <p>Your extension request for <strong>${storageName}</strong> has been declined by the kitchen manager.</p>
+                ${rejectionReason ? `<p><strong>Reason:</strong> ${rejectionReason}</p>` : ''}
+                <p>A refund will be processed for the extension payment.</p>
+                <p><a href="${dashboardUrl}/dashboard?view=storage" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Storage</a></p>
+              `,
+              text: `Storage Extension Declined\n\nYour extension request for ${storageName} has been declined by the kitchen manager.\n${rejectionReason ? `Reason: ${rejectionReason}\n` : ''}A refund will be processed for the extension payment.`,
+            });
+            logger.info(`[Manager] Sent storage extension rejection email to chef ${chefUser.username}`);
+          }
         }
       } catch (notifError) {
         logger.error(
-          "Error sending storage extension rejection in-app notification:",
+          "Error sending storage extension rejection notification:",
           notifError,
         );
       }
@@ -7206,6 +8019,158 @@ router.post(
   },
 );
 
+// ============================================================================
+// STORAGE CHECK-IN REVIEW (Move-In Inspection)
+// ============================================================================
+
+/**
+ * GET /manager/storage-checkins/history
+ * Get check-in history (approved and skipped) for manager's locations
+ */
+router.get(
+  "/storage-checkins/history",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const limit = parseInt(req.query.limit as string) || 20;
+
+      // Get manager's location IDs
+      const managerLocations = await db
+        .select({ id: locations.id })
+        .from(locations)
+        .where(eq(locations.managerId, managerId));
+
+      const locationIds = managerLocations.map((l) => l.id);
+
+      if (locationIds.length === 0) {
+        return res.json({ checkinHistory: [] });
+      }
+
+      const { getCheckinHistory } = await import(
+        "../services/storage-checkout-service"
+      );
+      const checkinHistory = await getCheckinHistory(locationIds, limit);
+
+      res.json({ checkinHistory });
+    } catch (error) {
+      logger.error("Error fetching check-in history:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
+/**
+ * GET /manager/storage-checkins/pending
+ * List all chef-submitted move-in inspections awaiting this manager's review.
+ * Scoped to the manager's owned locations.
+ */
+router.get(
+  "/storage-checkins/pending",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+
+      const { getPendingStorageCheckinsForManager } = await import(
+        "../services/storage-checkout-service"
+      );
+      const pendingCheckins = await getPendingStorageCheckinsForManager(managerId);
+
+      logger.info(
+        `[StorageCheckin] Manager ${managerId} has ${pendingCheckins.length} pending check-ins`,
+      );
+
+      res.json({ pendingCheckins });
+    } catch (error) {
+      logger.error("Error fetching pending storage check-ins:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
+/**
+ * POST /manager/storage-bookings/:id/approve-checkin
+ * Manager approves a chef-submitted move-in inspection. Baseline is
+ * recorded; photos stay on the booking and auto-link to any future claim.
+ */
+router.post(
+  "/storage-bookings/:id/approve-checkin",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const storageBookingId = parseInt(req.params.id);
+      const managerId = req.neonUser!.id;
+
+      if (isNaN(storageBookingId) || storageBookingId <= 0) {
+        return res.status(400).json({ error: "Invalid storage booking ID" });
+      }
+
+      const { approveStorageCheckin } = await import(
+        "../services/storage-checkout-service"
+      );
+      const result = await approveStorageCheckin(storageBookingId, managerId);
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        storageBookingId: result.storageBookingId,
+        checkinStatus: result.checkinStatus,
+        message: "Check-in approved. Baseline photos recorded.",
+      });
+    } catch (error: any) {
+      logger.error("Error approving storage check-in:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
+/**
+ * POST /manager/storage-bookings/:id/skip-checkin
+ * Manager skips the check-in step (chef moved in off-process, or the
+ * booking predates the feature). Transitions to `skipped`.
+ */
+router.post(
+  "/storage-bookings/:id/skip-checkin",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const storageBookingId = parseInt(req.params.id);
+      const managerId = req.neonUser!.id;
+
+      if (isNaN(storageBookingId) || storageBookingId <= 0) {
+        return res.status(400).json({ error: "Invalid storage booking ID" });
+      }
+
+      const { skipStorageCheckin } = await import(
+        "../services/storage-checkout-service"
+      );
+      const result = await skipStorageCheckin(storageBookingId, managerId);
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        storageBookingId: result.storageBookingId,
+        checkinStatus: result.checkinStatus,
+        message: "Check-in marked as skipped.",
+      });
+    } catch (error: any) {
+      logger.error("Error skipping storage check-in:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
 /**
  * POST /manager/storage-bookings/:id/start-claim
  * Manager starts a damage/cleaning claim during storage checkout review.
@@ -7319,6 +8284,443 @@ router.post(
       });
     } catch (error) {
       logger.error("Error processing legacy deny-checkout:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KITCHEN CHECK-IN / CHECK-OUT (Manager-Side)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /manager/bookings/:id/confirm-checkin
+ * Manager confirms a chef's presence at the kitchen (alternative to self-serve check-in).
+ * Useful when chef can't use the app (e.g., no phone, smart lock issue).
+ */
+router.post(
+  "/bookings/:id/confirm-checkin",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      if (isNaN(bookingId) || bookingId <= 0) {
+        return res.status(400).json({ error: "Invalid booking ID" });
+      }
+
+      const { notes } = req.body || {};
+      const { managerConfirmCheckin } = await import("../services/kitchen-checkout-service");
+
+      const result = await managerConfirmCheckin(bookingId, req.neonUser!.id, notes);
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      res.json(result);
+    } catch (error) {
+      logger.error("Error confirming kitchen check-in:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
+/**
+ * POST /manager/bookings/:id/clear-kitchen-checkout
+ * Manager clears kitchen checkout — no issues found. Booking completed.
+ * Mirrors /manager/storage-bookings/:id/clear-checkout.
+ */
+router.post(
+  "/bookings/:id/clear-kitchen-checkout",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      if (isNaN(bookingId) || bookingId <= 0) {
+        return res.status(400).json({ error: "Invalid booking ID" });
+      }
+
+      const { managerNotes } = req.body || {};
+      const { processKitchenCheckoutClear } = await import("../services/kitchen-checkout-service");
+
+      const result = await processKitchenCheckoutClear(bookingId, req.neonUser!.id, managerNotes);
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      res.json(result);
+    } catch (error) {
+      logger.error("Error clearing kitchen checkout:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
+/**
+ * POST /manager/bookings/:id/kitchen-checkout-claim
+ * Manager files a damage claim during kitchen checkout review.
+ * Uses existing damage claim engine (bookingType: 'kitchen').
+ * Mirrors /manager/storage-bookings/:id/start-claim.
+ *
+ * Body: { claimTitle, claimDescription, claimedAmountCents, damageDate?, managerNotes? }
+ */
+router.post(
+  "/bookings/:id/kitchen-checkout-claim",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      if (isNaN(bookingId) || bookingId <= 0) {
+        return res.status(400).json({ error: "Invalid booking ID" });
+      }
+
+      const { claimTitle, claimDescription, claimedAmountCents, damageDate, managerNotes } = req.body || {};
+
+      if (!claimTitle || !claimDescription || !claimedAmountCents) {
+        return res.status(400).json({
+          error: "Missing required fields: claimTitle, claimDescription, claimedAmountCents",
+        });
+      }
+
+      const { processKitchenCheckoutClaim } = await import("../services/kitchen-checkout-service");
+
+      const result = await processKitchenCheckoutClaim(bookingId, req.neonUser!.id, {
+        claimTitle,
+        claimDescription,
+        claimedAmountCents,
+        damageDate,
+        managerNotes,
+      });
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      res.json(result);
+    } catch (error) {
+      logger.error("Error filing kitchen checkout claim:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
+/**
+ * PUT /manager/bookings/:id/access-code
+ * Set or update the access code for a kitchen booking.
+ * Used for manual-code smart locks where the manager programs a specific code.
+ * Body: { accessCode: string }
+ */
+router.put(
+  "/bookings/:id/access-code",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      if (isNaN(bookingId) || bookingId <= 0) {
+        return res.status(400).json({ error: "Invalid booking ID" });
+      }
+
+      const { accessCode } = req.body || {};
+      // Phase 2: Support both numeric (4-8 digits) and alphanumeric (4-8 chars) codes
+      const code = accessCode?.trim();
+      if (!code || typeof code !== 'string' || code.length < 4 || code.length > 8) {
+        return res.status(400).json({ error: "Access code must be 4-8 characters" });
+      }
+      const isAlphanumeric = /[A-Za-z]/.test(code);
+      const codeFormat = isAlphanumeric ? 'alphanumeric' : 'numeric';
+
+      // Verify manager owns this booking's kitchen
+      const [booking] = await db
+        .select({
+          id: kitchenBookings.id,
+          kitchenId: kitchenBookings.kitchenId,
+          status: kitchenBookings.status,
+        })
+        .from(kitchenBookings)
+        .where(eq(kitchenBookings.id, bookingId))
+        .limit(1);
+
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+
+      const [kitchen] = await db
+        .select({
+          locationId: kitchens.locationId,
+          smartLockEnabled: kitchens.smartLockEnabled,
+          smartLockAvailable: kitchens.smartLockAvailable,
+        })
+        .from(kitchens)
+        .where(eq(kitchens.id, booking.kitchenId))
+        .limit(1);
+
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const [location] = await db
+        .select({ managerId: locations.managerId })
+        .from(locations)
+        .where(eq(locations.id, kitchen.locationId))
+        .limit(1);
+
+      if (!location || location.managerId !== req.neonUser!.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Admin-gated capability: managers cannot set an access code when the
+      // kitchen's smart-door capability is disabled by the admin. This also
+      // blocks the implicit auto-enable below from bypassing the gate.
+      if (!kitchen.smartLockAvailable) {
+        return res.status(403).json({
+          error: "Smart door lock is not available for this kitchen. Please contact an administrator to enable it.",
+          code: "SMART_LOCK_UNAVAILABLE",
+        });
+      }
+
+      // If no smart lock enabled on kitchen, enable it now (manager is setting a code)
+      if (!kitchen.smartLockEnabled) {
+        await db
+          .update(kitchens)
+          .set({ smartLockEnabled: true, updatedAt: new Date() })
+          .where(eq(kitchens.id, booking.kitchenId));
+      }
+
+      // Phase 2: Hash the code for secure storage
+      const { kitchenCheckoutService } = await import("../services/kitchen-checkout-service");
+      const codeHash = await kitchenCheckoutService.hashAccessCode(code);
+
+      // Update the booking's access code (hash only — no plaintext column)
+      await db
+        .update(kitchenBookings)
+        .set({
+          accessCodeHash: codeHash,
+          accessCodeFormat: codeFormat,
+          updatedAt: new Date(),
+        })
+        .where(eq(kitchenBookings.id, bookingId));
+
+      // Audit: manager set code
+      await kitchenCheckoutService.logAccessCodeAudit({
+        bookingId,
+        kitchenId: booking.kitchenId,
+        action: 'generated',
+        accessCodeHash: codeHash,
+        source: 'manager_app',
+        metadata: { format: codeFormat, triggeredBy: req.neonUser!.id },
+      });
+
+      logger.info(`[Manager] Manager ${req.neonUser!.id} set access code (${codeFormat}) for booking ${bookingId}`);
+
+      res.json({ success: true, accessCode: code, format: codeFormat });
+    } catch (error) {
+      logger.error("Error setting access code:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
+/**
+ * POST /manager/bookings/:id/revoke-access-code
+ * Revoke (invalidate) the access code for a kitchen booking.
+ * Sets accessCodeHash to null so the code no longer validates.
+ */
+router.post(
+  "/bookings/:id/revoke-access-code",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      if (isNaN(bookingId) || bookingId <= 0) {
+        return res.status(400).json({ error: "Invalid booking ID" });
+      }
+
+      const [booking] = await db
+        .select({
+          id: kitchenBookings.id,
+          kitchenId: kitchenBookings.kitchenId,
+          accessCodeHash: kitchenBookings.accessCodeHash,
+        })
+        .from(kitchenBookings)
+        .where(eq(kitchenBookings.id, bookingId))
+        .limit(1);
+
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+
+      if (!booking.accessCodeHash) {
+        return res.status(400).json({ error: "No access code to revoke" });
+      }
+
+      // Verify manager owns this booking's kitchen
+      const [kitchen] = await db
+        .select({ locationId: kitchens.locationId })
+        .from(kitchens)
+        .where(eq(kitchens.id, booking.kitchenId))
+        .limit(1);
+
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const [location] = await db
+        .select({ managerId: locations.managerId })
+        .from(locations)
+        .where(eq(locations.id, kitchen.locationId))
+        .limit(1);
+
+      if (!location || location.managerId !== req.neonUser!.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Revoke: clear hash
+      await db
+        .update(kitchenBookings)
+        .set({
+          accessCodeHash: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(kitchenBookings.id, bookingId));
+
+      // Audit: revoked
+      const { kitchenCheckoutService } = await import("../services/kitchen-checkout-service");
+      await kitchenCheckoutService.logAccessCodeAudit({
+        bookingId,
+        kitchenId: booking.kitchenId,
+        action: 'revoked',
+        source: 'manager_app',
+        metadata: { revokedBy: req.neonUser!.id },
+      });
+
+      logger.info(`[Manager] Manager ${req.neonUser!.id} revoked access code for booking ${bookingId}`);
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error("Error revoking access code:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
+/**
+ * POST /manager/bookings/:id/regenerate-access-code
+ * Regenerate the access code for a kitchen booking.
+ * Revokes the old code and generates a new one (with hash).
+ * Returns the new code once for the manager to share with the chef.
+ */
+router.post(
+  "/bookings/:id/regenerate-access-code",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      if (isNaN(bookingId) || bookingId <= 0) {
+        return res.status(400).json({ error: "Invalid booking ID" });
+      }
+
+      const [booking] = await db
+        .select({
+          id: kitchenBookings.id,
+          kitchenId: kitchenBookings.kitchenId,
+          status: kitchenBookings.status,
+          bookingDate: kitchenBookings.bookingDate,
+          startTime: kitchenBookings.startTime,
+          endTime: kitchenBookings.endTime,
+          accessCodeHash: kitchenBookings.accessCodeHash,
+        })
+        .from(kitchenBookings)
+        .where(eq(kitchenBookings.id, bookingId))
+        .limit(1);
+
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+
+      if (booking.status !== 'confirmed') {
+        return res.status(400).json({ error: "Can only regenerate access codes for confirmed bookings" });
+      }
+
+      // Verify manager owns this booking's kitchen
+      const [kitchen] = await db
+        .select({
+          locationId: kitchens.locationId,
+          smartLockEnabled: kitchens.smartLockEnabled,
+          smartLockAvailable: kitchens.smartLockAvailable,
+        })
+        .from(kitchens)
+        .where(eq(kitchens.id, booking.kitchenId))
+        .limit(1);
+
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const [location] = await db
+        .select({ managerId: locations.managerId })
+        .from(locations)
+        .where(eq(locations.id, kitchen.locationId))
+        .limit(1);
+
+      if (!location || location.managerId !== req.neonUser!.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Admin-gated capability: block access-code regeneration when the kitchen's
+      // smart-door capability has been disabled by the admin.
+      if (!kitchen.smartLockAvailable) {
+        return res.status(403).json({
+          error: "Smart door lock is not available for this kitchen. Please contact an administrator to enable it.",
+          code: "SMART_LOCK_UNAVAILABLE",
+        });
+      }
+
+      // Audit: revoked (old code)
+      const { kitchenCheckoutService } = await import("../services/kitchen-checkout-service");
+      if (booking.accessCodeHash) {
+        await kitchenCheckoutService.logAccessCodeAudit({
+          bookingId,
+          kitchenId: booking.kitchenId,
+          action: 'revoked',
+          source: 'manager_app',
+          metadata: { reason: 'regeneration', triggeredBy: req.neonUser!.id },
+        });
+      }
+
+      // Generate new code
+      const newCode = await kitchenCheckoutService.generateBookingAccessCode(
+        bookingId,
+        booking.bookingDate,
+        booking.startTime,
+        booking.endTime,
+        booking.kitchenId,
+      );
+
+      if (!newCode) {
+        return res.status(500).json({ error: "Failed to generate new access code" });
+      }
+
+      // Audit: regenerated
+      await kitchenCheckoutService.logAccessCodeAudit({
+        bookingId,
+        kitchenId: booking.kitchenId,
+        action: 'regenerated',
+        source: 'manager_app',
+        metadata: { triggeredBy: req.neonUser!.id },
+      });
+
+      logger.info(`[Manager] Manager ${req.neonUser!.id} regenerated access code for booking ${bookingId}`);
+
+      res.json({ success: true, accessCode: newCode });
+    } catch (error) {
+      logger.error("Error regenerating access code:", error);
       return errorResponse(res, error);
     }
   },
