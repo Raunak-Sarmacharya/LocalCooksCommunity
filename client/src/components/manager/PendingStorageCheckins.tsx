@@ -499,7 +499,7 @@ function CheckinReviewSheet({
                 <h3 className="text-sm font-semibold">Checklist</h3>
               </div>
               <div className="rounded-lg border divide-y">
-                {checkin.checkinChecklistItems.map((item) => (
+                {checkin.checkinChecklistItems.map((item, index) => (
                   <div
                     key={item.id}
                     className="flex items-start gap-2 p-2 text-sm"
@@ -511,6 +511,7 @@ function CheckinReviewSheet({
                           : "text-muted-foreground/40"
                       }`}
                     />
+                    <span className="tabular-nums text-sm font-medium text-muted-foreground">{index + 1}.</span>
                     <span
                       className={
                         item.checked ? "" : "text-muted-foreground line-through"
@@ -702,7 +703,7 @@ function CheckinDetailSheet({
                 <h3 className="text-sm font-semibold">Checklist</h3>
               </div>
               <div className="rounded-lg border divide-y">
-                {checkin.checkinChecklistItems.map((item) => (
+                {checkin.checkinChecklistItems.map((item, index) => (
                   <div
                     key={item.id}
                     className="flex items-start gap-2 p-2 text-sm"
@@ -714,6 +715,7 @@ function CheckinDetailSheet({
                           : "text-muted-foreground/40"
                       }`}
                     />
+                    <span className="tabular-nums text-sm font-medium text-muted-foreground">{index + 1}.</span>
                     <span
                       className={
                         item.checked ? "" : "text-muted-foreground line-through"

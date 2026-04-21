@@ -381,7 +381,7 @@ function ChefPreviewSheet({
                   ? "Move-In Inspection"
                   : "Move-Out Inspection"}
               </Label>
-              {filledItems.map((item) => (
+              {filledItems.map((item, index) => (
                 <div
                   key={item.id}
                   className="flex items-start gap-2.5 p-2 rounded-lg border bg-background"
@@ -389,6 +389,7 @@ function ChefPreviewSheet({
                   <Checkbox disabled className="mt-0.5" />
                   <div className="flex-1 min-w-0">
                     <span className="text-sm">
+                      <span className="tabular-nums font-medium text-muted-foreground mr-1.5">{index + 1}.</span>
                       {item.label}
                       <span className="text-destructive ml-0.5">*</span>
                     </span>
@@ -658,6 +659,16 @@ function ChecklistTable({
   const columns = useMemo<ColumnDef<UnifiedStorageInspectionItem>[]>(
     () => [
       {
+        id: "serial",
+        header: () => <span className="sr-only">#</span>,
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {row.index + 1}
+          </span>
+        ),
+        enableSorting: false,
+      },
+      {
         accessorKey: "label",
         header: ({ column }) => (
           <button
@@ -900,6 +911,7 @@ function ChecklistTable({
                           "h-9 text-xs font-medium",
                           isStageCol && "text-center w-[110px]",
                           id === "actions" && "w-[48px]",
+                          id === "serial" && "w-[40px] text-center",
                         )}
                       >
                         {header.isPlaceholder
@@ -930,7 +942,7 @@ function ChecklistTable({
                           className={cn(
                             "py-2",
                             id === "label" && "align-top",
-                            (isStageCol || id === "actions") &&
+                            (isStageCol || id === "actions" || id === "serial") &&
                               "text-center align-middle",
                           )}
                         >

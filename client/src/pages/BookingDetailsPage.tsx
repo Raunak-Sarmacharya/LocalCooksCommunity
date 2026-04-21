@@ -1109,9 +1109,10 @@ export default function BookingDetailsPage() {
                         <CheckCircle2 className="h-3 w-3" /> Check-in checklist
                       </p>
                       <div className="space-y-1">
-                        {booking.checkinChecklistItems.map((item) => (
+                        {booking.checkinChecklistItems.map((item, index) => (
                           <div key={item.id} className="flex items-center gap-1.5">
                             <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
+                            <span className="tabular-nums text-[11px] font-medium text-muted-foreground">{index + 1}.</span>
                             <span className={`text-[11px] ${item.checked ? "text-green-700" : "text-red-600 line-through"}`}>{item.label}</span>
                           </div>
                         ))}
@@ -1181,9 +1182,10 @@ export default function BookingDetailsPage() {
                         <CheckCircle2 className="h-3 w-3" /> Check-out checklist
                       </p>
                       <div className="space-y-1">
-                        {booking.checkoutChecklistItems.map((item) => (
+                        {booking.checkoutChecklistItems.map((item, index) => (
                           <div key={item.id} className="flex items-center gap-1.5">
                             <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
+                            <span className="tabular-nums text-[11px] font-medium text-muted-foreground">{index + 1}.</span>
                             <span className={`text-[11px] ${item.checked ? "text-blue-700" : "text-red-600 line-through"}`}>{item.label}</span>
                           </div>
                         ))}

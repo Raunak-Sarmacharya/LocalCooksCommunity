@@ -760,9 +760,10 @@ export function TodaysKitchenBookings() {
                           {selectedBooking.checkinChecklistItems && selectedBooking.checkinChecklistItems.length > 0 && (
                             <div className="space-y-1 mt-1">
                               <p className="text-[11px] text-green-700 font-medium">Checklist items confirmed:</p>
-                              {selectedBooking.checkinChecklistItems.map((item) => (
+                              {selectedBooking.checkinChecklistItems.map((item, index) => (
                                 <div key={item.id} className="flex items-center gap-1.5">
                                   <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
+                                  <span className="tabular-nums text-[11px] font-medium text-muted-foreground">{index + 1}.</span>
                                   <span className={cn("text-[11px]", item.checked ? "text-green-700" : "text-red-600 line-through")}>{item.label}</span>
                                 </div>
                               ))}
@@ -813,9 +814,10 @@ export function TodaysKitchenBookings() {
                           {selectedBooking.checkoutChecklistItems && selectedBooking.checkoutChecklistItems.length > 0 && (
                             <div className="space-y-1 mt-1">
                               <p className="text-[11px] text-blue-700 font-medium">Checklist items confirmed:</p>
-                              {selectedBooking.checkoutChecklistItems.map((item) => (
+                              {selectedBooking.checkoutChecklistItems.map((item, index) => (
                                 <div key={item.id} className="flex items-center gap-1.5">
                                   <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
+                                  <span className="tabular-nums text-[11px] font-medium text-muted-foreground">{index + 1}.</span>
                                   <span className={cn("text-[11px]", item.checked ? "text-blue-700" : "text-red-600 line-through")}>{item.label}</span>
                                 </div>
                               ))}

@@ -242,7 +242,7 @@ export function CheckinStatusTracker({
                 </span>
               </div>
               <div className="space-y-1">
-                {data.checkinChecklistItems.map((item) => (
+                {data.checkinChecklistItems.map((item, index) => (
                   <div key={item.id} className="flex items-center gap-2 text-xs">
                     <div className={cn(
                       "h-3.5 w-3.5 rounded-sm border flex items-center justify-center flex-shrink-0",
@@ -252,6 +252,7 @@ export function CheckinStatusTracker({
                     )}>
                       {item.checked && <CheckCircle className="h-2.5 w-2.5" />}
                     </div>
+                    <span className="tabular-nums font-medium text-muted-foreground">{index + 1}.</span>
                     <span className={cn(!item.checked && "text-muted-foreground line-through")}>
                       {item.label}
                     </span>

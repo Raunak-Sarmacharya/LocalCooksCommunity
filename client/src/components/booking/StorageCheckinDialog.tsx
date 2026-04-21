@@ -258,7 +258,7 @@ export function StorageCheckinDialog({
                   <Label className="text-sm font-medium">
                     Check-In Checklist
                   </Label>
-                  {storageCheckinItems.map((item: ChecklistItem) => (
+                  {storageCheckinItems.map((item: ChecklistItem, index: number) => (
                     <label
                       key={item.id}
                       className="flex items-start gap-2.5 p-2 rounded-lg border bg-background hover:bg-muted/50 cursor-pointer transition-colors"
@@ -277,6 +277,7 @@ export function StorageCheckinDialog({
                       />
                       <div className="flex-1 min-w-0">
                         <span className="text-sm">
+                          <span className="tabular-nums font-medium text-muted-foreground mr-1.5">{index + 1}.</span>
                           {item.label}
                           {item.required && (
                             <span className="text-destructive ml-0.5">*</span>

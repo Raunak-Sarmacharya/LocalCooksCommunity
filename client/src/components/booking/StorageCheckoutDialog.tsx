@@ -188,7 +188,7 @@ export function StorageCheckoutDialog({
           {storageCheckoutItems.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-medium">Checkout Checklist</Label>
-              {storageCheckoutItems.map((item: ChecklistItem) => (
+              {storageCheckoutItems.map((item: ChecklistItem, index: number) => (
                 <label key={item.id} className="flex items-start gap-2.5 p-2 rounded-lg border bg-background hover:bg-muted/50 cursor-pointer transition-colors">
                   <Checkbox
                     checked={checkedItems.has(item.id)}
@@ -204,6 +204,7 @@ export function StorageCheckoutDialog({
                   />
                   <div className="flex-1 min-w-0">
                     <span className="text-sm">
+                      <span className="tabular-nums font-medium text-muted-foreground mr-1.5">{index + 1}.</span>
                       {item.label}
                       {item.required && <span className="text-destructive ml-0.5">*</span>}
                     </span>

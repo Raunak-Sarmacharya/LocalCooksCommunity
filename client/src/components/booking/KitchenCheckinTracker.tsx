@@ -358,9 +358,10 @@ export function KitchenCheckinTracker({
                 <div className="rounded-lg border border-green-200 bg-green-50 p-3 mb-4">
                   <p className="text-xs text-green-800 font-medium mb-2">Your Check-In Checklist</p>
                   <div className="space-y-1">
-                    {data.checkinChecklistItems.map((item: { id: string; label: string; checked: boolean }) => (
+                    {data.checkinChecklistItems.map((item: { id: string; label: string; checked: boolean }, index: number) => (
                       <div key={item.id} className="flex items-center gap-2">
                         <Checkbox checked={item.checked} disabled className="pointer-events-none" />
+                        <span className="tabular-nums text-xs font-medium text-muted-foreground">{index + 1}.</span>
                         <span className={cn("text-xs", item.checked ? "text-green-700" : "text-red-600 line-through")}>
                           {item.label}
                         </span>
@@ -373,9 +374,10 @@ export function KitchenCheckinTracker({
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 mb-4">
                   <p className="text-xs text-blue-800 font-medium mb-2">Your Check-Out Checklist</p>
                   <div className="space-y-1">
-                    {data.checkoutChecklistItems.map((item: { id: string; label: string; checked: boolean }) => (
+                    {data.checkoutChecklistItems.map((item: { id: string; label: string; checked: boolean }, index: number) => (
                       <div key={item.id} className="flex items-center gap-2">
                         <Checkbox checked={item.checked} disabled className="pointer-events-none" />
+                        <span className="tabular-nums text-xs font-medium text-muted-foreground">{index + 1}.</span>
                         <span className={cn("text-xs", item.checked ? "text-blue-700" : "text-red-600 line-through")}>
                           {item.label}
                         </span>
@@ -442,7 +444,7 @@ export function KitchenCheckinTracker({
                   {(checklist?.checkinItems || []).length > 0 && (
                     <div className="space-y-2">
                       <Label className="text-sm font-medium">Checklist</Label>
-                      {(checklist?.checkinItems || []).map((item: ChecklistItem) => (
+                      {(checklist?.checkinItems || []).map((item: ChecklistItem, index: number) => (
                         <label key={item.id} className="flex items-start gap-2.5 p-2 rounded-lg border bg-background hover:bg-muted/50 cursor-pointer transition-colors">
                           <Checkbox
                             checked={checkedItems.has(item.id)}
@@ -458,6 +460,7 @@ export function KitchenCheckinTracker({
                           />
                           <div className="flex-1 min-w-0">
                             <span className="text-sm">
+                              <span className="tabular-nums font-medium text-muted-foreground mr-1.5">{index + 1}.</span>
                               {item.label}
                               {item.required && <span className="text-destructive ml-0.5">*</span>}
                             </span>
@@ -544,7 +547,7 @@ export function KitchenCheckinTracker({
                   {(checklist?.checkoutItems || []).length > 0 && (
                     <div className="space-y-2">
                       <Label className="text-sm font-medium">Checkout Checklist</Label>
-                      {(checklist?.checkoutItems || []).map((item: ChecklistItem) => (
+                      {(checklist?.checkoutItems || []).map((item: ChecklistItem, index: number) => (
                         <label key={item.id} className="flex items-start gap-2.5 p-2 rounded-lg border bg-background hover:bg-muted/50 cursor-pointer transition-colors">
                           <Checkbox
                             checked={checkedItems.has(item.id)}
@@ -560,6 +563,7 @@ export function KitchenCheckinTracker({
                           />
                           <div className="flex-1 min-w-0">
                             <span className="text-sm">
+                              <span className="tabular-nums font-medium text-muted-foreground mr-1.5">{index + 1}.</span>
                               {item.label}
                               {item.required && <span className="text-destructive ml-0.5">*</span>}
                             </span>
