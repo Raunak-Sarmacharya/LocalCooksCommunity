@@ -949,23 +949,42 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
                 return bd === todayStr;
             });
 
-            // Get kitchen names for notifications
+            // Get kitchen names and location names for notifications + emails
             const kitchenIds = Array.from(new Set(todayBookings.map(b => b.kitchenId)));
             const kitchenNames = new Map<number, string>();
+            const kitchenLocations = new Map<number, string>();
             if (kitchenIds.length > 0) {
-                const kitchenRows = await db.select({ id: kitchens.id, name: kitchens.name })
+                const kitchenRows = await db.select({ id: kitchens.id, name: kitchens.name, locationName: locations.name })
                     .from(kitchens)
+                    .innerJoin(locations, eq(kitchens.locationId, locations.id))
                     .where(inArray(kitchens.id, kitchenIds));
-                kitchenRows.forEach(k => kitchenNames.set(k.id, k.name));
+                kitchenRows.forEach(k => {
+                    kitchenNames.set(k.id, k.name);
+                    kitchenLocations.set(k.id, k.locationName);
+                });
             }
+
+            // Get chef emails (username is email) for email reminders
+            const chefIds = Array.from(new Set(todayBookings.map(b => b.chefId).filter(Boolean) as number[]));
+            const chefEmails = new Map<number, string>();
+            if (chefIds.length > 0) {
+                const chefRows = await db.select({ id: users.id, username: users.username })
+                    .from(users)
+                    .where(inArray(users.id, chefIds));
+                chefRows.forEach(c => chefEmails.set(c.id, c.username));
+            }
+
+            // Lazy-load email utilities to avoid circular deps at module level
+            const { sendEmail, generateKitchenCheckinReminderEmail, generateStorageCheckinReminderEmail } = await import('../email');
 
             for (const booking of todayBookings) {
                 if (!booking.chefId) continue;
+                const kitchenName = kitchenNames.get(booking.kitchenId) || `Kitchen #${booking.kitchenId}`;
                 try {
                     await notificationService.notifyChefKitchenCheckinReminder({
                         chefId: booking.chefId,
                         bookingId: booking.id,
-                        kitchenName: kitchenNames.get(booking.kitchenId) || `Kitchen #${booking.kitchenId}`,
+                        kitchenName,
                         bookingDate: todayStr,
                         startTime: booking.startTime,
                         endTime: booking.endTime,
@@ -974,6 +993,27 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
                 } catch (err) {
                     logger.error(`[Cron] Failed to send kitchen check-in reminder for booking ${booking.id}:`, err);
                     checkinReminderResults.errors++;
+                }
+
+                // Send email reminder with direct link to booking details
+                const chefEmail = chefEmails.get(booking.chefId);
+                if (chefEmail) {
+                    try {
+                        await sendEmail(generateKitchenCheckinReminderEmail({
+                            chefEmail,
+                            chefName: chefEmail.split('@')[0],
+                            kitchenName,
+                            locationName: kitchenLocations.get(booking.kitchenId) || '',
+                            bookingDate: todayStr,
+                            startTime: booking.startTime,
+                            endTime: booking.endTime,
+                            bookingId: booking.id,
+                        }));
+                        logger.info(`[Cron] Kitchen check-in reminder email sent to chef ${booking.chefId} for booking ${booking.id}`);
+                    } catch (emailErr) {
+                        logger.error(`[Cron] Failed to send kitchen check-in reminder email for booking ${booking.id}:`, emailErr);
+                        checkinReminderResults.errors++;
+                    }
                 }
             }
 
@@ -1000,6 +1040,16 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
                 return sd === todayStr;
             });
 
+            // Get storage names and chef emails
+            const storageChefIds = Array.from(new Set(todayStorage.map(b => b.chefId).filter(Boolean) as number[]));
+            const storageChefEmails = new Map<number, string>();
+            if (storageChefIds.length > 0) {
+                const chefRows = await db.select({ id: users.id, username: users.username })
+                    .from(users)
+                    .where(inArray(users.id, storageChefIds));
+                chefRows.forEach(c => storageChefEmails.set(c.id, c.username));
+            }
+
             for (const sb of todayStorage) {
                 if (!sb.chefId) continue;
                 try {
@@ -1017,6 +1067,24 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
                         startDate: todayStr,
                     });
                     checkinReminderResults.storage++;
+
+                    // Send email reminder
+                    const chefEmail = storageChefEmails.get(sb.chefId);
+                    if (chefEmail) {
+                        try {
+                            await sendEmail(generateStorageCheckinReminderEmail({
+                                chefEmail,
+                                chefName: chefEmail.split('@')[0],
+                                storageName,
+                                startDate: todayStr,
+                                bookingId: sb.id,
+                            }));
+                            logger.info(`[Cron] Storage check-in reminder email sent to chef ${sb.chefId} for booking ${sb.id}`);
+                        } catch (emailErr) {
+                            logger.error(`[Cron] Failed to send storage check-in reminder email for booking ${sb.id}:`, emailErr);
+                            checkinReminderResults.errors++;
+                        }
+                    }
                 } catch (err) {
                     logger.error(`[Cron] Failed to send storage check-in reminder for booking ${sb.id}:`, err);
                     checkinReminderResults.errors++;
@@ -1736,7 +1804,7 @@ router.post("/chef/storage-bookings/:id/checkin", requireChef, async (req: Reque
             success: true,
             storageBookingId: result.storageBookingId,
             checkinStatus: result.checkinStatus,
-            message: "Check-in request submitted successfully. The manager will verify your move-in inspection.",
+            message: "Check-in completed successfully. Your move-in baseline is recorded.",
         });
     } catch (error: any) {
         logger.error("Error requesting storage check-in:", error);

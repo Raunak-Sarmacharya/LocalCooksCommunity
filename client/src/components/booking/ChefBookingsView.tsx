@@ -1087,7 +1087,6 @@ const getStorageBookingColumns = ({
         checkinCompleted
 
       const canExtend = isConfirmed && checkoutStatusActive && !isCompleted && !isExpired
-      const checkinSubmitted = checkinStatus === 'checkin_requested'
 
       return (
         <DropdownMenu>
@@ -1116,22 +1115,12 @@ const getStorageBookingColumns = ({
               Download Invoice
             </DropdownMenuItem>
 
-            {canCheckin && !checkinSubmitted && (
+            {canCheckin && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => onCheckin(storageBooking.id)}>
                   <LogIn className="h-4 w-4 mr-2" />
-                  Request Check-In
-                </DropdownMenuItem>
-              </>
-            )}
-
-            {checkinSubmitted && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onViewCheckinStatus(storageBooking.id)}>
-                  <Clock className="h-4 w-4 mr-2 text-blue-600" />
-                  View Check-In Status
+                  Check In
                 </DropdownMenuItem>
               </>
             )}
@@ -1762,24 +1751,17 @@ export default function ChefBookingsView({
                 Complete the move-in checklist and upload photos of your storage unit. This establishes the baseline condition and protects you from unfair damage claims. You must check in before you can check out.
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
-                {needsStorageCheckin.map(sb => {
-                  const isSubmitted = sb.checkinStatus === 'checkin_requested'
-                  return (
-                    <Button
-                      key={`checkin-${sb.id}`}
-                      size="sm"
-                      className={isSubmitted ? "border-amber-300 text-amber-700 hover:bg-amber-100" : "bg-amber-600 hover:bg-amber-700 text-white"}
-                      variant={isSubmitted ? "outline" : "default"}
-                      onClick={() => isSubmitted ? setCheckinStatusBookingId(sb.id) : setCheckinDialogOpen(sb.id)}
-                    >
-                      {isSubmitted ? (
-                        <><Eye className="h-3.5 w-3.5 mr-1.5" />View Status — {sb.storageName || `Storage #${sb.id}`}</>
-                      ) : (
-                        <><LogIn className="h-3.5 w-3.5 mr-1.5" />Check In — {sb.storageName || `Storage #${sb.id}`}</>
-                      )}
-                    </Button>
-                  )
-                })}
+                {needsStorageCheckin.map(sb => (
+                  <Button
+                    key={`checkin-${sb.id}`}
+                    size="sm"
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                    variant="default"
+                    onClick={() => setCheckinDialogOpen(sb.id)}
+                  >
+                    <LogIn className="h-3.5 w-3.5 mr-1.5" />Check In — {sb.storageName || `Storage #${sb.id}`}
+                  </Button>
+                ))}
               </div>
             </div>
           </div>

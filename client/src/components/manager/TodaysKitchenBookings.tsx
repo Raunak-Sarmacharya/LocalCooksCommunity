@@ -200,7 +200,7 @@ export function TodaysKitchenBookings() {
     null
   )
   const [actionMode, setActionMode] = useState<
-    "view" | "confirm-checkin" | "clear-checkout" | "file-claim"
+    "view" | "clear-checkout" | "file-claim"
   >("view")
   const [notes, setNotes] = useState("")
   const [claimTitle, setClaimTitle] = useState("")
@@ -326,43 +326,6 @@ export function TodaysKitchenBookings() {
   })
 
   const bookings = data?.bookings ?? []
-
-  // Confirm check-in mutation
-  const confirmCheckinMutation = useMutation({
-    mutationFn: async ({
-      bookingId,
-      notes: confirmNotes,
-    }: {
-      bookingId: number
-      notes?: string
-    }) => {
-      const headers = await getAuthHeaders()
-      const response = await fetch(
-        `/api/manager/bookings/${bookingId}/confirm-checkin`,
-        {
-          method: "POST",
-          headers,
-          credentials: "include",
-          body: JSON.stringify({ notes: confirmNotes }),
-        }
-      )
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}))
-        throw new Error(err.error || "Failed to confirm check-in")
-      }
-      return response.json()
-    },
-    onSuccess: () => {
-      toast.success("Check-in confirmed")
-      queryClient.invalidateQueries({
-        queryKey: ["/api/manager/bookings/today"],
-      })
-      closeSheet()
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-    },
-  })
 
   // Clear checkout mutation
   const clearCheckoutMutation = useMutation({
@@ -616,19 +579,6 @@ export function TodaysKitchenBookings() {
                               View Details
                             </DropdownMenuItem>
 
-                            {(!booking.checkinStatus ||
-                              booking.checkinStatus ===
-                                "not_checked_in") && (
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  openAction(booking, "confirm-checkin")
-                                }
-                              >
-                                <LogIn className="h-4 w-4 mr-2" />
-                                Confirm Check-In
-                              </DropdownMenuItem>
-                            )}
-
                             {booking.checkinStatus ===
                               "checkout_requested" && (
                               <>
@@ -674,7 +624,6 @@ export function TodaysKitchenBookings() {
             <>
               <SheetHeader>
                 <SheetTitle>
-                  {actionMode === "confirm-checkin" && "Confirm Check-In"}
                   {actionMode === "clear-checkout" && "Clear Checkout"}
                   {actionMode === "file-claim" && "File Damage Claim"}
                   {actionMode === "view" && "Booking Details"}
@@ -982,24 +931,6 @@ export function TodaysKitchenBookings() {
                   </div>
                 )}
 
-                {/* Confirm Check-In */}
-                {actionMode === "confirm-checkin" && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      Manually confirm this chef has arrived at the kitchen.
-                    </p>
-                    <div>
-                      <Label>Notes (optional)</Label>
-                      <Textarea
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        placeholder="e.g., Chef arrived at front desk"
-                        rows={2}
-                      />
-                    </div>
-                  </div>
-                )}
-
                 {/* Clear Checkout */}
                 {actionMode === "clear-checkout" && (
                   <div className="space-y-3">
@@ -1133,25 +1064,6 @@ export function TodaysKitchenBookings() {
                   <Button variant="outline" onClick={closeSheet}>
                     Cancel
                   </Button>
-
-                  {actionMode === "confirm-checkin" && (
-                    <Button
-                      onClick={() =>
-                        confirmCheckinMutation.mutate({
-                          bookingId: selectedBooking.id,
-                          notes: notes || undefined,
-                        })
-                      }
-                      disabled={confirmCheckinMutation.isPending}
-                    >
-                      {confirmCheckinMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <LogIn className="h-4 w-4 mr-2" />
-                      )}
-                      Confirm Check-In
-                    </Button>
-                  )}
 
                   {actionMode === "clear-checkout" && (
                     <Button

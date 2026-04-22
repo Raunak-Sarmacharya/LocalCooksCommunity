@@ -5,8 +5,8 @@
  * progress to chefs. Symmetric with `CheckoutStatusTracker`.
  *
  * Steps:
- * 1. Check-In Requested — chef submitted photos & checklist
- * 2. Under Review — manager is reviewing the move-in inspection
+ * 1. Check-In Completed — chef submitted photos & checklist
+ * 2. Recorded — move-in baseline is established
  * 3. Approved / Skipped — final outcome
  */
 
@@ -286,35 +286,35 @@ function buildSteps(
 ): Step[] {
   const steps: Step[] = [];
 
-  // Step 1: Check-In Requested
-  const isRequested =
+  // Step 1: Check-In Completed
+  const isCompleted =
     status === "checkin_requested" ||
     status === "checkin_completed" ||
     status === "skipped";
 
   steps.push({
-    label: "Check-In Submitted",
-    description: isRequested
+    label: "Check-In Completed",
+    description: isCompleted
       ? "You submitted your move-in inspection photos and checklist"
       : "Submit photos and checklist documenting the storage unit condition",
-    state: isRequested ? "completed" : "upcoming",
-    timestamp: data?.checkinRequestedAt,
+    state: isCompleted ? "completed" : "upcoming",
+    timestamp: data?.checkinCompletedAt || data?.checkinRequestedAt,
     icon: <Camera className="h-4 w-4" />,
   });
 
-  // Step 2: Under Review
+  // Step 2: Baseline Recorded
   const isUnderReview = status === "checkin_requested";
   const reviewDone = status === "checkin_completed" || status === "skipped";
 
   steps.push({
-    label: "Manager Review",
+    label: "Baseline Recorded",
     description: isUnderReview
-      ? "The manager is reviewing your move-in inspection"
+      ? "Move-in inspection is submitted and awaiting finalisation"
       : reviewDone
-        ? "Manager reviewed your move-in inspection"
-        : "Manager will review your photos and verify the condition",
+        ? "Your move-in baseline is recorded and protects you from unfair damage claims"
+        : "Submit your move-in inspection to establish the baseline condition",
     state: isUnderReview ? "active" : reviewDone ? "completed" : "upcoming",
-    icon: <Clock className="h-4 w-4" />,
+    icon: <ShieldCheck className="h-4 w-4" />,
   });
 
   // Step 3: Outcome
@@ -324,7 +324,7 @@ function buildSteps(
       description: "Your move-in baseline is recorded — this protects you from unfair damage claims at checkout",
       state: "completed",
       timestamp: data?.checkinCompletedAt,
-      icon: <ShieldCheck className="h-4 w-4" />,
+      icon: <CheckCircle className="h-4 w-4" />,
       detail: data?.checkinNotes ? (
         <p className="text-xs text-muted-foreground bg-muted/50 rounded p-2 mt-1">
           {data.checkinNotes}
@@ -334,10 +334,10 @@ function buildSteps(
   } else if (status === "skipped") {
     steps.push({
       label: "Check-In Skipped",
-      description: "The manager skipped the move-in inspection step",
+      description: "The move-in inspection step was skipped",
       state: "completed",
       timestamp: data?.checkinCompletedAt,
-      icon: <ShieldCheck className="h-4 w-4" />,
+      icon: <CheckCircle className="h-4 w-4" />,
     });
   } else if (status === "not_checked_in") {
     steps.push({
@@ -347,12 +347,12 @@ function buildSteps(
       icon: <LogIn className="h-4 w-4" />,
     });
   } else {
-    // checkin_requested — still in progress
+    // checkin_requested — legacy status, still awaiting manager review
     steps.push({
-      label: "Approval Pending",
-      description: "Cleared once the manager approves, or auto-cleared if no response",
-      state: "upcoming",
-      icon: <ShieldCheck className="h-4 w-4" />,
+      label: "Awaiting Review",
+      description: "Your move-in inspection is awaiting final confirmation",
+      state: "active",
+      icon: <Clock className="h-4 w-4" />,
     });
   }
 

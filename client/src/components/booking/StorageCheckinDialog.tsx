@@ -6,16 +6,16 @@
  * baseline for any future damage claim filed at checkout (Turo/Airbnb model).
  *
  * Flow:
- *   1. Chef opens dialog from ChefBookingsView dropdown ("Request Check-In")
+ *   1. Chef opens dialog from ChefBookingsView dropdown ("Check In")
  *   2. Chef completes checklist + uploads manager-defined photos
- *   3. Manager reviews and approves (or skips) the check-in
+ *   3. Check-in is auto-approved — no manager review required
  *   4. Check-in photos are auto-linked as `photo_before` evidence if a
  *      damage claim is ever filed at checkout.
  */
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, LogIn, Clock, Camera } from "lucide-react";
+import { Loader2, LogIn, Camera } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   useLocationChecklist,
@@ -88,9 +88,7 @@ export function StorageCheckinDialog({
     uploadedPhotos,
   );
 
-  const isAlreadySubmitted =
-    storageBooking.checkinStatus === "checkin_requested" ||
-    storageBooking.checkinStatus === "checkin_completed";
+  const isAlreadySubmitted = storageBooking.checkinStatus === "checkin_completed";
 
   const handleSubmitCheckin = async () => {
     if (!allPhotosUploaded) {
@@ -153,14 +151,14 @@ export function StorageCheckinDialog({
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(
-          errorData.error || "Failed to submit check-in request",
+          errorData.error || "Failed to complete check-in",
         );
       }
 
       toast({
-        title: "Check-in submitted",
+        title: "Check-in completed",
         description:
-          "Your move-in inspection has been recorded. The manager will verify it and it becomes the baseline for any future claim.",
+          "Your move-in inspection is recorded. This establishes the baseline for any future claim.",
       });
 
       // Invalidate queries to refresh data (covers both chef + manager views)
@@ -192,7 +190,7 @@ export function StorageCheckinDialog({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <LogIn className="h-5 w-5 text-emerald-600" />
-            Request Storage Check-In
+            Storage Check-In
           </SheetTitle>
           <SheetDescription>
             Document the move-in condition of your storage unit. These photos
@@ -218,21 +216,12 @@ export function StorageCheckinDialog({
 
           {/* Already submitted status */}
           {isAlreadySubmitted && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
               <div className="flex items-start gap-2">
-                <Clock className="h-4 w-4 text-blue-600 mt-0.5" />
-                <div className="text-xs text-blue-800">
-                  {storageBooking.checkinStatus === "checkin_completed" ? (
-                    <>
-                      <strong>Check-in approved.</strong> Your move-in baseline
-                      is recorded.
-                    </>
-                  ) : (
-                    <>
-                      <strong>Check-in submitted.</strong> The manager will
-                      review your inspection shortly.
-                    </>
-                  )}
+                <LogIn className="h-4 w-4 text-emerald-600 mt-0.5" />
+                <div className="text-xs text-emerald-800">
+                  <strong>Check-in completed.</strong> Your move-in baseline
+                  is recorded.
                 </div>
               </div>
             </div>
@@ -324,7 +313,6 @@ export function StorageCheckinDialog({
                     <strong>Why this matters</strong>
                     <ul className="mt-1 space-y-1 list-disc list-inside">
                       <li>Your photos are the baseline for any future claim</li>
-                      <li>Manager verifies within the review window</li>
                       <li>
                         Auto-linked as <em>photo_before</em> evidence if
                         damage is claimed at checkout
@@ -355,7 +343,7 @@ export function StorageCheckinDialog({
               ) : (
                 <>
                   <LogIn className="h-4 w-4 mr-2" />
-                  Submit Check-In
+                  Complete Check-In
                 </>
               )}
             </Button>

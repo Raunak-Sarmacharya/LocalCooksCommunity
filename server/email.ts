@@ -6549,6 +6549,152 @@ The Local Cooks Team
   return { to: data.managerEmail, subject, text, html };
 };
 
+// Reminder email sent to chef in the morning for today's kitchen booking check-in
+export const generateKitchenCheckinReminderEmail = (data: {
+  chefEmail: string;
+  chefName: string;
+  kitchenName: string;
+  locationName: string;
+  bookingDate: string | Date;
+  startTime: string;
+  endTime: string;
+  bookingId: number;
+}): EmailContent => {
+  const firstName = data.chefName.split(' ')[0];
+  const subject = `Reminder: Check In Today — ${data.kitchenName}`;
+  const formattedDate = new Date(data.bookingDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const bookingUrl = `${getSubdomainUrl('chef')}/booking/${data.bookingId}`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">You have a kitchen booking today. Don't forget to <strong>check in</strong> when you arrive — complete the move-in checklist and snap photos to protect yourself.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${data.kitchenName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${data.startTime} – ${data.endTime}</strong></p>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${bookingUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Check In Now</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" style="color: hsl(347, 91%, 51%); text-decoration: none;">${getSupportEmail()}</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const text = `
+Hi ${firstName},
+
+You have a kitchen booking today at ${data.kitchenName} (${data.locationName}).
+Date: ${formattedDate}
+Time: ${data.startTime} – ${data.endTime}
+
+Tap "Check In" when you arrive to complete the move-in checklist and upload condition photos.
+
+Check in now: ${bookingUrl}
+
+Best,
+The Local Cooks Team
+
+© ${new Date().getFullYear()} Local Cooks
+  `.trim();
+
+  return { to: data.chefEmail, subject, text, html };
+};
+
+// Reminder email sent to chef in the morning for today's storage booking check-in
+export const generateStorageCheckinReminderEmail = (data: {
+  chefEmail: string;
+  chefName: string;
+  storageName: string;
+  startDate: string | Date;
+  bookingId: number;
+}): EmailContent => {
+  const firstName = data.chefName.split(' ')[0];
+  const subject = `Reminder: Check In Today — ${data.storageName}`;
+  const formattedDate = new Date(data.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const bookingUrl = `${getSubdomainUrl('chef')}/dashboard`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">You have a storage booking starting today. Don't forget to <strong>check in</strong> when you arrive — complete the move-in checklist and upload photos to protect yourself.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Storage:</span> <strong style="color: #1e293b;">${data.storageName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Start Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${bookingUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Check In Now</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" style="color: hsl(347, 91%, 51%); text-decoration: none;">${getSupportEmail()}</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const text = `
+Hi ${firstName},
+
+You have a storage booking starting today at ${data.storageName}.
+Start Date: ${formattedDate}
+
+Tap "Check In" when you arrive to complete the move-in checklist and upload condition photos.
+
+Check in now: ${bookingUrl}
+
+Best,
+The Local Cooks Team
+
+© ${new Date().getFullYear()} Local Cooks
+  `.trim();
+
+  return { to: data.chefEmail, subject, text, html };
+};
+
 // Notify chef when their checkout is cleared
 export const generateKitchenCheckoutClearedChefEmail = (data: {
   chefEmail: string;
