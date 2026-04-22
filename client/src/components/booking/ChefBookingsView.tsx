@@ -68,7 +68,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { DEFAULT_TIMEZONE, isBookingPast } from "@/utils/timezone-utils"
+import { DEFAULT_TIMEZONE, isBookingPast, createBookingDateTime } from "@/utils/timezone-utils"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { StorageExtensionDialog } from "./StorageExtensionDialog"
 import { StorageCheckoutDialog } from "./StorageCheckoutDialog"
@@ -270,7 +270,11 @@ const canCancelBooking = (booking: Booking, now: Date): boolean => {
 
   try {
     const dateStr = booking.bookingDate?.split('T')[0] || booking.bookingDate
-    const bookingDateTime = new Date(`${dateStr}T${booking.startTime}`)
+    // Resolve the booking start in the LOCATION's timezone — the kitchen's
+    // wall-clock time is what the cancellation policy is measured against,
+    // not the chef's browser timezone.
+    const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
+    const bookingDateTime = createBookingDateTime(dateStr, booking.startTime, timezone)
 
     if (isNaN(bookingDateTime.getTime())) return false
     if (bookingDateTime < now) return false
@@ -387,7 +391,10 @@ const getChefBookingColumns = ({
       let timeBadge = null
       try {
         const dateStr = booking.bookingDate?.split('T')[0] || booking.bookingDate
-        const bookingDateTime = new Date(`${dateStr}T${booking.startTime}`)
+        // Resolve booking start in the location's timezone so "time until
+        // booking" is measured against the kitchen's clock, not the chef's.
+        const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
+        const bookingDateTime = createBookingDateTime(dateStr, booking.startTime, timezone)
         if (!isNaN(bookingDateTime.getTime())) {
           const isUpcoming = bookingDateTime >= now
           if (isUpcoming && status !== 'cancelled') {
@@ -1278,17 +1285,16 @@ export default function ChefBookingsView({
       }
     })
 
-    upcoming.sort((a, b) => {
-      const dateStrA = a.bookingDate?.split('T')[0] || a.bookingDate
-      const dateStrB = b.bookingDate?.split('T')[0] || b.bookingDate
-      return new Date(`${dateStrA}T${a.startTime}`).getTime() - new Date(`${dateStrB}T${b.startTime}`).getTime()
-    })
-
-    past.sort((a, b) => {
-      const dateStrA = a.bookingDate?.split('T')[0] || a.bookingDate
-      const dateStrB = b.bookingDate?.split('T')[0] || b.bookingDate
-      return new Date(`${dateStrB}T${b.startTime}`).getTime() - new Date(`${dateStrA}T${a.startTime}`).getTime()
-    })
+    // Sort using each booking's location timezone so two bookings in different
+    // time zones (e.g. one in NDT, one in PST) compare at their actual UTC
+    // instants rather than being aligned to the browser's local midnight.
+    const toStartMs = (bk: Booking): number => {
+      const dateStr = bk.bookingDate?.split('T')[0] || bk.bookingDate
+      const tz = bk.locationTimezone || DEFAULT_TIMEZONE
+      return createBookingDateTime(dateStr, bk.startTime, tz).getTime()
+    }
+    upcoming.sort((a, b) => toStartMs(a) - toStartMs(b))
+    past.sort((a, b) => toStartMs(b) - toStartMs(a))
 
     return { upcomingBookings: upcoming, pastBookings: past, allBookings: bookings }
   }, [bookings])
@@ -1500,7 +1506,10 @@ export default function ChefBookingsView({
     if (!booking) return
 
     const dateStr = booking.bookingDate.split('T')[0]
-    const bookingDateTime = new Date(`${dateStr}T${booking.startTime}`)
+    // Resolve in the location's timezone so the cancellation-window math
+    // agrees with the server (which measures against the kitchen's wall clock).
+    const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
+    const bookingDateTime = createBookingDateTime(dateStr, booking.startTime, timezone)
 
     if (isNaN(bookingDateTime.getTime())) {
       toast.error("Invalid booking date format")
@@ -1622,9 +1631,13 @@ export default function ChefBookingsView({
     return upcomingBookings.filter(b => {
       if (b.status !== 'confirmed') return false
       if (b.checkinStatus && b.checkinStatus !== 'not_checked_in') return false
-      // Show for bookings happening today or within 1 hour
+      // Resolve booking start in the LOCATION's timezone so this filter agrees
+      // with the kitchen's wall clock (not the chef's browser clock). An NDT
+      // booking viewed from IST must not show the "check in now" card until
+      // it's actually within 2 hours in NDT.
       const dateStr = b.bookingDate.split('T')[0]
-      const bookingStart = new Date(`${dateStr}T${b.startTime}`)
+      const timezone = b.locationTimezone || DEFAULT_TIMEZONE
+      const bookingStart = createBookingDateTime(dateStr, b.startTime, timezone)
       const hoursUntil = (bookingStart.getTime() - now.getTime()) / (1000 * 60 * 60)
       return hoursUntil <= 2 // Within 2 hours of start time
     })

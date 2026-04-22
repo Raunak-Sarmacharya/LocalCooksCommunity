@@ -39,6 +39,7 @@ import { randomInt, randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { logger } from "../logger";
 import { sendEmail, generateKitchenCheckinManagerEmail, generateKitchenCheckinChefEmail, generateKitchenCheckoutRequestManagerEmail, generateKitchenCheckoutClearedChefEmail, generateKitchenNoShowManagerEmail, generateKitchenNoShowChefEmail } from "../email";
+import { createBookingDateTime, DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 
 // ============================================================================
 // TYPES
@@ -408,8 +409,10 @@ export async function generateBookingAccessCode(
       .select({
         smartLockEnabled: kitchens.smartLockEnabled,
         locationId: kitchens.locationId,
+        timezone: locations.timezone,
       })
       .from(kitchens)
+      .innerJoin(locations, eq(locations.id, kitchens.locationId))
       .where(eq(kitchens.id, kitchenId))
       .limit(1);
 
@@ -425,12 +428,14 @@ export async function generateBookingAccessCode(
     // Hash the code for secure storage
     const codeHash = await hashAccessCode(code);
 
-    // Calculate validity window
+    // Calculate validity window in the LOCATION's timezone so a booking that
+    // starts "00:00" is midnight at the kitchen, not midnight on the server.
     const dateStr = bookingDate.toISOString().split('T')[0];
-    const validFrom = new Date(`${dateStr}T${startTime}:00`);
+    const timezone = kitchen.timezone || DEFAULT_TIMEZONE;
+    const validFrom = createBookingDateTime(dateStr, startTime, timezone);
     validFrom.setMinutes(validFrom.getMinutes() - settings.accessCodeValidBeforeMinutes);
 
-    const validUntil = new Date(`${dateStr}T${endTime}:00`);
+    const validUntil = createBookingDateTime(dateStr, endTime, timezone);
     validUntil.setMinutes(validUntil.getMinutes() + settings.accessCodeValidAfterMinutes);
 
     // Store hash + format (bcrypt hash only — no plaintext column)
@@ -534,9 +539,11 @@ export async function requestKitchenCheckin(
         endTime: kitchenBookings.endTime,
         kitchenId: kitchenBookings.kitchenId,
         locationId: kitchens.locationId,
+        timezone: locations.timezone,
       })
       .from(kitchenBookings)
       .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
+      .innerJoin(locations, eq(locations.id, kitchens.locationId))
       .where(eq(kitchenBookings.id, bookingId))
       .limit(1);
 
@@ -554,14 +561,19 @@ export async function requestKitchenCheckin(
     if (status === 'checkout_requested' || status === 'checked_out') return { success: false, error: 'Booking checkout is already in progress or complete' };
     if (status === 'no_show') return { success: false, error: 'This booking was marked as no-show. Please contact the kitchen manager.' };
 
-    // Validate time window: checkin allowed from (start - window) through endTime
-    // Use location-aware settings (location override > platform default)
+    // Validate time window: checkin allowed from (start - window) through endTime.
+    // Use location-aware settings (location override > platform default) AND the
+    // location's timezone so "00:00" on the booking is interpreted as midnight
+    // at the kitchen — not midnight UTC on the server or midnight in the chef's
+    // browser. This keeps the client canCheckin hint and server validation in
+    // perfect agreement across time zones.
     const settings = await getCheckinSettings(booking.locationId);
     const now = new Date();
     const dateStr = booking.bookingDate.toISOString().split('T')[0];
+    const timezone = booking.timezone || DEFAULT_TIMEZONE;
 
-    const bookingStart = new Date(`${dateStr}T${booking.startTime}:00`);
-    const bookingEnd = new Date(`${dateStr}T${booking.endTime}:00`);
+    const bookingStart = createBookingDateTime(dateStr, booking.startTime, timezone);
+    const bookingEnd = createBookingDateTime(dateStr, booking.endTime, timezone);
     const checkinOpens = new Date(bookingStart.getTime() - settings.checkinWindowMinutesBefore * 60 * 1000);
 
     if (now < checkinOpens) {
@@ -1091,9 +1103,11 @@ export async function detectKitchenNoShows(): Promise<NoShowResult> {
         startTime: kitchenBookings.startTime,
         kitchenId: kitchenBookings.kitchenId,
         locationId: kitchens.locationId,
+        timezone: locations.timezone,
       })
       .from(kitchenBookings)
       .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+      .innerJoin(locations, eq(locations.id, kitchens.locationId))
       .where(
         and(
           eq(kitchenBookings.status, 'confirmed'),
@@ -1108,9 +1122,12 @@ export async function detectKitchenNoShows(): Promise<NoShowResult> {
     for (const booking of candidates) {
       try {
         // Use location-aware settings per booking (location override > platform default)
+        // and resolve the booking start in the LOCATION's timezone so "00:00" is
+        // midnight at the kitchen, not midnight on the server.
         const bookingSettings = await getCheckinSettings(booking.locationId);
         const dateStr = booking.bookingDate.toISOString().split('T')[0];
-        const bookingStart = new Date(`${dateStr}T${booking.startTime}:00`);
+        const timezone = booking.timezone || DEFAULT_TIMEZONE;
+        const bookingStart = createBookingDateTime(dateStr, booking.startTime, timezone);
         const noShowCutoff = new Date(bookingStart.getTime() + bookingSettings.noShowGraceMinutes * 60 * 1000);
 
         if (now <= noShowCutoff) continue; // Not yet past grace period

@@ -1,6 +1,10 @@
 import { logger } from "@/lib/logger";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
+import {
+  createBookingDateTime,
+  DEFAULT_TIMEZONE,
+} from "@/utils/timezone-utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,6 +46,13 @@ export interface CheckinStatusData {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  // Authoritative timezone for the check-in window. Defaults to Newfoundland
+  // if the server doesn't send it, but server now always includes it.
+  timezone?: string | null;
+  // Location-aware windows mirrored from the server so client + server agree
+  // on exactly when the check-in button should be enabled.
+  checkinWindowMinutesBefore?: number;
+  noShowGraceMinutes?: number;
 }
 
 interface CheckinResult {
@@ -188,14 +199,22 @@ export function useKitchenCheckin(bookingId: number | null) {
     )
       return false;
 
-    // Check time window: booking date today + within checkin window before start time
+    // Compute the check-in window using the LOCATION's timezone (not the
+    // browser's local timezone). The server validates in the location's
+    // timezone, so the client must match exactly — otherwise the button
+    // could appear enabled while the POST returns "Check-in opens in N min".
+    const timezone = s.timezone || DEFAULT_TIMEZONE;
+    const windowMinutesBefore = s.checkinWindowMinutesBefore ?? 15;
+
     const now = new Date();
     const dateOnly = s.bookingDate.split("T")[0]; // Extract YYYY-MM-DD from ISO timestamp
-    const bookingStart = new Date(`${dateOnly}T${s.startTime}`);
-    const checkinWindowMs = 15 * 60 * 1000; // 15 minutes before
-    const bookingEnd = new Date(`${dateOnly}T${s.endTime}`);
+    const bookingStart = createBookingDateTime(dateOnly, s.startTime, timezone);
+    const bookingEnd = createBookingDateTime(dateOnly, s.endTime, timezone);
+    const checkinOpens = new Date(
+      bookingStart.getTime() - windowMinutesBefore * 60 * 1000,
+    );
 
-    return now >= new Date(bookingStart.getTime() - checkinWindowMs) && now <= bookingEnd;
+    return now >= checkinOpens && now <= bookingEnd;
   };
 
   const canCheckout = (): boolean => {

@@ -2737,9 +2737,14 @@ router.get("/chef/bookings/:id/checkin-status", requireChef, async (req: Request
                 bookingDate: kitchenBookings.bookingDate,
                 startTime: kitchenBookings.startTime,
                 endTime: kitchenBookings.endTime,
+                // Location timezone (authoritative for all check-in window math).
+                // Must be returned so the client can compute canCheckin in the
+                // same timezone the server validates in.
+                timezone: locations.timezone,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchens.id, kitchenBookings.kitchenId))
+            .innerJoin(locations, eq(locations.id, kitchens.locationId))
             .where(and(
                 eq(kitchenBookings.id, id),
                 eq(kitchenBookings.chefId, req.neonUser!.id),
@@ -2748,10 +2753,14 @@ router.get("/chef/bookings/:id/checkin-status", requireChef, async (req: Request
 
         if (!booking) return res.status(404).json({ error: "Booking not found" });
 
+        // Load location-aware settings so the client can compute the exact
+        // same check-in window the server enforces (prevents a scenario where
+        // the UI shows the button enabled but /checkin POST returns an error).
+        const { autoCleanExpiredKitchenCheckout, getCheckinSettings } = await import("../services/kitchen-checkout-service");
+        const settings = await getCheckinSettings(booking.locationId);
+
         // Lazy evaluation: auto-clear expired kitchen checkout if applicable
         if (booking.checkinStatus === 'checkout_requested' && booking.checkoutRequestedAt) {
-            const { autoCleanExpiredKitchenCheckout, getCheckinSettings } = await import("../services/kitchen-checkout-service");
-            const settings = await getCheckinSettings(booking.locationId);
             const wasCleared = await autoCleanExpiredKitchenCheckout(
                 booking.id,
                 booking.chefId,
@@ -2779,7 +2788,11 @@ router.get("/chef/bookings/:id/checkin-status", requireChef, async (req: Request
             }
         }
 
-        res.json(booking);
+        res.json({
+            ...booking,
+            checkinWindowMinutesBefore: settings.checkinWindowMinutesBefore,
+            noShowGraceMinutes: settings.noShowGraceMinutes,
+        });
     } catch (error) {
         logger.error("Error fetching checkin status:", error);
         res.status(500).json({ error: "Failed to fetch checkin status" });

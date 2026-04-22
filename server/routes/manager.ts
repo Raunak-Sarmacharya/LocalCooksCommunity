@@ -58,7 +58,7 @@ import {
   normalizePhoneForStorage,
 } from "../phone-utils";
 import { deleteConversation } from "../chat-service";
-import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
+import { DEFAULT_TIMEZONE, createBookingDateTime } from "@shared/timezone-utils";
 import { getPresignedUrl, deleteFromR2 } from "../r2-storage";
 import { logger } from "../logger";
 import * as Sentry from '@sentry/node';
@@ -3908,6 +3908,7 @@ router.get(
           locationName: locations.name,
           chefEmail: users.username,
           locationId: locations.id,
+          timezone: locations.timezone,
         })
         .from(kitchenBookings)
         .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
@@ -3923,14 +3924,18 @@ router.get(
         )
         .orderBy(kitchenBookings.startTime);
 
-      // Lazy evaluation: detect no-shows inline (location-aware settings)
+      // Lazy evaluation: detect no-shows inline (location-aware settings).
+      // Resolve bookingStart in the LOCATION's timezone so "00:00" means midnight
+      // at the kitchen, not midnight on the server — otherwise the no-show
+      // cutoff can be off by the location's UTC offset.
       const { getCheckinSettings } = await import("../services/kitchen-checkout-service");
 
       for (const booking of todaysBookings) {
         if (booking.checkinStatus === 'not_checked_in') {
           const bookingSettings = await getCheckinSettings(booking.locationId);
           const dateStr = booking.bookingDate.toISOString().split('T')[0];
-          const bookingStart = new Date(`${dateStr}T${booking.startTime}:00`);
+          const bookingTimezone = booking.timezone || DEFAULT_TIMEZONE;
+          const bookingStart = createBookingDateTime(dateStr, booking.startTime, bookingTimezone);
           const noShowCutoff = new Date(bookingStart.getTime() + bookingSettings.noShowGraceMinutes * 60 * 1000);
 
           if (now > noShowCutoff) {

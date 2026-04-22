@@ -47,18 +47,29 @@ function getTimezoneOffsetMs(timezone: string, date: Date = new Date()): number 
 }
 
 /**
- * Get current time in specified timezone as Date object
- * Returns a Date representing "now" in that timezone
+ * Get the current moment as a Date object suitable for comparing against
+ * `createBookingDateTime()` results.
+ *
+ * IMPORTANT: JavaScript `Date` is always a UTC instant internally — it has no
+ * timezone of its own. `createBookingDateTime()` returns the true UTC instant
+ * corresponding to a given wall-clock time in a given timezone. The correct
+ * way to test "is this booking past?" is therefore to compare UTC instants:
+ *
+ *     createBookingDateTime('2026-04-22', '19:00', 'America/St_Johns')
+ *       vs. new Date()
+ *
+ * A previous implementation of this function subtracted the timezone offset
+ * from `now`, producing a shifted `Date` that was NOT a real UTC instant.
+ * Comparing that against `createBookingDateTime()` silently added the offset
+ * to every result — so, for example, a booking ending 30 min from now in NDT
+ * would be classified as ~2h past. See bug report: booking #13 showing in
+ * Past while still active.
+ *
+ * The `timezone` parameter is retained for API compatibility with the
+ * server-side twin in `@shared/timezone-utils` but is intentionally unused.
  */
-export function getNowInTimezone(timezone: string = DEFAULT_TIMEZONE): Date {
-  const now = new Date();
-  // Get the offset for "now" in the target timezone
-  const offsetMs = getTimezoneOffsetMs(timezone, now);
-  // If timezone is UTC-3:30, offset is -210 minutes
-  // To get "now" in timezone, we need to adjust: UTC time + offset = timezone time
-  // But we want a Date object that represents "now in timezone" as UTC
-  // So we subtract the offset: UTC - offset = timezone representation
-  return new Date(now.getTime() - offsetMs);
+export function getNowInTimezone(_timezone: string = DEFAULT_TIMEZONE): Date {
+  return new Date();
 }
 
 /**

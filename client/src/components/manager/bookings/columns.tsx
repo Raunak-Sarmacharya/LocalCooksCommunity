@@ -19,6 +19,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { createBookingDateTime, DEFAULT_TIMEZONE } from "@/utils/timezone-utils"
 
 // Storage/Equipment item types from JSONB fields
 export type StorageItem = {
@@ -840,8 +841,15 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
             const isCancelled = booking.status === 'cancelled';
             const isCancellationRequested = booking.status === 'cancellation_requested';
 
-            // Check if time has passed for confirmed bookings
-            const bookingDateTime = new Date(`${booking.bookingDate.split('T')[0]}T${booking.startTime}`);
+            // Check if time has passed for confirmed bookings. Resolve in the
+            // LOCATION's timezone so this matches the server's view of
+            // past/future (server measures against the kitchen's wall clock).
+            const timezone = booking.locationTimezone || DEFAULT_TIMEZONE;
+            const bookingDateTime = createBookingDateTime(
+                booking.bookingDate.split('T')[0],
+                booking.startTime,
+                timezone,
+            );
             const isPast = bookingDateTime < new Date();
             const canCancel = isConfirmed && !isPast;
 

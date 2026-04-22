@@ -8,7 +8,7 @@
  * State shape: Record<requirementId | '__generic__', string[]>
  */
 
-import { useCallback } from "react"
+import { useCallback, useRef } from "react"
 import { Camera, Upload, X, Loader2, CheckCircle } from "lucide-react"
 import { toast } from "sonner"
 import { Label } from "@/components/ui/label"
@@ -83,13 +83,29 @@ function SingleRequirementSlot({
   uploadFolder: string
   disabled?: boolean
 }) {
+  // Persistent loading toast — dismissed on success/error. Makes upload
+  // feedback visible regardless of scroll position or slot visibility.
+  const toastIdRef = useRef<string | number | null>(null)
+
+  const dismissLoadingToast = useCallback(() => {
+    if (toastIdRef.current !== null) {
+      toast.dismiss(toastIdRef.current)
+      toastIdRef.current = null
+    }
+  }, [])
+
   const { uploadFile, isUploading, uploadProgress } = useSessionFileUpload({
     maxSize: 4.5 * 1024 * 1024,
     allowedTypes: ["image/jpeg", "image/jpg", "image/png", "image/webp"],
     onSuccess: (response) => {
+      dismissLoadingToast()
+      toast.success(`${label} photo uploaded`)
       onChange([...photos, response.url])
     },
-    onError: (err) => toast.error(err),
+    onError: (err) => {
+      dismissLoadingToast()
+      toast.error(err)
+    },
   })
 
   const handleUpload = useCallback(
@@ -100,10 +116,16 @@ function SingleRequirementSlot({
         toast.error(`You can upload up to ${max} photo${max !== 1 ? "s" : ""} for this requirement`)
         return
       }
+      // Fire the loading toast SYNCHRONOUSLY before uploadFile so the chef
+      // sees feedback immediately when the file dialog closes, even before
+      // React commits the isUploading state update.
+      toastIdRef.current = toast.loading(`Uploading ${label} photo…`, {
+        description: "Please wait while your photo is uploaded.",
+      })
       uploadFile(file, uploadFolder)
       e.target.value = ""
     },
-    [uploadFile, photos.length, max, uploadFolder],
+    [uploadFile, uploadFolder, label, photos.length, max],
   )
 
   const handleRemove = useCallback(
@@ -158,7 +180,8 @@ function SingleRequirementSlot({
               <button
                 type="button"
                 onClick={() => handleRemove(url)}
-                className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                disabled={isUploading}
+                className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0"
                 aria-label={`Remove photo ${i + 1}`}
               >
                 <X className="h-3 w-3" />
@@ -173,8 +196,12 @@ function SingleRequirementSlot({
         <div
           className={cn(
             "border-2 border-dashed rounded-md p-2.5 transition-colors",
-            hasPhotos ? "border-green-300 hover:border-green-400" : "border-border hover:border-primary/50",
-            (isUploading || disabled) && "opacity-50 cursor-not-allowed",
+            isUploading
+              ? "border-primary"
+              : hasPhotos
+                ? "border-green-300 hover:border-green-400"
+                : "border-border hover:border-primary/50",
+            disabled && !isUploading && "opacity-50 cursor-not-allowed",
           )}
         >
           <input
@@ -188,14 +215,22 @@ function SingleRequirementSlot({
           <label
             htmlFor={slotId}
             className={cn(
-              "flex items-center justify-center gap-2 cursor-pointer text-xs",
-              (isUploading || disabled) && "cursor-not-allowed",
+              "flex items-center justify-center gap-2 text-xs",
+              isUploading
+                ? "cursor-wait text-primary font-medium"
+                : disabled
+                  ? "cursor-not-allowed"
+                  : "cursor-pointer",
             )}
           >
             {isUploading ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>Uploading... {Math.round(uploadProgress)}%</span>
+                <span className="tabular-nums">
+                  {uploadProgress < 1
+                    ? "Uploading…"
+                    : `Uploading ${Math.round(uploadProgress)}%`}
+                </span>
               </>
             ) : (
               <>

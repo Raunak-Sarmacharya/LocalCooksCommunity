@@ -78,7 +78,12 @@ export const useSessionFileUpload = (options: UseSessionFileUploadOptions = {}) 
       // Upload with progress tracking using Firebase auth
       const xhr = new XMLHttpRequest();
 
-      return new Promise<UploadResponse | null>((resolve, reject) => {
+      // CRITICAL: `await` the promise inside the try block. Without `await`,
+      // the async function returns immediately after creating the Promise,
+      // causing the `finally` block below to fire BEFORE xhr.onload completes.
+      // That would flip isUploading back to false instantly, making any
+      // isUploading-dependent UI invisible to users.
+      return await new Promise<UploadResponse | null>((resolve, reject) => {
         xhr.upload.addEventListener('progress', (event) => {
           if (event.lengthComputable) {
             const progress = (event.loaded / event.total) * 100;
