@@ -495,16 +495,16 @@ export function TransactionHistory() {
                 {table.getFilteredRowModel().rows.length} of {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
               {/* Search Input */}
-              <div className="relative">
+              <div className="relative flex-1 sm:flex-initial">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="text"
                   placeholder="Search by ref code, ID..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-8 w-[180px] lg:w-[220px]"
+                  className="pl-9 pr-8 w-full sm:w-[180px] lg:w-[220px]"
                 />
                 {searchQuery && (
                   <Button
@@ -518,7 +518,7 @@ export function TransactionHistory() {
                 )}
               </div>
               <Select value={bookingTypeFilter} onValueChange={setBookingTypeFilter}>
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder="All Types" />
                 </SelectTrigger>
                 <SelectContent>
@@ -528,7 +528,7 @@ export function TransactionHistory() {
                   <SelectItem value="equipment">Equipment</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
+              <Button variant="outline" onClick={() => refetch()} disabled={isLoading} className="w-full sm:w-auto">
                 <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
@@ -569,13 +569,13 @@ export function TransactionHistory() {
           </Tabs>
 
           {/* Table */}
-          <div className="rounded-md border">
+          <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow key={headerGroup.id}>
                     {headerGroup.headers.map((header) => (
-                      <TableHead key={header.id} className="whitespace-nowrap">
+                      <TableHead key={header.id} className="whitespace-nowrap text-xs sm:text-sm">
                         {header.isPlaceholder
                           ? null
                           : flexRender(header.column.columnDef.header, header.getContext())}
@@ -599,7 +599,7 @@ export function TransactionHistory() {
                       )}
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id} className="py-3">
+                        <TableCell key={cell.id} className="py-3 text-xs sm:text-sm whitespace-nowrap">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>
                       ))}

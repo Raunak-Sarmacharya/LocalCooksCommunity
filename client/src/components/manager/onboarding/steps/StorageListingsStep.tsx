@@ -369,7 +369,7 @@ export default function StorageListingsStep() {
                               <CardDescription className="text-xs">Add custom storage</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-2 px-3 pb-3">
-                              <div className="grid grid-cols-2 gap-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <div className="space-y-1">
                                   <Label className="text-xs">Storage Type</Label>
                                   <Select value={customStorage.storageType} onValueChange={(v: StorageTypeId) => {
@@ -388,7 +388,7 @@ export default function StorageListingsStep() {
                                   <Input type="number" step="0.01" min="0" value={customStorage.dailyRate || ''} onChange={(e) => setCustomStorage({ ...customStorage, dailyRate: parseFloat(e.target.value) || 0 })} placeholder="15.00" className="h-8 text-xs" />
                                 </div>
                               </div>
-                              <div className="grid grid-cols-2 gap-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <div className="space-y-1">
                                   <Label className="text-xs">Size (cubic feet)</Label>
                                   <Input type="number" min="0" value={customStorage.totalVolume || ''} onChange={(e) => setCustomStorage({ ...customStorage, totalVolume: parseFloat(e.target.value) || 0 })} placeholder="50" className="h-8 text-xs" />
@@ -420,7 +420,7 @@ export default function StorageListingsStep() {
                                   <AlertTriangle className="h-3 w-3 text-orange-500" />
                                   Overstay Penalties
                                 </h4>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-3 sm:grid-cols-3 gap-2">
                                   <div className="space-y-1">
                                     <Label className="text-[10px]">Grace (d)</Label>
                                     <Input type="number" min="0" max="14" value={customStorage.overstayGracePeriodDays} onChange={(e) => setCustomStorage({ ...customStorage, overstayGracePeriodDays: parseInt(e.target.value) || 0 })} className="h-7 text-xs" />

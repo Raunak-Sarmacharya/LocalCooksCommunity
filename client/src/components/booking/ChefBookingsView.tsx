@@ -1918,13 +1918,13 @@ export default function ChefBookingsView({
           <Separator />
 
           {/* Table */}
-          <div className="rounded-md border">
+          <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow key={headerGroup.id}>
                     {headerGroup.headers.map((header) => (
-                      <TableHead key={header.id} className="whitespace-nowrap">
+                      <TableHead key={header.id} className="whitespace-nowrap text-xs sm:text-sm">
                         {header.isPlaceholder
                           ? null
                           : flexRender(header.column.columnDef.header, header.getContext())}
@@ -1954,7 +1954,7 @@ export default function ChefBookingsView({
                       )}
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id} className="py-3">
+                        <TableCell key={cell.id} className="py-3 text-xs sm:text-sm whitespace-nowrap">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>
                       ))}
@@ -1986,11 +1986,11 @@ export default function ChefBookingsView({
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between">
-            <div className="flex-1 text-sm text-muted-foreground">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-sm text-muted-foreground order-2 sm:order-1">
               Showing {table.getRowModel().rows.length} of {filteredData.length} results
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-2 order-1 sm:order-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -2025,13 +2025,13 @@ export default function ChefBookingsView({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
               <Table>
                 <TableHeader>
                   {storageTable.getHeaderGroups().map((headerGroup) => (
                     <TableRow key={headerGroup.id}>
                       {headerGroup.headers.map((header) => (
-                        <TableHead key={header.id} className="whitespace-nowrap">
+                        <TableHead key={header.id} className="whitespace-nowrap text-xs sm:text-sm">
                           {header.isPlaceholder
                             ? null
                             : flexRender(header.column.columnDef.header, header.getContext())}
@@ -2049,7 +2049,7 @@ export default function ChefBookingsView({
                         className="hover:bg-muted/50"
                       >
                         {row.getVisibleCells().map((cell) => (
-                          <TableCell key={cell.id} className="py-3">
+                          <TableCell key={cell.id} className="py-3 text-xs sm:text-sm whitespace-nowrap">
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </TableCell>
                         ))}
@@ -2071,11 +2071,11 @@ export default function ChefBookingsView({
 
             {/* Storage Pagination */}
             {storageBookings.length > 10 && (
-              <div className="flex items-center justify-between">
-                <div className="flex-1 text-sm text-muted-foreground">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="text-sm text-muted-foreground order-2 sm:order-1">
                   Showing {storageTable.getRowModel().rows.length} of {storageBookings.length} results
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center gap-2 order-1 sm:order-2">
                   <Button
                     variant="outline"
                     size="sm"

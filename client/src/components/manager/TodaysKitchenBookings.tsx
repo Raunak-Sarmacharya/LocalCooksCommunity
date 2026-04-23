@@ -510,14 +510,14 @@ export function TodaysKitchenBookings() {
               <p className="text-sm">No confirmed bookings for today.</p>
             </div>
           ) : (
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Kitchen</TableHead>
-                    <TableHead>Chef</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Time</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Kitchen</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Chef</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Status</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -531,12 +531,12 @@ export function TodaysKitchenBookings() {
                           "bg-blue-50/50"
                       )}
                     >
-                      <TableCell className="font-mono text-sm">
+                      <TableCell className="font-mono text-xs sm:text-sm whitespace-nowrap">
                         {formatTime(booking.startTime)} –{" "}
                         {formatTime(booking.endTime)}
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm font-medium">
+                        <div className="text-xs sm:text-sm font-medium whitespace-nowrap">
                           {booking.kitchenName}
                         </div>
                         {booking.referenceCode && (
@@ -552,13 +552,15 @@ export function TodaysKitchenBookings() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1 text-sm">
+                        <div className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap">
                           <User className="h-3 w-3 text-muted-foreground" />
                           {booking.chefEmail || `Chef #${booking.chefId}`}
                         </div>
                       </TableCell>
                       <TableCell>
-                        {getCheckinBadge(booking.checkinStatus)}
+                        <div className="whitespace-nowrap">
+                          {getCheckinBadge(booking.checkinStatus)}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>

@@ -80,20 +80,20 @@ export function DataTable<TData>({
 
     return (
         <div className="w-full space-y-4">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center py-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center py-2 sm:py-4 w-full sm:w-auto">
                     <Input
                         placeholder={filterPlaceholder}
                         value={(table.getColumn(filterColumn)?.getFilterValue() as string) ?? ""}
                         onChange={(event) =>
                             table.getColumn(filterColumn)?.setFilterValue(event.target.value)
                         }
-                        className="max-w-sm"
+                        className="w-full sm:max-w-sm"
                     />
                 </div>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="ml-auto">
+                        <Button variant="outline" className="ml-auto shrink-0">
                             Columns <ChevronDown className="ml-2 h-4 w-4" />
                         </Button>
                     </DropdownMenuTrigger>
@@ -118,14 +118,14 @@ export function DataTable<TData>({
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (
                             <TableRow key={headerGroup.id}>
                                 {headerGroup.headers.map((header) => {
                                     return (
-                                        <TableHead key={header.id}>
+                                        <TableHead key={header.id} className="whitespace-nowrap">
                                             {header.isPlaceholder
                                                 ? null
                                                 : flexRender(
@@ -146,7 +146,7 @@ export function DataTable<TData>({
                                     data-state={row.getIsSelected() && "selected"}
                                 >
                                     {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id}>
+                                        <TableCell key={cell.id} className="whitespace-nowrap">
                                             {flexRender(
                                                 cell.column.columnDef.cell,
                                                 cell.getContext()
@@ -168,12 +168,12 @@ export function DataTable<TData>({
                     </TableBody>
                 </Table>
             </div>
-            <div className="flex items-center justify-end space-x-2 py-4">
-                <div className="flex-1 text-sm text-muted-foreground">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-4">
+                <div className="text-sm text-muted-foreground order-2 sm:order-1">
                     {table.getFilteredSelectedRowModel().rows.length} of{" "}
                     {table.getFilteredRowModel().rows.length} row(s) selected.
                 </div>
-                <div className="space-x-2">
+                <div className="flex items-center gap-2 order-1 sm:order-2">
                     <Button
                         variant="outline"
                         size="sm"

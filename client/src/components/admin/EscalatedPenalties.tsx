@@ -311,19 +311,19 @@ export default function EscalatedPenalties() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Storage / Kitchen</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Chef</TableHead>
-                    <TableHead>Days Overdue</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Failure Reason</TableHead>
-                    <TableHead>Detected</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">ID</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Storage / Kitchen</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Location</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Chef</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Days Overdue</TableHead>
+                    <TableHead className="text-right whitespace-nowrap text-xs sm:text-sm">Amount</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Status</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Failure Reason</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Detected</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -400,19 +400,18 @@ export default function EscalatedPenalties() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border">
+              <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>ID</TableHead>
-                      <TableHead>Claim</TableHead>
-                      <TableHead>Location</TableHead>
-                      <TableHead>Chef</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Failure Reason</TableHead>
-                      <TableHead>Filed</TableHead>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm">ID</TableHead>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm">Booking Ref</TableHead>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm">Kitchen</TableHead>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm">Chef</TableHead>
+                      <TableHead className="text-right whitespace-nowrap text-xs sm:text-sm">Claim Amount</TableHead>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm">Manager Note</TableHead>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm">Status</TableHead>
+                      <TableHead className="whitespace-nowrap text-xs sm:text-sm">Created</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

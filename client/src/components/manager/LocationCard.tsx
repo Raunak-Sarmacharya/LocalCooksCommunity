@@ -162,7 +162,7 @@ export default function LocationCard({
 
         <CardContent className="pb-4">
           {/* Stats Grid */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 sm:grid-cols-3 gap-3">
             <div className="text-center p-2.5 rounded-lg bg-gray-50">
               <div className="flex items-center justify-center gap-1 text-gray-500 mb-1">
                 <ChefHat className="w-4 h-4" />

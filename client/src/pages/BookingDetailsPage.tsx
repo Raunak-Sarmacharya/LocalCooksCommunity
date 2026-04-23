@@ -982,7 +982,7 @@ export default function BookingDetailsPage() {
           {/* ── Schedule ── */}
           <section>
             <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Schedule</h2>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Date</p>
                 <p className="text-sm font-medium">{formatDate(booking.bookingDate)}</p>

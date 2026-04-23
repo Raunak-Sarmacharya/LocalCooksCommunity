@@ -161,7 +161,7 @@ export function ManagerPageLayout({
 
         <ResizableHandle withHandle className="hidden md:flex" />
 
-        <ResizablePanel defaultSize={80} className="flex flex-col min-w-[400px]">
+        <ResizablePanel defaultSize={80} className="flex flex-col min-w-0 md:min-w-[400px]">
           <ScrollArea className="flex-1">
             <div className="p-4 md:p-8">
               <div className="max-w-6xl mx-auto space-y-6">

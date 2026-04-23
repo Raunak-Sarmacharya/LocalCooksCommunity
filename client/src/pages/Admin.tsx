@@ -1526,7 +1526,7 @@ function AdminDashboard() {
                       <UserIcon className="h-4 w-4 text-blue-600" />
                       Contact Information
                     </h4>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <span className="text-xs text-gray-500">Email</span>
                         <p className="text-sm font-medium">{selectedApplication.email}</p>
@@ -1544,7 +1544,7 @@ function AdminDashboard() {
                       <Shield className="h-4 w-4 text-green-600" />
                       Certifications & Preferences
                     </h4>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                         <h5 className="text-xs font-medium text-blue-800">Food Safety License</h5>
                         <p className="text-sm font-semibold text-blue-900">{formatCertificationStatus(selectedApplication.foodSafetyLicense)}</p>
@@ -1567,7 +1567,7 @@ function AdminDashboard() {
                         <Shield className="h-4 w-4" />
                         Document Verification
                       </h4>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {/* FSL */}
                         <div className="bg-white p-3 rounded border">
                           <h5 className="text-xs font-medium text-gray-700 mb-2">Food Safety License</h5>

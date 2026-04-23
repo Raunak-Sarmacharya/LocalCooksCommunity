@@ -1156,7 +1156,7 @@ export default function MicrolearningModule({
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 text-center text-sm">
+                  <div className="grid grid-cols-2 sm:grid-cols-2 gap-4 text-center text-sm">
                     <div>
                       <div className="font-semibold text-slate-900">
                         {userProgress.filter(p => p.completed && currentModuleVideos.some(v => v.id === p.videoId)).length}
