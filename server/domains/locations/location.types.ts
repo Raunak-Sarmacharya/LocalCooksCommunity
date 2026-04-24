@@ -54,6 +54,7 @@ export interface UpdateLocationDTO {
   kitchenLicenseUrl?: string;
   kitchenLicenseStatus?: 'pending' | 'approved' | 'rejected';
   kitchenLicenseExpiry?: string;
+  kitchenLicenseUploadedAt?: Date;
   kitchenTermsUrl?: string;
   kitchenTermsUploadedAt?: Date;
 }

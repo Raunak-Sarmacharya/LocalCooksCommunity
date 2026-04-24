@@ -132,6 +132,7 @@ export class LocationRepository {
           kitchenLicenseUrl: dto.kitchenLicenseUrl,
           kitchenLicenseStatus: dto.kitchenLicenseStatus,
           kitchenLicenseExpiry: dto.kitchenLicenseExpiry,
+          kitchenLicenseUploadedAt: dto.kitchenLicenseUploadedAt,
           kitchenTermsUrl: dto.kitchenTermsUrl,
           kitchenTermsUploadedAt: dto.kitchenTermsUploadedAt,
         })
