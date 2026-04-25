@@ -20,6 +20,7 @@ import { notificationService } from '../../services/notification.service';
 import { 
     sendEmail, 
     generateNewKitchenApplicationManagerEmail,
+    generateKitchenApplicationReceivedChefEmail,
     generateKitchenApplicationSubmittedChefEmail,
     generateKitchenApplicationApprovedEmail,
     generateKitchenApplicationRejectedEmail
@@ -610,6 +611,24 @@ router.post('/firebase/chef/kitchen-applications',
                 }
             } catch (emailError) {
                 logger.error("Error sending new kitchen application email to manager:", emailError);
+            }
+
+            // Send confirmation email to chef that their application was received
+            try {
+                if (formData.email) {
+                    const chefConfirmationEmail = generateKitchenApplicationReceivedChefEmail({
+                        chefEmail: formData.email,
+                        chefName: formData.fullName || 'Chef',
+                        locationName: location.name || 'Kitchen Location',
+                        locationAddress: location.address || undefined
+                    });
+                    await sendEmail(chefConfirmationEmail, {
+                        trackingId: `kitchen_app_received_chef_${application.id}_${Date.now()}`
+                    });
+                    logger.info(`✅ Sent application received confirmation email to chef: ${formData.email}`);
+                }
+            } catch (emailError) {
+                logger.error("Error sending application received email to chef:", emailError);
             }
 
             res.status(201).json({
