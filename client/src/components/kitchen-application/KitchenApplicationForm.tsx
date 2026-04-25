@@ -828,7 +828,7 @@ export default function KitchenApplicationForm({
               </Button>
 
               <Button
-                onClick={() => navigate(`/book-kitchen?location=${location.id}`)}
+                onClick={() => navigate(`/dashboard?view=kitchen-applications`)}
                 className="flex-1 bg-[#208D80] hover:bg-[#1A7470]"
               >
                 Book a Kitchen

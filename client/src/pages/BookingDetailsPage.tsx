@@ -176,7 +176,7 @@ export default function BookingDetailsPage() {
   const bookingId = params?.id || managerParams?.id;
   const isManagerView = !!managerParams?.id;
 
-  useFirebaseAuth();
+  const { loading: authLoading } = useFirebaseAuth();
   const { toast } = useToast();
 
   const [booking, setBooking] = useState<BookingDetails | null>(null);
@@ -201,6 +201,15 @@ export default function BookingDetailsPage() {
       return;
     }
 
+    // Wait for Firebase auth to finish initializing before fetching.
+    // On a hard refresh, auth.currentUser is null until Firebase restores the
+    // session asynchronously. Fetching immediately would send an unauthenticated
+    // request (401), which the server correctly rejects — but the UI was
+    // incorrectly showing "Booking Not Found" instead of waiting for auth.
+    if (authLoading) {
+      return; // auth not ready yet — effect will re-run when authLoading becomes false
+    }
+
     const fetchBookingDetails = async () => {
       try {
         const headers = await getAuthHeaders();
@@ -214,6 +223,9 @@ export default function BookingDetailsPage() {
         });
 
         if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error("Session expired. Please refresh the page.");
+          }
           if (response.status === 404) {
             throw new Error("Booking not found");
           }
@@ -234,7 +246,7 @@ export default function BookingDetailsPage() {
     };
 
     fetchBookingDetails();
-  }, [bookingId, isManagerView]);
+  }, [bookingId, isManagerView, authLoading]);
 
   const handleDownloadInvoice = async () => {
     if (!booking?.id) return;

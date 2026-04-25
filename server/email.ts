@@ -5215,6 +5215,106 @@ The Local Cooks Team
   };
 };
 
+// Notify chef immediately after they submit their Step 2 documents (submission confirmation)
+export const generateKitchenApplicationStep2ReceivedChefEmail = (data: {
+  chefEmail: string;
+  chefName: string;
+  locationName: string;
+  locationAddress?: string;
+}): EmailContent => {
+  const subject = `Step 2 Documents Received – ${data.locationName}`;
+  const dashboardUrl = getDashboardUrl();
+  const firstName = data.chefName.split(' ')[0];
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">We&#8217;ve received your Step 2 documents for <strong>${data.locationName}</strong>. The kitchen manager will review them and get back to you shortly.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
+        ${data.locationAddress ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Address:</span> <strong style="color: #1e293b;">${data.locationAddress}</strong></p>` : ''}
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Status:</span> <strong style="color: #d97706;">Step 2 Under Review</strong></p>
+      </div>
+      <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">What happens next:</p>
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">The kitchen manager will review your Step 2 documents</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">You&#8217;ll receive an email once you&#8217;re fully approved and able to book</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">You can track your application status in your dashboard at any time</td>
+        </tr>
+      </table>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#8987; Step 2 Under Review</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Application</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const text = `
+Hi ${firstName},
+
+We've received your Step 2 documents for ${data.locationName}. The kitchen manager will review them and get back to you shortly.
+
+Kitchen: ${data.locationName}
+${data.locationAddress ? `Address: ${data.locationAddress}\n` : ''}Status: Step 2 Under Review
+
+What happens next:
+
+• The kitchen manager will review your Step 2 documents
+• You'll receive an email once you're fully approved and able to book
+• You can track your application status in your dashboard at any time
+
+View your application at: ${dashboardUrl}
+
+If you have any questions, simply reply to this email or contact us at support@localcook.shop
+
+Best,
+The Local Cooks Team
+
+© ${new Date().getFullYear()} Local Cooks
+  `.trim();
+
+  return {
+    to: data.chefEmail,
+    subject,
+    text,
+    html
+  };
+};
+
 // Notify chef when their Step 1 kitchen application is approved by the manager
 export const generateKitchenApplicationSubmittedChefEmail = (data: {
   chefEmail: string;
@@ -5336,7 +5436,7 @@ export const generateKitchenApplicationApprovedEmail = (data: {
   locationName: string;
   kitchenName?: string;
 }): EmailContent => {
-  const subject = `You're Fully Approved for ${data.locationName} – You Can Now Book`;
+  const subject = `Congratulations! Your kitchen application for ${data.locationName} is approved — Start booking`;
   const dashboardUrl = getDashboardUrl();
   const firstName = data.chefName.split(' ')[0];
   const kitchenDisplay = data.kitchenName || data.locationName;
@@ -5357,8 +5457,8 @@ export const generateKitchenApplicationApprovedEmail = (data: {
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
-      <p class="message" style="margin-bottom: 20px;">Great news &#8212; your Step 2 application for ${data.locationName} has been approved.</p>
-      <p class="message" style="margin-bottom: 24px;">You now have full access to this kitchen through Local Cooks and can start submitting booking requests based on the kitchen&#8217;s availability.</p>
+      <p class="message" style="margin-bottom: 20px;">Your Step 2 application for ${data.locationName} has been reviewed and approved.</p>
+      <p class="message" style="margin-bottom: 24px;">You now have access to this kitchen through Local Cooks and can begin submitting booking requests based on the kitchen&#8217;s availability.</p>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">What you can do now:</p>
       <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
         <tr>
@@ -5376,7 +5476,7 @@ export const generateKitchenApplicationApprovedEmail = (data: {
       </table>
       <p class="message" style="margin-bottom: 20px;">Please make sure you continue to follow the kitchen&#8217;s specific guidelines and any local food safety requirements when using the space.</p>
       <div style="margin: 16px 0 4px 0; text-align: center;">
-        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Fully Approved</span>
+        <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Application Approved</span>
       </div>
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Go to Your Dashboard</a>
@@ -5398,9 +5498,9 @@ export const generateKitchenApplicationApprovedEmail = (data: {
   const text = `
 Hi ${firstName},
 
-Great news — your Step 2 application for ${data.locationName} has been approved.
+Your Step 2 application for ${data.locationName} has been reviewed and approved.
 
-You now have full access to this kitchen through Local Cooks and can start submitting booking requests based on the kitchen's availability.
+You now have access to this kitchen through Local Cooks and can begin submitting booking requests based on the kitchen's availability.
 
 What you can do now:
 

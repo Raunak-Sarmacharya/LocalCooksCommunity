@@ -1310,7 +1310,7 @@ export default function KitchenBookingSheet({
                   </p>
                 </div>
               )}
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {allSlots.map((slot) => {
                   const isSelected = selectedSlots.includes(slot.time);
                   const isFullyBooked = slot.isFullyBooked;
@@ -1322,18 +1322,18 @@ export default function KitchenBookingSheet({
                       onClick={() => handleSlotClick(slot)}
                       disabled={isFullyBooked}
                       className={cn(
-                        "py-3 px-2 border rounded-lg text-center transition-all duration-200",
+                        "py-2.5 px-2 border rounded-lg text-center transition-all duration-200",
                         isSelected && "bg-primary text-primary-foreground border-primary shadow-sm",
                         !isSelected && !isFullyBooked && "border-border hover:border-primary hover:bg-primary/5",
                         isFullyBooked && "bg-muted/50 text-muted-foreground/50 cursor-not-allowed border-transparent"
                       )}
                     >
-                      <span className={cn("text-sm font-medium", isFullyBooked && "line-through")}>
+                      <span className={cn("text-xs sm:text-sm font-medium leading-tight", isFullyBooked && "line-through")}>
                         {formatSlotRange(slot.time)}
                       </span>
                       {slot.capacity > 1 && !isFullyBooked && (
                         <span className={cn(
-                          "block text-xs mt-0.5",
+                          "block text-[10px] sm:text-xs mt-0.5",
                           isSelected ? "text-primary-foreground/80" : "text-muted-foreground"
                         )}>
                           {slot.available} left
@@ -1631,15 +1631,33 @@ export default function KitchenBookingSheet({
       >
         {/* Header */}
         <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 pr-10">
             <div>
               <h2 className="text-lg font-semibold">{locationName}</h2>
-              {locationAddress && (
+              {selectedKitchen && currentStep !== 'kitchen' ? (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <ChefHat className="h-3 w-3 text-primary flex-shrink-0" />
+                  <span className="text-sm text-muted-foreground">{selectedKitchen.name}</span>
+                  {locationKitchens.length > 1 && (
+                    <button
+                      className="text-xs text-primary hover:underline ml-1"
+                      onClick={() => {
+                        setSelectedKitchen(null);
+                        setCurrentStep('kitchen');
+                        setSelectedDate(null);
+                        setSelectedSlots([]);
+                      }}
+                    >
+                      Change
+                    </button>
+                  )}
+                </div>
+              ) : locationAddress ? (
                 <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
                   <MapPin className="h-3 w-3" />
                   {locationAddress}
                 </p>
-              )}
+              ) : null}
             </div>
             {selectedKitchen && kitchenPricing?.hourlyRate && (
               <div className="text-right">
@@ -1686,35 +1704,6 @@ export default function KitchenBookingSheet({
             })}
           </div>
         </div>
-
-        {/* Selected Kitchen Pill (shown after selection) */}
-        {selectedKitchen && currentStep !== 'kitchen' && (
-          <div className="flex-shrink-0 px-6 py-3 border-b bg-muted/30">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center">
-                  <ChefHat className="h-3.5 w-3.5 text-primary" />
-                </div>
-                <span className="text-sm font-medium">{selectedKitchen.name}</span>
-              </div>
-              {locationKitchens.length > 1 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs h-6 px-2"
-                  onClick={() => {
-                    setSelectedKitchen(null);
-                    setCurrentStep('kitchen');
-                    setSelectedDate(null);
-                    setSelectedSlots([]);
-                  }}
-                >
-                  Change
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col min-h-0 px-6 py-5">

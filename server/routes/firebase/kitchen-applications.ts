@@ -21,6 +21,7 @@ import {
     sendEmail, 
     generateNewKitchenApplicationManagerEmail,
     generateKitchenApplicationReceivedChefEmail,
+    generateKitchenApplicationStep2ReceivedChefEmail,
     generateKitchenApplicationSubmittedChefEmail,
     generateKitchenApplicationApprovedEmail,
     generateKitchenApplicationRejectedEmail
@@ -614,21 +615,44 @@ router.post('/firebase/chef/kitchen-applications',
             }
 
             // Send confirmation email to chef that their application was received
-            try {
-                if (formData.email) {
-                    const chefConfirmationEmail = generateKitchenApplicationReceivedChefEmail({
-                        chefEmail: formData.email,
-                        chefName: formData.fullName || 'Chef',
-                        locationName: location.name || 'Kitchen Location',
-                        locationAddress: location.address || undefined
-                    });
-                    await sendEmail(chefConfirmationEmail, {
-                        trackingId: `kitchen_app_received_chef_${application.id}_${Date.now()}`
-                    });
-                    logger.info(`✅ Sent application received confirmation email to chef: ${formData.email}`);
+            // Only send this for Step 1 (initial) submissions — Step 2 submissions don't
+            // need a new "Application Received" email (they already got one for Step 1,
+            // and the Step 1 approval email already explains what Step 2 entails).
+            if (currentTierValue === 1) {
+                try {
+                    if (formData.email) {
+                        const chefConfirmationEmail = generateKitchenApplicationReceivedChefEmail({
+                            chefEmail: formData.email,
+                            chefName: formData.fullName || 'Chef',
+                            locationName: location.name || 'Kitchen Location',
+                            locationAddress: location.address || undefined
+                        });
+                        await sendEmail(chefConfirmationEmail, {
+                            trackingId: `kitchen_app_received_chef_${application.id}_${Date.now()}`
+                        });
+                        logger.info(`✅ Sent application received confirmation email to chef: ${formData.email}`);
+                    }
+                } catch (emailError) {
+                    logger.error("Error sending application received email to chef:", emailError);
                 }
-            } catch (emailError) {
-                logger.error("Error sending application received email to chef:", emailError);
+            } else if (currentTierValue === 2) {
+                // Send a Step 2 submission received confirmation to the chef
+                try {
+                    if (formData.email) {
+                        const step2ReceivedEmail = generateKitchenApplicationStep2ReceivedChefEmail({
+                            chefEmail: formData.email,
+                            chefName: formData.fullName || 'Chef',
+                            locationName: location.name || 'Kitchen Location',
+                            locationAddress: location.address || undefined
+                        });
+                        await sendEmail(step2ReceivedEmail, {
+                            trackingId: `kitchen_app_step2_received_chef_${application.id}_${Date.now()}`
+                        });
+                        logger.info(`✅ Sent Step 2 received confirmation email to chef: ${formData.email}`);
+                    }
+                } catch (emailError) {
+                    logger.error("Error sending Step 2 received email to chef:", emailError);
+                }
             }
 
             res.status(201).json({
