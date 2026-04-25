@@ -5557,8 +5557,13 @@ export const generateKitchenLicenseSubmittedAdminEmail = (data: {
   locationName: string;
   locationId: number;
   submittedAt: Date;
+  isUpdate?: boolean;
+  isReplacement?: boolean;
 }): EmailContent => {
-  const subject = `Kitchen License Pending Review - ${data.locationName}`;
+  const isUpdate = data.isUpdate || false;
+  const subject = isUpdate 
+    ? `Kitchen License Update Pending Review - ${data.locationName}`
+    : `Kitchen License Pending Review - ${data.locationName}`;
   const dashboardUrl = `${getDashboardUrl('admin')}?section=kitchen-licenses`;
   const formattedDate = data.submittedAt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -5577,19 +5582,22 @@ export const generateKitchenLicenseSubmittedAdminEmail = (data: {
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Kitchen License Pending Review</h2>
-      <p class="message" style="margin-bottom: 20px;">A manager has submitted a kitchen license for your review.</p>
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">${isUpdate ? 'Kitchen License Update Pending Review' : 'Kitchen License Pending Review'}</h2>
+      <p class="message" style="margin-bottom: 20px;">${isUpdate 
+        ? `A manager has submitted an <strong>updated</strong> kitchen license for your review. The current license remains active until this update is approved.` 
+        : 'A manager has submitted a kitchen license for your review.'}</p>
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Manager:</span> <strong style="color: #1e293b;">${data.managerName}</strong></p>
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Email:</span> <strong style="color: #1e293b;">${data.managerEmail}</strong></p>
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Submitted:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+        ${isUpdate ? '<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 8px 0 0 0;"><span style="color: #64748b;">Type:</span> <strong style="color: #d97706;">License Update</strong></p>' : ''}
       </div>
       <div style="margin: 0 0 4px 0; text-align: center;">
-        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Pending Review</span>
+        <span style="display: inline-block; padding: 4px 12px; background: ${isUpdate ? '#fef3c7' : '#fffbeb'}; color: ${isUpdate ? '#d97706' : '#d97706'}; border: 1px solid ${isUpdate ? '#fcd34d' : '#fef3c7'}; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; ${isUpdate ? 'Update Pending' : 'Pending Review'}</span>
       </div>
       <div style="margin: 16px 0 0 0; text-align: center;">
-        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review License</a>
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">${isUpdate ? 'Review License Update' : 'Review License'}</a>
       </div>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
@@ -5604,10 +5612,14 @@ export const generateKitchenLicenseSubmittedAdminEmail = (data: {
 </body>
 </html>`;
 
+  const textBody = isUpdate 
+    ? `Kitchen License Update Pending Review\n\nManager: ${data.managerName} (${data.managerEmail})\nLocation: ${data.locationName}\nSubmitted: ${formattedDate}\nType: License Update (current license remains active)\n\nReview: ${dashboardUrl}\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`
+    : `Kitchen License Pending Review\n\nManager: ${data.managerName} (${data.managerEmail})\nLocation: ${data.locationName}\nSubmitted: ${formattedDate}\n\nReview: ${dashboardUrl}\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`;
+
   return {
     to: data.adminEmail,
     subject,
-    text: `Kitchen License Pending Review\n\nManager: ${data.managerName} (${data.managerEmail})\nLocation: ${data.locationName}\nSubmitted: ${formattedDate}\n\nReview: ${dashboardUrl}\n\nBest regards,\nThe Local Cooks Team\n\n© ${new Date().getFullYear()} Local Cooks`,
+    text: textBody,
     html
   };
 };

@@ -418,6 +418,8 @@ router.post('/firebase/chef/kitchen-applications',
                 chefId: req.neonUser!.id,
                 locationId: locationId,
                 fullName: req.body.fullName || `${firstName} ${lastName}`.trim() || 'N/A',
+                shopName: req.body.shopName || 'Shop Not Named',       // Not collected in form — use default
+                shopAddress: req.body.shopAddress || 'Address Not Provided', // Not collected in form — use default
                 email: req.body.email || '',
                 phone: phoneValue, // Empty string if not required (database has notNull constraint)
                 kitchenPreference: req.body.kitchenPreference || "commercial",

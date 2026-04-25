@@ -742,7 +742,7 @@ router.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, asy
     try {
         const { status } = req.query;
         
-        // Build query using Drizzle
+        // Build query using Drizzle - include all license-related fields
         const query = db.select({
             id: locations.id,
             name: locations.name,
@@ -753,6 +753,10 @@ router.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, asy
             kitchenLicenseExpiry: locations.kitchenLicenseExpiry,
             kitchenLicenseFeedback: locations.kitchenLicenseFeedback,
             kitchenLicenseApprovedAt: locations.kitchenLicenseApprovedAt,
+            kitchenLicensePendingUrl: locations.kitchenLicensePendingUrl,
+            kitchenLicensePendingSubmittedAt: locations.kitchenLicensePendingSubmittedAt,
+            kitchenLicenseCurrentUrl: locations.kitchenLicenseCurrentUrl,
+            kitchenLicensePreviousUrl: locations.kitchenLicensePreviousUrl,
             kitchenTermsUrl: locations.kitchenTermsUrl,
             kitchenTermsUploadedAt: locations.kitchenTermsUploadedAt,
             createdAt: locations.createdAt,
@@ -780,6 +784,11 @@ router.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, asy
             kitchenLicenseExpiry: loc.kitchenLicenseExpiry,
             kitchenLicenseFeedback: loc.kitchenLicenseFeedback,
             kitchenLicenseApprovedAt: loc.kitchenLicenseApprovedAt,
+            // Include pending license update fields
+            kitchenLicensePendingUrl: loc.kitchenLicensePendingUrl,
+            kitchenLicensePendingSubmittedAt: loc.kitchenLicensePendingSubmittedAt,
+            kitchenLicenseCurrentUrl: loc.kitchenLicenseCurrentUrl,
+            kitchenLicensePreviousUrl: loc.kitchenLicensePreviousUrl,
             kitchenTermsUrl: loc.kitchenTermsUrl,
             kitchenTermsUploadedAt: loc.kitchenTermsUploadedAt,
         }));
@@ -791,7 +800,7 @@ router.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, asy
     }
 });
 
-// Get pending location licenses (admin)
+// Get pending location licenses (admin) - includes both 'pending' and 'pending_update' statuses
 router.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const pendingLicenses = await db.select({
@@ -803,11 +812,16 @@ router.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAd
             kitchenLicenseStatus: locations.kitchenLicenseStatus,
             kitchenLicenseExpiry: locations.kitchenLicenseExpiry,
             kitchenLicenseFeedback: locations.kitchenLicenseFeedback,
+            kitchenLicensePendingUrl: locations.kitchenLicensePendingUrl,
+            kitchenLicensePendingSubmittedAt: locations.kitchenLicensePendingSubmittedAt,
+            kitchenLicenseCurrentUrl: locations.kitchenLicenseCurrentUrl,
             managerName: users.username,
         })
         .from(locations)
         .leftJoin(users, eq(locations.managerId, users.id))
-        .where(eq(locations.kitchenLicenseStatus, 'pending'));
+        .where(
+            sql`${locations.kitchenLicenseStatus} IN ('pending', 'pending_update')`
+        );
 
         const formatted = pendingLicenses.map(loc => ({
             id: loc.id,
@@ -819,6 +833,10 @@ router.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAd
             kitchenLicenseStatus: loc.kitchenLicenseStatus,
             kitchenLicenseExpiry: loc.kitchenLicenseExpiry,
             kitchenLicenseFeedback: loc.kitchenLicenseFeedback,
+            // Include pending license update fields
+            kitchenLicensePendingUrl: loc.kitchenLicensePendingUrl,
+            kitchenLicensePendingSubmittedAt: loc.kitchenLicensePendingSubmittedAt,
+            kitchenLicenseCurrentUrl: loc.kitchenLicenseCurrentUrl,
         }));
 
         res.json(formatted);
@@ -828,13 +846,15 @@ router.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAd
     }
 });
 
-// Get pending location licenses count (admin)
+// Get pending location licenses count (admin) - counts both 'pending' and 'pending_update'
 router.get("/locations/pending-licenses-count", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const result = await db
             .select({ count: sql<number>`count(*)::int` })
             .from(locations)
-            .where(eq(locations.kitchenLicenseStatus, 'pending'));
+            .where(
+                sql`${locations.kitchenLicenseStatus} IN ('pending', 'pending_update')`
+            );
             
         const count = result[0]?.count || 0;
         // Return as array to match client expectation in useQuery
@@ -881,6 +901,21 @@ router.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requir
             return res.status(400).json({ error: "Invalid status" });
         }
 
+        // Get current location to check for pending license update
+        const [currentLocation] = await db
+            .select({
+                kitchenLicenseUrl: locations.kitchenLicenseUrl,
+                kitchenLicenseStatus: locations.kitchenLicenseStatus,
+                kitchenLicensePendingUrl: locations.kitchenLicensePendingUrl,
+                kitchenLicenseCurrentUrl: locations.kitchenLicenseCurrentUrl,
+            })
+            .from(locations)
+            .where(eq(locations.id, locationId))
+            .limit(1);
+
+        const hasPendingUpdate = currentLocation?.kitchenLicensePendingUrl && 
+            (currentLocation?.kitchenLicenseStatus === 'pending_update');
+
         const updateData: any = {
             kitchenLicenseStatus: status,
             kitchenLicenseFeedback: feedback || null,
@@ -888,8 +923,41 @@ router.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requir
 
         if (status === 'approved') {
             updateData.kitchenLicenseApprovedAt = new Date();
-        } else {
+            
+            // Handle pending license update workflow
+            if (hasPendingUpdate) {
+                // Move current license to previous for audit trail
+                if (currentLocation.kitchenLicenseUrl) {
+                    updateData.kitchenLicensePreviousUrl = currentLocation.kitchenLicenseUrl;
+                }
+                // Promote pending license to current/active
+                updateData.kitchenLicenseUrl = currentLocation.kitchenLicensePendingUrl;
+                updateData.kitchenLicenseCurrentUrl = currentLocation.kitchenLicensePendingUrl;
+                // Clear pending fields
+                updateData.kitchenLicensePendingUrl = null;
+                updateData.kitchenLicensePendingSubmittedAt = null;
+                
+                logger.info(
+                    `[Admin] Approved license update for location ${locationId}. ` +
+                    `Old license archived, new license activated.`
+                );
+            }
+        } else if (status === 'rejected') {
             updateData.kitchenLicenseApprovedAt = null;
+            
+            // Handle pending license update rejection
+            if (hasPendingUpdate) {
+                // Clear pending fields, keep current license active
+                updateData.kitchenLicensePendingUrl = null;
+                updateData.kitchenLicensePendingSubmittedAt = null;
+                // Revert status to what it was before (approved if there was a current license)
+                updateData.kitchenLicenseStatus = currentLocation.kitchenLicenseUrl ? 'approved' : 'rejected';
+                
+                logger.info(
+                    `[Admin] Rejected license update for location ${locationId}. ` +
+                    `Current license remains active.`
+                );
+            }
         }
 
         await db.update(locations)
@@ -950,7 +1018,12 @@ router.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requir
             logger.error("Error sending kitchen license status email:", emailError);
         }
 
-        res.json({ message: "License status updated successfully" });
+        res.json({ 
+            message: hasPendingUpdate 
+                ? `License update ${status} successfully` 
+                : "License status updated successfully",
+            wasUpdate: hasPendingUpdate || false
+        });
     } catch (error: any) {
         logger.error("Error updating license status:", error);
         res.status(500).json({ error: error.message || "Failed to update license status" });

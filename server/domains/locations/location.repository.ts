@@ -132,7 +132,9 @@ export class LocationRepository {
           kitchenLicenseUrl: dto.kitchenLicenseUrl,
           kitchenLicenseStatus: dto.kitchenLicenseStatus,
           kitchenLicenseExpiry: dto.kitchenLicenseExpiry,
-          kitchenLicenseUploadedAt: dto.kitchenLicenseUploadedAt,
+          // Pending update fields — must be explicitly included or they are silently dropped
+          kitchenLicensePendingUrl: dto.kitchenLicensePendingUrl,
+          kitchenLicensePendingSubmittedAt: dto.kitchenLicensePendingSubmittedAt,
           kitchenTermsUrl: dto.kitchenTermsUrl,
           kitchenTermsUploadedAt: dto.kitchenTermsUploadedAt,
         })

@@ -6102,6 +6102,19 @@ router.get(
           (loc as any).kitchenLicenseExpiry ||
           (loc as any).kitchen_license_expiry ||
           null,
+        kitchenLicenseUploadedAt:
+          (loc as any).kitchenLicenseUploadedAt ||
+          (loc as any).kitchen_license_uploaded_at ||
+          null,
+        // Pending update fields (for admin-gated license update flow)
+        kitchenLicensePendingUrl:
+          (loc as any).kitchenLicensePendingUrl ||
+          (loc as any).kitchen_license_pending_url ||
+          null,
+        kitchenLicensePendingSubmittedAt:
+          (loc as any).kitchenLicensePendingSubmittedAt ||
+          (loc as any).kitchen_license_pending_submitted_at ||
+          null,
         // Kitchen terms and policies fields
         kitchenTermsUrl:
           (loc as any).kitchenTermsUrl ||
@@ -6403,27 +6416,78 @@ router.put(
       }
 
       // Handle kitchen license fields
+      // Check current location state for license update workflow
+      // Note: 'locations' local variable shadows the Drizzle table, so use dynamic import
+      const { locations: locationsTable } = await import("@shared/schema");
+      const [currentLocation] = await db
+        .select({
+          kitchenLicenseUrl: locationsTable.kitchenLicenseUrl,
+          kitchenLicenseStatus: locationsTable.kitchenLicenseStatus,
+        })
+        .from(locationsTable)
+        .where(eq(locationsTable.id, locationId))
+        .limit(1);
+      const currentStatus = currentLocation?.kitchenLicenseStatus;
+      const isApproved = currentStatus === 'approved';
+      const isPendingUpdate = currentStatus === 'pending_update';
+      // 'pending' = initial submission not yet approved — manager can replace in-place
+      const isInitialPending = currentStatus === 'pending';
+
       if (kitchenLicenseUrl !== undefined) {
-        updates.kitchenLicenseUrl = kitchenLicenseUrl || null;
-        // Set uploaded_at timestamp when license URL is provided
         if (kitchenLicenseUrl) {
-          updates.kitchenLicenseUploadedAt = new Date();
-          // Automatically set status to 'pending' when a new license is uploaded
-          // unless status is explicitly provided
-          if (kitchenLicenseStatus === undefined) {
-            updates.kitchenLicenseStatus = "pending";
+          if (isApproved || isPendingUpdate) {
+            // ── Case 1 & 2: Approved license (or already-pending-update) ──────────────
+            // The current license is live (approved) or there's already a pending update.
+            // Route new submission through the pending_update review gate — admin must
+            // approve before the active license is replaced.
+            updates.kitchenLicensePendingUrl = kitchenLicenseUrl;
+            updates.kitchenLicensePendingSubmittedAt = new Date();
+            if (kitchenLicenseStatus === undefined) {
+              updates.kitchenLicenseStatus = "pending_update";
+            }
+            logger.info(
+              `[Manager] License update submitted for location ${locationId}. ` +
+              `Status was '${currentStatus}'. New license stored in pending fields awaiting admin approval.`,
+            );
+          } else if (isInitialPending && currentLocation?.kitchenLicenseUrl) {
+            // ── Case 3: Replacing an in-review (never-approved) submission ────────────
+            // The original license was never approved, so there's nothing "live" to
+            // protect. Replace it directly and keep status 'pending' so the admin
+            // sees the corrected document instead of both old and new.
+            updates.kitchenLicenseUrl = kitchenLicenseUrl;
+            updates.kitchenLicenseUploadedAt = new Date();
+            if (kitchenLicenseStatus === undefined) {
+              updates.kitchenLicenseStatus = "pending";
+            }
+            // Clear any stale pending-update fields (shouldn't exist here, but be safe)
+            updates.kitchenLicensePendingUrl = null;
+            updates.kitchenLicensePendingSubmittedAt = null;
+            logger.info(
+              `[Manager] Replaced pending (never-approved) license for location ${locationId}. ` +
+              `Admin will review the updated document.`,
+            );
+          } else {
+            // ── Case 4: Fresh submission (no prior license, or was rejected/expired) ──
+            updates.kitchenLicenseUrl = kitchenLicenseUrl;
+            updates.kitchenLicenseUploadedAt = new Date();
+            if (kitchenLicenseStatus === undefined) {
+              updates.kitchenLicenseStatus = "pending";
+            }
           }
+        } else {
+          // Clearing the license
+          updates.kitchenLicenseUrl = null;
         }
       }
       if (kitchenLicenseStatus !== undefined) {
-        // Validate status is one of the allowed values
+        // Validate status is one of the allowed values (including pending_update)
         if (
           kitchenLicenseStatus &&
-          !["pending", "approved", "rejected"].includes(kitchenLicenseStatus)
+          !["pending", "approved", "rejected", "pending_update"].includes(kitchenLicenseStatus)
         ) {
           return res.status(400).json({
             error:
-              "Invalid kitchenLicenseStatus. Must be 'pending', 'approved', or 'rejected'",
+              "Invalid kitchenLicenseStatus. Must be 'pending', 'approved', 'rejected', or 'pending_update'",
           });
         }
         updates.kitchenLicenseStatus = kitchenLicenseStatus || null;
@@ -6454,8 +6518,12 @@ router.put(
 
       logger.info(`✅ Location ${locationId} updated successfully`);
 
-      // Send email to admin when manager uploads a new kitchen license
-      if (kitchenLicenseUrl && updates.kitchenLicenseStatus === "pending") {
+      // Send email to admin when manager uploads a new kitchen license or updates existing one
+      const isNewSubmission = kitchenLicenseUrl && updates.kitchenLicenseStatus === "pending" && !isInitialPending;
+      const isReplacedPending = kitchenLicenseUrl && updates.kitchenLicenseStatus === "pending" && isInitialPending;
+      const isUpdateSubmission = kitchenLicenseUrl && updates.kitchenLicenseStatus === "pending_update";
+      
+      if (isNewSubmission || isUpdateSubmission || isReplacedPending) {
         try {
           const { generateKitchenLicenseSubmittedAdminEmail } = await import(
             "../email"
@@ -6476,18 +6544,20 @@ router.put(
                 locationName: (updated as any).name || "Kitchen Location",
                 locationId: locationId,
                 submittedAt: new Date(),
+                isUpdate: isUpdateSubmission, // true = pending_update (approved license being updated)
+                isReplacement: isReplacedPending, // true = manager replaced their pending-not-yet-approved license
               });
               await sendEmail(adminEmail, {
-                trackingId: `kitchen_license_submitted_${locationId}_${Date.now()}`,
+                trackingId: `kitchen_license_${isUpdateSubmission ? 'update' : isReplacedPending ? 'replaced' : 'submitted'}_${locationId}_${Date.now()}`,
               });
             }
           }
           logger.info(
-            `[Manager] Sent kitchen license submission notification to admins for location ${locationId}`,
+            `[Manager] Sent kitchen license ${isUpdateSubmission ? 'update' : isReplacedPending ? 'replacement' : 'submission'} notification to admins for location ${locationId}`,
           );
         } catch (emailError) {
           logger.error(
-            "Error sending kitchen license submission email to admin:",
+            `Error sending kitchen license ${isUpdateSubmission ? 'update' : isReplacedPending ? 'replacement' : 'submission'} email to admin:`,
             emailError,
           );
         }

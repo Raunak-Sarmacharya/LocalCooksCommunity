@@ -316,6 +316,11 @@ export const locations = pgTable("locations", {
   kitchenLicenseApprovedAt: timestamp("kitchen_license_approved_at"), // When license was approved/rejected
   kitchenLicenseFeedback: text("kitchen_license_feedback"), // Admin feedback on license
   kitchenLicenseExpiry: date("kitchen_license_expiry"), // Expiration date of the kitchen license
+  // Kitchen license update workflow (new license submissions from managers)
+  kitchenLicensePendingUrl: text("kitchen_license_pending_url"), // URL to new license awaiting admin approval
+  kitchenLicensePendingSubmittedAt: timestamp("kitchen_license_pending_submitted_at"), // When new license was submitted
+  kitchenLicenseCurrentUrl: text("kitchen_license_current_url"), // Currently active/approved license URL
+  kitchenLicensePreviousUrl: text("kitchen_license_previous_url"), // Previous license for audit trail
   // Kitchen terms and policies (uploaded alongside license)
   kitchenTermsUrl: text("kitchen_terms_url"), // URL to uploaded kitchen terms & policies document
   kitchenTermsUploadedAt: timestamp("kitchen_terms_uploaded_at"), // When terms were uploaded
