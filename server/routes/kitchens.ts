@@ -280,6 +280,39 @@ router.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req: Request, 
     }
 });
 
+// Get month-wide availability for a kitchen (bulk endpoint).
+// Replaces 30 separate /slots calls with a single round-trip so the calendar
+// can show a clean loader instead of glitching as per-day fetches resolve.
+router.get("/chef/kitchens/:kitchenId/month-availability", requireChef, async (req: Request, res: Response) => {
+    try {
+        const kitchenId = parseInt(req.params.kitchenId);
+        if (isNaN(kitchenId) || kitchenId <= 0) {
+            return res.status(400).json({ error: "Invalid kitchen ID" });
+        }
+
+        const { year, month } = req.query;
+        if (year === undefined || month === undefined) {
+            return res.status(400).json({ error: "Year and month parameters are required" });
+        }
+
+        const yearNum = parseInt(year as string);
+        const monthNum = parseInt(month as string);
+
+        if (isNaN(yearNum) || isNaN(monthNum) || monthNum < 0 || monthNum > 11) {
+            return res.status(400).json({ error: "Invalid year or month (month must be 0-11)" });
+        }
+
+        const availability = await kitchenService.getMonthAvailability(kitchenId, yearNum, monthNum);
+        res.json(availability);
+    } catch (error: any) {
+        logger.error("Error fetching month availability:", error);
+        res.status(500).json({
+            error: "Failed to fetch month availability",
+            message: error.message,
+        });
+    }
+});
+
 // Get available time slots for a kitchen on a specific date (legacy endpoint, returns only available slots)
 router.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req: Request, res: Response) => {
     try {

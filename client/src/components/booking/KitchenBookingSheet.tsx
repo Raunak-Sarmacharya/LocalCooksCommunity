@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
   CardContent,
@@ -276,8 +277,10 @@ export default function KitchenBookingSheet({
 
   const loadMonthAvailability = async (kitchenId: number, year: number, month: number) => {
     setIsLoadingAvailability(true);
-    const availability: Record<string, boolean> = {};
-    
+    // Clear previous month's data so the loader UI shows immediately
+    // and we never display stale dates from another month
+    setDateAvailability({});
+
     try {
       let authHeader: string | undefined;
       try {
@@ -295,44 +298,46 @@ export default function KitchenBookingSheet({
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authHeader) headers['Authorization'] = authHeader;
 
-      // Get all days in the month
-      const daysInMonth = getDaysInMonth(year, month);
-      const todayDate = new Date();
-      todayDate.setHours(0, 0, 0, 0);
-
-      // Fetch availability for each future date in the month (batch requests)
-      const promises: Promise<void>[] = [];
-      
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month, day);
-        const dateStr = toLocalDateString(date);
-        
-        // Skip past dates
-        if (date < todayDate) {
-          availability[dateStr] = false;
-          continue;
-        }
-
-        const promise = fetch(`/api/chef/kitchens/${kitchenId}/slots?date=${dateStr}`, {
+      // Single bulk request — replaces the legacy 30 per-day fetches that
+      // caused the calendar to glitch as each request resolved at a different time
+      const response = await fetch(
+        `/api/chef/kitchens/${kitchenId}/month-availability?year=${year}&month=${month}`,
+        {
           credentials: "include",
           headers,
           cache: 'no-store',
-        })
-          .then(res => res.ok ? res.json() : [])
-          .then(slots => {
-            availability[dateStr] = Array.isArray(slots) && slots.length > 0;
-          })
-          .catch(() => {
-            availability[dateStr] = false;
-          });
-        
-        promises.push(promise);
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to load month availability (status ${response.status})`);
       }
 
-      await Promise.all(promises);
+      const serverAvailability: Record<string, boolean> = await response.json();
+
+      // Mask out past dates client-side (server returns schedule-based availability
+      // regardless of date, but past dates should never be selectable)
+      const todayDate = new Date();
+      todayDate.setHours(0, 0, 0, 0);
+      const daysInMonth = getDaysInMonth(year, month);
+      const availability: Record<string, boolean> = {};
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month, day);
+        const dateStr = toLocalDateString(date);
+        if (date < todayDate) {
+          availability[dateStr] = false;
+        } else {
+          availability[dateStr] = serverAvailability[dateStr] === true;
+        }
+      }
+
       setDateAvailability(availability);
     } catch (error) {
       logger.error('Error loading month availability:', error);
+      // Keep dateAvailability empty so the loader UI still hides on failure
+      // but the calendar grid renders gracefully (all dates will appear closed)
+      setDateAvailability({});
     } finally {
       setIsLoadingAvailability(false);
     }
@@ -1126,16 +1131,28 @@ export default function KitchenBookingSheet({
               </p>
             </div>
             <div className="flex items-center justify-center gap-1 bg-muted/50 rounded-lg p-1 flex-shrink-0">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigateMonth('prev')}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => navigateMonth('prev')}
+                disabled={isLoadingAvailability}
+              >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <span className="text-sm font-semibold w-[110px] text-center tabular-nums">{monthNames[currentMonth]} {currentYear}</span>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigateMonth('next')}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => navigateMonth('next')}
+                disabled={isLoadingAvailability}
+              >
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
           </div>
-          
+
           {/* Legend - horizontal scrollable on mobile, compact design */}
           <div className="flex-shrink-0 flex items-center gap-3 sm:gap-5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
             <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -1152,7 +1169,10 @@ export default function KitchenBookingSheet({
             </div>
           </div>
 
-          {/* Calendar Grid - responsive and contained */}
+          {/* Calendar Grid - responsive and contained.
+              While availability is loading we render a polished skeleton in
+              the same layout, so the grid never glitches into existence one
+              cell at a time. */}
           <div className="flex-1 min-h-0 overflow-y-auto">
             <div className="bg-gradient-to-b from-muted/40 to-muted/20 rounded-xl p-2 sm:p-3 border border-border/50">
               {/* Day headers - abbreviated on mobile */}
@@ -1164,68 +1184,83 @@ export default function KitchenBookingSheet({
                   </div>
                 ))}
               </div>
-              
-              {/* Calendar days - compact responsive grid */}
-              <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
-                {calendarDays.map((date, index) => {
-                  if (!date) return <div key={index} className="h-8 sm:h-9" />;
-                  const isCurrent = isCurrentMonth(date);
-                  const isTodayDate = isToday(date);
-                  const isPastDate = isPast(date);
-                  const isSelected = selectedDate && date.toDateString() === selectedDate.toDateString();
-                  const dateStr = date ? toLocalDateString(date) : '';
-                  const hasAvailability = dateAvailability[dateStr] === true;
-                  const isUnavailable = !isPastDate && isCurrent && dateAvailability[dateStr] === false;
-                  const isLoading = !isPastDate && isCurrent && dateAvailability[dateStr] === undefined;
 
-                  return (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => !isPastDate && isCurrent && hasAvailability && handleDateClick(date)}
-                      disabled={isPastDate || !isCurrent || isUnavailable || isLoading}
-                      className={cn(
-                        "h-8 sm:h-9 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center justify-center relative",
-                        // Base hover effect for interactive dates
-                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1",
-                        
-                        // Selected state - prominent with ring
-                        isSelected && "bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-2 ring-primary/30 ring-offset-1 ring-offset-background scale-105 z-10",
-                        
-                        // Today indicator (not selected) - with available styling
-                        !isSelected && isTodayDate && hasAvailability && "bg-gradient-to-br from-emerald-400 to-green-500 text-white shadow-md shadow-green-500/30 ring-2 ring-green-400/50 ring-offset-1",
-                        !isSelected && isTodayDate && !hasAvailability && !isPastDate && "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 ring-1 ring-slate-400",
-                        
-                        // Available dates - vibrant green gradient with hover
-                        !isSelected && !isTodayDate && isCurrent && hasAvailability && "bg-gradient-to-br from-emerald-50 to-green-100 dark:from-emerald-900/40 dark:to-green-800/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700 hover:from-emerald-100 hover:to-green-200 dark:hover:from-emerald-800/50 dark:hover:to-green-700/50 hover:shadow-md hover:shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98]",
-                        
-                        // Unavailable/closed dates - clearly disabled look
-                        !isSelected && !isTodayDate && isCurrent && isUnavailable && "bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200/50 dark:border-slate-700/50",
-                        
-                        // Loading state - subtle pulse animation
-                        isLoading && "bg-slate-100 dark:bg-slate-800 text-slate-400 animate-pulse cursor-wait",
-                        
-                        // Not current month - very faded
-                        !isCurrent && "text-slate-300 dark:text-slate-700 cursor-default",
-                        
-                        // Past dates - strikethrough effect
-                        isPastDate && isCurrent && "text-slate-300 dark:text-slate-700 cursor-not-allowed line-through decoration-slate-400/50"
-                      )}
-                    >
-                      {date.getDate()}
-                      {/* Today dot indicator */}
-                      {isTodayDate && !isSelected && (
-                        <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-current opacity-60" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              {isLoadingAvailability ? (
+                /* Skeleton grid — same shape as the real calendar so there is
+                   no layout shift when data arrives */
+                <div
+                  className="grid grid-cols-7 gap-0.5 sm:gap-1"
+                  role="status"
+                  aria-label="Loading kitchen availability"
+                  aria-live="polite"
+                >
+                  {Array.from({ length: 42 }).map((_, idx) => (
+                    <Skeleton
+                      key={idx}
+                      className="h-8 sm:h-9 rounded-lg bg-muted/70"
+                    />
+                  ))}
+                  <span className="sr-only">Loading kitchen availability…</span>
+                </div>
+              ) : (
+                /* Calendar days - compact responsive grid */
+                <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
+                  {calendarDays.map((date, index) => {
+                    if (!date) return <div key={index} className="h-8 sm:h-9" />;
+                    const isCurrent = isCurrentMonth(date);
+                    const isTodayDate = isToday(date);
+                    const isPastDate = isPast(date);
+                    const isSelected = selectedDate && date.toDateString() === selectedDate.toDateString();
+                    const dateStr = date ? toLocalDateString(date) : '';
+                    const hasAvailability = dateAvailability[dateStr] === true;
+                    const isUnavailable = !isPastDate && isCurrent && dateAvailability[dateStr] === false;
+
+                    return (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => !isPastDate && isCurrent && hasAvailability && handleDateClick(date)}
+                        disabled={isPastDate || !isCurrent || isUnavailable}
+                        className={cn(
+                          "h-8 sm:h-9 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center justify-center relative",
+                          // Base hover effect for interactive dates
+                          "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1",
+
+                          // Selected state - prominent with ring
+                          isSelected && "bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-2 ring-primary/30 ring-offset-1 ring-offset-background scale-105 z-10",
+
+                          // Today indicator (not selected) - with available styling
+                          !isSelected && isTodayDate && hasAvailability && "bg-gradient-to-br from-emerald-400 to-green-500 text-white shadow-md shadow-green-500/30 ring-2 ring-green-400/50 ring-offset-1",
+                          !isSelected && isTodayDate && !hasAvailability && !isPastDate && "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 ring-1 ring-slate-400",
+
+                          // Available dates - vibrant green gradient with hover
+                          !isSelected && !isTodayDate && isCurrent && hasAvailability && "bg-gradient-to-br from-emerald-50 to-green-100 dark:from-emerald-900/40 dark:to-green-800/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700 hover:from-emerald-100 hover:to-green-200 dark:hover:from-emerald-800/50 dark:hover:to-green-700/50 hover:shadow-md hover:shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98]",
+
+                          // Unavailable/closed dates - clearly disabled look
+                          !isSelected && !isTodayDate && isCurrent && isUnavailable && "bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200/50 dark:border-slate-700/50",
+
+                          // Not current month - very faded
+                          !isCurrent && "text-slate-300 dark:text-slate-700 cursor-default",
+
+                          // Past dates - strikethrough effect
+                          isPastDate && isCurrent && "text-slate-300 dark:text-slate-700 cursor-not-allowed line-through decoration-slate-400/50"
+                        )}
+                      >
+                        {date.getDate()}
+                        {/* Today dot indicator */}
+                        {isTodayDate && !isSelected && (
+                          <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-current opacity-60" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Selected date preview - shows when date is selected */}
-          {selectedDate && (
+          {selectedDate && !isLoadingAvailability && (
             <div className="flex-shrink-0 mt-3 p-3 bg-primary/5 border border-primary/20 rounded-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1290,8 +1325,28 @@ export default function KitchenBookingSheet({
           </div>
           
           {isLoadingSlots ? (
-            <div className="flex-1 flex items-center justify-center">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            /* Skeleton grid matching the real slot layout — keeps the user
+               oriented (no spinner-flicker) and prevents jarring layout shifts
+               when the slots arrive. */
+            <div
+              className="flex-1 overflow-y-auto"
+              role="status"
+              aria-label="Loading available time slots"
+              aria-live="polite"
+            >
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {Array.from({ length: 9 }).map((_, idx) => (
+                  <Skeleton
+                    key={idx}
+                    className="h-[52px] rounded-lg bg-muted/70"
+                  />
+                ))}
+              </div>
+              <div className="mt-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>Loading time slots…</span>
+              </div>
+              <span className="sr-only">Loading available time slots…</span>
             </div>
           ) : allSlots.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-center">
