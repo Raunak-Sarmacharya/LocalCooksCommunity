@@ -307,127 +307,142 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
         </p>
       </div>
 
-      {/* Cancellation Policy */}
+      {/* Unified Booking Policies & Limits — Cancellation Policy + Daily Limit + Min Window */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-blue-600" />
             <div>
-              <CardTitle className="text-lg">Cancellation Policy</CardTitle>
-              <CardDescription>Configure when chefs can cancel their bookings</CardDescription>
+              <CardTitle className="text-lg">Booking Policies & Limits</CardTitle>
+              <CardDescription>
+                Cancellation policy, daily booking limit, and minimum advance notice. One save button applies all three.
+              </CardDescription>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="cancellation-hours">Cancellation Window</Label>
-            <NumericInput
-              id="cancellation-hours"
-              suffix="hours"
-              value={String(cancellationHours)}
-              onValueChange={(val) => setCancellationHours(parseInt(val) || 0)}
-              className="mt-1.5 max-w-xs"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Minimum hours before booking time that cancellation is allowed (0 = no restrictions)
-            </p>
-          </div>
-
-          <div>
-            <Label htmlFor="cancellation-message">Policy Message</Label>
-            <Textarea
-              id="cancellation-message"
-              value={cancellationMessage}
-              onChange={(e) => setCancellationMessage(e.target.value)}
-              rows={3}
-              className="mt-1.5"
-              placeholder="Bookings cannot be cancelled within {hours} hours of the scheduled time."
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Use {"{hours}"} as a placeholder for the cancellation window
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Daily Booking Limit */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <Clock className="h-5 w-5 text-green-600" />
+        <CardContent className="divide-y divide-border p-0">
+          {/* Cancellation Policy */}
+          <div className="space-y-4 px-6 pb-6 pt-0">
             <div>
-              <CardTitle className="text-lg">Daily Booking Limit</CardTitle>
-              <CardDescription>Maximum hours a chef can book per day</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="daily-limit">Default Hours per Chef per Day</Label>
-            <NumericInput
-              id="daily-limit"
-              suffix="hours"
-              value={String(dailyBookingLimit)}
-              onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 2)}
-              className="mt-1.5 max-w-xs"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Maximum hours a chef can book in a single day (1-24 hours)
-            </p>
-          </div>
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-start gap-2">
-              <Info className="h-4 w-4 text-blue-600 mt-0.5" />
-              <p className="text-xs text-blue-800">
-                You can override this limit for specific dates in the Availability calendar.
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-blue-600" />
+                Cancellation Policy
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Configure when chefs can cancel their bookings
               </p>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Minimum Booking Window */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <Clock className="h-5 w-5 text-orange-600" />
             <div>
-              <CardTitle className="text-lg">Minimum Booking Window</CardTitle>
-              <CardDescription>Minimum advance notice required for bookings</CardDescription>
+              <Label htmlFor="cancellation-hours">Cancellation Window</Label>
+              <NumericInput
+                id="cancellation-hours"
+                suffix="hours"
+                value={String(cancellationHours)}
+                onValueChange={(val) => setCancellationHours(parseInt(val) || 0)}
+                className="mt-1.5 max-w-xs"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Minimum hours before booking time that cancellation is allowed (0 = no restrictions)
+              </p>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="min-window">Minimum Hours in Advance</Label>
-            <NumericInput
-              id="min-window"
-              suffix="hours"
-              value={String(minimumBookingWindowHours)}
-              onValueChange={(val) => {
-                const parsed = parseInt(val, 10);
-                setMinimumBookingWindowHours(isNaN(parsed) ? 0 : Math.min(168, Math.max(0, parsed)));
-              }}
-              className="mt-1.5 max-w-xs"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Chefs must book at least this many hours before the booking time (0 = no restrictions)
-            </p>
-          </div>
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-start gap-2">
-              <Info className="h-4 w-4 text-blue-600 mt-0.5" />
-              <p className="text-xs text-blue-800">
-                Example: With 1 hour, if it's 1:00 PM, chefs can only book times starting from 2:00 PM onwards.
+            <div>
+              <Label htmlFor="cancellation-message">Policy Message</Label>
+              <Textarea
+                id="cancellation-message"
+                value={cancellationMessage}
+                onChange={(e) => setCancellationMessage(e.target.value)}
+                rows={3}
+                className="mt-1.5"
+                placeholder="Bookings cannot be cancelled within {hours} hours of the scheduled time."
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Use {"{hours}"} as a placeholder for the cancellation window
               </p>
             </div>
           </div>
 
-          <StatusButton
-            status={saveRulesAction.status}
-            onClick={saveRulesAction.execute}
-            labels={{ idle: "Save Booking Rules", loading: "Saving", success: "Saved" }}
-          />
+          {/* Daily Booking Limit */}
+          <div className="space-y-4 px-6 py-6">
+            <div>
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Clock className="h-4 w-4 text-green-600" />
+                Daily Booking Limit
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Maximum hours a chef can book per day
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="daily-limit">Default Hours per Chef per Day</Label>
+              <NumericInput
+                id="daily-limit"
+                suffix="hours"
+                value={String(dailyBookingLimit)}
+                onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 2)}
+                className="mt-1.5 max-w-xs"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Maximum hours a chef can book in a single day (1-24 hours)
+              </p>
+            </div>
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-blue-600 mt-0.5" />
+                <p className="text-xs text-blue-800">
+                  You can override this limit for specific dates in the Availability calendar.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Minimum Booking Window */}
+          <div className="space-y-4 px-6 py-6">
+            <div>
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Clock className="h-4 w-4 text-orange-600" />
+                Minimum Booking Window
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Minimum advance notice required for bookings
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="min-window">Minimum Hours in Advance</Label>
+              <NumericInput
+                id="min-window"
+                suffix="hours"
+                value={String(minimumBookingWindowHours)}
+                onValueChange={(val) => {
+                  const parsed = parseInt(val, 10);
+                  setMinimumBookingWindowHours(isNaN(parsed) ? 0 : Math.min(168, Math.max(0, parsed)));
+                }}
+                className="mt-1.5 max-w-xs"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Chefs must book at least this many hours before the booking time (0 = no restrictions)
+              </p>
+            </div>
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-blue-600 mt-0.5" />
+                <p className="text-xs text-blue-800">
+                  Example: With 1 hour, if it's 1:00 PM, chefs can only book times starting from 2:00 PM onwards.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Single save button applies to all three subsections above */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-6 py-4 bg-muted/30">
+            <p className="text-xs text-muted-foreground">
+              Saves cancellation policy, daily booking limit, and minimum booking window together.
+            </p>
+            <StatusButton
+              status={saveRulesAction.status}
+              onClick={saveRulesAction.execute}
+              labels={{ idle: "Save Booking Rules", loading: "Saving", success: "Saved" }}
+            />
+          </div>
         </CardContent>
       </Card>
 

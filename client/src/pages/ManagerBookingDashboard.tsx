@@ -707,7 +707,7 @@ export default function ManagerBookingDashboard() {
           onCreateLocation={startNewLocation}
           onSelectLocation={(loc) => {
             setSelectedLocation(loc as Location);
-            setActiveView('overview');
+            setActiveView('settings');
           }}
         />
       )}

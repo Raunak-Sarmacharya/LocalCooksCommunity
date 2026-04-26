@@ -3097,20 +3097,18 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
         // Total amount is simply Subtotal + Tax
         const totalWithTaxCents = totalPriceCents + taxCents;
 
-        // Calculate platform fee (application fee) for Stripe Connect
-        // This covers Stripe processing fees + platform commission
-        // Fee is deducted from manager's payout, not charged to customer
-        // Uses database-driven configuration from platform_settings table
+        // ARCHITECTURE — Separate Charges and Transfers:
+        //   No application_fee_amount or transfer_data at checkout.
+        //   The full charge lands on the platform balance.
+        //   The webhook (payment_intent.succeeded) reads balance_transaction.fee
+        //   and calls stripe.transfers.create() to send (charge − actualFee − commission)
+        //   to the manager's Connect account.
+        // calculateCheckoutFeesAsync is used here only for display estimates and logs.
         const { calculateCheckoutFeesAsync } = await import('../services/stripe-checkout-fee-service');
         const feeCalculation = await calculateCheckoutFeesAsync(totalWithTaxCents);
-        
-        // If using Stripe Platform Pricing Tool, don't set application_fee_amount
-        // Stripe will automatically apply fees based on Dashboard configuration
-        const applicationFeeAmountCents = feeCalculation.useStripePlatformPricing 
-          ? undefined 
-          : feeCalculation.totalPlatformFeeInCents;
+        const applicationFeeAmountCents = undefined;
 
-        logger.info(`[Payment] Creating intent: Subtotal=${totalPriceCents}, Tax=${taxCents} (${taxRatePercent}%), Total=${totalWithTaxCents}, Expected=${expectedAmountCents}, PlatformFee=${applicationFeeAmountCents ?? 'Stripe Platform Pricing'}, ManagerReceives=${feeCalculation.managerReceivesInCents}, UseStripePricing=${feeCalculation.useStripePlatformPricing}`);
+        logger.info(`[Payment] Creating intent (separate charges + transfers): Subtotal=${totalPriceCents}, Tax=${taxCents} (${taxRatePercent}%), Total=${totalWithTaxCents}, Expected=${expectedAmountCents}, EstimatedStripeFee=${feeCalculation.stripeProcessingFeeInCents}, EstimatedManagerReceives=${feeCalculation.managerReceivesInCents}`);
 
         // Create Metadata
         const metadata = {

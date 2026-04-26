@@ -25,6 +25,7 @@ import {
   ChefHat,
   XCircle,
   Lock,
+  Info,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -593,19 +594,11 @@ export function KitchenCheckinTracker({
                     rows={2}
                   />
 
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <div className="flex items-start gap-2">
-                      <Clock className="h-4 w-4 text-blue-600 mt-0.5" />
-                      <div className="text-xs text-blue-700">
-                        <strong>What happens next?</strong>
-                        <ul className="mt-1 space-y-0.5 list-disc list-inside">
-                          <li>Manager will review your photos and inspect the kitchen</li>
-                          <li>If clear, your session is completed</li>
-                          <li>Auto-clears if no issues within the review window</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
+                  <WhatHappensNextInfo items={[
+                    "Manager will review your photos and inspect the kitchen",
+                    "If clear, your session is completed",
+                    "Auto-clears if no issues within the review window",
+                  ]} />
 
                   <div className="flex gap-2">
                     <Button
@@ -642,6 +635,37 @@ export function KitchenCheckinTracker({
         </div>
       </SheetContent>
     </Sheet>
+  )
+}
+
+// ─── Info Popover ─────────────────────────────────────────────────────────────
+
+function WhatHappensNextInfo({ items }: { items: string[] }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+        aria-expanded={open}
+      >
+        <Info className="h-3.5 w-3.5" />
+        <span>What happens next?</span>
+      </button>
+      {open && (
+        <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3 animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex items-start gap-2">
+            <Clock className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+            <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+              {items.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

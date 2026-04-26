@@ -571,7 +571,7 @@ function AvailabilityContent({
                 <Calendar
                   mode="single"
                   selected={date}
-                  onSelect={handleDateClick}
+                  onDayClick={(day) => handleDateClick(day)}
                   className="p-3 w-full"
                   modifiers={{
                     updated: (d) => availabilityExceptions.some((ex: any) => {

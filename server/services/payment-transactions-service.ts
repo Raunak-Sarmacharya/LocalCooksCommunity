@@ -46,6 +46,11 @@ export interface UpdatePaymentTransactionParams {
   metadata?: Record<string, any>;
   // Amount override (for partial capture — captured amount may differ from authorized amount)
   amount?: number;
+  // Business amount overrides (used by live fee reconciliation to update post-refund payouts)
+  // serviceFee = application_fee withheld from manager's payout (in cents)
+  // managerRevenue = actual amount received in manager's Stripe account (in cents)
+  serviceFee?: number;
+  managerRevenue?: number;
   // Stripe-synced amounts (optional - if provided, will override calculated amounts)
   stripeAmount?: number; // Actual Stripe amount in cents
   stripeNetAmount?: number; // Actual Stripe net amount after all fees in cents
@@ -71,6 +76,7 @@ export interface PaymentTransactionRecord {
   charge_id: string | null;
   refund_id: string | null;
   payment_method_id: string | null;
+  transfer_id: string | null; // Stripe Transfer ID (post-capture transfer to manager Connect account)
   status: TransactionStatus;
   stripe_status: string | null;
   metadata: any;
@@ -225,6 +231,15 @@ export async function updatePaymentTransaction(
 
   if (params.amount !== undefined) {
     updates.push(sql`amount = ${params.amount.toString()}`);
+  }
+
+  // Explicit business amount overrides (post-fee-reconciliation)
+  if (params.serviceFee !== undefined) {
+    updates.push(sql`service_fee = ${params.serviceFee.toString()}`);
+  }
+
+  if (params.managerRevenue !== undefined) {
+    updates.push(sql`manager_revenue = ${params.managerRevenue.toString()}`);
   }
 
   if (params.refundAmount !== undefined) {

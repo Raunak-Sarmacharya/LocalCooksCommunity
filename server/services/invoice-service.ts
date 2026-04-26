@@ -538,74 +538,92 @@ export async function generateInvoicePDF(
 
       if (invoiceViewer === 'manager') {
         // Manager Invoice: Show earnings breakdown with net revenue from Stripe
-        // Use pre-fetched Stripe data or calculate fallback
+        // ENTERPRISE STANDARD: For Stripe Connect destination charges, only application_fee_amount
+        // is deducted from the manager's payout. The actual Stripe processing fee comes from the
+        // platform's balance, NOT the manager's. Showing both as deductions is double-counting.
+        // - actualPlatformFee = application_fee_amount = what manager actually paid (single deduction)
+        // - stripeProcessingFee = informational only (what Stripe charged the platform)
+        // - stripeNetPayout = amount - application_fee_amount = what manager received in Stripe
         const grossRevenue = totalAmount + taxAmount; // What customer paid
-        
+
         let stripeProcessingFee: number;
         let stripeNetPayout: number;
         let actualPlatformFee: number;
         let dataSource: 'stripe' | 'calculated' | 'pending_sync';
-        
+
         if (stripeDataForManager) {
-          // Use actual Stripe data
           stripeProcessingFee = stripeDataForManager.stripeProcessingFee;
           stripeNetPayout = stripeDataForManager.stripeNetPayout;
           actualPlatformFee = stripeDataForManager.actualPlatformFee;
           dataSource = stripeDataForManager.dataSource;
         } else {
-          // ENTERPRISE STANDARD: Do not calculate fees - use actual data only
-          // If Stripe data not available, fees will be synced via charge.updated webhook
           actualPlatformFee = platformFee;
-          stripeProcessingFee = 0; // Will be synced via charge.updated webhook
-          stripeNetPayout = grossRevenue - actualPlatformFee; // Approximate until fee is synced
+          stripeProcessingFee = 0;
+          stripeNetPayout = grossRevenue - actualPlatformFee;
           dataSource = 'pending_sync';
         }
-        
+
         // Section header for earnings breakdown
         doc.fontSize(11).font('Helvetica-Bold').fillColor('#1f2937');
         doc.text('EARNINGS BREAKDOWN', 60, currentY);
         currentY += 25;
         doc.fontSize(10).font('Helvetica').fillColor('#000000');
-        
+
         addTotalRow('Subtotal (Services):', totalAmount);
         if (taxAmount > 0) {
           addTotalRow('Tax Collected:', taxAmount);
         }
-        
+
         // Gross revenue line
         doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
         currentY += 5;
         addTotalRow('Gross Revenue:', grossRevenue, false, true);
         currentY += 5;
-        
-        // Deductions section
+
+        // Deductions section — single line for what Stripe actually deducted from payout
         doc.fontSize(10).fillColor('#6b7280');
         doc.text('Deductions:', 60, currentY);
         currentY += 18;
         doc.fillColor('#000000');
-        
-        if (actualPlatformFee > 0) {
-          addTotalRow('Platform Fee:', actualPlatformFee, true);
+
+        // Single deduction = application_fee_amount = what Stripe actually withheld from payout
+        const stripeFeeLabel = dataSource === 'pending_sync'
+          ? 'Stripe Fee (pending sync):'
+          : 'Stripe Fee:';
+        addTotalRow(stripeFeeLabel, actualPlatformFee, true);
+
+        // Show actual processing fee as informational sub-line if it differs from what was deducted
+        // (this happens for international cards / AMEX where actual fee != static estimate)
+        if (
+          dataSource === 'stripe' &&
+          stripeProcessingFee > 0 &&
+          Math.abs(stripeProcessingFee - actualPlatformFee) > 0.01
+        ) {
+          doc.fontSize(8).fillColor('#9ca3af').font('Helvetica-Oblique');
+          doc.text(
+            `(actual Stripe processing fee: $${stripeProcessingFee.toFixed(2)})`,
+            390,
+            currentY - 12,
+            { width: 160, align: 'right' }
+          );
+          doc.font('Helvetica').fontSize(10).fillColor('#000000');
         }
-        // Show Stripe fee with source indicator
-        const stripeFeeLabel = dataSource === 'stripe' 
-          ? 'Stripe Processing Fee:' 
-          : (dataSource === 'pending_sync' ? 'Stripe Fee (pending sync):' : 'Stripe Processing Fee:');
-        addTotalRow(stripeFeeLabel, stripeProcessingFee, true);
-        
-        // Net payout (bold, highlighted)
+
+        // Net payout (bold, highlighted) — what was actually deposited to manager's Stripe account
         doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
         currentY += 10;
         doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669');
         doc.text('Net Payout:', 380, currentY, { align: 'right', width: 110 });
         doc.text(`$${stripeNetPayout.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
         doc.font('Helvetica').fontSize(10).fillColor('#000000');
-        
+
         // Add data source note for transparency
         currentY += 20;
         doc.fontSize(8).fillColor('#6b7280');
         if (dataSource === 'stripe') {
-          doc.text('* Fees retrieved from Stripe payment records', 60, currentY);
+          doc.text('* Net Payout is the actual amount Stripe transferred to your Connect account', 60, currentY);
+          currentY += 12;
+          doc.text('* Stripe Fee = application fee withheld from your payout (covers Stripe processing)', 60, currentY);
           currentY += 12;
         }
         if (taxAmount > 0) {
@@ -827,29 +845,38 @@ export async function generateStorageInvoicePDF(
 
       // MANAGER VIEW: Show earnings breakdown with tax collected and Stripe fee deduction
       if (invoiceViewer === 'manager') {
-        // Get Stripe fee from transaction
+        // ENTERPRISE STANDARD: For Stripe Connect destination charges:
+        // - serviceFee = application_fee_amount = what Stripe withheld from payout (single deduction)
+        // - managerRevenue = amount - application_fee_amount = actual amount received in Stripe account
+        // - stripeProcessingFee = informational only (actual fee Stripe charged the platform)
         const stripeProcessingFee = parseInt(String(transaction.stripeProcessingFee || transaction.stripe_processing_fee || '0')) || 0;
         const managerRevenue = parseInt(String(transaction.managerRevenue || transaction.manager_revenue || '0')) || 0;
-        
+        const serviceFee = parseInt(String(transaction.serviceFee || transaction.service_fee || '0')) || 0;
+
+        // Use serviceFee (application_fee) as the actual deduction. Fall back to amount-managerRevenue.
+        const actualDeduction = serviceFee > 0
+          ? serviceFee
+          : (managerRevenue > 0 ? Math.max(0, displayTotalAmount - managerRevenue) : stripeProcessingFee);
+
         currentY += 10;
-        
+
         // Section header for earnings breakdown
         doc.fontSize(11).font('Helvetica-Bold').fillColor('#1f2937');
         doc.text('EARNINGS BREAKDOWN', 60, currentY);
         currentY += 20;
         doc.fontSize(10).font('Helvetica').fillColor('#000000');
-        
+
         // Show base amount and tax collected
         doc.text('Base Amount:', 380, currentY);
         doc.text(`$${(displayBaseAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
         currentY += 18;
-        
+
         if (displayTaxAmount > 0) {
           doc.text(`Tax Collected (${taxRatePercent}%):`, 380, currentY);
           doc.text(`$${(displayTaxAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
           currentY += 18;
         }
-        
+
         // Gross revenue line
         doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
         currentY += 5;
@@ -858,37 +885,57 @@ export async function generateStorageInvoicePDF(
         doc.text(`$${(displayTotalAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
         doc.font('Helvetica');
         currentY += 20;
-        
-        // Deductions section
+
+        // Deductions section — single deduction = application_fee_amount (what Stripe withheld)
         doc.fontSize(10).fillColor('#6b7280');
         doc.text('Deductions:', 60, currentY);
         currentY += 18;
         doc.fillColor('#000000');
-        
-        // Stripe fee deduction
-        doc.text('Stripe Processing Fee:', 380, currentY);
+
+        doc.text('Stripe Fee:', 380, currentY);
         doc.fillColor('#dc2626'); // Red color for deduction
-        if (stripeProcessingFee > 0) {
-          doc.text(`-$${(stripeProcessingFee / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+        if (actualDeduction > 0) {
+          doc.text(`-$${(actualDeduction / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
         } else {
           doc.text('(pending sync)', 480, currentY, { align: 'right' });
         }
         doc.fillColor('#000000');
         currentY += 20;
-        
-        // Net payout (bold, highlighted)
+
+        // Show actual processing fee as informational sub-line if it differs (international cards / AMEX)
+        if (
+          stripeProcessingFee > 0 &&
+          actualDeduction > 0 &&
+          Math.abs(stripeProcessingFee - actualDeduction) > 1
+        ) {
+          doc.fontSize(8).fillColor('#9ca3af').font('Helvetica-Oblique');
+          doc.text(
+            `(actual Stripe processing fee: $${(stripeProcessingFee / 100).toFixed(2)})`,
+            300,
+            currentY - 8,
+            { width: 250, align: 'right' }
+          );
+          doc.font('Helvetica').fontSize(10).fillColor('#000000');
+          currentY += 6;
+        }
+
+        // Net payout (bold, highlighted) — actual amount in manager's Stripe account
         doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
         currentY += 5;
         doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669'); // Green for net
         doc.text('You Receive:', 380, currentY);
-        const netAmount = managerRevenue > 0 ? managerRevenue : (displayTotalAmount - stripeProcessingFee);
+        const netAmount = managerRevenue > 0 ? managerRevenue : (displayTotalAmount - actualDeduction);
         doc.text(`$${(netAmount / 100).toFixed(2)} CAD`, 480, currentY, { align: 'right' });
         doc.fillColor('#000000');
         currentY += 25;
-        
-        // Add note about tax responsibility
+
+        // Add notes
         doc.fontSize(8).fillColor('#6b7280');
-        doc.text('* Tax collected is your responsibility to remit to tax authorities', 60, currentY);
+        doc.text('* You Receive is the actual amount Stripe transferred to your Connect account', 60, currentY);
+        currentY += 12;
+        if (taxAmount > 0 || displayTaxAmount > 0) {
+          doc.text('* Tax collected is your responsibility to remit to tax authorities', 60, currentY);
+        }
         doc.fillColor('#000000').fontSize(10);
       }
 
@@ -946,23 +993,30 @@ export async function generateDamageClaimInvoicePDF(
   const { users, locations } = await import("@shared/schema");
   
   // For manager view, try to get actual Stripe fees from payment_transactions
+  // ENTERPRISE STANDARD: For Stripe Connect destination charges:
+  // - serviceFee = application_fee_amount = what Stripe withheld from payout (single deduction)
+  // - managerRevenue = amount - application_fee_amount = actual amount received in Stripe
+  // - stripeProcessingFee = informational only (actual fee Stripe charged the platform)
   let stripeProcessingFeeCents = 0;
   let managerRevenueCents = 0;
-  
+  let serviceFeeCents = 0;
+
   if (invoiceViewer === 'manager' && claim.stripePaymentIntentId) {
     try {
       const [transaction] = await db
         .select({
           stripeProcessingFee: paymentTransactions.stripeProcessingFee,
           managerRevenue: paymentTransactions.managerRevenue,
+          serviceFee: paymentTransactions.serviceFee,
         })
         .from(paymentTransactions)
         .where(eq(paymentTransactions.paymentIntentId, claim.stripePaymentIntentId))
         .limit(1);
-      
+
       if (transaction) {
         stripeProcessingFeeCents = parseInt(String(transaction.stripeProcessingFee || '0')) || 0;
         managerRevenueCents = parseInt(String(transaction.managerRevenue || '0')) || 0;
+        serviceFeeCents = parseInt(String(transaction.serviceFee || '0')) || 0;
       }
     } catch (error) {
       logger.warn('[DamageClaimInvoice] Could not fetch Stripe fees:', error);
@@ -1072,20 +1126,41 @@ export async function generateDamageClaimInvoicePDF(
       doc.moveDown(1.5);
 
       // MANAGER VIEW: Show Stripe fee deduction and net amount
-      if (invoiceViewer === 'manager' && stripeProcessingFeeCents > 0) {
+      // Use serviceFee (application_fee) as the actual deduction. Fall back to amount-managerRevenue.
+      const actualDeductionCents = serviceFeeCents > 0
+        ? serviceFeeCents
+        : (managerRevenueCents > 0 ? Math.max(0, amountCents - managerRevenueCents) : stripeProcessingFeeCents);
+
+      if (invoiceViewer === 'manager' && actualDeductionCents > 0) {
         doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke('#e5e7eb');
         doc.moveDown(0.5);
-        
+
         doc.fontSize(10).font('Helvetica').fillColor('#6b7280');
         const feeY = doc.y;
-        doc.text('Stripe Processing Fee:', 50, feeY);
+        doc.text('Stripe Fee:', 50, feeY);
         doc.fillColor('#dc2626'); // Red color for deduction
-        doc.text(`-$${(stripeProcessingFeeCents / 100).toFixed(2)} CAD`, 450, feeY, { align: 'right', width: 100 });
+        doc.text(`-$${(actualDeductionCents / 100).toFixed(2)} CAD`, 450, feeY, { align: 'right', width: 100 });
         doc.fillColor('#000000');
-        doc.moveDown(0.8);
-        
-        // Net amount manager receives
-        const netAmount = managerRevenueCents > 0 ? managerRevenueCents : (amountCents - stripeProcessingFeeCents);
+        doc.moveDown(0.5);
+
+        // Show actual processing fee as informational sub-line if it differs (international/AMEX)
+        if (
+          stripeProcessingFeeCents > 0 &&
+          Math.abs(stripeProcessingFeeCents - actualDeductionCents) > 1
+        ) {
+          doc.fontSize(8).fillColor('#9ca3af').font('Helvetica-Oblique');
+          doc.text(
+            `(actual Stripe processing fee: $${(stripeProcessingFeeCents / 100).toFixed(2)})`,
+            300,
+            doc.y,
+            { width: 250, align: 'right' }
+          );
+          doc.font('Helvetica').fontSize(10).fillColor('#000000');
+          doc.moveDown(0.3);
+        }
+
+        // Net amount manager receives — actual amount in their Stripe account
+        const netAmount = managerRevenueCents > 0 ? managerRevenueCents : (amountCents - actualDeductionCents);
         doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669'); // Green for net
         const netY = doc.y;
         doc.text('You Receive:', 50, netY);

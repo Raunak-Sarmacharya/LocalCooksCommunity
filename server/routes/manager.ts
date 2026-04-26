@@ -4748,7 +4748,7 @@ router.put(
       let refundResult: {
         refundId: string;
         refundAmount: number;
-        transferReversalId: string;
+        transferReversalId: string | null; // null when no separate Transfer to reverse (e.g. fully on platform)
         rejectedItems: string[];
       } | null = null;
 

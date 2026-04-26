@@ -364,6 +364,8 @@ export default function KitchensManagement({ location }: KitchensManagementProps
       }
 
       queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+      // Also refresh the all-kitchens cache used by ManagerPageLayout (Availability page sidebar)
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
 
       toast({
         title: "Success",
@@ -399,6 +401,8 @@ export default function KitchensManagement({ location }: KitchensManagementProps
       if (!response.ok) throw new Error("Failed to delete kitchen");
       
       queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+      // Also refresh the all-kitchens cache used by ManagerPageLayout (Availability page sidebar)
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
       toast({ title: "Kitchen Deleted", description: "Kitchen has been successfully removed." });
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });

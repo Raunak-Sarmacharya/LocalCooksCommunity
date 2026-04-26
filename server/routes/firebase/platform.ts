@@ -14,12 +14,12 @@ router.get('/platform-settings/stripe-fees', async (req: Request, res: Response)
         const { getFeeConfig } = await import('../../services/stripe-checkout-fee-service');
         const config = await getFeeConfig();
         
-        // Return fee configuration for client-side calculations
+        // Return fee configuration for client-side display estimates only.
+        // Real fees are deducted at transfer time using actual balance_transaction.fee.
         return res.json({
             stripePercentageFee: config.stripePercentageFee,
             stripeFlatFeeCents: config.stripeFlatFeeCents,
             platformCommissionRate: config.platformCommissionRate,
-            useStripePlatformPricing: config.useStripePlatformPricing,
             // Human-readable values
             stripePercentageDisplay: `${(config.stripePercentageFee * 100).toFixed(1)}%`,
             stripeFlatFeeDisplay: `$${(config.stripeFlatFeeCents / 100).toFixed(2)}`,
@@ -32,7 +32,6 @@ router.get('/platform-settings/stripe-fees', async (req: Request, res: Response)
             stripePercentageFee: 0.029,
             stripeFlatFeeCents: 30,
             platformCommissionRate: 0,
-            useStripePlatformPricing: false,
             stripePercentageDisplay: '2.9%',
             stripeFlatFeeDisplay: '$0.30',
             platformCommissionDisplay: '0%',

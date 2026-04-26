@@ -13,15 +13,8 @@ import {
     getSortedRowModel,
     useReactTable,
 } from "@tanstack/react-table"
-import { ChevronDown } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import {
-    DropdownMenu,
-    DropdownMenuCheckboxItem,
-    DropdownMenuContent,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
     Table,
@@ -91,32 +84,6 @@ export function DataTable<TData>({
                         className="w-full sm:max-w-sm"
                     />
                 </div>
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="ml-auto shrink-0">
-                            Columns <ChevronDown className="ml-2 h-4 w-4" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        {table
-                            .getAllColumns()
-                            .filter((column) => column.getCanHide())
-                            .map((column) => {
-                                return (
-                                    <DropdownMenuCheckboxItem
-                                        key={column.id}
-                                        className="capitalize"
-                                        checked={column.getIsVisible()}
-                                        onCheckedChange={(value) =>
-                                            column.toggleVisibility(!!value)
-                                        }
-                                    >
-                                        {column.id}
-                                    </DropdownMenuCheckboxItem>
-                                )
-                            })}
-                    </DropdownMenuContent>
-                </DropdownMenu>
             </div>
             <div className="rounded-md border overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
                 <Table>
@@ -168,12 +135,8 @@ export function DataTable<TData>({
                     </TableBody>
                 </Table>
             </div>
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-4">
-                <div className="text-sm text-muted-foreground order-2 sm:order-1">
-                    {table.getFilteredSelectedRowModel().rows.length} of{" "}
-                    {table.getFilteredRowModel().rows.length} row(s) selected.
-                </div>
-                <div className="flex items-center gap-2 order-1 sm:order-2">
+            <div className="flex items-center justify-end gap-3 py-4">
+                <div className="flex items-center gap-2">
                     <Button
                         variant="outline"
                         size="sm"

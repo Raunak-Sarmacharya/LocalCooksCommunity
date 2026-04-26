@@ -1637,6 +1637,7 @@ export const paymentTransactions = pgTable("payment_transactions", {
   chargeId: text("charge_id"), // Stripe Charge ID
   refundId: text("refund_id"), // Stripe Refund ID
   paymentMethodId: text("payment_method_id"), // Stripe PaymentMethod ID
+  transferId: text("transfer_id"), // Stripe Transfer ID (post-capture transfer to manager Connect account)
   // Status tracking
   status: transactionStatusEnum("status").notNull().default("pending"),
   stripeStatus: text("stripe_status"), // Raw Stripe status for comparison

@@ -881,7 +881,12 @@ export default function BookingDetailsPage() {
   };
 
   const handleBack = () => {
-    if (isManagerView) {
+    // Use browser history so the user returns to wherever they came from
+    // (bookings list, calendar view, manager panel, etc.) rather than always
+    // hard-redirecting to the dashboard root.
+    if (window.history.length > 1) {
+      window.history.back();
+    } else if (isManagerView) {
       navigate("/manager/dashboard");
     } else {
       navigate("/dashboard");
@@ -1588,14 +1593,21 @@ export default function BookingDetailsPage() {
                     </div>
                     {(() => {
                       const amount = booking.paymentTransaction.amount || 0;
-                      const stripeFee = booking.paymentTransaction.stripeProcessingFee || 0;
+                      // ENTERPRISE STANDARD: Use actual values from payment_transactions table
+                      // - serviceFee = application_fee_amount = what platform retained (live Stripe fee after reconciliation)
+                      // - managerRevenue = amount - serviceFee = what Stripe actually paid the manager's Connect account
+                      // - stripeProcessingFee = informational only (Stripe's actual processing fee deducted from platform balance)
+                      const platformFee = booking.paymentTransaction.serviceFee || 0;
+                      const managerRevenue = booking.paymentTransaction.managerRevenue || 0;
+                      const stripeProcessingFee = booking.paymentTransaction.stripeProcessingFee || 0;
                       const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
                       const subtotal = totals.subtotal || 0;
                       const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
-                      const netRevenue = amount - taxAmount - stripeFee;
+                      // Net keepable revenue = what manager received from Stripe minus tax they remit
+                      const netRevenue = managerRevenue - taxAmount;
                       const isAuthorized = booking.paymentStatus === 'authorized';
                       const ptRefundAmount = booking.paymentTransaction.refundAmount || 0;
-                      
+
                       return (
                         <>
                           {taxRatePercent > 0 && (
@@ -1606,10 +1618,15 @@ export default function BookingDetailsPage() {
                               <span className="font-mono text-muted-foreground">−{formatCurrency(taxAmount)}</span>
                             </div>
                           )}
-                          {!isAuthorized && (
+                          {!isAuthorized && platformFee > 0 && (
                             <div className="flex justify-between text-sm">
                               <span className="text-muted-foreground">Stripe Fee</span>
-                              <span className="font-mono text-muted-foreground">−{formatCurrency(stripeFee)}</span>
+                              <span className="font-mono text-muted-foreground">−{formatCurrency(platformFee)}</span>
+                            </div>
+                          )}
+                          {!isAuthorized && stripeProcessingFee > 0 && stripeProcessingFee !== platformFee && (
+                            <div className="flex justify-between text-[11px] text-muted-foreground italic pl-3">
+                              <span>(actual Stripe processing fee: {formatCurrency(stripeProcessingFee)})</span>
                             </div>
                           )}
                           {!isAuthorized && ptRefundAmount > 0 && (
@@ -1627,6 +1644,11 @@ export default function BookingDetailsPage() {
                               {formatCurrency(isAuthorized ? amount - taxAmount : netRevenue - ptRefundAmount)}
                             </span>
                           </div>
+                          {!isAuthorized && managerRevenue > 0 && (
+                            <p className="text-[10px] text-muted-foreground italic mt-1">
+                              You received {formatCurrency(managerRevenue)} in your Stripe account ({formatCurrency(taxAmount)} tax + {formatCurrency(netRevenue - ptRefundAmount)} net{ptRefundAmount > 0 ? ` − ${formatCurrency(ptRefundAmount)} refund` : ''}).
+                            </p>
+                          )}
                         </>
                       );
                     })()}
@@ -1683,7 +1705,7 @@ export default function BookingDetailsPage() {
       <ManagerBookingLayout
         breadcrumbs={[
           { label: "Dashboard", onClick: () => navigate("/manager/dashboard") },
-          { label: "Bookings", onClick: () => navigate("/manager/dashboard") },
+          { label: "Bookings", onClick: () => window.history.back() },
           { label: booking ? `Booking #${booking.id}` : "Booking Details" },
         ]}
       >
@@ -1715,7 +1737,7 @@ export default function BookingDetailsPage() {
       onViewChange={handleViewChange}
       breadcrumbs={[
         { label: "Dashboard", onClick: () => navigate("/dashboard") },
-        { label: "My Bookings", onClick: () => navigate("/dashboard") },
+        { label: "My Bookings", onClick: () => window.history.back() },
         { label: booking ? `Booking #${booking.id}` : "Booking Details" },
       ]}
     >

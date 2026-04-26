@@ -16,7 +16,7 @@
  * move-out inspection flow applied to storage rentals.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useRef } from "react";
 import {
   Plus,
   Trash2,
@@ -623,21 +623,29 @@ function ChecklistTable({
   const [filter, setFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
 
+  // Use refs so updateItem/removeItem don't close over stale items, preventing
+  // columns from recreating on every keystroke (which unmounts inputs = focus loss).
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+
+  const onItemsChangeRef = useRef(onItemsChange);
+  onItemsChangeRef.current = onItemsChange;
+
   const updateItem = useCallback(
     (id: string, updated: UnifiedStorageInspectionItem) => {
-      const next = items.map((i) => (i.id === id ? updated : i));
-      onItemsChange(
+      const next = itemsRef.current.map((i) => (i.id === id ? updated : i));
+      onItemsChangeRef.current(
         next.filter((i) => i.requiredOnCheckin || i.requiredOnCheckout),
       );
     },
-    [items, onItemsChange],
+    [], // stable — reads from refs
   );
 
   const removeItem = useCallback(
     (id: string) => {
-      onItemsChange(items.filter((i) => i.id !== id));
+      onItemsChangeRef.current(itemsRef.current.filter((i) => i.id !== id));
     },
-    [items, onItemsChange],
+    [], // stable — reads from refs
   );
 
   const addItem = useCallback(() => {
@@ -653,8 +661,8 @@ function ChecklistTable({
       requiredOnCheckout: addToCheckout,
       photoRequired: false,
     };
-    onItemsChange([...items, next]);
-  }, [items, onItemsChange, checkinEnabled, checkoutEnabled]);
+    onItemsChangeRef.current([...itemsRef.current, next]);
+  }, [checkinEnabled, checkoutEnabled]);
 
   const columns = useMemo<ColumnDef<UnifiedStorageInspectionItem>[]>(
     () => [

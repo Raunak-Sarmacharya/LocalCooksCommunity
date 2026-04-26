@@ -11,7 +11,7 @@
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, CheckCircle, Clock } from "lucide-react";
+import { Loader2, CheckCircle, Clock, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocationChecklist, type ChecklistItem, type PhotoRequirement } from "@/hooks/use-location-checklist";
 import { auth } from "@/lib/firebase";
@@ -240,20 +240,7 @@ export function StorageCheckoutDialog({
           </div>
 
           {/* Info Box */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <div className="flex items-start gap-2">
-              <Clock className="h-4 w-4 text-blue-600 mt-0.5" />
-              <div className="text-xs text-blue-700">
-                <strong>What happens next?</strong>
-                <ul className="mt-1 space-y-1 list-disc list-inside">
-                  <li>The kitchen will review your photos and inspect the unit</li>
-                  <li>If everything is clear, your booking is completed</li>
-                  <li>Auto-clears if no issues are found within the review window</li>
-                  <li>No overstay penalties while checkout is under review</li>
-                </ul>
-              </div>
-            </div>
-          </div>
+          <StorageCheckoutInfo />
         </div>
 
         <SheetFooter className="mt-6">
@@ -279,5 +266,36 @@ export function StorageCheckoutDialog({
         </SheetFooter>
       </SheetContent>
     </Sheet>
+  );
+}
+
+// Collapsible info: hidden behind an info icon to reduce clutter
+function StorageCheckoutInfo() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+        aria-expanded={open}
+      >
+        <Info className="h-3.5 w-3.5" />
+        <span>What happens next?</span>
+      </button>
+      {open && (
+        <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3 animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex items-start gap-2">
+            <Clock className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+            <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+              <li>The kitchen will review your photos and inspect the unit</li>
+              <li>If everything is clear, your booking is completed</li>
+              <li>Auto-clears if no issues are found within the review window</li>
+              <li>No overstay penalties while checkout is under review</li>
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

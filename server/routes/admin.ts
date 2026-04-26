@@ -2139,7 +2139,12 @@ router.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
         const settings = await db
             .select()
             .from(platformSettings)
-            .where(sql`key IN ('stripe_percentage_fee', 'stripe_flat_fee_cents', 'platform_commission_rate', 'minimum_application_fee_cents', 'use_stripe_platform_pricing')`);
+            .where(sql`key IN (
+                'stripe_percentage_fee',
+                'stripe_flat_fee_cents',
+                'platform_commission_rate',
+                'minimum_application_fee_cents'
+            )`);
 
         const settingsMap = Object.fromEntries(settings.map(s => [s.key, {
             value: s.value,
@@ -2159,15 +2164,13 @@ router.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
                 platformCommissionRateDisplay: `${(config.platformCommissionRate * 100).toFixed(1)}%`,
                 minimumApplicationFeeCents: config.minimumApplicationFeeCents,
                 minimumApplicationFeeDisplay: `$${(config.minimumApplicationFeeCents / 100).toFixed(2)}`,
-                useStripePlatformPricing: config.useStripePlatformPricing,
             },
             rawSettings: settingsMap,
             documentation: {
-                stripePercentageFee: "Stripe's processing fee percentage (e.g., 0.029 for 2.9%)",
-                stripeFlatFeeCents: "Stripe's flat fee per transaction in cents (e.g., 30 for $0.30)",
-                platformCommissionRate: "Platform's commission rate (e.g., 0.05 for 5%)",
-                minimumApplicationFeeCents: "Minimum application fee in cents to ensure profitability",
-                useStripePlatformPricing: "If true, use Stripe Platform Pricing Tool instead of code-based fees",
+                stripePercentageFee: "Stripe's processing fee percentage for display estimates (e.g., 0.029 for 2.9%). Actual fee deducted from transfer is read from Stripe at capture time.",
+                stripeFlatFeeCents: "Stripe's flat fee per transaction in cents for display estimates (e.g., 30 for $0.30).",
+                platformCommissionRate: "Platform's commission rate (e.g., 0.05 for 5%). Deducted from manager's transfer along with the actual Stripe fee.",
+                minimumApplicationFeeCents: "Minimum platform commission floor in cents to ensure profitability.",
             },
         });
     } catch (error) {
@@ -2196,7 +2199,6 @@ router.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
             stripeFlatFeeCents,
             platformCommissionRate,
             minimumApplicationFeeCents,
-            useStripePlatformPricing,
         } = req.body;
 
         const updates: Array<{ key: string; value: string; description: string }> = [];
@@ -2250,14 +2252,6 @@ router.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
             });
         }
 
-        if (useStripePlatformPricing !== undefined) {
-            updates.push({
-                key: 'use_stripe_platform_pricing',
-                value: useStripePlatformPricing ? 'true' : 'false',
-                description: 'If true, do not set application_fee_amount in code - let Stripe Platform Pricing Tool handle it',
-            });
-        }
-
         if (updates.length === 0) {
             return res.status(400).json({ error: 'No valid updates provided' });
         }
@@ -2302,7 +2296,6 @@ router.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
                 stripeFlatFeeCents: newConfig.stripeFlatFeeCents,
                 platformCommissionRate: newConfig.platformCommissionRate,
                 minimumApplicationFeeCents: newConfig.minimumApplicationFeeCents,
-                useStripePlatformPricing: newConfig.useStripePlatformPricing,
             },
         });
     } catch (error) {
@@ -2452,7 +2445,6 @@ router.post("/fees/simulate", requireFirebaseAuthWithUser, requireAdmin, async (
                     platformCommission: `$${(currentResult.platformCommissionInCents / 100).toFixed(2)}`,
                     totalApplicationFee: `$${(currentResult.totalPlatformFeeInCents / 100).toFixed(2)}`,
                     managerReceives: `$${(currentResult.managerReceivesInCents / 100).toFixed(2)}`,
-                    useStripePlatformPricing: currentResult.useStripePlatformPricing,
                 },
                 raw: currentResult,
             },

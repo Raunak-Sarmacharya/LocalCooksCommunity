@@ -40,7 +40,6 @@ export function PlatformSettingsSection() {
     stripeFlatFeeCents: '30',
     platformCommissionRate: '0',
     minimumApplicationFeeCents: '0',
-    useStripePlatformPricing: false,
   });
 
   const { data: currentConfig, isLoading, error, refetch } = useQuery<{
@@ -54,7 +53,6 @@ export function PlatformSettingsSection() {
       platformCommissionRateDisplay: string;
       minimumApplicationFeeCents: number;
       minimumApplicationFeeDisplay: string;
-      useStripePlatformPricing: boolean;
     };
   }>({
     queryKey: ['/api/admin/fees/config'],
@@ -175,7 +173,6 @@ export function PlatformSettingsSection() {
         stripeFlatFeeCents: currentConfig.config.stripeFlatFeeCents.toString(),
         platformCommissionRate: (currentConfig.config.platformCommissionRate * 100).toFixed(1),
         minimumApplicationFeeCents: currentConfig.config.minimumApplicationFeeCents.toString(),
-        useStripePlatformPricing: currentConfig.config.useStripePlatformPricing,
       });
     }
   }, [currentConfig]);
@@ -186,7 +183,6 @@ export function PlatformSettingsSection() {
       stripeFlatFeeCents?: number;
       platformCommissionRate?: number;
       minimumApplicationFeeCents?: number;
-      useStripePlatformPricing?: boolean;
     }) => {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
@@ -272,7 +268,6 @@ export function PlatformSettingsSection() {
       stripeFlatFeeCents: parseInt(feeConfig.stripeFlatFeeCents, 10),
       platformCommissionRate: parseFloat(feeConfig.platformCommissionRate) / 100,
       minimumApplicationFeeCents: parseInt(feeConfig.minimumApplicationFeeCents, 10),
-      useStripePlatformPricing: feeConfig.useStripePlatformPricing,
     });
   };
 
@@ -283,7 +278,6 @@ export function PlatformSettingsSection() {
         stripeFlatFeeCents: currentConfig.config.stripeFlatFeeCents.toString(),
         platformCommissionRate: (currentConfig.config.platformCommissionRate * 100).toFixed(1),
         minimumApplicationFeeCents: currentConfig.config.minimumApplicationFeeCents.toString(),
-        useStripePlatformPricing: currentConfig.config.useStripePlatformPricing,
       });
     }
   };
@@ -394,13 +388,28 @@ export function PlatformSettingsSection() {
         </CardContent>
       </Card>
 
+      {/* Architecture info card */}
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>How payouts work — Separate Charges and Transfers</AlertTitle>
+        <AlertDescription className="text-xs space-y-1">
+          <p>1. Customer pays the full amount; the charge lands on the platform's Stripe balance.</p>
+          <p>2. Stripe deducts the actual processing fee (varies by card type) from the platform balance.</p>
+          <p>3. The webhook reads the actual fee from <code>balance_transaction.fee</code>.</p>
+          <p>4. The platform calls <code>stripe.transfers.create()</code> to send the manager
+            <strong> charge − actual Stripe fee − platform commission</strong> to their Connect account.</p>
+          <p>The Stripe % and flat fee values above are display-only estimates; the actual fee
+            from Stripe is always used for the transfer.</p>
+        </AlertDescription>
+      </Alert>
+
       {/* Current Configuration Summary */}
       {currentConfig?.config && (
         <Card className="border-primary/20 bg-primary/5">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Current Configuration</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <p className="text-muted-foreground">Stripe %</p>

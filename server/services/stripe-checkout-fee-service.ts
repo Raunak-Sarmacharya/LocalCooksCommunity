@@ -38,29 +38,41 @@ export interface FeeCalculationResult {
 
 /**
  * Fee configuration interface for database settings
+ *
+ * ARCHITECTURE — Separate Charges and Transfers (industry-standard marketplace pattern):
+ *   1. Customer pays full amount → lands in platform's Stripe balance
+ *   2. Stripe deducts ACTUAL processing fee from platform balance (varies by card type)
+ *   3. Webhook reads balance_transaction.fee then calls stripe.transfers.create()
+ *      to send (chargeAmount − actualStripeFee − platformCommission) to manager's
+ *      Connect account
+ *
+ *   No application_fee_amount, no transfer_data at checkout.
+ *   No static fee estimates, no safety margins, no refunds — just exact pass-through.
+ *
+ *   stripePercentageFee/stripeFlatFeeCents are kept ONLY for client-side display
+ *   estimates (booking previews). Actual fees are always read from Stripe at transfer time.
  */
 export interface FeeConfig {
-  stripePercentageFee: number;
-  stripeFlatFeeCents: number;
-  platformCommissionRate: number;
-  minimumApplicationFeeCents: number;
-  useStripePlatformPricing: boolean;
+  stripePercentageFee: number; // Display-only estimate (e.g., 0.029)
+  stripeFlatFeeCents: number; // Display-only estimate (e.g., 30)
+  platformCommissionRate: number; // Real: deducted from manager transfer
+  minimumApplicationFeeCents: number; // Real: floor for platform commission
 }
 
 /**
  * Default fee configuration (fallback if database is unavailable)
- * These values are only used if database query fails
- * 
- * For break-even mode (cover Stripe fees only, no platform profit):
+ *
+ * Break-even mode (full pass-through to manager):
  * - platformCommissionRate = 0
  * - minimumApplicationFeeCents = 0
+ *
+ * Manager receives EXACTLY chargeAmount − actualStripeFee.
  */
 export const DEFAULT_FEE_CONFIG: FeeConfig = {
-  stripePercentageFee: 0.029, // 2.9% - Stripe Canada card processing fee
-  stripeFlatFeeCents: 30, // $0.30 CAD - Stripe Canada flat fee per transaction
-  platformCommissionRate: 0, // 0% platform commission for break-even
-  minimumApplicationFeeCents: 0, // No minimum for break-even mode
-  useStripePlatformPricing: false,
+  stripePercentageFee: 0.029, // Display estimate: Stripe Canada card processing fee 2.9%
+  stripeFlatFeeCents: 30, // Display estimate: $0.30 CAD per transaction
+  platformCommissionRate: 0, // 0% commission for full pass-through
+  minimumApplicationFeeCents: 0, // No minimum
 };
 
 /**
@@ -105,7 +117,6 @@ export async function getFeeConfig(): Promise<FeeConfig> {
       stripeFlatFeeCents: parseIntOrDefault(settingsMap.get('stripe_flat_fee_cents'), DEFAULT_FEE_CONFIG.stripeFlatFeeCents),
       platformCommissionRate: parseFloatOrDefault(settingsMap.get('platform_commission_rate'), DEFAULT_FEE_CONFIG.platformCommissionRate),
       minimumApplicationFeeCents: parseIntOrDefault(settingsMap.get('minimum_application_fee_cents'), DEFAULT_FEE_CONFIG.minimumApplicationFeeCents),
-      useStripePlatformPricing: settingsMap.get('use_stripe_platform_pricing') === 'true',
     };
 
     // Validate configuration
@@ -283,45 +294,27 @@ export function calculateCheckoutFeesWithRates(
 }
 
 /**
- * Enterprise-grade async fee calculation using database configuration
- * 
- * This is the recommended function for production use as it:
- * 1. Reads fee configuration from platform_settings database table
- * 2. Supports admin-configurable fees without code changes
- * 3. Supports Stripe Platform Pricing Tool integration
- * 4. Includes caching for performance
- * 
+ * Display-only fee estimate using database configuration.
+ *
+ * IMPORTANT: This function is NOT used to set application_fee_amount or any real fee.
+ * It only provides estimates for UI displays (booking previews, capture preview, etc.).
+ *
+ * Real fees are deducted at transfer time from the actual balance_transaction.fee.
+ * See `stripe-transfer-service.ts` for the actual money movement.
+ *
  * @param bookingPriceInCents - Booking price in cents (integer)
- * @returns Fee breakdown with all amounts in cents, plus useStripePlatformPricing flag
+ * @returns Fee breakdown with all amounts in cents (estimates only)
  */
 export async function calculateCheckoutFeesAsync(
   bookingPriceInCents: number
-): Promise<FeeCalculationResult & { useStripePlatformPricing: boolean }> {
+): Promise<FeeCalculationResult> {
   if (bookingPriceInCents <= 0) {
     throw new Error('Booking price must be greater than 0');
   }
 
-  // Get configuration from database (with caching)
   const config = await getFeeConfig();
 
-  // If using Stripe Platform Pricing Tool, return zero application fee
-  // Stripe will automatically apply the fee based on Dashboard configuration
-  if (config.useStripePlatformPricing) {
-    return {
-      bookingPriceInCents,
-      stripeProcessingFeeInCents: 0,
-      platformCommissionInCents: 0,
-      totalPlatformFeeInCents: 0,
-      totalChargeInCents: bookingPriceInCents,
-      managerReceivesInCents: bookingPriceInCents,
-      percentageFeeInCents: 0,
-      flatFeeInCents: 0,
-      useStripePlatformPricing: true,
-    };
-  }
-
-  // Calculate fees using database configuration
-  // Total Stripe fee = percentage fee + flat fee
+  // Estimated Stripe fee (display only — real fee read from balance_transaction at transfer time)
   const stripeProcessingFeeInCents = Math.round(
     bookingPriceInCents * config.stripePercentageFee + config.stripeFlatFeeCents
   );
@@ -336,7 +329,7 @@ export async function calculateCheckoutFeesAsync(
 
   if (managerReceivesInCents <= 0) {
     throw new Error(
-      `Application fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
+      `Estimated fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
     );
   }
 
@@ -349,6 +342,5 @@ export async function calculateCheckoutFeesAsync(
     managerReceivesInCents,
     percentageFeeInCents: stripeProcessingFeeInCents,
     flatFeeInCents: config.stripeFlatFeeCents,
-    useStripePlatformPricing: false,
   };
 }

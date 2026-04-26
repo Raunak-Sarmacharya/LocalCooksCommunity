@@ -150,13 +150,8 @@ export async function validateRequiredPhotos(
     .where(eq(checkinCheckoutChecklists.locationId, locationId))
     .limit(1);
 
-  // No checklist configured → fall back to "at least 1 photo"
-  if (!checklist) {
-    if (photos.length < 1) {
-      return { valid: false, error: 'At least one condition photo is required' };
-    }
-    return { valid: true };
-  }
+  // No checklist configured → photos are optional
+  if (!checklist) return { valid: true };
 
   let requirementsRaw: unknown = [];
   let sectionEnabled = true;
@@ -180,13 +175,8 @@ export async function validateRequiredPhotos(
   const requirements = Array.isArray(requirementsRaw) ? (requirementsRaw as Array<{ required?: boolean; label?: string }>) : [];
   const requiredCount = requirements.filter((r) => r.required !== false).length;
 
-  // No requirements defined → require at least 1 photo as minimum guard-rail.
-  if (requiredCount === 0) {
-    if (photos.length < 1) {
-      return { valid: false, error: 'At least one condition photo is required' };
-    }
-    return { valid: true };
-  }
+  // No requirements defined → photos are optional
+  if (requiredCount === 0) return { valid: true };
 
   if (photos.length < requiredCount) {
     return {
