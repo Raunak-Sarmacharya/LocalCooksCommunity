@@ -106,7 +106,9 @@ export default function ApplicantDashboard() {
 
   const [activeTab, setActiveTabState] = useState(getInitialTab);
 
-  // Sync URL when tab changes (makes tabs bookmarkable)
+  // Sync URL when tab changes (makes tabs bookmarkable AND adds an entry to
+  // browser history so the back button walks through the user's tab journey
+  // instead of always returning to whatever tab was last "stuck" on the URL).
   const setActiveTab = (tab: string) => {
     setActiveTabState(tab);
     const url = new URL(window.location.href);
@@ -115,7 +117,11 @@ export default function ApplicantDashboard() {
     } else {
       url.searchParams.set('view', tab);
     }
-    window.history.replaceState({}, '', url.toString());
+    const nextUrl = url.toString();
+    // Avoid pushing duplicate entries for the same URL
+    if (nextUrl !== window.location.href) {
+      window.history.pushState({}, '', nextUrl);
+    }
   };
 
   // Application form view mode - 'list' shows applications, 'form' shows the application form, 'documents' shows document verification
@@ -124,25 +130,43 @@ export default function ApplicantDashboard() {
   // Training view mode - 'overview' shows training overview, 'player' shows the video player
   const [trainingViewMode, setTrainingViewMode] = useState<'overview' | 'player'>('overview');
 
-  // Update activeTab and applicationViewMode when URL changes (for notification clicks and deep links)
-  // Use setActiveTabState here since the URL already has the correct ?view= param
+  // Update activeTab and applicationViewMode when URL changes (for notification clicks and deep links).
+  // Note: wouter's `location` only tracks the pathname, so search-param-only
+  // changes (e.g. ?view=bookings → ?view=settings via pushState) don't trigger
+  // a re-run. We also listen for `popstate` so back/forward correctly walks
+  // through tabs we pushed onto history.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const view = params.get('view');
-    const action = params.get('action');
+    const VALID_VIEWS = [
+      'overview', 'applications', 'kitchen-applications', 'discover-kitchens',
+      'bookings', 'training', 'messages', 'support', 'feedback',
+      'damage-claims', 'profile', 'seller-revenue'
+    ];
+    const syncFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const view = params.get('view');
+      const action = params.get('action');
 
-    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages', 'support', 'feedback', 'damage-claims', 'profile', 'seller-revenue'].includes(view)) {
-      setActiveTabState(view);
+      if (view && VALID_VIEWS.includes(view)) {
+        setActiveTabState(view);
 
-      // If navigating to applications with action=new, open the form
-      if (view === 'applications' && action === 'new') {
-        setApplicationViewMode('form');
+        // If navigating to applications with action=new, open the form
+        if (view === 'applications' && action === 'new') {
+          setApplicationViewMode('form');
+        }
+        // If navigating to applications with action=documents, open document verification
+        if (view === 'applications' && action === 'documents') {
+          setApplicationViewMode('documents');
+        }
+      } else if (!view) {
+        // No ?view param — user is on the bare /dashboard URL (e.g. after
+        // walking back through the pushed history). Snap back to overview.
+        setActiveTabState('overview');
       }
-      // If navigating to applications with action=documents, open document verification
-      if (view === 'applications' && action === 'documents') {
-        setApplicationViewMode('documents');
-      }
-    }
+    };
+
+    syncFromUrl();
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
   }, [location]);
 
   // Booking sheet state

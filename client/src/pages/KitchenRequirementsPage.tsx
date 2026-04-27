@@ -345,13 +345,15 @@ export default function KitchenRequirementsPage() {
                 activeView={activeView}
                 onViewChange={(view) => {
                     setActiveView(view);
-                    if (view === 'overview') setLocation('/dashboard');
-                    else if (view === 'discover-kitchens') setLocation('/dashboard?view=discover-kitchens');
-                    else if (view === 'kitchen-applications') setLocation('/dashboard?view=kitchen-applications');
-                    else if (view === 'bookings') setLocation('/dashboard?view=bookings');
-                    else if (view === 'applications') setLocation('/dashboard?view=applications');
-                    else if (view === 'messages') setLocation('/dashboard?view=messages');
-                    else if (view === 'training') setLocation('/dashboard?view=training');
+                    // REPLACE so back button doesn't bounce through this requirements page.
+                    const opts = { replace: true } as const;
+                    if (view === 'overview') setLocation('/dashboard', opts);
+                    else if (view === 'discover-kitchens') setLocation('/dashboard?view=discover-kitchens', opts);
+                    else if (view === 'kitchen-applications') setLocation('/dashboard?view=kitchen-applications', opts);
+                    else if (view === 'bookings') setLocation('/dashboard?view=bookings', opts);
+                    else if (view === 'applications') setLocation('/dashboard?view=applications', opts);
+                    else if (view === 'messages') setLocation('/dashboard?view=messages', opts);
+                    else if (view === 'training') setLocation('/dashboard?view=training', opts);
                 }}
                 breadcrumbs={[
                     { label: "Dashboard", onClick: () => setLocation('/dashboard') },

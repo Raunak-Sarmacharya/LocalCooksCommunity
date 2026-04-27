@@ -1700,16 +1700,18 @@ export default function KitchenPreviewPage() {
     return mainContent(locationData);
   };
 
-  // Handle sidebar navigation
+  // Handle sidebar navigation. We REPLACE the current preview-page entry so
+  // the back button doesn't bounce through this kitchen preview again.
   const handleViewChange = (view: string) => {
     setActiveView(view);
-    if (view === 'overview') navigate('/dashboard');
-    else if (view === 'discover-kitchens') navigate('/dashboard?view=discover-kitchens');
-    else if (view === 'kitchen-applications') navigate('/dashboard?view=kitchen-applications');
-    else if (view === 'bookings') navigate('/dashboard?view=bookings');
-    else if (view === 'applications') navigate('/dashboard?view=applications');
-    else if (view === 'messages') navigate('/dashboard?view=messages');
-    else if (view === 'training') navigate('/dashboard?view=training');
+    const opts = { replace: true } as const;
+    if (view === 'overview') navigate('/dashboard', opts);
+    else if (view === 'discover-kitchens') navigate('/dashboard?view=discover-kitchens', opts);
+    else if (view === 'kitchen-applications') navigate('/dashboard?view=kitchen-applications', opts);
+    else if (view === 'bookings') navigate('/dashboard?view=bookings', opts);
+    else if (view === 'applications') navigate('/dashboard?view=applications', opts);
+    else if (view === 'messages') navigate('/dashboard?view=messages', opts);
+    else if (view === 'training') navigate('/dashboard?view=training', opts);
   };
 
   // If user is authenticated, wrap in ChefDashboardLayout

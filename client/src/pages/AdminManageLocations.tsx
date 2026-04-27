@@ -31,7 +31,9 @@ export default function AdminManageLocations() {
 
   const handleSectionChange = (section: AdminSection) => {
     if (section === "kitchen-management") return;
-    navigate(`/admin?section=${section}`);
+    // REPLACE so back button doesn't bounce through this kitchen-management
+    // sub-page when the admin switches to a different section.
+    navigate(`/admin?section=${section}`, { replace: true });
   };
 
   const handleLogout = async () => {

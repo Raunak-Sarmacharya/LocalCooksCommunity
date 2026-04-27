@@ -39,6 +39,25 @@ import * as phpBridge from "../services/php-bridge-service";
 
 const router = Router();
 
+/**
+ * NL bounding box used for shop address validation.
+ * Defence-in-depth: even if an admin hand-types an out-of-province address
+ * (bypassing the Places autocomplete UI), we'll reject it on shop creation.
+ */
+const NL_BOUNDS = { minLat: 46.0, maxLat: 61.0, minLng: -67.8, maxLng: -52.0 };
+
+function isInNL(lat: number | undefined, lng: number | undefined, addressText: string | undefined): boolean {
+    if (typeof lat === "number" && typeof lng === "number") {
+        return (
+            lat >= NL_BOUNDS.minLat && lat <= NL_BOUNDS.maxLat &&
+            lng >= NL_BOUNDS.minLng && lng <= NL_BOUNDS.maxLng
+        );
+    }
+    // Fallback: text heuristic if coords were not captured
+    const t = (addressText || "").toLowerCase();
+    return /(^|[\s,])nl([\s,]|$)/i.test(addressText || "") || t.includes("newfoundland") || t.includes("labrador");
+}
+
 // Initialize Services
 const appRepo = new ApplicationRepository();
 const appService = new ApplicationService(appRepo);
@@ -691,6 +710,15 @@ router.post("/:id/create-shop", async (req: Request, res: Response) => {
             return res.status(400).json({ message: "A valid shop address is required. Please provide a shop address." });
         }
 
+        // Enforce NL-only addresses (defence-in-depth: client also restricts via Places API)
+        const latNum = application.lat ? parseFloat(application.lat) : (typeof bodyLat === "number" ? bodyLat : undefined);
+        const lngNum = application.slong ? parseFloat(application.slong) : (typeof bodySlong === "number" ? bodySlong : undefined);
+        if (!isInNL(latNum, lngNum, shopAddress)) {
+            return res.status(422).json({
+                message: "Shop address must be inside Newfoundland & Labrador (NL). Please pick an NL address from the suggestions.",
+            });
+        }
+
         // Clean phone number (remove country code and non-digits)
         const cleanPhone = stripCountryCode(application.phone || "");
         if (cleanPhone.length < 10) {
@@ -757,6 +785,62 @@ router.post("/:id/create-shop", async (req: Request, res: Response) => {
         return res.status(500).json({ 
             message: error instanceof Error ? error.message : "Failed to create shop on PHP backend" 
         });
+    }
+});
+
+// View shop credentials (admin only) — deterministically regenerated from shopName + phone
+router.get("/:id/shop-credentials", async (req: Request, res: Response) => {
+    try {
+        if (!req.neonUser || req.neonUser.role !== "admin") {
+            return res.status(403).json({ message: "Admin access required" });
+        }
+
+        const id = parseInt(req.params.id);
+        if (Number.isNaN(id)) {
+            return res.status(400).json({ message: "Invalid application id" });
+        }
+
+        const application = await appService.getApplicationById(id);
+        if (!application) {
+            return res.status(404).json({ message: "Application not found" });
+        }
+
+        if (!application.phpShopCreated) {
+            return res.status(400).json({ message: "Shop has not been created yet for this application" });
+        }
+
+        const shopName = application.shopName?.trim();
+        if (!shopName || shopName === "Shop Not Named") {
+            return res.status(400).json({ message: "Shop is missing a valid shop name" });
+        }
+
+        const cleanPhone = stripCountryCode(application.phone || "");
+        if (cleanPhone.length < 10) {
+            return res.status(400).json({ message: "Shop phone number is invalid" });
+        }
+
+        // Credentials are deterministically derived from shop name + phone, matching
+        // exactly what was sent to the PHP bridge when the shop was created.
+        const { username, password } = generateVendorCredentials(shopName, cleanPhone);
+
+        const loginUrl =
+            process.env.PHP_SHOP_LOGIN_URL ||
+            "https://stagingwebapp.localcook.shop/app/shop/index.php";
+
+        return res.json({
+            applicationId: application.id,
+            shopName,
+            ownerName: application.fullName || "",
+            email: application.email || "",
+            phone: cleanPhone,
+            username,
+            password,
+            loginUrl,
+            verificationEmailSentAt: application.verificationEmailSentAt || null,
+        });
+    } catch (error) {
+        logger.error("Error retrieving shop credentials:", error);
+        return res.status(500).json({ message: "Failed to retrieve shop credentials" });
     }
 });
 

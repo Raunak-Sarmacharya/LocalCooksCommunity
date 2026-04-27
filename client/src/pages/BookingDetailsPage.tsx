@@ -190,8 +190,13 @@ export default function BookingDetailsPage() {
   const [checkinTrackerOpen, setCheckinTrackerOpen] = useState(false);
   const queryClient = useQueryClient();
 
+  // When the chef clicks a sidebar tab from this booking-detail sub-page, we
+  // REPLACE the current /booking/:id history entry with the dashboard view
+  // instead of pushing a new one. That way the back button doesn't bounce
+  // them through the booking detail again — it goes straight to wherever
+  // they came from before opening this page.
   const handleViewChange = (view: string) => {
-    navigate(`/dashboard?view=${view}`);
+    navigate(`/dashboard?view=${view}`, { replace: true });
   };
 
   useEffect(() => {

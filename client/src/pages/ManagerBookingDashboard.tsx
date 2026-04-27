@@ -245,7 +245,8 @@ export default function ManagerBookingDashboard() {
     missingSteps
   } = useOnboardingStatus(selectedLocation?.id);
 
-  // Sync activeView with URL parameters
+  // Sync activeView with URL parameters. Listens to popstate so back/forward
+  // through the pushed tab history correctly updates the active view.
   useEffect(() => {
     const handleLocationChange = () => {
       const params = new URLSearchParams(window.location.search);
@@ -258,6 +259,10 @@ export default function ManagerBookingDashboard() {
       }
       if (view && validViews.includes(view as ViewType)) {
         setActiveView(view as ViewType);
+      } else if (!view) {
+        // No ?view param — bare /manager/booking-dashboard URL. Snap back
+        // to the overview so back-button traversal stays in sync.
+        setActiveView('overview');
       }
     };
 
@@ -266,6 +271,23 @@ export default function ManagerBookingDashboard() {
     window.addEventListener('popstate', handleLocationChange);
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
+
+  // Centralised tab-change handler. Pushes the new view into browser history
+  // so the back button walks through the user's tab journey instead of always
+  // returning to whatever tab was last viewed before opening a sub-page.
+  const handleViewChange = (view: ViewType) => {
+    setActiveView(view);
+    const url = new URL(window.location.href);
+    if (view === 'overview') {
+      url.searchParams.delete('view');
+    } else {
+      url.searchParams.set('view', view);
+    }
+    const nextUrl = url.toString();
+    if (nextUrl !== window.location.href) {
+      window.history.pushState({}, '', nextUrl);
+    }
+  };
 
   // Handle Stripe Connect Return
   useEffect(() => {
@@ -563,7 +585,7 @@ export default function ManagerBookingDashboard() {
   return (
     <DashboardLayout
       activeView={activeView}
-      onViewChange={(view) => setActiveView(view as ViewType)}
+      onViewChange={(view) => handleViewChange(view as ViewType)}
       locations={locations}
       selectedLocation={selectedLocation}
       onLocationChange={(loc) => setSelectedLocation(loc as Location)}
@@ -596,7 +618,7 @@ export default function ManagerBookingDashboard() {
           <KitchenDashboardOverview
             selectedLocation={selectedLocation}
             locations={locations}
-            onNavigate={(view: ViewType) => setActiveView(view)}
+            onNavigate={(view: ViewType) => handleViewChange(view)}
             onSelectLocation={(location) => setSelectedLocation(location)}
           />
         </div>
@@ -619,7 +641,7 @@ export default function ManagerBookingDashboard() {
           selectedLocationId={selectedLocation?.id ?? null}
           isLayoutLoading={isLoadingLocations}
           setLocation={setLocation}
-          onNavigateToView={(view: string) => setActiveView(view as ViewType)}
+          onNavigateToView={(view: string) => handleViewChange(view as ViewType)}
         />
       )}
 
@@ -655,7 +677,7 @@ export default function ManagerBookingDashboard() {
         <ManagerRevenueDashboard
           selectedLocation={selectedLocation}
           locations={locations}
-          onNavigate={(view) => setActiveView(view as ViewType)}
+          onNavigate={(view) => handleViewChange(view as ViewType)}
         />
       )}
 
@@ -707,7 +729,7 @@ export default function ManagerBookingDashboard() {
           onCreateLocation={startNewLocation}
           onSelectLocation={(loc) => {
             setSelectedLocation(loc as Location);
-            setActiveView('settings');
+            handleViewChange('settings');
           }}
         />
       )}
