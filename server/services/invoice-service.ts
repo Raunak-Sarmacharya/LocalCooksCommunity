@@ -379,7 +379,7 @@ export async function generateInvoicePDF(
 
       // Company info section
       let leftY = 120;
-      doc.fontSize(14).font('Helvetica-Bold').text('Local Cooks Community', 50, leftY);
+      doc.fontSize(14).font('Helvetica-Bold').text('Local Cooks', 50, leftY);
       leftY += 18;
       doc.fontSize(10).font('Helvetica').text('support@localcook.shop', 50, leftY);
       leftY += 30;

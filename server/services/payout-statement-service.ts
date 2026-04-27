@@ -126,7 +126,7 @@ export async function generatePayoutStatementPDF(
 
       // Company info section
       let leftY = 120;
-      doc.fontSize(14).font('Helvetica-Bold').text('Local Cooks Community', 50, leftY);
+      doc.fontSize(14).font('Helvetica-Bold').text('Local Cooks', 50, leftY);
       leftY += 18;
       doc.fontSize(10).font('Helvetica').text('support@localcook.shop', 50, leftY);
       leftY += 30;
@@ -223,7 +223,7 @@ export async function generatePayoutStatementPDF(
       const footerY = doc.page.height - 100;
       doc.fontSize(8).font('Helvetica');
       doc.text(
-        'This is an automated payout statement from Local Cooks Community.',
+        'This is an automated payout statement from Local Cooks.',
         50,
         footerY,
         { align: 'center', width: doc.page.width - 100 }
