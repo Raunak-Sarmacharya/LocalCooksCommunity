@@ -24,6 +24,7 @@ import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-a
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LocationMap } from "@/components/ui/location-map";
 import { cn } from "@/lib/utils";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -743,7 +744,17 @@ function StorageCard({ storage }: { storage: StorageListing }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // KITCHEN DETAILS SECTION - Enterprise-grade Notion-inspired design
 // ═══════════════════════════════════════════════════════════════════════════════
-function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
+interface KitchenDetailsSectionProps {
+  kitchen: PublicKitchen;
+  locationAddress?: string;
+  locationName?: string;
+}
+
+function KitchenDetailsSection({
+  kitchen,
+  locationAddress,
+  locationName,
+}: KitchenDetailsSectionProps) {
   const [activeTab, setActiveTab] = useState("overview");
   
   const allImages: string[] = useMemo(() => {
@@ -921,6 +932,21 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
                     </div>
                   )}
                   
+                  {/* Location Map */}
+                  {locationAddress && (
+                    <div className="pt-4 border-t border-border/50">
+                      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-muted-foreground" />
+                        Location
+                      </h3>
+                      <LocationMap
+                        address={locationAddress}
+                        name={locationName || kitchen.name}
+                        heightClassName="h-[220px]"
+                      />
+                    </div>
+                  )}
+
                   {/* Quick Stats */}
                   {(hasEquipment || hasStorage) && (
                     <div className="pt-4 border-t border-border/50">
@@ -1673,6 +1699,8 @@ export default function KitchenPreviewPage() {
                     equipment: kitchenEquipment || undefined,
                     storage: kitchenStorage || undefined,
                   }}
+                  locationAddress={location.address}
+                  locationName={location.name}
                 />
               ) : (
                 <motion.div
@@ -1914,6 +1942,8 @@ export default function KitchenPreviewPage() {
                       equipment: kitchenEquipment || undefined,
                       storage: kitchenStorage || undefined,
                     }}
+                    locationAddress={location.address}
+                    locationName={location.name}
                   />
                 ) : (
                   <motion.div

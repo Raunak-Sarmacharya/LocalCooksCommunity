@@ -225,6 +225,8 @@ export function registerSecurityMiddleware(app: Express): void {
           "https://widget-v4.tidiochat.com",
           "https://accounts.google.com",
           "https://*.firebaseapp.com",
+          "https://maps.google.com",
+          "https://www.google.com",
         ],
         mediaSrc: [
           "'self'",
