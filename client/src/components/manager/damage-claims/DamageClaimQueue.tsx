@@ -1022,6 +1022,19 @@ export function DamageClaimQueue() {
       header: () => null,
       cell: () => null,
       enableHiding: true,
+      meta: { hidden: true },
+    },
+    {
+      id: "reference",
+      header: "Ref",
+      cell: ({ row }) => {
+        const ref = row.original.referenceCode || row.original.kitchenBookingId || row.original.id;
+        return (
+          <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+            {ref ? `#${ref}` : "—"}
+          </div>
+        );
+      },
     },
     {
       accessorKey: "claimTitle",

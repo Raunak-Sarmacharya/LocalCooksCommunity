@@ -1049,11 +1049,7 @@ export function StorageCheckinCheckoutEditor({
             <CardTitle className="text-lg">
               Storage Check-In / Check-Out Checklists
             </CardTitle>
-            <CardDescription>
-              Configure what chefs document at move-in and move-out. Use the
-              matrix table to assign each item to Check-In, Check-Out, or both
-              — plus an optional photo requirement.
-            </CardDescription>
+
           </div>
         </div>
       </CardHeader>

@@ -179,6 +179,18 @@ function getBookingTypeLabel(type: string, metadata: Record<string, unknown> | n
 function getTransactionColumns(): ColumnDef<Transaction>[] {
   return [
     {
+      id: "reference",
+      header: "Ref",
+      cell: ({ row }) => {
+        const ref = row.original.referenceCode || row.original.bookingId;
+        return (
+          <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+            {ref ? `#${ref}` : "—"}
+          </div>
+        );
+      },
+    },
+    {
       accessorKey: "paidAt",
       header: ({ column }) => (
         <Button

@@ -697,7 +697,7 @@ export default function CheckinCheckoutSettings({
     }
   }, [data, initialUnifiedItems]);
 
-  const isDirty = useMemo(() => {
+  const isChecklistDirty = useMemo(() => {
     if (!data) return false;
     return (
       checkinEnabled !== data.checkinEnabled ||
@@ -706,10 +706,7 @@ export default function CheckinCheckoutSettings({
       (checkinInstructions || null) !== (data.checkinInstructions || null) ||
       (checkoutInstructions || null) !== (data.checkoutInstructions || null) ||
       (smartLockCheckinInstructions || null) !==
-        (data.smartLockCheckinInstructions || null) ||
-      // Time window dirty check (compare against server values)
-      twCheckinWindow !== (data.timeWindowSettings?.checkinWindowMinutesBefore ?? null) ||
-      twNoShowGrace !== (data.timeWindowSettings?.noShowGraceMinutes ?? null)
+        (data.smartLockCheckinInstructions || null)
     );
   }, [
     data,
@@ -720,18 +717,22 @@ export default function CheckinCheckoutSettings({
     checkinInstructions,
     checkoutInstructions,
     smartLockCheckinInstructions,
-    twCheckinWindow,
-    twNoShowGrace,
   ]);
+
+  const isTimeWindowDirty = useMemo(() => {
+    if (!data) return false;
+    return (
+      twCheckinWindow !== (data.timeWindowSettings?.checkinWindowMinutesBefore ?? null) ||
+      twNoShowGrace !== (data.timeWindowSettings?.noShowGraceMinutes ?? null)
+    );
+  }, [data, twCheckinWindow, twNoShowGrace]);
 
   const validationErrors = useMemo(
     () => validateUnifiedItems(items),
     [items],
   );
 
-  // Save — sends only kitchen check-in/out fields. Storage fields are untouched
-  // because the server PUT endpoint only updates fields that were provided.
-  const saveAction = useStatusButton(
+  const saveChecklistsAction = useStatusButton(
     useCallback(async () => {
       if (validationErrors.length > 0) {
         throw new Error(validationErrors[0]);
@@ -756,6 +757,36 @@ export default function CheckinCheckoutSettings({
           checkoutPhotoRequirements: outCheckoutPhotos,
           checkoutInstructions: checkoutInstructions || null,
           smartLockCheckinInstructions: smartLockCheckinInstructions || null,
+        },
+      );
+
+      queryClient.invalidateQueries({
+        queryKey: ["checkin-checkout-settings", location.id],
+      });
+
+      toast({
+        title: "Checklists Saved",
+        description: "Kitchen check-in/check-out checklists updated successfully.",
+      });
+    }, [
+      location.id,
+      items,
+      checkinEnabled,
+      checkoutEnabled,
+      checkinInstructions,
+      checkoutInstructions,
+      smartLockCheckinInstructions,
+      validationErrors,
+      queryClient,
+      toast,
+    ]),
+  );
+
+  const saveTimeWindowsAction = useStatusButton(
+    useCallback(async () => {
+      await apiPut(
+        `/manager/locations/${location.id}/checkin-checkout-settings`,
+        {
           timeWindowSettings: {
             checkinWindowMinutesBefore: twCheckinWindow,
             noShowGraceMinutes: twNoShowGrace,
@@ -768,20 +799,13 @@ export default function CheckinCheckoutSettings({
       });
 
       toast({
-        title: "Settings Saved",
-        description: "Kitchen check-in/check-out checklists updated successfully.",
+        title: "Time Windows Saved",
+        description: "Time window overrides updated successfully.",
       });
     }, [
       location.id,
-      checkinEnabled,
-      checkoutEnabled,
-      items,
-      checkinInstructions,
-      checkoutInstructions,
-      smartLockCheckinInstructions,
       twCheckinWindow,
       twNoShowGrace,
-      validationErrors,
       queryClient,
       toast,
     ]),
@@ -821,7 +845,7 @@ export default function CheckinCheckoutSettings({
             using your kitchens.
           </p>
         </div>
-        {isDirty && (
+        {(isChecklistDirty || isTimeWindowDirty) && (
           <Badge
             variant="outline"
             className="text-amber-700 bg-amber-50 border-amber-200"
@@ -831,20 +855,6 @@ export default function CheckinCheckoutSettings({
         )}
       </div>
 
-      {/* Info Banner */}
-      <div className="flex items-start gap-3 p-3 rounded-lg border border-blue-200 bg-blue-50">
-        <Info className="size-4 text-blue-600 mt-0.5 shrink-0" />
-        <div className="text-xs text-blue-800 space-y-1">
-          <p className="font-medium">How this works</p>
-          <p>
-            Configure what chefs confirm at each stage using the tabs below.
-            Each item can optionally require a photo, and the same item can
-            appear on both Check-In and Check-Out via the pill toggles. Hit{" "}
-            <strong>Preview chef view</strong> to see exactly what the chef will
-            see as a side panel.
-          </p>
-        </div>
-      </div>
 
       {/* Unified Tabbed Editor */}
       <KitchenCheckinCheckoutEditor
@@ -862,6 +872,18 @@ export default function CheckinCheckoutSettings({
         onSmartLockInstructionsChange={setSmartLockCheckinInstructions}
         smartLockAvailable={hasSmartLockKitchen}
       />
+      
+      {/* Save Checklists Button */}
+      <div className="flex justify-end">
+        <StatusButton
+          status={saveChecklistsAction.status}
+          onClick={saveChecklistsAction.execute}
+          disabled={
+            (!isChecklistDirty && data?.id !== null) || validationErrors.length > 0
+          }
+          labels={{ idle: "Save Checklists", loading: "Saving", success: "Saved" }}
+        />
+      </div>
 
       {/* Smart Lock & Access Codes */}
       <AccessCodesSection locationId={location.id} />
@@ -923,9 +945,18 @@ export default function CheckinCheckoutSettings({
               />
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground mt-4 mb-4">
             These values override the platform defaults for this location only. Leave a field blank to use the platform default.
           </p>
+          
+          <div className="flex justify-end pt-4 border-t">
+            <StatusButton
+              status={saveTimeWindowsAction.status}
+              onClick={saveTimeWindowsAction.execute}
+              disabled={!isTimeWindowDirty && data?.id !== null}
+              labels={{ idle: "Save Time Windows", loading: "Saving", success: "Saved" }}
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -941,21 +972,6 @@ export default function CheckinCheckoutSettings({
         </div>
       )}
 
-      {/* Save Button */}
-      <div className="flex items-center justify-between pt-2">
-        <p className="text-xs text-muted-foreground">
-          {data?.id ? "Last saved" : "Not saved yet"} — applies to all kitchens at
-          this location
-        </p>
-        <StatusButton
-          status={saveAction.status}
-          onClick={saveAction.execute}
-          disabled={
-            (!isDirty && data?.id !== null) || validationErrors.length > 0
-          }
-          labels={{ idle: "Save Settings", loading: "Saving", success: "Saved" }}
-        />
-      </div>
     </div>
   );
 }

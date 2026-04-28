@@ -518,6 +518,18 @@ const getDamageClaimColumns = ({
     enableHiding: true,
   },
   {
+    id: "reference",
+    header: "Ref",
+    cell: ({ row }) => {
+      const ref = row.original.referenceCode || row.original.kitchenBookingId || row.original.id;
+      return (
+        <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+          {ref ? `#${ref}` : "—"}
+        </div>
+      );
+    },
+  },
+  {
     accessorKey: "claimTitle",
     header: ({ column }) => (
       <Button

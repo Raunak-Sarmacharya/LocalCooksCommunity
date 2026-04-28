@@ -144,6 +144,19 @@ export function getTransactionColumns({
             header: () => null,
             cell: () => null,
             enableHiding: true,
+            meta: { hidden: true },
+        },
+        {
+            id: "reference",
+            header: "Ref",
+            cell: ({ row }) => {
+                const ref = row.original.referenceCode || row.original.bookingId || row.original.id;
+                return (
+                    <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                        {ref ? `#${ref}` : "—"}
+                    </div>
+                );
+            },
         },
         {
             accessorKey: "bookingDate",

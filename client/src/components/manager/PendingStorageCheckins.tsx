@@ -111,6 +111,18 @@ const getCheckinHistoryColumns = ({
   onViewDetails,
 }: HistoryColumnsProps): ColumnDef<PendingCheckin>[] => [
   {
+    id: "reference",
+    header: "Ref",
+    cell: ({ row }) => {
+      const ref = row.original.referenceCode || row.original.id;
+      return (
+        <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+          {ref ? `#${ref}` : "—"}
+        </div>
+      );
+    },
+  },
+  {
     accessorKey: "storageName",
     header: ({ column }) => (
       <Button

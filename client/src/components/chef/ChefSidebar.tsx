@@ -28,6 +28,7 @@ import {
     SidebarMenuItem,
     SidebarMenuBadge,
     SidebarRail,
+    useSidebar,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/ui/logo"
@@ -151,6 +152,7 @@ export function ChefSidebar({
     ...props
 }: ChefSidebarProps) {
     const { user } = useFirebaseAuth()
+    const { isMobile, setOpenMobile } = useSidebar()
 
     // Get user initials for avatar fallback
     const getInitials = (name: string | null | undefined) => {
@@ -160,6 +162,13 @@ export function ChefSidebar({
             return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
         }
         return name.slice(0, 2).toUpperCase()
+    }
+
+    const handleViewChange = (view: string) => {
+        onViewChange(view)
+        if (isMobile) {
+            setOpenMobile(false)
+        }
     }
 
     return (
@@ -205,9 +214,12 @@ export function ChefSidebar({
                                             onClick={() => {
                                                 if (item.path) {
                                                     // External navigation (like discover kitchens)
+                                                    if (isMobile) {
+                                                        setOpenMobile(false)
+                                                    }
                                                     window.location.href = item.path
                                                 } else {
-                                                    onViewChange(item.id)
+                                                    handleViewChange(item.id)
                                                 }
                                             }}
                                             tooltip={item.label}
@@ -237,7 +249,7 @@ export function ChefSidebar({
                         {navSecondary.map((item) => (
                             <SidebarMenuItem key={item.id}>
                                 <SidebarMenuButton
-                                    onClick={() => onViewChange(item.id)}
+                                    onClick={() => handleViewChange(item.id)}
                                     tooltip={item.label}
                                 >
                                     {item.icon && <item.icon />}
@@ -255,7 +267,7 @@ export function ChefSidebar({
                     <SidebarMenuItem>
                         <SidebarMenuButton
                             size="lg"
-                            onClick={() => onViewChange("profile")}
+                            onClick={() => handleViewChange("profile")}
                             tooltip="Profile"
                             className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                         >

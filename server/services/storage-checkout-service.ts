@@ -223,7 +223,7 @@ export async function requestStorageCheckout(
         checkoutRequestedAt: new Date(),
         checkoutNotes: checkoutNotes || null,
         checkoutPhotoUrls: checkoutPhotoUrls || [],
-        checkoutChecklistItems: checkoutChecklistItems || null,
+        checkoutChecklistItems: checkoutChecklistItems || [],
         // Clear any previous denial
         checkoutDeniedAt: null,
         checkoutDeniedBy: null,
@@ -354,7 +354,7 @@ export async function requestStorageCheckin(
         checkinCompletedAt: new Date(),
         checkinNotes: checkinNotes || null,
         checkinPhotoUrls: checkinPhotoUrls || [],
-        checkinChecklistItems: checkinChecklistItems || null,
+        checkinChecklistItems: checkinChecklistItems || [],
         updatedAt: new Date(),
       })
       .where(eq(storageBookings.id, storageBookingId));

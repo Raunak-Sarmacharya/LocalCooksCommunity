@@ -239,9 +239,12 @@ function getColumns(onViewDetails: (c: DamageClaim) => void): ColumnDef<DamageCl
   return [
     {
       accessorKey: "id",
-      header: "ID",
+      header: "Ref",
       size: 60,
-      cell: ({ row }) => <span className="font-mono text-xs">#{row.original.id}</span>,
+      cell: ({ row }) => {
+        const ref = row.original.referenceCode || row.original.kitchenBookingId || row.original.id;
+        return <span className="font-mono text-xs">#{ref}</span>;
+      },
     },
     {
       accessorKey: "createdAt",

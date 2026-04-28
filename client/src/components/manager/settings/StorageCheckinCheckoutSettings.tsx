@@ -240,22 +240,6 @@ export default function StorageCheckinCheckoutSettings({
         )}
       </div>
 
-      {/* Info Banner */}
-      <div className="flex items-start gap-3 p-3 rounded-lg border border-blue-200 bg-blue-50">
-        <Info className="size-4 text-blue-600 mt-0.5 shrink-0" />
-        <div className="text-xs text-blue-800 space-y-1">
-          <p className="font-medium">How this works</p>
-          <p>
-            Define what chefs document at each stage using the matrix table
-            below. Every item can optionally require a photo, and the same
-            item can appear on both Check-In and Check-Out. Click{" "}
-            <strong>Preview</strong> on either panel to see exactly what the
-            chef sees. Check-in photos become the baseline for any damage
-            claim filed at checkout — they are auto-attached as{" "}
-            <em>photo_before</em> evidence.
-          </p>
-        </div>
-      </div>
 
       {/* Unified Matrix Editor */}
       <StorageCheckinCheckoutEditor
@@ -270,6 +254,18 @@ export default function StorageCheckinCheckoutSettings({
         checkoutInstructions={checkoutInstructions}
         onCheckoutInstructionsChange={setCheckoutInstructions}
       />
+      
+      {/* Save Settings Button */}
+      <div className="flex justify-end">
+        <StatusButton
+          status={saveAction.status}
+          onClick={saveAction.execute}
+          disabled={
+            (!isDirty && data?.id !== null) || validationErrors.length > 0
+          }
+          labels={{ idle: "Save Storage Checklists", loading: "Saving", success: "Saved" }}
+        />
+      </div>
 
       {/* Validation Errors */}
       {validationErrors.length > 0 && (
@@ -283,21 +279,6 @@ export default function StorageCheckinCheckoutSettings({
         </div>
       )}
 
-      {/* Save Button */}
-      <div className="flex items-center justify-between pt-2">
-        <p className="text-xs text-muted-foreground">
-          {data?.id ? "Last saved" : "Not saved yet"} — applies to all storage
-          at this location
-        </p>
-        <StatusButton
-          status={saveAction.status}
-          onClick={saveAction.execute}
-          disabled={
-            (!isDirty && data?.id !== null) || validationErrors.length > 0
-          }
-          labels={{ idle: "Save Settings", loading: "Saving", success: "Saved" }}
-        />
-      </div>
     </div>
   );
 }

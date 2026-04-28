@@ -1643,31 +1643,32 @@ export default function KitchenBookingSheet({
         <div className="flex gap-3">
           <Button 
             variant="outline"
-            className="flex-1" 
+            className="flex-1 min-h-[44px]" 
             onClick={() => setCurrentStep('slots')}
           >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
+            <ArrowLeft className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" />
+            <span className="hidden sm:inline">Back</span>
+            <span className="sm:hidden">Back</span>
           </Button>
           <Button 
-            className="flex-1" 
+            className="flex-1 min-h-[44px]" 
             onClick={grandTotal > 0 ? redirectToStripeCheckout : handleFreeBookingSubmit}
             disabled={createBooking.isPending || isRedirectingToCheckout || isProcessingBooking}
           >
             {createBooking.isPending || isRedirectingToCheckout || isProcessingBooking ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {isRedirectingToCheckout ? 'Redirecting to checkout...' : 'Booking...'}
+                <Loader2 className="mr-1.5 sm:mr-2 h-4 w-4 animate-spin flex-shrink-0" />
+                <span className="truncate">{isRedirectingToCheckout ? 'Redirecting...' : 'Booking...'}</span>
               </>
             ) : grandTotal > 0 ? (
               <>
-                <CreditCard className="mr-2 h-4 w-4" />
-                Proceed to Checkout
+                <CreditCard className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" />
+                <span className="truncate">Proceed to Checkout</span>
               </>
             ) : (
               <>
-                <Check className="mr-2 h-4 w-4" />
-                Confirm Booking
+                <Check className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" />
+                <span className="truncate">Confirm Booking</span>
               </>
             )}
           </Button>

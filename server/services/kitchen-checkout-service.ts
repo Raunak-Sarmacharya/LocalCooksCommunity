@@ -597,7 +597,7 @@ export async function requestKitchenCheckin(
         checkedInMethod: method,
         checkinNotes: checkinNotes || null,
         checkinPhotoUrls: checkinPhotoUrls || [],
-        checkinChecklistItems: checkinChecklistItems || null,
+        checkinChecklistItems: checkinChecklistItems || [],
         actualStartTime,
         updatedAt: now,
       })
@@ -753,7 +753,7 @@ export async function requestKitchenCheckout(
         checkoutRequestedAt: now,
         checkoutNotes: checkoutNotes || null,
         checkoutPhotoUrls: checkoutPhotoUrls || [],
-        checkoutChecklistItems: checkoutChecklistItems || null,
+        checkoutChecklistItems: checkoutChecklistItems || [],
         actualEndTime,
         updatedAt: now,
       })

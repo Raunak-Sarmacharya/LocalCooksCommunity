@@ -1162,11 +1162,7 @@ export function KitchenCheckinCheckoutEditor({
             <CardTitle className="text-lg">
               Check-In / Check-Out Checklists
             </CardTitle>
-            <CardDescription>
-              Configure what chefs verify at each stage. Use the matrix table
-              to assign each item to Check-In, Check-Out, or both — plus an
-              optional photo requirement.
-            </CardDescription>
+
           </div>
         </div>
       </CardHeader>

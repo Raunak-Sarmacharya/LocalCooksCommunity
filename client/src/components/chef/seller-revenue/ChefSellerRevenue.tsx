@@ -635,6 +635,18 @@ function OrderDetailSheet({
 function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef<SellerOrder>[] {
   return [
     {
+      id: "reference",
+      header: "Ref",
+      cell: ({ row }) => {
+        const ref = row.original.id; // Usually orders only have an ID or order_id
+        return (
+          <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+            {ref ? `#${ref}` : "—"}
+          </div>
+        );
+      },
+    },
+    {
       accessorKey: "order_time",
       header: ({ column }) => (
         <Button

@@ -1289,7 +1289,6 @@ export default function KitchenApplicationForm({
                               Your certification must be valid for at least 6 months
                             </p>
                             <FormMessage />
-                            <FormMessage />
                           </FormItem>
                         )}
                       />

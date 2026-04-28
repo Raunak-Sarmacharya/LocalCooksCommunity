@@ -430,7 +430,7 @@ export const kitchens = pgTable("kitchens", {
 // Define kitchen availability table
 export const kitchenAvailability = pgTable("kitchen_availability", {
   id: serial("id").primaryKey(),
-  kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
   dayOfWeek: integer("day_of_week").notNull(), // 0-6, Sunday is 0
   startTime: text("start_time").notNull(), // HH:MM format
   endTime: text("end_time").notNull(), // HH:MM format
@@ -440,7 +440,7 @@ export const kitchenAvailability = pgTable("kitchen_availability", {
 // Define kitchen date-specific overrides table for holidays, closures, etc.
 export const kitchenDateOverrides = pgTable("kitchen_date_overrides", {
   id: serial("id").primaryKey(),
-  kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
   specificDate: timestamp("specific_date").notNull(), // Specific date for override
   startTime: text("start_time"), // HH:MM format, null if closed all day
   endTime: text("end_time"), // HH:MM format, null if closed all day
