@@ -55,6 +55,9 @@ import { cn } from "@/lib/utils";
 
 // Types
 interface OverstayPenalty {
+  id?: number;
+  referenceCode?: string | null;
+  bookingId?: number | null;
   overstayId: number;
   storageBookingId: number;
   status: string;

@@ -31,6 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface PendingExtension {
   id: number;
+  referenceCode?: string | null;
   storageBookingId: number;
   newEndDate: string;
   extensionDays: number;

@@ -67,6 +67,8 @@ import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface PendingCheckin {
+  id?: number;
+  referenceCode?: string | null;
   storageBookingId: number;
   storageListingId: number;
   storageName: string;

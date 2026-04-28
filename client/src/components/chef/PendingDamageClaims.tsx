@@ -102,6 +102,7 @@ interface DamageEvidence {
 
 interface DamageClaim {
   id: number;
+  referenceCode?: string | null;
   bookingType: string;
   kitchenBookingId: number | null;
   storageBookingId: number | null;

@@ -71,6 +71,8 @@ import { formatDate as sharedFormatDate, formatCurrency as sharedFormatCurrency,
 
 interface OverstayPenalty {
   id: number;
+  referenceCode?: string | null;
+  bookingId?: number | null;
   storageBookingId: number;
   status: string;
   daysOverdue: number;

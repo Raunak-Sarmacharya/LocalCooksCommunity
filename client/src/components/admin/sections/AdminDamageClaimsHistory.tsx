@@ -73,6 +73,7 @@ import { formatDate as sharedFormatDate, formatCurrency as sharedFormatCurrency,
 
 interface DamageClaim {
   id: number;
+  referenceCode?: string | null;
   bookingType: string;
   kitchenBookingId: number | null;
   storageBookingId: number | null;
