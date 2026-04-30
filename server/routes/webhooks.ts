@@ -161,15 +161,8 @@ router.post("/stripe", async (req: Request, res: Response) => {
         );
         break;
       default:
-        // Handle charge.partially_refunded and other charge events
-        if (event.type.startsWith("charge.")) {
-          await handleChargeRefunded(
-            event.data.object as Stripe.Charge,
-            webhookEventId,
-          );
-        } else {
-          wLog.info(`Unhandled event type: ${event.type}`);
-        }
+        wLog.info(`Unhandled event type: ${event.type}`);
+        break;
     }
 
     res.json({ received: true });
@@ -2269,6 +2262,14 @@ async function handleChargeRefunded(
 
     // Get refund amount from Stripe charge
     const refundAmountCents = charge.amount_refunded;
+
+    // Guard: if no actual refund occurred, skip entirely.
+    // This prevents false "partially_refunded" status when this handler is
+    // accidentally triggered by non-refund charge events.
+    if (refundAmountCents === 0) {
+      logger.info(`[Webhook] Charge ${charge.id} has amount_refunded=0, skipping refund status update`);
+      return;
+    }
 
     // Update payment_transactions table
     const transaction = await findPaymentTransactionByIntentId(
