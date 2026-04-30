@@ -742,7 +742,7 @@ router.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, asy
     try {
         const { status } = req.query;
         
-        // Build query using Drizzle
+        // Build query using Drizzle - include all license-related fields
         const query = db.select({
             id: locations.id,
             name: locations.name,
@@ -753,6 +753,10 @@ router.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, asy
             kitchenLicenseExpiry: locations.kitchenLicenseExpiry,
             kitchenLicenseFeedback: locations.kitchenLicenseFeedback,
             kitchenLicenseApprovedAt: locations.kitchenLicenseApprovedAt,
+            kitchenLicensePendingUrl: locations.kitchenLicensePendingUrl,
+            kitchenLicensePendingSubmittedAt: locations.kitchenLicensePendingSubmittedAt,
+            kitchenLicenseCurrentUrl: locations.kitchenLicenseCurrentUrl,
+            kitchenLicensePreviousUrl: locations.kitchenLicensePreviousUrl,
             kitchenTermsUrl: locations.kitchenTermsUrl,
             kitchenTermsUploadedAt: locations.kitchenTermsUploadedAt,
             createdAt: locations.createdAt,
@@ -780,6 +784,11 @@ router.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, asy
             kitchenLicenseExpiry: loc.kitchenLicenseExpiry,
             kitchenLicenseFeedback: loc.kitchenLicenseFeedback,
             kitchenLicenseApprovedAt: loc.kitchenLicenseApprovedAt,
+            // Include pending license update fields
+            kitchenLicensePendingUrl: loc.kitchenLicensePendingUrl,
+            kitchenLicensePendingSubmittedAt: loc.kitchenLicensePendingSubmittedAt,
+            kitchenLicenseCurrentUrl: loc.kitchenLicenseCurrentUrl,
+            kitchenLicensePreviousUrl: loc.kitchenLicensePreviousUrl,
             kitchenTermsUrl: loc.kitchenTermsUrl,
             kitchenTermsUploadedAt: loc.kitchenTermsUploadedAt,
         }));
@@ -791,7 +800,7 @@ router.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, asy
     }
 });
 
-// Get pending location licenses (admin)
+// Get pending location licenses (admin) - includes both 'pending' and 'pending_update' statuses
 router.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const pendingLicenses = await db.select({
@@ -803,11 +812,16 @@ router.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAd
             kitchenLicenseStatus: locations.kitchenLicenseStatus,
             kitchenLicenseExpiry: locations.kitchenLicenseExpiry,
             kitchenLicenseFeedback: locations.kitchenLicenseFeedback,
+            kitchenLicensePendingUrl: locations.kitchenLicensePendingUrl,
+            kitchenLicensePendingSubmittedAt: locations.kitchenLicensePendingSubmittedAt,
+            kitchenLicenseCurrentUrl: locations.kitchenLicenseCurrentUrl,
             managerName: users.username,
         })
         .from(locations)
         .leftJoin(users, eq(locations.managerId, users.id))
-        .where(eq(locations.kitchenLicenseStatus, 'pending'));
+        .where(
+            sql`${locations.kitchenLicenseStatus} IN ('pending', 'pending_update')`
+        );
 
         const formatted = pendingLicenses.map(loc => ({
             id: loc.id,
@@ -819,6 +833,10 @@ router.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAd
             kitchenLicenseStatus: loc.kitchenLicenseStatus,
             kitchenLicenseExpiry: loc.kitchenLicenseExpiry,
             kitchenLicenseFeedback: loc.kitchenLicenseFeedback,
+            // Include pending license update fields
+            kitchenLicensePendingUrl: loc.kitchenLicensePendingUrl,
+            kitchenLicensePendingSubmittedAt: loc.kitchenLicensePendingSubmittedAt,
+            kitchenLicenseCurrentUrl: loc.kitchenLicenseCurrentUrl,
         }));
 
         res.json(formatted);
@@ -828,13 +846,15 @@ router.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAd
     }
 });
 
-// Get pending location licenses count (admin)
+// Get pending location licenses count (admin) - counts both 'pending' and 'pending_update'
 router.get("/locations/pending-licenses-count", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
         const result = await db
             .select({ count: sql<number>`count(*)::int` })
             .from(locations)
-            .where(eq(locations.kitchenLicenseStatus, 'pending'));
+            .where(
+                sql`${locations.kitchenLicenseStatus} IN ('pending', 'pending_update')`
+            );
             
         const count = result[0]?.count || 0;
         // Return as array to match client expectation in useQuery
@@ -881,6 +901,21 @@ router.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requir
             return res.status(400).json({ error: "Invalid status" });
         }
 
+        // Get current location to check for pending license update
+        const [currentLocation] = await db
+            .select({
+                kitchenLicenseUrl: locations.kitchenLicenseUrl,
+                kitchenLicenseStatus: locations.kitchenLicenseStatus,
+                kitchenLicensePendingUrl: locations.kitchenLicensePendingUrl,
+                kitchenLicenseCurrentUrl: locations.kitchenLicenseCurrentUrl,
+            })
+            .from(locations)
+            .where(eq(locations.id, locationId))
+            .limit(1);
+
+        const hasPendingUpdate = currentLocation?.kitchenLicensePendingUrl && 
+            (currentLocation?.kitchenLicenseStatus === 'pending_update');
+
         const updateData: any = {
             kitchenLicenseStatus: status,
             kitchenLicenseFeedback: feedback || null,
@@ -888,8 +923,41 @@ router.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requir
 
         if (status === 'approved') {
             updateData.kitchenLicenseApprovedAt = new Date();
-        } else {
+            
+            // Handle pending license update workflow
+            if (hasPendingUpdate) {
+                // Move current license to previous for audit trail
+                if (currentLocation.kitchenLicenseUrl) {
+                    updateData.kitchenLicensePreviousUrl = currentLocation.kitchenLicenseUrl;
+                }
+                // Promote pending license to current/active
+                updateData.kitchenLicenseUrl = currentLocation.kitchenLicensePendingUrl;
+                updateData.kitchenLicenseCurrentUrl = currentLocation.kitchenLicensePendingUrl;
+                // Clear pending fields
+                updateData.kitchenLicensePendingUrl = null;
+                updateData.kitchenLicensePendingSubmittedAt = null;
+                
+                logger.info(
+                    `[Admin] Approved license update for location ${locationId}. ` +
+                    `Old license archived, new license activated.`
+                );
+            }
+        } else if (status === 'rejected') {
             updateData.kitchenLicenseApprovedAt = null;
+            
+            // Handle pending license update rejection
+            if (hasPendingUpdate) {
+                // Clear pending fields, keep current license active
+                updateData.kitchenLicensePendingUrl = null;
+                updateData.kitchenLicensePendingSubmittedAt = null;
+                // Revert status to what it was before (approved if there was a current license)
+                updateData.kitchenLicenseStatus = currentLocation.kitchenLicenseUrl ? 'approved' : 'rejected';
+                
+                logger.info(
+                    `[Admin] Rejected license update for location ${locationId}. ` +
+                    `Current license remains active.`
+                );
+            }
         }
 
         await db.update(locations)
@@ -950,7 +1018,12 @@ router.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requir
             logger.error("Error sending kitchen license status email:", emailError);
         }
 
-        res.json({ message: "License status updated successfully" });
+        res.json({ 
+            message: hasPendingUpdate 
+                ? `License update ${status} successfully` 
+                : "License status updated successfully",
+            wasUpdate: hasPendingUpdate || false
+        });
     } catch (error: any) {
         logger.error("Error updating license status:", error);
         res.status(500).json({ error: error.message || "Failed to update license status" });
@@ -1462,7 +1535,7 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
-        const { name, description, isActive, locationId, taxRatePercent } = req.body;
+        const { name, description, isActive, locationId, taxRatePercent, smartLockAvailable } = req.body;
 
         const updates: any = {};
         const changesList: string[] = [];
@@ -1500,6 +1573,21 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
                  updates.taxRatePercent = newRate;
                  changesList.push(`Tax rate changed to ${newRate ? newRate + '%' : 'None'}`);
              }
+        }
+        // Admin-controlled smart lock capability gate.
+        // When disabled, cascade-disable the manager's smart_lock_enabled flag so
+        // no stale "enabled" state survives the capability being revoked.
+        if (smartLockAvailable !== undefined) {
+            const newAvailable = Boolean(smartLockAvailable);
+            if (newAvailable !== currentKitchen.smartLockAvailable) {
+                updates.smartLockAvailable = newAvailable;
+                changesList.push(`Smart door ${newAvailable ? 'enabled' : 'disabled'} by admin`);
+
+                // Cascade: revoking the capability forces the operational flag off.
+                if (!newAvailable && currentKitchen.smartLockEnabled) {
+                    updates.smartLockEnabled = false;
+                }
+            }
         }
 
         if (Object.keys(updates).length === 0) {
@@ -2051,7 +2139,12 @@ router.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
         const settings = await db
             .select()
             .from(platformSettings)
-            .where(sql`key IN ('stripe_percentage_fee', 'stripe_flat_fee_cents', 'platform_commission_rate', 'minimum_application_fee_cents', 'use_stripe_platform_pricing')`);
+            .where(sql`key IN (
+                'stripe_percentage_fee',
+                'stripe_flat_fee_cents',
+                'platform_commission_rate',
+                'minimum_application_fee_cents'
+            )`);
 
         const settingsMap = Object.fromEntries(settings.map(s => [s.key, {
             value: s.value,
@@ -2071,15 +2164,13 @@ router.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
                 platformCommissionRateDisplay: `${(config.platformCommissionRate * 100).toFixed(1)}%`,
                 minimumApplicationFeeCents: config.minimumApplicationFeeCents,
                 minimumApplicationFeeDisplay: `$${(config.minimumApplicationFeeCents / 100).toFixed(2)}`,
-                useStripePlatformPricing: config.useStripePlatformPricing,
             },
             rawSettings: settingsMap,
             documentation: {
-                stripePercentageFee: "Stripe's processing fee percentage (e.g., 0.029 for 2.9%)",
-                stripeFlatFeeCents: "Stripe's flat fee per transaction in cents (e.g., 30 for $0.30)",
-                platformCommissionRate: "Platform's commission rate (e.g., 0.05 for 5%)",
-                minimumApplicationFeeCents: "Minimum application fee in cents to ensure profitability",
-                useStripePlatformPricing: "If true, use Stripe Platform Pricing Tool instead of code-based fees",
+                stripePercentageFee: "Stripe's processing fee percentage for display estimates (e.g., 0.029 for 2.9%). Actual fee deducted from transfer is read from Stripe at capture time.",
+                stripeFlatFeeCents: "Stripe's flat fee per transaction in cents for display estimates (e.g., 30 for $0.30).",
+                platformCommissionRate: "Platform's commission rate (e.g., 0.05 for 5%). Deducted from manager's transfer along with the actual Stripe fee.",
+                minimumApplicationFeeCents: "Minimum platform commission floor in cents to ensure profitability.",
             },
         });
     } catch (error) {
@@ -2108,7 +2199,6 @@ router.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
             stripeFlatFeeCents,
             platformCommissionRate,
             minimumApplicationFeeCents,
-            useStripePlatformPricing,
         } = req.body;
 
         const updates: Array<{ key: string; value: string; description: string }> = [];
@@ -2162,14 +2252,6 @@ router.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
             });
         }
 
-        if (useStripePlatformPricing !== undefined) {
-            updates.push({
-                key: 'use_stripe_platform_pricing',
-                value: useStripePlatformPricing ? 'true' : 'false',
-                description: 'If true, do not set application_fee_amount in code - let Stripe Platform Pricing Tool handle it',
-            });
-        }
-
         if (updates.length === 0) {
             return res.status(400).json({ error: 'No valid updates provided' });
         }
@@ -2214,7 +2296,6 @@ router.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
                 stripeFlatFeeCents: newConfig.stripeFlatFeeCents,
                 platformCommissionRate: newConfig.platformCommissionRate,
                 minimumApplicationFeeCents: newConfig.minimumApplicationFeeCents,
-                useStripePlatformPricing: newConfig.useStripePlatformPricing,
             },
         });
     } catch (error) {
@@ -2364,7 +2445,6 @@ router.post("/fees/simulate", requireFirebaseAuthWithUser, requireAdmin, async (
                     platformCommission: `$${(currentResult.platformCommissionInCents / 100).toFixed(2)}`,
                     totalApplicationFee: `$${(currentResult.totalPlatformFeeInCents / 100).toFixed(2)}`,
                     managerReceives: `$${(currentResult.managerReceivesInCents / 100).toFixed(2)}`,
-                    useStripePlatformPricing: currentResult.useStripePlatformPricing,
                 },
                 raw: currentResult,
             },
@@ -3646,6 +3726,178 @@ router.put("/security/rate-limits", requireFirebaseAuthWithUser, requireAdmin, a
     } catch (error: any) {
         logger.error('[Admin Security] Error updating rate limits:', error?.message || error);
         res.status(500).json({ error: "Failed to update rate limit settings" });
+    }
+});
+
+// ============================================================================
+// PHASE 4: ACCESS CODE ADMIN ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /admin/access-codes/active
+ * List all currently active access codes across all kitchens.
+ * Supports ?kitchenId= filter and ?page/&limit pagination.
+ */
+router.get("/access-codes/active", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const kitchenId = req.query.kitchenId ? parseInt(req.query.kitchenId as string) : undefined;
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+        const offset = (page - 1) * limit;
+
+        const { kitchenBookings, kitchens, locations, users } = await import('@shared/schema');
+        const { desc } = await import('drizzle-orm');
+
+        const conditions = [
+            eq(kitchenBookings.status, 'confirmed'),
+            sql`access_code_hash IS NOT NULL`,
+            sql`access_code_valid_until > NOW()`,
+        ];
+        if (kitchenId) {
+            conditions.push(eq(kitchenBookings.kitchenId, kitchenId));
+        }
+
+        const codes = await db
+            .select({
+                bookingId: kitchenBookings.id,
+                kitchenId: kitchenBookings.kitchenId,
+                kitchenName: kitchens.name,
+                locationName: locations.name,
+                chefId: kitchenBookings.chefId,
+                chefEmail: users.username,
+                accessCodeFormat: kitchenBookings.accessCodeFormat,
+                accessCodeValidFrom: kitchenBookings.accessCodeValidFrom,
+                accessCodeValidUntil: kitchenBookings.accessCodeValidUntil,
+                bookingDate: kitchenBookings.bookingDate,
+                startTime: kitchenBookings.startTime,
+                endTime: kitchenBookings.endTime,
+                checkinStatus: kitchenBookings.checkinStatus,
+            })
+            .from(kitchenBookings)
+            .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .leftJoin(users, eq(kitchenBookings.chefId, users.id))
+            .where(and(...conditions))
+            .orderBy(desc(kitchenBookings.accessCodeValidUntil))
+            .limit(limit)
+            .offset(offset);
+
+        // Total count for pagination
+        const [{ count }] = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(kitchenBookings)
+            .where(and(...conditions));
+
+        res.json({
+            codes,
+            pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
+        });
+    } catch (error: any) {
+        logger.error('[Admin Access Codes] Error listing active codes:', error?.message || error);
+        res.status(500).json({ error: "Failed to list active access codes" });
+    }
+});
+
+/**
+ * GET /admin/access-codes/audit
+ * Access code audit trail with filtering.
+ * Supports ?bookingId=, ?kitchenId=, ?action=, ?dateFrom=, ?dateTo=, ?page/&limit.
+ */
+router.get("/access-codes/audit", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const bookingId = req.query.bookingId ? parseInt(req.query.bookingId as string) : undefined;
+        const kitchenId = req.query.kitchenId ? parseInt(req.query.kitchenId as string) : undefined;
+        const action = req.query.action as string | undefined;
+        const dateFrom = req.query.dateFrom as string | undefined;
+        const dateTo = req.query.dateTo as string | undefined;
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+        const offset = (page - 1) * limit;
+
+        const { accessCodeAudit } = await import('@shared/schema');
+        const { desc } = await import('drizzle-orm');
+
+        const conditions: any[] = [];
+        if (bookingId) conditions.push(eq(accessCodeAudit.bookingId, bookingId));
+        if (kitchenId) conditions.push(eq(accessCodeAudit.kitchenId, kitchenId));
+        if (action) conditions.push(eq(accessCodeAudit.action, action));
+        if (dateFrom) conditions.push(sql`${accessCodeAudit.createdAt} >= ${dateFrom}::timestamp`);
+        if (dateTo) conditions.push(sql`${accessCodeAudit.createdAt} <= ${dateTo}::timestamp`);
+
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+        const entries = await db
+            .select()
+            .from(accessCodeAudit)
+            .where(whereClause)
+            .orderBy(desc(accessCodeAudit.createdAt))
+            .limit(limit)
+            .offset(offset);
+
+        const [{ count }] = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(accessCodeAudit)
+            .where(whereClause);
+
+        res.json({
+            entries,
+            pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
+        });
+    } catch (error: any) {
+        logger.error('[Admin Access Codes] Error listing audit trail:', error?.message || error);
+        res.status(500).json({ error: "Failed to list audit trail" });
+    }
+});
+
+/**
+ * GET /admin/access-codes/analytics
+ * Aggregate analytics for access code usage.
+ * Supports ?kitchenId=, ?dateFrom=, ?dateTo=.
+ */
+router.get("/access-codes/analytics", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { getAccessCodeAnalytics } = await import('../services/kitchen-checkout-service');
+        const analytics = await getAccessCodeAnalytics({
+            kitchenId: req.query.kitchenId ? parseInt(req.query.kitchenId as string) : undefined,
+            dateFrom: req.query.dateFrom as string | undefined,
+            dateTo: req.query.dateTo as string | undefined,
+        });
+        res.json(analytics);
+    } catch (error: any) {
+        logger.error('[Admin Access Codes] Error getting analytics:', error?.message || error);
+        res.status(500).json({ error: "Failed to get analytics" });
+    }
+});
+
+/**
+ * POST /admin/access-codes/emergency-revoke
+ * Emergency revoke all active access codes for a kitchen or specific booking.
+ * Body: { kitchenId?: number, bookingId?: number, reason: string }
+ * At least one of kitchenId or bookingId must be provided.
+ */
+router.post("/access-codes/emergency-revoke", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { kitchenId, bookingId, reason } = req.body;
+        if (!kitchenId && !bookingId) {
+            return res.status(400).json({ error: "Must specify kitchenId or bookingId" });
+        }
+        if (!reason || reason.trim().length < 5) {
+            return res.status(400).json({ error: "Reason must be at least 5 characters" });
+        }
+
+        const { emergencyRevokeAccessCodes } = await import('../services/kitchen-checkout-service');
+        const result = await emergencyRevokeAccessCodes({
+            kitchenId,
+            bookingId,
+            reason: reason.trim(),
+            revokedBy: req.neonUser!.id,
+        });
+
+        logger.info(`[Admin Access Codes] Emergency revocation by admin ${req.neonUser?.id}: ${result.revoked} codes revoked (reason: ${reason})`);
+        res.json(result);
+    } catch (error: any) {
+        logger.error('[Admin Access Codes] Error in emergency revocation:', error?.message || error);
+        res.status(500).json({ error: "Failed to revoke access codes" });
     }
 });
 

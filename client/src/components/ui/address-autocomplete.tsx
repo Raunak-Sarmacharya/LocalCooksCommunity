@@ -19,6 +19,11 @@ interface AddressAutocompleteProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  /**
+   * Optional province/state restriction code (e.g. "NL" for Newfoundland & Labrador).
+   * When set, the server biases & filters results to that province only.
+   */
+  province?: string;
 }
 
 // Debounce helper to prevent excessive API calls
@@ -43,12 +48,14 @@ export default function AddressAutocomplete({
   onChange,
   placeholder = "Enter address...",
   className,
-  disabled = false
+  disabled = false,
+  province
 }: AddressAutocompleteProps) {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -89,8 +96,11 @@ export default function AddressAutocomplete({
         const params = new URLSearchParams({
           input: debouncedInput,
           types: 'address',
-          components: 'country:us|country:ca'
+          components: province ? 'country:ca' : 'country:us|country:ca'
         });
+        if (province) {
+          params.set('province', province);
+        }
 
         const response = await fetch(`/api/places/autocomplete?${params}`, {
           signal: abortControllerRef.current.signal
@@ -131,6 +141,7 @@ export default function AddressAutocomplete({
 
   const handleInputChange = (newValue: string) => {
     setInputValue(newValue);
+    if (validationError) setValidationError(null);
     onChange(newValue);
   };
 
@@ -138,13 +149,27 @@ export default function AddressAutocomplete({
     // Mark that we just selected to prevent dropdown from reopening
     justSelectedRef.current = true;
     setIsLoading(true);
-    
+    setValidationError(null);
+
     try {
       const params = new URLSearchParams({
         place_id: place.place_id
       });
+      if (province) {
+        params.set('province', province);
+      }
 
       const response = await fetch(`/api/places/details?${params}`);
+
+      if (response.status === 422) {
+        // Province validation failed
+        const errData = await response.json().catch(() => ({}));
+        setValidationError(errData.message || `Address must be within ${province}.`);
+        // Reset input so the user picks again
+        setInputValue('');
+        onChange('');
+        return;
+      }
 
       if (!response.ok) {
         throw new Error('Failed to fetch place details');
@@ -173,7 +198,7 @@ export default function AddressAutocomplete({
       setIsOpen(false);
       setIsLoading(false);
     }
-  }, [onChange]);
+  }, [onChange, province]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -238,6 +263,10 @@ export default function AddressAutocomplete({
             </button>
           ))}
         </div>
+      )}
+
+      {validationError && (
+        <p className="text-xs text-destructive mt-1">{validationError}</p>
       )}
     </div>
   );

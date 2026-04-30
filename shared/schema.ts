@@ -30,6 +30,19 @@ export const storageTypeEnum = pgEnum('storage_type', ['dry', 'cold', 'freezer']
 
 // Define enum for storage checkout status (hybrid verification workflow)
 export const checkoutStatusEnum = pgEnum('checkout_status', ['active', 'checkout_requested', 'checkout_approved', 'completed', 'checkout_claim_filed']);
+
+// Define enum for storage check-in status (move-in inspection)
+export const storageCheckinStatusEnum = pgEnum('storage_checkin_status', ['not_checked_in', 'checkin_requested', 'checkin_completed', 'skipped']);
+
+// Define enum for kitchen booking check-in/check-out lifecycle
+export const kitchenCheckinStatusEnum = pgEnum('kitchen_checkin_status', [
+  'not_checked_in',       // Default — booking confirmed but chef hasn't arrived
+  'checked_in',           // Chef checked in (self-serve or manager confirmed)
+  'checkout_requested',   // Chef initiated checkout, awaiting manager review
+  'checked_out',          // Manager cleared checkout (or auto-cleared)
+  'no_show',              // Chef didn't check in within grace period
+  'checkout_claim_filed', // Manager filed damage claim during kitchen checkout
+]);
 export const storagePricingModelEnum = pgEnum('storage_pricing_model', ['monthly-flat', 'per-cubic-foot', 'hourly', 'daily']);
 export const bookingDurationUnitEnum = pgEnum('booking_duration_unit', ['hourly', 'daily', 'monthly']);
 export const listingStatusEnum = pgEnum('listing_status', ['draft', 'pending', 'approved', 'rejected', 'active', 'inactive']);
@@ -303,6 +316,11 @@ export const locations = pgTable("locations", {
   kitchenLicenseApprovedAt: timestamp("kitchen_license_approved_at"), // When license was approved/rejected
   kitchenLicenseFeedback: text("kitchen_license_feedback"), // Admin feedback on license
   kitchenLicenseExpiry: date("kitchen_license_expiry"), // Expiration date of the kitchen license
+  // Kitchen license update workflow (new license submissions from managers)
+  kitchenLicensePendingUrl: text("kitchen_license_pending_url"), // URL to new license awaiting admin approval
+  kitchenLicensePendingSubmittedAt: timestamp("kitchen_license_pending_submitted_at"), // When new license was submitted
+  kitchenLicenseCurrentUrl: text("kitchen_license_current_url"), // Currently active/approved license URL
+  kitchenLicensePreviousUrl: text("kitchen_license_previous_url"), // Previous license for audit trail
   // Kitchen terms and policies (uploaded alongside license)
   kitchenTermsUrl: text("kitchen_terms_url"), // URL to uploaded kitchen terms & policies document
   kitchenTermsUploadedAt: timestamp("kitchen_terms_uploaded_at"), // When terms were uploaded
@@ -314,6 +332,12 @@ export const locations = pgTable("locations", {
   overstayPenaltyRate: numeric("overstay_penalty_rate"), // Penalty rate as decimal (0.10 = 10%)
   overstayMaxPenaltyDays: integer("overstay_max_penalty_days"), // Max days penalties can accrue
   overstayPolicyText: text("overstay_policy_text"), // Default policy text for all storage at this location
+  
+  // Kitchen check-in/out time window overrides (nullable = use platform default)
+  // Note: checkout review window is admin-only (platform setting) — no location override.
+  // Kitchen overstay tracking has been removed from the product.
+  checkinWindowMinutesBefore: integer("checkin_window_minutes_before"), // How early before start time chef can check in
+  noShowGraceMinutes: integer("no_show_grace_minutes"), // Grace period after start time before marking no-show
   
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -391,6 +415,14 @@ export const kitchens = pgTable("kitchens", {
   minimumBookingHours: integer("minimum_booking_hours").default(1).notNull(), // Minimum booking duration
   pricingModel: text("pricing_model").default("hourly").notNull(), // Pricing structure ('hourly', 'daily', 'weekly')
   taxRatePercent: numeric("tax_rate_percent"), // Optional tax percentage (e.g., 13 for 13%)
+  // Smart lock integration (optional per kitchen)
+  // Admin-controlled capability gate — if false, managers cannot see or configure
+  // any smart-door UI for this kitchen. Enforced in code on top of the DB constraint.
+  smartLockAvailable: boolean("smart_lock_available").default(false).notNull(),
+  smartLockEnabled: boolean("smart_lock_enabled").default(false),
+  // Manager-typed static access code settings: { accessCode, accessCodeFormat, codeVisibility, codeSetAt }.
+  // No provider/API credentials anymore — managers program their keypads manually.
+  smartLockConfig: jsonb("smart_lock_config").default({}),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -398,7 +430,7 @@ export const kitchens = pgTable("kitchens", {
 // Define kitchen availability table
 export const kitchenAvailability = pgTable("kitchen_availability", {
   id: serial("id").primaryKey(),
-  kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
   dayOfWeek: integer("day_of_week").notNull(), // 0-6, Sunday is 0
   startTime: text("start_time").notNull(), // HH:MM format
   endTime: text("end_time").notNull(), // HH:MM format
@@ -408,7 +440,7 @@ export const kitchenAvailability = pgTable("kitchen_availability", {
 // Define kitchen date-specific overrides table for holidays, closures, etc.
 export const kitchenDateOverrides = pgTable("kitchen_date_overrides", {
   id: serial("id").primaryKey(),
-  kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
   specificDate: timestamp("specific_date").notNull(), // Specific date for override
   startTime: text("start_time"), // HH:MM format, null if closed all day
   endTime: text("end_time"), // HH:MM format, null if closed all day
@@ -454,9 +486,148 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   cancellationRequestedAt: timestamp("cancellation_requested_at"),
   cancellationRequestReason: text("cancellation_request_reason"),
   cancellationRequestDeclinedAt: timestamp("cancellation_request_declined_at"),
+  // ── Kitchen Check-In / Check-Out Lifecycle ────────────────────────────────
+  // Tracks chef arrival, departure, condition documentation, and smart lock access.
+  // All columns nullable/defaulted — zero impact on existing bookings.
+  checkinStatus: kitchenCheckinStatusEnum("checkin_status").default("not_checked_in"),
+  checkedInAt: timestamp("checked_in_at"),
+  checkedInMethod: text("checked_in_method"), // 'self' | 'manager'
+  checkinPhotoUrls: jsonb("checkin_photo_urls").default([]),
+  checkinNotes: text("checkin_notes"),
+  // Check-out
+  checkoutRequestedAt: timestamp("checkout_requested_at"),
+  checkedOutAt: timestamp("checked_out_at"),
+  checkoutPhotoUrls: jsonb("checkout_photo_urls").default([]),
+  checkoutNotes: text("checkout_notes"),
+  checkoutApprovedAt: timestamp("checkout_approved_at"),
+  checkoutApprovedBy: integer("checkout_approved_by").references(() => users.id, { onDelete: "set null" }),
+  // Access code integration (per-booking codes the manager programs manually)
+  accessCodeHash: text("access_code_hash"),                 // bcrypt hash — no plaintext stored
+  accessCodeFormat: text("access_code_format").default("alphanumeric"), // 'numeric' or 'alphanumeric'
+  accessCodeValidFrom: timestamp("access_code_valid_from"), // Code activates (e.g., 15 min before start)
+  accessCodeValidUntil: timestamp("access_code_valid_until"), // Code expires (e.g., end time + 15 min)
+  // No-show tracking (kitchen overstay tracking removed — not enforceable without smart locks)
+  noShowDetectedAt: timestamp("no_show_detected_at"),
+  actualStartTime: text("actual_start_time"),   // HH:MM of actual check-in
+  actualEndTime: text("actual_end_time"),        // HH:MM of actual check-out
+  // Checklist audit trail (items chef confirmed during check-in/out)
+  checkinChecklistItems: jsonb("checkin_checklist_items"), // Array of {id, label, checked: true}
+  checkoutChecklistItems: jsonb("checkout_checklist_items"), // Array of {id, label, checked: true}
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// Access code audit trail
+export const accessCodeAudit = pgTable("access_code_audit", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
+  action: text("action").notNull(),             // 'generated', 'expired', 'revoked', 'regenerated'
+  accessCodeHash: text("access_code_hash"),      // Hash of the code at time of action (for correlation, not plaintext)
+  source: text("source").default("system").notNull(), // 'system', 'manager_app', 'api'
+  metadata: jsonb("metadata").default({}),       // Extra context (e.g., revocation reason)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAccessCodeAuditSchema = createInsertSchema(accessCodeAudit);
+export type AccessCodeAudit = typeof accessCodeAudit.$inferSelect;
+export type InsertAccessCodeAudit = z.infer<typeof insertAccessCodeAuditSchema>;
+
+// ── Checkin/Checkout Checklists (per-location, manager-controlled) ──────────
+// Managers define checklists and photo requirements that chefs must complete
+// during kitchen check-in and check-out. Smart lock instructions are stored here.
+export const checkinCheckoutChecklists = pgTable("checkin_checkout_checklists", {
+  id: serial("id").primaryKey(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull().unique(),
+
+  // Check-in configuration
+  checkinEnabled: boolean("checkin_enabled").default(true).notNull(),
+  checkinItems: jsonb("checkin_items").default([]).notNull(),
+  checkinPhotoRequirements: jsonb("checkin_photo_requirements").default([]).notNull(),
+  checkinInstructions: text("checkin_instructions"),
+
+  // Check-out configuration
+  checkoutEnabled: boolean("checkout_enabled").default(true).notNull(),
+  checkoutItems: jsonb("checkout_items").default([]).notNull(),
+  checkoutPhotoRequirements: jsonb("checkout_photo_requirements").default([]).notNull(),
+  checkoutInstructions: text("checkout_instructions"),
+
+  // Storage check-out configuration
+  storageCheckoutEnabled: boolean("storage_checkout_enabled").default(true).notNull(),
+  storageCheckoutItems: jsonb("storage_checkout_items").default([]).notNull(),
+  storageCheckoutPhotoRequirements: jsonb("storage_checkout_photo_requirements").default([]).notNull(),
+  storageCheckoutInstructions: text("storage_checkout_instructions"),
+
+  // Storage check-in configuration (move-in inspection)
+  storageCheckinEnabled: boolean("storage_checkin_enabled").default(true).notNull(),
+  storageCheckinItems: jsonb("storage_checkin_items").default([]).notNull(),
+  storageCheckinPhotoRequirements: jsonb("storage_checkin_photo_requirements").default([]).notNull(),
+  storageCheckinInstructions: text("storage_checkin_instructions"),
+
+  // Smart lock settings (location-level, shown inside checkin checklist)
+  smartLockCheckinInstructions: text("smart_lock_checkin_instructions"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Zod schemas for checklist items and photo requirements
+export const checklistItemSchema = z.object({
+  id: z.string(),
+  label: z.string().min(1),
+  description: z.string().optional(),
+  required: z.boolean().default(true),
+  category: z.enum(['general', 'safety', 'equipment', 'smart_lock']).default('general'),
+  /**
+   * When true, the chef must upload a photo for this checklist item in addition
+   * to ticking the checkbox. The manager UI folds photo requirements into items
+   * via this flag; for chef-side rendering, a matching PhotoRequirement is
+   * auto-generated on save and stored in checkinPhotoRequirements /
+   * checkoutPhotoRequirements with the same id/label.
+   */
+  photoRequired: z.boolean().default(false).optional(),
+});
+
+export const photoRequirementSchema = z.object({
+  id: z.string(),
+  label: z.string().min(1),
+  description: z.string().optional(),
+  required: z.boolean().default(true),
+  exampleUrl: z.string().optional(),
+});
+
+export const insertCheckinCheckoutChecklistSchema = createInsertSchema(checkinCheckoutChecklists).extend({
+  checkinItems: z.array(checklistItemSchema).default([]),
+  checkinPhotoRequirements: z.array(photoRequirementSchema).default([]),
+  checkoutItems: z.array(checklistItemSchema).default([]),
+  checkoutPhotoRequirements: z.array(photoRequirementSchema).default([]),
+  storageCheckoutItems: z.array(checklistItemSchema).default([]),
+  storageCheckoutPhotoRequirements: z.array(photoRequirementSchema).default([]),
+  storageCheckinItems: z.array(checklistItemSchema).default([]),
+  storageCheckinPhotoRequirements: z.array(photoRequirementSchema).default([]),
+});
+
+export type CheckinCheckoutChecklist = typeof checkinCheckoutChecklists.$inferSelect;
+export type InsertCheckinCheckoutChecklist = z.infer<typeof insertCheckinCheckoutChecklistSchema>;
+export type ChecklistItem = z.infer<typeof checklistItemSchema>;
+export type PhotoRequirement = z.infer<typeof photoRequirementSchema>;
+
+// Zod schema for a single completed checklist item (audit trail)
+export const completedChecklistItemSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  checked: z.boolean(),
+});
+export type CompletedChecklistItem = z.infer<typeof completedChecklistItemSchema>;
+
+// Zod schema for time window settings (location-level overrides)
+// Note: checkout review window is admin-only (platform setting); kitchen
+// overstay tracking has been removed — neither appears here.
+export const timeWindowSettingsSchema = z.object({
+  checkinWindowMinutesBefore: z.number().int().min(0).nullable(),
+  noShowGraceMinutes: z.number().int().min(0).nullable(),
+});
+export type TimeWindowSettings = z.infer<typeof timeWindowSettingsSchema>;
 
 // Define chef_location_access table (admin grants chef access to specific locations)
 // When a chef has access to a location, they can book any kitchen within that location
@@ -1092,6 +1263,17 @@ export const storageBookings = pgTable("storage_bookings", {
   checkoutDeniedAt: timestamp("checkout_denied_at"),
   checkoutDeniedBy: integer("checkout_denied_by").references(() => users.id, { onDelete: "set null" }),
   checkoutDenialReason: text("checkout_denial_reason"),
+  // Checklist audit trail (items chef confirmed during storage checkout)
+  checkoutChecklistItems: jsonb("checkout_checklist_items"), // Array of {id, label, checked: true}
+  
+  // Check-in workflow fields (move-in inspection - symmetric with checkout)
+  checkinStatus: storageCheckinStatusEnum("checkin_status").default("not_checked_in"),
+  checkinRequestedAt: timestamp("checkin_requested_at"),
+  checkinCompletedAt: timestamp("checkin_completed_at"),
+  checkinNotes: text("checkin_notes"),
+  checkinPhotoUrls: jsonb("checkin_photo_urls").default([]), // R2 URLs for move-in photos
+  checkinChecklistItems: jsonb("checkin_checklist_items"), // Array of {id, label, checked: true}
+  
   // Chef cancellation request tracking (mirrors kitchen_bookings pattern)
   cancellationRequestedAt: timestamp("cancellation_requested_at"),
   cancellationRequestReason: text("cancellation_request_reason"),
@@ -1145,6 +1327,18 @@ export const storageCheckoutRequestSchema = z.object({
   checkoutPhotoUrls: z.array(z.string()).optional(), // R2 URLs for verification photos
 });
 
+// Check-in request schema (chef initiates move-in inspection)
+export const storageCheckinRequestSchema = z.object({
+  storageBookingId: z.number(),
+  checkinNotes: z.string().optional(),
+  checkinPhotoUrls: z.array(z.string()).optional(), // R2 URLs for move-in photos
+  checkinChecklistItems: z.array(z.object({
+    id: z.string(),
+    label: z.string(),
+    checked: z.boolean(),
+  })).optional(), // Array of {id, label, checked: true}
+});
+
 // Checkout approval schema (manager approves/denies)
 export const storageCheckoutApprovalSchema = z.object({
   storageBookingId: z.number(),
@@ -1161,6 +1355,39 @@ export type UpdateStorageBookingStatus = z.infer<typeof updateStorageBookingStat
 export type StorageCheckoutRequest = z.infer<typeof storageCheckoutRequestSchema>;
 export type StorageCheckoutApproval = z.infer<typeof storageCheckoutApprovalSchema>;
 export type CheckoutStatus = "active" | "checkout_requested" | "checkout_approved" | "completed" | "checkout_claim_filed";
+
+// Storage check-in (move-in inspection) lifecycle
+export type StorageCheckinStatus = "not_checked_in" | "checkin_requested" | "checkin_completed" | "skipped";
+
+// Kitchen check-in/check-out type
+export type KitchenCheckinStatus = "not_checked_in" | "checked_in" | "checkout_requested" | "checked_out" | "no_show" | "checkout_claim_filed";
+
+// Kitchen check-in request schema (chef initiates check-in)
+export const kitchenCheckinRequestSchema = z.object({
+  checkinNotes: z.string().optional(),
+  checkinPhotoUrls: z.array(z.string()).optional(),
+});
+
+// Kitchen checkout request schema (chef initiates checkout)
+export const kitchenCheckoutRequestSchema = z.object({
+  checkoutNotes: z.string().optional(),
+  checkoutPhotoUrls: z.array(z.string()).optional(),
+});
+
+// Kitchen checkout review schema (manager clears or files claim)
+export const kitchenCheckoutReviewSchema = z.object({
+  action: z.enum(["clear", "start_claim"]),
+  // For start_claim action — feeds into existing damage claim engine
+  claimTitle: z.string().min(5).max(200).optional(),
+  claimDescription: z.string().min(50).optional(),
+  claimedAmountCents: z.number().int().min(1000).optional(),
+  damageDate: z.string().optional(),
+  managerNotes: z.string().optional(),
+});
+
+export type KitchenCheckinRequest = z.infer<typeof kitchenCheckinRequestSchema>;
+export type KitchenCheckoutRequest = z.infer<typeof kitchenCheckoutRequestSchema>;
+export type KitchenCheckoutReview = z.infer<typeof kitchenCheckoutReviewSchema>;
 
 // ===== EQUIPMENT BOOKINGS TABLE =====
 // CRITICAL: Equipment can ONLY be booked as part of a kitchen booking (not standalone)
@@ -1410,6 +1637,7 @@ export const paymentTransactions = pgTable("payment_transactions", {
   chargeId: text("charge_id"), // Stripe Charge ID
   refundId: text("refund_id"), // Stripe Refund ID
   paymentMethodId: text("payment_method_id"), // Stripe PaymentMethod ID
+  transferId: text("transfer_id"), // Stripe Transfer ID (post-capture transfer to manager Connect account)
   // Status tracking
   status: transactionStatusEnum("status").notNull().default("pending"),
   stripeStatus: text("stripe_status"), // Raw Stripe status for comparison

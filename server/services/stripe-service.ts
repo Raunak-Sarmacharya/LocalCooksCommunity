@@ -18,7 +18,7 @@ if (!stripeSecretKey) {
 }
 
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
-  apiVersion: '2025-12-15.clover',
+  apiVersion: '2026-02-25.clover',
 }) : null;
 
 export interface CreatePaymentIntentParams {
@@ -202,18 +202,19 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       paymentIntentParams.customer = customerId;
     }
 
-    // Add Stripe Connect destination if manager has Connect account
+    // ARCHITECTURE — Separate Charges and Transfers:
+    //   No transfer_data, no application_fee_amount on PaymentIntent.
+    //   The full charge lands on the platform balance. Webhook creates the
+    //   Transfer to the manager's Connect account post-capture using the
+    //   actual Stripe fee from balance_transaction.fee.
+    //   manager_connect_account_id is kept in metadata so the webhook knows
+    //   the destination.
     if (managerConnectAccountId) {
-      paymentIntentParams.transfer_data = {
-        destination: managerConnectAccountId,
-      };
-      // Add manager account ID to metadata for tracking
       paymentIntentParams.metadata.manager_connect_account_id = managerConnectAccountId;
-
-      if (hasApplicationFee) {
-        paymentIntentParams.application_fee_amount = applicationFeeAmount;
-        paymentIntentParams.metadata.platform_fee = applicationFeeAmount!.toString();
-      }
+    }
+    // Note: applicationFeeAmount param is no longer set on Stripe; logged for traceability only.
+    if (hasApplicationFee) {
+      paymentIntentParams.metadata.estimated_platform_fee = applicationFeeAmount!.toString();
     }
 
     const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
@@ -348,27 +349,22 @@ export async function getStripePaymentAmounts(
 
     if (balanceTransaction) {
       // ENTERPRISE STANDARD: balanceTransaction.fee ALWAYS contains the actual Stripe processing fee
-      // This is true for ALL charge types (direct, destination, separate charges and transfers)
-      // Never calculate processing fee - always use the actual value from Stripe
+      // for the platform's charge. Never calculate — always use Stripe's actual value.
       stripeProcessingFee = balanceTransaction.fee;
-      
-      // For Stripe Connect destination charges:
-      // - Total amount = what customer paid (paymentIntent.amount)
-      // - Application fee = what platform receives (includes Stripe fee in break-even mode)
-      // - Manager net = total - application_fee (what gets transferred to connected account)
-      // - Platform's balanceTransaction.net = application_fee - stripeProcessingFee (platform's actual take)
-      //
-      // For non-Connect charges:
-      // - Manager net = total - stripeProcessingFee
-      
-      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
-        stripePlatformFee = paymentIntent.application_fee_amount;
-        // Manager receives the full amount minus the application fee
-        // The application fee covers Stripe processing + platform commission (if any)
+
+      // SEPARATE CHARGES + TRANSFERS: charge lands on platform balance, no application_fee_amount.
+      //   stripePlatformFee here is the LEGACY field for application_fee_amount (always 0 in new flow).
+      //   The webhook overrides this and stripeNetAmount post-Transfer.create() with the actual
+      //   transfer amount (charge - actualFee - platformCommission), so PT business columns reflect
+      //   the manager's actual payout.
+      //   For pre-transfer state, manager net is estimated as charge - actualStripeFee.
+      stripePlatformFee = paymentIntent.application_fee_amount || 0;
+      if (stripePlatformFee > 0) {
+        // Legacy destination charges (kept for migration period — should be 0 going forward)
         stripeNetAmount = stripeAmount - stripePlatformFee;
       } else {
-        // No Connect account - platform is the merchant
-        // Net = amount - processing_fee
+        // Separate charges + transfers (current architecture)
+        // Manager will receive (charge - actualFee - platformCommission) once Transfer.create() runs.
         stripeNetAmount = stripeAmount - stripeProcessingFee;
       }
     } else {
@@ -447,13 +443,15 @@ export async function getStripePaymentAmounts(
  * 
  * @param paymentIntentId - The PaymentIntent ID to capture
  * @param amountToCapture - Optional: amount to capture in cents (can be less than authorized amount)
- * @param applicationFeeAmount - Optional: updated application fee for the capture amount (for Connect break-even)
+ * @param _applicationFeeAmount - DEPRECATED. With separate charges + transfers we never set
+ *   `application_fee_amount` at capture; the webhook handles transfers using the actual fee.
+ *   Kept in the signature for backward call-site compatibility but ignored.
  * @returns PaymentIntentResult with updated status and actual captured amount
  */
 export async function capturePaymentIntent(
   paymentIntentId: string,
   amountToCapture?: number,
-  applicationFeeAmount?: number,
+  _applicationFeeAmount?: number,
 ): Promise<PaymentIntentResult> {
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
@@ -461,17 +459,15 @@ export async function capturePaymentIntent(
 
   try {
     const captureParams: Stripe.PaymentIntentCaptureParams = {};
-    
+
     // Partial capture: charge only the approved portion, Stripe auto-releases the rest
     if (amountToCapture !== undefined) {
       captureParams.amount_to_capture = amountToCapture;
     }
 
-    // Update application_fee_amount for partial capture to maintain platform break-even
-    // Without this, the original (higher) fee would apply to the smaller capture amount
-    if (applicationFeeAmount !== undefined) {
-      captureParams.application_fee_amount = applicationFeeAmount;
-    }
+    // ARCHITECTURE — Separate Charges and Transfers: never pass application_fee_amount.
+    // The webhook (payment_intent.succeeded) handles the transfer to the manager
+    // using the actual Stripe fee from balance_transaction.
 
     const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId, captureParams);
 
@@ -687,7 +683,7 @@ export async function reverseTransferAndRefund(
     metadata?: Record<string, string>;
     transferMetadata?: Record<string, string>;
   }
-): Promise<{ refundId: string; refundAmount: number; refundStatus: string; chargeId: string; transferReversalId: string }> {
+): Promise<{ refundId: string; refundAmount: number; refundStatus: string; chargeId: string; transferReversalId: string | null }> {
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
   }
@@ -711,23 +707,62 @@ export async function reverseTransferAndRefund(
       : paymentIntent.latest_charge;
 
     const chargeId = charge.id;
-    const transferId = typeof charge.transfer === 'string'
-      ? charge.transfer
-      : charge.transfer?.id;
 
-    if (!transferId) {
-      throw new Error('No transfer found for this charge to reverse');
+    // SEPARATE CHARGES + TRANSFERS: charge.transfer is null because we use stripe.transfers.create()
+    // separately. Look up the transfer_id we stored on payment_transactions.
+    let transferReversalId: string | null = null;
+    let transferIdFromDb: string | null = null;
+    let transferredAmount = 0;
+    let chargeAmountForProration = charge.amount_captured || charge.amount;
+
+    try {
+      const { db } = await import('../db');
+      const { paymentTransactions } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      const [pt] = await db
+        .select({
+          transferId: paymentTransactions.transferId,
+          managerRevenue: paymentTransactions.managerRevenue,
+          amount: paymentTransactions.amount,
+        })
+        .from(paymentTransactions)
+        .where(eq(paymentTransactions.paymentIntentId, paymentIntentId))
+        .limit(1);
+      transferIdFromDb = pt?.transferId || null;
+      if (pt?.managerRevenue) {
+        transferredAmount = parseInt(String(pt.managerRevenue), 10) || 0;
+      }
+      if (pt?.amount) {
+        chargeAmountForProration = parseInt(String(pt.amount), 10) || chargeAmountForProration;
+      }
+    } catch (err) {
+      logger.warn('[reverseTransferAndRefund] Could not lookup transfer_id from payment_transactions:', err as Error);
     }
 
-    const reversalAmount = options?.reverseTransferAmount ?? amount;
-    if (reversalAmount <= 0) {
-      throw new Error('Transfer reversal amount must be greater than 0');
-    }
+    // Fallback to charge.transfer for legacy destination charges
+    const transferId = transferIdFromDb || (typeof charge.transfer === 'string' ? charge.transfer : charge.transfer?.id);
 
-    const reversal = await stripe.transfers.createReversal(transferId, {
-      amount: reversalAmount,
-      metadata: options?.transferMetadata || options?.metadata,
-    });
+    // If a transfer exists, reverse the proportional amount
+    if (transferId && transferredAmount > 0) {
+      const { reverseTransferForRefund } = await import('./stripe-transfer-service');
+      const reversal = await reverseTransferForRefund(
+        transferId,
+        amount,
+        chargeAmountForProration,
+        transferredAmount,
+      );
+      transferReversalId = reversal?.id || null;
+    } else if (transferId && options?.reverseTransferAmount !== undefined) {
+      // Legacy explicit reversal path (destination charges)
+      const reversalAmount = options.reverseTransferAmount;
+      if (reversalAmount > 0) {
+        const reversal = await stripe.transfers.createReversal(transferId, {
+          amount: reversalAmount,
+          metadata: options?.transferMetadata || options?.metadata,
+        });
+        transferReversalId = reversal.id;
+      }
+    }
 
     const refundParams: any = {
       charge: chargeId,
@@ -758,7 +793,7 @@ export async function reverseTransferAndRefund(
       refundAmount: refund.amount,
       refundStatus: refund.status,
       chargeId,
-      transferReversalId: reversal.id,
+      transferReversalId,
     };
   } catch (error: any) {
     logger.error('Error reversing transfer and refunding:', error);

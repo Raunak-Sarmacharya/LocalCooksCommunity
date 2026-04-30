@@ -9,15 +9,16 @@
  * 4. Prevents unwarranted overstay penalties
  */
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Upload, Loader2, X, Camera, CheckCircle, Clock } from "lucide-react";
+import { Loader2, CheckCircle, Clock, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
+import { useLocationChecklist, type ChecklistItem, type PhotoRequirement } from "@/hooks/use-location-checklist";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Sheet,
   SheetContent,
@@ -27,8 +28,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import {
+  PhotoRequirementUploader,
+  flattenPhotos,
+  areAllRequiredPhotosUploaded,
+} from "./PhotoRequirementUploader";
 
 interface StorageCheckoutDialogProps {
   open: boolean;
@@ -39,6 +43,7 @@ interface StorageCheckoutDialogProps {
     storageType?: string;
     endDate: string;
     checkoutStatus?: string;
+    locationId?: number;
   };
   onSuccess?: () => void;
 }
@@ -52,53 +57,34 @@ export function StorageCheckoutDialog({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [checkoutNotes, setCheckoutNotes] = useState("");
-  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  // Photos keyed by requirement id (or __generic__ for fallback)
+  const [uploadedPhotos, setUploadedPhotos] = useState<Record<string, string[]>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
 
-  const { uploadFile, isUploading, uploadProgress } = useSessionFileUpload({
-    maxSize: 4.5 * 1024 * 1024, // 4.5MB (Vercel limit)
-    allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
-    onSuccess: (response) => {
-      setUploadedPhotos(prev => [...prev, response.url]);
-      toast({
-        title: "Photo uploaded",
-        description: "Photo added to checkout request",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Upload failed",
-        description: error,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handlePhotoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (uploadedPhotos.length >= 10) {
-        toast({
-          title: "Maximum photos reached",
-          description: "You can upload up to 10 photos",
-          variant: "destructive",
-        });
-        return;
-      }
-      uploadFile(file, "checkout-photos");
-      e.target.value = ''; // Reset input
-    }
-  }, [uploadFile, uploadedPhotos.length, toast]);
-
-  const handleRemovePhoto = (photoUrl: string) => {
-    setUploadedPhotos(prev => prev.filter(url => url !== photoUrl));
-  };
+  // Fetch manager-defined checklist for storage checkout
+  const { data: checklist } = useLocationChecklist(storageBooking.locationId);
+  const storageCheckoutItems: ChecklistItem[] = checklist?.storageCheckoutItems || [];
+  const storageCheckoutPhotoReqs: PhotoRequirement[] = checklist?.storageCheckoutPhotoRequirements || [];
+  // All items are required by design.
+  const allItemsChecked = storageCheckoutItems.every((i: ChecklistItem) => checkedItems.has(i.id));
+  const allPhotosUploaded = areAllRequiredPhotosUploaded(storageCheckoutPhotoReqs, uploadedPhotos);
 
   const handleSubmitCheckout = async () => {
-    if (uploadedPhotos.length === 0) {
+    if (!allPhotosUploaded) {
       toast({
         title: "Photos required",
-        description: "Please upload at least one photo of the empty storage unit",
+        description: storageCheckoutPhotoReqs.length > 0
+          ? "Please upload a photo for each required item"
+          : "Please upload at least one photo of the empty storage unit",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!allItemsChecked) {
+      toast({
+        title: "Checklist incomplete",
+        description: "Please complete all checklist items",
         variant: "destructive",
       });
       return;
@@ -111,6 +97,13 @@ export function StorageCheckoutDialog({
         throw new Error("Not authenticated");
       }
 
+      // Build checklist audit trail from checked items
+      const checkoutChecklistItems = storageCheckoutItems.map((i: ChecklistItem) => ({
+        id: i.id,
+        label: i.label,
+        checked: checkedItems.has(i.id),
+      }))
+
       const token = await currentFirebaseUser.getIdToken();
       const response = await fetch(`/api/chef/storage-bookings/${storageBooking.id}/request-checkout`, {
         method: 'POST',
@@ -121,7 +114,8 @@ export function StorageCheckoutDialog({
         credentials: 'include',
         body: JSON.stringify({
           checkoutNotes: checkoutNotes.trim() || undefined,
-          checkoutPhotoUrls: uploadedPhotos,
+          checkoutPhotoUrls: flattenPhotos(uploadedPhotos),
+          checkoutChecklistItems: checkoutChecklistItems.length > 0 ? checkoutChecklistItems : undefined,
         }),
       });
 
@@ -137,10 +131,11 @@ export function StorageCheckoutDialog({
 
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['/api/chef/storage-bookings'] });
-      
+
       // Reset form
       setCheckoutNotes("");
-      setUploadedPhotos([]);
+      setUploadedPhotos({});
+      setCheckedItems(new Set());
       onOpenChange(false);
       onSuccess?.();
     } catch (error) {
@@ -181,75 +176,56 @@ export function StorageCheckoutDialog({
             )}
           </div>
 
-          {/* Photo Upload Section */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Camera className="h-4 w-4" />
-              Photos of Empty Storage *
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              Upload photos showing the storage unit is empty and clean. This helps the manager verify your checkout quickly.
-            </p>
-
-            {/* Uploaded Photos Grid */}
-            {uploadedPhotos.length > 0 && (
-              <div className="grid grid-cols-3 gap-2 mt-2">
-                {uploadedPhotos.map((photoUrl, index) => (
-                  <div key={index} className="relative group">
-                    <img
-                      src={getR2ProxyUrl(photoUrl)}
-                      alt={`Checkout photo ${index + 1}`}
-                      className="w-full h-20 object-cover rounded-lg border"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleRemovePhoto(photoUrl)}
-                      className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Upload Button */}
-            <div
-              className={cn(
-                "border-2 border-dashed border-border rounded-lg p-4 hover:border-primary/50 transition-colors",
-                isUploading && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              <input
-                type="file"
-                accept="image/jpeg,image/jpg,image/png,image/webp"
-                onChange={handlePhotoUpload}
-                className="hidden"
-                id="checkout-photo-upload"
-                disabled={isUploading || uploadedPhotos.length >= 10}
-              />
-              <label
-                htmlFor="checkout-photo-upload"
-                className="flex flex-col items-center justify-center cursor-pointer"
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2 className="h-6 w-6 text-primary animate-spin mb-1" />
-                    <span className="text-xs text-muted-foreground">Uploading... {Math.round(uploadProgress)}%</span>
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-6 w-6 text-muted-foreground mb-1" />
-                    <span className="text-xs text-muted-foreground">
-                      {uploadedPhotos.length === 0 
-                        ? "Click to upload photos" 
-                        : `${uploadedPhotos.length}/10 photos uploaded`}
-                    </span>
-                  </>
-                )}
-              </label>
+          {/* Manager Instructions */}
+          {checklist?.storageCheckoutInstructions && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+              <p className="text-xs text-blue-800 font-medium mb-1">Instructions from Manager</p>
+              <p className="text-xs text-blue-700 whitespace-pre-line">{checklist.storageCheckoutInstructions}</p>
             </div>
-          </div>
+          )}
+
+          {/* Checklist Items */}
+          {storageCheckoutItems.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Checkout Checklist</Label>
+              {storageCheckoutItems.map((item: ChecklistItem, index: number) => (
+                <label key={item.id} className="flex items-start gap-2.5 p-2 rounded-lg border bg-background hover:bg-muted/50 cursor-pointer transition-colors">
+                  <Checkbox
+                    checked={checkedItems.has(item.id)}
+                    onCheckedChange={(checked) => {
+                      setCheckedItems(prev => {
+                        const next = new Set(prev);
+                        if (checked) next.add(item.id);
+                        else next.delete(item.id);
+                        return next;
+                      });
+                    }}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm">
+                      <span className="tabular-nums font-medium text-muted-foreground mr-1.5">{index + 1}.</span>
+                      {item.label}
+                      {item.required && <span className="text-destructive ml-0.5">*</span>}
+                    </span>
+                    {item.description && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{item.description}</p>
+                    )}
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {/* Per-requirement photo uploader */}
+          <PhotoRequirementUploader
+            requirements={storageCheckoutPhotoReqs}
+            photos={uploadedPhotos}
+            onPhotosChange={setUploadedPhotos}
+            uploadFolder="checkout-photos"
+            genericInstruction="Upload photos showing the storage unit is empty and clean. This helps the manager verify your checkout quickly."
+            disabled={isSubmitting}
+          />
 
           {/* Notes Section */}
           <div className="space-y-2">
@@ -264,29 +240,16 @@ export function StorageCheckoutDialog({
           </div>
 
           {/* Info Box */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <div className="flex items-start gap-2">
-              <Clock className="h-4 w-4 text-blue-600 mt-0.5" />
-              <div className="text-xs text-blue-700">
-                <strong>What happens next?</strong>
-                <ul className="mt-1 space-y-1 list-disc list-inside">
-                  <li>The kitchen will review your photos and inspect the unit</li>
-                  <li>If everything is clear, your booking is completed</li>
-                  <li>Auto-clears if no issues are found within the review window</li>
-                  <li>No overstay penalties while checkout is under review</li>
-                </ul>
-              </div>
-            </div>
-          </div>
+          <StorageCheckoutInfo />
         </div>
 
         <SheetFooter className="mt-6">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleSubmitCheckout} 
-            disabled={isSubmitting || uploadedPhotos.length === 0}
+          <Button
+            onClick={handleSubmitCheckout}
+            disabled={isSubmitting || !allPhotosUploaded || !allItemsChecked}
           >
             {isSubmitting ? (
               <>
@@ -303,5 +266,36 @@ export function StorageCheckoutDialog({
         </SheetFooter>
       </SheetContent>
     </Sheet>
+  );
+}
+
+// Collapsible info: hidden behind an info icon to reduce clutter
+function StorageCheckoutInfo() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+        aria-expanded={open}
+      >
+        <Info className="h-3.5 w-3.5" />
+        <span>What happens next?</span>
+      </button>
+      {open && (
+        <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3 animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex items-start gap-2">
+            <Clock className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+            <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+              <li>The kitchen will review your photos and inspect the unit</li>
+              <li>If everything is clear, your booking is completed</li>
+              <li>Auto-clears if no issues are found within the review window</li>
+              <li>No overstay penalties while checkout is under review</li>
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

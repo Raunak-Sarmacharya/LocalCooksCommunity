@@ -112,6 +112,7 @@ interface DamageEvidence {
 
 interface DamageClaim {
   id: number;
+  referenceCode?: string | null;
   bookingType: string;
   kitchenBookingId: number | null;
   storageBookingId: number | null;
@@ -1022,6 +1023,19 @@ export function DamageClaimQueue() {
       header: () => null,
       cell: () => null,
       enableHiding: true,
+      meta: { hidden: true },
+    },
+    {
+      id: "reference",
+      header: "Ref",
+      cell: ({ row }) => {
+        const ref = row.original.referenceCode || row.original.kitchenBookingId || row.original.id;
+        return (
+          <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+            {ref ? `#${ref}` : "—"}
+          </div>
+        );
+      },
     },
     {
       accessorKey: "claimTitle",
@@ -1320,13 +1334,13 @@ export function DamageClaimQueue() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
               <Table>
                 <TableHeader>
                   {table.getHeaderGroups().map((headerGroup) => (
                     <TableRow key={headerGroup.id}>
                       {headerGroup.headers.map((header) => (
-                        <TableHead key={header.id}>
+                        <TableHead key={header.id} className="whitespace-nowrap text-xs sm:text-sm">
                           {header.isPlaceholder
                             ? null
                             : flexRender(header.column.columnDef.header, header.getContext())}
@@ -1340,7 +1354,7 @@ export function DamageClaimQueue() {
                     table.getRowModel().rows.map((row) => (
                       <TableRow key={row.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleView(row.original.id)}>
                         {row.getVisibleCells().map((cell) => (
-                          <TableCell key={cell.id} onClick={(e) => cell.column.id === "actions" && e.stopPropagation()}>
+                          <TableCell key={cell.id} className="text-xs sm:text-sm whitespace-nowrap" onClick={(e) => cell.column.id === "actions" && e.stopPropagation()}>
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </TableCell>
                         ))}

@@ -16,6 +16,7 @@ import { PlatformOverviewSection } from "@/components/admin/sections/PlatformOve
 import { AdminTransactionHistory } from "@/components/admin/sections/AdminTransactionHistory";
 import AdminOverstayPenalties from "@/components/admin/sections/AdminOverstayPenalties";
 import AdminDamageClaimsHistory from "@/components/admin/sections/AdminDamageClaimsHistory";
+import { AccessCodeDashboard } from "@/components/admin/sections/AccessCodeDashboard";
 import {
   formatApplicationStatus,
   formatCertificationStatus,
@@ -87,6 +88,9 @@ import {
   Loader2,
   MailCheck,
   Eye,
+  EyeOff,
+  KeyRound,
+  Copy,
 } from "lucide-react";
 
 function AdminDashboard() {
@@ -99,6 +103,10 @@ function AdminDashboard() {
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   // Per-application shop name and address for admin to set before creating PHP shop
   const [shopDetails, setShopDetails] = useState<Record<number, { shopName: string; shopAddress: string; lat?: number; slong?: number }>>({});
+
+  // Shop credentials viewer state
+  const [credentialsAppId, setCredentialsAppId] = useState<number | null>(null);
+  const [showShopPassword, setShowShopPassword] = useState(false);
   
   const validSections: AdminSection[] = useMemo(() => [
     "applications", "kitchen-licenses", "damage-claims", "escalated-penalties",
@@ -106,7 +114,7 @@ function AdminDashboard() {
     "platform-overview", "platform-settings", "overstay-settings",
     "damage-claim-settings", "account-settings", "overview", "transactions",
     "overstay-penalties-history", "damage-claims-history",
-    "security-settings",
+    "security-settings", "access-codes",
   ], []);
 
   const [activeSection, setActiveSection] = useState<AdminSection>(() => {
@@ -121,13 +129,17 @@ function AdminDashboard() {
   // Track a key to force remount of section components when navigated with search params
   const [sectionMountKey, setSectionMountKey] = useState(0);
 
-  // Sync URL when section changes
+  // Sync URL when section changes. Push a new history entry so the browser
+  // back button walks the user through the sections they visited rather than
+  // always returning to whatever section was last "stuck" on the URL.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const currentSection = params.get('section');
     if (currentSection !== activeSection) {
-      // When manually switching sections (sidebar click), clear search and set new section
-      window.history.replaceState({}, '', `/admin?section=${activeSection}`);
+      const nextUrl = `/admin?section=${activeSection}`;
+      if (nextUrl !== window.location.pathname + window.location.search) {
+        window.history.pushState({}, '', nextUrl);
+      }
     }
   }, [activeSection]);
 
@@ -139,6 +151,11 @@ function AdminDashboard() {
       if (section && validSections.includes(section as AdminSection)) {
         setActiveSection(section as AdminSection);
         // Force remount so child components re-read URL search params
+        setSectionMountKey(k => k + 1);
+      } else if (!section) {
+        // No ?section — bare /admin URL. Snap back to overview so the
+        // sidebar highlight stays in sync with the URL.
+        setActiveSection('overview');
         setSectionMountKey(k => k + 1);
       }
     };
@@ -622,6 +639,52 @@ function AdminDashboard() {
     },
   });
 
+  // Query to load shop credentials when admin opens the credentials dialog
+  const {
+    data: shopCredentials,
+    isLoading: shopCredentialsLoading,
+    error: shopCredentialsError,
+  } = useQuery<{
+    applicationId: number;
+    shopName: string;
+    ownerName: string;
+    email: string;
+    phone: string;
+    username: string;
+    password: string;
+    loginUrl: string;
+    verificationEmailSentAt: string | null;
+  }>({
+    queryKey: ["/api/applications/shop-credentials", credentialsAppId],
+    queryFn: async () => {
+      const token = await getFirebaseToken();
+      const response = await fetch(`/api/applications/${credentialsAppId}/shop-credentials`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      if (!response.ok) {
+        let errorMessage = response.statusText;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch { /* ignore */ }
+        throw new Error(errorMessage);
+      }
+      return response.json();
+    },
+    enabled: credentialsAppId != null,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const copyShopValue = async (label: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Copied", { description: `${label} copied to clipboard.` });
+    } catch (e) {
+      toast.error("Copy failed", { description: "Please copy the value manually." });
+    }
+  };
 
   // Helper function to get document status badge
   const getDocumentStatusBadge = (status: string | null) => {
@@ -1160,6 +1223,13 @@ function AdminDashboard() {
       case "damage-claim-settings":
         return <DamageClaimSettings />;
 
+      case "access-codes":
+        return (
+          <ErrorBoundary>
+            <AccessCodeDashboard />
+          </ErrorBoundary>
+        );
+
       case "security-settings":
         return (
           <ErrorBoundary>
@@ -1518,7 +1588,7 @@ function AdminDashboard() {
                       <UserIcon className="h-4 w-4 text-blue-600" />
                       Contact Information
                     </h4>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <span className="text-xs text-gray-500">Email</span>
                         <p className="text-sm font-medium">{selectedApplication.email}</p>
@@ -1536,7 +1606,7 @@ function AdminDashboard() {
                       <Shield className="h-4 w-4 text-green-600" />
                       Certifications & Preferences
                     </h4>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                         <h5 className="text-xs font-medium text-blue-800">Food Safety License</h5>
                         <p className="text-sm font-semibold text-blue-900">{formatCertificationStatus(selectedApplication.foodSafetyLicense)}</p>
@@ -1559,7 +1629,7 @@ function AdminDashboard() {
                         <Shield className="h-4 w-4" />
                         Document Verification
                       </h4>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {/* FSL */}
                         <div className="bg-white p-3 rounded border">
                           <h5 className="text-xs font-medium text-gray-700 mb-2">Food Safety License</h5>
@@ -1671,8 +1741,9 @@ function AdminDashboard() {
                                 <div>
                                   <label className="text-xs font-medium text-gray-600">Shop Address <span className="text-red-500">*</span></label>
                                   <AddressAutocomplete
-                                    placeholder="e.g. 123 Main St, City, Province"
+                                    placeholder="e.g. 123 Water St, St. John's, NL"
                                     value={shopDetails[selectedApplication.id]?.shopAddress ?? ((selectedApplication as any).shopAddress && (selectedApplication as any).shopAddress !== "Address Not Provided" ? (selectedApplication as any).shopAddress : '')}
+                                    province="NL"
                                     onChange={(value, lat, lng) => setShopDetails(prev => ({
                                       ...prev,
                                       [selectedApplication.id]: {
@@ -1685,6 +1756,9 @@ function AdminDashboard() {
                                     }))}
                                     className="h-8 text-sm mt-1"
                                   />
+                                  <p className="text-[11px] text-muted-foreground mt-1">
+                                    Only addresses inside Newfoundland &amp; Labrador (NL) are accepted.
+                                  </p>
                                 </div>
                               </div>
                               <Button 
@@ -1706,6 +1780,18 @@ function AdminDashboard() {
                                 <Check className="h-3 w-3" />
                                 Shop Profile Active
                               </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setShowShopPassword(false);
+                                  setCredentialsAppId(selectedApplication.id);
+                                }}
+                                className="w-full"
+                              >
+                                <KeyRound className="h-4 w-4 mr-2" />
+                                View Shop Credentials
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -1754,6 +1840,131 @@ function AdminDashboard() {
                   </div>
                 </div>
               </>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Shop Credentials Dialog */}
+        <Dialog
+          open={credentialsAppId != null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setCredentialsAppId(null);
+              setShowShopPassword(false);
+            }
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <KeyRound className="h-4 w-4 text-primary" />
+                Shop Credentials
+              </DialogTitle>
+              <DialogDescription>
+                These are the live login credentials for this shop on the LocalCooks shop platform.
+                Treat them as sensitive — only share with the shop owner.
+              </DialogDescription>
+            </DialogHeader>
+
+            {shopCredentialsLoading && (
+              <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Loading credentials...
+              </div>
+            )}
+
+            {shopCredentialsError && !shopCredentialsLoading && (
+              <div className="rounded border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {(shopCredentialsError as Error).message || "Failed to load credentials."}
+              </div>
+            )}
+
+            {shopCredentials && !shopCredentialsLoading && (
+              <div className="space-y-4">
+                <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs space-y-1">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Shop</span>
+                    <span className="font-medium text-right truncate">{shopCredentials.shopName}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Owner</span>
+                    <span className="font-medium text-right truncate">{shopCredentials.ownerName || "—"}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Email</span>
+                    <span className="font-medium text-right truncate">{shopCredentials.email || "—"}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Username</label>
+                  <div className="flex items-stretch gap-2">
+                    <Input
+                      readOnly
+                      value={shopCredentials.username}
+                      className="font-mono text-sm"
+                      onFocus={(e) => e.currentTarget.select()}
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      onClick={() => copyShopValue("Username", shopCredentials.username)}
+                      title="Copy username"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Password</label>
+                  <div className="flex items-stretch gap-2">
+                    <Input
+                      readOnly
+                      type={showShopPassword ? "text" : "password"}
+                      value={shopCredentials.password}
+                      className="font-mono text-sm"
+                      onFocus={(e) => e.currentTarget.select()}
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      onClick={() => setShowShopPassword((v) => !v)}
+                      title={showShopPassword ? "Hide password" : "Show password"}
+                    >
+                      {showShopPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      onClick={() => copyShopValue("Password", shopCredentials.password)}
+                      title="Copy password"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-2 border-t">
+                  <a
+                    href={shopCredentials.loginUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Open shop login
+                  </a>
+                  <span className="text-[11px] text-muted-foreground">
+                    {shopCredentials.verificationEmailSentAt
+                      ? `Last emailed: ${new Date(shopCredentials.verificationEmailSentAt).toLocaleDateString()}`
+                      : "Not yet emailed"}
+                  </span>
+                </div>
+              </div>
             )}
           </DialogContent>
         </Dialog>

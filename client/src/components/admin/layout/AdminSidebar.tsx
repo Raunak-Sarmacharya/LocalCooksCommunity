@@ -31,6 +31,7 @@ import {
   CreditCard,
   Package,
   FileWarning,
+  Key,
 } from "lucide-react";
 
 export type AdminSection =
@@ -51,7 +52,8 @@ export type AdminSection =
   | "transactions"
   | "overstay-penalties-history"
   | "damage-claims-history"
-  | "security-settings";
+  | "security-settings"
+  | "access-codes";
 
 interface AdminSidebarProps {
   activeSection: AdminSection;
@@ -82,6 +84,7 @@ const NAV_GROUPS = [
     items: [
       { id: "chef-kitchen-access" as AdminSection, label: "Chef Kitchen Access", icon: Users },
       { id: "kitchen-management" as AdminSection, label: "Manage Kitchens", icon: Building2 },
+      { id: "access-codes" as AdminSection, label: "Access Codes", icon: Key },
     ],
   },
   {

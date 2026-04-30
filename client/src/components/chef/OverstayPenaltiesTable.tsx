@@ -55,6 +55,9 @@ import { cn } from "@/lib/utils";
 
 // Types
 interface OverstayPenalty {
+  id?: number;
+  referenceCode?: string | null;
+  bookingId?: number | null;
   overstayId: number;
   storageBookingId: number;
   status: string;
@@ -134,6 +137,19 @@ function getOverstayPenaltyColumns(
       header: () => null,
       cell: () => null,
       enableHiding: true,
+      meta: { hidden: true },
+    },
+    {
+      id: "reference",
+      header: "Ref",
+      cell: ({ row }) => {
+        const ref = row.original.referenceCode || row.original.bookingId || row.original.id;
+        return (
+          <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+            {ref ? `#${ref}` : "—"}
+          </div>
+        );
+      },
     },
     {
       accessorKey: "storageName",
@@ -443,13 +459,13 @@ export function OverstayPenaltiesTable() {
           </Tabs>
 
           {/* Table */}
-          <div className="rounded-md border">
+          <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow key={headerGroup.id}>
                     {headerGroup.headers.map((header) => (
-                      <TableHead key={header.id} className="whitespace-nowrap">
+                      <TableHead key={header.id} className="whitespace-nowrap text-xs sm:text-sm">
                         {header.isPlaceholder
                           ? null
                           : flexRender(header.column.columnDef.header, header.getContext())}
@@ -471,7 +487,7 @@ export function OverstayPenaltiesTable() {
                       )}
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id} className="py-3">
+                        <TableCell key={cell.id} className="py-3 text-xs sm:text-sm whitespace-nowrap">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>
                       ))}

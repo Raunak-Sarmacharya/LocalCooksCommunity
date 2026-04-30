@@ -84,6 +84,8 @@ import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface PendingCheckout {
+  id?: number;
+  referenceCode?: string | null;
   storageBookingId: number;
   storageListingId: number;
   storageName: string;
@@ -188,6 +190,18 @@ const getCheckoutColumns = ({
   onViewPhotos,
   clearingId,
 }: CheckoutColumnsProps): ColumnDef<PendingCheckout>[] => [
+  {
+    id: "reference",
+    header: "Ref",
+    cell: ({ row }) => {
+      const ref = row.original.referenceCode || row.original.id;
+      return (
+        <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+          {ref ? `#${ref}` : "—"}
+        </div>
+      );
+    },
+  },
   {
     accessorKey: "storageName",
     header: ({ column }) => (
@@ -374,6 +388,18 @@ const getCheckoutColumns = ({
 // ─── History Column Definitions ───────────────────────────────────────────────
 
 const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
+  {
+    id: "reference",
+    header: "Ref",
+    cell: ({ row }) => {
+      const ref = row.original.referenceCode || row.original.id;
+      return (
+        <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+          {ref ? `#${ref}` : "—"}
+        </div>
+      );
+    },
+  },
   {
     accessorKey: "storageName",
     header: ({ column }) => (
@@ -752,13 +778,13 @@ export function PendingStorageCheckouts() {
 
           {/* Pending Table */}
           {viewType === 'pending' && (
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
               <Table>
                 <TableHeader>
                   {pendingTable.getHeaderGroups().map((headerGroup) => (
                     <TableRow key={headerGroup.id}>
                       {headerGroup.headers.map((header) => (
-                        <TableHead key={header.id} className="whitespace-nowrap">
+                        <TableHead key={header.id} className="whitespace-nowrap text-xs sm:text-sm">
                           {header.isPlaceholder
                             ? null
                             : flexRender(header.column.columnDef.header, header.getContext())}
@@ -780,7 +806,7 @@ export function PendingStorageCheckouts() {
                         )}
                       >
                         {row.getVisibleCells().map((cell) => (
-                          <TableCell key={cell.id} className="py-3">
+                          <TableCell key={cell.id} className="py-3 text-xs sm:text-sm whitespace-nowrap">
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </TableCell>
                         ))}
@@ -806,13 +832,13 @@ export function PendingStorageCheckouts() {
 
           {/* History Table */}
           {viewType === 'history' && (
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
               <Table>
                 <TableHeader>
                   {historyTable.getHeaderGroups().map((headerGroup) => (
                     <TableRow key={headerGroup.id}>
                       {headerGroup.headers.map((header) => (
-                        <TableHead key={header.id} className="whitespace-nowrap">
+                        <TableHead key={header.id} className="whitespace-nowrap text-xs sm:text-sm">
                           {header.isPlaceholder
                             ? null
                             : flexRender(header.column.columnDef.header, header.getContext())}
@@ -834,7 +860,7 @@ export function PendingStorageCheckouts() {
                         )}
                       >
                         {row.getVisibleCells().map((cell) => (
-                          <TableCell key={cell.id} className="py-3">
+                          <TableCell key={cell.id} className="py-3 text-xs sm:text-sm whitespace-nowrap">
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </TableCell>
                         ))}

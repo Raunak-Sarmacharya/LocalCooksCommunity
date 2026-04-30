@@ -30,6 +30,8 @@ import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import { OverstayPenaltyQueue } from "@/components/manager/overstays/OverstayPenaltyQueue";
 import { DamageClaimQueue } from "@/components/manager/damage-claims/DamageClaimQueue";
 import { PendingStorageCheckouts } from "@/components/manager/PendingStorageCheckouts";
+import { PendingStorageCheckins } from "@/components/manager/PendingStorageCheckins";
+import { TodaysKitchenBookings } from "@/components/manager/TodaysKitchenBookings";
 import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
@@ -41,6 +43,8 @@ import {
   KitchensManagement,
   NotificationsSettings,
   FacilityDocsSettings,
+  CheckinCheckoutSettings,
+  StorageCheckinCheckoutSettings,
 } from "@/components/manager/settings";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -100,6 +104,10 @@ interface Location {
   kitchenLicenseFeedback?: string;
   kitchenLicenseExpiry?: string;
   kitchenLicenseUploadedAt?: string;
+  kitchenLicensePendingUrl?: string;
+  kitchenLicensePendingSubmittedAt?: string;
+  kitchenLicenseCurrentUrl?: string;
+  kitchenLicensePreviousUrl?: string;
   kitchenTermsUrl?: string;
   kitchenTermsUploadedAt?: string;
   description?: string;
@@ -156,7 +164,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'application-requirements' | 'notifications' | 'overstays' | 'damage-claims' | 'storage-checkouts';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'overstays' | 'damage-claims' | 'storage-checkouts';
 
 
 export default function ManagerBookingDashboard() {
@@ -170,7 +178,11 @@ export default function ManagerBookingDashboard() {
   const [activeView, setActiveView] = useState<ViewType>(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
+    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
+    // Back-compat: redirect legacy 'settings-storage-checkout' URLs to the new combined page.
+    if (view === 'settings-storage-checkout') {
+      return 'settings-storage-checkin-checkout';
+    }
     if (view && validViews.includes(view as ViewType)) {
       return view as ViewType;
     }
@@ -233,14 +245,24 @@ export default function ManagerBookingDashboard() {
     missingSteps
   } = useOnboardingStatus(selectedLocation?.id);
 
-  // Sync activeView with URL parameters
+  // Sync activeView with URL parameters. Listens to popstate so back/forward
+  // through the pushed tab history correctly updates the active view.
   useEffect(() => {
     const handleLocationChange = () => {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
-      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
+      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
+      // Back-compat: redirect legacy URL to the new combined page.
+      if (view === 'settings-storage-checkout') {
+        setActiveView('settings-storage-checkin-checkout');
+        return;
+      }
       if (view && validViews.includes(view as ViewType)) {
         setActiveView(view as ViewType);
+      } else if (!view) {
+        // No ?view param — bare /manager/booking-dashboard URL. Snap back
+        // to the overview so back-button traversal stays in sync.
+        setActiveView('overview');
       }
     };
 
@@ -249,6 +271,23 @@ export default function ManagerBookingDashboard() {
     window.addEventListener('popstate', handleLocationChange);
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
+
+  // Centralised tab-change handler. Pushes the new view into browser history
+  // so the back button walks through the user's tab journey instead of always
+  // returning to whatever tab was last viewed before opening a sub-page.
+  const handleViewChange = (view: ViewType) => {
+    setActiveView(view);
+    const url = new URL(window.location.href);
+    if (view === 'overview') {
+      url.searchParams.delete('view');
+    } else {
+      url.searchParams.set('view', view);
+    }
+    const nextUrl = url.toString();
+    if (nextUrl !== window.location.href) {
+      window.history.pushState({}, '', nextUrl);
+    }
+  };
 
   // Handle Stripe Connect Return
   useEffect(() => {
@@ -546,7 +585,7 @@ export default function ManagerBookingDashboard() {
   return (
     <DashboardLayout
       activeView={activeView}
-      onViewChange={(view) => setActiveView(view as ViewType)}
+      onViewChange={(view) => handleViewChange(view as ViewType)}
       locations={locations}
       selectedLocation={selectedLocation}
       onLocationChange={(loc) => setSelectedLocation(loc as Location)}
@@ -574,10 +613,12 @@ export default function ManagerBookingDashboard() {
 
 
 
+          <TodaysKitchenBookings />
+
           <KitchenDashboardOverview
             selectedLocation={selectedLocation}
             locations={locations}
-            onNavigate={(view: ViewType) => setActiveView(view)}
+            onNavigate={(view: ViewType) => handleViewChange(view)}
             onSelectLocation={(location) => setSelectedLocation(location)}
           />
         </div>
@@ -600,7 +641,7 @@ export default function ManagerBookingDashboard() {
           selectedLocationId={selectedLocation?.id ?? null}
           isLayoutLoading={isLoadingLocations}
           setLocation={setLocation}
-          onNavigateToView={(view: string) => setActiveView(view as ViewType)}
+          onNavigateToView={(view: string) => handleViewChange(view as ViewType)}
         />
       )}
 
@@ -636,7 +677,7 @@ export default function ManagerBookingDashboard() {
         <ManagerRevenueDashboard
           selectedLocation={selectedLocation}
           locations={locations}
-          onNavigate={(view) => setActiveView(view as ViewType)}
+          onNavigate={(view) => handleViewChange(view as ViewType)}
         />
       )}
 
@@ -676,6 +717,7 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'storage-checkouts' && (
         <div className="space-y-6">
+          <PendingStorageCheckins />
           <PendingStorageCheckouts />
         </div>
       )}
@@ -687,7 +729,7 @@ export default function ManagerBookingDashboard() {
           onCreateLocation={startNewLocation}
           onSelectLocation={(loc) => {
             setSelectedLocation(loc as Location);
-            setActiveView('overview');
+            handleViewChange('settings');
           }}
         />
       )}
@@ -803,6 +845,34 @@ export default function ManagerBookingDashboard() {
           <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
           <p className="text-gray-500">Choose a location to manage notification settings</p>
+        </div>
+      )}
+
+      {activeView === 'settings-checkin-checkout' && selectedLocation && (
+        <CheckinCheckoutSettings
+          location={locationDetails || selectedLocation}
+        />
+      )}
+
+      {activeView === 'settings-checkin-checkout' && !selectedLocation && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+          <p className="text-gray-500">Choose a location to manage check-in/check-out settings</p>
+        </div>
+      )}
+
+      {activeView === 'settings-storage-checkin-checkout' && selectedLocation && (
+        <StorageCheckinCheckoutSettings
+          location={locationDetails || selectedLocation}
+        />
+      )}
+
+      {activeView === 'settings-storage-checkin-checkout' && !selectedLocation && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+          <p className="text-gray-500">Choose a location to manage storage check-in / check-out settings</p>
         </div>
       )}
 
@@ -1332,9 +1402,15 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     : false;
 
   // Check if upload should be shown
+  // Managers can update their license from any state (pending, approved, rejected, expired, or no license)
+  // When updating from pending/approved, the new license goes to pending_update for admin approval
+  const hasPendingUpdate = !!location.kitchenLicensePendingUrl;
   const shouldShowUpload = !location.kitchenLicenseUrl ||
     location.kitchenLicenseStatus === "rejected" ||
     location.kitchenLicenseStatus === "expired" ||
+    location.kitchenLicenseStatus === "pending" ||
+    location.kitchenLicenseStatus === "approved" ||
+    location.kitchenLicenseStatus === "pending_update" ||
     (location.kitchenLicenseStatus === "approved" && isLicenseExpired);
   const [newKitchenName, setNewKitchenName] = useState('');
   const [newKitchenDescription, setNewKitchenDescription] = useState('');
@@ -1660,8 +1736,10 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       const result = await response.json();
       const licenseUrl = result.url;
 
-      // Update location with new license URL, expiration date, and reset status to pending
-      // Reuse existing token from above
+      // Update location with new license URL and expiration date.
+      // Do NOT send kitchenLicenseStatus — the backend decides whether this is a
+      // new submission ('pending') or an update request ('pending_update') based
+      // on whether an active license already exists.
       const updateResponse = await fetch(`/api/manager/locations/${location.id}`, {
         method: 'PUT',
         headers: {
@@ -1671,7 +1749,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
         credentials: 'include',
         body: JSON.stringify({
           kitchenLicenseUrl: licenseUrl,
-          kitchenLicenseStatus: 'pending',
           kitchenLicenseExpiry: expiryDate,
         }),
       });
@@ -1684,9 +1761,18 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       // Refresh location data
       queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
 
+      const isReplacingPending = location.kitchenLicenseUrl && location.kitchenLicenseStatus === 'pending';
+      const isUpdateFlow = location.kitchenLicenseUrl &&
+        (location.kitchenLicenseStatus === 'approved' ||
+          location.kitchenLicenseStatus === 'pending_update');
+
       toast({
-        title: "License Uploaded",
-        description: "Your license has been submitted for admin approval.",
+        title: isReplacingPending ? 'Submission Replaced' : isUpdateFlow ? 'License Update Submitted' : 'License Uploaded',
+        description: isReplacingPending
+          ? 'Your pending submission has been replaced. The admin will review your updated document.'
+          : isUpdateFlow
+            ? 'Your updated license has been submitted for admin review. Your current approved license remains active until approved.'
+            : 'Your license has been submitted for admin approval.',
       });
 
       setLicenseFile(null);
@@ -1808,6 +1894,31 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 </div>
 
                 <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
+                  {/* Pending Update Banner — shown when a new license is awaiting admin approval */}
+                  {hasPendingUpdate && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-2">
+                      <div className="flex items-start gap-2">
+                        <div className="flex-shrink-0 mt-0.5">
+                          <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-blue-800 mb-1">License Update Pending Admin Review</p>
+                          <p className="text-xs text-blue-700">
+                            A new license has been submitted and is awaiting admin approval. Your current license remains active until the update is approved.
+                          </p>
+                          {location.kitchenLicensePendingSubmittedAt && (
+                            <p className="text-xs text-blue-600 mt-1.5">
+                              <span className="font-medium">Submitted:</span>{" "}
+                              {new Date(location.kitchenLicensePendingSubmittedAt).toLocaleDateString()} at{" "}
+                              {new Date(location.kitchenLicensePendingSubmittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {location.kitchenLicenseUrl && location.kitchenLicenseStatus !== "rejected" && location.kitchenLicenseStatus !== "expired" ? (
                     <div className={`border rounded-lg p-4 ${location.kitchenLicenseStatus === "approved" && !isLicenseExpired
                       ? "bg-green-50 border-green-200"
@@ -1837,11 +1948,17 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           ? "bg-green-200 text-green-800"
                           : location.kitchenLicenseStatus === "expired" || isLicenseExpired
                             ? "bg-red-200 text-red-800"
-                            : location.kitchenLicenseStatus === "pending"
-                              ? "bg-yellow-200 text-yellow-800"
-                              : "bg-gray-200 text-gray-800"
+                            : location.kitchenLicenseStatus === "pending_update"
+                              ? "bg-blue-200 text-blue-800"
+                              : location.kitchenLicenseStatus === "pending"
+                                ? "bg-yellow-200 text-yellow-800"
+                                : "bg-gray-200 text-gray-800"
                           }`}>
-                          {location.kitchenLicenseStatus === "expired" || isLicenseExpired ? "EXPIRED" : (location.kitchenLicenseStatus || "PENDING").toUpperCase()}
+                          {location.kitchenLicenseStatus === "expired" || isLicenseExpired
+                            ? "EXPIRED"
+                            : location.kitchenLicenseStatus === "pending_update"
+                              ? "UPDATE PENDING"
+                              : (location.kitchenLicenseStatus || "PENDING").toUpperCase()}
                         </span>
                       </div>
 
@@ -2037,6 +2154,22 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
                   {shouldShowUpload && (
                     <>
+                      {/* Context header — message differs by current status */}
+                      {location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl && !isLicenseExpired && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
+                          <p className="text-xs text-blue-800">
+                            <span className="font-semibold">Replace your pending submission.</span>{" "}
+                            Since your license hasn't been approved yet, uploading a new document will replace it directly — the admin will review your updated submission.
+                          </p>
+                        </div>
+                      )}
+                      {(location.kitchenLicenseStatus === 'approved' || location.kitchenLicenseStatus === 'pending_update') && !isLicenseExpired && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-2">
+                          <p className="text-xs text-amber-800">
+                            <span className="font-semibold">Submitting a new license</span> will send it for admin review. Your current approved license stays active until the update is approved.
+                          </p>
+                        </div>
+                      )}
                       {/* Expiration Date Input */}
                       <div className="mb-4">
                         <label className="block text-sm font-medium text-gray-900 mb-2">
@@ -2101,9 +2234,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                             <>
                               <Upload className="h-8 w-8 text-gray-400" />
                               <span className="text-sm font-medium text-orange-600 mb-1">
-                                {location.kitchenLicenseStatus === "rejected" || location.kitchenLicenseStatus === "expired" || isLicenseExpired
-                                  ? "Click to upload new license"
-                                  : "Click to upload license"}
+                                {location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl
+                                  ? 'Click to replace pending submission'
+                                  : location.kitchenLicenseStatus === 'approved' || location.kitchenLicenseStatus === 'pending_update'
+                                    ? 'Click to submit updated license'
+                                    : location.kitchenLicenseStatus === 'rejected' || location.kitchenLicenseStatus === 'expired' || isLicenseExpired
+                                      ? 'Click to upload new license'
+                                      : 'Click to upload license'}
                               </span>
                               <span className="text-xs text-gray-500">PDF, JPG, or PNG (max 10MB)</span>
                               {!licenseExpiryDate && (

@@ -22,6 +22,16 @@ export function PlatformSettingsSection() {
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingCancellation, setIsSavingCancellation] = useState(false);
+  const [isSavingTimeWindows, setIsSavingTimeWindows] = useState(false);
+
+  // Kitchen time window defaults state.
+  // Checkout review window stays admin-only (no manager override). Kitchen
+  // overstay tracking has been removed from the product.
+  const [twDefaults, setTwDefaults] = useState({
+    checkinWindowMinutesBefore: '15',
+    noShowGraceMinutes: '30',
+    checkoutReviewWindowMinutes: '60',
+  });
   const [autoAcceptHours, setAutoAcceptHours] = useState('24');
   const [autoAcceptEnabled, setAutoAcceptEnabled] = useState(true);
 
@@ -30,7 +40,6 @@ export function PlatformSettingsSection() {
     stripeFlatFeeCents: '30',
     platformCommissionRate: '0',
     minimumApplicationFeeCents: '0',
-    useStripePlatformPricing: false,
   });
 
   const { data: currentConfig, isLoading, error, refetch } = useQuery<{
@@ -44,7 +53,6 @@ export function PlatformSettingsSection() {
       platformCommissionRateDisplay: string;
       minimumApplicationFeeCents: number;
       minimumApplicationFeeDisplay: string;
-      useStripePlatformPricing: boolean;
     };
   }>({
     queryKey: ['/api/admin/fees/config'],
@@ -95,6 +103,69 @@ export function PlatformSettingsSection() {
     }
   }, [cancellationConfig]);
 
+  // Fetch kitchen time window defaults
+  const { data: timeWindowData, isLoading: timeWindowLoading } = useQuery<Record<string, { key: string; value: string; intValue: number; description: string | null; updatedAt: Date | null }>>({
+    queryKey: ['/api/admin/platform-settings/kitchen-time-windows'],
+    queryFn: async () => {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) throw new Error('Firebase user not available');
+      const token = await currentFirebaseUser.getIdToken();
+      const response = await fetch('/api/admin/platform-settings/kitchen-time-windows', {
+        credentials: 'include',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) throw new Error('Failed to fetch kitchen time window defaults');
+      return response.json();
+    },
+  });
+
+  useEffect(() => {
+    if (timeWindowData) {
+      setTwDefaults({
+        checkinWindowMinutesBefore: String(timeWindowData.checkinWindowMinutesBefore?.intValue ?? 15),
+        noShowGraceMinutes: String(timeWindowData.noShowGraceMinutes?.intValue ?? 30),
+        checkoutReviewWindowMinutes: String(timeWindowData.checkoutReviewWindowMinutes?.intValue ?? 60),
+      });
+    }
+  }, [timeWindowData]);
+
+  const timeWindowMutation = useMutation({
+    mutationFn: async (settings: { checkinWindowMinutesBefore?: number; noShowGraceMinutes?: number; checkoutReviewWindowMinutes?: number }) => {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) throw new Error('Firebase user not available');
+      const token = await currentFirebaseUser.getIdToken();
+      const response = await fetch('/api/admin/platform-settings/kitchen-time-windows', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to update kitchen time window defaults');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/platform-settings/kitchen-time-windows'] });
+      toast({ title: 'Success', description: data.message });
+      setIsSavingTimeWindows(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      setIsSavingTimeWindows(false);
+    },
+  });
+
+  const handleSaveTimeWindows = () => {
+    setIsSavingTimeWindows(true);
+    timeWindowMutation.mutate({
+      checkinWindowMinutesBefore: parseInt(twDefaults.checkinWindowMinutesBefore, 10),
+      noShowGraceMinutes: parseInt(twDefaults.noShowGraceMinutes, 10),
+      checkoutReviewWindowMinutes: parseInt(twDefaults.checkoutReviewWindowMinutes, 10),
+    });
+  };
+
   useEffect(() => {
     if (currentConfig?.config) {
       setFeeConfig({
@@ -102,7 +173,6 @@ export function PlatformSettingsSection() {
         stripeFlatFeeCents: currentConfig.config.stripeFlatFeeCents.toString(),
         platformCommissionRate: (currentConfig.config.platformCommissionRate * 100).toFixed(1),
         minimumApplicationFeeCents: currentConfig.config.minimumApplicationFeeCents.toString(),
-        useStripePlatformPricing: currentConfig.config.useStripePlatformPricing,
       });
     }
   }, [currentConfig]);
@@ -113,7 +183,6 @@ export function PlatformSettingsSection() {
       stripeFlatFeeCents?: number;
       platformCommissionRate?: number;
       minimumApplicationFeeCents?: number;
-      useStripePlatformPricing?: boolean;
     }) => {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
@@ -199,7 +268,6 @@ export function PlatformSettingsSection() {
       stripeFlatFeeCents: parseInt(feeConfig.stripeFlatFeeCents, 10),
       platformCommissionRate: parseFloat(feeConfig.platformCommissionRate) / 100,
       minimumApplicationFeeCents: parseInt(feeConfig.minimumApplicationFeeCents, 10),
-      useStripePlatformPricing: feeConfig.useStripePlatformPricing,
     });
   };
 
@@ -210,7 +278,6 @@ export function PlatformSettingsSection() {
         stripeFlatFeeCents: currentConfig.config.stripeFlatFeeCents.toString(),
         platformCommissionRate: (currentConfig.config.platformCommissionRate * 100).toFixed(1),
         minimumApplicationFeeCents: currentConfig.config.minimumApplicationFeeCents.toString(),
-        useStripePlatformPricing: currentConfig.config.useStripePlatformPricing,
       });
     }
   };
@@ -321,13 +388,28 @@ export function PlatformSettingsSection() {
         </CardContent>
       </Card>
 
+      {/* Architecture info card */}
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>How payouts work — Separate Charges and Transfers</AlertTitle>
+        <AlertDescription className="text-xs space-y-1">
+          <p>1. Customer pays the full amount; the charge lands on the platform's Stripe balance.</p>
+          <p>2. Stripe deducts the actual processing fee (varies by card type) from the platform balance.</p>
+          <p>3. The webhook reads the actual fee from <code>balance_transaction.fee</code>.</p>
+          <p>4. The platform calls <code>stripe.transfers.create()</code> to send the manager
+            <strong> charge − actual Stripe fee − platform commission</strong> to their Connect account.</p>
+          <p>The Stripe % and flat fee values above are display-only estimates; the actual fee
+            from Stripe is always used for the transfer.</p>
+        </AlertDescription>
+      </Alert>
+
       {/* Current Configuration Summary */}
       {currentConfig?.config && (
         <Card className="border-primary/20 bg-primary/5">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Current Configuration</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <p className="text-muted-foreground">Stripe %</p>
@@ -455,6 +537,68 @@ export function PlatformSettingsSection() {
               <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Saving...</>
             ) : (
               <><Save className="h-4 w-4 mr-2" />Save Cancellation Policy</>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Kitchen Time Window Defaults Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100">
+              <Clock className="h-5 w-5 text-orange-600" />
+            </div>
+            <div>
+              <CardTitle>Kitchen Time Window Defaults</CardTitle>
+              <CardDescription>
+                Platform-wide defaults for kitchen check-in/out time windows. Managers can only override the check-in window and no-show grace; the checkout review window is fixed platform-wide.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label>Check-in Window (minutes before start)</Label>
+              <NumericInput
+                suffix="min"
+                value={twDefaults.checkinWindowMinutesBefore}
+                onValueChange={(val) => setTwDefaults({ ...twDefaults, checkinWindowMinutesBefore: val })}
+                className="max-w-32"
+              />
+              <p className="text-xs text-muted-foreground">How early before start time a chef can check in</p>
+            </div>
+            <div className="space-y-2">
+              <Label>No-Show Grace (minutes after start)</Label>
+              <NumericInput
+                suffix="min"
+                value={twDefaults.noShowGraceMinutes}
+                onValueChange={(val) => setTwDefaults({ ...twDefaults, noShowGraceMinutes: val })}
+                className="max-w-32"
+              />
+              <p className="text-xs text-muted-foreground">Grace period before marking as no-show</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Checkout Review Window (minutes after end)</Label>
+              <NumericInput
+                suffix="min"
+                value={twDefaults.checkoutReviewWindowMinutes}
+                onValueChange={(val) => setTwDefaults({ ...twDefaults, checkoutReviewWindowMinutes: val })}
+                className="max-w-32"
+              />
+              <p className="text-xs text-muted-foreground">How long manager has to review checkout before auto-clear (admin-only; no per-location override)</p>
+            </div>
+          </div>
+          <Button
+            onClick={handleSaveTimeWindows}
+            disabled={isSavingTimeWindows || timeWindowLoading}
+            size="sm"
+          >
+            {isSavingTimeWindows ? (
+              <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Saving...</>
+            ) : (
+              <><Save className="h-4 w-4 mr-2" />Save Time Window Defaults</>
             )}
           </Button>
         </CardContent>

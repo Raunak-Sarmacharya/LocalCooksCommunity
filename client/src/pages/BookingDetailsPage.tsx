@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Tooltip,
   TooltipContent,
@@ -32,11 +33,17 @@ import {
   Receipt,
   Hash,
   Info,
+  LogIn,
+  LogOut,
+  Camera,
+  FileWarning,
+  Clock,
 } from "lucide-react";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { useQueryClient } from "@tanstack/react-query";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import {
   BookingActionSheet,
   type BookingForAction,
@@ -46,6 +53,7 @@ import {
   type BookingForManagement,
   type ManagementSubmitParams,
 } from "@/components/manager/bookings/BookingManagementSheet";
+import { KitchenCheckinTracker } from "@/components/booking/KitchenCheckinTracker";
 
 interface BookingDetails {
   id: number;
@@ -125,6 +133,22 @@ interface BookingDetails {
     refundedAt?: string;
     refundReason?: string;
   };
+  // ── Kitchen Check-In / Check-Out Lifecycle ──────────────────────────────
+  checkinStatus?: string | null;
+  checkedInAt?: string | null;
+  checkedInMethod?: string | null;
+  checkoutRequestedAt?: string | null;
+  checkedOutAt?: string | null;
+  checkoutApprovedAt?: string | null;
+  noShowDetectedAt?: string | null;
+  actualStartTime?: string | null;
+  actualEndTime?: string | null;
+  checkinPhotoUrls?: string[] | null;
+  checkoutPhotoUrls?: string[] | null;
+  checkinNotes?: string | null;
+  checkoutNotes?: string | null;
+  checkinChecklistItems?: Array<{ id: string; label: string; checked: boolean }> | null;
+  checkoutChecklistItems?: Array<{ id: string; label: string; checked: boolean }> | null;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -152,7 +176,7 @@ export default function BookingDetailsPage() {
   const bookingId = params?.id || managerParams?.id;
   const isManagerView = !!managerParams?.id;
 
-  useFirebaseAuth();
+  const { loading: authLoading } = useFirebaseAuth();
   const { toast } = useToast();
 
   const [booking, setBooking] = useState<BookingDetails | null>(null);
@@ -163,10 +187,16 @@ export default function BookingDetailsPage() {
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
   const [managementSheetOpen, setManagementSheetOpen] = useState(false);
   const [isManagementProcessing, setIsManagementProcessing] = useState(false);
+  const [checkinTrackerOpen, setCheckinTrackerOpen] = useState(false);
   const queryClient = useQueryClient();
 
+  // When the chef clicks a sidebar tab from this booking-detail sub-page, we
+  // REPLACE the current /booking/:id history entry with the dashboard view
+  // instead of pushing a new one. That way the back button doesn't bounce
+  // them through the booking detail again — it goes straight to wherever
+  // they came from before opening this page.
   const handleViewChange = (view: string) => {
-    navigate(`/dashboard?view=${view}`);
+    navigate(`/dashboard?view=${view}`, { replace: true });
   };
 
   useEffect(() => {
@@ -174,6 +204,15 @@ export default function BookingDetailsPage() {
       setError("No booking ID provided");
       setIsLoading(false);
       return;
+    }
+
+    // Wait for Firebase auth to finish initializing before fetching.
+    // On a hard refresh, auth.currentUser is null until Firebase restores the
+    // session asynchronously. Fetching immediately would send an unauthenticated
+    // request (401), which the server correctly rejects — but the UI was
+    // incorrectly showing "Booking Not Found" instead of waiting for auth.
+    if (authLoading) {
+      return; // auth not ready yet — effect will re-run when authLoading becomes false
     }
 
     const fetchBookingDetails = async () => {
@@ -189,6 +228,9 @@ export default function BookingDetailsPage() {
         });
 
         if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error("Session expired. Please refresh the page.");
+          }
           if (response.status === 404) {
             throw new Error("Booking not found");
           }
@@ -209,7 +251,7 @@ export default function BookingDetailsPage() {
     };
 
     fetchBookingDetails();
-  }, [bookingId, isManagerView]);
+  }, [bookingId, isManagerView, authLoading]);
 
   const handleDownloadInvoice = async () => {
     if (!booking?.id) return;
@@ -358,6 +400,58 @@ export default function BookingDetailsPage() {
       default:
         return <Badge variant="outline" className="font-medium">{status}</Badge>;
     }
+  };
+
+  const getCheckinStatusBadge = (checkinStatus: string | null | undefined) => {
+    if (!checkinStatus || checkinStatus === 'not_checked_in') {
+      return (
+        <Badge variant="outline" className="font-medium text-muted-foreground border-border">
+          <Clock className="h-3 w-3 mr-1" />
+          Not Checked In
+        </Badge>
+      );
+    }
+    if (checkinStatus === 'checked_in') {
+      return (
+        <Badge variant="success" className="font-medium">
+          <LogIn className="h-3 w-3 mr-1" />
+          Checked In
+        </Badge>
+      );
+    }
+    if (checkinStatus === 'checkout_requested') {
+      return (
+        <Badge variant="info" className="font-medium">
+          <Camera className="h-3 w-3 mr-1" />
+          Checkout Pending
+        </Badge>
+      );
+    }
+    if (checkinStatus === 'checked_out') {
+      return (
+        <Badge variant="success" className="font-medium">
+          <LogOut className="h-3 w-3 mr-1" />
+          Checked Out
+        </Badge>
+      );
+    }
+    if (checkinStatus === 'no_show') {
+      return (
+        <Badge variant="destructive" className="font-medium">
+          <XCircle className="h-3 w-3 mr-1" />
+          No-Show
+        </Badge>
+      );
+    }
+    if (checkinStatus === 'checkout_claim_filed') {
+      return (
+        <Badge variant="warning" className="font-medium">
+          <FileWarning className="h-3 w-3 mr-1" />
+          Claim Filed
+        </Badge>
+      );
+    }
+    return null;
   };
 
   const getPaymentStatusBadge = (status: string | undefined) => {
@@ -792,7 +886,12 @@ export default function BookingDetailsPage() {
   };
 
   const handleBack = () => {
-    if (isManagerView) {
+    // Use browser history so the user returns to wherever they came from
+    // (bookings list, calendar view, manager panel, etc.) rather than always
+    // hard-redirecting to the dashboard root.
+    if (window.history.length > 1) {
+      window.history.back();
+    } else if (isManagerView) {
       navigate("/manager/dashboard");
     } else {
       navigate("/dashboard");
@@ -859,6 +958,8 @@ export default function BookingDetailsPage() {
 
           <div className="flex items-center gap-2 flex-wrap">
             {getStatusBadge(booking.status)}
+            {(booking.status === 'confirmed' || booking.status === 'completed') &&
+              getCheckinStatusBadge(booking.checkinStatus)}
             {getPaymentStatusBadge(booking.paymentStatus)}
             {isManagerView && booking.status === 'pending' && (
               <Button
@@ -903,7 +1004,7 @@ export default function BookingDetailsPage() {
           {/* ── Schedule ── */}
           <section>
             <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Schedule</h2>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Date</p>
                 <p className="text-sm font-medium">{formatDate(booking.bookingDate)}</p>
@@ -918,6 +1019,205 @@ export default function BookingDetailsPage() {
               </div>
             </div>
           </section>
+
+          {/* ── Check-In / Check-Out CTA (Chef View — confirmed bookings) ── */}
+          {!isManagerView && booking.status === 'confirmed' && (
+            (!booking.checkinStatus || booking.checkinStatus === 'not_checked_in' || booking.checkinStatus === 'checked_in') && (
+            <section className="rounded-lg border-2 border-blue-200 bg-blue-50/50 p-4">
+              <div className="flex items-start gap-3">
+                <LogIn className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-semibold text-blue-900">
+                    {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
+                      ? "Check In Required"
+                      : "Ready to Check Out"}
+                  </h3>
+                  <p className="text-xs text-blue-700 mt-1">
+                    {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
+                      ? "You must check in when you arrive at the kitchen. Complete the checklist and snap photos to document the condition — this protects you if any issues arise."
+                      : "Submit your check-out photos when you're done. The manager will review and clear your session."}
+                  </p>
+                  <Button
+                    size="sm"
+                    className="mt-3 bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={() => setCheckinTrackerOpen(true)}
+                  >
+                    {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
+                      ? (<><LogIn className="h-3.5 w-3.5 mr-1.5" />Check In Now</>)
+                      : (<><LogOut className="h-3.5 w-3.5 mr-1.5" />Check Out Now</>)}
+                  </Button>
+                </div>
+              </div>
+            </section>
+          )
+          )}
+
+          {/* ── Check-In / Check-Out Timeline (only for confirmed or completed bookings) ── */}
+          {(booking.status === 'confirmed' || booking.status === 'completed') &&
+            (booking.checkinStatus || booking.checkedInAt || booking.checkoutRequestedAt) && (
+            <section>
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                <LogIn className="h-3.5 w-3.5" />
+                Check-In / Check-Out
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-lg border">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Current Status</p>
+                  <div>{getCheckinStatusBadge(booking.checkinStatus)}</div>
+                </div>
+                {booking.checkedInAt && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Checked In</p>
+                    <p className="text-sm font-medium">
+                      {formatShortDate(booking.checkedInAt)}
+                      {booking.actualStartTime && ` · ${booking.actualStartTime}`}
+                    </p>
+                    {booking.checkedInMethod && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        via {booking.checkedInMethod === 'self' ? 'self check-in' : booking.checkedInMethod}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {booking.checkoutRequestedAt && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Checkout Requested</p>
+                    <p className="text-sm font-medium">
+                      {formatShortDate(booking.checkoutRequestedAt)}
+                      {booking.actualEndTime && ` · ${booking.actualEndTime}`}
+                    </p>
+                  </div>
+                )}
+                {booking.checkoutApprovedAt && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Checked Out / Cleared</p>
+                    <p className="text-sm font-medium">{formatShortDate(booking.checkoutApprovedAt)}</p>
+                  </div>
+                )}
+                {booking.noShowDetectedAt && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">No-Show Detected</p>
+                    <p className="text-sm font-medium text-red-700">{formatShortDate(booking.noShowDetectedAt)}</p>
+                  </div>
+                )}
+              </div>
+              {/* Check-in / checkout notes */}
+              {(booking.checkinNotes || booking.checkoutNotes) && (
+                <div className="mt-3 space-y-2">
+                  {booking.checkinNotes && (
+                    <div className="p-3 rounded-lg border border-border bg-muted/30">
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1">Check-in notes</p>
+                      <p className="text-sm whitespace-pre-wrap">{booking.checkinNotes}</p>
+                    </div>
+                  )}
+                  {booking.checkoutNotes && (
+                    <div className="p-3 rounded-lg border border-border bg-muted/30">
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1">Check-out notes</p>
+                      <p className="text-sm whitespace-pre-wrap">{booking.checkoutNotes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Photos & Checklist Audit */}
+              {((booking.checkinPhotoUrls && booking.checkinPhotoUrls.length > 0) ||
+                (booking.checkoutPhotoUrls && booking.checkoutPhotoUrls.length > 0) ||
+                (booking.checkinChecklistItems && booking.checkinChecklistItems.length > 0) ||
+                (booking.checkoutChecklistItems && booking.checkoutChecklistItems.length > 0)) && (
+                <div className="mt-3 space-y-3">
+                  {/* Check-in checklist audit */}
+                  {booking.checkinChecklistItems && booking.checkinChecklistItems.length > 0 && (
+                    <div>
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" /> Check-in checklist
+                      </p>
+                      <div className="space-y-1">
+                        {booking.checkinChecklistItems.map((item, index) => (
+                          <div key={item.id} className="flex items-center gap-1.5">
+                            <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
+                            <span className="tabular-nums text-[11px] font-medium text-muted-foreground">{index + 1}.</span>
+                            <span className={`text-[11px] ${item.checked ? "text-green-700" : "text-red-600 line-through"}`}>{item.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {booking.checkinPhotoUrls && booking.checkinPhotoUrls.length > 0 && (
+                    <div>
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <Camera className="h-3 w-3" /> Check-in photos ({booking.checkinPhotoUrls.length})
+                      </p>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {booking.checkinPhotoUrls.map((url, i) => {
+                          const proxied = getR2ProxyUrl(url);
+                          return (
+                            <a
+                              key={`ci-${i}`}
+                              href={proxied}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block"
+                            >
+                              <img
+                                src={proxied}
+                                alt={`Check-in photo ${i + 1}`}
+                                className="w-full h-20 object-cover rounded-md border hover:opacity-80 transition-opacity"
+                                onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = '0.3'; }}
+                              />
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {booking.checkoutPhotoUrls && booking.checkoutPhotoUrls.length > 0 && (
+                    <div>
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <Camera className="h-3 w-3" /> Check-out photos ({booking.checkoutPhotoUrls.length})
+                      </p>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {booking.checkoutPhotoUrls.map((url, i) => {
+                          const proxied = getR2ProxyUrl(url);
+                          return (
+                            <a
+                              key={`co-${i}`}
+                              href={proxied}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block"
+                            >
+                              <img
+                                src={proxied}
+                                alt={`Check-out photo ${i + 1}`}
+                                className="w-full h-20 object-cover rounded-md border hover:opacity-80 transition-opacity"
+                                onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = '0.3'; }}
+                              />
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {/* Check-out checklist audit */}
+                  {booking.checkoutChecklistItems && booking.checkoutChecklistItems.length > 0 && (
+                    <div>
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" /> Check-out checklist
+                      </p>
+                      <div className="space-y-1">
+                        {booking.checkoutChecklistItems.map((item, index) => (
+                          <div key={item.id} className="flex items-center gap-1.5">
+                            <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
+                            <span className="tabular-nums text-[11px] font-medium text-muted-foreground">{index + 1}.</span>
+                            <span className={`text-[11px] ${item.checked ? "text-blue-700" : "text-red-600 line-through"}`}>{item.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
 
           {/* ── Add-ons: Storage ── */}
           {allStorageBookings.length > 0 && (
@@ -1142,7 +1442,7 @@ export default function BookingDetailsPage() {
                         ? 'Amount Charged'
                         : isPartiallyRefunded
                           ? 'Amount Charged'
-                          : 'Total'}
+                          : 'Subtotal'}
                   </span>
                   <span className={`text-lg font-semibold font-mono ${
                     (booking.paymentStatus === 'failed' && booking.status === 'cancelled') || isRefunded
@@ -1290,36 +1590,50 @@ export default function BookingDetailsPage() {
                     <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
                       {booking.paymentStatus === 'authorized' ? 'Authorization' : 'Revenue'}
                     </h3>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        {booking.paymentStatus === 'authorized' ? 'Authorized' : 'Gross'}
-                      </span>
-                      <span className="font-mono">{formatCurrency(booking.paymentTransaction.amount)}</span>
-                    </div>
+                    {booking.paymentStatus !== 'authorized' && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Gross</span>
+                        <span className="font-mono">{formatCurrency(booking.paymentTransaction.amount)}</span>
+                      </div>
+                    )}
                     {(() => {
                       const amount = booking.paymentTransaction.amount || 0;
-                      const stripeFee = booking.paymentTransaction.stripeProcessingFee || 0;
+                      // ENTERPRISE STANDARD: Use actual values from payment_transactions table
+                      // - serviceFee = application_fee_amount = what platform retained (live Stripe fee after reconciliation)
+                      // - managerRevenue = amount - serviceFee = what Stripe actually paid the manager's Connect account
+                      // - stripeProcessingFee = informational only (Stripe's actual processing fee deducted from platform balance)
+                      const platformFee = booking.paymentTransaction.serviceFee || 0;
+                      const managerRevenue = booking.paymentTransaction.managerRevenue || 0;
+                      const stripeProcessingFee = booking.paymentTransaction.stripeProcessingFee || 0;
                       const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
                       const subtotal = totals.subtotal || 0;
                       const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
-                      const netRevenue = amount - taxAmount - stripeFee;
+                      // Net keepable revenue = what manager received from Stripe minus tax they remit
+                      const netRevenue = managerRevenue - taxAmount;
                       const isAuthorized = booking.paymentStatus === 'authorized';
                       const ptRefundAmount = booking.paymentTransaction.refundAmount || 0;
-                      
+
                       return (
                         <>
                           {taxRatePercent > 0 && (
                             <div className="flex justify-between text-sm">
                               <span className="text-muted-foreground">
-                                {isAuthorized ? `Est. Tax (${taxRatePercent}%)` : `Tax (${taxRatePercent}%)`}
+                                Tax ({taxRatePercent}%)
                               </span>
-                              <span className="font-mono text-muted-foreground">−{formatCurrency(taxAmount)}</span>
+                              <span className="font-mono text-muted-foreground">
+                                {isAuthorized ? `+${formatCurrency(taxAmount)}` : `−${formatCurrency(taxAmount)}`}
+                              </span>
                             </div>
                           )}
-                          {!isAuthorized && (
+                          {!isAuthorized && platformFee > 0 && (
                             <div className="flex justify-between text-sm">
                               <span className="text-muted-foreground">Stripe Fee</span>
-                              <span className="font-mono text-muted-foreground">−{formatCurrency(stripeFee)}</span>
+                              <span className="font-mono text-muted-foreground">−{formatCurrency(platformFee)}</span>
+                            </div>
+                          )}
+                          {!isAuthorized && stripeProcessingFee > 0 && stripeProcessingFee !== platformFee && (
+                            <div className="flex justify-between text-[11px] text-muted-foreground italic pl-3">
+                              <span>(actual Stripe processing fee: {formatCurrency(stripeProcessingFee)})</span>
                             </div>
                           )}
                           {!isAuthorized && ptRefundAmount > 0 && (
@@ -1331,12 +1645,17 @@ export default function BookingDetailsPage() {
                           <Separator className="my-2" />
                           <div className="flex justify-between text-sm font-medium">
                             <span>
-                              {isAuthorized ? 'Est. Net Revenue' : 'Net Revenue'}
+                              {isAuthorized ? 'Total Payment' : 'Net Revenue'}
                             </span>
                             <span className="font-mono">
-                              {formatCurrency(isAuthorized ? amount - taxAmount : netRevenue - ptRefundAmount)}
+                              {formatCurrency(isAuthorized ? amount : netRevenue - ptRefundAmount)}
                             </span>
                           </div>
+                          {!isAuthorized && managerRevenue > 0 && (
+                            <p className="text-[10px] text-muted-foreground italic mt-1">
+                              You received {formatCurrency(managerRevenue)} in your Stripe account ({formatCurrency(taxAmount)} tax + {formatCurrency(netRevenue - ptRefundAmount)} net{ptRefundAmount > 0 ? ` − ${formatCurrency(ptRefundAmount)} refund` : ''}).
+                            </p>
+                          )}
                         </>
                       );
                     })()}
@@ -1393,7 +1712,7 @@ export default function BookingDetailsPage() {
       <ManagerBookingLayout
         breadcrumbs={[
           { label: "Dashboard", onClick: () => navigate("/manager/dashboard") },
-          { label: "Bookings", onClick: () => navigate("/manager/dashboard") },
+          { label: "Bookings", onClick: () => window.history.back() },
           { label: booking ? `Booking #${booking.id}` : "Booking Details" },
         ]}
       >
@@ -1425,11 +1744,25 @@ export default function BookingDetailsPage() {
       onViewChange={handleViewChange}
       breadcrumbs={[
         { label: "Dashboard", onClick: () => navigate("/dashboard") },
-        { label: "My Bookings", onClick: () => navigate("/dashboard") },
+        { label: "My Bookings", onClick: () => window.history.back() },
         { label: booking ? `Booking #${booking.id}` : "Booking Details" },
       ]}
     >
       {isLoading ? loadingContent : (error || !booking) ? errorContent : bookingContent}
+      {booking && (
+        <KitchenCheckinTracker
+          open={checkinTrackerOpen}
+          onOpenChange={(open) => {
+            setCheckinTrackerOpen(open);
+            if (!open) queryClient.invalidateQueries({ queryKey: [`/api/chef/bookings/${bookingId}/details`] });
+          }}
+          bookingId={booking.id}
+          kitchenName={booking.kitchen?.name}
+          bookingDate={booking.bookingDate?.split('T')[0]}
+          startTime={booking.startTime}
+          endTime={booking.endTime}
+        />
+      )}
     </ChefDashboardLayout>
   );
 }

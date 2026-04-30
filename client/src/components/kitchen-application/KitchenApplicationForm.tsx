@@ -828,7 +828,7 @@ export default function KitchenApplicationForm({
               </Button>
 
               <Button
-                onClick={() => navigate(`/book-kitchen?location=${location.id}`)}
+                onClick={() => navigate(`/dashboard?view=kitchen-applications`)}
                 className="flex-1 bg-[#208D80] hover:bg-[#1A7470]"
               >
                 Book a Kitchen
@@ -1288,7 +1288,6 @@ export default function KitchenApplicationForm({
                             <p className="text-xs text-gray-500 mt-1">
                               Your certification must be valid for at least 6 months
                             </p>
-                            <FormMessage />
                             <FormMessage />
                           </FormItem>
                         )}

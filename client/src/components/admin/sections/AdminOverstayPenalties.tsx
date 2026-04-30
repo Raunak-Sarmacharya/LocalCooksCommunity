@@ -71,6 +71,8 @@ import { formatDate as sharedFormatDate, formatCurrency as sharedFormatCurrency,
 
 interface OverstayPenalty {
   id: number;
+  referenceCode?: string | null;
+  bookingId?: number | null;
   storageBookingId: number;
   status: string;
   daysOverdue: number;
@@ -214,9 +216,12 @@ function getColumns(onViewDetails: (p: OverstayPenalty) => void): ColumnDef<Over
   return [
     {
       accessorKey: "id",
-      header: "ID",
+      header: "Ref",
       size: 60,
-      cell: ({ row }) => <span className="font-mono text-xs">#{row.original.id}</span>,
+      cell: ({ row }) => {
+        const ref = row.original.referenceCode || row.original.bookingId || row.original.id;
+        return <span className="font-mono text-xs">#{ref}</span>;
+      },
     },
     {
       accessorKey: "detectedAt",

@@ -16,6 +16,16 @@ interface Booking {
   specialNotes?: string;
   createdAt: string;
   updatedAt: string;
+  // Kitchen check-in/checkout lifecycle fields
+  checkinStatus?: string | null;
+  checkedInAt?: string | null;
+  checkedInMethod?: string | null;
+  checkoutRequestedAt?: string | null;
+  checkedOutAt?: string | null;
+  checkoutApprovedAt?: string | null;
+  noShowDetectedAt?: string | null;
+  accessCodeValidFrom?: string | null;
+  accessCodeValidUntil?: string | null;
 }
 
 interface CreateBookingData {
@@ -153,6 +163,16 @@ export function useKitchenBookings() {
         refundAmount: booking.refundAmount ?? booking.refund_amount ?? 0,
         chargedAmount: booking.chargedAmount ?? booking.charged_amount ?? null,
         cancellationRequestedAt: booking.cancellationRequestedAt ?? booking.cancellation_requested_at ?? null,
+        // Kitchen check-in/checkout lifecycle
+        checkinStatus: booking.checkinStatus ?? booking.checkin_status ?? null,
+        checkedInAt: booking.checkedInAt ?? booking.checked_in_at ?? null,
+        checkedInMethod: booking.checkedInMethod ?? booking.checked_in_method ?? null,
+        checkoutRequestedAt: booking.checkoutRequestedAt ?? booking.checkout_requested_at ?? null,
+        checkedOutAt: booking.checkedOutAt ?? booking.checked_out_at ?? null,
+        checkoutApprovedAt: booking.checkoutApprovedAt ?? booking.checkout_approved_at ?? null,
+        noShowDetectedAt: booking.noShowDetectedAt ?? booking.no_show_detected_at ?? null,
+        accessCodeValidFrom: booking.accessCodeValidFrom ?? booking.access_code_valid_from ?? null,
+        accessCodeValidUntil: booking.accessCodeValidUntil ?? booking.access_code_valid_until ?? null,
       }));
       
       return normalizedBookings;

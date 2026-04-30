@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { CheckCircle, Plus, ChefHat, Edit2, ChevronDown, ChevronUp, Image, DollarSign, Clock, Sparkles, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
@@ -146,8 +146,63 @@ export default function CreateKitchenStep() {
     skipCurrentStep
   } = useManagerOnboarding();
 
-  const { data, setData, showCreate, setShowCreate, isCreating } = kitchenForm;
+  const { data: ctxData, setData, showCreate, setShowCreate, isCreating } = kitchenForm;
   const [expandedKitchenId, setExpandedKitchenId] = useState<number | null>(null);
+
+  // LOCAL state for form fields — prevents context re-renders causing focus loss on every keystroke.
+  // We sync FROM context when the form opens, and sync TO context just before submit.
+  const [localName, setLocalName] = useState(ctxData.name);
+  const [localDescription, setLocalDescription] = useState(ctxData.description);
+  const [localHourlyRate, setLocalHourlyRate] = useState(ctxData.hourlyRate);
+  const [localMinHours, setLocalMinHours] = useState(ctxData.minimumBookingHours);
+  const [localImageUrl, setLocalImageUrl] = useState(ctxData.imageUrl);
+
+  // Sync local state from context whenever the form is opened (showCreate flips to true)
+  const prevShowCreate = useRef(showCreate);
+  useEffect(() => {
+    if (showCreate && !prevShowCreate.current) {
+      setLocalName(ctxData.name);
+      setLocalDescription(ctxData.description);
+      setLocalHourlyRate(ctxData.hourlyRate);
+      setLocalMinHours(ctxData.minimumBookingHours);
+      setLocalImageUrl(ctxData.imageUrl);
+    }
+    prevShowCreate.current = showCreate;
+  }, [showCreate]);
+
+  // Ref to signal that we want to create the kitchen after syncing local → context
+  const pendingCreateRef = useRef(false);
+
+  // Flush local state to context and then create
+  const handleCreate = () => {
+    pendingCreateRef.current = true;
+    setData({
+      name: localName,
+      description: localDescription,
+      hourlyRate: localHourlyRate,
+      currency: ctxData.currency,
+      minimumBookingHours: localMinHours,
+      imageUrl: localImageUrl,
+    });
+  };
+
+  // After ctxData updates from handleCreate, fire createKitchen once
+  useEffect(() => {
+    if (pendingCreateRef.current) {
+      pendingCreateRef.current = false;
+      createKitchen();
+    }
+  }, [ctxData]);
+
+  // Expose a data object matching the old shape for the JSX below
+  const data = {
+    name: localName,
+    description: localDescription,
+    hourlyRate: localHourlyRate,
+    currency: ctxData.currency,
+    minimumBookingHours: localMinHours,
+    imageUrl: localImageUrl,
+  };
 
   const handleToggleExpand = (kitchenId: number) => {
     setExpandedKitchenId(prev => prev === kitchenId ? null : kitchenId);
@@ -226,7 +281,7 @@ export default function CreateKitchenStep() {
                 <Input
                   id="kitchen-name"
                   value={data.name}
-                  onChange={(e) => setData({ ...data, name: e.target.value })}
+                  onChange={(e) => setLocalName(e.target.value)}
                   placeholder="e.g., Main Kitchen, Prep Area, Bakery Station"
                   className="h-10"
                 />
@@ -242,7 +297,7 @@ export default function CreateKitchenStep() {
                 <Textarea
                   id="kitchen-description"
                   value={data.description}
-                  onChange={(e) => setData({ ...data, description: e.target.value })}
+                  onChange={(e) => setLocalDescription(e.target.value)}
                   placeholder="Describe your kitchen space, equipment, and what makes it special for chefs..."
                   rows={3}
                   className="resize-none"
@@ -270,8 +325,8 @@ export default function CreateKitchenStep() {
                 <div className="max-w-md">
                   <ImageWithReplace
                     imageUrl={data.imageUrl || undefined}
-                    onImageChange={(url) => setData({ ...data, imageUrl: url || '' })}
-                    onRemove={() => setData({ ...data, imageUrl: '' })}
+                    onImageChange={(url) => setLocalImageUrl(url || '')}
+                    onRemove={() => setLocalImageUrl('')}
                     className="h-40 object-cover rounded-lg"
                     aspectRatio="16/9"
                     fieldName="kitchen-cover"
@@ -296,7 +351,7 @@ export default function CreateKitchenStep() {
                         step="0.01"
                         min="0"
                         value={data.hourlyRate}
-                        onChange={(e) => setData({ ...data, hourlyRate: e.target.value })}
+                        onChange={(e) => setLocalHourlyRate(e.target.value)}
                         placeholder="25.00"
                         className="pl-7 h-10"
                       />
@@ -316,12 +371,12 @@ export default function CreateKitchenStep() {
                       onChange={(e) => {
                         const val = e.target.value;
                         if (val === '') {
-                          setData({ ...data, minimumBookingHours: '' });
+                          setLocalMinHours('');
                           return;
                         }
                         const parsed = parseInt(val, 10);
                         if (!isNaN(parsed) && parsed >= 0 && parsed <= 24) {
-                          setData({ ...data, minimumBookingHours: String(parsed) });
+                          setLocalMinHours(String(parsed));
                         }
                       }}
                       placeholder="1"
@@ -336,7 +391,7 @@ export default function CreateKitchenStep() {
             <div className="flex gap-3 pt-2">
               <StatusButton
                 status={isCreating ? "loading" : "idle"}
-                onClick={() => createKitchen()}
+                onClick={handleCreate}
                 disabled={!data.name || !data.hourlyRate}
                 className="flex-1"
                 labels={{ idle: "Create Kitchen", loading: "Creating", success: "Created" }}

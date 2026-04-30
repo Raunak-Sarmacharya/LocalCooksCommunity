@@ -28,7 +28,10 @@ export class KitchenRepository {
       amenities: (row.amenities as string[]) || [],         // Ensure type safety for JSONB
       // Cast enum to specific string union type if needed, or trust strict match
       pricingModel: row.pricingModel as any,
-      taxRatePercent: row.taxRatePercent ? parseFloat(row.taxRatePercent) : null
+      taxRatePercent: row.taxRatePercent ? parseFloat(row.taxRatePercent) : null,
+      smartLockAvailable: row.smartLockAvailable ?? false,
+      smartLockEnabled: row.smartLockEnabled ?? false,
+      smartLockConfig: row.smartLockConfig as Record<string, unknown> | null ?? null,
     };
   }
 
@@ -145,6 +148,7 @@ export class KitchenRepository {
           minimumBookingHours: dto.minimumBookingHours || 1,
           pricingModel: dto.pricingModel || 'hourly',
           taxRatePercent: dto.taxRatePercent ? dto.taxRatePercent.toString() : null,
+          smartLockAvailable: dto.smartLockAvailable ?? false,
         })
         .returning();
 
@@ -179,6 +183,9 @@ export class KitchenRepository {
           minimumBookingHours: dto.minimumBookingHours,
           pricingModel: dto.pricingModel,
           taxRatePercent: dto.taxRatePercent ? dto.taxRatePercent.toString() : (dto.taxRatePercent === null ? null : undefined),
+          smartLockAvailable: dto.smartLockAvailable,
+          smartLockEnabled: dto.smartLockEnabled,
+          smartLockConfig: dto.smartLockConfig as any,
         })
         .where(eq(kitchens.id, id))
         .returning();

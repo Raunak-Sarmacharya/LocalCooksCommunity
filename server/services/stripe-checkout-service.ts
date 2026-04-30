@@ -1,13 +1,15 @@
 import { logger } from "../logger";
 /**
- * Stripe Checkout Service
- * 
- * Handles Stripe Checkout session creation with Stripe Connect destination charges.
- * 
+ * Stripe Checkout Service — Separate Charges and Transfers pattern
+ *
+ * Handles Stripe Checkout session creation. Customer pays full amount to the
+ * PLATFORM'S Stripe balance (no transfer_data, no application_fee_amount at
+ * checkout). After capture, the webhook reads the actual Stripe processing fee
+ * from balance_transaction and calls stripe.transfers.create() to send the
+ * manager their share via `stripe-transfer-service.ts`.
+ *
  * Customer sees: Base price + Tax (if applicable)
- * Platform fee is deducted from manager's payout via application_fee_amount (invisible to customer)
- * 
- * Uses Stripe Connect to split payments between platform and manager.
+ * Manager receives: chargeAmount − actualStripeFee − platformCommission
  */
 
 import Stripe from 'stripe';
@@ -19,7 +21,7 @@ if (!stripeSecretKey) {
 }
 
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
-  apiVersion: '2025-12-15.clover',
+  apiVersion: '2026-02-25.clover',
 }) : null;
 
 export interface CreateCheckoutSessionParams {
@@ -222,22 +224,20 @@ export async function createPendingCheckoutSession(
       ];
     }
 
+    // ARCHITECTURE — Separate Charges and Transfers:
+    //   No transfer_data, no application_fee_amount. Charge lands on platform balance.
+    //   Webhook handles the manager transfer post-capture using actual Stripe fee.
+    //   manager_connect_account_id retained in metadata so webhook can find the destination.
     const paymentIntentData: {
-      transfer_data: { destination: string };
       metadata: Record<string, string>;
-      application_fee_amount?: number;
     } = {
-      transfer_data: { destination: managerStripeAccountId },
       metadata: {
         type: 'kitchen_booking',
         kitchen_id: bookingData.kitchenId.toString(),
         chef_id: bookingData.chefId.toString(),
+        manager_connect_account_id: managerStripeAccountId,
       },
     };
-
-    if (platformFeeInCents > 0) {
-      paymentIntentData.application_fee_amount = platformFeeInCents;
-    }
 
     // CRITICAL: Store all booking data in session metadata
     // This data will be used to create the booking in the webhook
@@ -347,20 +347,10 @@ export async function createCheckoutSession(
   if (bookingPriceInCents <= 0) {
     throw new Error('Booking price must be greater than 0');
   }
-  // Platform fee validation - must be positive to cover Stripe fees and earn revenue
-  // With destination charges, platform pays Stripe fees from application_fee_amount
+  // Platform fee is informational only — no application_fee_amount is set on the PaymentIntent.
+  // The actual fee is deducted in the webhook via Transfer.create() using balance_transaction.fee.
   if (platformFeeInCents < 0) {
     throw new Error('Platform fee cannot be negative');
-  }
-  if (platformFeeInCents >= bookingPriceInCents) {
-    throw new Error('Platform fee must be less than booking price');
-  }
-  // Warn if platform fee is too low to cover Stripe processing fees
-  const estimatedStripeFee = Math.round(bookingPriceInCents * 0.029 + 30);
-  if (platformFeeInCents > 0 && platformFeeInCents < estimatedStripeFee) {
-    logger.warn(
-      `[Stripe Checkout] Platform fee (${platformFeeInCents} cents) is less than estimated Stripe fee (${estimatedStripeFee} cents). Platform may lose money on this transaction.`
-    );
   }
   if (!managerStripeAccountId) {
     throw new Error('Manager Stripe account ID is required');
@@ -399,26 +389,18 @@ export async function createCheckoutSession(
     // NOTE: Platform fee is NOT shown to customer as a line item
     // It is only set as application_fee_amount which is deducted from manager's payout
 
-    // Build payment intent data - only include application_fee_amount if > 0
+    // ARCHITECTURE — Separate Charges and Transfers:
+    //   Charge lands on platform balance. No transfer_data, no application_fee_amount.
+    //   Webhook creates the Transfer to manager's Connect account post-capture.
     const paymentIntentData: {
-      transfer_data: { destination: string };
       metadata: Record<string, string>;
-      application_fee_amount?: number;
     } = {
-      transfer_data: {
-        destination: managerStripeAccountId,
-      },
       metadata: {
         booking_id: bookingId.toString(),
+        manager_connect_account_id: managerStripeAccountId,
         ...metadata,
       },
     };
-
-    // Only set application_fee_amount if platform fee is positive
-    // This is the key to ensuring platform receives revenue!
-    if (platformFeeInCents > 0) {
-      paymentIntentData.application_fee_amount = platformFeeInCents;
-    }
 
     // Create Checkout session
     const session = await stripe.checkout.sessions.create({

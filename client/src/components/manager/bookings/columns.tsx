@@ -1,7 +1,7 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign, Eye, RotateCcw, ClipboardCheck, Settings2 } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign, Eye, RotateCcw, ClipboardCheck, Settings2, LogIn, LogOut, Camera, FileWarning } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -19,6 +19,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { createBookingDateTime, DEFAULT_TIMEZONE } from "@/utils/timezone-utils"
 
 // Storage/Equipment item types from JSONB fields
 export type StorageItem = {
@@ -85,6 +86,13 @@ export type Booking = {
     isVoidedAuthorization?: boolean; // true when PT was canceled before capture — $0 moved
     isAuthorizedHold?: boolean;      // true when payment is held but not yet captured
     originalAuthorizedAmount?: number; // Original auth amount for voided display context (in cents)
+    // ── Kitchen Check-In / Check-Out Lifecycle ──────────────────────────────
+    checkinStatus?: string | null;          // not_checked_in | checked_in | checkout_requested | checked_out | no_show | checkout_claim_filed
+    checkedInAt?: string | null;
+    checkoutRequestedAt?: string | null;
+    checkedOutAt?: string | null;
+    checkoutApprovedAt?: string | null;
+    noShowDetectedAt?: string | null;
 }
 
 interface BookingColumnsProps {
@@ -120,6 +128,55 @@ const formatTime = (time: string) => {
     return `${displayHour}:${minutes} ${ampm}`;
 };
 
+// Check-In / Check-Out badge config (shared with TodaysKitchenBookings semantics)
+function getCheckinBadgeProps(checkinStatus: string | null | undefined):
+    | { label: string; icon: JSX.Element; className: string }
+    | null {
+    if (!checkinStatus || checkinStatus === 'not_checked_in') {
+        return {
+            label: 'Not Checked In',
+            icon: <Clock className="h-2.5 w-2.5 mr-0.5" />,
+            className: 'bg-gray-100 text-gray-700 border-gray-300',
+        };
+    }
+    if (checkinStatus === 'checked_in') {
+        return {
+            label: 'Checked In',
+            icon: <LogIn className="h-2.5 w-2.5 mr-0.5" />,
+            className: 'bg-green-100 text-green-800 border-green-300',
+        };
+    }
+    if (checkinStatus === 'checkout_requested') {
+        return {
+            label: 'Checkout Pending',
+            icon: <Camera className="h-2.5 w-2.5 mr-0.5" />,
+            className: 'bg-blue-100 text-blue-800 border-blue-300',
+        };
+    }
+    if (checkinStatus === 'checked_out') {
+        return {
+            label: 'Checked Out',
+            icon: <LogOut className="h-2.5 w-2.5 mr-0.5" />,
+            className: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+        };
+    }
+    if (checkinStatus === 'no_show') {
+        return {
+            label: 'No-Show',
+            icon: <XCircle className="h-2.5 w-2.5 mr-0.5" />,
+            className: 'bg-red-100 text-red-800 border-red-300',
+        };
+    }
+    if (checkinStatus === 'checkout_claim_filed') {
+        return {
+            label: 'Claim Filed',
+            icon: <FileWarning className="h-2.5 w-2.5 mr-0.5" />,
+            className: 'bg-amber-100 text-amber-800 border-amber-300',
+        };
+    }
+    return null;
+}
+
 export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onCancelAndRefund, onTakeAction, onAcceptCancellation, onDeclineCancellation, onAcceptStorageCancellation, onDeclineStorageCancellation, onManageBooking, hasApprovedLicense }: BookingColumnsProps): ColumnDef<Booking>[] => [
     {
         accessorKey: "createdAt",
@@ -127,6 +184,18 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
         cell: () => null,
         enableHiding: true,
         meta: { hidden: true },
+    },
+    {
+        id: "reference",
+        header: "Ref",
+        cell: ({ row }) => {
+            const ref = row.original.referenceCode || row.original.id;
+            return (
+                <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                    {ref ? `#${ref}` : "—"}
+                </div>
+            );
+        },
     },
     {
         accessorKey: "kitchenName",
@@ -695,12 +764,32 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
             const isRefunded = paymentStatus === 'refunded';
             const isPartiallyRefunded = paymentStatus === 'partially_refunded';
 
+            // ── Kitchen Check-In/Check-Out lifecycle badge ─────────────────
+            // Show for confirmed/completed bookings where check-in is relevant.
+            // Hide for pending/cancelled (those states pre-empt check-in).
+            const checkinStatus = row.original.checkinStatus;
+            const showCheckinBadge =
+                (status === 'confirmed' || status === 'completed') &&
+                checkinStatus !== undefined;
+            const checkinBadgeProps = showCheckinBadge
+                ? getCheckinBadgeProps(checkinStatus)
+                : null;
+
             return (
                 <div className="flex flex-col gap-1">
                     <Badge variant={variant} className={`items-center flex w-fit ${extraClassName}`}>
                         {icon}
                         {label}
                     </Badge>
+                    {checkinBadgeProps && (
+                        <Badge
+                            variant="outline"
+                            className={`items-center flex w-fit text-[10px] ${checkinBadgeProps.className}`}
+                        >
+                            {checkinBadgeProps.icon}
+                            {checkinBadgeProps.label}
+                        </Badge>
+                    )}
                     {isVoided && (
                         <Badge variant="outline" className="text-[10px] text-muted-foreground w-fit">
                             <DollarSign className="h-2.5 w-2.5 mr-0.5" />
@@ -764,8 +853,15 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
             const isCancelled = booking.status === 'cancelled';
             const isCancellationRequested = booking.status === 'cancellation_requested';
 
-            // Check if time has passed for confirmed bookings
-            const bookingDateTime = new Date(`${booking.bookingDate.split('T')[0]}T${booking.startTime}`);
+            // Check if time has passed for confirmed bookings. Resolve in the
+            // LOCATION's timezone so this matches the server's view of
+            // past/future (server measures against the kitchen's wall clock).
+            const timezone = booking.locationTimezone || DEFAULT_TIMEZONE;
+            const bookingDateTime = createBookingDateTime(
+                booking.bookingDate.split('T')[0],
+                booking.startTime,
+                timezone,
+            );
             const isPast = bookingDateTime < new Date();
             const canCancel = isConfirmed && !isPast;
 

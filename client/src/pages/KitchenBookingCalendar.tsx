@@ -14,6 +14,7 @@ import { useLocation } from "wouter";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { useQuery } from "@tanstack/react-query";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Component for equipment image with R2 proxy URL
 function EquipmentImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
@@ -1391,9 +1392,27 @@ export default function KitchenBookingCalendar() {
                         </div>
 
                         {isLoadingSlots ? (
-                          <div className="text-center py-8 sm:py-12">
-                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground inline-block" />
-                            <p className="text-sm sm:text-base text-gray-600 mt-3">Loading time slots...</p>
+                          /* Skeleton grid that matches the real slot layout —
+                             professional loader keeps the page from collapsing
+                             into a tiny spinner block while slots are fetched. */
+                          <div
+                            role="status"
+                            aria-label="Loading available time slots"
+                            aria-live="polite"
+                          >
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+                              {Array.from({ length: 8 }).map((_, idx) => (
+                                <Skeleton
+                                  key={idx}
+                                  className="h-[88px] sm:h-[92px] rounded-lg sm:rounded-xl bg-gray-200/70"
+                                />
+                              ))}
+                            </div>
+                            <div className="mt-4 flex items-center justify-center gap-2 text-xs sm:text-sm text-gray-500">
+                              <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                              <span>Loading time slots…</span>
+                            </div>
+                            <span className="sr-only">Loading available time slots…</span>
                           </div>
                         ) : allSlots.length === 0 ? (
                           <div className="p-4 sm:p-6 bg-yellow-50 border border-yellow-200 rounded-lg text-center">

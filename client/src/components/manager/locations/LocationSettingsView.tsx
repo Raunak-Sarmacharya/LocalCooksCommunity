@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     FileText, ImageIcon, Mail, Clock, Globe, HelpCircle,
-    Upload, Loader2, Plus, Info, Save, AlertCircle, CheckCircle, Calendar
+    Upload, Loader2, Plus, Info, Save, AlertCircle, CheckCircle, Calendar,
+    KeyRound
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
@@ -55,6 +56,9 @@ interface Kitchen {
     locationId: number;
     isActive: boolean;
     galleryImages?: string[];
+    /** Admin-controlled capability gate. When false, all smart-door UI is hidden. */
+    smartLockAvailable?: boolean;
+    smartLockEnabled?: boolean;
 }
 
 interface SettingsViewProps {
@@ -568,6 +572,53 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                     locationId={location.id}
                                                 />
                                             </div>
+                                            {/*
+                                                Smart Door Lock is gated by the admin-controlled
+                                                `smartLockAvailable` flag. When the admin hasn’t enabled
+                                                the capability, managers don’t see any smart-lock UI here.
+                                            */}
+                                            {kitchen.smartLockAvailable && (
+                                                <div className="pt-4 border-t">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <KeyRound className="h-4 w-4 text-muted-foreground" />
+                                                            <div>
+                                                                <Label className="text-sm">Smart Door Lock</Label>
+                                                                <p className="text-xs text-muted-foreground">Enable if this kitchen has a keypad/smart lock. You can set access codes per booking.</p>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            role="switch"
+                                                            aria-checked={kitchen.smartLockEnabled || false}
+                                                            onClick={async () => {
+                                                                const newVal = !kitchen.smartLockEnabled;
+                                                                try {
+                                                                    const token = await auth.currentUser?.getIdToken();
+                                                                    await fetch(`/api/manager/kitchens/${kitchen.id}/details`, {
+                                                                        method: 'PUT',
+                                                                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                                                        body: JSON.stringify({ smartLockEnabled: newVal })
+                                                                    });
+                                                                    queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+                                                                    toast({ title: newVal ? "Smart lock enabled" : "Smart lock disabled" });
+                                                                } catch (e) {
+                                                                    logger.error("Failed to update smart lock setting", e);
+                                                                    toast({ title: "Failed to update", variant: "destructive" });
+                                                                }
+                                                            }}
+                                                            className={cn(
+                                                                "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                                                                kitchen.smartLockEnabled ? "bg-blue-600" : "bg-gray-200"
+                                                            )}
+                                                        >
+                                                            <span className={cn(
+                                                                "inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow",
+                                                                kitchen.smartLockEnabled ? "translate-x-6" : "translate-x-1"
+                                                            )} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </CardContent>

@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, FileText, ShieldCheck, Utensils, Building2, MapPin } from "lucide-react";
+import { CheckCircle2, FileText, ShieldCheck, Utensils, Building2, MapPin, ArrowRight } from "lucide-react";
 import { useLocation, useRoute } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -11,6 +11,7 @@ import Footer from "@/components/layout/Footer";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 
 export default function KitchenRequirementsPage() {
     const [, params] = useRoute("/kitchen-requirements/:locationId");
@@ -55,6 +56,24 @@ export default function KitchenRequirementsPage() {
 
     // Find the kitchen for this location
     const kitchen = kitchenData?.find((k: { locationId: number }) => k.locationId === Number(locationId));
+
+    // For authenticated chefs, check if they already have an application (Step 1 done)
+    const { application: existingApplication, hasApplication } = useChefKitchenApplicationForLocation(
+        user && locationId ? Number(locationId) : null
+    );
+
+    // Step 1 is "done" when the chef has a non-rejected/non-cancelled application
+    const isStep1Done = hasApplication &&
+        existingApplication &&
+        existingApplication.status !== 'rejected' &&
+        existingApplication.status !== 'cancelled';
+
+    // Determine the current tier for label purposes
+    const chefCurrentTier = (existingApplication as any)?.current_tier ?? 1;
+    // Step 2 is actionable when Step 1 is approved (status approved, still on tier 1 => needs step 2)
+    const isReadyForStep2 = isStep1Done &&
+        existingApplication?.status === 'approved' &&
+        chefCurrentTier < 3;
 
     // Loading state with proper layout
     const loadingContent = (
@@ -153,20 +172,35 @@ export default function KitchenRequirementsPage() {
 
             {/* Requirements Cards */}
             <div className="grid gap-6 md:grid-cols-2">
-                {/* Step 1 Card */}
-                <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-primary/5 relative overflow-hidden hover:shadow-xl transition-shadow">
+                {/* Step 1 Card — shows completed state if chef already submitted Step 1 */}
+                <Card className={`border-0 shadow-lg relative overflow-hidden transition-shadow ${
+                    isStep1Done
+                        ? 'bg-gradient-to-br from-green-50 to-green-100/40 hover:shadow-xl ring-1 ring-green-200'
+                        : 'bg-gradient-to-br from-white to-primary/5 hover:shadow-xl'
+                }`}>
                     <div className="absolute top-0 right-0 p-4 opacity-5">
                         <FileText className="h-24 w-24" />
                     </div>
                     <CardHeader className="pb-4">
                         <div className="flex items-center gap-3 mb-2">
-                            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold shadow-sm">
-                                1
+                            <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-bold shadow-sm ${
+                                isStep1Done
+                                    ? 'bg-green-500 text-white'
+                                    : 'bg-primary/10 text-primary'
+                            }`}>
+                                {isStep1Done ? <CheckCircle2 className="h-5 w-5" /> : '1'}
                             </div>
-                            <div>
-                                <CardTitle className="text-lg">Application Requirements</CardTitle>
+                            <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                    <CardTitle className="text-lg">Application Requirements</CardTitle>
+                                    {isStep1Done && (
+                                        <Badge className="bg-green-100 text-green-700 border-green-200 text-xs font-medium">
+                                            ✓ Completed
+                                        </Badge>
+                                    )}
+                                </div>
                                 <CardDescription className="text-xs">
-                                    Initial application documents
+                                    {isStep1Done ? 'Your Step 1 application was submitted' : 'Initial application documents'}
                                 </CardDescription>
                             </div>
                         </div>
@@ -176,10 +210,16 @@ export default function KitchenRequirementsPage() {
                             {getStep1Items().length > 0 ? (
                                 getStep1Items().map((item, i) => (
                                     <li key={i} className="flex items-start gap-3 text-sm">
-                                        <div className="h-5 w-5 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                            <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                                        <div className={`h-5 w-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                                            isStep1Done ? 'bg-green-200' : 'bg-green-100'
+                                        }`}>
+                                            <CheckCircle2 className={`h-3.5 w-3.5 ${
+                                                isStep1Done ? 'text-green-700' : 'text-green-600'
+                                            }`} />
                                         </div>
-                                        <span className="leading-snug text-foreground/80">{item}</span>
+                                        <span className={`leading-snug ${
+                                            isStep1Done ? 'text-foreground/50 line-through' : 'text-foreground/80'
+                                        }`}>{item}</span>
                                     </li>
                                 ))
                             ) : (
@@ -227,21 +267,64 @@ export default function KitchenRequirementsPage() {
             </div>
 
             {/* CTA Section */}
-            <Card className="border-0 shadow-lg bg-gradient-to-r from-primary/5 via-primary/10 to-blue-500/5 overflow-hidden">
+            <Card className={`border-0 shadow-lg overflow-hidden ${
+                isReadyForStep2
+                    ? 'bg-gradient-to-r from-green-50 via-emerald-50/80 to-teal-50'
+                    : 'bg-gradient-to-r from-primary/5 via-primary/10 to-blue-500/5'
+            }`}>
                 <CardContent className="p-8 text-center">
-                    <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4 shadow-sm">
-                        <Utensils className="h-7 w-7 text-primary" />
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm ${
+                        isReadyForStep2 ? 'bg-green-100' : 'bg-primary/10'
+                    }`}>
+                        {isReadyForStep2
+                            ? <ArrowRight className="h-7 w-7 text-green-600" />
+                            : <Utensils className="h-7 w-7 text-primary" />
+                        }
                     </div>
-                    <h3 className="text-xl font-semibold mb-2">Ready to apply?</h3>
-                    <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                        Ensure you have these documents ready to speed up your verification process.
-                    </p>
+                    {isReadyForStep2 ? (
+                        <>
+                            <h3 className="text-xl font-semibold mb-2">Step 1 Complete — Time for Step 2!</h3>
+                            <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                                Your initial application was approved. Submit your Step 2 documents to unlock full kitchen access.
+                            </p>
+                        </>
+                    ) : isStep1Done ? (
+                        <>
+                            <h3 className="text-xl font-semibold mb-2">Application Under Review</h3>
+                            <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                                Your Step 1 application is being reviewed by the kitchen manager. You'll be notified once a decision is made.
+                            </p>
+                        </>
+                    ) : (
+                        <>
+                            <h3 className="text-xl font-semibold mb-2">Ready to apply?</h3>
+                            <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                                Ensure you have these documents ready to speed up your verification process.
+                            </p>
+                        </>
+                    )}
                     <Button 
                         size="lg" 
                         onClick={() => setLocation(`/apply-kitchen/${locationId}`)}
-                        className="shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
+                        className={`transition-all ${
+                            isReadyForStep2
+                                ? 'bg-green-600 hover:bg-green-700 shadow-lg shadow-green-500/20 hover:shadow-xl hover:shadow-green-500/30'
+                                : isStep1Done
+                                    ? 'shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30'
+                                    : 'shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30'
+                        }`}
+                        disabled={!!(isStep1Done && !isReadyForStep2)}
                     >
-                        Start Application
+                        {isReadyForStep2 ? (
+                            <>
+                                <ArrowRight className="mr-2 h-4 w-4" />
+                                Continue to Step 2
+                            </>
+                        ) : isStep1Done ? (
+                            'Application Under Review'
+                        ) : (
+                            'Start Application'
+                        )}
                     </Button>
                 </CardContent>
             </Card>
@@ -262,13 +345,15 @@ export default function KitchenRequirementsPage() {
                 activeView={activeView}
                 onViewChange={(view) => {
                     setActiveView(view);
-                    if (view === 'overview') setLocation('/dashboard');
-                    else if (view === 'discover-kitchens') setLocation('/dashboard?view=discover-kitchens');
-                    else if (view === 'kitchen-applications') setLocation('/dashboard?view=kitchen-applications');
-                    else if (view === 'bookings') setLocation('/dashboard?view=bookings');
-                    else if (view === 'applications') setLocation('/dashboard?view=applications');
-                    else if (view === 'messages') setLocation('/dashboard?view=messages');
-                    else if (view === 'training') setLocation('/dashboard?view=training');
+                    // REPLACE so back button doesn't bounce through this requirements page.
+                    const opts = { replace: true } as const;
+                    if (view === 'overview') setLocation('/dashboard', opts);
+                    else if (view === 'discover-kitchens') setLocation('/dashboard?view=discover-kitchens', opts);
+                    else if (view === 'kitchen-applications') setLocation('/dashboard?view=kitchen-applications', opts);
+                    else if (view === 'bookings') setLocation('/dashboard?view=bookings', opts);
+                    else if (view === 'applications') setLocation('/dashboard?view=applications', opts);
+                    else if (view === 'messages') setLocation('/dashboard?view=messages', opts);
+                    else if (view === 'training') setLocation('/dashboard?view=training', opts);
                 }}
                 breadcrumbs={[
                     { label: "Dashboard", onClick: () => setLocation('/dashboard') },

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useLocation, useSearch } from "wouter";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -41,6 +42,8 @@ export function ManagerPageLayout({
 
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(urlKitchenId);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   // Sync state with URL
   useEffect(() => {
@@ -96,10 +99,16 @@ export function ManagerPageLayout({
     const id = parseInt(val);
     setSelectedLocationId(id);
     setSelectedKitchenId(null);
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
   };
 
   const handleKitchenChange = (val: string) => {
     setSelectedKitchenId(parseInt(val));
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
   };
 
   return (
@@ -109,7 +118,12 @@ export function ManagerPageLayout({
         <div className="flex items-center gap-2">
           {title && <h1 className="font-semibold text-lg">{title}</h1>}
         </div>
-        <Sheet>
+        <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="-mr-2">
+              <Menu className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
           <SheetContent side="left" className="w-[80%] max-w-[300px] p-0">
             <SidebarContent
               isLoadingLocations={isLoadingLocations}
@@ -123,11 +137,6 @@ export function ManagerPageLayout({
               handleKitchenChange={handleKitchenChange}
             />
           </SheetContent>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="-mr-2">
-              <Menu className="h-5 w-5" />
-            </Button>
-          </SheetTrigger>
         </Sheet>
       </div>
 
@@ -161,7 +170,7 @@ export function ManagerPageLayout({
 
         <ResizableHandle withHandle className="hidden md:flex" />
 
-        <ResizablePanel defaultSize={80} className="flex flex-col min-w-[400px]">
+        <ResizablePanel defaultSize={80} className="flex flex-col min-w-0 md:min-w-[400px]">
           <ScrollArea className="flex-1">
             <div className="p-4 md:p-8">
               <div className="max-w-6xl mx-auto space-y-6">

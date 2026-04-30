@@ -346,13 +346,13 @@ export function TransactionTable({
                     </div>
                 ) : (
                     <>
-                        <div className="rounded-md border">
+                        <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
                             <Table>
                                 <TableHeader>
                                     {table.getHeaderGroups().map((headerGroup) => (
                                         <TableRow key={headerGroup.id}>
                                             {headerGroup.headers.map((header) => (
-                                                <TableHead key={header.id}>
+                                                <TableHead key={header.id} className="whitespace-nowrap text-xs sm:text-sm">
                                                     {header.isPlaceholder
                                                         ? null
                                                         : flexRender(
@@ -371,7 +371,7 @@ export function TransactionTable({
                                             data-state={row.getIsSelected() && "selected"}
                                         >
                                             {row.getVisibleCells().map((cell) => (
-                                                <TableCell key={cell.id}>
+                                                <TableCell key={cell.id} className="text-xs sm:text-sm whitespace-nowrap">
                                                     {flexRender(
                                                         cell.column.columnDef.cell,
                                                         cell.getContext()

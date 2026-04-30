@@ -64,7 +64,6 @@ export default function ManagerLocationsPage({
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isViewDetailsOpen, setIsViewDetailsOpen] = useState(false);
 
   // Fetch kitchen counts for each location
   const { data: kitchenCounts } = useQuery({
@@ -180,11 +179,6 @@ export default function ManagerLocationsPage({
   const handleEdit = (location: LocationData) => {
     setSelectedLocation(location);
     setIsEditModalOpen(true);
-  };
-
-  const handleViewDetails = (location: LocationData) => {
-    setSelectedLocation(location);
-    setIsViewDetailsOpen(true);
   };
 
   const handleManage = (location: LocationData) => {
@@ -320,7 +314,6 @@ export default function ManagerLocationsPage({
           columns={getLocationColumns({
             onEdit: handleEdit,
             onManage: handleManage,
-            onViewDetails: handleViewDetails
           })}
           data={filteredLocations}
           filterColumn="name"
@@ -364,23 +357,6 @@ export default function ManagerLocationsPage({
             setSelectedLocation(null);
           }}
           onSave={handleEditComplete}
-        />
-      )}
-
-      {/* View Details Modal - Using same modal in view mode */}
-      {selectedLocation && isViewDetailsOpen && (
-        <LocationEditModal
-          location={selectedLocation}
-          isOpen={isViewDetailsOpen}
-          onClose={() => {
-            setIsViewDetailsOpen(false);
-            setSelectedLocation(null);
-          }}
-          onSave={() => {
-            setIsViewDetailsOpen(false);
-            setSelectedLocation(null);
-          }}
-          viewOnly={true}
         />
       )}
     </div>

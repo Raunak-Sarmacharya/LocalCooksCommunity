@@ -20,6 +20,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { LicenseProgressTracker } from "@/components/admin/ApplicationProgressTracker";
+import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
 
 export function KitchenLicenseApprovalSection() {
   const { toast } = useToast();
@@ -119,6 +120,8 @@ export function KitchenLicenseApprovalSection() {
     switch (status) {
       case 'pending':
         return <Badge variant="warning">Pending Review</Badge>;
+      case 'pending_update':
+        return <Badge variant="warning" className="bg-amber-100 text-amber-700 border-amber-200">Update Pending</Badge>;
       case 'approved':
         return <Badge variant="success">Approved</Badge>;
       case 'rejected':
@@ -141,6 +144,7 @@ export function KitchenLicenseApprovalSection() {
               <Tabs value={filterStatus} onValueChange={setFilterStatus} className="w-full sm:w-auto">
                 <TabsList>
                   <TabsTrigger value="pending">Pending</TabsTrigger>
+                  <TabsTrigger value="pending_update">Updates</TabsTrigger>
                   <TabsTrigger value="approved">Approved</TabsTrigger>
                   <TabsTrigger value="rejected">Rejected</TabsTrigger>
                   <TabsTrigger value="all">All</TabsTrigger>
@@ -228,112 +232,18 @@ export function KitchenLicenseApprovalSection() {
                         />
 
                         {/* License Document Details */}
-                        <div className="mb-4 space-y-2">
-                          <div className="flex flex-wrap gap-3">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={async () => {
-                                if (!license.kitchenLicenseUrl) {
-                                  toast({
-                                    title: "No License",
-                                    description: "No license document has been uploaded for this location.",
-                                    variant: "destructive",
-                                  });
-                                  return;
-                                }
-
-                                try {
-                                  const token = await auth.currentUser?.getIdToken();
-                                  let viewUrl = license.kitchenLicenseUrl;
-                                  
-                                  if (viewUrl.includes('/api/files/documents/')) {
-                                     if (viewUrl.includes('?')) {
-                                       viewUrl += `&token=${token}`;
-                                     } else {
-                                       viewUrl += `?token=${token}`;
-                                     }
-                                  } 
-                                  else if (viewUrl.includes('r2.cloudflarestorage.com') || viewUrl.includes('files.localcooks.ca')) {
-                                    const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(viewUrl)}`, {
-                                      method: 'GET',
-                                      headers: { 'Authorization': `Bearer ${token}` },
-                                      credentials: 'include',
-                                    });
-                                    if (response.ok) {
-                                      const data = await response.json();
-                                      viewUrl = data.url;
-                                    }
-                                  }
-                                  
-                                  window.open(viewUrl, '_blank');
-                                } catch (error) {
-                                  logger.error("Error opening license:", error);
-                                  toast({
-                                    title: "Error",
-                                    description: "Failed to open license document. Please try again.",
-                                    variant: "destructive"
-                                  });
-                                }
-                              }}
-                              className="inline-flex items-center gap-2"
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                              View License
-                            </Button>
-
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={async () => {
-                                if (!license.kitchenTermsUrl) {
-                                  toast({
-                                    title: "No Terms Document",
-                                    description: "No kitchen terms & policies document has been uploaded for this location.",
-                                    variant: "destructive",
-                                  });
-                                  return;
-                                }
-
-                                try {
-                                  const token = await auth.currentUser?.getIdToken();
-                                  let viewUrl = license.kitchenTermsUrl;
-                                  
-                                  if (viewUrl.includes('/api/files/documents/')) {
-                                     if (viewUrl.includes('?')) {
-                                       viewUrl += `&token=${token}`;
-                                     } else {
-                                       viewUrl += `?token=${token}`;
-                                     }
-                                  } 
-                                  else if (viewUrl.includes('r2.cloudflarestorage.com') || viewUrl.includes('files.localcooks.ca')) {
-                                    const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(viewUrl)}`, {
-                                      method: 'GET',
-                                      headers: { 'Authorization': `Bearer ${token}` },
-                                      credentials: 'include',
-                                    });
-                                    if (response.ok) {
-                                      const data = await response.json();
-                                      viewUrl = data.url;
-                                    }
-                                  }
-                                  
-                                  window.open(viewUrl, '_blank');
-                                } catch (error) {
-                                  logger.error("Error opening terms:", error);
-                                  toast({
-                                    title: "Error",
-                                    description: "Failed to open terms document. Please try again.",
-                                    variant: "destructive"
-                                  });
-                                }
-                              }}
-                              className={`inline-flex items-center gap-2 ${license.kitchenTermsUrl ? '' : 'opacity-50'}`}
-                              disabled={!license.kitchenTermsUrl}
-                            >
-                              <FileText className="h-4 w-4" />
-                              {license.kitchenTermsUrl ? 'View Terms' : 'No Terms'}
-                            </Button>
+                        <div className="mb-4 space-y-3">
+                          {/* Document links row */}
+                          <div className="flex flex-wrap gap-4 items-center">
+                            {/* SecureDocumentLink handles all URL types: local /api/files/documents/, R2 presigned, public */}
+                            <SecureDocumentLink
+                              url={license.kitchenLicenseUrl}
+                              label="View License"
+                            />
+                            <SecureDocumentLink
+                              url={license.kitchenTermsUrl}
+                              label={license.kitchenTermsUrl ? 'View Terms' : 'No Terms'}
+                            />
 
                             {license.kitchenLicenseExpiry && (
                               <div className="flex items-center gap-2 text-sm px-3 py-1.5 bg-muted rounded-md border">
@@ -356,14 +266,14 @@ export function KitchenLicenseApprovalSection() {
                           </div>
 
                           {license.kitchenLicenseStatus === 'approved' && license.kitchenLicenseApprovedAt && (
-                            <div className="mt-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-md border border-green-100 inline-block">
+                            <div className="text-sm text-green-700 bg-green-50 px-3 py-2 rounded-md border border-green-100 inline-block">
                               <CheckCircle className="h-3 w-3 inline mr-1 mb-0.5" />
                               Approved on {new Date(license.kitchenLicenseApprovedAt).toLocaleDateString()}
                             </div>
                           )}
 
                           {license.kitchenLicenseStatus === 'rejected' && (
-                            <div className="mt-2 text-sm text-red-700 bg-red-50 px-3 py-2 rounded-md border border-red-100">
+                            <div className="text-sm text-red-700 bg-red-50 px-3 py-2 rounded-md border border-red-100">
                               <p className="font-semibold flex items-center gap-1">
                                 <XCircle className="h-3 w-3" />
                                 Rejection Reason:
@@ -373,8 +283,55 @@ export function KitchenLicenseApprovalSection() {
                           )}
                         </div>
 
+                        {/* License Update Section - shows when there's a pending update */}
+                        {license.kitchenLicenseStatus === 'pending_update' && license.kitchenLicensePendingUrl && (
+                          <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Badge variant="warning" className="bg-amber-100 text-amber-800 border-amber-300">
+                                License Update Pending
+                              </Badge>
+                              {license.kitchenLicensePendingSubmittedAt && (
+                                <span className="text-sm text-amber-700">
+                                  Submitted: {new Date(license.kitchenLicensePendingSubmittedAt).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {/* Current Active License */}
+                              <div className="p-3 bg-white rounded border">
+                                <p className="text-sm font-medium text-gray-700 mb-2">Current Active License</p>
+                                {license.kitchenLicenseCurrentUrl || license.kitchenLicenseUrl ? (
+                                  <SecureDocumentLink
+                                    url={license.kitchenLicenseCurrentUrl || license.kitchenLicenseUrl}
+                                    label="View Current License"
+                                    className="text-sm"
+                                  />
+                                ) : (
+                                  <p className="text-sm text-gray-500">No current license on file</p>
+                                )}
+                              </div>
+
+                              {/* New Pending License */}
+                              <div className="p-3 bg-amber-100/50 rounded border border-amber-200">
+                                <p className="text-sm font-medium text-amber-800 mb-2">New License (Pending Approval)</p>
+                                <SecureDocumentLink
+                                  url={license.kitchenLicensePendingUrl}
+                                  label="View New License"
+                                  className="text-sm"
+                                />
+                              </div>
+                            </div>
+                            
+                            <p className="mt-3 text-sm text-amber-700">
+                              The current license remains active until this update is approved. 
+                              If rejected, the current license stays in effect.
+                            </p>
+                          </div>
+                        )}
+
                         {/* Expandable Action/Feedback Section */}
-                        {(license.kitchenLicenseStatus === 'pending' || expandedLicense === license.id) && (
+                        {(license.kitchenLicenseStatus === 'pending' || license.kitchenLicenseStatus === 'pending_update' || expandedLicense === license.id) && (
                           <>
                             {expandedLicense === license.id && (
                               <div className="mt-4 p-4 bg-muted rounded-lg border">
@@ -391,7 +348,7 @@ export function KitchenLicenseApprovalSection() {
                             )}
 
                             <div className="flex flex-wrap gap-3 mt-4">
-                              {!expandedLicense && license.kitchenLicenseStatus === 'pending' && (
+                              {!expandedLicense && (license.kitchenLicenseStatus === 'pending' || license.kitchenLicenseStatus === 'pending_update') && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -449,7 +406,7 @@ export function KitchenLicenseApprovalSection() {
                         )}
 
                         {/* Allow Admin to edit result even if already processed */}
-                        {license.kitchenLicenseStatus !== 'pending' && expandedLicense !== license.id && (
+                        {license.kitchenLicenseStatus !== 'pending' && license.kitchenLicenseStatus !== 'pending_update' && expandedLicense !== license.id && (
                           <div className="mt-4">
                             <Button
                               variant="outline"

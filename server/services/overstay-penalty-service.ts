@@ -32,7 +32,7 @@ import { getOverstayPlatformDefaults, getEffectivePenaltyConfig } from "./overst
 // Initialize Stripe
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
-  apiVersion: '2025-12-15.clover',
+  apiVersion: '2026-02-25.clover',
 }) : null;
 
 // ============================================================================
@@ -651,6 +651,118 @@ export async function processManagerDecision(decision: ManagerPenaltyDecision): 
     finalPenaltyCents: updateData.finalPenaltyCents,
   });
 
+  // Send in-app notifications and emails to chef about the decision
+  try {
+    const { notificationService } = await import('./notification.service');
+    const { sendEmail, generatePenaltyApprovedEmail, generatePenaltyWaivedEmail } = await import('../email');
+
+    // Get booking context for notification data
+    const [booking] = await db
+      .select({
+        chefId: storageBookings.chefId,
+        storageListingId: storageBookings.storageListingId,
+      })
+      .from(storageBookings)
+      .where(eq(storageBookings.id, record.storageBookingId))
+      .limit(1);
+
+    let storageName = 'Storage';
+    let kitchenNameForNotif = 'Kitchen';
+
+    if (booking?.storageListingId) {
+      const [listingInfo] = await db
+        .select({ name: storageListings.name, kitchenId: storageListings.kitchenId })
+        .from(storageListings)
+        .where(eq(storageListings.id, booking.storageListingId))
+        .limit(1);
+      storageName = listingInfo?.name || 'Storage';
+
+      if (listingInfo?.kitchenId) {
+        const [kitchenInfo] = await db
+          .select({ name: kitchens.name })
+          .from(kitchens)
+          .where(eq(kitchens.id, listingInfo.kitchenId))
+          .limit(1);
+        kitchenNameForNotif = kitchenInfo?.name || 'Kitchen';
+      }
+    }
+
+    if (action === 'approve' || action === 'adjust') {
+      // In-app notification to chef
+      if (booking?.chefId) {
+        await notificationService.notifyChefPenaltyApproved({
+          chefId: booking.chefId,
+          overstayId: overstayRecordId,
+          storageName,
+          kitchenName: kitchenNameForNotif,
+          daysOverdue: record.daysOverdue,
+          penaltyAmountCents: updateData.finalPenaltyCents || record.calculatedPenaltyCents,
+        });
+
+        // Email to chef
+        const [chefUser] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, booking.chefId))
+          .limit(1);
+
+        if (chefUser?.username) {
+          try {
+            await sendEmail(generatePenaltyApprovedEmail({
+              chefEmail: chefUser.username,
+              chefName: chefUser.username.split('@')[0],
+              storageName,
+              kitchenName: kitchenNameForNotif,
+              daysOverdue: record.daysOverdue,
+              penaltyAmountCents: updateData.finalPenaltyCents || record.calculatedPenaltyCents,
+            }));
+            logger.info(`[OverstayService] Sent penalty approved email to chef for overstay ${overstayRecordId}`);
+          } catch (emailError) {
+            logger.error(`[OverstayService] Error sending penalty approved email:`, emailError);
+          }
+        }
+      }
+    } else if (action === 'waive') {
+      // In-app notification to chef
+      if (booking?.chefId) {
+        await notificationService.notifyChefPenaltyWaived({
+          chefId: booking.chefId,
+          overstayId: overstayRecordId,
+          storageName,
+          kitchenName: kitchenNameForNotif,
+          daysOverdue: record.daysOverdue,
+          penaltyAmountCents: record.calculatedPenaltyCents,
+          waiveReason: waiveReason,
+        });
+
+        // Email to chef
+        const [chefUser] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, booking.chefId))
+          .limit(1);
+
+        if (chefUser?.username) {
+          try {
+            await sendEmail(generatePenaltyWaivedEmail({
+              chefEmail: chefUser.username,
+              chefName: chefUser.username.split('@')[0],
+              storageName,
+              kitchenName: kitchenNameForNotif,
+              daysOverdue: record.daysOverdue,
+              waiveReason,
+            }));
+            logger.info(`[OverstayService] Sent penalty waived email to chef for overstay ${overstayRecordId}`);
+          } catch (emailError) {
+            logger.error(`[OverstayService] Error sending penalty waived email:`, emailError);
+          }
+        }
+      }
+    }
+  } catch (notifError) {
+    logger.error(`[OverstayService] Error sending decision notifications:`, notifError);
+  }
+
   // ENTERPRISE STANDARD: Auto-complete the storage booking when penalty is waived.
   // The booking has expired and the manager has waived the penalty — it should no longer show as "Active".
   if (action === 'waive') {
@@ -856,16 +968,10 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
       taxRatePercent,
     });
 
-    // ENTERPRISE STANDARD: Calculate application_fee_amount for break-even on Stripe fees
-    // This ensures the platform doesn't absorb Stripe processing fees for overstay penalties
-    // Same approach as damage claims: application_fee = Stripe processing fee (2.9% + $0.30)
-    let applicationFeeAmount: number | undefined;
-    if (managerStripeAccountId) {
-      const { calculateCheckoutFees } = await import('./stripe-checkout-fee-service');
-      const feeResult = calculateCheckoutFees(penaltyTotalCents / 100); // Convert cents to dollars
-      applicationFeeAmount = feeResult.stripeProcessingFeeInCents;
-      logger.info(`[OverstayService] Calculated application fee for break-even: ${applicationFeeAmount} cents`);
-    }
+    // ARCHITECTURE — Separate Charges and Transfers:
+    //   No application_fee_amount, no transfer_data. Charge lands on platform balance.
+    //   Webhook reads actual Stripe fee from balance_transaction and creates a Transfer
+    //   to the manager's Connect account (charge − actualFee − platformCommission).
 
     const paymentIntentParams: {
       amount: number;
@@ -876,8 +982,6 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
       confirm: boolean;
       metadata: Record<string, string>;
       statement_descriptor_suffix: string;
-      transfer_data?: { destination: string };
-      application_fee_amount?: number;
     } = {
       amount: penaltyTotalCents,
       currency: 'cad',
@@ -891,6 +995,7 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
         storage_booking_id: record.storageBookingId.toString(),
         days_overdue: record.daysOverdue.toString(),
         manager_id: managerId?.toString() || '',
+        manager_connect_account_id: managerStripeAccountId || '',
         tax_rate_percent: taxRatePercent.toString(),
         penalty_base_cents: penaltyBaseCents.toString(),
         penalty_tax_cents: penaltyTaxCents.toString(),
@@ -898,19 +1003,8 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
       statement_descriptor_suffix: 'OVERSTAY FEE',
     };
 
-    // Add destination charge if manager has Stripe Connect
     if (managerStripeAccountId) {
-      paymentIntentParams.transfer_data = {
-        destination: managerStripeAccountId,
-      };
-      // ENTERPRISE STANDARD: Add application_fee_amount for break-even on Stripe fees
-      // This ensures the platform doesn't absorb Stripe processing fees
-      // Manager pays the Stripe fee, platform breaks even
-      if (applicationFeeAmount && applicationFeeAmount > 0) {
-        paymentIntentParams.application_fee_amount = applicationFeeAmount;
-        logger.info(`[OverstayService] Setting application_fee_amount: ${applicationFeeAmount} cents for break-even`);
-      }
-      logger.info(`[OverstayService] Using destination charge to manager account: ${managerStripeAccountId}`);
+      logger.info(`[OverstayService] PaymentIntent will be charged to platform; transfer to ${managerStripeAccountId} happens in webhook`);
     }
 
     // ENTERPRISE STANDARD: Use idempotency key to prevent duplicate charges
@@ -950,28 +1044,25 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
         { paymentIntentId: paymentIntent.id, chargeId }
       );
 
-      // CRITICAL: Create payment_transactions record with payment_intent_id for Stripe fee syncing
-      // This ensures all overstay penalties have proper Stripe data for revenue reporting
+      // ARCHITECTURE — Separate Charges and Transfers:
+      //   Initial PT seeded with conservative values (serviceFee=0, managerRevenue=penaltyTotal).
+      //   Webhook (or in-line transfer below if balance_transaction is ready) updates them
+      //   to reflect the actual Stripe fee + transfer amount.
       try {
         const { createPaymentTransaction, updatePaymentTransaction } = await import("./payment-transactions-service");
         const { getStripePaymentAmounts } = await import("./stripe-service");
-
-        // ENTERPRISE STANDARD: Include application_fee_amount as serviceFee for accurate tracking
-        // Manager revenue = penaltyTotalCents - applicationFeeAmount (Stripe fee deducted)
-        const serviceFeeForTransaction = applicationFeeAmount || 0;
-        const managerRevenueForTransaction = penaltyTotalCents - serviceFeeForTransaction;
 
         const ptRecord = await createPaymentTransaction({
           bookingId: record.storageBookingId,
           bookingType: "storage",
           chefId: booking.chefId || null,
-          managerId,  // Already fetched above for destination charge
-          amount: penaltyTotalCents,  // Total including tax
-          baseAmount: penaltyBaseCents,  // Base before tax
-          serviceFee: serviceFeeForTransaction, // Platform fee (covers Stripe processing)
-          managerRevenue: managerRevenueForTransaction,  // What manager actually receives
+          managerId,
+          amount: penaltyTotalCents,
+          baseAmount: penaltyBaseCents,
+          serviceFee: 0, // Webhook updates with actualStripeFee + platformCommission
+          managerRevenue: penaltyTotalCents, // Webhook updates with actual transfer amount
           currency: "CAD",
-          paymentIntentId: paymentIntent.id, // CRITICAL: Save payment intent for fee syncing
+          paymentIntentId: paymentIntent.id,
           chargeId: chargeId || undefined,
           status: "succeeded",
           stripeStatus: "succeeded",
@@ -979,17 +1070,16 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
             type: "overstay_penalty",
             overstay_record_id: overstayRecordId.toString(),
             storage_booking_id: record.storageBookingId.toString(),
-            charged_via: "off_session", // Indicates this was charged directly, not via checkout
+            charged_via: "off_session",
             tax_rate_percent: taxRatePercent.toString(),
             penalty_base_cents: penaltyBaseCents.toString(),
             penalty_tax_cents: penaltyTaxCents.toString(),
-            application_fee_cents: serviceFeeForTransaction.toString(),
+            manager_connect_account_id: managerStripeAccountId || '',
           },
         }, db);
 
-        // Fetch and sync actual Stripe fees
+        // Try inline transfer if balance_transaction is ready; otherwise webhook handles it
         if (ptRecord) {
-          // Use managerStripeAccountId already fetched above for destination charge
           const stripeAmounts = await getStripePaymentAmounts(paymentIntent.id, managerStripeAccountId || undefined);
           if (stripeAmounts) {
             await updatePaymentTransaction(ptRecord.id, {
@@ -1000,6 +1090,31 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
               stripeProcessingFee: stripeAmounts.stripeProcessingFee,
               stripePlatformFee: stripeAmounts.stripePlatformFee,
             }, db);
+
+            if (managerStripeAccountId && stripeAmounts.stripeProcessingFee > 0) {
+              const { transferToManagerForBooking } = await import('./stripe-transfer-service');
+              try {
+                const transferResult = await transferToManagerForBooking({
+                  paymentIntentId: paymentIntent.id,
+                  paymentTransactionId: ptRecord.id,
+                  chargeAmountCents: stripeAmounts.stripeAmount,
+                  actualStripeFeeCents: stripeAmounts.stripeProcessingFee,
+                  chargeId: chargeId || stripeAmounts.chargeId || undefined,
+                  transferGroup: `pi_${paymentIntent.id}`,
+                });
+                if (transferResult.transferred) {
+                  await updatePaymentTransaction(ptRecord.id, {
+                    serviceFee: transferResult.feeWithheldCents,
+                    managerRevenue: transferResult.transferredCents,
+                    stripePlatformFee: transferResult.feeWithheldCents,
+                    stripeNetAmount: transferResult.transferredCents,
+                  }, db);
+                }
+              } catch (transferErr) {
+                logger.error(`[OverstayService] Transfer error for ${paymentIntent.id} (will retry on charge.updated):`, transferErr);
+              }
+            }
+
             logger.info(`[OverstayService] Synced Stripe fees for overstay penalty ${overstayRecordId}:`, {
               processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
             });
@@ -1009,7 +1124,6 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
         logger.info(`[OverstayService] Created payment_transactions for overstay penalty ${overstayRecordId}`);
       } catch (ptError) {
         logger.error(`[OverstayService] Failed to create payment_transactions for overstay penalty:`, ptError);
-        // Don't fail the charge - the payment succeeded, just logging failed
       }
 
       logger.info(`[OverstayService] Penalty charged successfully`, {
@@ -1264,6 +1378,23 @@ async function sendEscalationPaymentLinkToChef(
         text: `Overstay Penalty — Payment Required\n\nReason: ${failureReason}\nAmount: $${penaltyAmount} CAD\nStorage: ${storageName}\nDays Overdue: ${record.daysOverdue}\n\nPay now: ${checkoutResult.checkoutUrl}\n\nThis link expires in 24 hours.`,
       });
       logger.info(`[OverstayService] Sent escalation payment link to chef ${chef.email} for overstay ${overstayRecordId}`);
+
+      // In-app notification to chef about payment required
+      try {
+        const { notificationService } = await import('./notification.service');
+        await notificationService.notifyChefPaymentRequired({
+          chefId,
+          overstayId: overstayRecordId,
+          storageName,
+          kitchenName: 'Kitchen',
+          daysOverdue: record.daysOverdue,
+          penaltyAmountCents: record.finalPenaltyCents || record.calculatedPenaltyCents || 0,
+          paymentUrl: 'checkoutUrl' in checkoutResult ? checkoutResult.checkoutUrl : undefined,
+        });
+        logger.info(`[OverstayService] Sent payment required in-app notification to chef for overstay ${overstayRecordId}`);
+      } catch (notifError) {
+        logger.error(`[OverstayService] Error sending payment required in-app notification:`, notifError);
+      }
 
       await createOverstayHistoryEntry(
         overstayRecordId,
@@ -1839,32 +1970,21 @@ export async function createPenaltyPaymentCheckout(
       },
     };
 
-    // If manager has Stripe Connect, use destination charges
+    // ARCHITECTURE — Separate Charges and Transfers:
+    //   No transfer_data, no application_fee_amount on Checkout session. Charge lands
+    //   on platform balance. Webhook reads balance_transaction.fee and creates a
+    //   Transfer to the manager's Connect account (charge − actualFee − platformCommission).
+    //   manager_connect_account_id is stored in session metadata so the webhook knows
+    //   the transfer destination.
+    sessionParams.payment_intent_data = {
+      receipt_email: chef.email,
+    };
     if (managerStripeAccountId) {
-      // ENTERPRISE STANDARD: Calculate application_fee_amount for break-even on Stripe fees
-      // This ensures the platform doesn't absorb Stripe processing fees for overstay penalties
-      // Same approach as damage claims: application_fee = Stripe processing fee (2.9% + $0.30)
-      const { calculateCheckoutFees } = await import('./stripe-checkout-fee-service');
-      const feeResult = calculateCheckoutFees(penaltyAmountCents / 100); // Convert cents to dollars
-      const applicationFeeAmount = feeResult.stripeProcessingFeeInCents;
-      
-      logger.info(`[OverstayService] Calculated application fee for checkout break-even: ${applicationFeeAmount} cents`);
-
-      sessionParams.payment_intent_data = {
-        transfer_data: {
-          destination: managerStripeAccountId,
-        },
-        // ENTERPRISE STANDARD: Add application_fee_amount for break-even on Stripe fees
-        // Manager pays the Stripe fee, platform breaks even
-        application_fee_amount: applicationFeeAmount,
-        // ENTERPRISE STANDARD: Set receipt_email for Stripe to send payment receipt
-        receipt_email: chef.email,
+      sessionParams.metadata = {
+        ...sessionParams.metadata,
+        manager_connect_account_id: managerStripeAccountId,
       };
-    } else {
-      // Even without Connect, set receipt_email for Stripe receipt
-      sessionParams.payment_intent_data = {
-        receipt_email: chef.email,
-      };
+      logger.info(`[OverstayService] Charge lands on platform; transfer to ${managerStripeAccountId} happens in webhook`);
     }
 
     const session = await stripe.checkout.sessions.create(sessionParams);
@@ -2249,7 +2369,7 @@ export async function refundOverstayPenalty(
     }
 
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: '2025-12-15.clover',
+      apiVersion: '2026-02-25.clover',
     });
 
     // Issue Stripe refund
@@ -2324,7 +2444,7 @@ export async function refundOverstayPenalty(
       logger.warn(`[OverstayPenalty] Could not update payment_transactions for refund:`, ptError as Error);
     }
 
-    // Send refund notification email to chef
+    // Send refund notification email + in-app notification to chef
     try {
       const [booking] = await db
         .select({
@@ -2343,6 +2463,24 @@ export async function refundOverstayPenalty(
           .where(eq(users.id, booking.chefId))
           .limit(1);
 
+        // In-app notification
+        try {
+          const { notificationService } = await import('./notification.service');
+          await notificationService.notifyChefOverstayRefunded({
+            chefId: booking.chefId,
+            overstayId: overstayRecordId,
+            storageName: booking.storageName || 'Storage',
+            kitchenName: 'Kitchen',
+            daysOverdue: record.daysOverdue,
+            penaltyAmountCents: record.calculatedPenaltyCents,
+            refundAmountCents: refundAmount,
+            refundReason,
+          });
+        } catch (notifError) {
+          logger.error(`[OverstayPenalty] Error sending refund in-app notification:`, notifError);
+        }
+
+        // Email
         if (chef?.email) {
           const { sendEmail } = await import('../email');
           await sendEmail({

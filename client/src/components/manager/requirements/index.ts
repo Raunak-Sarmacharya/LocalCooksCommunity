@@ -7,7 +7,6 @@ export { ApplicationRequirementsWizard } from './ApplicationRequirementsWizard';
 export type { ApplicationRequirementsWizardHandle } from './ApplicationRequirementsWizard';
 export { RequirementsStepOne } from './RequirementsStepOne';
 export { RequirementsStepTwo } from './RequirementsStepTwo';
-export { FacilityInfoStep } from './FacilityInfoStep';
 export { CustomFieldBuilder } from './CustomFieldBuilder';
 
 export * from './types';

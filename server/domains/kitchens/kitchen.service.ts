@@ -473,6 +473,86 @@ export class KitchenService {
       throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to get override', 500);
     }
   }
+
+  /**
+   * Bulk-fetch month-wide date availability in a single call.
+   *
+   * Replaces the legacy "30 separate /slots requests" pattern that caused
+   * the calendar to glitch as each per-day fetch resolved at a different time.
+   *
+   * Returns a map of `YYYY-MM-DD` -> boolean (true = kitchen is open that day).
+   *
+   * Performance: 2 DB queries total (weekly schedule + overrides for range)
+   * regardless of month length.
+   */
+  async getMonthAvailability(
+    kitchenId: number,
+    year: number,
+    month: number
+  ): Promise<Record<string, boolean>> {
+    try {
+      if (!Number.isInteger(month) || month < 0 || month > 11) {
+        throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Invalid month (expected 0-11)', 400);
+      }
+      if (!Number.isInteger(year) || year < 1970 || year > 9999) {
+        throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Invalid year', 400);
+      }
+
+      // Range covers the full month in UTC to align with how dates are stored
+      const startDate = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+      const endDate = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
+
+      // Run both lookups in parallel — both are independent
+      const [weeklySchedule, overrides] = await Promise.all([
+        this.kitchenRepo.findAvailability(kitchenId),
+        this.kitchenRepo.findOverrides(kitchenId, startDate, endDate),
+      ]);
+
+      // Index weekly schedule by day-of-week (0-6) for O(1) lookup
+      const weeklyMap = new Map<number, { isAvailable: boolean; startTime: string; endTime: string }>();
+      weeklySchedule.forEach((a: any) => {
+        weeklyMap.set(a.dayOfWeek, {
+          isAvailable: !!a.isAvailable,
+          startTime: a.startTime,
+          endTime: a.endTime,
+        });
+      });
+
+      // Index overrides by YYYY-MM-DD
+      const overrideMap = new Map<string, KitchenOverrideDTO>();
+      overrides.forEach((o) => {
+        const dateStr = new Date(o.specificDate).toISOString().split('T')[0];
+        overrideMap.set(dateStr, o);
+      });
+
+      // Build the complete availability map for every day of the month
+      const result: Record<string, boolean> = {};
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        // Use UTC noon to avoid timezone shifts (matches storage convention)
+        const date = new Date(Date.UTC(year, month, day, 12, 0, 0));
+        const dateStr = date.toISOString().split('T')[0];
+
+        const override = overrideMap.get(dateStr);
+        if (override) {
+          // Override takes priority — closed day OR custom hours
+          result[dateStr] = override.isAvailable && !!(override.startTime && override.endTime);
+        } else {
+          // Fall back to weekly schedule for this day-of-week
+          const dayOfWeek = date.getUTCDay();
+          const weekly = weeklyMap.get(dayOfWeek);
+          result[dateStr] = !!(weekly?.isAvailable && weekly.startTime && weekly.endTime);
+        }
+      }
+
+      return result;
+    } catch (error: any) {
+      if (error instanceof DomainError) throw error;
+      logger.error('[KitchenService] Error getting month availability:', error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to get month availability', 500);
+    }
+  }
 }
 
 export const kitchenService = new KitchenService(new KitchenRepository());

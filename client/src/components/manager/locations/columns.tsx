@@ -1,7 +1,7 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, Pencil, MapPin, ExternalLink, Settings } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Pencil, Settings } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -27,10 +27,9 @@ export type LocationData = {
 interface LocationColumnsProps {
     onEdit: (location: LocationData) => void;
     onManage: (location: LocationData) => void;
-    onViewDetails: (location: LocationData) => void;
 }
 
-export const getLocationColumns = ({ onEdit, onManage, onViewDetails }: LocationColumnsProps): ColumnDef<LocationData>[] => [
+export const getLocationColumns = ({ onEdit, onManage }: LocationColumnsProps): ColumnDef<LocationData>[] => [
     {
         accessorKey: "name",
         header: ({ column }) => {
@@ -106,10 +105,6 @@ export const getLocationColumns = ({ onEdit, onManage, onViewDetails }: Location
                         <DropdownMenuItem onClick={() => onEdit(location)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onViewDetails(location)}>
-                            <ExternalLink className="mr-2 h-4 w-4" />
-                            View Details
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>

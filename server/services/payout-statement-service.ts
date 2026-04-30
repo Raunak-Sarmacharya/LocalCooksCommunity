@@ -33,9 +33,8 @@ export async function generatePayoutStatementPDF(
   bookings.forEach((booking: any) => {
     const totalPrice = (booking.totalPrice || booking.total_price || 0) / 100; // Convert cents to dollars
     const serviceFee = (booking.serviceFee || booking.service_fee || 0) / 100;
-    const managerRevenue = totalPrice * (1 - serviceFeeRate);
 
-    totalEarnings += managerRevenue;
+    totalEarnings += totalPrice; // Total Revenue should be the GROSS amount
     totalPlatformFees += serviceFee;
   });
 
@@ -45,8 +44,12 @@ export async function generatePayoutStatementPDF(
   const payoutStatus = payout.status;
 
   // Calculate period (from earliest booking to payout date)
-  const periodStart = bookings.length > 0
-    ? new Date(Math.min(...bookings.map((b: any) => new Date(b.booking_date || b.created_at).getTime())))
+  const validTimestamps = bookings
+    .map((b: any) => new Date(b.booking_date || b.created_at).getTime())
+    .filter((t: number) => !isNaN(t));
+
+  const periodStart = validTimestamps.length > 0
+    ? new Date(Math.min(...validTimestamps))
     : payoutDate;
   const periodEnd = payoutDate;
 
@@ -80,8 +83,9 @@ export async function generatePayoutStatementPDF(
 
       const pageWidth = doc.page.width;
       const rightMargin = pageWidth - 50;
-      const labelWidth = 100;
-      const valueStartX = rightMargin - 200;
+      const labelWidth = 90;
+      const valueWidth = 150;
+      const valueStartX = rightMargin - labelWidth - valueWidth - 10;
 
       let rightY = 50;
 
@@ -89,30 +93,31 @@ export async function generatePayoutStatementPDF(
       doc.fontSize(10).font('Helvetica-Bold');
       doc.text('Statement #:', valueStartX, rightY, { width: labelWidth, align: 'right' });
       doc.font('Helvetica');
-      doc.text(statementNumber, valueStartX + labelWidth + 5, rightY);
-      rightY += 15;
+      const statementNumberDisplay = statementNumber.length > 25 ? statementNumber.substring(0, 25) + '...' : statementNumber;
+      doc.text(statementNumberDisplay, valueStartX + labelWidth + 10, rightY, { width: valueWidth });
+      rightY += 18;
 
       // Date
       doc.font('Helvetica-Bold');
       doc.text('Date:', valueStartX, rightY, { width: labelWidth, align: 'right' });
       doc.font('Helvetica');
-      doc.text(statementDate, valueStartX + labelWidth + 5, rightY);
-      rightY += 15;
+      doc.text(statementDate, valueStartX + labelWidth + 10, rightY, { width: valueWidth });
+      rightY += 18;
 
       // Payout ID
       doc.font('Helvetica-Bold');
       doc.text('Payout ID:', valueStartX, rightY, { width: labelWidth, align: 'right' });
       doc.font('Helvetica');
-      const payoutIdDisplay = payout.id.length > 20 ? payout.id.substring(0, 20) + '...' : payout.id;
-      doc.text(payoutIdDisplay, valueStartX + labelWidth + 5, rightY);
-      rightY += 15;
+      const payoutIdDisplay = payout.id.length > 25 ? payout.id.substring(0, 25) + '...' : payout.id;
+      doc.text(payoutIdDisplay, valueStartX + labelWidth + 10, rightY, { width: valueWidth });
+      rightY += 18;
 
       // Payout Status
       doc.font('Helvetica-Bold');
       doc.text('Status:', valueStartX, rightY, { width: labelWidth, align: 'right' });
       doc.font('Helvetica');
-      doc.text(payoutStatus.charAt(0).toUpperCase() + payoutStatus.slice(1), valueStartX + labelWidth + 5, rightY);
-      rightY += 15;
+      doc.text(payoutStatus.charAt(0).toUpperCase() + payoutStatus.slice(1), valueStartX + labelWidth + 10, rightY, { width: valueWidth });
+      rightY += 18;
 
       // Payout Date
       doc.font('Helvetica-Bold');
@@ -122,11 +127,11 @@ export async function generatePayoutStatementPDF(
         year: 'numeric',
         month: 'long',
         day: 'numeric'
-      }), valueStartX + labelWidth + 5, rightY);
+      }), valueStartX + labelWidth + 10, rightY, { width: valueWidth });
 
       // Company info section
       let leftY = 120;
-      doc.fontSize(14).font('Helvetica-Bold').text('Local Cooks Community', 50, leftY);
+      doc.fontSize(14).font('Helvetica-Bold').text('Local Cooks', 50, leftY);
       leftY += 18;
       doc.fontSize(10).font('Helvetica').text('support@localcook.shop', 50, leftY);
       leftY += 30;
@@ -161,8 +166,8 @@ export async function generatePayoutStatementPDF(
       const summaryItems = [
         { label: 'Total Bookings', value: totalBookings.toString() },
         { label: 'Total Revenue', value: `$${totalEarnings.toFixed(2)}` },
-        { label: 'Platform Fees', value: `-$${totalPlatformFees.toFixed(2)}` },
-        { label: 'Net Earnings', value: `$${totalEarnings.toFixed(2)}` },
+        { label: 'Estimated Stripe Processing Fee', value: `-$${totalPlatformFees.toFixed(2)}` },
+        { label: 'Net Earnings', value: `$${payoutAmount.toFixed(2)}` },
         { label: 'Payout Amount', value: `$${payoutAmount.toFixed(2)}` },
       ];
 
@@ -223,7 +228,7 @@ export async function generatePayoutStatementPDF(
       const footerY = doc.page.height - 100;
       doc.fontSize(8).font('Helvetica');
       doc.text(
-        'This is an automated payout statement from Local Cooks Community.',
+        'This is an automated payout statement from Local Cooks.',
         50,
         footerY,
         { align: 'center', width: doc.page.width - 100 }

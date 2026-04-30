@@ -51,10 +51,13 @@ export interface UpdateLocationDTO {
   description?: string;
   customOnboardingLink?: string;
   timezone?: string;
-  kitchenLicenseUrl?: string;
-  kitchenLicenseStatus?: 'pending' | 'approved' | 'rejected';
-  kitchenLicenseExpiry?: string;
-  kitchenTermsUrl?: string;
+  kitchenLicenseUrl?: string | null;
+  kitchenLicenseStatus?: 'pending' | 'approved' | 'rejected' | 'pending_update';
+  kitchenLicenseExpiry?: string | null;
+  kitchenLicenseUploadedAt?: Date;
+  kitchenLicensePendingUrl?: string | null;
+  kitchenLicensePendingSubmittedAt?: Date | null;
+  kitchenTermsUrl?: string | null;
   kitchenTermsUploadedAt?: Date;
 }
 

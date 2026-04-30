@@ -6,7 +6,7 @@ import { logger } from "@/lib/logger";
 
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChefHat, Plus, Trash2, Loader2, ImagePlus } from 'lucide-react';
+import { ChefHat, Plus, Trash2, Loader2, ImagePlus, KeyRound } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { StatusButton } from '@/components/ui/status-button';
@@ -18,6 +18,7 @@ import { ImageWithReplace } from '@/components/ui/image-with-replace';
 import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
 import { useToast } from '@/hooks/use-toast';
 import { auth } from '@/lib/firebase';
+import { cn } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,9 +36,12 @@ interface Kitchen {
   name: string;
   description?: string;
   imageUrl?: string;
-  galleryImages?: string[];
   locationId: number;
   isActive: boolean;
+  galleryImages?: string[];
+  /** Admin-controlled capability gate. When false, all smart-door UI is hidden. */
+  smartLockAvailable?: boolean;
+  smartLockEnabled?: boolean;
 }
 
 interface Location {
@@ -360,6 +364,8 @@ export default function KitchensManagement({ location }: KitchensManagementProps
       }
 
       queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+      // Also refresh the all-kitchens cache used by ManagerPageLayout (Availability page sidebar)
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
 
       toast({
         title: "Success",
@@ -395,6 +401,8 @@ export default function KitchensManagement({ location }: KitchensManagementProps
       if (!response.ok) throw new Error("Failed to delete kitchen");
       
       queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+      // Also refresh the all-kitchens cache used by ManagerPageLayout (Availability page sidebar)
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
       toast({ title: "Kitchen Deleted", description: "Kitchen has been successfully removed." });
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
@@ -629,6 +637,78 @@ export default function KitchensManagement({ location }: KitchensManagementProps
                     locationId={location.id}
                   />
                 </div>
+
+                {/*
+                  Smart Door Lock section is gated by the admin-controlled
+                  `smartLockAvailable` flag. When the admin has not enabled the
+                  capability for this kitchen, the entire section is hidden —
+                  managers will not see the toggle, provider config, or any
+                  related UI anywhere in this screen.
+                */}
+                {kitchen.smartLockAvailable && (
+                  <>
+                    <Separator />
+                    <div className="px-5 py-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-md bg-blue-50 flex items-center justify-center">
+                            <KeyRound className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium">Smart Door Lock</Label>
+                            <p className="text-xs text-muted-foreground">Enable if this kitchen has a keypad or smart lock. You can set access codes per booking.</p>
+                          </div>
+                        </div>
+                        <button
+                          role="switch"
+                          aria-checked={kitchen.smartLockEnabled || false}
+                          onClick={async () => {
+                            const newVal = !kitchen.smartLockEnabled;
+                            try {
+                              const currentFirebaseUser = auth.currentUser;
+                              if (!currentFirebaseUser) throw new Error("Not authenticated");
+                              const token = await currentFirebaseUser.getIdToken();
+                              const response = await fetch(`/api/manager/kitchens/${kitchen.id}/details`, {
+                                method: 'PUT',
+                                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                credentials: 'include',
+                                body: JSON.stringify({ smartLockEnabled: newVal })
+                              });
+                              if (!response.ok) throw new Error('Failed to update');
+                              queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+                              toast({ title: newVal ? "Smart lock enabled" : "Smart lock disabled" });
+                            } catch (e: any) {
+                              logger.error('Smart lock toggle error:', e);
+                              toast({ title: "Failed to update", variant: "destructive" });
+                            }
+                          }}
+                          className={cn(
+                            "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                            kitchen.smartLockEnabled ? "bg-blue-600" : "bg-gray-200"
+                          )}
+                        >
+                          <span className={cn(
+                            "inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow",
+                            kitchen.smartLockEnabled ? "translate-x-6" : "translate-x-1"
+                          )} />
+                        </button>
+                      </div>
+
+                      {/*
+                        When smart lock is enabled, the manager configures
+                        the static access code + format + visibility via the
+                        "Smart Lock & Access Codes" section on the Check-In /
+                        Out settings page. No provider/API credentials here.
+                      */}
+                      {kitchen.smartLockEnabled && (
+                        <p className="text-xs text-muted-foreground pl-11">
+                          Configure the access code and visibility in{" "}
+                          <span className="font-medium">Check-In / Out</span> settings.
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           ))}

@@ -14,10 +14,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { apiGet, apiPut } from "@/lib/api";
 
 interface KitchenPricing {
-  hourlyRate: number | null;
+  /** Raw input string in dollars (e.g. "15.50"). Empty string = unset. Stored as string so trailing decimals survive while typing. */
+  hourlyRate: string;
   currency: string;
   pricingModel: 'hourly' | 'daily' | 'weekly';
-  taxRatePercent: number | null;
+  /** Raw input string as a percentage (e.g. "13" or "13.5"). Empty string = unset. */
+  taxRatePercent: string;
 }
 
 interface KitchenPricingManagementProps {
@@ -57,12 +59,12 @@ function KitchenPricingContent({
 
   const [kitchenName, setKitchenName] = useState<string>('');
 
-  // Pricing form state
+  // Pricing form state — string-based so users can type decimals freely (e.g. "5." → "5.5" → "5.50")
   const [pricing, setPricing] = useState<KitchenPricing>({
-    hourlyRate: null,
+    hourlyRate: '',
     currency: 'CAD',
     pricingModel: 'hourly',
-    taxRatePercent: null,
+    taxRatePercent: '',
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -81,11 +83,15 @@ function KitchenPricingContent({
       logger.info('Pricing loaded:', data);
 
       setPricing({
-        // Convert cents to dollars for UI display
-        hourlyRate: data.hourlyRate !== undefined && data.hourlyRate !== null ? Number(data.hourlyRate) / 100 : null,
+        // Convert cents to dollars formatted as fixed 2-decimal string for clean display
+        hourlyRate: data.hourlyRate !== undefined && data.hourlyRate !== null
+          ? (Number(data.hourlyRate) / 100).toFixed(2)
+          : '',
         currency: data.currency || 'CAD',
         pricingModel: data.pricingModel || 'hourly',
-        taxRatePercent: data.taxRatePercent !== undefined && data.taxRatePercent !== null ? Number(data.taxRatePercent) : null,
+        taxRatePercent: data.taxRatePercent !== undefined && data.taxRatePercent !== null
+          ? String(Number(data.taxRatePercent))
+          : '',
       });
     } catch (error) {
       logger.error('Error loading pricing:', error);
@@ -103,8 +109,8 @@ function KitchenPricingContent({
       loadPricing();
     } else {
       setPricing({
-        hourlyRate: null,
-        taxRatePercent: null,
+        hourlyRate: '',
+        taxRatePercent: '',
         currency: 'CAD',
         pricingModel: 'hourly',
       });
@@ -122,8 +128,12 @@ function KitchenPricingContent({
       return;
     }
 
-    // Validate pricing data before sending
-    if (pricing.hourlyRate !== null && pricing.hourlyRate !== undefined && (isNaN(pricing.hourlyRate) || pricing.hourlyRate < 0)) {
+    // Parse string inputs into numbers for validation + payload
+    const hourlyRateNum = pricing.hourlyRate.trim() === '' ? null : parseFloat(pricing.hourlyRate);
+    const taxRateNum = pricing.taxRatePercent.trim() === '' ? null : parseFloat(pricing.taxRatePercent);
+
+    // Validate hourly rate
+    if (hourlyRateNum !== null && (isNaN(hourlyRateNum) || hourlyRateNum < 0)) {
       toast({
         title: "Validation Error",
         description: "Hourly rate must be a positive number or empty",
@@ -132,18 +142,28 @@ function KitchenPricingContent({
       return;
     }
 
+    // Validate tax rate
+    if (taxRateNum !== null && (isNaN(taxRateNum) || taxRateNum < 0)) {
+      toast({
+        title: "Validation Error",
+        description: "Tax rate must be a positive number or empty",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSaving(true);
     try {
       // Prepare payload - convert dollars to cents for database storage
-      const hourlyRateInCents = pricing.hourlyRate === null || pricing.hourlyRate === undefined
+      const hourlyRateInCents = hourlyRateNum === null
         ? null
-        : Math.round(Number(pricing.hourlyRate) * 100); // Convert dollars to cents
+        : Math.round(hourlyRateNum * 100);
 
       const payload = {
         hourlyRate: hourlyRateInCents,
         currency: pricing.currency || 'CAD',
         pricingModel: pricing.pricingModel || 'hourly',
-        taxRatePercent: pricing.taxRatePercent,
+        taxRatePercent: taxRateNum,
       };
 
       logger.info('Saving kitchen pricing:', { kitchenId: selectedKitchenId, payload });
@@ -152,10 +172,14 @@ function KitchenPricingContent({
       logger.info('Pricing saved successfully:', updated);
       logger.info('Pricing saved successfully:', updated);
 
-      // Update state with the response data (convert cents back to dollars for UI)
+      // Update state with the response data (convert cents back to dollar string for UI)
       setPricing({
-        hourlyRate: updated.hourlyRate !== null && updated.hourlyRate !== undefined ? Number(updated.hourlyRate) / 100 : null,
-        taxRatePercent: updated.taxRatePercent !== undefined && updated.taxRatePercent !== null ? Number(updated.taxRatePercent) : null,
+        hourlyRate: updated.hourlyRate !== null && updated.hourlyRate !== undefined
+          ? (Number(updated.hourlyRate) / 100).toFixed(2)
+          : '',
+        taxRatePercent: updated.taxRatePercent !== undefined && updated.taxRatePercent !== null
+          ? String(Number(updated.taxRatePercent))
+          : '',
         currency: updated.currency || 'CAD',
         pricingModel: updated.pricingModel || 'hourly',
       });
@@ -235,12 +259,9 @@ function KitchenPricingContent({
             </Label>
             <CurrencyInput
               id="hourlyRate"
-              value={pricing.hourlyRate === null ? '' : String(pricing.hourlyRate)}
+              value={pricing.hourlyRate}
               onValueChange={(val) => {
-                setPricing({
-                  ...pricing,
-                  hourlyRate: val === '' ? null : parseFloat(val),
-                });
+                setPricing({ ...pricing, hourlyRate: val });
               }}
               placeholder="0.00"
               className="mt-2"
@@ -262,12 +283,9 @@ function KitchenPricingContent({
               id="taxRatePercent"
               allowDecimals
               suffix="%"
-              value={pricing.taxRatePercent === null ? '' : String(pricing.taxRatePercent)}
+              value={pricing.taxRatePercent}
               onValueChange={(val) => {
-                setPricing({
-                  ...pricing,
-                  taxRatePercent: val === '' ? null : parseFloat(val),
-                });
+                setPricing({ ...pricing, taxRatePercent: val });
               }}
               placeholder="e.g. 13"
               className="mt-2"

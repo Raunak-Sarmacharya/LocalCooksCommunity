@@ -817,19 +817,16 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       }
     });
 
-    // Sort upcoming by start time (ascending)
-    upcoming.sort((a, b) => {
-      const dateA = new Date(`${a.bookingDate.split('T')[0]}T${a.startTime}`);
-      const dateB = new Date(`${b.bookingDate.split('T')[0]}T${b.startTime}`);
-      return dateA.getTime() - dateB.getTime();
-    });
-
-    // Sort past by start time (descending - most recent first)
-    past.sort((a, b) => {
-      const dateA = new Date(`${a.bookingDate.split('T')[0]}T${a.startTime}`);
-      const dateB = new Date(`${b.bookingDate.split('T')[0]}T${b.startTime}`);
-      return dateB.getTime() - dateA.getTime();
-    });
+    // Sort using each booking's location timezone so two bookings in
+    // different time zones compare at their actual UTC instants rather than
+    // being aligned to the browser's local midnight.
+    const toStartMs = (bk: Booking): number => {
+      const dateStr = bk.bookingDate.split('T')[0];
+      const tz = bk.locationTimezone || DEFAULT_TIMEZONE;
+      return createBookingDateTime(dateStr, bk.startTime, tz).getTime();
+    };
+    upcoming.sort((a, b) => toStartMs(a) - toStartMs(b));
+    past.sort((a, b) => toStartMs(b) - toStartMs(a));
 
     return { upcomingBookings: upcoming, pastBookings: past };
   }, [bookings]);

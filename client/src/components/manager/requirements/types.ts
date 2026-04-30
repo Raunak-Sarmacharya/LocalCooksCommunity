@@ -56,7 +56,7 @@ export interface LocationRequirements {
   materials_description?: string;
 }
 
-export type WizardStep = 'step1' | 'step2' | 'facility';
+export type WizardStep = 'step1' | 'step2';
 
 export interface StepConfig {
   id: WizardStep;
@@ -80,13 +80,6 @@ export const WIZARD_STEPS: StepConfig[] = [
     description: 'Requirements for operational planning after initial approval',
     icon: 'settings-2',
     explanation: `**What is Step 2?**\n\nAfter you approve a chef's initial application, they enter the coordination phase. This is where you collect detailed documentation for compliance and operational planning.\n\n**Best Practices:**\n- Request food establishment license if legally required in your jurisdiction\n- Insurance documentation protects both parties\n- Use custom fields for location-specific requirements`
-  },
-  {
-    id: 'facility',
-    title: 'Facility Information',
-    description: 'Information automatically shared with approved chefs',
-    icon: 'building-2',
-    explanation: `**What is Facility Information?**\n\nThis information is automatically shared with chefs after approval. It helps them prepare for using your kitchen space.\n\n**Best Practices:**\n- Upload clear floor plans to reduce orientation time\n- Document ventilation specs for compliance\n- Keep equipment list updated for chef planning`
   }
 ];
 

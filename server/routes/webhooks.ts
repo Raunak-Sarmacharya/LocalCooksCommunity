@@ -50,7 +50,7 @@ router.post("/stripe", async (req: Request, res: Response) => {
     }
 
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2025-12-15.clover",
+      apiVersion: "2026-02-25.clover",
     });
 
     if (!webhookSecret) {
@@ -206,7 +206,7 @@ router.post("/stripe/manual-process-session", async (req: Request, res: Response
     }
 
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2025-12-15.clover",
+      apiVersion: "2026-02-25.clover",
     });
 
     // Retrieve the session from Stripe
@@ -262,7 +262,7 @@ async function handleCheckoutSessionCompleted(
     }
 
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2025-12-15.clover",
+      apiVersion: "2026-02-25.clover",
     });
 
     const expandedSession = await stripe.checkout.sessions.retrieve(
@@ -889,8 +889,8 @@ async function handleCheckoutSessionCompleted(
               }, db);
               
               // Update with additional Stripe data (charge_id, paid_at, stripe fees)
-              // AUTH-THEN-CAPTURE: For manual capture, skip fee sync — no balance_transaction exists yet
-              // Fees will be synced when payment_intent.succeeded fires after manager captures
+              // AUTH-THEN-CAPTURE: For manual capture, skip fee sync — no balance_transaction exists yet.
+              // Fees will be synced when payment_intent.succeeded fires after manager captures.
               if (ptRecord && !isManualCapture) {
                 // Get manager's Stripe Connect account for fee lookup
                 let managerConnectAccountId: string | undefined;
@@ -931,6 +931,33 @@ async function handleCheckoutSessionCompleted(
                 }
 
                 await updatePaymentTransaction(ptRecord.id, updateParams, db);
+
+                // SEPARATE CHARGES + TRANSFERS: Create transfer to manager now if Connect + balance_transaction available.
+                // Idempotent — payment_intent.succeeded handler will skip if already transferred.
+                if (managerConnectAccountId && stripeAmounts && stripeAmounts.stripeProcessingFee > 0 && paymentIntentId) {
+                  try {
+                    const { transferToManagerForBooking } = await import('../services/stripe-transfer-service');
+                    const transferResult = await transferToManagerForBooking({
+                      paymentIntentId,
+                      paymentTransactionId: ptRecord.id,
+                      chargeAmountCents: stripeAmounts.stripeAmount,
+                      actualStripeFeeCents: stripeAmounts.stripeProcessingFee,
+                      chargeId: chargeId || stripeAmounts.chargeId || undefined,
+                      transferGroup: `pi_${paymentIntentId}`,
+                    });
+                    if (transferResult.transferred) {
+                      await updatePaymentTransaction(ptRecord.id, {
+                        serviceFee: transferResult.feeWithheldCents,
+                        managerRevenue: transferResult.transferredCents,
+                        stripePlatformFee: transferResult.feeWithheldCents,
+                        stripeNetAmount: transferResult.transferredCents,
+                      }, db);
+                      logger.info(`[Webhook] Kitchen booking ${booking.id}: Transferred $${(transferResult.transferredCents / 100).toFixed(2)} to manager (transferId=${transferResult.transferId})`);
+                    }
+                  } catch (transferErr) {
+                    logger.error(`[Webhook] Kitchen booking ${booking.id}: Transfer error for ${paymentIntentId} (will retry on payment_intent.succeeded / charge.updated):`, transferErr);
+                  }
+                }
               } else if (ptRecord && isManualCapture) {
                 logger.info(`[Webhook] AUTH-THEN-CAPTURE: Skipping fee sync for booking ${booking.id} — fees will sync at capture time`);
               }
@@ -1395,7 +1422,8 @@ async function handleStorageExtensionPaymentCompleted(
       }, db);
 
       // Update with Stripe amounts if available
-      // AUTH-THEN-CAPTURE: Skip fee sync for manual capture — no balance_transaction exists yet
+      // AUTH-THEN-CAPTURE: Skip fee sync for manual capture — no balance_transaction exists yet.
+      //                    Transfer happens later when manager captures (payment_intent.succeeded webhook).
       if (ptRecord && paymentIntentId && !isManualCapture) {
         // Get manager's Stripe Connect account for fee lookup
         let managerConnectAccountId: string | undefined;
@@ -1424,6 +1452,53 @@ async function handleStorageExtensionPaymentCompleted(
             stripeProcessingFee: stripeAmounts.stripeProcessingFee,
             stripePlatformFee: stripeAmounts.stripePlatformFee,
           }, db);
+
+          // SEPARATE CHARGES + TRANSFERS: Create transfer to manager now.
+          // payment_intent.succeeded handler also runs this (idempotent).
+          if (managerConnectAccountId && stripeAmounts.stripeProcessingFee > 0) {
+            try {
+              const { transferToManagerForBooking } = await import('../services/stripe-transfer-service');
+              const transferResult = await transferToManagerForBooking({
+                paymentIntentId,
+                paymentTransactionId: ptRecord.id,
+                chargeAmountCents: stripeAmounts.stripeAmount,
+                actualStripeFeeCents: stripeAmounts.stripeProcessingFee,
+                chargeId: chargeId || stripeAmounts.chargeId || undefined,
+                transferGroup: `pi_${paymentIntentId}`,
+              });
+              if (transferResult.transferred) {
+                await updatePaymentTransaction(ptRecord.id, {
+                  serviceFee: transferResult.feeWithheldCents,
+                  managerRevenue: transferResult.transferredCents,
+                  stripePlatformFee: transferResult.feeWithheldCents,
+                  stripeNetAmount: transferResult.transferredCents,
+                  metadata: {
+                    checkout_session_id: sessionId,
+                    storage_booking_id: storageBookingId.toString(),
+                    storage_extension_id: pendingExtension.id.toString(),
+                    extension_days: extensionDays.toString(),
+                    new_end_date: newEndDate.toISOString(),
+                    extension_base_price_cents: extensionBasePriceCents.toString(),
+                    manager_connect_account_id: managerConnectAccountId,
+                    transfer: {
+                      transferred: true,
+                      transferredAt: new Date().toISOString(),
+                      source: 'checkout.session.completed',
+                      transferId: transferResult.transferId,
+                      actualStripeFeeCents: transferResult.actualStripeFeeCents,
+                      platformCommissionCents: transferResult.platformCommissionCents,
+                      feeWithheldCents: transferResult.feeWithheldCents,
+                      transferredCents: transferResult.transferredCents,
+                    },
+                  },
+                }, db);
+                logger.info(`[Webhook] Storage extension ${pendingExtension.id}: Transferred $${(transferResult.transferredCents / 100).toFixed(2)} to manager (transferId=${transferResult.transferId})`);
+              }
+            } catch (transferErr) {
+              logger.error(`[Webhook] Storage extension ${pendingExtension.id}: Transfer error for ${paymentIntentId} (will retry on charge.updated):`, transferErr);
+            }
+          }
+
           logger.info(`[Webhook] Updated payment_transactions with Stripe amounts for storage extension`);
         }
       }
@@ -1680,6 +1755,60 @@ async function handlePaymentIntentSucceeded(
             isPartialCapture,
           },
         );
+
+        // ENTERPRISE STANDARD — Separate Charges and Transfers
+        // Customer's full payment lands on platform balance. Stripe deducted the
+        // actual processing fee from that balance. Now transfer the manager's
+        // share to their Connect account: charge − actualStripeFee − platformCommission.
+        try {
+          const { transferToManagerForBooking } = await import(
+            "../services/stripe-transfer-service"
+          );
+          const transferResult = await transferToManagerForBooking({
+            paymentIntentId: paymentIntent.id,
+            paymentTransactionId: transaction.id,
+            chargeAmountCents: stripeAmounts.stripeAmount,
+            actualStripeFeeCents: stripeAmounts.stripeProcessingFee,
+            chargeId: typeof paymentIntent.latest_charge === "string"
+              ? paymentIntent.latest_charge
+              : paymentIntent.latest_charge?.id,
+            transferGroup: `pi_${paymentIntent.id}`,
+            existingMetadata: mergedMetadata,
+          });
+
+          if (transferResult.transferred) {
+            // Update PT to reflect actual transfer amounts
+            updateParams.serviceFee = transferResult.feeWithheldCents;
+            updateParams.managerRevenue = transferResult.transferredCents;
+            updateParams.stripePlatformFee = transferResult.feeWithheldCents;
+            updateParams.stripeNetAmount = transferResult.transferredCents;
+            updateParams.metadata = {
+              ...mergedMetadata,
+              transfer: {
+                transferred: true,
+                transferredAt: new Date().toISOString(),
+                transferId: transferResult.transferId,
+                actualStripeFeeCents: transferResult.actualStripeFeeCents,
+                platformCommissionCents: transferResult.platformCommissionCents,
+                feeWithheldCents: transferResult.feeWithheldCents,
+                transferredCents: transferResult.transferredCents,
+              },
+            };
+            logger.info(
+              `[Webhook] Transferred $${(transferResult.transferredCents / 100).toFixed(2)} to manager for ${paymentIntent.id} (transferId=${transferResult.transferId})`,
+            );
+          } else {
+            logger.info(
+              `[Webhook] Manager transfer skipped for ${paymentIntent.id}: ${transferResult.reason}`,
+            );
+          }
+        } catch (transferErr) {
+          // Transfer failure must not break the webhook — charge.updated retries it later
+          logger.error(
+            `[Webhook] Manager transfer error for ${paymentIntent.id} (continuing, will retry on charge.updated):`,
+            transferErr,
+          );
+        }
       }
 
       await updatePaymentTransaction(transaction.id, updateParams, db);
@@ -1688,11 +1817,17 @@ async function handlePaymentIntentSucceeded(
       );
 
       // Sync Stripe amounts to all related booking tables
+      // Uses post-transfer values if transfer occurred
       if (stripeAmounts) {
         const { syncStripeAmountsToBookings } = await import(
           "../services/payment-transactions-service"
         );
-        await syncStripeAmountsToBookings(paymentIntent.id, stripeAmounts, db);
+        const syncAmounts = {
+          ...stripeAmounts,
+          stripePlatformFee: updateParams.stripePlatformFee ?? stripeAmounts.stripePlatformFee,
+          stripeNetAmount: updateParams.stripeNetAmount ?? stripeAmounts.stripeNetAmount,
+        };
+        await syncStripeAmountsToBookings(paymentIntent.id, syncAmounts, db);
       }
     }
 
@@ -2544,6 +2679,52 @@ async function handleOverstayPenaltyPaymentCompleted(
             stripeProcessingFee: stripeAmounts.stripeProcessingFee,
             stripePlatformFee: stripeAmounts.stripePlatformFee,
           }, db);
+
+          // SEPARATE CHARGES + TRANSFERS: Create transfer to manager now that we know actual fee.
+          // If balance_transaction not ready yet, charge.updated webhook will retry.
+          if (managerConnectAccountId && stripeAmounts.stripeProcessingFee > 0) {
+            try {
+              const { transferToManagerForBooking } = await import('../services/stripe-transfer-service');
+              const transferResult = await transferToManagerForBooking({
+                paymentIntentId,
+                paymentTransactionId: ptRecord.id,
+                chargeAmountCents: stripeAmounts.stripeAmount,
+                actualStripeFeeCents: stripeAmounts.stripeProcessingFee,
+                chargeId: chargeId || stripeAmounts.chargeId || undefined,
+                transferGroup: `pi_${paymentIntentId}`,
+              });
+              if (transferResult.transferred) {
+                await updatePaymentTransaction(ptRecord.id, {
+                  serviceFee: transferResult.feeWithheldCents,
+                  managerRevenue: transferResult.transferredCents,
+                  stripePlatformFee: transferResult.feeWithheldCents,
+                  stripeNetAmount: transferResult.transferredCents,
+                  metadata: {
+                    checkout_session_id: sessionId,
+                    type: 'overstay_penalty',
+                    overstay_record_id: overstayRecordId.toString(),
+                    storage_booking_id: storageBookingId?.toString() || '',
+                    charge_id: chargeId || '',
+                    manager_connect_account_id: managerConnectAccountId,
+                    transfer: {
+                      transferred: true,
+                      transferredAt: new Date().toISOString(),
+                      source: 'checkout.session.completed',
+                      transferId: transferResult.transferId,
+                      actualStripeFeeCents: transferResult.actualStripeFeeCents,
+                      platformCommissionCents: transferResult.platformCommissionCents,
+                      feeWithheldCents: transferResult.feeWithheldCents,
+                      transferredCents: transferResult.transferredCents,
+                    },
+                  },
+                }, db);
+                logger.info(`[Webhook] Overstay penalty ${overstayRecordId}: Transferred $${(transferResult.transferredCents / 100).toFixed(2)} to manager (transferId=${transferResult.transferId})`);
+              }
+            } catch (transferErr) {
+              logger.error(`[Webhook] Overstay penalty ${overstayRecordId}: Transfer error for ${paymentIntentId} (will retry on charge.updated):`, transferErr);
+            }
+          }
+
           logger.info(`[Webhook] Synced Stripe amounts for overstay penalty ${overstayRecordId}:`, {
             amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
             processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
@@ -2578,6 +2759,92 @@ async function handleOverstayPenaltyPaymentCompleted(
       chargeId,
       penaltyAmountCents,
     });
+
+    // Send in-app notifications and email to chef + manager notification
+    try {
+      const { notificationService } = await import("../services/notification.service");
+      const { sendEmail, generatePenaltyChargedEmail } = await import("../email");
+
+      // Get storage/kitchen name for notifications
+      let storageName = 'Storage';
+      let kitchenNameForNotif = 'Kitchen';
+      try {
+        const [booking] = await db
+          .select({ storageListingId: storageBookings.storageListingId })
+          .from(storageBookings)
+          .where(eq(storageBookings.id, overstayRecord.storageBookingId))
+          .limit(1);
+        if (booking?.storageListingId) {
+          const [listingInfo] = await db
+            .select({ name: storageListings.name, kitchenId: storageListings.kitchenId })
+            .from(storageListings)
+            .where(eq(storageListings.id, booking.storageListingId))
+            .limit(1);
+          storageName = listingInfo?.name || 'Storage';
+          if (listingInfo?.kitchenId) {
+            const [kitchenInfo] = await db
+              .select({ name: kitchens.name })
+              .from(kitchens)
+              .where(eq(kitchens.id, listingInfo.kitchenId))
+              .limit(1);
+            kitchenNameForNotif = kitchenInfo?.name || 'Kitchen';
+          }
+        }
+      } catch (nameErr) {
+        logger.warn(`[Webhook] Could not fetch storage/kitchen name for overstay notification`);
+      }
+
+      // Chef notification
+      if (!isNaN(chefId)) {
+        await notificationService.notifyChefPenaltyCharged({
+          chefId,
+          overstayId: overstayRecordId,
+          storageName,
+          kitchenName: kitchenNameForNotif,
+          daysOverdue: overstayRecord.daysOverdue,
+          penaltyAmountCents,
+        });
+
+        // Chef email
+        const [chefUser] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, chefId))
+          .limit(1);
+        if (chefUser?.username) {
+          await sendEmail(generatePenaltyChargedEmail({
+            chefEmail: chefUser.username,
+            chefName: chefUser.username.split('@')[0],
+            storageName,
+            penaltyAmountCents,
+            daysOverdue: overstayRecord.daysOverdue,
+            chargeDate: new Date(),
+          }));
+          logger.info(`[Webhook] Sent penalty charged email to chef for overstay ${overstayRecordId}`);
+        }
+      }
+
+      // Manager notification
+      if (managerId) {
+        const [chefUser] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, chefId))
+          .limit(1);
+        await notificationService.notifyManagerPenaltyReceived({
+          managerId,
+          locationId: 0,
+          chefName: chefUser?.username?.split('@')[0] || 'A chef',
+          overstayId: overstayRecordId,
+          storageName,
+          kitchenName: kitchenNameForNotif,
+          daysOverdue: overstayRecord.daysOverdue,
+          penaltyAmountCents,
+        });
+      }
+    } catch (notifError) {
+      logger.error(`[Webhook] Error sending overstay payment notifications:`, notifError);
+    }
 
   } catch (error) {
     logger.error(`[Webhook] Error handling overstay penalty payment:`, error);
@@ -2683,7 +2950,7 @@ async function handleDamageClaimPaymentCompleted(
         },
       }, db);
 
-      // Fetch and sync actual Stripe fees
+      // Fetch and sync actual Stripe fees, then trigger manager Transfer
       if (ptRecord && paymentIntentId) {
         let managerConnectAccountId: string | undefined;
         if (claim.managerId) {
@@ -2712,6 +2979,51 @@ async function handleDamageClaimPaymentCompleted(
             stripeProcessingFee: stripeAmounts.stripeProcessingFee,
             stripePlatformFee: stripeAmounts.stripePlatformFee,
           }, db);
+
+          // SEPARATE CHARGES + TRANSFERS: Create transfer to manager now that we know actual fee.
+          // If balance_transaction not ready yet, charge.updated webhook will retry.
+          if (managerConnectAccountId && stripeAmounts.stripeProcessingFee > 0) {
+            try {
+              const { transferToManagerForBooking } = await import('../services/stripe-transfer-service');
+              const transferResult = await transferToManagerForBooking({
+                paymentIntentId,
+                paymentTransactionId: ptRecord.id,
+                chargeAmountCents: stripeAmounts.stripeAmount,
+                actualStripeFeeCents: stripeAmounts.stripeProcessingFee,
+                chargeId: chargeId || stripeAmounts.chargeId || undefined,
+                transferGroup: `pi_${paymentIntentId}`,
+              });
+              if (transferResult.transferred) {
+                await updatePaymentTransaction(ptRecord.id, {
+                  serviceFee: transferResult.feeWithheldCents,
+                  managerRevenue: transferResult.transferredCents,
+                  stripePlatformFee: transferResult.feeWithheldCents,
+                  stripeNetAmount: transferResult.transferredCents,
+                  metadata: {
+                    checkout_session_id: sessionId,
+                    type: 'damage_claim',
+                    damage_claim_id: claimId.toString(),
+                    charge_id: chargeId || '',
+                    manager_connect_account_id: managerConnectAccountId,
+                    transfer: {
+                      transferred: true,
+                      transferredAt: new Date().toISOString(),
+                      source: 'checkout.session.completed',
+                      transferId: transferResult.transferId,
+                      actualStripeFeeCents: transferResult.actualStripeFeeCents,
+                      platformCommissionCents: transferResult.platformCommissionCents,
+                      feeWithheldCents: transferResult.feeWithheldCents,
+                      transferredCents: transferResult.transferredCents,
+                    },
+                  },
+                }, db);
+                logger.info(`[Webhook] Damage claim ${claimId}: Transferred $${(transferResult.transferredCents / 100).toFixed(2)} to manager (transferId=${transferResult.transferId})`);
+              }
+            } catch (transferErr) {
+              logger.error(`[Webhook] Damage claim ${claimId}: Transfer error for ${paymentIntentId} (will retry on charge.updated):`, transferErr);
+            }
+          }
+
           logger.info(`[Webhook] Synced Stripe amounts for damage claim ${claimId}:`, {
             amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
             processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
@@ -2732,6 +3044,77 @@ async function handleDamageClaimPaymentCompleted(
       chargeId,
       chargeAmount,
     });
+
+    // Send in-app notifications and email to chef + manager notification
+    try {
+      const { notificationService } = await import("../services/notification.service");
+      const { sendEmail, generateDamageClaimChargedEmail } = await import("../email");
+
+      // Get location name for notifications
+      let locationName = 'Location';
+      try {
+        const { locations: locTable } = await import("@shared/schema");
+        const [loc] = await db
+          .select({ name: locTable.name })
+          .from(locTable)
+          .where(eq(locTable.id, claim.locationId))
+          .limit(1);
+        locationName = loc?.name || 'Location';
+      } catch {}
+
+      const claimTitle = claim.claimTitle || 'Damage Claim';
+
+      // Chef notification
+      if (!isNaN(chefId)) {
+        await notificationService.notifyChefDamageClaimCharged({
+          chefId,
+          claimId,
+          claimTitle,
+          amountCents: chargeAmount,
+          locationName,
+          bookingType: claim.bookingType || 'kitchen',
+        });
+
+        // Chef email
+        const [chefUser] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, chefId))
+          .limit(1);
+        if (chefUser?.username) {
+          await sendEmail(generateDamageClaimChargedEmail({
+            chefEmail: chefUser.username,
+            chefName: chefUser.username.split('@')[0],
+            claimTitle,
+            chargedAmount: `$${(chargeAmount / 100).toFixed(2)} CAD`,
+            locationName,
+            claimId,
+          }));
+          logger.info(`[Webhook] Sent damage claim charged email to chef for claim ${claimId}`);
+        }
+      }
+
+      // Manager notification
+      if (claim.managerId) {
+        const [chefUser] = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.id, chefId))
+          .limit(1);
+        await notificationService.notifyManagerDamageClaimReceived({
+          managerId: claim.managerId,
+          locationId: claim.locationId || 0,
+          chefName: chefUser?.username?.split('@')[0] || 'A chef',
+          claimId,
+          claimTitle,
+          amountCents: chargeAmount,
+          locationName,
+          bookingType: claim.bookingType || 'kitchen',
+        });
+      }
+    } catch (notifError) {
+      logger.error(`[Webhook] Error sending damage claim payment notifications:`, notifError);
+    }
 
   } catch (error) {
     logger.error(`[Webhook] Error handling damage claim payment:`, error);
@@ -2805,7 +3188,7 @@ async function handleChargeUpdated(
     }
 
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2025-12-15.clover",
+      apiVersion: "2026-02-25.clover",
     });
 
     const balanceTransactionId = typeof charge.balance_transaction === 'string'
@@ -2821,7 +3204,7 @@ async function handleChargeUpdated(
 
     // Calculate actual fees from balance transaction
     const stripeAmount = charge.amount;
-    const stripeNetAmount = balanceTransaction.net;
+    let stripeNetAmount = balanceTransaction.net;
     const stripeProcessingFee = balanceTransaction.fee;
 
     // Get application fee (platform fee) if applicable
@@ -2830,24 +3213,88 @@ async function handleChargeUpdated(
       stripePlatformFee = charge.application_fee_amount;
     }
 
-    // Update the payment transaction with actual Stripe data
+    // ENTERPRISE STANDARD — Separate Charges and Transfers (delayed path)
+    //   If payment_intent.succeeded ran before balance_transaction was available
+    //   (so transfer was skipped), this is the first chance to compute the manager's
+    //   share using the actual Stripe fee and create the transfer.
+    //   Idempotent: skipped if metadata.transfer.transferred is already true.
+    const updateParams: Parameters<typeof updatePaymentTransaction>[1] = {
+      stripeAmount,
+      stripeNetAmount,
+      stripeProcessingFee,
+      stripePlatformFee,
+      lastSyncedAt: new Date(),
+    };
+
+    try {
+      const existingMetadata = paymentTransaction.metadata
+        ? (typeof paymentTransaction.metadata === 'string'
+            ? JSON.parse(paymentTransaction.metadata)
+            : paymentTransaction.metadata)
+        : {};
+      const alreadyTransferred = existingMetadata?.transfer?.transferred === true;
+
+      if (!alreadyTransferred && stripeProcessingFee > 0 && paymentTransaction.manager_id) {
+        const { transferToManagerForBooking } = await import(
+          "../services/stripe-transfer-service"
+        );
+        const transferResult = await transferToManagerForBooking({
+          paymentIntentId,
+          paymentTransactionId: paymentTransaction.id,
+          chargeAmountCents: stripeAmount,
+          actualStripeFeeCents: stripeProcessingFee,
+          chargeId: charge.id,
+          transferGroup: `pi_${paymentIntentId}`,
+          existingMetadata,
+        });
+
+        if (transferResult.transferred) {
+          updateParams.serviceFee = transferResult.feeWithheldCents;
+          updateParams.managerRevenue = transferResult.transferredCents;
+          updateParams.stripePlatformFee = transferResult.feeWithheldCents;
+          updateParams.stripeNetAmount = transferResult.transferredCents;
+          updateParams.metadata = {
+            ...existingMetadata,
+            transfer: {
+              transferred: true,
+              transferredAt: new Date().toISOString(),
+              source: 'charge.updated',
+              transferId: transferResult.transferId,
+              actualStripeFeeCents: transferResult.actualStripeFeeCents,
+              platformCommissionCents: transferResult.platformCommissionCents,
+              feeWithheldCents: transferResult.feeWithheldCents,
+              transferredCents: transferResult.transferredCents,
+            },
+          };
+          stripeNetAmount = transferResult.transferredCents; // for log below
+          logger.info(
+            `[Webhook] charge.updated: Transferred $${(transferResult.transferredCents / 100).toFixed(2)} to manager for ${paymentIntentId} (transferId=${transferResult.transferId})`,
+          );
+        } else {
+          logger.info(
+            `[Webhook] charge.updated: Manager transfer skipped for ${paymentIntentId}: ${transferResult.reason}`,
+          );
+        }
+      }
+    } catch (transferErr) {
+      logger.error(
+        `[Webhook] charge.updated: Manager transfer error for ${paymentIntentId} (continuing):`,
+        transferErr,
+      );
+    }
+
+    // Update the payment transaction with actual Stripe data (and transfer values if applicable)
     await updatePaymentTransaction(
       paymentTransaction.id,
-      {
-        stripeAmount,
-        stripeNetAmount,
-        stripeProcessingFee,
-        stripePlatformFee,
-        lastSyncedAt: new Date(),
-      },
+      updateParams,
       db
     );
 
     logger.info(`[Webhook] ✅ charge.updated: Synced actual Stripe fees for ${paymentIntentId}:`, {
       amount: `$${(stripeAmount / 100).toFixed(2)}`,
-      netAmount: `$${(stripeNetAmount / 100).toFixed(2)}`,
+      netAmount: `$${((updateParams.stripeNetAmount ?? stripeNetAmount) / 100).toFixed(2)}`,
       processingFee: `$${(stripeProcessingFee / 100).toFixed(2)}`,
-      platformFee: `$${(stripePlatformFee / 100).toFixed(2)}`,
+      platformFee: `$${((updateParams.stripePlatformFee ?? stripePlatformFee) / 100).toFixed(2)}`,
     });
 
   } catch (error) {

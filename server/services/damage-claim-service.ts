@@ -44,7 +44,7 @@ import {
 // Initialize Stripe
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
-  apiVersion: '2025-12-15.clover',
+  apiVersion: '2026-02-25.clover',
 }) : null;
 
 // ============================================================================
@@ -1409,16 +1409,11 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
 
   managerStripeAccountId = manager?.stripeConnectAccountId || null;
 
-  // ENTERPRISE STANDARD: Calculate application_fee_amount for break-even on Stripe fees
-  // This ensures the platform doesn't absorb Stripe processing fees for damage claims
-  // Same approach as kitchen bookings: application_fee = Stripe processing fee (2.9% + $0.30)
-  let applicationFeeAmount: number | undefined;
-  if (managerStripeAccountId) {
-    const { calculateCheckoutFees } = await import('./stripe-checkout-fee-service');
-    const feeResult = calculateCheckoutFees(chargeAmount / 100); // Convert cents to dollars
-    applicationFeeAmount = feeResult.stripeProcessingFeeInCents;
-    logger.info(`[DamageClaimService] Calculated application fee for break-even: ${applicationFeeAmount} cents`);
-  }
+  // ARCHITECTURE — Separate Charges and Transfers:
+  //   No application_fee_amount, no transfer_data on the PaymentIntent.
+  //   Charge lands on platform balance. Webhook reads actual Stripe fee from
+  //   balance_transaction and creates a Transfer to the manager's Connect account.
+  //   manager_connect_account_id stored in metadata so the webhook knows the destination.
 
   // Update status to charge_pending
   await db
@@ -1440,8 +1435,6 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
       confirm: boolean;
       metadata: Record<string, string>;
       statement_descriptor_suffix: string;
-      transfer_data?: { destination: string };
-      application_fee_amount?: number;
     } = {
       amount: chargeAmount,
       currency: 'cad',
@@ -1460,16 +1453,9 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
     };
 
     if (managerStripeAccountId) {
-      paymentIntentParams.transfer_data = {
-        destination: managerStripeAccountId,
-      };
-      // ENTERPRISE STANDARD: Add application_fee_amount for break-even on Stripe fees
-      // This ensures the platform doesn't absorb Stripe processing fees
-      if (applicationFeeAmount && applicationFeeAmount > 0) {
-        paymentIntentParams.application_fee_amount = applicationFeeAmount;
-        logger.info(`[DamageClaimService] Setting application_fee_amount: ${applicationFeeAmount} cents for break-even`);
-      }
-      logger.info(`[DamageClaimService] Using destination charge to manager: ${managerStripeAccountId}`);
+      // Store destination in metadata so the webhook can find the manager Connect account
+      paymentIntentParams.metadata.manager_connect_account_id = managerStripeAccountId;
+      logger.info(`[DamageClaimService] PaymentIntent will be charged to platform; transfer to ${managerStripeAccountId} happens in webhook`);
     }
 
     // ENTERPRISE STANDARD: Use idempotency key to prevent duplicate charges
@@ -1509,15 +1495,22 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
         { paymentIntentId: paymentIntent.id, chargeId }
       );
 
-      // Create payment transaction record
-      // ENTERPRISE STANDARD: Include application_fee_amount as serviceFee for accurate tracking
-      // Manager revenue = chargeAmount - applicationFeeAmount (Stripe fee deducted)
+      // Create payment transaction record (initial values; webhook overrides with actual transfer)
+      //
+      // ARCHITECTURE — Separate Charges and Transfers:
+      //   At this point we don't know the actual Stripe processing fee yet
+      //   (balance_transaction may not be ready). The webhook (payment_intent.succeeded
+      //   or charge.updated) will:
+      //     1. Read balance_transaction.fee
+      //     2. Call stripe.transfers.create() to send (charge − actualFee − commission)
+      //        to the manager's Connect account
+      //     3. Update PT.serviceFee and PT.managerRevenue to reflect the actual transfer
+      //   We seed the PT with conservative initial values (serviceFee=0, managerRevenue=charge);
+      //   they will be corrected by the webhook.
       try {
         const { createPaymentTransaction, updatePaymentTransaction } = await import("./payment-transactions-service");
         const { getStripePaymentAmounts } = await import("./stripe-service");
-        const serviceFeeForTransaction = applicationFeeAmount || 0;
-        const managerRevenueForTransaction = chargeAmount - serviceFeeForTransaction;
-        
+
         const ptRecord = await createPaymentTransaction({
           bookingId: claim.bookingType === 'storage' ? claim.storageBookingId! : claim.kitchenBookingId!,
           bookingType: claim.bookingType as 'kitchen' | 'storage',
@@ -1525,8 +1518,8 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
           managerId: claim.managerId,
           amount: chargeAmount,
           baseAmount: chargeAmount, // No tax on damage claims, so base = amount
-          serviceFee: serviceFeeForTransaction, // Platform fee (covers Stripe processing)
-          managerRevenue: managerRevenueForTransaction, // What manager actually receives
+          serviceFee: 0, // Will be set by webhook to actualStripeFee + platformCommission
+          managerRevenue: chargeAmount, // Will be reduced by webhook to actual transfer amount
           currency: "CAD",
           paymentIntentId: paymentIntent.id,
           chargeId: chargeId || undefined,
@@ -1535,15 +1528,14 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
           metadata: {
             type: "damage_claim",
             damage_claim_id: claimId.toString(),
-            is_reimbursement: "true", // Flag to identify as reimbursement in UI
-            no_tax: "true", // Flag to indicate no tax should be displayed
-            application_fee_cents: serviceFeeForTransaction.toString(),
+            is_reimbursement: "true",
+            no_tax: "true",
+            manager_connect_account_id: managerStripeAccountId || '',
           },
         }, db);
 
-        // ENTERPRISE STANDARD: Fetch and sync actual Stripe fees from Balance Transaction API
-        // Same pattern as overstay-penalty-service.ts — ensures stripe_processing_fee is populated
-        // so the manager's transaction history table shows the correct Stripe Fee column
+        // Try to sync stripe fees and create the transfer immediately if balance_transaction is ready.
+        // If not ready, charge.updated webhook will retry the transfer.
         if (ptRecord) {
           const stripeAmounts = await getStripePaymentAmounts(paymentIntent.id, managerStripeAccountId || undefined);
           if (stripeAmounts) {
@@ -1553,18 +1545,57 @@ export async function chargeApprovedClaim(claimId: number): Promise<ChargeResult
               stripeAmount: stripeAmounts.stripeAmount,
               stripeProcessingFee: stripeAmounts.stripeProcessingFee,
               stripePlatformFee: stripeAmounts.stripePlatformFee,
+              stripeNetAmount: stripeAmounts.stripeNetAmount,
             }, db);
+
+            // Create transfer to manager if Connect account + balance_transaction available
+            if (managerStripeAccountId && stripeAmounts.stripeProcessingFee > 0) {
+              const { transferToManagerForBooking } = await import('./stripe-transfer-service');
+              try {
+                const transferResult = await transferToManagerForBooking({
+                  paymentIntentId: paymentIntent.id,
+                  paymentTransactionId: ptRecord.id,
+                  chargeAmountCents: stripeAmounts.stripeAmount,
+                  actualStripeFeeCents: stripeAmounts.stripeProcessingFee,
+                  chargeId: chargeId || stripeAmounts.chargeId || undefined,
+                  transferGroup: `pi_${paymentIntent.id}`,
+                });
+                if (transferResult.transferred) {
+                  await updatePaymentTransaction(ptRecord.id, {
+                    serviceFee: transferResult.feeWithheldCents,
+                    managerRevenue: transferResult.transferredCents,
+                    stripePlatformFee: transferResult.feeWithheldCents,
+                    stripeNetAmount: transferResult.transferredCents,
+                    metadata: {
+                      type: 'damage_claim',
+                      damage_claim_id: claimId.toString(),
+                      is_reimbursement: 'true',
+                      no_tax: 'true',
+                      manager_connect_account_id: managerStripeAccountId,
+                      transfer: {
+                        transferred: true,
+                        transferId: transferResult.transferId,
+                        actualStripeFeeCents: transferResult.actualStripeFeeCents,
+                        platformCommissionCents: transferResult.platformCommissionCents,
+                        feeWithheldCents: transferResult.feeWithheldCents,
+                        transferredCents: transferResult.transferredCents,
+                      },
+                    },
+                  }, db);
+                }
+              } catch (transferErr) {
+                logger.error(`[DamageClaimService] Transfer error for ${paymentIntent.id} (will retry on charge.updated):`, transferErr);
+              }
+            }
+
             logger.info(`[DamageClaimService] Synced Stripe fees for damage claim ${claimId}:`, {
               processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
-              platformFee: `$${(stripeAmounts.stripePlatformFee / 100).toFixed(2)}`,
             });
           }
         }
 
         logger.info(`[DamageClaimService] Created payment transaction for damage claim ${claimId}`, {
           amount: chargeAmount,
-          serviceFee: serviceFeeForTransaction,
-          managerRevenue: managerRevenueForTransaction,
         });
       } catch (ptError) {
         logger.error(`[DamageClaimService] Failed to create payment transaction:`, ptError);
@@ -1931,13 +1962,10 @@ export async function createDamageClaimPaymentCheckout(
       .limit(1);
     managerStripeAccountId = manager?.stripeConnectAccountId || null;
 
-    // Calculate application fee for break-even
-    let applicationFeeAmount: number | undefined;
-    if (managerStripeAccountId) {
-      const { calculateCheckoutFees } = await import('./stripe-checkout-fee-service');
-      const feeResult = calculateCheckoutFees(chargeAmount / 100);
-      applicationFeeAmount = feeResult.stripeProcessingFeeInCents;
-    }
+    // ARCHITECTURE — Separate Charges and Transfers:
+    //   No transfer_data, no application_fee_amount on the Checkout session.
+    //   Charge lands on platform balance. Webhook creates Transfer to manager
+    //   using actual Stripe fee from balance_transaction.
 
     // Get chef email
     const [chef] = await db
@@ -1967,6 +1995,7 @@ export async function createDamageClaimPaymentCheckout(
         damage_claim_id: claimId.toString(),
         chef_id: chefId.toString(),
         manager_id: claim.managerId.toString(),
+        manager_connect_account_id: managerStripeAccountId || '',
       },
       invoice_creation: {
         enabled: true,
@@ -1992,17 +2021,9 @@ export async function createDamageClaimPaymentCheckout(
       };
     }
 
-    if (managerStripeAccountId) {
-      sessionParams.payment_intent_data = {
-        ...sessionParams.payment_intent_data,
-        transfer_data: {
-          destination: managerStripeAccountId,
-        },
-      };
-      if (applicationFeeAmount && applicationFeeAmount > 0) {
-        sessionParams.payment_intent_data.application_fee_amount = applicationFeeAmount;
-      }
-    }
+    // No transfer_data / no application_fee_amount.
+    // The webhook will read balance_transaction.fee and call stripe.transfers.create()
+    // to send (charge − actualFee − platformCommission) to the manager Connect account.
 
     const session = await stripe.checkout.sessions.create(sessionParams);
 
@@ -2480,7 +2501,7 @@ export async function refundDamageClaim(
       }
     }
 
-    // Send refund notification email to chef
+    // Send refund notification email + in-app notification to chef
     try {
       const [chef] = await db
         .select({ email: users.username })
@@ -2503,6 +2524,35 @@ export async function refundDamageClaim(
           text: `Damage Claim Refund\n\nA ${isFullRefund ? 'full' : 'partial'} refund of $${(refundAmount/100).toFixed(2)} has been issued for your damage claim.\n\nClaim: ${claim.claimTitle}\nReason: ${refundReason}`,
         });
         logger.info(`[DamageClaimService] Sent refund notification email to chef ${chef.email}`);
+      }
+
+      // In-app notification
+      try {
+        const { notificationService } = await import('./notification.service');
+        // Get location name for notification
+        let locationName = 'Location';
+        try {
+          const [loc] = await db
+            .select({ name: locations.name })
+            .from(locations)
+            .where(eq(locations.id, claim.locationId))
+            .limit(1);
+          locationName = loc?.name || 'Location';
+        } catch {}
+
+        await notificationService.notifyChefDamageClaimRefunded({
+          chefId: claim.chefId,
+          claimId: claim.id,
+          claimTitle: claim.claimTitle,
+          amountCents: chargedAmount,
+          refundAmountCents: refundAmount,
+          refundReason,
+          locationName,
+          bookingType: claim.bookingType,
+        });
+        logger.info(`[DamageClaimService] Sent refund in-app notification to chef for claim ${claimId}`);
+      } catch (notifError) {
+        logger.error(`[DamageClaimService] Error sending refund in-app notification:`, notifError);
       }
     } catch (emailError) {
       logger.error(`[DamageClaimService] Error sending refund notification email:`, emailError);

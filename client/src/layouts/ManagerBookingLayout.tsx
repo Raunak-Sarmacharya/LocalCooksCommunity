@@ -44,9 +44,11 @@ export default function ManagerBookingLayout({
         return name.slice(0, 2).toUpperCase()
     }
 
-    // Handle view change - navigate to dashboard with correct view
+    // Handle view change - navigate to dashboard with correct view.
+    // We REPLACE the current sub-page entry so the back button skips this
+    // booking-detail page and returns to wherever the manager came from.
     const handleViewChange = (view: string) => {
-        navigate(`/manager/dashboard?view=${view}`)
+        navigate(`/manager/dashboard?view=${view}`, { replace: true })
     }
 
     return (

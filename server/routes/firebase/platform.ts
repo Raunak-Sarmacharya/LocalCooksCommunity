@@ -14,12 +14,12 @@ router.get('/platform-settings/stripe-fees', async (req: Request, res: Response)
         const { getFeeConfig } = await import('../../services/stripe-checkout-fee-service');
         const config = await getFeeConfig();
         
-        // Return fee configuration for client-side calculations
+        // Return fee configuration for client-side display estimates only.
+        // Real fees are deducted at transfer time using actual balance_transaction.fee.
         return res.json({
             stripePercentageFee: config.stripePercentageFee,
             stripeFlatFeeCents: config.stripeFlatFeeCents,
             platformCommissionRate: config.platformCommissionRate,
-            useStripePlatformPricing: config.useStripePlatformPricing,
             // Human-readable values
             stripePercentageDisplay: `${(config.stripePercentageFee * 100).toFixed(1)}%`,
             stripeFlatFeeDisplay: `$${(config.stripeFlatFeeCents / 100).toFixed(2)}`,
@@ -32,7 +32,6 @@ router.get('/platform-settings/stripe-fees', async (req: Request, res: Response)
             stripePercentageFee: 0.029,
             stripeFlatFeeCents: 30,
             platformCommissionRate: 0,
-            useStripePlatformPricing: false,
             stripePercentageDisplay: '2.9%',
             stripeFlatFeeDisplay: '$0.30',
             platformCommissionDisplay: '0%',
@@ -368,6 +367,94 @@ router.put('/admin/platform-settings/overstay-penalties', requireFirebaseAuthWit
     } catch (error) {
         logger.error('Error updating overstay penalty defaults:', error);
         res.status(500).json({ error: 'Failed to update overstay penalty defaults' });
+    }
+});
+
+// 🔥 Admin Platform Settings Endpoints - Kitchen Time Window Defaults
+// Get kitchen check-in/out time window defaults (admin)
+router.get('/admin/platform-settings/kitchen-time-windows', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const keys = [
+            'kitchen_checkin_window_minutes_before',
+            'kitchen_no_show_grace_minutes',
+            'kitchen_checkout_review_window_minutes',
+        ];
+
+        const defaults: Record<string, { key: string; value: string; intValue: number; description: string | null; updatedAt: Date | null }> = {
+            checkinWindowMinutesBefore: { key: 'kitchen_checkin_window_minutes_before', value: '15', intValue: 15, description: 'How early (in minutes) before start time a chef can check in', updatedAt: null },
+            noShowGraceMinutes: { key: 'kitchen_no_show_grace_minutes', value: '30', intValue: 30, description: 'Grace period (in minutes) after start time before marking no-show', updatedAt: null },
+            checkoutReviewWindowMinutes: { key: 'kitchen_checkout_review_window_minutes', value: '60', intValue: 60, description: 'How long (in minutes) manager has to review a checkout request', updatedAt: null },
+        };
+
+        for (const key of keys) {
+            const [setting] = await db
+                .select()
+                .from(platformSettings)
+                .where(eq(platformSettings.key, key))
+                .limit(1);
+
+            if (setting) {
+                // Map key to response field
+                if (key === 'kitchen_checkin_window_minutes_before') {
+                    defaults.checkinWindowMinutesBefore = { key, value: setting.value, intValue: parseInt(setting.value), description: setting.description, updatedAt: setting.updatedAt };
+                } else if (key === 'kitchen_no_show_grace_minutes') {
+                    defaults.noShowGraceMinutes = { key, value: setting.value, intValue: parseInt(setting.value), description: setting.description, updatedAt: setting.updatedAt };
+                } else if (key === 'kitchen_checkout_review_window_minutes') {
+                    defaults.checkoutReviewWindowMinutes = { key, value: setting.value, intValue: parseInt(setting.value), description: setting.description, updatedAt: setting.updatedAt };
+                }
+            }
+        }
+
+        return res.json(defaults);
+    } catch (error) {
+        logger.error('Error getting kitchen time window defaults:', error);
+        res.status(500).json({ error: 'Failed to get kitchen time window defaults' });
+    }
+});
+
+// Update kitchen time window defaults
+router.put('/admin/platform-settings/kitchen-time-windows', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { checkinWindowMinutesBefore, noShowGraceMinutes, checkoutReviewWindowMinutes } = req.body;
+        const userId = req.neonUser!.id;
+
+        if (!userId) {
+            return res.status(401).json({ error: 'User not authenticated' });
+        }
+
+        const results: Record<string, any> = {};
+
+        const fields = [
+            { key: 'kitchen_checkin_window_minutes_before', value: checkinWindowMinutesBefore, label: 'checkinWindowMinutesBefore', min: 0, max: 120, description: 'How early (in minutes) before start time a chef can check in' },
+            { key: 'kitchen_no_show_grace_minutes', value: noShowGraceMinutes, label: 'noShowGraceMinutes', min: 0, max: 120, description: 'Grace period (in minutes) after start time before marking no-show' },
+            { key: 'kitchen_checkout_review_window_minutes', value: checkoutReviewWindowMinutes, label: 'checkoutReviewWindowMinutes', min: 0, max: 480, description: 'How long (in minutes) manager has to review a checkout request' },
+        ];
+
+        for (const field of fields) {
+            if (field.value !== undefined) {
+                const minutes = typeof field.value === 'string' ? parseInt(field.value) : field.value;
+                if (isNaN(minutes) || minutes < field.min || minutes > field.max) {
+                    return res.status(400).json({ error: `${field.label} must be between ${field.min} and ${field.max} minutes` });
+                }
+
+                const [existing] = await db.select().from(platformSettings).where(eq(platformSettings.key, field.key)).limit(1);
+                if (existing) {
+                    await db.update(platformSettings).set({ value: minutes.toString(), updatedBy: userId, updatedAt: new Date() }).where(eq(platformSettings.key, field.key));
+                    results[field.label] = { value: minutes, updated: true };
+                } else {
+                    await db.insert(platformSettings).values({ key: field.key, value: minutes.toString(), description: field.description, updatedBy: userId });
+                    results[field.label] = { value: minutes, created: true };
+                }
+            }
+        }
+
+        return res.json({
+            message: 'Kitchen time window defaults updated successfully',
+            results,
+        });
+    } catch (error) {
+        logger.error('Error updating kitchen time window defaults:', error);
+        res.status(500).json({ error: 'Failed to update kitchen time window defaults' });
     }
 });
 

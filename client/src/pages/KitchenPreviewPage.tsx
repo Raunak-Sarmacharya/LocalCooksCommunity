@@ -24,6 +24,7 @@ import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-a
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LocationMap } from "@/components/ui/location-map";
 import { cn } from "@/lib/utils";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -743,7 +744,17 @@ function StorageCard({ storage }: { storage: StorageListing }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // KITCHEN DETAILS SECTION - Enterprise-grade Notion-inspired design
 // ═══════════════════════════════════════════════════════════════════════════════
-function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
+interface KitchenDetailsSectionProps {
+  kitchen: PublicKitchen;
+  locationAddress?: string;
+  locationName?: string;
+}
+
+function KitchenDetailsSection({
+  kitchen,
+  locationAddress,
+  locationName,
+}: KitchenDetailsSectionProps) {
   const [activeTab, setActiveTab] = useState("overview");
   
   const allImages: string[] = useMemo(() => {
@@ -921,6 +932,21 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
                     </div>
                   )}
                   
+                  {/* Location Map */}
+                  {locationAddress && (
+                    <div className="pt-4 border-t border-border/50">
+                      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-muted-foreground" />
+                        Location
+                      </h3>
+                      <LocationMap
+                        address={locationAddress}
+                        name={locationName || kitchen.name}
+                        heightClassName="h-[220px]"
+                      />
+                    </div>
+                  )}
+
                   {/* Quick Stats */}
                   {(hasEquipment || hasStorage) && (
                     <div className="pt-4 border-t border-border/50">
@@ -1673,6 +1699,8 @@ export default function KitchenPreviewPage() {
                     equipment: kitchenEquipment || undefined,
                     storage: kitchenStorage || undefined,
                   }}
+                  locationAddress={location.address}
+                  locationName={location.name}
                 />
               ) : (
                 <motion.div
@@ -1700,16 +1728,18 @@ export default function KitchenPreviewPage() {
     return mainContent(locationData);
   };
 
-  // Handle sidebar navigation
+  // Handle sidebar navigation. We REPLACE the current preview-page entry so
+  // the back button doesn't bounce through this kitchen preview again.
   const handleViewChange = (view: string) => {
     setActiveView(view);
-    if (view === 'overview') navigate('/dashboard');
-    else if (view === 'discover-kitchens') navigate('/dashboard?view=discover-kitchens');
-    else if (view === 'kitchen-applications') navigate('/dashboard?view=kitchen-applications');
-    else if (view === 'bookings') navigate('/dashboard?view=bookings');
-    else if (view === 'applications') navigate('/dashboard?view=applications');
-    else if (view === 'messages') navigate('/dashboard?view=messages');
-    else if (view === 'training') navigate('/dashboard?view=training');
+    const opts = { replace: true } as const;
+    if (view === 'overview') navigate('/dashboard', opts);
+    else if (view === 'discover-kitchens') navigate('/dashboard?view=discover-kitchens', opts);
+    else if (view === 'kitchen-applications') navigate('/dashboard?view=kitchen-applications', opts);
+    else if (view === 'bookings') navigate('/dashboard?view=bookings', opts);
+    else if (view === 'applications') navigate('/dashboard?view=applications', opts);
+    else if (view === 'messages') navigate('/dashboard?view=messages', opts);
+    else if (view === 'training') navigate('/dashboard?view=training', opts);
   };
 
   // If user is authenticated, wrap in ChefDashboardLayout
@@ -1912,6 +1942,8 @@ export default function KitchenPreviewPage() {
                       equipment: kitchenEquipment || undefined,
                       storage: kitchenStorage || undefined,
                     }}
+                    locationAddress={location.address}
+                    locationName={location.name}
                   />
                 ) : (
                   <motion.div
