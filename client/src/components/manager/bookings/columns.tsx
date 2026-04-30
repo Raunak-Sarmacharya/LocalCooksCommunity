@@ -460,7 +460,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
 
             // Use actual Stripe transaction data when available
             const transactionAmount = row.original.transactionAmount;
-            const stripeFee = row.original.stripeProcessingFee ?? 0;
+            const managerRevenue = row.original.managerRevenue;
             
             // Fall back to booking totalPrice if no transaction data
             const displayAmount = transactionAmount ?? row.original.totalPrice ?? 0;
@@ -472,7 +472,23 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
             const taxAmount = taxRatePercent > 0
                 ? displayAmount - Math.round(displayAmount / (1 + taxRatePercent / 100))
                 : 0;
-            const netAmount = displayAmount - taxAmount - stripeFee;
+
+            // ENTERPRISE STANDARD: Use managerRevenue (from transfer service) as the authoritative
+            // "You receive" amount. The transfer service already deducted Stripe fee + platform
+            // commission. Only fall back to manual calculation when managerRevenue is not yet set.
+            // This prevents showing the full charge amount when stripeFee is still 0 (async webhook).
+            const netAmount = (managerRevenue != null && managerRevenue > 0)
+                ? managerRevenue
+                : displayAmount - taxAmount - (row.original.stripeProcessingFee ?? 0);
+
+            // Derive the effective Stripe fee: if stripeProcessingFee is synced, use it.
+            // Otherwise, if we have managerRevenue, back-calculate the total fees withheld.
+            // (totalFees = displayAmount - managerRevenue, stripeFee ≈ totalFees - tax)
+            const stripeFee = (row.original.stripeProcessingFee ?? 0) > 0
+                ? (row.original.stripeProcessingFee ?? 0)
+                : (managerRevenue != null && managerRevenue > 0 && displayAmount > 0)
+                    ? Math.max(0, displayAmount - managerRevenue - taxAmount)
+                    : 0;
             
             const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 

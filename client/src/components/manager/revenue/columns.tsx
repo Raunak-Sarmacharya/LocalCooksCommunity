@@ -270,7 +270,22 @@ export function getTransactionColumns({
                 <div className="text-right">Stripe Fee</div>
             ),
             cell: ({ row }) => {
-                const stripeFee = row.original.stripeFee ?? 0;
+                const rawStripeFee = row.original.stripeFee ?? 0;
+                const managerRevenue = row.original.managerRevenue ?? 0;
+                const totalPrice = row.original.totalPrice ?? 0;
+                const taxRate = row.original.taxRatePercent ?? 0;
+
+                // If stripeFee is synced from Stripe, use it directly.
+                // Otherwise, if managerRevenue is set (transfer happened), back-calculate:
+                //   effectiveFee = totalPrice - tax - managerRevenue
+                let stripeFee = rawStripeFee;
+                if (stripeFee === 0 && managerRevenue > 0 && totalPrice > 0) {
+                    const tax = taxRate > 0
+                        ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
+                        : 0;
+                    stripeFee = Math.max(0, totalPrice - tax - managerRevenue);
+                }
+
                 return (
                     <TooltipProvider>
                         <Tooltip>
@@ -328,14 +343,20 @@ export function getTransactionColumns({
             cell: ({ row }) => {
                 const totalPrice = row.original.totalPrice ?? 0;
                 const taxRate = row.original.taxRatePercent ?? 0;
+                const managerRevenue = row.original.managerRevenue ?? 0;
                 const stripeFee = row.original.stripeFee ?? 0;
                 const refundAmount = row.original.refundAmount ?? 0;
                 // Reverse-calculate correct tax from tax-inclusive total
                 const correctTax = taxRate > 0
                     ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
                     : 0;
-                // Recalculate net revenue with corrected tax
-                const correctNet = totalPrice - correctTax - stripeFee;
+                // ENTERPRISE STANDARD: Use managerRevenue (from transfer service) as the
+                // authoritative net amount when available. Only fall back to manual calculation
+                // when managerRevenue is not set (pre-transfer state).
+                // This prevents showing inflated net revenue when stripeFee is still 0.
+                const correctNet = (managerRevenue > 0)
+                    ? managerRevenue
+                    : totalPrice - correctTax - stripeFee;
                 const effectiveNet = Math.max(0, correctNet - refundAmount);
                 const hasRefund = refundAmount > 0;
                 return (
