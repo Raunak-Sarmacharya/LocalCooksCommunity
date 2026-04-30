@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
+import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import ManagerOnboardingWizard from "./ManagerOnboardingWizard";
 
 interface ManagerProtectedRouteProps {
@@ -146,6 +147,18 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   if (!isManager) {
     logger.info('ManagerProtectedRoute - User is not a manager, redirecting');
     return <Redirect to="/" />;
+  }
+
+  // Terms acceptance gate
+  const needsAcceptance =
+    !user?.termsAccepted ||
+    !user?.termsVersion ||
+    user?.termsVersion !== CURRENT_POLICY_VERSION;
+
+  if (needsAcceptance && location !== '/accept-terms') {
+    logger.info('ManagerProtectedRoute - Terms not accepted, redirecting to /accept-terms');
+    const redirectParam = encodeURIComponent(location);
+    return <Redirect to={`/accept-terms?redirect=${redirectParam}`} />;
   }
 
   // ENTERPRISE FIX: Check if onboarding is needed BEFORE rendering dashboard

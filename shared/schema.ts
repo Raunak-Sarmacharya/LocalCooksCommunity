@@ -84,6 +84,9 @@ export const users = pgTable("users", {
   // Manager onboarding fields
   managerOnboardingCompleted: boolean("manager_onboarding_completed").default(false).notNull(), // Whether manager completed onboarding
   managerOnboardingSkipped: boolean("manager_onboarding_skipped").default(false).notNull(), // Whether manager skipped onboarding
+  termsAccepted: boolean("terms_accepted").default(false).notNull(),
+  termsAcceptedAt: timestamp("terms_accepted_at"),
+  termsVersion: text("terms_version"),
   managerOnboardingStepsCompleted: jsonb("manager_onboarding_steps_completed").default({}).notNull(), // JSON object tracking completed onboarding steps
   // Chef onboarding fields (informative onboarding - no restrictions)
   chefOnboardingCompleted: boolean("chef_onboarding_completed").default(false).notNull(), // Whether chef completed informative onboarding

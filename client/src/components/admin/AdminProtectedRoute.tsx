@@ -4,13 +4,14 @@ import { Loader2 } from "lucide-react";
 import { Redirect, useLocation } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
+import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 
 interface AdminProtectedRouteProps {
   children: React.ReactNode;
 }
 
 export default function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   
   // Admin uses Firebase auth (session auth removed)
   const { user: firebaseUser, loading: firebaseLoading } = useFirebaseAuth();
@@ -118,6 +119,18 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
     logger.info('AdminProtectedRoute - User is not an admin, redirecting to login. User role:', user.role);
     logger.info('AdminProtectedRoute - Full user object:', user);
     return <Redirect to="/admin/login" />;
+  }
+
+  // Terms acceptance gate
+  const needsAcceptance =
+    !user?.termsAccepted ||
+    !user?.termsVersion ||
+    user?.termsVersion !== CURRENT_POLICY_VERSION;
+
+  if (needsAcceptance) {
+    logger.info('AdminProtectedRoute - Terms not accepted, redirecting to /accept-terms');
+    const redirectParam = encodeURIComponent(location);
+    return <Redirect to={`/accept-terms?redirect=${redirectParam}`} />;
   }
 
   logger.info('AdminProtectedRoute - Admin access granted for user:', {

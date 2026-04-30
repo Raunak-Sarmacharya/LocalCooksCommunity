@@ -52,6 +52,9 @@ export interface UpdateUserDTO {
   phpShopId?: number | null;
   phpShopStripeAccountId?: string | null;
   phpShopLinkedAt?: Date | null;
+  termsAccepted?: boolean;
+  termsAcceptedAt?: Date | null;
+  termsVersion?: string | null;
 }
 
 /**
@@ -81,6 +84,10 @@ export interface UserDTO {
   phpShopId: number | null;
   phpShopStripeAccountId: string | null;
   phpShopLinkedAt: Date | null;
+  // Terms acceptance
+  termsAccepted: boolean;
+  termsAcceptedAt: Date | null;
+  termsVersion: string | null;
 }
 
 /**
@@ -111,6 +118,11 @@ export interface CompleteUserProfileDTO {
   managerOnboardingCompleted?: boolean;
   managerOnboardingSkipped?: boolean;
   managerOnboardingStepsCompleted?: Record<string, boolean>;
+
+  // Terms acceptance data
+  termsAccepted?: boolean;
+  termsAcceptedAt?: Date | null;
+  termsVersion?: string | null;
 
   // Display name from applications
   fullName?: string;

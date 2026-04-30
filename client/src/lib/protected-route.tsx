@@ -1,4 +1,5 @@
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import { Loader2 } from "lucide-react";
 import React from "react";
 import { Redirect, Route } from "wouter";
@@ -25,6 +26,20 @@ export function ProtectedRoute({ path, component: Component }: ProtectedRoutePro
     return (
       <Route path={path}>
         <Redirect to={`/auth?redirect=${path}`} />
+      </Route>
+    );
+  }
+
+  // Terms acceptance gate
+  const needsAcceptance =
+    !user.termsAccepted ||
+    !user.termsVersion ||
+    user.termsVersion !== CURRENT_POLICY_VERSION;
+
+  if (needsAcceptance) {
+    return (
+      <Route path={path}>
+        <Redirect to={`/accept-terms?redirect=${path}`} />
       </Route>
     );
   }

@@ -12,6 +12,7 @@ import { motion } from "framer-motion";
 import { LogIn, UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, Redirect } from "wouter";
+import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
 import SEOHead from "@/components/SEO/SEOHead";
@@ -267,6 +268,22 @@ export default function EnhancedAuthPage() {
     }
 
     if (!loading && !isInitialLoad && user && hasAttemptedLogin && userMeta) {
+      // Terms acceptance gate
+      const needsTermsAcceptance =
+        !userMeta.terms_accepted ||
+        !userMeta.terms_version ||
+        userMeta.terms_version !== CURRENT_POLICY_VERSION;
+
+      if (needsTermsAcceptance) {
+        const redirectPath = getRedirectPath();
+        const targetPath = redirectPath !== '/' ? redirectPath : '/dashboard';
+        logger.info('🔒 TERMS ACCEPTANCE REQUIRED - redirecting to /accept-terms');
+        redirectTimeoutRef.current = setTimeout(() => {
+          setLocation(`/accept-terms?redirect=${targetPath}`);
+        }, 300);
+        return;
+      }
+
       // Skip welcome screen for admins and managers
       // Admins: Go straight to admin dashboard
       // Managers: Go to dashboard where ManagerOnboardingWizard will show

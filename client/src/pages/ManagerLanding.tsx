@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
+import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import { Building2, Loader2, Lock, ArrowRight, Calendar, Users, Settings } from "lucide-react";
 import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
@@ -166,6 +167,16 @@ export default function ManagerLanding() {
 
   // If logged in as manager, redirect to dashboard
   if (isManager) {
+    // Check if they need to accept terms first
+    const needsTermsAcceptance =
+      !(user as any)?.terms_accepted ||
+      !(user as any)?.terms_version ||
+      (user as any)?.terms_version !== CURRENT_POLICY_VERSION;
+
+    if (needsTermsAcceptance) {
+      return <Redirect to="/accept-terms?redirect=/manager/dashboard" />;
+    }
+
     // Check if they need to change password
     if ((user as any)?.has_seen_welcome === false) {
       return <Redirect to="/manager/change-password" />;

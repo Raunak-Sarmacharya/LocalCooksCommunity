@@ -9,6 +9,7 @@ import { auth } from "@/lib/firebase";
 import WelcomeScreen from "@/pages/welcome-screen";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, Redirect } from "wouter";
+import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 
 // WelcomeScreen component is now imported from @/pages/welcome-screen
 
@@ -111,7 +112,7 @@ export default function AuthPage() {
               });
               
               setUserMeta(userData);
-              
+
               // Check if user needs email verification
               if (!userData.is_verified) {
                 logger.info('📧 EMAIL VERIFICATION REQUIRED');
@@ -119,7 +120,25 @@ export default function AuthPage() {
                 setShowVerifyEmail(true);
                 return;
               }
-              
+
+              // Terms acceptance gate
+              const needsTermsAcceptance =
+                !userData.terms_accepted ||
+                !userData.terms_version ||
+                userData.terms_version !== CURRENT_POLICY_VERSION;
+
+              if (needsTermsAcceptance) {
+                logger.info('🔒 TERMS ACCEPTANCE REQUIRED - redirecting to /accept-terms');
+                let targetPath = '/dashboard';
+                if (userData.role === 'admin') {
+                  targetPath = '/admin';
+                } else if (userData.role === 'manager') {
+                  targetPath = '/manager/dashboard';
+                }
+                setLocation(`/accept-terms?redirect=${targetPath}`);
+                return;
+              }
+
               // Skip welcome screen for admins and managers
               // Admins: Go straight to admin dashboard
               // Managers: Go to dashboard where ManagerOnboardingWizard will show

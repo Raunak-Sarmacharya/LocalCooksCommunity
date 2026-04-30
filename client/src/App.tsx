@@ -31,6 +31,7 @@ import Privacy from "@/pages/Privacy";
 import Success from "@/pages/Success";
 import Terms from "@/pages/Terms";
 import WelcomeScreen from "@/pages/welcome-screen";
+import TermsAcceptanceScreen from "@/pages/TermsAcceptanceScreen";
 import ChefLanding from "@/pages/ChefLanding";
 import KitchenLanding from "@/pages/KitchenLanding";
 import AdminLanding from "@/pages/AdminLanding";
@@ -218,6 +219,7 @@ function Router() {
         <Route path="/password-reset" component={PasswordReset} />
         <Route path="/terms" component={Terms} />
         <Route path="/privacy" component={Privacy} />
+        <Route path="/accept-terms" component={TermsAcceptanceScreen} />
         <Route path="/resources">
           {subdomain === 'kitchen' ? <KitchenResourcesPage /> : <ChefResourcesPage />}
         </Route>
