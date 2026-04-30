@@ -3664,7 +3664,7 @@ ${new Date().getFullYear()} Local Cooks
   };
 };
 
-export const generateBookingConfirmationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; addons?: string }): EmailContent => {
+export const generateBookingConfirmationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; addons?: string; checkInWindowMinutesBefore?: number; noShowGraceMinutes?: number }): EmailContent => {
   const timezone = bookingData.timezone || 'America/St_Johns';
   const locationName = bookingData.locationName || bookingData.kitchenName;
   const dashboardUrl = getDashboardUrl();
@@ -3774,7 +3774,7 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
       <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
         <tr>
           <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
-          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Arrive 10&#8211;15 minutes early for check-in</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Check-in opens <strong>${bookingData.checkInWindowMinutesBefore ?? 15} minutes before</strong> your session and closes <strong>${bookingData.noShowGraceMinutes ?? 15} minutes after</strong> it begins.</td>
         </tr>
         <tr>
           <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
@@ -3825,7 +3825,7 @@ You must check in and check out for every booking session.
 Both steps are done from your dashboard — just open the booking and tap "Check In" or "Check Out."
 
 Before Your Session:
-• Arrive 10–15 minutes early for check-in
+• Check-in opens ${bookingData.checkInWindowMinutesBefore ?? 15} minutes before your session and closes ${bookingData.noShowGraceMinutes ?? 15} minutes after it begins.
 • Review the kitchen's specific terms and policies in your dashboard
 
 Need to Make Changes?

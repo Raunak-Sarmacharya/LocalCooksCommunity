@@ -1442,7 +1442,7 @@ export default function BookingDetailsPage() {
                         ? 'Amount Charged'
                         : isPartiallyRefunded
                           ? 'Amount Charged'
-                          : 'Total'}
+                          : 'Subtotal'}
                   </span>
                   <span className={`text-lg font-semibold font-mono ${
                     (booking.paymentStatus === 'failed' && booking.status === 'cancelled') || isRefunded
@@ -1590,12 +1590,12 @@ export default function BookingDetailsPage() {
                     <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
                       {booking.paymentStatus === 'authorized' ? 'Authorization' : 'Revenue'}
                     </h3>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        {booking.paymentStatus === 'authorized' ? 'Authorized' : 'Gross'}
-                      </span>
-                      <span className="font-mono">{formatCurrency(booking.paymentTransaction.amount)}</span>
-                    </div>
+                    {booking.paymentStatus !== 'authorized' && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Gross</span>
+                        <span className="font-mono">{formatCurrency(booking.paymentTransaction.amount)}</span>
+                      </div>
+                    )}
                     {(() => {
                       const amount = booking.paymentTransaction.amount || 0;
                       // ENTERPRISE STANDARD: Use actual values from payment_transactions table
@@ -1618,9 +1618,11 @@ export default function BookingDetailsPage() {
                           {taxRatePercent > 0 && (
                             <div className="flex justify-between text-sm">
                               <span className="text-muted-foreground">
-                                {isAuthorized ? `Est. Tax (${taxRatePercent}%)` : `Tax (${taxRatePercent}%)`}
+                                Tax ({taxRatePercent}%)
                               </span>
-                              <span className="font-mono text-muted-foreground">−{formatCurrency(taxAmount)}</span>
+                              <span className="font-mono text-muted-foreground">
+                                {isAuthorized ? `+${formatCurrency(taxAmount)}` : `−${formatCurrency(taxAmount)}`}
+                              </span>
                             </div>
                           )}
                           {!isAuthorized && platformFee > 0 && (
@@ -1643,10 +1645,10 @@ export default function BookingDetailsPage() {
                           <Separator className="my-2" />
                           <div className="flex justify-between text-sm font-medium">
                             <span>
-                              {isAuthorized ? 'Est. Net Revenue' : 'Net Revenue'}
+                              {isAuthorized ? 'Total Payment' : 'Net Revenue'}
                             </span>
                             <span className="font-mono">
-                              {formatCurrency(isAuthorized ? amount - taxAmount : netRevenue - ptRefundAmount)}
+                              {formatCurrency(isAuthorized ? amount : netRevenue - ptRefundAmount)}
                             </span>
                           </div>
                           {!isAuthorized && managerRevenue > 0 && (

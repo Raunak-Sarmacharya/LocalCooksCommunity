@@ -1663,7 +1663,7 @@ export default function KitchenBookingSheet({
             ) : grandTotal > 0 ? (
               <>
                 <CreditCard className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" />
-                <span className="truncate">Proceed to Checkout</span>
+                <span className="truncate">Checkout</span>
               </>
             ) : (
               <>

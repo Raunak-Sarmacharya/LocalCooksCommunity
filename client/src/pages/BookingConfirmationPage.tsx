@@ -812,7 +812,7 @@ export default function BookingConfirmationPage() {
                   ) : grandTotal > 0 ? (
                     <>
                       <CreditCard className="h-4 w-4" />
-                      Proceed to Checkout
+                      Checkout
                     </>
                   ) : (
                     "Confirm Booking"

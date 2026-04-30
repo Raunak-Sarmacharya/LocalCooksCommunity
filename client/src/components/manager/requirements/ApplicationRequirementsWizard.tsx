@@ -28,7 +28,6 @@ import { auth } from '@/lib/firebase';
 
 import { RequirementsStepOne } from './RequirementsStepOne';
 import { RequirementsStepTwo } from './RequirementsStepTwo';
-import { FacilityInfoStep } from './FacilityInfoStep';
 import { LocationRequirements, WizardStep, WIZARD_STEPS } from './types';
 
 export interface ApplicationRequirementsWizardHandle {
@@ -59,7 +58,6 @@ interface ApplicationRequirementsWizardProps {
 const STEP_ICONS: Record<WizardStep, React.ReactNode> = {
   step1: <ClipboardList className="h-5 w-5" />,
   step2: <Settings2 className="h-5 w-5" />,
-  facility: <Building2 className="h-5 w-5" />,
 };
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -139,7 +137,6 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
       if (data.id && data.id > 0) {
         completed.add('step1');
         completed.add('step2');
-        completed.add('facility');
       }
       setCompletedSteps(completed);
     }
@@ -369,7 +366,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
                         isActive ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400'
                       )}
                     >
-                      {step.id === 'step1' ? 'Initial Application' : step.id === 'step2' ? 'Kitchen Coordination' : 'Facility Info'}
+                      {step.id === 'step1' ? 'Initial Application' : 'Kitchen Coordination'}
                     </span>
                   </div>
                   <span
@@ -380,7 +377,6 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
                   >
                     {step.id === 'step1' && 'What chefs submit first'}
                     {step.id === 'step2' && 'After initial approval'}
-                    {step.id === 'facility' && 'Docs to share with chefs'}
                   </span>
                 </div>
 
@@ -430,13 +426,6 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
         )}
         {activeStep === 'step2' && (
           <RequirementsStepTwo
-            requirements={requirements}
-            onRequirementsChange={handleRequirementsChange}
-            onUnsavedChange={handleUnsavedChange}
-          />
-        )}
-        {activeStep === 'facility' && (
-          <FacilityInfoStep
             requirements={requirements}
             onRequirementsChange={handleRequirementsChange}
             onUnsavedChange={handleUnsavedChange}

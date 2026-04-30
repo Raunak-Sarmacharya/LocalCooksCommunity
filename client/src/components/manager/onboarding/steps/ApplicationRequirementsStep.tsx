@@ -7,7 +7,7 @@ import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import type { WizardStep } from "@/components/manager/requirements/types";
 
-const WIZARD_STEP_ORDER: WizardStep[] = ['step1', 'step2', 'facility'];
+const WIZARD_STEP_ORDER: WizardStep[] = ['step1', 'step2'];
 
 export default function ApplicationRequirementsStep() {
   const {

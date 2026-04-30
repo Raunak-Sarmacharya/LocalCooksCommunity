@@ -228,6 +228,7 @@ router.get(
           paymentStatus: kitchenBookings.paymentStatus,
           paymentIntentId: kitchenBookings.paymentIntentId,
           currency: kitchenBookings.currency,
+          referenceCode: kitchenBookings.referenceCode,
           createdAt: kitchenBookings.createdAt,
           updatedAt: kitchenBookings.updatedAt,
           kitchenName: kitchens.name,
@@ -5192,6 +5193,8 @@ router.put(
               locationName,
               locationAddress,
               addons,
+              checkInWindowMinutesBefore: (location as any).checkinWindowMinutesBefore ?? undefined,
+              noShowGraceMinutes: (location as any).noShowGraceMinutes ?? undefined,
             });
             const emailSent = await sendEmail(chefConfirmationEmail, { trackingId: `booking_${id}_confirmed_chef` });
             if (emailSent) {

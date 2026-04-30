@@ -586,28 +586,11 @@ export async function generateInvoicePDF(
         currentY += 18;
         doc.fillColor('#000000');
 
-        // Single deduction = application_fee_amount = what Stripe actually withheld from payout
+        // Show actual Stripe processing fee (from BalanceTransaction API)
         const stripeFeeLabel = dataSource === 'pending_sync'
           ? 'Stripe Fee (pending sync):'
           : 'Stripe Fee:';
-        addTotalRow(stripeFeeLabel, actualPlatformFee, true);
-
-        // Show actual processing fee as informational sub-line if it differs from what was deducted
-        // (this happens for international cards / AMEX where actual fee != static estimate)
-        if (
-          dataSource === 'stripe' &&
-          stripeProcessingFee > 0 &&
-          Math.abs(stripeProcessingFee - actualPlatformFee) > 0.01
-        ) {
-          doc.fontSize(8).fillColor('#9ca3af').font('Helvetica-Oblique');
-          doc.text(
-            `(actual Stripe processing fee: $${stripeProcessingFee.toFixed(2)})`,
-            390,
-            currentY - 12,
-            { width: 160, align: 'right' }
-          );
-          doc.font('Helvetica').fontSize(10).fillColor('#000000');
-        }
+        addTotalRow(stripeFeeLabel, stripeProcessingFee, true);
 
         // Net payout (bold, highlighted) — what was actually deposited to manager's Stripe account
         doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
@@ -623,7 +606,7 @@ export async function generateInvoicePDF(
         if (dataSource === 'stripe') {
           doc.text('* Net Payout is the actual amount Stripe transferred to your Connect account', 60, currentY);
           currentY += 12;
-          doc.text('* Stripe Fee = application fee withheld from your payout (covers Stripe processing)', 60, currentY);
+          doc.text('* Stripe Fee = actual processing fee charged by Stripe (from Balance Transaction)', 60, currentY);
           currentY += 12;
         }
         if (taxAmount > 0) {

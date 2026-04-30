@@ -217,29 +217,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
         </p>
       </div>
 
-      {/* Info Banner */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-violet-50 via-purple-50 to-violet-50 border border-violet-200/60 p-5">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-violet-200/30 rounded-full -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-purple-200/30 rounded-full translate-y-1/2 -translate-x-1/2" />
-        
-        <div className="relative flex items-start gap-3">
-          <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-violet-600 flex items-center justify-center text-white shadow-lg shadow-violet-500/30">
-            <Building2 className="h-5 w-5" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-lg font-semibold text-slate-900">
-              Shared with Approved Chefs
-            </h3>
-            <p className="text-sm text-slate-600 mt-1">
-              These documents help chefs prepare for using your kitchen space. They're automatically accessible after a chef is approved.
-            </p>
-            <Badge variant="info" className="mt-3">
-              <Info className="h-3 w-3 mr-1" />
-              Same data as Application Requirements → Facility Info
-            </Badge>
-          </div>
-        </div>
-      </div>
+
 
       {/* Floor Plans */}
       <Card>
