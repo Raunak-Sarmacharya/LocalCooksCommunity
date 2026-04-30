@@ -3141,15 +3141,6 @@ async function handleChargeUpdated(
   }
 
   try {
-    // Only process if balance_transaction just became available (was null, now has value)
-    const balanceTransactionWasNull = previousAttributes?.balance_transaction === null;
-    const balanceTransactionNowAvailable = charge.balance_transaction !== null;
-
-    if (!balanceTransactionWasNull || !balanceTransactionNowAvailable) {
-      // This update wasn't about balance_transaction becoming available - skip
-      return;
-    }
-
     const paymentIntentId = typeof charge.payment_intent === 'string' 
       ? charge.payment_intent 
       : charge.payment_intent?.id;
@@ -3290,6 +3281,19 @@ async function handleChargeUpdated(
       updateParams,
       db
     );
+
+    // Sync Stripe amounts to all related booking tables
+    const { syncStripeAmountsToBookings } = await import(
+      "../services/payment-transactions-service"
+    );
+    const syncAmounts = {
+      stripeAmount: updateParams.stripeAmount!,
+      stripeNetAmount: updateParams.stripeNetAmount!,
+      stripeProcessingFee: updateParams.stripeProcessingFee!,
+      stripePlatformFee: updateParams.stripePlatformFee!,
+      chargeId: typeof charge.id === 'string' ? charge.id : null,
+    };
+    await syncStripeAmountsToBookings(paymentIntentId, syncAmounts, db);
 
     logger.info(`[Webhook] ✅ charge.updated: Synced actual Stripe fees for ${paymentIntentId}:`, {
       amount: `$${(stripeAmount / 100).toFixed(2)}`,
