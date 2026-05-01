@@ -1,5 +1,7 @@
+import { CURRENT_POLICY_VERSION as VERSION } from "@shared/policy-config";
+
 /**
  * Current Terms & Privacy Policy version.
- * Bump this constant to force all users to re-accept on their next login.
+ * Re-exported from @shared/policy-config for convenience.
  */
-export const CURRENT_POLICY_VERSION = "v2.0";
+export const CURRENT_POLICY_VERSION = VERSION;

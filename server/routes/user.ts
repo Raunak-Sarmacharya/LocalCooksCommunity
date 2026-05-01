@@ -4,6 +4,8 @@ import { userService } from "../domains/users/user.service";
 import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { sendEmail, generateWelcomeEmail } from "../email";
 import { getFirebaseUserByEmail } from "../firebase-setup";
+import { CURRENT_POLICY_VERSION } from "@shared/policy-config";
+
 
 const router = Router();
 
@@ -433,9 +435,9 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
 /**
  * POST /api/user/accept-terms
  * Record explicit acceptance of Terms & Privacy Policy.
- * Server-side hardcodes the current policy version for integrity.
+ * Uses shared CURRENT_POLICY_VERSION for consistency.
  */
-const CURRENT_POLICY_VERSION = "v1.0";
+
 
 router.post("/accept-terms", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
   try {

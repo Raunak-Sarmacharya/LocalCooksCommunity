@@ -123,9 +123,9 @@ export default function AuthPage() {
 
               // Terms acceptance gate
               const needsTermsAcceptance =
-                !userData.terms_accepted ||
-                !userData.terms_version ||
-                userData.terms_version !== CURRENT_POLICY_VERSION;
+                !userData.termsAccepted ||
+                !userData.termsVersion ||
+                userData.termsVersion !== CURRENT_POLICY_VERSION;
 
               if (needsTermsAcceptance) {
                 logger.info('🔒 TERMS ACCEPTANCE REQUIRED - redirecting to /accept-terms');

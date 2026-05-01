@@ -169,9 +169,9 @@ export default function ManagerLanding() {
   if (isManager) {
     // Check if they need to accept terms first
     const needsTermsAcceptance =
-      !(user as any)?.terms_accepted ||
-      !(user as any)?.terms_version ||
-      (user as any)?.terms_version !== CURRENT_POLICY_VERSION;
+      !(user as any)?.termsAccepted ||
+      !(user as any)?.termsVersion ||
+      (user as any)?.termsVersion !== CURRENT_POLICY_VERSION;
 
     if (needsTermsAcceptance) {
       return <Redirect to="/accept-terms?redirect=/manager/dashboard" />;

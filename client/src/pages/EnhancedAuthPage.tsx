@@ -270,9 +270,9 @@ export default function EnhancedAuthPage() {
     if (!loading && !isInitialLoad && user && hasAttemptedLogin && userMeta) {
       // Terms acceptance gate
       const needsTermsAcceptance =
-        !userMeta.terms_accepted ||
-        !userMeta.terms_version ||
-        userMeta.terms_version !== CURRENT_POLICY_VERSION;
+        !userMeta.termsAccepted ||
+        !userMeta.termsVersion ||
+        userMeta.termsVersion !== CURRENT_POLICY_VERSION;
 
       if (needsTermsAcceptance) {
         const redirectPath = getRedirectPath();
