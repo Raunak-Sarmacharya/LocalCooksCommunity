@@ -159,15 +159,29 @@ export function TransactionTable({
                 const refund = t.refundAmount || 0;
                 const totalPrice = t.totalPrice || 0;
                 const taxRate = t.taxRatePercent || 0;
-                const stripeFee = t.stripeFee || 0;
+                const rawStripeFee = t.stripeFee || 0;
+                const managerRevenue = t.managerRevenue || 0;
+
                 // Reverse-calculate correct tax from tax-inclusive total
                 // Formula: base = round(total / (1 + rate/100)), tax = total - base
                 const correctTax = taxRate > 0
                     ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
                     : 0;
-                // Recalculate net revenue with corrected tax
-                const correctNet = totalPrice - correctTax - stripeFee;
+
+                // Sync with logic in columns.tsx:
+                // 1. Back-calculate Stripe Fee if missing but transfer happened
+                let stripeFee = rawStripeFee;
+                if (stripeFee === 0 && managerRevenue > 0 && totalPrice > 0) {
+                    stripeFee = Math.max(0, totalPrice - correctTax - managerRevenue);
+                }
+
+                // 2. Use managerRevenue as authoritative net revenue if available
+                const correctNet = (managerRevenue > 0)
+                    ? managerRevenue
+                    : totalPrice - correctTax - stripeFee;
+
                 const effectiveNet = Math.max(0, correctNet - refund);
+
                 return {
                     totalPrice: acc.totalPrice + totalPrice,
                     taxAmount: acc.taxAmount + correctTax,
@@ -382,7 +396,7 @@ export function TransactionTable({
                                     ))}
                                     {/* Totals Row */}
                                     <TableRow className="bg-muted/50 font-semibold">
-                                        <TableCell colSpan={3}>
+                                        <TableCell colSpan={4}>
                                             Total ({filteredData.length} transactions)
                                         </TableCell>
                                         <TableCell className="text-right">
