@@ -14,7 +14,7 @@ export default function PrivacyContent() {
 
       <h2 className="text-2xl font-bold mt-8 mb-4">1. Introduction</h2>
       <p className="mb-4">
-        Local Cooks Inc. (“Local Cooks”, “we”, “us”, or “our”) operates the Local Cooks platform that connects licensed commercial kitchen owners (“Kitchen Owners”) with chefs and food businesses (“Chefs”) who book and use those kitchens for commercial food preparation.
+        Jawrophi Delivery Inc., operating as “Local Cooks” (“Local Cooks”, “we”, “us”, or “our”) operates the Local Cooks platform that connects licensed commercial kitchen owners (“Kitchen Owners”) with chefs and food businesses (“Chefs”) who book and use those kitchens for commercial food preparation.
       </p>
       <p className="mb-4">
         This Privacy Policy explains how we collect, use, disclose, and protect Personal Information of Kitchen Owners and Chefs when they use our platform, including <strong>kitchen.localcooks.ca</strong>, <strong>chef.localcooks.ca</strong>, and any related web or mobile interfaces used to manage kitchen listings, bookings, and compliance documents (together, the “Platform”).
@@ -28,13 +28,13 @@ export default function PrivacyContent() {
 
       <h2 className="text-2xl font-bold mt-8 mb-4">2. Who we are and how to contact us</h2>
       <p className="mb-4">
-        <strong>Local Cooks Inc.</strong><br />
+        <strong>Jawrophi Delivery Inc. operating as “Local Cooks”</strong><br />
         Email: support@localcook.shop<br />
         Phone: +1 (709)-631-8480<br />
         Website: www.localcooks.ca
       </p>
       <p className="mb-4">
-        Local Cooks Inc. is responsible for the Personal Information we collect in connection with the Platform and has appointed an internal privacy contact (“Privacy Officer”). You may contact us using the details above if you have questions about this Privacy Policy or wish to exercise your privacy rights.
+        Local Cooks is responsible for the Personal Information we collect in connection with the Platform and has appointed an internal privacy contact (“Privacy Officer”). You may contact us using the details above if you have questions about this Privacy Policy or wish to exercise your privacy rights.
       </p>
 
       <h2 className="text-2xl font-bold mt-8 mb-4">3. Scope of this Privacy Policy</h2>
@@ -195,15 +195,55 @@ export default function PrivacyContent() {
 
       <h2 className="text-2xl font-bold mt-8 mb-4">10. Retention of Personal Information</h2>
       <p className="mb-4">
-        We retain Personal Information only as long as necessary to fulfill the purposes identified in this Policy or as required or permitted by law.
+        We retain Personal Information only as long as necessary to fulfill the purposes identified in this Policy or as required or permitted by law. We collect the following categories of Personal Information from Kitchen Owners and Chefs:
       </p>
       <p className="mb-4">For example, we typically retain:</p>
       <ul className="list-disc pl-6 mb-4">
-        <li>Account, onboarding, and compliance documentation for as long as your account is active and for a period thereafter to manage potential disputes, audits, and regulatory requirements.</li>
-        <li>Booking and transaction records for a period required to meet tax, accounting, and regulatory obligations.</li>
+        <li><strong>Account and contact information:</strong> name, business or entity name, role (Kitchen Owner or Chef), email address, phone number, username, and password.</li>
+        <li><strong>Business, licensing, and compliance information:</strong> business address, kitchen address, description of your kitchen or food operation, Food Premises Licence details, Food Handler Certification, other food business permits or licences, inspection reports you choose to upload, and proof that you are authorized to list or use a kitchen.</li>
+        <li><strong>Insurance information:</strong> insurance provider, policy type, coverage limits, certificates of insurance, and additional insured endorsements required under our Terms &amp; Conditions.</li>
+        <li><strong>Booking and transaction information:</strong> booking dates and times, selected kitchen, agreed rates and fees, cancellation and refund information, and payout details for Kitchen Owners.</li>
+        <li><strong>Payment-related information:</strong> limited payment and payout information from our payment processor (such as payment method type, partial card digits, transaction amounts, and status). We do not store your full payment card number or CVV on our systems.</li>
+        <li><strong>Technical and usage information:</strong> IP address, browser type, device identifiers, pages visited, actions taken (e.g., creating a listing, submitting documents, making a booking), timestamps, and approximate location based on IP address.</li>
+        <li><strong>Communications:</strong> messages exchanged through the Platform between Kitchen Owners, Chefs, and Local Cooks, emails you send to us, support tickets, and survey or feedback responses.</li>
       </ul>
       <p className="mb-4">
         When Personal Information is no longer required, we will delete it, anonymize it, or securely destroy it in accordance with our data retention and destruction practices.
+      </p>
+
+      <h3 className="text-xl font-semibold mt-6 mb-3">How we collect Personal Information</h3>
+      <p className="mb-4">We collect Personal Information:</p>
+      <ul className="list-disc pl-6 mb-4">
+        <li><strong>Directly from you,</strong> when you create an account, submit onboarding forms, upload licences or insurance documents, make or accept a booking, communicate with us, or respond to surveys.</li>
+        <li><strong>Automatically,</strong> when you use the Platform, through cookies and similar technologies that collect technical and usage information (see “Cookies and similar technologies” below).</li>
+        <li><strong>From third-party service providers,</strong> such as our payment processor, which shares limited payment-related information with us so we can track transactions and payouts.</li>
+      </ul>
+
+      <h3 className="text-xl font-semibold mt-6 mb-3">Why we collect and use Personal Information</h3>
+      <p className="mb-4">We collect, use, and disclose Personal Information only for purposes that a reasonable person would consider appropriate in the circumstances, including to:</p>
+      <ul className="list-disc pl-6 mb-4">
+        <li>Create and manage user accounts for Kitchen Owners and Chefs.</li>
+        <li>Verify eligibility and compliance (for example, Food Premises Licences, Food Handler Certification, business permits, and required insurance).</li>
+        <li>Display kitchen listings and profile information to match Kitchen Owners and Chefs and facilitate bookings.</li>
+        <li>Process payments and payouts through our payment processor, and keep records for accounting and tax purposes.</li>
+        <li>Communicate with you about bookings, payments, platform updates, and support requests.</li>
+        <li>Operate, maintain, and improve the Platform, including monitoring usage, diagnosing technical issues, and developing new features.</li>
+        <li>Prevent fraud and misuse of the Platform and help protect the rights, property, and safety of Local Cooks, Kitchen Owners, and Chefs.</li>
+        <li>Comply with legal and regulatory requirements, including food-safety investigations, audits, and lawful requests from regulators or law enforcement.</li>
+      </ul>
+
+      <h3 className="text-xl font-semibold mt-6 mb-3">How we share Personal Information</h3>
+      <p className="mb-4">We do not sell or rent Personal Information to third parties. We may share Personal Information as follows:</p>
+      <ul className="list-disc pl-6 mb-4">
+        <li><strong>Between Kitchen Owners and Chefs:</strong> To allow both sides to evaluate and complete bookings, we may share Chef information (name, contact details, business and licensing details, relevant insurance status, and booking request) with the Kitchen Owner, and we may share Kitchen Owner information (name, business details, kitchen address, contact information, and applicable rules) with the Chef.</li>
+        <li><strong>With service providers:</strong> We use trusted third-party service providers to operate the Platform, such as payment processors (e.g., Stripe), analytics providers, email and communication tools, cloud hosting providers, and customer-support tools. These service providers may access Personal Information only as needed to perform services on our behalf and are required to protect it and use it only for our purposes.</li>
+        <li><strong>With regulators and law enforcement:</strong> We may disclose Personal Information where required or permitted by law, including to provincial or municipal food-safety authorities, health inspectors, or other regulators in connection with inspections or investigations, and to comply with subpoenas, court orders, or lawful requests.</li>
+        <li><strong>Business transactions:</strong> If we are involved in a merger, acquisition, financing, or sale of all or part of our business, Personal Information may be transferred as part of that transaction, subject to appropriate safeguards and applicable legal requirements.</li>
+      </ul>
+
+      <h3 className="text-xl font-semibold mt-6 mb-3">How long we keep Personal Information</h3>
+      <p className="mb-4">
+        We retain Personal Information only as long as necessary to fulfill the purposes described in this Privacy Policy or as required or permitted by law. For example, we retain onboarding documents and booking records for a period necessary to manage potential disputes, audits, and regulatory requirements. When Personal Information is no longer required, we will delete it, anonymize it, or securely destroy it.
       </p>
 
       <h2 className="text-2xl font-bold mt-8 mb-4">11. Your rights and choices</h2>
@@ -218,12 +258,36 @@ export default function PrivacyContent() {
         You may also <strong>opt out of marketing emails</strong> at any time by clicking the “unsubscribe” link in those emails or by contacting us at support@localcook.shop.
       </p>
 
-      <h2 className="text-2xl font-bold mt-8 mb-4">12. Security measures</h2>
+      <h2 className="text-2xl font-bold mt-8 mb-4">12. Account &amp; Data Security</h2>
+
+      <h3 className="text-xl font-semibold mt-6 mb-3">Our Security measures</h3>
       <p className="mb-4">
-        We use reasonable physical, organizational, and technical safeguards to protect Personal Information from loss, theft, misuse, and unauthorized access, disclosure, alteration, or destruction. Measures may include encryption in transit (SSL/TLS), access controls, role-based permissions for staff, logging and monitoring of systems, and limiting access to Personal Information to personnel and service providers who need it to perform their duties.
+        <strong>How we protect Personal Information.</strong> We use reasonable physical, organizational, and technical safeguards to protect Personal Information against loss, theft, misuse, and unauthorized access, disclosure, alteration, or destruction. These safeguards include:
       </p>
+      <ul className="list-disc pl-6 mb-4">
+        <li><strong>Technical measures:</strong> encryption of data in transit using SSL/TLS, firewalls and other network protections, secure configuration of servers, and regular security updates and patches.</li>
+        <li><strong>Access controls:</strong> role-based access to systems, authentication requirements for staff and contractors, and access granted on a “need-to-know” basis.</li>
+        <li><strong>Organizational measures:</strong> internal policies and procedures governing how we handle Personal Information, confidentiality obligations for staff, and designation of a privacy contact/Privacy Officer.</li>
+        <li><strong>Physical measures:</strong> restricting physical access to systems where Personal Information is stored (for example, secure facilities or secure cloud data centres).</li>
+      </ul>
       <p className="mb-4">
-        However, <strong>no method of transmission over the internet or electronic storage is completely secure</strong>, and we cannot guarantee absolute security. If we become aware of a privacy breach involving Personal Information that creates a real risk of significant harm, we will investigate, notify affected individuals and regulators as required, and take reasonable steps to reduce the risk of harm.
+        Despite our efforts, <strong>no method of transmission over the internet or electronic storage is completely secure</strong>, and we cannot guarantee absolute security. You use the Platform at your own risk.
+      </p>
+
+      <h3 className="text-xl font-semibold mt-6 mb-3">User responsibilities (accounts)</h3>
+      <p className="mb-4">
+        <strong>Your responsibilities for account security.</strong> You are responsible for keeping your account credentials secure and for all activity that occurs under your account. You agree to:
+      </p>
+      <ul className="list-disc pl-6 mb-4">
+        <li>Create and use strong passwords (for example, at least 12 characters with a mix of upper and lowercase letters, numbers, and symbols).</li>
+        <li>Not share your password or login details with anyone else.</li>
+        <li>Log out of your account when using a shared device.</li>
+        <li>Notify us immediately if you suspect unauthorized access to your account or any other security incident involving the Platform.</li>
+      </ul>
+
+      <h3 className="text-xl font-semibold mt-6 mb-3">Breach handling and notifications</h3>
+      <p className="mb-4">
+        <strong>Security incidents and breach notification.</strong> If we become aware of a privacy breach involving your Personal Information that creates a real risk of significant harm, we will investigate the incident, take reasonable steps to reduce the risk of harm, and notify affected individuals and regulators as required by law.
       </p>
 
       <h2 className="text-2xl font-bold mt-8 mb-4">13. Children’s privacy</h2>
@@ -248,7 +312,7 @@ export default function PrivacyContent() {
       <p className="mb-4">If you have questions, concerns, or complaints about this Privacy Policy or our handling of Personal Information, please contact:</p>
       <p className="mb-4">
         <strong>Privacy Officer</strong><br />
-        Local Cooks Inc.<br />
+        Jawrophi Delivery Inc.<br />
         4 Priscilla Place, Paradise, Newfoundland and Labrador, A1L 1E6, Canada<br />
         Email: support@localcook.shop
       </p>
@@ -258,7 +322,7 @@ export default function PrivacyContent() {
 
       <hr className="my-8" />
       <p className="text-center text-gray-600">
-        © 2026 Local Cooks Inc. All rights reserved.
+        © 2026 Jawrophi Delivery Inc. All rights reserved.
       </p>
     </div>
   );
