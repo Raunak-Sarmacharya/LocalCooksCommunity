@@ -7,6 +7,8 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import AnimatedButton from "./AnimatedButton";
 import AnimatedInput from "./AnimatedInput";
+import { auth } from "../../lib/firebase";
+import { sendPasswordResetEmail } from "firebase/auth";
 
 const forgotPasswordSchema = z.object({
   email: z.string().min(1, "Email or username is required"),
@@ -55,27 +57,19 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack, role }: Forgot
     try {
       logger.info('🔄 Submitting forgot password request for:', data.email, 'role:', role);
       
-      // Use manager endpoint for managers, Firebase endpoint for others
-      const endpoint = isManager ? '/api/manager/forgot-password' : '/api/firebase/forgot-password';
-      const body = isManager ? { username: data.email } : { email: data.email };
+      const hostname = window.location.hostname;
+      const isLocalhost = hostname === 'localhost' || 
+                         hostname === '127.0.0.1' || 
+                         hostname.endsWith('.localhost');
       
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
+      const actionCodeSettings = isLocalhost ? undefined : {
+        url: isManager 
+          ? `https://${hostname}/manager/login?message=password-reset-success` 
+          : `https://${hostname}/auth?message=password-reset-success`,
+        handleCodeInApp: false,
+      };
 
-      logger.info('📡 Forgot password response status:', response.status);
-      
-      const responseData = await response.json();
-      logger.info('📡 Forgot password response:', responseData);
-
-      if (!response.ok) {
-        logger.error('❌ Forgot password failed:', responseData);
-        throw new Error(responseData.message || 'Failed to send reset email');
-      }
+      await sendPasswordResetEmail(auth, data.email, actionCodeSettings);
 
       logger.info('✅ Forgot password request successful');
       setFormState('success');
