@@ -45,6 +45,9 @@ interface AuthUser extends Partial<AuthUserLegacyFields> {
   isPortalUser?: boolean;
   isVerified?: boolean;
   hasSeenWelcome?: boolean;
+  termsAccepted?: boolean;
+  termsAcceptedAt?: string | null;
+  termsVersion?: string | null;
 }
 
 // Added for backward compatibility during refactoring
@@ -262,6 +265,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 isVerified: userData.isVerified || userData.is_verified,
                 has_seen_welcome: userData.has_seen_welcome,
                 hasSeenWelcome: userData.hasSeenWelcome || userData.has_seen_welcome,
+                termsAccepted: userData.termsAccepted || userData.terms_accepted,
+                termsAcceptedAt: userData.termsAcceptedAt || userData.terms_accepted_at,
+                termsVersion: userData.termsVersion || userData.terms_version,
                 isManager: userData.isManager || userData.is_manager || false,
                 isPortalUser: userData.isPortalUser || userData.is_portal_user || false,
               };
@@ -335,6 +341,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             isVerified: applicationData?.isVerified,
             has_seen_welcome: applicationData?.has_seen_welcome,
             hasSeenWelcome: applicationData?.hasSeenWelcome,
+            termsAccepted: applicationData?.termsAccepted,
+            termsAcceptedAt: applicationData?.termsAcceptedAt,
+            termsVersion: applicationData?.termsVersion,
           });
           
           // ENTERPRISE: Set auth phase to ready after successful user setup
@@ -1031,6 +1040,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           is_verified: userData.is_verified,
           hasSeenWelcome: userData.hasSeenWelcome || userData.has_seen_welcome,
           has_seen_welcome: userData.has_seen_welcome,
+          termsAccepted: userData.termsAccepted || userData.terms_accepted,
+          termsAcceptedAt: userData.termsAcceptedAt || userData.terms_accepted_at,
+          termsVersion: userData.termsVersion || userData.terms_version,
         };
 
         setUser(updatedUser);
@@ -1134,6 +1146,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           isVerified: userData.isVerified || userData.is_verified,
           has_seen_welcome: userData.has_seen_welcome,
           hasSeenWelcome: userData.hasSeenWelcome || userData.has_seen_welcome,
+          termsAccepted: userData.termsAccepted || userData.terms_accepted,
+          termsAcceptedAt: userData.termsAcceptedAt || userData.terms_accepted_at,
+          termsVersion: userData.termsVersion || userData.terms_version,
         };
 
         setUser(updatedUser);

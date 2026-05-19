@@ -210,6 +210,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Forgot Password (Firebase Backend Custom Email)
+  app.post("/api/firebase/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      const existingUser = await userService.getUserByUsername(email);
+      if (!existingUser) {
+        // For security, don't reveal if user exists or not
+        return res.json({ success: true, message: "If your email exists, a reset link has been sent." });
+      }
+
+      // We need to use firebase-admin to generate the reset link
+      const { getAuth } = await import('firebase-admin/auth');
+      const { initializeFirebaseAdmin } = await import('./firebase-setup');
+      
+      const firebaseApp = initializeFirebaseAdmin();
+      if (!firebaseApp) {
+        throw new Error('Firebase Admin not initialized');
+      }
+
+      // Detect if we are on localhost for actionCodeSettings URL
+      const host = req.get('host') || 'kitchen.localcooks.ca';
+      const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+      
+      const actionCodeSettings = isLocalhost ? undefined : {
+        url: `https://${host}/auth?message=password-reset-success`,
+        handleCodeInApp: false,
+      };
+
+      const resetUrl = await getAuth(firebaseApp).generatePasswordResetLink(email, actionCodeSettings);
+
+      const { sendEmail, generatePasswordResetEmail } = await import('./email');
+      
+      // Use existingUser fields if available, else try to derive from email
+      const rawFirstName = (existingUser as any).firstName || (existingUser as any).first_name;
+      const rawLastName = (existingUser as any).lastName || (existingUser as any).last_name;
+      const fullName = rawFirstName ? `${rawFirstName} ${rawLastName || ''}`.trim() : email.split('@')[0];
+      
+      const emailContent = generatePasswordResetEmail({
+        fullName,
+        email,
+        resetToken: "firebase-token",
+        resetUrl
+      });
+
+      const emailSent = await sendEmail(emailContent, {
+        trackingId: `pwd_reset_${existingUser.id}_${Date.now()}`
+      });
+
+      if (!emailSent) {
+        throw new Error('Failed to send reset email');
+      }
+
+      logger.info(`✅ Custom branded password reset email sent to ${email}`);
+      res.json({ success: true, message: "Password reset email sent." });
+    } catch (error: any) {
+      logger.error("Error in custom forgot password:", error);
+      res.status(500).json({ error: "Failed to process password reset request" });
+    }
+  });
+
+  // Manager Forgot Password (uses same Firebase backend logic but different redirect URL)
+  app.post("/api/manager/forgot-password", async (req, res) => {
+    try {
+      // Manager login might send 'username' or 'email'
+      const email = req.body.username || req.body.email;
+      if (!email) {
+        return res.status(400).json({ error: "Email/username is required" });
+      }
+
+      const existingUser = await userService.getUserByUsername(email);
+      if (!existingUser) {
+        // For security, don't reveal if user exists or not
+        return res.json({ success: true, message: "If your email exists, a reset link has been sent." });
+      }
+
+      const { getAuth } = await import('firebase-admin/auth');
+      const { initializeFirebaseAdmin } = await import('./firebase-setup');
+      
+      const firebaseApp = initializeFirebaseAdmin();
+      if (!firebaseApp) {
+        throw new Error('Firebase Admin not initialized');
+      }
+
+      const host = req.get('host') || 'kitchen.localcooks.ca';
+      const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+      
+      const actionCodeSettings = isLocalhost ? undefined : {
+        url: `https://${host}/manager/login?message=password-reset-success`,
+        handleCodeInApp: false,
+      };
+
+      const resetUrl = await getAuth(firebaseApp).generatePasswordResetLink(email, actionCodeSettings);
+
+      const { sendEmail, generatePasswordResetEmail } = await import('./email');
+      
+      const rawFirstName = (existingUser as any).firstName || (existingUser as any).first_name;
+      const rawLastName = (existingUser as any).lastName || (existingUser as any).last_name;
+      const fullName = rawFirstName ? `${rawFirstName} ${rawLastName || ''}`.trim() : email.split('@')[0];
+      
+      const emailContent = generatePasswordResetEmail({
+        fullName,
+        email,
+        resetToken: "firebase-token",
+        resetUrl
+      });
+
+      const emailSent = await sendEmail(emailContent, {
+        trackingId: `mgr_pwd_reset_${existingUser.id}_${Date.now()}`
+      });
+
+      if (!emailSent) {
+        throw new Error('Failed to send reset email');
+      }
+
+      logger.info(`✅ Custom branded manager password reset email sent to ${email}`);
+      res.json({ success: true, message: "Password reset email sent." });
+    } catch (error: any) {
+      logger.error("Error in manager forgot password:", error);
+      res.status(500).json({ error: "Failed to process password reset request" });
+    }
+  });
+
   // Register User (Firebase -> Neon)
   // Called when a new Firebase user signs up
   app.post("/api/firebase-register-user", async (req, res) => {

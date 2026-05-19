@@ -18,6 +18,8 @@ export async function generatePayoutStatementPDF(
   // Calculate totals
   let totalEarnings = 0;
   let totalPlatformFees = 0;
+  let totalStripeProcessingFees = 0;
+  let totalNetEarnings = 0;
   const totalBookings = bookings.length;
 
   // Get service fee rate
@@ -33,9 +35,13 @@ export async function generatePayoutStatementPDF(
   bookings.forEach((booking: any) => {
     const totalPrice = (booking.totalPrice || booking.total_price || 0) / 100; // Convert cents to dollars
     const serviceFee = (booking.serviceFee || booking.service_fee || 0) / 100;
+    const stripeProcessingFee = booking.stripeProcessingFee ? parseFloat(booking.stripeProcessingFee) / 100 : 0;
+    const managerRevenue = booking.managerRevenue ? parseFloat(booking.managerRevenue) / 100 : (totalPrice - serviceFee - stripeProcessingFee);
 
     totalEarnings += totalPrice; // Total Revenue should be the GROSS amount
     totalPlatformFees += serviceFee;
+    totalStripeProcessingFees += stripeProcessingFee;
+    totalNetEarnings += managerRevenue;
   });
 
   // Payout amount from Stripe (in cents, convert to dollars)
@@ -166,8 +172,8 @@ export async function generatePayoutStatementPDF(
       const summaryItems = [
         { label: 'Total Bookings', value: totalBookings.toString() },
         { label: 'Total Revenue', value: `$${totalEarnings.toFixed(2)}` },
-        { label: 'Estimated Stripe Processing Fee', value: `-$${totalPlatformFees.toFixed(2)}` },
-        { label: 'Net Earnings', value: `$${payoutAmount.toFixed(2)}` },
+        { label: 'Stripe Processing Fee', value: `-$${totalStripeProcessingFees.toFixed(2)}` },
+        { label: 'Net Earnings', value: `$${totalNetEarnings.toFixed(2)}` },
         { label: 'Payout Amount', value: `$${payoutAmount.toFixed(2)}` },
       ];
 
@@ -209,7 +215,11 @@ export async function generatePayoutStatementPDF(
           const dateStr = bookingDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           const kitchenName = (booking.kitchenName || booking.kitchen_name || 'Kitchen').substring(0, 20);
           const chefName = (booking.chefName || booking.chef_name || 'Guest').substring(0, 20);
-          const amount = ((booking.totalPrice || booking.total_price || 0) / 100) * (1 - serviceFeeRate);
+          
+          const totalPrice = (booking.totalPrice || booking.total_price || 0) / 100;
+          const serviceFee = (booking.serviceFee || booking.service_fee || 0) / 100;
+          const stripeProcessingFee = booking.stripeProcessingFee ? parseFloat(booking.stripeProcessingFee) / 100 : 0;
+          const amount = booking.managerRevenue ? parseFloat(booking.managerRevenue) / 100 : (totalPrice - serviceFee - stripeProcessingFee);
 
           doc.text(dateStr, 50, leftY);
           doc.text(kitchenName, 120, leftY, { width: 120 });

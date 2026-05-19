@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { verifyPasswordResetCode } from "firebase/auth";
+import { verifyPasswordResetCode, confirmPasswordReset } from "firebase/auth";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, ArrowLeft, Lock, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -111,64 +111,45 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
     setErrorMessage(null);
 
     try {
-      // Determine endpoint based on reset type
-      let endpoint: string;
-      let body: any;
-      let emailToUse: string | undefined;
-      
-      if (isFirebaseReset) {
-        // Firebase reset
-        endpoint = '/api/firebase/reset-password';
-        emailToUse = verifiedEmail || email;
-        body = { oobCode, newPassword: data.password, email: emailToUse };
+      if (isFirebaseReset && oobCode) {
+        logger.info('🔄 Password reset attempt with Firebase');
+        await confirmPasswordReset(auth, oobCode, data.password);
       } else if (token) {
-        // Check if this is a manager reset by checking URL params
+        // Legacy or manager reset flow via API
+        let endpoint: string;
         const urlParams = new URLSearchParams(window.location.search);
         const role = urlParams.get('role');
         
         if (role === 'manager') {
-          // Manager reset
           endpoint = '/api/manager/reset-password';
-          body = { token, newPassword: data.password };
         } else {
-          // Legacy reset
           endpoint = '/api/auth/reset-password';
-          body = { token, newPassword: data.password };
+        }
+
+        logger.info('🔄 Password reset attempt with legacy token:', { endpoint });
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token, newPassword: data.password }),
+        });
+
+        if (!response.ok) {
+          const responseData = await response.json();
+          logger.error('❌ Password reset failed:', responseData);
+          
+          if (responseData.message?.includes('Invalid or expired')) {
+            throw new Error('This password reset link has expired. Please request a new password reset from the login page.');
+          } else if (responseData.message?.includes('weak-password')) {
+            throw new Error('Password is too weak. Please choose a stronger password with at least 8 characters, including uppercase, lowercase, and numbers.');
+          } else {
+            throw new Error(responseData.message || 'Failed to reset password');
+          }
         }
       } else {
         throw new Error('No reset code or token provided');
-      }
-
-      logger.info('🔄 Password reset attempt:', { 
-        endpoint, 
-        isFirebaseReset, 
-        hasOobCode: !!oobCode, 
-        hasToken: !!token,
-        hasEmail: !!emailToUse,
-        email: emailToUse
-      });
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-
-      const responseData = await response.json();
-
-      if (!response.ok) {
-        logger.error('❌ Password reset failed:', responseData);
-        
-        // Handle specific error types more gracefully
-        if (responseData.message?.includes('invalid-action-code') || responseData.message?.includes('Invalid or expired')) {
-          throw new Error('This password reset link has expired. Please request a new password reset from the login page.');
-        } else if (responseData.message?.includes('weak-password')) {
-          throw new Error('Password is too weak. Please choose a stronger password with at least 8 characters, including uppercase, lowercase, and numbers.');
-        } else {
-          throw new Error(responseData.message || 'Failed to reset password');
-        }
       }
 
       logger.info('✅ Password reset successful');

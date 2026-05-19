@@ -189,25 +189,47 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
         return null
     }
 
-    // Recalculate tax per-transaction using reverse-calculation from tax-inclusive totals
-    // This fixes the bug where server calculates tax on the total (tax-inclusive) instead of the base amount
-    const stripeFee = metrics.stripeFee ?? 0
+    // Recalculate tax and fees per-transaction using reverse-calculation and authoritative manager revenue.
+    // This fixes bugs where server-side metrics might be outdated or missing Stripe fee data.
     let taxAmount: number;
+    let stripeFee: number;
     let netRevenue: number;
+
     if (transactions && transactions.length > 0) {
-        // Per-transaction corrected tax: base = round(total / (1 + rate/100)), tax = total - base
-        taxAmount = transactions.reduce((sum, t) => {
+        const totals = transactions.reduce((acc, t) => {
             const totalPrice = t.totalPrice || 0;
             const taxRate = t.taxRatePercent || 0;
-            const correctTax = taxRate > 0
+            const rawStripeFee = t.stripeFee || 0;
+            const managerRevenue = t.managerRevenue || 0;
+
+            const tax = taxRate > 0
                 ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
                 : 0;
-            return sum + correctTax;
-        }, 0);
-        netRevenue = metrics.totalRevenue - taxAmount - stripeFee;
+
+            let fee = rawStripeFee;
+            if (fee === 0 && managerRevenue > 0 && totalPrice > 0) {
+                fee = Math.max(0, totalPrice - tax - managerRevenue);
+            }
+
+            // Corrected Net for this transaction (matching columns.tsx)
+            const correctNet = (managerRevenue > 0)
+                ? managerRevenue
+                : totalPrice - tax - fee;
+
+            return {
+                tax: acc.tax + tax,
+                fee: acc.fee + fee,
+                net: acc.net + Math.max(0, correctNet - (t.refundAmount || 0))
+            };
+        }, { tax: 0, fee: 0, net: 0 });
+
+        taxAmount = totals.tax;
+        stripeFee = totals.fee;
+        netRevenue = totals.net;
     } else {
         // Fallback: use server-provided values (best effort without per-transaction data)
         taxAmount = metrics.taxAmount ?? 0;
+        stripeFee = metrics.stripeFee ?? 0;
         netRevenue = metrics.netRevenue ?? (metrics.totalRevenue - taxAmount - stripeFee);
     }
 

@@ -161,15 +161,8 @@ router.post("/stripe", async (req: Request, res: Response) => {
         );
         break;
       default:
-        // Handle charge.partially_refunded and other charge events
-        if (event.type.startsWith("charge.")) {
-          await handleChargeRefunded(
-            event.data.object as Stripe.Charge,
-            webhookEventId,
-          );
-        } else {
-          wLog.info(`Unhandled event type: ${event.type}`);
-        }
+        wLog.info(`Unhandled event type: ${event.type}`);
+        break;
     }
 
     res.json({ received: true });
@@ -2270,6 +2263,14 @@ async function handleChargeRefunded(
     // Get refund amount from Stripe charge
     const refundAmountCents = charge.amount_refunded;
 
+    // Guard: if no actual refund occurred, skip entirely.
+    // This prevents false "partially_refunded" status when this handler is
+    // accidentally triggered by non-refund charge events.
+    if (refundAmountCents === 0) {
+      logger.info(`[Webhook] Charge ${charge.id} has amount_refunded=0, skipping refund status update`);
+      return;
+    }
+
     // Update payment_transactions table
     const transaction = await findPaymentTransactionByIntentId(
       paymentIntentId,
@@ -3140,15 +3141,6 @@ async function handleChargeUpdated(
   }
 
   try {
-    // Only process if balance_transaction just became available (was null, now has value)
-    const balanceTransactionWasNull = previousAttributes?.balance_transaction === null;
-    const balanceTransactionNowAvailable = charge.balance_transaction !== null;
-
-    if (!balanceTransactionWasNull || !balanceTransactionNowAvailable) {
-      // This update wasn't about balance_transaction becoming available - skip
-      return;
-    }
-
     const paymentIntentId = typeof charge.payment_intent === 'string' 
       ? charge.payment_intent 
       : charge.payment_intent?.id;
@@ -3289,6 +3281,19 @@ async function handleChargeUpdated(
       updateParams,
       db
     );
+
+    // Sync Stripe amounts to all related booking tables
+    const { syncStripeAmountsToBookings } = await import(
+      "../services/payment-transactions-service"
+    );
+    const syncAmounts = {
+      stripeAmount: updateParams.stripeAmount!,
+      stripeNetAmount: updateParams.stripeNetAmount!,
+      stripeProcessingFee: updateParams.stripeProcessingFee!,
+      stripePlatformFee: updateParams.stripePlatformFee!,
+      chargeId: typeof charge.id === 'string' ? charge.id : null,
+    };
+    await syncStripeAmountsToBookings(paymentIntentId, syncAmounts, db);
 
     logger.info(`[Webhook] ✅ charge.updated: Synced actual Stripe fees for ${paymentIntentId}:`, {
       amount: `$${(stripeAmount / 100).toFixed(2)}`,

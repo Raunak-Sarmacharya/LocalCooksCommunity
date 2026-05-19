@@ -4,6 +4,8 @@ import { userService } from "../domains/users/user.service";
 import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { sendEmail, generateWelcomeEmail } from "../email";
 import { getFirebaseUserByEmail } from "../firebase-setup";
+import { CURRENT_POLICY_VERSION } from "@shared/policy-config";
+
 
 const router = Router();
 
@@ -427,6 +429,42 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
       error: "Failed to complete email verification",
       details: error instanceof Error ? error.message : 'Unknown error'
     });
+  }
+});
+
+/**
+ * POST /api/user/accept-terms
+ * Record explicit acceptance of Terms & Privacy Policy.
+ * Uses shared CURRENT_POLICY_VERSION for consistency.
+ */
+
+
+router.post("/accept-terms", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+  try {
+    const user = req.neonUser!;
+    const { accepted } = req.body;
+
+    if (accepted !== true) {
+      return res.status(400).json({ error: "Accepted flag must be true" });
+    }
+
+    logger.info(`✅ Terms accepted by user ${user.id} (${user.username}) - version ${CURRENT_POLICY_VERSION}`);
+
+    const updatedUser = await userService.updateUser(user.id, {
+      termsAccepted: true,
+      termsAcceptedAt: new Date(),
+      termsVersion: CURRENT_POLICY_VERSION,
+    });
+
+    res.json({
+      success: true,
+      termsAccepted: updatedUser?.termsAccepted ?? true,
+      termsAcceptedAt: updatedUser?.termsAcceptedAt,
+      termsVersion: updatedUser?.termsVersion,
+    });
+  } catch (error) {
+    logger.error("Error accepting terms:", error);
+    res.status(500).json({ error: "Failed to record terms acceptance" });
   }
 });
 

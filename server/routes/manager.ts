@@ -2550,11 +2550,22 @@ router.get(
           locationName: locations.name,
           chefName: users.username,
           chefEmail: users.username,
+          stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+          managerRevenue: paymentTransactions.managerRevenue,
+          baseAmount: paymentTransactions.baseAmount,
         })
         .from(kitchenBookings)
         .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
         .innerJoin(locations, eq(kitchens.locationId, locations.id))
         .leftJoin(users, eq(kitchenBookings.chefId, users.id))
+        .leftJoin(
+          paymentTransactions,
+          and(
+            eq(kitchenBookings.id, paymentTransactions.bookingId),
+            eq(paymentTransactions.bookingType, 'kitchen'),
+            eq(paymentTransactions.status, 'succeeded')
+          )
+        )
         .where(
           and(
             eq(locations.managerId, managerId),
