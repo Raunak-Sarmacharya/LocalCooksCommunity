@@ -207,9 +207,6 @@ export function CustomFieldBuilder({
           <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
             Custom Fields
           </h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Add your own questions specific to your kitchen
-          </p>
         </div>
         <Button
           onClick={openAddDialog}

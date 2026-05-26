@@ -247,11 +247,11 @@ export async function getRevenueMetricsFromTransactions(
               )
           END
         ), 0)::bigint as calculated_tax_amount,
-        -- ENTERPRISE STANDARD: Calculate PAYOUT amount for COMPLETED (succeeded) transactions
+        -- ENTERPRISE STANDARD: Calculate PAYOUT amount for revenue-eligible transactions
         -- Manager collects tax and keeps it (remits to tax authorities themselves)
         -- Payout = Amount - Stripe Fee - Refunds (tax is NOT subtracted - manager keeps it)
         COALESCE(SUM(
-          CASE WHEN pt.status = 'succeeded' THEN
+          CASE WHEN pt.status IN ('succeeded', 'partially_refunded') THEN
             pt.amount::numeric 
             - COALESCE(pt.stripe_processing_fee::numeric, 0)
             - COALESCE(pt.refund_amount::numeric, 0)
@@ -379,7 +379,7 @@ export async function getRevenueMetricsFromTransactions(
 
     // Get tax amount calculated from kitchen's tax_rate_percent
     const actualTaxAmount = parseNumeric(taxRow.calculated_tax_amount);
-    // ENTERPRISE STANDARD: Net revenue from COMPLETED transactions only (payout-ready amount)
+      // ENTERPRISE STANDARD: Payout-ready revenue from succeeded/partially refunded transactions
     const completedNetRevenue = parseNumeric(taxRow.completed_net_revenue);
     // Get actual tax rate from kitchens table
     const taxRatePercent = taxRow.tax_rate_percent ? parseFloat(String(taxRow.tax_rate_percent)) : 0;
@@ -420,8 +420,8 @@ export async function getRevenueMetricsFromTransactions(
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : depositedManagerRevenue, // Only succeeded transactions (what's in bank)
       pendingPayments: isNaN(pendingPayments) ? 0 : pendingPayments,
       completedPayments: isNaN(effectiveCompletedPayments) ? 0 : effectiveCompletedPayments,
-      // ENTERPRISE STANDARD: Net revenue from completed transactions only (payout-ready amount)
-      // This is calculated server-side: Amount - Tax - Stripe Fee - Refunds for succeeded transactions
+      // ENTERPRISE STANDARD: Payout-ready revenue from succeeded/partially refunded transactions
+      // This is calculated server-side: Amount - Stripe Fee - Refunds
       completedNetRevenue: isNaN(completedNetRevenue) ? 0 : Math.max(0, completedNetRevenue),
       taxRatePercent: isNaN(taxRatePercent) ? 0 : taxRatePercent, // Actual tax rate from kitchens table
       averageBookingValue: isNaN(averageBookingValue) ? 0 : averageBookingValue,

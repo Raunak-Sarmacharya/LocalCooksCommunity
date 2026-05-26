@@ -233,12 +233,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw new Error('Firebase Admin not initialized');
       }
 
-      // Detect if we are on localhost for actionCodeSettings URL
-      const host = req.get('host') || 'kitchen.localcooks.ca';
+      // Chef password reset always redirects to chef subdomain
+      const host = req.get('host') || '';
       const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
-      
+
+      const { getSubdomainUrl } = await import('./email');
+      const chefBaseUrl = getSubdomainUrl('chef');
+
       const actionCodeSettings = isLocalhost ? undefined : {
-        url: `https://${host}/auth?message=password-reset-success`,
+        url: `${chefBaseUrl}/auth?message=password-reset-success`,
         handleCodeInApp: false,
       };
 
@@ -297,11 +300,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw new Error('Firebase Admin not initialized');
       }
 
-      const host = req.get('host') || 'kitchen.localcooks.ca';
+      const host = req.get('host') || '';
       const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
-      
+
+      const { getSubdomainUrl } = await import('./email');
+      const kitchenBaseUrl = getSubdomainUrl('kitchen');
+
       const actionCodeSettings = isLocalhost ? undefined : {
-        url: `https://${host}/manager/login?message=password-reset-success`,
+        url: `${kitchenBaseUrl}/manager/login?message=password-reset-success`,
         handleCodeInApp: false,
       };
 

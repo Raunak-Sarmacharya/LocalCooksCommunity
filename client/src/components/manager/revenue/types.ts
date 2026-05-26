@@ -51,6 +51,7 @@ export interface Transaction {
     stripeFee: number;         // Actual Stripe processing fee in cents (from Stripe API)
     netRevenue: number;        // Net revenue after tax and Stripe fees
     paymentStatus: PaymentStatus;
+    status?: string | null;
     paymentIntentId: string | null;
     currency: string;
     createdAt: string;
@@ -97,7 +98,7 @@ export interface RevenueMetrics {
     paidBookingCount: number;
     averageBookingValue: number;   // In cents
     completedPayments: number;     // In cents - gross amount from succeeded transactions
-    completedNetRevenue?: number;  // In cents - net revenue from succeeded transactions (payout-ready)
+    completedNetRevenue?: number;  // In cents - payout-ready revenue from succeeded/partially refunded transactions
     taxRatePercent?: number;       // Actual tax rate from kitchens table
     pendingPayments: number;       // In cents
     refundedAmount: number;        // In cents

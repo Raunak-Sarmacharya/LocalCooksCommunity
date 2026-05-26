@@ -625,6 +625,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // setError(e.message);
       setPendingSync(false);
       setPendingRegistration(false);
+      setAuthPhase('error');
+      logger.info('📊 AUTH PHASE: authenticating → error (signup failed)');
 
       // Re-throw the error so components can handle it with user-friendly messages
       throw e;
@@ -811,6 +813,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Clean up state on error
       setPendingSync(false);
       setPendingRegistration(false);
+      setAuthPhase('error');
+      logger.info('📊 AUTH PHASE: authenticating → error (Google sign-in failed)');
 
       // Re-throw the error so components can handle it with user-friendly messages
       throw e;

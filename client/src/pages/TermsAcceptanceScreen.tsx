@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, Redirect } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import TermsContent from "@/components/legal/TermsContent";
 import PrivacyContent from "@/components/legal/PrivacyContent";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -27,6 +28,7 @@ import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 function TermsAcceptanceScreen() {
   const { user, refreshUserData } = useFirebaseAuth();
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -43,7 +45,14 @@ function TermsAcceptanceScreen() {
   useEffect(() => {
     if (user?.termsAccepted && user?.termsVersion === CURRENT_POLICY_VERSION) {
       const params = new URLSearchParams(window.location.search);
-      const redirectPath = params.get("redirect") || "/dashboard";
+      let redirectPath = params.get("redirect") || "/dashboard";
+
+      // Role-aware redirect
+      if (redirectPath === '/dashboard') {
+        if (user?.role === 'manager') redirectPath = '/manager/dashboard';
+        else if (user?.role === 'admin') redirectPath = '/admin';
+      }
+
       setLocation(redirectPath);
     }
   }, [user, setLocation]);
@@ -114,10 +123,20 @@ function TermsAcceptanceScreen() {
       if (response.ok) {
         logger.info("Terms accepted successfully");
         await refreshUserData();
+        // Invalidate any cached user profile queries so guards (e.g. ManagerProtectedRoute)
+        // pick up the fresh termsAccepted status and don't bounce back here.
+        await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
         setSuccess(true);
         setTimeout(() => {
           const params = new URLSearchParams(window.location.search);
-          const redirectPath = params.get("redirect") || "/dashboard";
+          let redirectPath = params.get("redirect") || "/dashboard";
+
+          // Role-aware redirect
+          if (redirectPath === '/dashboard') {
+            if (user?.role === 'manager') redirectPath = '/manager/dashboard';
+            else if (user?.role === 'admin') redirectPath = '/admin';
+          }
+
           setLocation(redirectPath);
         }, 800);
       } else {

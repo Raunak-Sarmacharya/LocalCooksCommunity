@@ -51,8 +51,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getTransactionColumns } from "../columns"
-import { formatCurrency, transactionsToCSV, downloadCSV } from "@/lib/formatters"
+import { formatCurrency, downloadCSV } from "@/lib/formatters"
 import type { Transaction, PaymentStatus } from "../types"
+import { getTransactionRevenueBreakdown, transactionsToManagerRevenueCSV } from "../revenue-calculations"
 
 interface TransactionTableProps {
     transactions: Transaction[]
@@ -156,38 +157,14 @@ export function TransactionTable({
     const totals = useMemo(() => {
         return filteredData.reduce(
             (acc, t) => {
-                const refund = t.refundAmount || 0;
-                const totalPrice = t.totalPrice || 0;
-                const taxRate = t.taxRatePercent || 0;
-                const rawStripeFee = t.stripeFee || 0;
-                const managerRevenue = t.managerRevenue || 0;
-
-                // Reverse-calculate correct tax from tax-inclusive total
-                // Formula: base = round(total / (1 + rate/100)), tax = total - base
-                const correctTax = taxRate > 0
-                    ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
-                    : 0;
-
-                // Sync with logic in columns.tsx:
-                // 1. Back-calculate Stripe Fee if missing but transfer happened
-                let stripeFee = rawStripeFee;
-                if (stripeFee === 0 && managerRevenue > 0 && totalPrice > 0) {
-                    stripeFee = Math.max(0, totalPrice - correctTax - managerRevenue);
-                }
-
-                // 2. Use managerRevenue as authoritative net revenue if available
-                const correctNet = (managerRevenue > 0)
-                    ? managerRevenue
-                    : totalPrice - correctTax - stripeFee;
-
-                const effectiveNet = Math.max(0, correctNet - refund);
+                const breakdown = getTransactionRevenueBreakdown(t);
 
                 return {
-                    totalPrice: acc.totalPrice + totalPrice,
-                    taxAmount: acc.taxAmount + correctTax,
-                    stripeFee: acc.stripeFee + stripeFee,
-                    refundAmount: acc.refundAmount + refund,
-                    netRevenue: acc.netRevenue + effectiveNet,
+                    totalPrice: acc.totalPrice + breakdown.totalPrice,
+                    taxAmount: acc.taxAmount + breakdown.taxAmount,
+                    stripeFee: acc.stripeFee + breakdown.stripeFee,
+                    refundAmount: acc.refundAmount + breakdown.refundAmount,
+                    netRevenue: acc.netRevenue + breakdown.netRevenue,
                 };
             },
             { totalPrice: 0, taxAmount: 0, stripeFee: 0, refundAmount: 0, netRevenue: 0 }
@@ -221,12 +198,12 @@ export function TransactionTable({
 
     // Export handlers
     const handleExportFiltered = useCallback(() => {
-        const csv = transactionsToCSV(filteredData)
+        const csv = transactionsToManagerRevenueCSV(filteredData)
         downloadCSV(csv, `transactions-${new Date().toISOString().split('T')[0]}`)
     }, [filteredData])
 
     const handleExportAll = useCallback(() => {
-        const csv = transactionsToCSV(transactions)
+        const csv = transactionsToManagerRevenueCSV(transactions)
         downloadCSV(csv, `all-transactions-${new Date().toISOString().split('T')[0]}`)
     }, [transactions])
 
@@ -281,6 +258,7 @@ export function TransactionTable({
                                 <SelectItem value="paid">Paid</SelectItem>
                                 <SelectItem value="processing">Processing</SelectItem>
                                 <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="canceled">Canceled</SelectItem>
                                 <SelectItem value="failed">Failed</SelectItem>
                                 <SelectItem value="refunded">Refunded</SelectItem>
                                 <SelectItem value="partially_refunded">Partial Refund</SelectItem>

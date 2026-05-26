@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { CheckCircle, Calendar } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent } from '@/components/ui/card';
-import KitchenAvailabilityManagement from '@/pages/KitchenAvailabilityManagement';
+import KitchenAvailabilityManagement, { type KitchenAvailabilityManagementHandle } from '@/pages/KitchenAvailabilityManagement';
 import { useManagerOnboarding } from '../ManagerOnboardingContext';
 import { OnboardingNavigationFooter } from '../OnboardingNavigationFooter';
 
@@ -14,17 +14,22 @@ const AvailabilityStep = () => {
         handleBack,
         isFirstStep,
         refreshAvailability,
-        hasAvailability,
-        skipCurrentStep
+        hasAvailability
     } = useManagerOnboarding();
+    const availabilityRef = useRef<KitchenAvailabilityManagementHandle>(null);
+    const [isSavingAvailability, setIsSavingAvailability] = useState(false);
 
     const handleSaveAndContinue = async () => {
-        if (refreshAvailability) {
-            await refreshAvailability();
-        }
-        setTimeout(() => {
+        setIsSavingAvailability(true);
+
+        try {
+            const saved = await availabilityRef.current?.saveWeeklySchedule();
+            if (!saved) return;
+
             handleNext();
-        }, 100);
+        } finally {
+            setIsSavingAvailability(false);
+        }
     };
 
     return (
@@ -51,10 +56,12 @@ const AvailabilityStep = () => {
                 <CardContent className="pt-6">
                     {selectedLocationId ? (
                         <KitchenAvailabilityManagement
+                            ref={availabilityRef}
                             embedded={true}
                             initialLocationId={selectedLocationId}
                             initialKitchenId={selectedKitchenId || undefined}
                             onSaveSuccess={refreshAvailability}
+                            hideWeeklyScheduleSaveButton={true}
                         />
                     ) : (
                         <div className="text-center py-8 text-slate-500 dark:text-slate-400">
@@ -65,11 +72,12 @@ const AvailabilityStep = () => {
             </Card>
 
             <OnboardingNavigationFooter
-                onNext={hasAvailability ? handleNext : handleSaveAndContinue}
+                onNext={handleSaveAndContinue}
                 onBack={handleBack}
                 showBack={!isFirstStep}
-                nextLabel={hasAvailability ? "Continue" : "Save & Continue"}
-                isNextDisabled={!hasAvailability}
+                nextLabel="Save & Continue"
+                isNextDisabled={!selectedKitchenId || isSavingAvailability}
+                isLoading={isSavingAvailability}
             />
         </div>
     );

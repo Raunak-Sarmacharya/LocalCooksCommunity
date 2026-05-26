@@ -23,7 +23,7 @@ export interface RevenueMetrics {
   depositedManagerRevenue: number; // Manager earnings from succeeded transactions only (cents) - what's actually in bank
   pendingPayments: number;     // Unpaid bookings (cents)
   completedPayments: number;   // Paid bookings (cents) - gross amount
-  completedNetRevenue?: number; // Net revenue from completed transactions only (cents) - payout-ready amount
+  completedNetRevenue?: number; // Payout-ready revenue from succeeded/partially refunded transactions (cents)
   taxRatePercent?: number;     // Actual tax rate from kitchens table
   averageBookingValue: number; // Average per booking (cents)
   bookingCount: number;        // Total bookings
@@ -1032,7 +1032,7 @@ export async function getTransactionHistory(
       const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
       
       // Net revenue = total - tax - stripe fees
-      const netRevenue = totalPriceCents - taxCents - stripeFee;
+      const grossNetRevenue = totalPriceCents - taxCents - stripeFee;
 
       // Determine booking type for UI display
       // ENTERPRISE STANDARD: Damage claims get their own type for distinct UI treatment
@@ -1043,6 +1043,13 @@ export async function getTransactionHistory(
 
       const transactionId = row.transaction_id != null ? parseInt(String(row.transaction_id)) : null;
       const bookingId = parseInt(String(row.id));
+      const paymentStatus = mapPaymentStatus(row.transaction_status || row.payment_status);
+      const bookingStatus = String(row.status || '').toLowerCase();
+      const isRevenueEligible = (paymentStatus === 'paid' || paymentStatus === 'partially_refunded')
+        && !['pending', 'cancelled', 'canceled', 'rejected', 'expired'].includes(bookingStatus);
+      const netRevenue = isRevenueEligible
+        ? Math.max(0, grossNetRevenue - ptRefundAmount)
+        : 0;
 
       return {
         id: bookingId,
@@ -1061,7 +1068,7 @@ export async function getTransactionHistory(
         stripeFee: stripeFee, // Actual Stripe processing fee (from Stripe API or estimated)
         managerRevenue: managerRevenue || 0,
         netRevenue: netRevenue, // Net after tax and Stripe fees
-        paymentStatus: mapPaymentStatus(row.transaction_status || row.payment_status),
+        paymentStatus,
         paymentIntentId: row.pt_payment_intent_id || row.payment_intent_id,
         status: row.status,
         currency: String(row.pt_currency || row.currency || 'CAD').toUpperCase(),
@@ -1105,6 +1112,7 @@ export async function getTransactionHistory(
         -- Tax rate from kitchen (same as kitchen bookings)
         COALESCE(k.tax_rate_percent, 0)::numeric as tax_rate_percent,
         sb.start_date as booking_date,
+        sb.status as booking_status,
         sb.chef_id,
         sl.name as storage_name,
         k.name as kitchen_name,
@@ -1191,7 +1199,7 @@ export async function getTransactionHistory(
       const taxCents = isDamageClaim ? 0 : Math.round((ptBaseAmount * taxRatePercent) / 100);
       
       // Net revenue = total - tax - stripe fees
-      const netRevenue = ptAmount - taxCents - stripeFee;
+      const grossNetRevenue = ptAmount - taxCents - stripeFee;
 
       // Determine booking type for UI display
       // ENTERPRISE STANDARD: Damage claims get their own type for distinct UI treatment
@@ -1205,6 +1213,13 @@ export async function getTransactionHistory(
       } else {
         resolvedBookingType = 'storage';
       }
+      const paymentStatus = mapPaymentStatus(row.transaction_status);
+      const bookingStatus = String(row.booking_status || '').toLowerCase();
+      const isRevenueEligible = (paymentStatus === 'paid' || paymentStatus === 'partially_refunded')
+        && !['pending', 'cancelled', 'canceled', 'rejected', 'expired'].includes(bookingStatus);
+      const netRevenue = isRevenueEligible
+        ? Math.max(0, grossNetRevenue - ptRefundAmount)
+        : 0;
 
       return {
         id: bookingId,
@@ -1223,9 +1238,9 @@ export async function getTransactionHistory(
         stripeFee: stripeFee, // Actual Stripe processing fee (from Stripe API or estimated)
         managerRevenue: ptManagerRevenue || ptAmount,
         netRevenue: netRevenue,
-        paymentStatus: mapPaymentStatus(row.transaction_status),
+        paymentStatus,
         paymentIntentId: row.pt_payment_intent_id,
-        status: 'confirmed',
+        status: row.booking_status || 'confirmed',
         currency: String(row.pt_currency || 'CAD').toUpperCase(),
         kitchenId: null,
         kitchenName: row.kitchen_name,

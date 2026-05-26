@@ -36,6 +36,7 @@ import {
 } from "lucide-react"
 import { formatCurrency, formatPercent } from "@/lib/formatters"
 import type { RevenueMetrics, Transaction } from "../types"
+import { getTransactionRevenueBreakdown } from "../revenue-calculations"
 
 interface RevenueMetricCardsProps {
     metrics: RevenueMetrics | null
@@ -197,29 +198,12 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
 
     if (transactions && transactions.length > 0) {
         const totals = transactions.reduce((acc, t) => {
-            const totalPrice = t.totalPrice || 0;
-            const taxRate = t.taxRatePercent || 0;
-            const rawStripeFee = t.stripeFee || 0;
-            const managerRevenue = t.managerRevenue || 0;
-
-            const tax = taxRate > 0
-                ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
-                : 0;
-
-            let fee = rawStripeFee;
-            if (fee === 0 && managerRevenue > 0 && totalPrice > 0) {
-                fee = Math.max(0, totalPrice - tax - managerRevenue);
-            }
-
-            // Corrected Net for this transaction (matching columns.tsx)
-            const correctNet = (managerRevenue > 0)
-                ? managerRevenue
-                : totalPrice - tax - fee;
+            const breakdown = getTransactionRevenueBreakdown(t);
 
             return {
-                tax: acc.tax + tax,
-                fee: acc.fee + fee,
-                net: acc.net + Math.max(0, correctNet - (t.refundAmount || 0))
+                tax: acc.tax + breakdown.taxAmount,
+                fee: acc.fee + breakdown.stripeFee,
+                net: acc.net + breakdown.netRevenue
             };
         }, { tax: 0, fee: 0, net: 0 });
 
