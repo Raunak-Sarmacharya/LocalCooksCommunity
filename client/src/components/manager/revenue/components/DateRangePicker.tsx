@@ -8,22 +8,15 @@
 import * as React from "react"
 import { CalendarIcon, ChevronDown } from "lucide-react"
 import { type DateRange } from "react-day-picker"
-import { addDays, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, startOfYear, endOfYear, subDays, subMonths } from "date-fns"
+import { startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, startOfYear, endOfYear, subDays, subMonths } from "date-fns"
 
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import {
     Popover,
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/formatters"
 import type { DateRangePreset, DateRange as AppDateRange } from "../types"
@@ -140,14 +133,18 @@ export function DateRangePicker({
                     <ChevronDown className="h-4 w-4 opacity-50" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-                <div className="flex">
+            <PopoverContent
+                className="w-[calc(100vw-2rem)] max-w-[760px] overflow-hidden p-0"
+                align="end"
+                sideOffset={8}
+            >
+                <div className="flex flex-col md:flex-row">
                     {/* Presets Sidebar */}
-                    <div className="border-r p-3 w-40">
+                    <div className="w-full border-b p-3 md:w-44 md:border-b-0 md:border-r">
                         <p className="text-xs font-medium text-muted-foreground mb-2 px-2">
                             Quick Select
                         </p>
-                        <div className="space-y-1">
+                        <div className="grid grid-cols-2 gap-1 md:block md:space-y-1">
                             {presets.map((preset) => (
                                 <Button
                                     key={preset.label}
@@ -163,7 +160,7 @@ export function DateRangePicker({
                     </div>
 
                     {/* Calendar */}
-                    <div className="p-3">
+                    <div className="overflow-x-auto p-3">
                         <Calendar
                             mode="range"
                             selected={{
@@ -173,6 +170,21 @@ export function DateRangePicker({
                             onSelect={handleCalendarSelect}
                             numberOfMonths={2}
                             defaultMonth={dateRange.from}
+                            className="p-0"
+                            classNames={{
+                                months: "flex flex-col sm:flex-row gap-4 space-y-0 sm:space-x-0",
+                                month: "w-[280px] flex-shrink-0 space-y-4",
+                                caption: "flex justify-center pt-1 relative items-center",
+                                table: "w-[280px] border-collapse",
+                                head_row: "flex",
+                                head_cell: "w-10 h-8 text-center text-muted-foreground font-normal text-[0.8rem]",
+                                row: "flex w-full mt-1",
+                                cell: "h-10 w-10 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
+                                day: cn(
+                                    buttonVariants({ variant: "ghost" }),
+                                    "h-10 w-10 p-0 font-normal aria-selected:opacity-100"
+                                ),
+                            }}
                         />
                     </div>
                 </div>
