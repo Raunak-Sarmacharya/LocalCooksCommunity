@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
 import { Calendar as CalendarIcon, Save, Trash2, Loader2, AlertTriangle } from "lucide-react";
-import { useEffect, useState, useCallback } from "react";
+import { forwardRef, useEffect, useState, useCallback, useImperativeHandle } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -77,6 +77,10 @@ interface WeeklyScheduleItem {
   end_time?: string;
 }
 
+export interface KitchenAvailabilityManagementHandle {
+  saveWeeklySchedule: () => Promise<boolean>;
+}
+
 async function getAuthHeaders(): Promise<HeadersInit> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -99,23 +103,27 @@ interface KitchenAvailabilityManagementProps {
   embedded?: boolean;
   initialLocationId?: number;
   initialKitchenId?: number;
-  onSaveSuccess?: () => void; // [NEW] Callback when availability is saved
+  onSaveSuccess?: () => void | Promise<void>; // [NEW] Callback when availability is saved
+  hideWeeklyScheduleSaveButton?: boolean;
 }
 
-export default function KitchenAvailabilityManagement({
+const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHandle, KitchenAvailabilityManagementProps>(function KitchenAvailabilityManagement({
   embedded = false,
   initialLocationId,
   initialKitchenId,
-  onSaveSuccess
-}: KitchenAvailabilityManagementProps) {
+  onSaveSuccess,
+  hideWeeklyScheduleSaveButton = false
+}, ref) {
   if (embedded) {
     // If embedded, we expect IDs to be passed.
     // If not, we can show a placeholder or just try to render with nulls (which Content handles).
     return (
       <AvailabilityContent
+        ref={ref}
         selectedLocationId={initialLocationId || null}
         selectedKitchenId={initialKitchenId || null}
         onSaveSuccess={onSaveSuccess}
+        hideWeeklyScheduleSaveButton={hideWeeklyScheduleSaveButton}
       />
     );
   }
@@ -137,24 +145,30 @@ export default function KitchenAvailabilityManagement({
         }
         return (
           <AvailabilityContent
+            ref={ref}
             selectedLocationId={selectedLocationId}
             selectedKitchenId={selectedKitchenId}
+            hideWeeklyScheduleSaveButton={hideWeeklyScheduleSaveButton}
           />
         );
       }}
     </ManagerPageLayout>
   );
-}
+});
 
-function AvailabilityContent({
-  selectedLocationId,
-  selectedKitchenId,
-  onSaveSuccess
-}: {
+export default KitchenAvailabilityManagement;
+
+const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
   selectedLocationId: number | null,
   selectedKitchenId: number | null,
-  onSaveSuccess?: () => void
-}) {
+  onSaveSuccess?: () => void | Promise<void>,
+  hideWeeklyScheduleSaveButton?: boolean
+}>(function AvailabilityContent({
+  selectedLocationId,
+  selectedKitchenId,
+  onSaveSuccess,
+  hideWeeklyScheduleSaveButton = false
+}, ref) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -321,35 +335,47 @@ function AvailabilityContent({
   });
 
 
-  const handleSaveWeeklySchedule = async () => {
-    if (!selectedKitchenId) return;
+  const handleSaveWeeklySchedule = useCallback(async () => {
+    if (!selectedKitchenId) return false;
     setIsSavingSchedule(true);
     try {
       const headers = await getAuthHeaders();
-      const scheduleArray = Object.values(weeklySchedule).map(item => ({
-        kitchenId: selectedKitchenId,
-        dayOfWeek: item.dayOfWeek,
-        isAvailable: item.isAvailable,
-        startTime: item.startTime,
-        endTime: item.endTime
-      }));
+      const scheduleArray = [0, 1, 2, 3, 4, 5, 6].map(day => {
+        const item = weeklySchedule[day] || {};
+        return {
+          kitchenId: selectedKitchenId,
+          dayOfWeek: item.dayOfWeek ?? day,
+          isAvailable: item.isAvailable ?? false,
+          startTime: item.startTime || "09:00",
+          endTime: item.endTime || "17:00"
+        };
+      });
 
       // Naive sequential save to ensure reliability
       for (const item of scheduleArray) {
-        await fetch("/api/manager/availability", { method: "POST", headers, body: JSON.stringify(item) });
+        const response = await fetch("/api/manager/availability", { method: "POST", headers, body: JSON.stringify(item) });
+        if (!response.ok) {
+          throw new Error(await response.text() || "Failed to save weekly schedule");
+        }
       }
       toast({ title: "Success", description: "Weekly schedule saved" });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/availability', selectedKitchenId] });
       // [NEW] Notify parent that save was successful
       if (onSaveSuccess) {
-        onSaveSuccess();
+        await onSaveSuccess();
       }
+      return true;
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
+      return false;
     } finally {
       setIsSavingSchedule(false);
     }
-  };
+  }, [onSaveSuccess, queryClient, selectedKitchenId, toast, weeklySchedule]);
+
+  useImperativeHandle(ref, () => ({
+    saveWeeklySchedule: handleSaveWeeklySchedule
+  }), [handleSaveWeeklySchedule]);
 
   const handleDateClick = (clickedDate: Date | undefined) => {
     if (!clickedDate) return;
@@ -479,10 +505,12 @@ function AvailabilityContent({
                 <CardTitle>Recurring Weekly Hours</CardTitle>
                 <CardDescription>Default hours of operation for this kitchen.</CardDescription>
               </div>
-              <Button onClick={handleSaveWeeklySchedule} disabled={isSavingSchedule}>
-                {isSavingSchedule ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Save Schedule
-              </Button>
+              {!hideWeeklyScheduleSaveButton && (
+                <Button onClick={handleSaveWeeklySchedule} disabled={isSavingSchedule}>
+                  {isSavingSchedule ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Save Schedule
+                </Button>
+              )}
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -775,4 +803,4 @@ function AvailabilityContent({
       </AlertDialog>
     </div>
   );
-}
+});
