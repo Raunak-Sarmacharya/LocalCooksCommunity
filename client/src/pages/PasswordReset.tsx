@@ -39,11 +39,7 @@ export default function PasswordReset() {
   const handleSuccess = () => {
     logger.info('✅ Password reset completed successfully');
     setIsSuccess(true);
-    // Redirect to appropriate login page based on role
-    const redirectPath = role === 'manager' ? '/manager/login' : '/auth';
-    setTimeout(() => {
-      setLocation(redirectPath);
-    }, 3000);
+    // No auto-redirect; user can click "Continue to Login" when ready
   };
 
   const handleGoBack = () => {
@@ -73,12 +69,7 @@ export default function PasswordReset() {
           <p className="text-gray-600 mb-6">
             Your password has been successfully updated. You can now log in with your new password.
           </p>
-          
-          <div className="flex items-center justify-center gap-2 text-sm text-blue-600 mb-4">
-            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-            <span>Redirecting to login...</span>
-          </div>
-          
+
           <button
             onClick={handleGoBack}
             className="w-full bg-blue-600 text-white py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors font-medium"
