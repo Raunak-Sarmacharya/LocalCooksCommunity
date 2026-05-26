@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/tooltip"
 import { formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/formatters"
 import type { Transaction, Invoice, Payout, PaymentStatus } from "./types"
+import { getTransactionRevenueBreakdown } from "./revenue-calculations"
 
 // Payment status badge configuration
 const paymentStatusConfig: Record<PaymentStatus, {
@@ -241,19 +242,14 @@ export function getTransactionColumns({
                 <div className="text-right">Tax</div>
             ),
             cell: ({ row }) => {
-                const totalPrice = row.original.totalPrice ?? 0;
                 const taxRate = row.original.taxRatePercent ?? 0;
-                // Reverse-calculate correct tax from tax-inclusive total
-                // Formula: base = round(total / (1 + rate/100)), tax = total - base
-                const correctTax = taxRate > 0
-                    ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
-                    : 0;
+                const { taxAmount } = getTransactionRevenueBreakdown(row.original);
                 return (
                     <TooltipProvider>
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <div className="text-right text-amber-600 text-sm">
-                                    {formatCurrency(correctTax)}
+                                    {formatCurrency(taxAmount)}
                                 </div>
                             </TooltipTrigger>
                             <TooltipContent>
@@ -270,21 +266,7 @@ export function getTransactionColumns({
                 <div className="text-right">Stripe Fee</div>
             ),
             cell: ({ row }) => {
-                const rawStripeFee = row.original.stripeFee ?? 0;
-                const managerRevenue = row.original.managerRevenue ?? 0;
-                const totalPrice = row.original.totalPrice ?? 0;
-                const taxRate = row.original.taxRatePercent ?? 0;
-
-                // If stripeFee is synced from Stripe, use it directly.
-                // Otherwise, if managerRevenue is set (transfer happened), back-calculate:
-                //   effectiveFee = totalPrice - tax - managerRevenue
-                let stripeFee = rawStripeFee;
-                if (stripeFee === 0 && managerRevenue > 0 && totalPrice > 0) {
-                    const tax = taxRate > 0
-                        ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
-                        : 0;
-                    stripeFee = Math.max(0, totalPrice - tax - managerRevenue);
-                }
+                const { stripeFee } = getTransactionRevenueBreakdown(row.original);
 
                 return (
                     <TooltipProvider>
@@ -329,7 +311,8 @@ export function getTransactionColumns({
             },
         },
         {
-            accessorKey: "netRevenue",
+            id: "netRevenue",
+            accessorFn: (transaction) => getTransactionRevenueBreakdown(transaction).netRevenue,
             header: ({ column }) => (
                 <Button
                     variant="ghost"
@@ -341,38 +324,29 @@ export function getTransactionColumns({
                 </Button>
             ),
             cell: ({ row }) => {
-                const totalPrice = row.original.totalPrice ?? 0;
-                const taxRate = row.original.taxRatePercent ?? 0;
-                const managerRevenue = row.original.managerRevenue ?? 0;
-                const stripeFee = row.original.stripeFee ?? 0;
-                const refundAmount = row.original.refundAmount ?? 0;
-                // Reverse-calculate correct tax from tax-inclusive total
-                const correctTax = taxRate > 0
-                    ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
-                    : 0;
-                // ENTERPRISE STANDARD: Use managerRevenue (from transfer service) as the
-                // authoritative net amount when available. Only fall back to manual calculation
-                // when managerRevenue is not set (pre-transfer state).
-                // This prevents showing inflated net revenue when stripeFee is still 0.
-                const correctNet = (managerRevenue > 0)
-                    ? managerRevenue
-                    : totalPrice - correctTax - stripeFee;
-                const effectiveNet = Math.max(0, correctNet - refundAmount);
-                const hasRefund = refundAmount > 0;
+                const {
+                    isRevenueEligible,
+                    grossNetRevenue,
+                    refundAmount,
+                    netRevenue,
+                } = getTransactionRevenueBreakdown(row.original);
+                const hasRefund = isRevenueEligible && refundAmount > 0;
                 return (
                     <TooltipProvider>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <div className={`text-right font-semibold ${hasRefund ? 'text-orange-600' : 'text-primary'}`}>
-                                    {formatCurrency(effectiveNet)}
+                                <div className={`text-right font-semibold ${!isRevenueEligible ? 'text-muted-foreground' : hasRefund ? 'text-orange-600' : 'text-primary'}`}>
+                                    {formatCurrency(netRevenue)}
                                 </div>
                             </TooltipTrigger>
                             <TooltipContent>
-                                {hasRefund ? (
+                                {!isRevenueEligible ? (
+                                    <p className="text-sm">Canceled, pending, held, failed, and fully refunded transactions are excluded from net revenue.</p>
+                                ) : hasRefund ? (
                                     <div className="text-sm space-y-1">
-                                        <p>Original: {formatCurrency(correctNet)}</p>
+                                        <p>Original: {formatCurrency(grossNetRevenue)}</p>
                                         <p className="text-red-500">Refund: -{formatCurrency(refundAmount)}</p>
-                                        <p className="font-semibold">Effective: {formatCurrency(effectiveNet)}</p>
+                                        <p className="font-semibold">Effective: {formatCurrency(netRevenue)}</p>
                                     </div>
                                 ) : (
                                     <p className="text-sm">Net revenue after tax and Stripe fees</p>
