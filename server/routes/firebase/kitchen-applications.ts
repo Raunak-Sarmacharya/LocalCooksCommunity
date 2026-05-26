@@ -599,13 +599,20 @@ router.post('/firebase/chef/kitchen-applications',
             // Create in-app notification for manager about new application
             try {
                 if (location.managerId) {
-                    await notificationService.notifyNewApplication({
+                    const managerApplicationNotification = {
                         managerId: location.managerId,
                         locationId: location.id,
                         applicationId: application.id,
                         chefName: formData.fullName || 'Chef',
-                        chefEmail: formData.email || ''
-                    });
+                        chefEmail: formData.email || '',
+                        locationName: location.name || 'Kitchen Location'
+                    };
+
+                    if (currentTierValue === 2) {
+                        await notificationService.notifyStep2ApplicationSubmitted(managerApplicationNotification);
+                    } else {
+                        await notificationService.notifyNewApplication(managerApplicationNotification);
+                    }
                 }
             } catch (notifError) {
                 logger.error("Error creating application notification:", notifError);
@@ -613,7 +620,7 @@ router.post('/firebase/chef/kitchen-applications',
 
             // Send email notification to manager about new kitchen application
             try {
-                if (location.notificationEmail && location.managerId) {
+                if (currentTierValue === 1 && location.notificationEmail && location.managerId) {
                     const managerEmailContent = generateNewKitchenApplicationManagerEmail({
                         managerEmail: location.notificationEmail,
                         chefName: formData.fullName || 'Chef',

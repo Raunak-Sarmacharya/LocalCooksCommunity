@@ -382,6 +382,7 @@ interface ApplicationNotificationData {
   applicationId: number;
   chefName: string;
   chefEmail: string;
+  locationName?: string;
 }
 
 async function notifyNewApplication(data: ApplicationNotificationData) {
@@ -399,6 +400,26 @@ async function notifyNewApplication(data: ApplicationNotificationData) {
     },
     actionUrl: `/manager/booking-dashboard?view=applications`,
     actionLabel: 'Review Application'
+  });
+}
+
+async function notifyStep2ApplicationSubmitted(data: ApplicationNotificationData) {
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: 'application_new',
+    priority: 'high',
+    title: 'Step 2 Submitted',
+    message: `${data.chefName} (${data.chefEmail}) submitted Step 2 documents${data.locationName ? ` for ${data.locationName}` : ''}. Review Step 2 to approve full booking access.`,
+    metadata: {
+      applicationId: data.applicationId,
+      chefName: data.chefName,
+      chefEmail: data.chefEmail,
+      locationName: data.locationName,
+      step: 2
+    },
+    actionUrl: `/manager/booking-dashboard?view=applications`,
+    actionLabel: 'Review Step 2'
   });
 }
 
@@ -1323,6 +1344,7 @@ export const notificationService = {
   
   // Manager: Application
   notifyNewApplication,
+  notifyStep2ApplicationSubmitted,
   notifyApplicationApproved,
   
   // Manager: Storage & License
