@@ -53,6 +53,8 @@ interface ApplicationRequirementsWizardProps {
   activeStepOverride?: WizardStep;
   /** Auto-save when step changes (for onboarding flow where navigation is hidden) */
   autoSaveOnStepChange?: boolean;
+  /** Hide the action button in the unsaved changes banner when the parent owns saving */
+  hideUnsavedChangesAction?: boolean;
 }
 
 const STEP_ICONS: Record<WizardStep, React.ReactNode> = {
@@ -82,6 +84,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
   onStepChange,
   activeStepOverride,
   autoSaveOnStepChange = false,
+  hideUnsavedChangesAction = false,
 }, ref) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -392,7 +395,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
 
       {/* Unsaved Changes Banner */}
       {hasUnsavedChanges && (
-        <div className="flex items-center justify-between p-4 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40">
+        <div className="flex items-center justify-between gap-4 p-4 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
               <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
@@ -406,12 +409,14 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
               </p>
             </div>
           </div>
-          <StatusButton
-            onClick={handleSave}
-            status={saveMutation.isPending ? "loading" : "idle"}
-            size="sm"
-            labels={{ idle: "Save Now", loading: "Saving", success: "Saved" }}
-          />
+          {!hideUnsavedChangesAction && (
+            <StatusButton
+              onClick={handleSave}
+              status={saveMutation.isPending ? "loading" : "idle"}
+              size="sm"
+              labels={{ idle: "Save Now", loading: "Saving", success: "Saved" }}
+            />
+          )}
         </div>
       )}
 

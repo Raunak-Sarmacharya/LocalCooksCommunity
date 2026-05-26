@@ -132,6 +132,7 @@ export default function ApplicationRequirementsStep() {
         compact
         hideNavigation
         autoSaveOnStepChange
+        hideUnsavedChangesAction
         activeStepOverride={currentWizardStep}
         onStepChange={handleWizardStepChange}
       />
