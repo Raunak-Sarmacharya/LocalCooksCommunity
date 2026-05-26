@@ -1021,7 +1021,10 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                     await notificationService.notifyChefApplicationApproved({
                         chefId: application.chefId,
                         kitchenName: location?.name || 'Kitchen',
-                        locationName: location?.name || 'Kitchen Location'
+                        locationName: location?.name || 'Kitchen Location',
+                        locationId: application.locationId,
+                        applicationId: application.id,
+                        currentTier: updatedApplication.current_tier ?? 1
                     });
                 }
             } catch (notifError) {

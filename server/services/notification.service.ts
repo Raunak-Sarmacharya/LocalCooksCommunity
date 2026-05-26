@@ -679,19 +679,38 @@ async function notifyChefStorageCheckinReminder(data: { chefId: number; storageB
   });
 }
 
-async function notifyChefApplicationApproved(data: { chefId: number; kitchenName: string; locationName: string }) {
+async function notifyChefApplicationApproved(data: {
+  chefId: number;
+  kitchenName: string;
+  locationName: string;
+  locationId?: number;
+  currentTier?: number | null;
+  applicationId?: number;
+}) {
+  const currentTier = data.currentTier ?? 1;
+  const isFullyApproved = currentTier >= 3;
+
   return createChefNotification({
     chefId: data.chefId,
     type: 'application_approved',
     priority: 'high',
-    title: 'Application Approved!',
-    message: `Congratulations! Your application to ${data.kitchenName} at ${data.locationName} has been approved. You can now book this kitchen.`,
+    title: isFullyApproved ? 'Application Approved!' : 'Step 1 Approved!',
+    message: isFullyApproved
+      ? `Congratulations! Your application to ${data.kitchenName} at ${data.locationName} has been fully approved. You can now book this kitchen.`
+      : `Good news! Your Step 1 application to ${data.kitchenName} at ${data.locationName} was approved. Complete Step 2 before booking this kitchen.`,
     metadata: {
       kitchenName: data.kitchenName,
-      locationName: data.locationName
+      locationName: data.locationName,
+      locationId: data.locationId,
+      applicationId: data.applicationId,
+      currentTier
     },
-    actionUrl: `/dashboard?view=discover`,
-    actionLabel: 'Book Now'
+    actionUrl: isFullyApproved
+      ? `/dashboard?view=discover`
+      : data.locationId
+        ? `/kitchen-requirements/${data.locationId}`
+        : `/dashboard?view=kitchen-applications`,
+    actionLabel: isFullyApproved ? 'Book Now' : 'Complete Step 2'
   });
 }
 
