@@ -52,6 +52,24 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   return {};
 }
 
+function getApiErrorMessage(errorData: any, fallback: string) {
+  if (errorData?.message && errorData.message !== "Validation error") {
+    return errorData.message;
+  }
+
+  const detailMessages = Array.isArray(errorData?.details)
+    ? errorData.details
+        .map((detail: { message?: string }) => detail?.message)
+        .filter(Boolean)
+    : [];
+
+  if (detailMessages.length > 0) {
+    return detailMessages.join(", ");
+  }
+
+  return errorData?.error || fallback;
+}
+
 /**
  * Hook for chefs to manage their kitchen applications
  * This replaces the old "share profile" workflow
@@ -101,7 +119,7 @@ export function useChefKitchenApplications() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to submit application");
+        throw new Error(getApiErrorMessage(errorData, "Failed to submit application"));
       }
 
       return await response.json();
@@ -134,7 +152,7 @@ export function useChefKitchenApplications() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to cancel application");
+        throw new Error(getApiErrorMessage(errorData, "Failed to cancel application"));
       }
 
       return await response.json();
@@ -168,7 +186,7 @@ export function useChefKitchenApplications() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to update documents");
+        throw new Error(getApiErrorMessage(errorData, "Failed to update documents"));
       }
 
       return await response.json();

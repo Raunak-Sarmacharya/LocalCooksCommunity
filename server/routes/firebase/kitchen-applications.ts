@@ -438,6 +438,7 @@ router.post('/firebase/chef/kitchen-applications',
 
             // Add tier fields if provided
             const currentTierValue = parseInt(req.body.current_tier) || 1;
+            let existingApp: any;
             if (req.body.current_tier) {
                 formData.current_tier = currentTierValue;
             }
@@ -445,7 +446,7 @@ router.post('/firebase/chef/kitchen-applications',
             // For Step 2 submissions, preserve Step 1 data and store Step 2 custom fields in tier_data
             if (currentTierValue === 2) {
                 // Get existing application to preserve Step 1 custom fields
-                const existingApp = await chefApplicationService.getChefApplication(req.neonUser!.id, locationId);
+                existingApp = await chefApplicationService.getChefApplication(req.neonUser!.id, locationId);
                 
                 // Build tier_data with proper structure for enterprise-grade data separation
                 const mergedTierData: Record<string, any> = {
@@ -484,7 +485,7 @@ router.post('/firebase/chef/kitchen-applications',
             if (currentTier === 2) {
                 // Check if Food Establishment Certificate is required and provided
                 if (requirements.tier2_food_establishment_cert_required) {
-                    const hasFoodEstablishmentCert = foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl;
+                    const hasFoodEstablishmentCert = foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || existingApp?.foodEstablishmentCertUrl;
                     if (!hasFoodEstablishmentCert) {
                         return res.status(400).json({
                             error: 'Validation error',
@@ -498,9 +499,25 @@ router.post('/firebase/chef/kitchen-applications',
                     }
                 }
 
+                if (requirements.tier2_food_establishment_expiry_required) {
+                    const hasFoodEstablishmentExpiry = req.body.foodEstablishmentCertExpiry || businessInfo.foodEstablishmentCertExpiry || existingApp?.foodEstablishmentCertExpiry;
+                    if (!hasFoodEstablishmentExpiry) {
+                        return res.status(400).json({
+                            error: 'Validation error',
+                            message: 'Food establishment license expiry date is required for Step 2',
+                            details: [{
+                                code: 'custom',
+                                message: 'Food establishment license expiry date is required',
+                                path: ['foodEstablishmentCertExpiry']
+                            }]
+                        });
+                    }
+                }
+
                 // Check if Insurance Document is required and provided
                 if (requirements.tier2_insurance_document_required) {
-                    const hasInsuranceDoc = tierFileUrls['tier2_insurance_document'];
+                    const existingTierFiles = (existingApp?.tier_data as Record<string, any> | undefined)?.tierFiles || {};
+                    const hasInsuranceDoc = tierFileUrls['tier2_insurance_document'] || existingTierFiles.tier2_insurance_document;
                     if (!hasInsuranceDoc) {
                         return res.status(400).json({
                             error: 'Validation error',

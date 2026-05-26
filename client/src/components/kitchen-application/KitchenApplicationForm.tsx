@@ -20,7 +20,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { type FieldErrors, useForm, useWatch } from "react-hook-form";
 import { useLocation } from "wouter";
 import { z } from "zod";
 import { phoneNumberSchema } from "@shared/phone-validation";
@@ -193,6 +193,10 @@ export default function KitchenApplicationForm({
   const [existingBusinessLicenseUrl, setExistingBusinessLicenseUrl] = useState<string | null>(application?.foodEstablishmentCertUrl || null);
   // Tier 2 file uploads
   const [insuranceFile, setInsuranceFile] = useState<File | null>(null);
+  const [fileErrors, setFileErrors] = useState<{
+    businessLicense?: string;
+    insurance?: string;
+  }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   
@@ -241,7 +245,10 @@ export default function KitchenApplicationForm({
       foodHandlerCertExpiry: (!isTier2OrHigher && requirements.requireFoodHandlerExpiry)
         ? z.string().min(1, "Certificate expiry date is required")
         : z.string().optional(),
-      foodEstablishmentCertExpiry: requirements.requireFoodEstablishmentExpiry
+      foodEstablishmentCertExpiry: (
+        (!isTier2OrHigher && requirements.requireFoodEstablishmentExpiry) ||
+        (isTier2OrHigher && requirements.tier2_food_establishment_expiry_required)
+      )
         ? z.string().min(1, "Food establishment certificate expiry is required")
         : z.string().optional(),
       usageFrequency: (!isTier2OrHigher && requirements.requireUsageFrequency)
@@ -500,7 +507,56 @@ export default function KitchenApplicationForm({
     return Math.round((section1 + section2 + section3 + section4 + section5) / 5);
   }, [sectionProgress]);
 
+  const showValidationToast = (messages: string[]) => {
+    const uniqueMessages = Array.from(new Set(messages.filter(Boolean)));
+    toast({
+      title: "Missing required information",
+      description: uniqueMessages.length > 0
+        ? uniqueMessages.join(", ")
+        : "Please complete the required fields before submitting.",
+      variant: "destructive",
+    });
+  };
+
+  const collectFormErrorMessages = (errors: FieldErrors<any>): string[] => {
+    return Object.values(errors).flatMap((error: any) => {
+      if (!error) return [];
+      if (error.message) return [String(error.message)];
+      if (typeof error === "object") return collectFormErrorMessages(error);
+      return [];
+    });
+  };
+
+  const getStep2FileValidationErrors = () => {
+    const nextFileErrors: typeof fileErrors = {};
+    const messages: string[] = [];
+
+    if (currentTier >= 2) {
+      if (requirements?.tier2_food_establishment_cert_required && !businessLicenseFile && !existingBusinessLicenseUrl) {
+        nextFileErrors.businessLicense = "Food establishment license is required";
+        messages.push("Upload your food establishment license");
+      }
+
+      if (requirements?.tier2_insurance_document_required && !insuranceFile) {
+        nextFileErrors.insurance = "Insurance document is required";
+        messages.push("Upload your insurance document");
+      }
+    }
+
+    return { nextFileErrors, messages };
+  };
+
+  const handleInvalidSubmit = (errors: FieldErrors<KitchenApplicationFormData>) => {
+    const formMessages = collectFormErrorMessages(errors);
+    const { nextFileErrors, messages: fileMessages } = getStep2FileValidationErrors();
+
+    setFileErrors(nextFileErrors);
+    showValidationToast([...formMessages, ...fileMessages]);
+  };
+
   const onSubmit = async (data: KitchenApplicationFormData) => {
+    setFileErrors({});
+
     // Validate file upload only if required AND on Tier 1 (Tier 2+ already submitted this)
     if (currentTier === 1 && requirements?.requireFoodHandlerCert !== false && !foodHandlerFile) {
       toast({
@@ -524,6 +580,24 @@ export default function KitchenApplicationForm({
           description: "Your certificate has expired. Please upload a valid certificate.",
           variant: "destructive",
         });
+        return;
+      }
+    }
+
+    if (currentTier >= 2) {
+      const { nextFileErrors, messages: missingMessages } = getStep2FileValidationErrors();
+
+      if (requirements?.tier2_food_establishment_expiry_required && !data.foodEstablishmentCertExpiry) {
+        form.setError("foodEstablishmentCertExpiry", {
+          type: "required",
+          message: "Food establishment license expiry date is required",
+        });
+        missingMessages.push("Enter the food establishment license expiry date");
+      }
+
+      if (Object.keys(nextFileErrors).length > 0 || missingMessages.length > 0) {
+        setFileErrors(nextFileErrors);
+        showValidationToast(missingMessages);
         return;
       }
     }
@@ -694,6 +768,23 @@ export default function KitchenApplicationForm({
         return;
       }
       setBusinessLicenseFile(file);
+      setFileErrors(prev => ({ ...prev, businessLicense: undefined }));
+    }
+  };
+
+  const handleInsuranceFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast({
+          title: "File Too Large",
+          description: "Maximum file size is 10MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      setInsuranceFile(file);
+      setFileErrors(prev => ({ ...prev, insurance: undefined }));
     }
   };
 
@@ -960,7 +1051,7 @@ export default function KitchenApplicationForm({
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit, handleInvalidSubmit)} className="space-y-6">
           {/* TIER 1 SECTIONS - Only show when on Tier 1 */}
           {currentTier === 1 && (
             <>
@@ -1779,7 +1870,9 @@ export default function KitchenApplicationForm({
                           <label
                             htmlFor="businessLicense"
                             className={`flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all
-                            ${businessLicenseFile
+                            ${fileErrors.businessLicense
+                                ? 'border-red-300 bg-red-50'
+                                : businessLicenseFile
                                 ? 'border-[#2BA89F] bg-[#2BA89F]/5'
                                 : existingBusinessLicenseUrl
                                   ? 'border-gray-300 bg-gray-50'
@@ -1815,6 +1908,9 @@ export default function KitchenApplicationForm({
                               <Check className="h-4 w-4" />
                               New Business License uploaded - will replace existing
                             </div>
+                          )}
+                          {fileErrors.businessLicense && (
+                            <p className="text-sm font-medium text-red-600 mt-2">{fileErrors.businessLicense}</p>
                           )}
                         </div>
 
@@ -1855,7 +1951,9 @@ export default function KitchenApplicationForm({
                           <label
                             htmlFor="insuranceDoc"
                             className={`flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all
-                            ${insuranceFile
+                            ${fileErrors.insurance
+                                ? 'border-red-300 bg-red-50'
+                                : insuranceFile
                                 ? 'border-[#2BA89F] bg-[#2BA89F]/5'
                                 : 'border-gray-300 bg-[#208D80]/5 hover:border-[#208D80] hover:bg-[#208D80]/10'
                               }`}
@@ -1872,9 +1970,12 @@ export default function KitchenApplicationForm({
                             type="file"
                             id="insuranceDoc"
                             accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={(e) => setInsuranceFile(e.target.files?.[0] || null)}
+                            onChange={handleInsuranceFileChange}
                             className="hidden"
                           />
+                          {fileErrors.insurance && (
+                            <p className="text-sm font-medium text-red-600 mt-2">{fileErrors.insurance}</p>
+                          )}
                         </div>
 
                       {/* Kitchen Experience Description */}
