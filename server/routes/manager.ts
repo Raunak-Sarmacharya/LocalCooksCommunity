@@ -2757,7 +2757,7 @@ router.put(
     try {
       const user = req.neonUser!;
       const kitchenId = parseInt(req.params.kitchenId);
-      const { method, imageUrl, index } = req.body;
+      const { method, imageUrl, index, galleryImages } = req.body;
 
       const kitchen = await kitchenService.getKitchenById(kitchenId);
       if (!kitchen) {
@@ -2775,7 +2775,10 @@ router.put(
 
       const { deleteFromR2 } = await import("../r2-storage");
 
-      if (method === "add") {
+      if (Array.isArray(galleryImages)) {
+        // Full array replacement (used by client gallery components)
+        updatedImages = galleryImages.filter((u) => typeof u === "string");
+      } else if (method === "add") {
         if (imageUrl) updatedImages.push(imageUrl);
       } else if (method === "remove" && typeof index === "number") {
         if (index >= 0 && index < updatedImages.length) {

@@ -359,7 +359,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                   const remainingEquipment = equipment.length - 3;
 
                   // Format price (cents to dollars)
-                  const formatPrice = (cents: number) => `$${(cents / 100).toFixed(0)}`;
+                  const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
                   const priceDisplay = kitchen.hourlyRate ? formatPrice(kitchen.hourlyRate) : null;
 
                   // Always use the internal application URL

@@ -276,7 +276,17 @@ export default function EnhancedAuthPage() {
 
       if (needsTermsAcceptance) {
         const redirectPath = getRedirectPath();
-        const targetPath = redirectPath !== '/' ? redirectPath : '/dashboard';
+        let targetPath = redirectPath !== '/' ? redirectPath : '/dashboard';
+
+        // Role-aware default redirect for terms acceptance
+        if (redirectPath === '/' || redirectPath === '/dashboard') {
+          if (userMeta?.role === 'admin') {
+            targetPath = '/admin';
+          } else if (userMeta?.role === 'manager') {
+            targetPath = '/manager/dashboard';
+          }
+        }
+
         logger.info('🔒 TERMS ACCEPTANCE REQUIRED - redirecting to /accept-terms');
         redirectTimeoutRef.current = setTimeout(() => {
           setLocation(`/accept-terms?redirect=${targetPath}`);

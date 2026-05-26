@@ -287,11 +287,6 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
         <p className="text-gray-600">
           Please enter your new password below.
         </p>
-        {isFirebaseReset && (
-          <p className="text-xs text-blue-600 mt-2">
-            Using Firebase secure password reset
-          </p>
-        )}
       </motion.div>
 
       {/* Form */}
