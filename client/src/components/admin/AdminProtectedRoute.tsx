@@ -122,10 +122,13 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
   }
 
   // Terms acceptance gate
-  const needsAcceptance =
-    !user?.termsAccepted ||
-    !user?.termsVersion ||
-    user?.termsVersion !== CURRENT_POLICY_VERSION;
+  // ENTERPRISE FIX: Cross-check with auth context user for terms status.
+  // After terms acceptance, refreshUserData() updates the auth context user synchronously
+  // before navigation, but the useQuery cache might still hold stale data.
+  const queryTermsAccepted = user?.termsAccepted && user?.termsVersion === CURRENT_POLICY_VERSION;
+  const authContextTermsAccepted = firebaseUser?.termsAccepted && 
+    firebaseUser?.termsVersion === CURRENT_POLICY_VERSION;
+  const needsAcceptance = !queryTermsAccepted && !authContextTermsAccepted;
 
   if (needsAcceptance) {
     logger.info('AdminProtectedRoute - Terms not accepted, redirecting to /accept-terms');
