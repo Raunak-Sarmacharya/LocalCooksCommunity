@@ -493,8 +493,15 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
               type="button"
               variant="link"
               onClick={() => {
-                // Redirect to dedicated forgot password page
-                window.location.href = '/forgot-password';
+                // Detect role from current subdomain so the correct forgot-password endpoint is called
+                const hostname = window.location.hostname.toLowerCase();
+                let roleParam = '';
+                if (hostname.includes('kitchen') || hostname.startsWith('kitchen.')) {
+                  roleParam = '?role=manager';
+                } else if (hostname.includes('admin') || hostname.startsWith('admin.')) {
+                  roleParam = '?role=admin';
+                }
+                window.location.href = `/forgot-password${roleParam}`;
               }}
               className="text-sm text-blue-600 hover:text-blue-700"
             >

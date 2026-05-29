@@ -41,7 +41,16 @@ const itemVariants = {
 export default function ForgotPasswordForm({ onSuccess, onGoBack, role }: ForgotPasswordFormProps) {
   const [formState, setFormState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const isManager = role === 'manager';
+
+  // Fallback: detect role from hostname if prop is not provided
+  const effectiveRole = role || (() => {
+    const hostname = window.location.hostname.toLowerCase();
+    if (hostname.includes('kitchen') || hostname.startsWith('kitchen.')) return 'manager';
+    if (hostname.includes('admin') || hostname.startsWith('admin.')) return 'admin';
+    return 'chef';
+  })();
+
+  const isManager = effectiveRole === 'manager';
 
   const form = useForm<ForgotPasswordFormData>({
     resolver: zodResolver(forgotPasswordSchema),
@@ -53,7 +62,7 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack, role }: Forgot
     setErrorMessage(null);
 
     try {
-      logger.info('🔄 Submitting forgot password request for:', data.email, 'role:', role);
+      logger.info('🔄 Submitting forgot password request for:', data.email, 'role:', effectiveRole);
       
       // Use manager endpoint for managers, Firebase endpoint for others
       const endpoint = isManager ? '/api/manager/forgot-password' : '/api/firebase/forgot-password';
