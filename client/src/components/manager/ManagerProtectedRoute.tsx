@@ -150,10 +150,14 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   }
 
   // Terms acceptance gate
-  const needsAcceptance =
-    !user?.termsAccepted ||
-    !user?.termsVersion ||
-    user?.termsVersion !== CURRENT_POLICY_VERSION;
+  // ENTERPRISE FIX: Cross-check with auth context user as well.
+  // After terms acceptance, refreshUserData() updates the auth context user synchronously
+  // before navigation, but the useQuery cache might still hold stale data.
+  // If EITHER source says terms are accepted with the correct version, don't redirect.
+  const queryTermsAccepted = user?.termsAccepted && user?.termsVersion === CURRENT_POLICY_VERSION;
+  const authContextTermsAccepted = firebaseUser?.termsAccepted && 
+    firebaseUser?.termsVersion === CURRENT_POLICY_VERSION;
+  const needsAcceptance = !queryTermsAccepted && !authContextTermsAccepted;
 
   if (needsAcceptance && location !== '/accept-terms') {
     logger.info('ManagerProtectedRoute - Terms not accepted, redirecting to /accept-terms');

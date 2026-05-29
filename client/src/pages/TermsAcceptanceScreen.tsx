@@ -123,8 +123,32 @@ function TermsAcceptanceScreen() {
       if (response.ok) {
         logger.info("Terms accepted successfully");
         await refreshUserData();
-        // Invalidate any cached user profile queries so guards (e.g. ManagerProtectedRoute)
-        // pick up the fresh termsAccepted status and don't bounce back here.
+        // ENTERPRISE FIX: Optimistically update ALL cached /api/user/profile queries
+        // with the fresh terms data. This prevents the race condition where
+        // ManagerProtectedRoute reads stale cached data (termsAccepted=false) and
+        // redirects back to /accept-terms, causing a redirect loop that triggers
+        // the Sentry ErrorBoundary ("Something went wrong. Please refresh the page.").
+        //
+        // queryClient.invalidateQueries only marks queries as stale and triggers a
+        // BACKGROUND refetch — it doesn't update the cached data synchronously.
+        // When ManagerProtectedRoute mounts, it sees the stale cached data first
+        // (with termsAccepted=false) and redirects back here before the refetch completes.
+        queryClient.setQueriesData(
+          { queryKey: ["/api/user/profile"] },
+          (oldData: any) => {
+            if (!oldData) return oldData;
+            return {
+              ...oldData,
+              termsAccepted: true,
+              terms_accepted: true,
+              termsAcceptedAt: new Date().toISOString(),
+              terms_accepted_at: new Date().toISOString(),
+              termsVersion: CURRENT_POLICY_VERSION,
+              terms_version: CURRENT_POLICY_VERSION,
+            };
+          }
+        );
+        // Also invalidate to ensure eventual consistency with the server
         await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
         setSuccess(true);
         setTimeout(() => {
