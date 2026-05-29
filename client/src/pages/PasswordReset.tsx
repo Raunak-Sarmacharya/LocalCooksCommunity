@@ -15,6 +15,7 @@ function redirectToRoleLogin(role: string | null, setLocation: (path: string) =>
 
   if (isLocalhost) {
     const redirectPath = role === 'manager' ? '/manager/login' : '/auth';
+    console.log('[redirectToRoleLogin] localhost redirect:', redirectPath);
     setLocation(redirectPath);
     return;
   }
@@ -34,9 +35,50 @@ function redirectToRoleLogin(role: string | null, setLocation: (path: string) =>
   const detectedRole = role || 'chef';
   const subdomain = subdomainMap[detectedRole] || subdomainMap.chef;
   const path = redirectPaths[detectedRole] || redirectPaths.chef;
+  const fullUrl = `${subdomain}${path}`;
 
-  logger.info('🔄 Redirecting to role login:', `${subdomain}${path}`);
-  window.location.href = `${subdomain}${path}`;
+  console.log('[redirectToRoleLogin] production redirect:', { role, detectedRole, fullUrl });
+  logger.info('🔄 Redirecting to role login:', fullUrl);
+  window.location.href = fullUrl;
+}
+
+/**
+ * Detects user role from a Firebase continueUrl embedded in the reset link.
+ * Mirrors the logic in EmailAction.tsx for consistency.
+ */
+function detectRoleFromContinueUrl(continueUrl: string): 'manager' | 'chef' | 'admin' | null {
+  try {
+    const url = new URL(continueUrl);
+    const hostname = url.hostname.toLowerCase();
+    const pathname = url.pathname.toLowerCase();
+
+    if (hostname.includes('kitchen') || hostname.startsWith('kitchen.')) {
+      return pathname.includes('/manager') ? 'manager' : 'chef';
+    }
+    if (hostname.includes('chef') || hostname.startsWith('chef.')) {
+      return 'chef';
+    }
+    if (hostname.includes('admin') || hostname.startsWith('admin.')) {
+      return 'admin';
+    }
+    if (pathname.includes('/manager')) return 'manager';
+    if (pathname.includes('/admin')) return 'admin';
+    if (pathname.includes('/auth') || pathname.includes('/chef')) return 'chef';
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Detects user role from the current browser hostname (fallback).
+ */
+function detectRoleFromHostname(): 'manager' | 'chef' | 'admin' {
+  const hostname = window.location.hostname.toLowerCase();
+  if (hostname.includes('kitchen') || hostname.startsWith('kitchen.')) return 'manager';
+  if (hostname.includes('chef') || hostname.startsWith('chef.')) return 'chef';
+  if (hostname.includes('admin') || hostname.startsWith('admin.')) return 'admin';
+  return 'chef';
 }
 
 export default function PasswordReset() {
@@ -56,17 +98,58 @@ export default function PasswordReset() {
     const modeParam = urlParams.get('mode');
     const emailParam = urlParams.get('email');
     const roleParam = urlParams.get('role');
-    
+    const continueUrlParam = urlParams.get('continueUrl');
+
+    // Detect role from multiple sources (priority: continueUrl > URL param > hostname)
+    let detectedRole: string | null = roleParam;
+    if (!detectedRole && continueUrlParam) {
+      detectedRole = detectRoleFromContinueUrl(decodeURIComponent(continueUrlParam));
+    }
+    if (!detectedRole) {
+      detectedRole = detectRoleFromHostname();
+    }
+
+    console.log('[PasswordReset] mount detected:', { detectedRole, hostname: window.location.hostname, roleParam, continueUrlParam, pathname: window.location.pathname });
+
     setOobCode(codeParam);
     setToken(tokenParam);
     setMode(modeParam);
     setEmail(emailParam);
-    setRole(roleParam);
+    setRole(detectedRole);
 
-    // Check if this is a valid password reset request
+    // If mode is invalid, redirect immediately
     if (modeParam && modeParam !== 'resetPassword') {
       logger.info('Invalid reset mode:', modeParam);
-      redirectToRoleLogin(roleParam, setLocation);
+      redirectToRoleLogin(detectedRole, setLocation);
+      return;
+    }
+
+    // ENTERPRISE: Cross-subdomain redirect.
+    // If the Firebase Action URL points to the wrong subdomain (e.g., kitchen
+    // for a chef user), redirect to the correct subdomain before rendering.
+    const isLocalhost = window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.endsWith('.localhost');
+
+    if (!isLocalhost && detectedRole) {
+      const currentHostname = window.location.hostname.toLowerCase();
+      const isCorrectSubdomain =
+        (detectedRole === 'manager' && (currentHostname.includes('kitchen') || currentHostname.startsWith('kitchen.'))) ||
+        (detectedRole === 'chef' && (currentHostname.includes('chef') || currentHostname.startsWith('chef.'))) ||
+        (detectedRole === 'admin' && (currentHostname.includes('admin') || currentHostname.startsWith('admin.')));
+
+      if (!isCorrectSubdomain) {
+        const subdomainMap: Record<string, string> = {
+          manager: 'https://kitchen.localcooks.ca',
+          chef: 'https://chef.localcooks.ca',
+          admin: 'https://admin.localcooks.ca',
+        };
+        const targetSubdomain = subdomainMap[detectedRole] || subdomainMap.chef;
+        const fullUrl = `${targetSubdomain}${window.location.pathname}${window.location.search}`;
+        logger.info('🌐 Cross-subdomain redirect from PasswordReset:', fullUrl);
+        window.location.href = fullUrl;
+        return;
+      }
     }
   }, [setLocation]);
 
@@ -77,7 +160,22 @@ export default function PasswordReset() {
   };
 
   const handleGoBack = () => {
-    redirectToRoleLogin(role, setLocation);
+    // Defensive: always re-read role from URL since React state can be stale
+    // or the component may have been rendered by a cached/old build.
+    const urlParams = new URLSearchParams(window.location.search);
+    const roleFromUrl = urlParams.get('role');
+    const continueUrlParam = urlParams.get('continueUrl');
+
+    let effectiveRole: string | null = roleFromUrl;
+    if (!effectiveRole && continueUrlParam) {
+      effectiveRole = detectRoleFromContinueUrl(decodeURIComponent(continueUrlParam));
+    }
+    if (!effectiveRole) {
+      effectiveRole = detectRoleFromHostname();
+    }
+
+    console.log('[PasswordReset] handleGoBack:', { roleState: role, roleFromUrl, effectiveRole, hostname: window.location.hostname });
+    redirectToRoleLogin(effectiveRole, setLocation);
   };
 
   // Show success state instead of redirecting immediately
@@ -107,7 +205,7 @@ export default function PasswordReset() {
             onClick={handleGoBack}
             className="w-full bg-blue-600 text-white py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors font-medium"
           >
-            Continue to {role === 'manager' ? 'Manager' : ''} Login
+            Continue to {role === 'manager' ? 'Manager' : role === 'admin' ? 'Admin' : 'Chef'} Login
           </button>
         </motion.div>
       </div>
