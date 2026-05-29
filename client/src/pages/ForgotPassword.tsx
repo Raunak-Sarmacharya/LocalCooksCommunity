@@ -7,18 +7,54 @@ import ForgotPasswordForm from "../components/auth/ForgotPasswordForm";
 export default function ForgotPassword() {
   const [, setLocation] = useLocation();
   const [emailSent, setEmailSent] = useState(false);
-  
-  // Get role from URL params
+
+  // Get role from URL params, fallback to hostname detection
   const urlParams = new URLSearchParams(window.location.search);
-  const role = urlParams.get('role');
+  let role = urlParams.get('role');
+
+  // Fallback: detect role from current hostname so the correct endpoint is always called
+  if (!role) {
+    const hostname = window.location.hostname.toLowerCase();
+    if (hostname.includes('kitchen') || hostname.startsWith('kitchen.')) {
+      role = 'manager';
+    } else if (hostname.includes('admin') || hostname.startsWith('admin.')) {
+      role = 'admin';
+    } else if (hostname.includes('chef') || hostname.startsWith('chef.')) {
+      role = 'chef';
+    }
+  }
 
   const handleSuccess = () => {
     setEmailSent(true);
   };
 
   const handleGoBack = () => {
-    const redirectPath = role === 'manager' ? '/manager/login' : '/auth';
-    setLocation(redirectPath);
+    const isLocalhost = window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.endsWith('.localhost');
+
+    if (isLocalhost) {
+      const redirectPath = role === 'manager' ? '/manager/login' : '/auth';
+      setLocation(redirectPath);
+      return;
+    }
+
+    const redirectPaths: Record<string, string> = {
+      manager: '/manager/login',
+      chef: '/auth',
+      admin: '/admin/login',
+    };
+
+    const subdomainMap: Record<string, string> = {
+      manager: 'https://kitchen.localcooks.ca',
+      chef: 'https://chef.localcooks.ca',
+      admin: 'https://admin.localcooks.ca',
+    };
+
+    const detectedRole = role || 'chef';
+    const subdomain = subdomainMap[detectedRole] || subdomainMap.chef;
+    const path = redirectPaths[detectedRole] || redirectPaths.chef;
+    window.location.href = `${subdomain}${path}`;
   };
 
   return (

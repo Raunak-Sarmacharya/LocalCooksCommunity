@@ -4,6 +4,41 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import ResetPasswordForm from "../components/auth/ResetPasswordForm";
 
+/**
+ * Redirects to the correct subdomain login page based on user role.
+ * Uses full-page redirect for cross-subdomain navigation.
+ */
+function redirectToRoleLogin(role: string | null, setLocation: (path: string) => void) {
+  const isLocalhost = window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.endsWith('.localhost');
+
+  if (isLocalhost) {
+    const redirectPath = role === 'manager' ? '/manager/login' : '/auth';
+    setLocation(redirectPath);
+    return;
+  }
+
+  const redirectPaths: Record<string, string> = {
+    manager: '/manager/login',
+    chef: '/auth',
+    admin: '/admin/login',
+  };
+
+  const subdomainMap: Record<string, string> = {
+    manager: 'https://kitchen.localcooks.ca',
+    chef: 'https://chef.localcooks.ca',
+    admin: 'https://admin.localcooks.ca',
+  };
+
+  const detectedRole = role || 'chef';
+  const subdomain = subdomainMap[detectedRole] || subdomainMap.chef;
+  const path = redirectPaths[detectedRole] || redirectPaths.chef;
+
+  logger.info('🔄 Redirecting to role login:', `${subdomain}${path}`);
+  window.location.href = `${subdomain}${path}`;
+}
+
 export default function PasswordReset() {
   const [, setLocation] = useLocation();
   const [isSuccess, setIsSuccess] = useState(false);
@@ -31,8 +66,7 @@ export default function PasswordReset() {
     // Check if this is a valid password reset request
     if (modeParam && modeParam !== 'resetPassword') {
       logger.info('Invalid reset mode:', modeParam);
-      const redirectPath = roleParam === 'manager' ? '/manager/login' : '/auth';
-      setLocation(redirectPath);
+      redirectToRoleLogin(roleParam, setLocation);
     }
   }, [setLocation]);
 
@@ -43,8 +77,7 @@ export default function PasswordReset() {
   };
 
   const handleGoBack = () => {
-    const redirectPath = role === 'manager' ? '/manager/login' : '/auth';
-    setLocation(redirectPath);
+    redirectToRoleLogin(role, setLocation);
   };
 
   // Show success state instead of redirecting immediately

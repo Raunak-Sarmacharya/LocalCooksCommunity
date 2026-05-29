@@ -233,15 +233,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw new Error('Firebase Admin not initialized');
       }
 
-      // Chef password reset always redirects to chef subdomain
-      const host = req.get('host') || '';
-      const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
-
+      // Determine the user's actual role for proper subdomain routing
+      const userRole = (existingUser as any).role || 'chef';
       const { getSubdomainUrl } = await import('./email');
-      const chefBaseUrl = getSubdomainUrl('chef');
+      const userType = userRole === 'manager' ? 'kitchen' : userRole === 'admin' ? 'admin' : 'chef';
+      const baseUrl = getSubdomainUrl(userType);
 
-      const actionCodeSettings = isLocalhost ? undefined : {
-        url: `${chefBaseUrl}/auth?message=password-reset-success`,
+      const redirectPath = userRole === 'manager'
+        ? '/manager/login?message=password-reset-success'
+        : userRole === 'admin'
+          ? '/admin/login?message=password-reset-success'
+          : '/auth?message=password-reset-success';
+
+      // Always set actionCodeSettings in production.
+      // The continueUrl ensures EmailAction.tsx can detect the correct role
+      // even when the Firebase Action URL is on a different subdomain.
+      const actionCodeSettings = {
+        url: `${baseUrl}${redirectPath}`,
         handleCodeInApp: false,
       };
 
@@ -269,18 +277,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw new Error('Failed to send reset email');
       }
 
-      logger.info(`✅ Custom branded password reset email sent to ${email}`);
+      logger.info(`✅ Custom branded password reset email sent to ${email} (role: ${userRole})`);
       res.json({ success: true, message: "Password reset email sent." });
     } catch (error: any) {
-      logger.error("Error in custom forgot password:", error);
+      logger.error("Error in forgot password:", error);
       res.status(500).json({ error: "Failed to process password reset request" });
     }
   });
 
-  // Manager Forgot Password (uses same Firebase backend logic but different redirect URL)
+  // Manager Forgot Password (backward-compatible alias — both endpoints now use the same role-aware logic)
   app.post("/api/manager/forgot-password", async (req, res) => {
     try {
-      // Manager login might send 'username' or 'email'
       const email = req.body.username || req.body.email;
       if (!email) {
         return res.status(400).json({ error: "Email/username is required" });
@@ -288,37 +295,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const existingUser = await userService.getUserByUsername(email);
       if (!existingUser) {
-        // For security, don't reveal if user exists or not
         return res.json({ success: true, message: "If your email exists, a reset link has been sent." });
       }
 
       const { getAuth } = await import('firebase-admin/auth');
       const { initializeFirebaseAdmin } = await import('./firebase-setup');
-      
+
       const firebaseApp = initializeFirebaseAdmin();
       if (!firebaseApp) {
         throw new Error('Firebase Admin not initialized');
       }
 
-      const host = req.get('host') || '';
-      const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
-
+      // Role-aware: always route to the user's actual subdomain
+      const userRole = (existingUser as any).role || 'manager';
       const { getSubdomainUrl } = await import('./email');
-      const kitchenBaseUrl = getSubdomainUrl('kitchen');
+      const userType = userRole === 'manager' ? 'kitchen' : userRole === 'admin' ? 'admin' : 'chef';
+      const baseUrl = getSubdomainUrl(userType);
 
-      const actionCodeSettings = isLocalhost ? undefined : {
-        url: `${kitchenBaseUrl}/manager/login?message=password-reset-success`,
+      const redirectPath = userRole === 'manager'
+        ? '/manager/login?message=password-reset-success'
+        : userRole === 'admin'
+          ? '/admin/login?message=password-reset-success'
+          : '/auth?message=password-reset-success';
+
+      const actionCodeSettings = {
+        url: `${baseUrl}${redirectPath}`,
         handleCodeInApp: false,
       };
 
       const resetUrl = await getAuth(firebaseApp).generatePasswordResetLink(email, actionCodeSettings);
 
       const { sendEmail, generatePasswordResetEmail } = await import('./email');
-      
+
       const rawFirstName = (existingUser as any).firstName || (existingUser as any).first_name;
       const rawLastName = (existingUser as any).lastName || (existingUser as any).last_name;
       const fullName = rawFirstName ? `${rawFirstName} ${rawLastName || ''}`.trim() : email.split('@')[0];
-      
+
       const emailContent = generatePasswordResetEmail({
         fullName,
         email,
@@ -334,7 +346,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw new Error('Failed to send reset email');
       }
 
-      logger.info(`✅ Custom branded manager password reset email sent to ${email}`);
+      logger.info(`✅ Custom branded manager password reset email sent to ${email} (role: ${userRole})`);
       res.json({ success: true, message: "Password reset email sent." });
     } catch (error: any) {
       logger.error("Error in manager forgot password:", error);

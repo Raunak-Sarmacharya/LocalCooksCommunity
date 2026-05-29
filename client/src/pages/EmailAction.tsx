@@ -382,6 +382,8 @@ export default function EmailAction() {
 
     /**
      * Handle password reset action - redirect to password reset form
+     * ENTERPRISE: Always routes to the correct subdomain for the user's role,
+     * preventing chefs from getting stuck on the kitchen subdomain.
      */
     const handlePasswordReset = (
       oobCode: string,
@@ -401,9 +403,24 @@ export default function EmailAction() {
         ...(role && { role }),
       });
 
-      const resetUrl = `/password-reset?${resetParams.toString()}`;
-      logger.info('🔗 Reset URL:', resetUrl);
-      setLocation(resetUrl);
+      // Redirect to the correct subdomain for the user's role.
+      // In production, a full cross-origin redirect ensures chefs land on chef.localcooks.ca
+      // even if the Firebase Action URL is configured to kitchen.localcooks.ca.
+      const isLocalhost = window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname.endsWith('.localhost');
+
+      if (isLocalhost) {
+        const resetUrl = `/password-reset?${resetParams.toString()}`;
+        logger.info('🔗 Reset URL (localhost):', resetUrl);
+        setLocation(resetUrl);
+        return;
+      }
+
+      const subdomain = role ? PRODUCTION_SUBDOMAINS[role] : PRODUCTION_SUBDOMAINS.chef;
+      const resetUrl = `${subdomain}/password-reset?${resetParams.toString()}`;
+      logger.info('🔗 Reset URL (cross-subdomain):', resetUrl);
+      window.location.href = resetUrl;
     };
 
     /**
