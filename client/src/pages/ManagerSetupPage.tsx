@@ -89,7 +89,7 @@ function ManagerSetupPageContent() {
     return (
         <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 via-slate-50 to-slate-100 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 flex overflow-hidden">
             {/* Premium Left Sidebar */}
-            <aside className="w-80 border-r border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-xl shadow-slate-200/50 dark:shadow-slate-950/50 z-20 flex flex-col h-screen">
+            <aside className="hidden lg:flex w-80 border-r border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-xl shadow-slate-200/50 dark:shadow-slate-950/50 z-20 flex-col h-screen">
                 <EnterpriseStepper />
             </aside>
 
@@ -98,7 +98,13 @@ function ManagerSetupPageContent() {
                 {/* Premium Top Bar */}
                 <header className="h-16 border-b border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md flex items-center justify-between px-6 flex-shrink-0 z-10">
                     <div className="flex items-center gap-4">
-                        {/* Breadcrumb */}
+                        {/* Mobile Title */}
+                        <div className="md:hidden flex items-center gap-2">
+                            <span className="text-slate-900 dark:text-slate-100 font-semibold text-sm truncate max-w-[150px]">
+                                {currentStepData?.title || 'Setup'}
+                            </span>
+                        </div>
+                        {/* Desktop Breadcrumb */}
                         <nav className="hidden md:flex items-center gap-2 text-sm">
                             <Tooltip>
                                 <TooltipTrigger asChild>
