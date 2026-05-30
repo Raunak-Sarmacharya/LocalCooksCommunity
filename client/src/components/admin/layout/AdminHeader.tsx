@@ -38,6 +38,7 @@ const SECTION_META: Record<AdminSection, { category: string; title: string }> = 
   "damage-claims-history": { category: "Revenue", title: "Damage Claims History" },
   "security-settings": { category: "Settings", title: "Security & Rate Limits" },
   "access-codes": { category: "Management", title: "Access Codes" },
+  "password-reset": { category: "Management", title: "Password Reset" },
 };
 
 export function AdminHeader({ activeSection, onRefresh, isRefreshing, onSearchClick }: AdminHeaderProps) {

@@ -32,6 +32,7 @@ import {
   Package,
   FileWarning,
   Key,
+  KeyRound,
 } from "lucide-react";
 
 export type AdminSection =
@@ -53,7 +54,8 @@ export type AdminSection =
   | "overstay-penalties-history"
   | "damage-claims-history"
   | "security-settings"
-  | "access-codes";
+  | "access-codes"
+  | "password-reset";
 
 interface AdminSidebarProps {
   activeSection: AdminSection;
@@ -85,6 +87,7 @@ const NAV_GROUPS = [
       { id: "chef-kitchen-access" as AdminSection, label: "Chef Kitchen Access", icon: Users },
       { id: "kitchen-management" as AdminSection, label: "Manage Kitchens", icon: Building2 },
       { id: "access-codes" as AdminSection, label: "Access Codes", icon: Key },
+      { id: "password-reset" as AdminSection, label: "Password Reset", icon: KeyRound },
     ],
   },
   {
