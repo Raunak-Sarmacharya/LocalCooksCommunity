@@ -177,6 +177,7 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   // they clicked "Save & Exit" and should be allowed to go to dashboard.
   // The OnboardingStatusBanner will prompt them to complete setup.
   const hasStartedOnboarding = user?.managerOnboardingStepsCompleted && 
+                                typeof user.managerOnboardingStepsCompleted === 'object' &&
                                 Object.keys(user.managerOnboardingStepsCompleted).length > 0;
   const needsOnboarding = !user?.managerOnboardingCompleted && 
                           !hasStartedOnboarding &&

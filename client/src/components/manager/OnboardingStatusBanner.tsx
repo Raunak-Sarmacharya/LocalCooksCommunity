@@ -48,9 +48,9 @@ export function OnboardingStatusBanner({
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500" />
         
         <div className="relative px-6 py-5">
-          <div className="flex items-center justify-between gap-6">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-6">
             {/* Left content */}
-            <div className="flex items-center gap-4 min-w-0">
+            <div className="flex items-start md:items-center gap-4 min-w-0 w-full md:w-auto">
               {/* Icon container */}
               <div className="flex-shrink-0">
                 <div className="relative">
@@ -79,7 +79,7 @@ export function OnboardingStatusBanner({
             </div>
             
             {/* Right content - CTA */}
-            <div className="flex-shrink-0 flex items-center gap-3">
+            <div className="flex-shrink-0 w-full md:w-auto flex items-center justify-end gap-3 mt-2 md:mt-0">
               {/* Missing steps preview */}
               <div className="hidden lg:flex items-center gap-2">
                 {missingSteps.slice(0, 2).map((step, index) => (
@@ -128,9 +128,9 @@ export function OnboardingStatusBanner({
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400" />
         
         <div className="relative px-6 py-5">
-          <div className="flex items-center justify-between gap-6">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-6">
             {/* Left content */}
-            <div className="flex items-center gap-4 min-w-0">
+            <div className="flex items-start md:items-center gap-4 min-w-0 w-full md:w-auto">
               {/* Icon container with animated ring */}
               <div className="flex-shrink-0">
                 <div className="relative">
@@ -159,8 +159,8 @@ export function OnboardingStatusBanner({
             </div>
             
             {/* Right content - Status info */}
-            <div className="flex-shrink-0 hidden sm:flex items-center gap-4">
-              <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-white/60 dark:bg-amber-950/40 ring-1 ring-amber-200/60 dark:ring-amber-800/40">
+            <div className="flex-shrink-0 w-full md:w-auto flex sm:flex items-center gap-4 mt-2 md:mt-0 justify-end md:justify-start">
+              <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-white/60 dark:bg-amber-950/40 ring-1 ring-amber-200/60 dark:ring-amber-800/40 w-full sm:w-auto">
                 <Shield className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                 <div className="text-left">
                   <p className="text-xs font-medium text-amber-900 dark:text-amber-200">Typical review time</p>
@@ -172,7 +172,7 @@ export function OnboardingStatusBanner({
           
           {/* Progress indicator */}
           <div className="mt-4 pt-4 border-t border-amber-200/40 dark:border-amber-800/30">
-            <div className="flex items-center gap-6">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-6">
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
