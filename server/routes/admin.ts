@@ -3901,4 +3901,72 @@ router.post("/access-codes/emergency-revoke", requireFirebaseAuthWithUser, requi
     }
 });
 
+// ===================================
+// ADMIN: GENERATE PASSWORD RESET LINK
+// ===================================
+// Allows admins to manually generate a password reset link for any user
+// instead of relying on email delivery. The admin can then share the link
+// directly with the user (e.g. via chat, SMS, etc.)
+
+router.post("/generate-password-reset-link", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ error: "Email is required" });
+        }
+
+        // Verify the user exists in Neon
+        const existingUser = await userService.getUserByUsername(email);
+        if (!existingUser) {
+            return res.status(404).json({ error: "No user found with that email" });
+        }
+
+        // Generate the password reset link via Firebase Admin
+        const { getAuth } = await import('firebase-admin/auth');
+        const firebaseApp = initializeFirebaseAdmin();
+        if (!firebaseApp) {
+            throw new Error('Firebase Admin not initialized');
+        }
+
+        // Determine role-aware redirect URL
+        const userRole = (existingUser as any).role || 'chef';
+        const { getSubdomainUrl } = await import('../email');
+        const userType = userRole === 'manager' ? 'kitchen' : userRole === 'admin' ? 'admin' : 'chef';
+        const baseUrl = getSubdomainUrl(userType);
+
+        const redirectPath = userRole === 'manager'
+            ? '/manager/login?message=password-reset-success'
+            : userRole === 'admin'
+                ? '/admin/login?message=password-reset-success'
+                : '/auth?message=password-reset-success';
+
+        const actionCodeSettings = {
+            url: `${baseUrl}${redirectPath}`,
+            handleCodeInApp: false,
+        };
+
+        const resetLink = await getAuth(firebaseApp).generatePasswordResetLink(email, actionCodeSettings);
+
+        logger.info(`🔑 Admin ${req.neonUser?.username} generated password reset link for ${email} (role: ${userRole})`);
+
+        res.json({
+            success: true,
+            resetLink,
+            userEmail: email,
+            userRole,
+            message: "Password reset link generated. Share this link with the user directly."
+        });
+    } catch (error: any) {
+        logger.error("Error generating password reset link:", error);
+
+        // Handle Firebase-specific errors
+        if (error.code === 'auth/user-not-found') {
+            return res.status(404).json({ error: "User not found in Firebase Auth. They may not have a Firebase account yet." });
+        }
+
+        res.status(500).json({ error: error.message || "Failed to generate password reset link" });
+    }
+});
+
 export default router;
