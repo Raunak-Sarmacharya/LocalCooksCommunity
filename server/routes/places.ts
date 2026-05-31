@@ -43,11 +43,11 @@ const PROVINCE_BOUNDS: Record<string, { sw: [number, number]; ne: [number, numbe
 function predictionMatchesProvince(p: any, provinceCode: string): boolean {
   const code = provinceCode.toUpperCase();
   const longName = PROVINCE_BOUNDS[code]?.longName || "";
-  const haystack = `${p.description || ""} ${p.structured_formatting?.secondary_text || ""}`;
+  const haystack = `${p.description || ""} ${p.structured_formatting?.secondary_text || ""}`.toLowerCase();
   // Match the bare province code as a whole word (e.g. ", NL," or "NL,")
-  const codeRegex = new RegExp(`(^|[\\s,])${code}([\\s,]|$)`);
+  const codeRegex = new RegExp(`(^|[\\s,])${code.toLowerCase()}([\\s,]|$)`);
   if (codeRegex.test(haystack)) return true;
-  if (longName && haystack.toLowerCase().includes(longName.toLowerCase())) return true;
+  if (longName && haystack.includes(longName.toLowerCase())) return true;
   return false;
 }
 
@@ -148,7 +148,7 @@ router.get("/autocomplete", async (req: Request, res: Response) => {
       const centerLat = (sw[0] + ne[0]) / 2;
       const centerLng = (sw[1] + ne[1]) / 2;
       url.searchParams.set("location", `${centerLat},${centerLng}`);
-      url.searchParams.set("radius", "900000"); // ~900km covers all of NL
+      url.searchParams.set("radius", "50000"); // 50km is the max allowed radius
       url.searchParams.set("strictbounds", "true");
     }
     url.searchParams.set("key", GOOGLE_PLACES_API_KEY);
