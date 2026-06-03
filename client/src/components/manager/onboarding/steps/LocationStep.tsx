@@ -142,7 +142,11 @@ export default function LocationStep() {
               onChange={(value) => locationForm.setAddress(value)}
               placeholder="Start typing your address..."
               className="h-10"
+              province="NL"
             />
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Only addresses inside Newfoundland &amp; Labrador (NL) are accepted currently.
+            </p>
           </div>
         </CardContent>
       </Card>
