@@ -26,6 +26,7 @@ import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LocationMap } from "@/components/ui/location-map";
 import { cn } from "@/lib/utils";
+import ScheduleViewingWidget from "@/components/chef/ScheduleViewingWidget";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ENTERPRISE-GRADE DESIGN SYSTEM - Notion-Inspired Kitchen Preview
@@ -1130,6 +1131,7 @@ export default function KitchenPreviewPage() {
   const [kitchenStorage, setKitchenStorage] = useState<StorageListing[] | null>(null);
   const [, setIsLoadingAddons] = useState(false);
   const [activeView, setActiveView] = useState("discover-kitchens");
+  const [tourModalOpen, setTourModalOpen] = useState(false);
 
   // Check if chef has an approved application for this location
   // Only check if user is authenticated
@@ -1469,38 +1471,50 @@ export default function KitchenPreviewPage() {
                       Not Accepting Applications
                     </Button>
                   ) : (
-                    <Button
-                      onClick={handleGetStarted}
-                      className="w-full lg:w-auto shadow-lg shadow-primary/25 h-12 px-6 text-base font-semibold"
-                      disabled={isAuthenticated && applicationLoading}
-                    >
-                      {applicationLoading ? (
-                        <>
-                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                          Checking...
-                        </>
-                      ) : isAuthenticated && canBook ? (
-                        <>
+                    <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                      {isAuthenticated && !canBook && (
+                        <Button
+                          variant="outline"
+                          onClick={() => setTourModalOpen(true)}
+                          className="w-full lg:w-auto h-12 px-6 border-primary text-primary hover:bg-primary/5 font-semibold"
+                        >
                           <Calendar className="mr-2 h-5 w-5" />
-                          Book Now
-                        </>
-                      ) : isAuthenticated && application?.status === 'approved' && ((application as unknown as { current_tier?: number })?.current_tier ?? 1) < 3 ? (
-                        <>
-                          <ArrowRight className="mr-2 h-5 w-5" />
-                          Continue Application
-                        </>
-                      ) : isAuthenticated ? (
-                        <>
-                          <Sparkles className="mr-2 h-5 w-5" />
-                          Apply to Kitchen
-                        </>
-                      ) : (
-                        <>
-                          <ArrowRight className="mr-2 h-5 w-5" />
-                          Sign In to Book
-                        </>
+                          Schedule Tour
+                        </Button>
                       )}
-                    </Button>
+                      <Button
+                        onClick={handleGetStarted}
+                        className="w-full lg:w-auto shadow-lg shadow-primary/25 h-12 px-6 text-base font-semibold"
+                        disabled={isAuthenticated && applicationLoading}
+                      >
+                        {applicationLoading ? (
+                          <>
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                            Checking...
+                          </>
+                        ) : isAuthenticated && canBook ? (
+                          <>
+                            <Calendar className="mr-2 h-5 w-5" />
+                            Book Now
+                          </>
+                        ) : isAuthenticated && application?.status === 'approved' && ((application as unknown as { current_tier?: number })?.current_tier ?? 1) < 3 ? (
+                          <>
+                            <ArrowRight className="mr-2 h-5 w-5" />
+                            Continue Application
+                          </>
+                        ) : isAuthenticated ? (
+                          <>
+                            <Sparkles className="mr-2 h-5 w-5" />
+                            Apply to Kitchen
+                          </>
+                        ) : (
+                          <>
+                            <ArrowRight className="mr-2 h-5 w-5" />
+                            Sign In to Book
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1964,6 +1978,19 @@ export default function KitchenPreviewPage() {
       </main>
 
       <Footer />
+
+      {/* Schedule Tour Modal */}
+      {selectedKitchen && locationId && (
+        <ScheduleViewingWidget
+          locationId={locationId as number}
+          locationName={locationData?.name}
+          targetedKitchenId={selectedKitchen.id}
+          targetedKitchenName={selectedKitchen.name}
+          mode="modal"
+          open={tourModalOpen}
+          onClose={() => setTourModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

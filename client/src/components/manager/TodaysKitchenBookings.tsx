@@ -327,6 +327,28 @@ export function TodaysKitchenBookings() {
 
   const bookings = data?.bookings ?? []
 
+  // Fetch manager's tours (viewings)
+  const { data: viewingsData, isLoading: isLoadingViewings } = useQuery<any[]>({
+    queryKey: ["/api/viewings/manager"],
+    queryFn: async () => {
+      const headers = await getAuthHeaders()
+      const response = await fetch("/api/viewings/manager", {
+        headers,
+        credentials: "include",
+      })
+      if (!response.ok) throw new Error("Failed to fetch tours")
+      return response.json()
+    },
+    refetchInterval: 15000,
+  })
+
+  // Filter for today's tours
+  const todayStr = format(new Date(), "yyyy-MM-dd")
+  const todaysTours = (viewingsData || []).filter((v: any) => {
+    if (!v.viewing?.scheduledAt) return false;
+    return format(new Date(v.viewing.scheduledAt), "yyyy-MM-dd") === todayStr;
+  })
+
   // Clear checkout mutation
   const clearCheckoutMutation = useMutation({
     mutationFn: async ({
@@ -609,6 +631,98 @@ export function TodaysKitchenBookings() {
                       </TableCell>
                     </TableRow>
                   ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Today's Tours */}
+      <Card className="mt-6">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <ChefHat className="h-5 w-5 text-purple-600" />
+                Today&apos;s Kitchen Tours
+              </CardTitle>
+              <CardDescription>
+                Tours scheduled for {format(new Date(), "EEEE, MMM d")}.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoadingViewings ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : todaysTours.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <ChefHat className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No tours scheduled for today.</p>
+            </div>
+          ) : (
+            <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Time</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Kitchen</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Chef</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {todaysTours.map((tour: any) => {
+                    const d = new Date(tour.viewing.scheduledAt);
+                    const startTimeStr = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    const dEnd = new Date(d.getTime() + tour.viewing.durationMinutes * 60000);
+                    const endTimeStr = dEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+                    return (
+                      <TableRow key={`tour-${tour.viewing.id}`}>
+                        <TableCell className="font-mono text-xs sm:text-sm whitespace-nowrap">
+                          {startTimeStr} – {endTimeStr}
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-xs sm:text-sm font-medium whitespace-nowrap">
+                            {tour.kitchenName}
+                          </div>
+                          {tour.locationName && (
+                            <div className="text-xs text-muted-foreground font-mono">
+                              {tour.locationName}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap">
+                            <User className="h-3 w-3 text-muted-foreground" />
+                            {tour.chefUsername?.split('@')[0] || `Chef #${tour.viewing.chefId}`}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="whitespace-nowrap">
+                            <Badge
+                              variant={
+                                tour.viewing.status === 'pending' ? "outline" :
+                                tour.viewing.status === 'confirmed' ? "default" :
+                                "secondary"
+                              }
+                              className={
+                                tour.viewing.status === 'pending' ? "text-purple-800 border-purple-300 bg-purple-100" :
+                                tour.viewing.status === 'confirmed' ? "bg-success text-success-foreground hover:bg-success/90" :
+                                ""
+                              }
+                            >
+                              {tour.viewing.status.toUpperCase()}
+                            </Badge>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

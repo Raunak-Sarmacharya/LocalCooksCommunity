@@ -24,6 +24,7 @@ import {
 import { useState } from "react";
 import { Link } from "wouter";
 import KitchenBookingSheet from "@/components/booking/KitchenBookingSheet";
+import { ScheduleViewingWidget } from "@/components/chef/ScheduleViewingWidget";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -101,7 +102,6 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
     address?: string;
   } | null>(null);
 
-  // Handler for Book button clicks - opens KitchenBookingSheet
   const handleBookClick = (locationId: number, locationName: string, locationAddress?: string) => {
     setBookingLocation({
       id: locationId,
@@ -110,6 +110,11 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
     });
     setBookingSheetOpen(true);
   };
+
+  const [tourLocation, setTourLocation] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
 
   const {
     applications,
@@ -521,12 +526,23 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                 </Link>
                               </Button>
                               {kitchen.canAcceptBookings ? (
-                                <Button size="sm" className="gap-2" asChild>
-                                  <Link href={applicationUrl}>
-                                    Apply Now
-                                    <ArrowRight className="h-4 w-4" />
-                                  </Link>
-                                </Button>
+                                <>
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="gap-2 border-primary text-primary hover:bg-primary/5"
+                                    onClick={() => setTourLocation({ id: kitchen.locationId, name: kitchen.locationName })}
+                                  >
+                                    <Calendar className="h-4 w-4" />
+                                    Schedule Tour
+                                  </Button>
+                                  <Button size="sm" className="gap-2" asChild>
+                                    <Link href={applicationUrl}>
+                                      Apply Now
+                                      <ArrowRight className="h-4 w-4" />
+                                    </Link>
+                                  </Button>
+                                </>
                               ) : (
                                 <TooltipProvider>
                                   <Tooltip>
@@ -722,7 +738,6 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
         </Tabs>
       </CardContent>
 
-      {/* Kitchen Booking Sheet - Platform standard booking flow */}
       {bookingLocation && (
         <KitchenBookingSheet
           open={bookingSheetOpen}
@@ -730,6 +745,16 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           locationId={bookingLocation.id}
           locationName={bookingLocation.name}
           locationAddress={bookingLocation.address}
+        />
+      )}
+
+      {/* Schedule Tour Modal */}
+      {tourLocation && (
+        <ScheduleViewingWidget
+          open={!!tourLocation}
+          onClose={() => setTourLocation(null)}
+          locationId={tourLocation.id}
+          locationName={tourLocation.name}
         />
       )}
     </Card>

@@ -45,7 +45,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
-
+import ScheduleViewingWidget from "@/components/chef/ScheduleViewingWidget";
 
 interface EquipmentListing {
   id: number;
@@ -149,6 +149,13 @@ export default function KitchenComparisonPage() {
   const [chatApplication, setChatApplication] = useState<any | null>(null);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [tourModalState, setTourModalState] = useState<{
+    isOpen: boolean;
+    locationId?: number;
+    locationName?: string;
+    kitchenId?: number;
+    kitchenName?: string;
+  }>({ isOpen: false });
   const queryClient = useQueryClient();
 
   // Scroll to top on mount
@@ -1495,23 +1502,55 @@ export default function KitchenComparisonPage() {
                                     Pending Review
                                   </Button>
                                 ) : (location as any).isRejected ? (
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleApplyKitchen(location.id)}
-                                    className="flex-1 bg-orange-600 hover:bg-orange-700"
-                                  >
-                                    <FileText className="mr-2 h-4 w-4" />
-                                    Re-apply
-                                  </Button>
+                                  <div className="flex-1 flex gap-2 w-full">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setTourModalState({
+                                        isOpen: true,
+                                        locationId: location.id,
+                                        locationName: location.name,
+                                        kitchenId: kitchen.id,
+                                        kitchenName: kitchen.name
+                                      })}
+                                      className="flex-1 border-primary text-primary"
+                                    >
+                                      Schedule Tour
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleApplyKitchen(location.id)}
+                                      className="flex-1 bg-orange-600 hover:bg-orange-700"
+                                    >
+                                      <FileText className="mr-2 h-4 w-4 hidden sm:inline" />
+                                      Re-apply
+                                    </Button>
+                                  </div>
                                 ) : (
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleApplyKitchen(location.id)}
-                                    className="flex-1 bg-blue-600 hover:bg-blue-700"
-                                  >
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Apply Now
-                                  </Button>
+                                  <div className="flex-1 flex gap-2 w-full">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setTourModalState({
+                                        isOpen: true,
+                                        locationId: location.id,
+                                        locationName: location.name,
+                                        kitchenId: kitchen.id,
+                                        kitchenName: kitchen.name
+                                      })}
+                                      className="flex-1 border-primary text-primary"
+                                    >
+                                      Schedule Tour
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleApplyKitchen(location.id)}
+                                      className="flex-1 bg-blue-600 hover:bg-blue-700"
+                                    >
+                                      <Plus className="mr-2 h-4 w-4 hidden sm:inline" />
+                                      Apply Now
+                                    </Button>
+                                  </div>
                                 )}
                               </div>
                             </motion.div>
@@ -1541,6 +1580,18 @@ export default function KitchenComparisonPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Schedule Tour Modal */}
+      {tourModalState.locationId && (
+        <ScheduleViewingWidget
+          locationId={tourModalState.locationId}
+          locationName={tourModalState.locationName}
+          targetedKitchenId={tourModalState.kitchenId}
+          targetedKitchenName={tourModalState.kitchenName}
+          mode="modal"
+          open={tourModalState.isOpen}
+          onClose={() => setTourModalState(prev => ({ ...prev, isOpen: false }))}
+        />
+      )}
     </div>
   );
 }

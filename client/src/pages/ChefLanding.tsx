@@ -957,7 +957,7 @@ export default function ChefLanding() {
   const handleGetStarted = () => navigate(user ? '/apply' : '/auth');
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col overflow-x-hidden">
       <SEOHead
         title="For Chefs — Launch Your Food Business"
         description="Turn your cooking talent into a scalable food business. Zero platform fees during trial, commercial kitchen access, compliance management, weekly payouts via Stripe. Join LocalCooks in St. John's, Newfoundland."

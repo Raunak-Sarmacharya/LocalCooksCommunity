@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
+import ViewingsDashboard from "@/components/manager/ViewingsDashboard";
 import { ManagerKitchenApplicationsContent } from "./ManagerKitchenApplications";
 import KitchenPricingManagement from "./KitchenPricingManagement";
 import StorageListingManagement from "./StorageListingManagement";
@@ -164,7 +165,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'overstays' | 'damage-claims' | 'storage-checkouts';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'viewings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'overstays' | 'damage-claims' | 'storage-checkouts';
 
 
 export default function ManagerBookingDashboard() {
@@ -251,7 +252,7 @@ export default function ManagerBookingDashboard() {
     const handleLocationChange = () => {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
-      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
+      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'viewings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
       // Back-compat: redirect legacy URL to the new combined page.
       if (view === 'settings-storage-checkout') {
         setActiveView('settings-storage-checkin-checkout');
@@ -626,6 +627,10 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'bookings' && (
         <ManagerBookingsPanel embedded={true} />
+      )}
+
+      {activeView === 'viewings' && (
+        <ViewingsDashboard locationId={selectedLocation?.id} />
       )}
 
       {activeView === 'availability' && (
