@@ -342,12 +342,34 @@ export function TodaysKitchenBookings() {
     refetchInterval: 15000,
   })
 
-  // Filter for today's tours
-  const todayStr = format(new Date(), "yyyy-MM-dd")
-  const todaysTours = (viewingsData || []).filter((v: any) => {
-    if (!v.viewing?.scheduledAt) return false;
-    return format(new Date(v.viewing.scheduledAt), "yyyy-MM-dd") === todayStr;
-  })
+  // Filter for upcoming tours (today and future)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const upcomingTours = (viewingsData || [])
+    .filter((v: any) => {
+      if (!v.viewing?.scheduledAt) return false;
+      const status = v.viewing?.status;
+      if (status === 'completed' || status === 'cancelled') return false;
+      return new Date(v.viewing.scheduledAt) >= today;
+    })
+    .sort((a: any, b: any) => {
+      const statusPriority: Record<string, number> = {
+        'pending': 1,
+        'confirmed': 2,
+        'completed': 3,
+        'cancelled': 4
+      };
+
+      const pA = statusPriority[a.viewing?.status] || 99;
+      const pB = statusPriority[b.viewing?.status] || 99;
+
+      if (pA !== pB) {
+        return pA - pB;
+      }
+
+      // If status is the same, sort chronologically
+      return new Date(a.viewing?.scheduledAt).getTime() - new Date(b.viewing?.scheduledAt).getTime();
+    });
 
   // Clear checkout mutation
   const clearCheckoutMutation = useMutation({
@@ -638,17 +660,17 @@ export function TodaysKitchenBookings() {
         </CardContent>
       </Card>
 
-      {/* Today's Tours */}
+      {/* Upcoming Tours */}
       <Card className="mt-6">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <ChefHat className="h-5 w-5 text-purple-600" />
-                Today&apos;s Kitchen Tours
+                Upcoming Kitchen Tours
               </CardTitle>
               <CardDescription>
-                Tours scheduled for {format(new Date(), "EEEE, MMM d")}.
+                Tours scheduled for today and future dates.
               </CardDescription>
             </div>
           </div>
@@ -658,24 +680,24 @@ export function TodaysKitchenBookings() {
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : todaysTours.length === 0 ? (
+          ) : upcomingTours.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <ChefHat className="h-8 w-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No tours scheduled for today.</p>
+              <p className="text-sm">No upcoming tours scheduled.</p>
             </div>
           ) : (
             <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Time</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Date & Time</TableHead>
                     <TableHead className="whitespace-nowrap text-xs sm:text-sm">Kitchen</TableHead>
                     <TableHead className="whitespace-nowrap text-xs sm:text-sm">Chef</TableHead>
                     <TableHead className="whitespace-nowrap text-xs sm:text-sm">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {todaysTours.map((tour: any) => {
+                  {upcomingTours.map((tour: any) => {
                     const d = new Date(tour.viewing.scheduledAt);
                     const startTimeStr = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                     const dEnd = new Date(d.getTime() + tour.viewing.durationMinutes * 60000);
@@ -684,7 +706,8 @@ export function TodaysKitchenBookings() {
                     return (
                       <TableRow key={`tour-${tour.viewing.id}`}>
                         <TableCell className="font-mono text-xs sm:text-sm whitespace-nowrap">
-                          {startTimeStr} – {endTimeStr}
+                          <div>{format(d, "MMM d, yyyy")}</div>
+                          <div className="text-muted-foreground">{startTimeStr} – {endTimeStr}</div>
                         </TableCell>
                         <TableCell>
                           <div className="text-xs sm:text-sm font-medium whitespace-nowrap">

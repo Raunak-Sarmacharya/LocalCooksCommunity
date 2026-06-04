@@ -7344,17 +7344,16 @@ export const generateTourRejectedChefEmail = (data: { chefEmail: string; chefNam
     </head>
     <body>
       <div class="email-container">
-        <div class="header" style="background: linear-gradient(135deg, #475569 0%, #334155 100%);">
-          <img src="https://backend-cdn.perplexity.ai/localcooks-logo.png" alt="Local Cooks Community" class="header-image" onerror="this.style.display='none'">
-          <h1>Kitchen Tour Declined</h1>
+        <div class="header">
+          <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
         </div>
         <div class="content">
-          <p class="greeting">Hi ${data.chefName},</p>
+          <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${data.chefName.split(' ')[0]},</h2>
           <p class="message">Unfortunately, the manager at <strong>${data.kitchenName}</strong> was unable to accept your kitchen tour request for ${dateStr} at ${data.startTime}.</p>
           
           ${(data.cancellationReason || data.managerNotes) ? `
           <div class="info-box">
-            <h3 style="margin-top: 0; color: #475569;">Message from Manager</h3>
+            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Message from Manager</h3>
             ${data.cancellationReason ? `<p><strong>Reason:</strong> ${data.cancellationReason}</p>` : ''}
             ${data.managerNotes ? `<p>${data.managerNotes}</p>` : ''}
           </div>
