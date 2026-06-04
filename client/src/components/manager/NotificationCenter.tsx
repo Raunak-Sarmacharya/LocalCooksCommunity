@@ -245,31 +245,22 @@ function EmptyNotificationState({ filter }: { filter: FilterType }) {
   );
 }
 
-// Group notifications by date
-function groupNotificationsByDate(notifications: Notification[]) {
+// Group notifications by status
+function groupNotificationsByStatus(notifications: Notification[]) {
   const groups: { label: string; notifications: Notification[] }[] = [];
-  const today: Notification[] = [];
-  const yesterday: Notification[] = [];
-  const thisWeek: Notification[] = [];
-  const older: Notification[] = [];
+  const unread: Notification[] = [];
+  const earlier: Notification[] = [];
 
   notifications.forEach((notification) => {
-    const date = new Date(notification.created_at);
-    if (isToday(date)) {
-      today.push(notification);
-    } else if (isYesterday(date)) {
-      yesterday.push(notification);
-    } else if (isThisWeek(date)) {
-      thisWeek.push(notification);
+    if (!notification.is_read) {
+      unread.push(notification);
     } else {
-      older.push(notification);
+      earlier.push(notification);
     }
   });
 
-  if (today.length > 0) groups.push({ label: "Today", notifications: today });
-  if (yesterday.length > 0) groups.push({ label: "Yesterday", notifications: yesterday });
-  if (thisWeek.length > 0) groups.push({ label: "This Week", notifications: thisWeek });
-  if (older.length > 0) groups.push({ label: "Older", notifications: older });
+  if (unread.length > 0) groups.push({ label: "Unread", notifications: unread });
+  if (earlier.length > 0) groups.push({ label: "Earlier", notifications: earlier });
 
   return groups;
 }
@@ -783,7 +774,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
 
   const unreadCount = unreadData?.count || 0;
   const notifications = notificationsData?.notifications || [];
-  const groupedNotifications = groupNotificationsByDate(notifications);
+  const groupedNotifications = groupNotificationsByStatus(notifications);
 
   // Keyboard shortcut to open notifications (Ctrl/Cmd + Shift + N to avoid browser conflicts)
   useEffect(() => {
@@ -837,8 +828,6 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         role="dialog"
         aria-label="Notifications panel"
         aria-describedby="notifications-description"
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">

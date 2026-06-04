@@ -99,7 +99,7 @@ export default function ApplicantDashboard() {
   const getInitialTab = () => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages', 'support', 'feedback', 'seller-revenue'].includes(view)) {
+    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'viewings', 'bookings', 'training', 'messages', 'support', 'feedback', 'seller-revenue'].includes(view)) {
       return view;
     }
     return 'overview';
@@ -139,7 +139,7 @@ export default function ApplicantDashboard() {
   useEffect(() => {
     const VALID_VIEWS = [
       'overview', 'applications', 'kitchen-applications', 'discover-kitchens',
-      'bookings', 'training', 'messages', 'support', 'feedback',
+      'viewings', 'bookings', 'training', 'messages', 'support', 'feedback',
       'damage-claims', 'profile', 'seller-revenue'
     ];
     const syncFromUrl = () => {

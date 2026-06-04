@@ -185,6 +185,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
   const [noShowReason, setNoShowReason] = useState("")
   const [cancellationReason, setCancellationReason] = useState("")
   const [activeTab, setActiveTab] = useState("upcoming")
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   // Fetch viewings
   const queryUrl = locationId
@@ -423,15 +424,26 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                 Manage tour bookings and track chef visits.
               </CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetch()}
-              disabled={isLoading}
-            >
-              <RefreshCw className={cn("h-4 w-4 mr-1", isLoading && "animate-spin")} />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetch()}
+                disabled={isLoading}
+              >
+                <RefreshCw className={cn("h-4 w-4 mr-1", isLoading && "animate-spin")} />
+                Refresh
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                onClick={() => setIsSettingsOpen(true)}
+                title="Tour Settings"
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           {/* Stats badges */}
@@ -455,15 +467,12 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
             </div>
           ) : (
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="upcoming" className="text-xs sm:text-sm">
                   Upcoming ({upcoming.length})
                 </TabsTrigger>
                 <TabsTrigger value="past" className="text-xs sm:text-sm">
                   Past ({past.length})
-                </TabsTrigger>
-                <TabsTrigger value="settings" className="text-xs sm:text-sm">
-                  Settings
                 </TabsTrigger>
               </TabsList>
 
@@ -473,18 +482,6 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
 
               <TabsContent value="past" className="mt-4">
                 {renderTable(past, "No past viewings.")}
-              </TabsContent>
-
-              <TabsContent value="settings" className="mt-4">
-                {locationId ? (
-                  <ViewingSettingsPanel locationId={locationId} />
-                ) : (
-                  <div className="text-center py-12 text-muted-foreground border rounded-lg bg-gray-50/50">
-                    <Settings className="h-8 w-8 mx-auto mb-3 opacity-40" />
-                    <p className="text-sm font-medium">Select a location to manage settings</p>
-                    <p className="text-xs mt-1">Tour settings are configured per-location.</p>
-                  </div>
-                )}
               </TabsContent>
             </Tabs>
           )}
@@ -714,6 +711,29 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
               )}
             </>
           )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Settings Sheet */}
+      <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+          <SheetHeader className="mb-6">
+            <SheetTitle>Tour Settings</SheetTitle>
+            <SheetDescription>
+              Configure how chefs can book tours at this location.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="py-2">
+            {locationId ? (
+              <ViewingSettingsPanel locationId={locationId} />
+            ) : (
+              <div className="text-center py-12 text-muted-foreground border rounded-lg bg-gray-50/50">
+                <Settings className="h-8 w-8 mx-auto mb-3 opacity-40" />
+                <p className="text-sm font-medium">Select a location to manage settings</p>
+                <p className="text-xs mt-1">Tour settings are configured per-location.</p>
+              </div>
+            )}
+          </div>
         </SheetContent>
       </Sheet>
     </>

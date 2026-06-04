@@ -111,14 +111,24 @@ interface TimeSlot {
 async function calculateAvailableSlots(
   locationId: number,
   dateStr: string, // YYYY-MM-DD
-  timezone: string = "America/St_Johns"
+  timezone: string = "America/St_Johns",
+  prefetched?: {
+    settings: any;
+    availability: any[];
+    blackouts: any[];
+    existingViewings: any[];
+  }
 ): Promise<TimeSlot[]> {
   // 1. Get viewing settings
-  const [settings] = await db
-    .select()
-    .from(locationViewingSettings)
-    .where(eq(locationViewingSettings.locationId, locationId))
-    .limit(1);
+  let settings = prefetched?.settings;
+  if (!settings) {
+    const [fetchedSettings] = await db
+      .select()
+      .from(locationViewingSettings)
+      .where(eq(locationViewingSettings.locationId, locationId))
+      .limit(1);
+    settings = fetchedSettings;
+  }
 
   if (!settings || !settings.isActive) {
     return [];
@@ -130,16 +140,21 @@ async function calculateAvailableSlots(
   const dayOfWeek = targetDate.getDay(); // 0-6, Sunday is 0
 
   // 3. Get recurring availability for this day of week
-  const availabilityWindows = await db
-    .select()
-    .from(locationViewingAvailability)
-    .where(
-      and(
-        eq(locationViewingAvailability.locationId, locationId),
-        eq(locationViewingAvailability.dayOfWeek, dayOfWeek),
-        eq(locationViewingAvailability.isAvailable, true)
-      )
-    );
+  let availabilityWindows;
+  if (prefetched?.availability) {
+    availabilityWindows = prefetched.availability.filter((a: any) => a.dayOfWeek === dayOfWeek && a.isAvailable);
+  } else {
+    availabilityWindows = await db
+      .select()
+      .from(locationViewingAvailability)
+      .where(
+        and(
+          eq(locationViewingAvailability.locationId, locationId),
+          eq(locationViewingAvailability.dayOfWeek, dayOfWeek),
+          eq(locationViewingAvailability.isAvailable, true)
+        )
+      );
+  }
 
   if (availabilityWindows.length === 0) {
     return [];
@@ -149,16 +164,19 @@ async function calculateAvailableSlots(
   const dayStart = new TZDate(year, month - 1, day, 0, 0, 0, 0, timezone);
   const dayEnd = new TZDate(year, month - 1, day, 23, 59, 59, 0, timezone);
 
-  const blackouts = await db
-    .select()
-    .from(locationViewingBlackouts)
-    .where(
-      and(
-        eq(locationViewingBlackouts.locationId, locationId),
-        lte(locationViewingBlackouts.startDate, dayEnd),
-        gte(locationViewingBlackouts.endDate, dayStart)
-      )
-    );
+  let blackouts = prefetched?.blackouts;
+  if (!blackouts) {
+    blackouts = await db
+      .select()
+      .from(locationViewingBlackouts)
+      .where(
+        and(
+          eq(locationViewingBlackouts.locationId, locationId),
+          lte(locationViewingBlackouts.startDate, dayEnd),
+          gte(locationViewingBlackouts.endDate, dayStart)
+        )
+      );
+  }
 
   // If any blackout fully covers this day, no slots available
   for (const blackout of blackouts) {
@@ -171,18 +189,26 @@ async function calculateAvailableSlots(
   }
 
   // 5. Get existing booked viewings for this date (exclude cancelled)
-  const existingViewings = await db
-    .select()
-    .from(kitchenViewings)
-    .where(
-      and(
-        eq(kitchenViewings.locationId, locationId),
-        gte(kitchenViewings.scheduledAt, dayStart),
-        lte(kitchenViewings.scheduledAt, dayEnd),
-        // Exclude cancelled viewings
-        sql`${kitchenViewings.status} != 'cancelled'`
-      )
-    );
+  let existingViewings;
+  if (prefetched?.existingViewings) {
+    existingViewings = prefetched.existingViewings.filter((v: any) => {
+      const vStart = new Date(v.scheduledAt);
+      return v.status !== 'cancelled' && vStart >= dayStart && vStart <= dayEnd;
+    });
+  } else {
+    existingViewings = await db
+      .select()
+      .from(kitchenViewings)
+      .where(
+        and(
+          eq(kitchenViewings.locationId, locationId),
+          gte(kitchenViewings.scheduledAt, dayStart),
+          lte(kitchenViewings.scheduledAt, dayEnd),
+          // Exclude cancelled viewings
+          sql`${kitchenViewings.status} != 'cancelled'`
+        )
+      );
+  }
 
   // 6. Generate all possible slots from availability windows
   const allSlots: TimeSlot[] = [];
@@ -310,12 +336,47 @@ router.get(
           )
         );
 
+      // Also get existing viewings for the next maxAdvanceBookingDays to compute fullyBookedDates
+      const maxDays = settings.maxAdvanceBookingDays || 30;
+      const today = new Date();
+      const endWindow = new Date(today);
+      endWindow.setDate(endWindow.getDate() + maxDays);
+      
+      const existingViewings = await db
+        .select()
+        .from(kitchenViewings)
+        .where(
+          and(
+            eq(kitchenViewings.locationId, locationId),
+            gte(kitchenViewings.scheduledAt, today),
+            lte(kitchenViewings.scheduledAt, endWindow),
+            sql`${kitchenViewings.status} != 'cancelled'`
+          )
+        );
+
+      // Compute fullyBookedDates
+      const fullyBookedDates: string[] = [];
+      const { format } = await import('date-fns');
+      const prefetched = { settings, availability, blackouts, existingViewings };
+      
+      // We assume America/St_Johns timezone for calculation, or location timezone if available in the future
+      for (let i = 0; i <= maxDays; i++) {
+        const d = new Date(today);
+        d.setDate(d.getDate() + i);
+        const dateStr = format(d, "yyyy-MM-dd");
+        const slots = await calculateAvailableSlots(locationId, dateStr, "America/St_Johns", prefetched);
+        if (slots.length === 0) {
+          fullyBookedDates.push(dateStr);
+        }
+      }
+
       res.json({
         settings: {
           maxAdvanceBookingDays: settings.maxAdvanceBookingDays,
         },
         availability,
         blackouts,
+        fullyBookedDates,
       });
     } catch (error) {
       logger.error("Error fetching calendar availability:", error);
@@ -592,7 +653,7 @@ router.post(
               title: "Kitchen Viewing Cancelled",
               message: `Your scheduled viewing at ${location.name} has been cancelled by the manager. Reason: ${parsed.data.reason || "Schedule change"}. Please book a new time.`,
               metadata: { viewingId: viewing.id, locationId },
-              actionUrl: `/dashboard?view=discover`,
+              actionUrl: `/dashboard?view=viewings`,
               actionLabel: "Reschedule",
             });
           } catch (e) {
@@ -841,7 +902,7 @@ router.post(
               chefName,
               scheduledAt: scheduledDate.toISOString(),
             },
-            actionUrl: `/manager/booking-dashboard?view=viewings`,
+            actionUrl: `/manager/dashboard?view=viewings`,
             actionLabel: "Review Request",
           });
           
@@ -1113,7 +1174,7 @@ router.patch(
             title: "Viewing Cancelled by Chef",
             message: `${await getUserDisplayName(viewing.chefId, 'chef')} cancelled their viewing at ${locationName}.`,
             metadata: { viewingId },
-            actionUrl: `/manager/booking-dashboard?view=viewings`,
+            actionUrl: `/manager/dashboard?view=viewings`,
             actionLabel: "View Details",
           });
         } else if (isManager) {
@@ -1129,7 +1190,7 @@ router.patch(
             title: "Kitchen Viewing Cancelled",
             message: `Your viewing at ${locationName} has been cancelled by the manager.${parsed.data.cancellationReason ? ` Reason: ${parsed.data.cancellationReason}` : ""} Please book a new time.`,
             metadata: { viewingId },
-            actionUrl: `/dashboard?view=discover`,
+            actionUrl: `/dashboard?view=viewings`,
             actionLabel: "Reschedule",
           });
           

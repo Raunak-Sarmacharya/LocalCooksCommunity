@@ -306,6 +306,11 @@ export function ScheduleViewingWidget({
                 return true;
               }
             }
+
+            // Check fully booked dates
+            const dateStr = format(date, "yyyy-MM-dd");
+            if (calMetadata.fullyBookedDates?.includes(dateStr)) return true;
+
             return false;
           }}
           className="rounded-md border"
