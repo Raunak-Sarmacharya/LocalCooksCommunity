@@ -1,7 +1,7 @@
 /**
- * Kitchen Viewings / Tour Scheduling API Routes
+ * Kitchen Viewings / Viewing Scheduling API Routes
  * 
- * Enterprise-grade tour scheduling system for kitchen facility viewings.
+ * Enterprise-grade viewing scheduling system for kitchen facility viewings.
  * Supports self-service booking by chefs, manager availability configuration,
  * blackout management, and concurrency-safe slot booking with SELECT FOR UPDATE.
  * 
@@ -45,44 +45,7 @@ import {
   insertLocationViewingBlackoutSchema,
 } from "@shared/schema";
 
-// Helper to get actual display names from managerProfileData or applications table
-async function getUserDisplayName(userId: number, role: 'chef' | 'manager' = 'chef'): Promise<string> {
-    try {
-        const [user] = await db
-            .select({ 
-                username: users.username,
-                managerProfileData: users.managerProfileData
-            })
-            .from(users)
-            .where(eq(users.id, userId))
-            .limit(1);
-
-        if (!user) return role === 'chef' ? 'A chef' : 'Manager';
-
-        const profileData = (user.managerProfileData as any) || {};
-        if (profileData.displayName) return profileData.displayName;
-        if (profileData.fullName) return profileData.fullName;
-        
-        // For chefs, try their application name
-        if (role === 'chef') {
-            const [app] = await db
-                .select({ fullName: applications.fullName })
-                .from(applications)
-                .where(and(
-                    eq(applications.userId, userId),
-                    eq(applications.status, 'approved')
-                ))
-                .orderBy(desc(applications.createdAt))
-                .limit(1);
-            if (app && app.fullName) return app.fullName;
-        }
-
-        return user.username.split("@")[0];
-    } catch (e) {
-        logger.error('Error fetching user display name:', e);
-        return role === 'chef' ? 'A chef' : 'Manager';
-    }
-}
+import { getUserDisplayName } from "../utils/user-display";
 import { TZDate } from "@date-fns/tz";
 import { format, addMinutes, addDays, startOfDay, endOfDay, isBefore, isAfter, differenceInHours } from "date-fns";
 
@@ -863,7 +826,7 @@ router.post(
             targetedKitchenId: targetedKitchenId || null,
             chefId,
             managerId: location.managerId,
-            status: "pending", // Tours require manager confirmation now
+            status: "pending", // Viewings require manager confirmation now
             scheduledAt: scheduledDate,
             durationMinutes: tourDuration,
             chefNotes: chefNotes || null,
@@ -894,8 +857,8 @@ router.post(
             locationId,
             type: "booking_new",
             priority: "high",
-            title: "New Kitchen Tour Request",
-            message: `${chefName} has requested a kitchen tour at ${location.name} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")}.`,
+            title: "New Kitchen Viewing Request",
+            message: `${chefName} has requested a kitchen viewing at ${location.name} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")}.`,
             metadata: {
               viewingId: newViewing.id,
               chefId,
@@ -917,7 +880,7 @@ router.post(
               chefNotes: chefNotes || undefined,
               timezone
             });
-            await sendEmail(emailContent).catch(err => logger.error("Failed to send tour requested manager email", err));
+            await sendEmail(emailContent).catch(err => logger.error("Failed to send viewing requested manager email", err));
           }
         } catch (e) {
           logger.error("[Viewings] Failed to notify manager:", e);
@@ -930,8 +893,8 @@ router.post(
           chefId,
           type: "booking_confirmed", // Reusing this type, but logically it's a request receipt
           priority: "normal",
-          title: "Kitchen Tour Request Received",
-          message: `Your tour request at ${location.name} for ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")} has been sent to the manager for approval.`,
+          title: "Kitchen Viewing Request Received",
+          message: `Your viewing request at ${location.name} for ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")} has been sent to the manager for approval.`,
           metadata: {
             viewingId: newViewing.id,
             locationId,
@@ -957,7 +920,7 @@ router.post(
             startTime: format(scheduledDate, "h:mm a"),
             timezone
           });
-          await sendEmail(emailContent).catch(err => logger.error("Failed to send tour requested chef email", err));
+          await sendEmail(emailContent).catch(err => logger.error("Failed to send viewing requested chef email", err));
         }
       } catch (e) {
         logger.error("[Viewings] Failed to notify chef:", e);
@@ -1001,6 +964,7 @@ router.get(
           locationName: locations.name,
           locationAddress: locations.address,
           kitchenName: kitchens.name,
+          managerId: locations.managerId,
         })
         .from(kitchenViewings)
         .leftJoin(locations, eq(kitchenViewings.locationId, locations.id))
@@ -1015,7 +979,14 @@ router.get(
         ? results.filter((r) => r.viewing.status === status)
         : results;
 
-      res.json(filtered);
+      const withNames = await Promise.all(
+        filtered.map(async (r) => ({
+          ...r,
+          managerName: r.managerId ? await getUserDisplayName(r.managerId, 'manager') : 'Manager'
+        }))
+      );
+
+      res.json(withNames);
     } catch (error) {
       logger.error("Error fetching chef viewings:", error);
       return errorResponse(res, error);
@@ -1064,7 +1035,14 @@ router.get(
         ? results.filter((r) => r.viewing.status === status)
         : results;
 
-      res.json(filtered);
+      const withNames = await Promise.all(
+        filtered.map(async (r) => ({
+          ...r,
+          chefName: r.viewing.chefId ? await getUserDisplayName(r.viewing.chefId, 'chef') : 'A chef'
+        }))
+      );
+
+      res.json(withNames);
     } catch (error) {
       logger.error("Error fetching manager viewings:", error);
       return errorResponse(res, error);
@@ -1205,16 +1183,16 @@ router.patch(
               managerNotes: parsed.data.managerNotes,
               timezone
             });
-            await sendEmail(emailContent).catch(err => logger.error("Failed to send tour rejected chef email", err));
+            await sendEmail(emailContent).catch(err => logger.error("Failed to send viewing rejected chef email", err));
           }
         }
       } else if (parsed.data.status === "completed") {
-        // Post-tour nurture notification to chef
+        // Post-viewing nurture notification to chef
         await notificationService.createForChef({
           chefId: viewing.chefId,
           type: "application_new",
           priority: "normal",
-          title: "How was your tour?",
+          title: "How was your viewing?",
           message: `Thanks for visiting ${locationName}! Ready to apply? Start your kitchen application now.`,
           metadata: { viewingId, locationId: viewing.locationId },
           actionUrl: `/kitchen-requirements/${viewing.locationId}`,
@@ -1229,13 +1207,13 @@ router.patch(
         const managerEmail = manager?.username;
         const managerName = await getUserDisplayName(viewing.managerId!, 'manager');
 
-        // Notify chef that manager approved the tour
+        // Notify chef that manager approved the viewing
         await notificationService.createForChef({
           chefId: viewing.chefId,
           type: "booking_confirmed",
           priority: "high",
-          title: "Kitchen Tour Confirmed!",
-          message: `Your tour request at ${locationName} has been approved by the manager. See you then!`,
+          title: "Kitchen Viewing Confirmed!",
+          message: `Your viewing request at ${locationName} has been approved by the manager. See you then!`,
           metadata: { viewingId, locationId: viewing.locationId },
           actionUrl: `/dashboard?view=viewings`,
           actionLabel: "View Details",
@@ -1258,7 +1236,7 @@ router.patch(
             organizerEmail: managerEmail,
             attendeeEmails: [chefEmail, managerEmail].filter(Boolean) as string[],
           });
-          await sendEmail(chefEmailContent).catch(err => logger.error("Failed to send tour confirmed chef email", err));
+          await sendEmail(chefEmailContent).catch(err => logger.error("Failed to send viewing confirmed chef email", err));
         }
 
         // Send ICS to Manager
@@ -1278,7 +1256,7 @@ router.patch(
             organizerEmail: managerEmail,
             attendeeEmails: [chefEmail, managerEmail].filter(Boolean) as string[],
           });
-          await sendEmail(managerEmailContent).catch(err => logger.error("Failed to send tour confirmed manager email", err));
+          await sendEmail(managerEmailContent).catch(err => logger.error("Failed to send viewing confirmed manager email", err));
         }
       }
 

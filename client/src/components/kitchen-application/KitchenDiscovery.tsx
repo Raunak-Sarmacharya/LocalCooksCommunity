@@ -518,8 +518,8 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                             </div>
 
                             {/* Actions */}
-                            <div className="flex items-center gap-3 mt-auto pt-2">
-                              <Button variant="outline" size="sm" className="gap-2" asChild>
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mt-auto pt-2">
+                              <Button variant="outline" size="sm" className="gap-2 w-full sm:w-auto" asChild>
                                 <Link href={`/kitchen-preview/${kitchen.locationId}`}>
                                   <Eye className="h-4 w-4" />
                                   View Details
@@ -530,13 +530,13 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                   <Button 
                                     variant="outline" 
                                     size="sm" 
-                                    className="gap-2 border-primary text-primary hover:bg-primary/5"
+                                    className="gap-2 border-primary text-primary hover:bg-primary/5 w-full sm:w-auto"
                                     onClick={() => setTourLocation({ id: kitchen.locationId, name: kitchen.locationName })}
                                   >
                                     <Calendar className="h-4 w-4" />
-                                    Schedule Tour
+                                    Schedule Viewing
                                   </Button>
-                                  <Button size="sm" className="gap-2" asChild>
+                                  <Button size="sm" className="gap-2 w-full sm:w-auto" asChild>
                                     <Link href={applicationUrl}>
                                       Apply Now
                                       <ArrowRight className="h-4 w-4" />
@@ -547,7 +547,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Button size="sm" variant="secondary" disabled className="gap-2 cursor-not-allowed">
+                                      <Button size="sm" variant="secondary" disabled className="gap-2 cursor-not-allowed w-full sm:w-auto">
                                         <AlertCircle className="h-4 w-4" />
                                         Not Available
                                       </Button>
@@ -748,7 +748,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
         />
       )}
 
-      {/* Schedule Tour Modal */}
+      {/* Schedule Viewing Modal */}
       {tourLocation && (
         <ScheduleViewingWidget
           open={!!tourLocation}

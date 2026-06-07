@@ -32,7 +32,6 @@ import { OverstayPenaltyQueue } from "@/components/manager/overstays/OverstayPen
 import { DamageClaimQueue } from "@/components/manager/damage-claims/DamageClaimQueue";
 import { PendingStorageCheckouts } from "@/components/manager/PendingStorageCheckouts";
 import { PendingStorageCheckins } from "@/components/manager/PendingStorageCheckins";
-import { TodaysKitchenBookings } from "@/components/manager/TodaysKitchenBookings";
 import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
@@ -607,15 +606,6 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'overview' && (
         <div className="space-y-6 animate-fade-in">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Welcome back!</h1>
-            <p className="text-muted-foreground">Here&apos;s what&apos;s happening at your kitchens today.</p>
-          </div>
-
-
-
-          <TodaysKitchenBookings />
-
           <KitchenDashboardOverview
             selectedLocation={selectedLocation}
             locations={locations}

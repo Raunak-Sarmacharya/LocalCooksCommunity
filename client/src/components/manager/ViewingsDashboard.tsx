@@ -1,8 +1,8 @@
 /**
  * ViewingsDashboard
  *
- * Manager-facing dashboard for viewing and managing all kitchen tour bookings.
- * Shows upcoming and past tours with intake data, status controls, and no-show tracking.
+ * Manager-facing dashboard for viewing and managing all kitchen viewing bookings.
+ * Shows upcoming and past viewings with intake data, status controls, and no-show tracking.
  * Built mobile-first with shadcn/ui components.
  */
 
@@ -114,6 +114,7 @@ interface ViewingRecord {
   locationAddress: string | null
   kitchenName: string | null
   chefUsername: string | null
+  chefName?: string | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -275,7 +276,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
 
   const renderViewingRow = (record: ViewingRecord) => {
     const { viewing } = record
-    const chefName = record.chefUsername?.split("@")[0] || `Chef #${viewing.chefId}`
+    const chefName = record.chefName || record.chefUsername?.split("@")[0] || `Chef #${viewing.chefId}`
     const hasIntake =
       viewing.intakeData && Object.keys(viewing.intakeData).length > 0
 
@@ -339,7 +340,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                     className="text-green-600"
                   >
                     <CheckCircle className="h-4 w-4 mr-2" />
-                    Confirm Tour
+                    Confirm Viewing
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => handleStatusAction(record, "cancel")}
@@ -371,7 +372,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                     className="text-destructive"
                   >
                     <XCircle className="h-4 w-4 mr-2" />
-                    Cancel Tour
+                    Cancel Viewing
                   </DropdownMenuItem>
                 </>
               )}
@@ -418,10 +419,10 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
             <div>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Eye className="h-5 w-5 text-primary" />
-                Kitchen Tours
+                Kitchen Viewings
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                Manage tour bookings and track chef visits.
+                Manage viewing bookings and track chef visits.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -436,12 +437,13 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
               </Button>
               <Button
                 variant="outline"
-                size="icon"
-                className="h-9 w-9 shrink-0"
+                size="sm"
+                className="shrink-0"
                 onClick={() => setIsSettingsOpen(true)}
-                title="Tour Settings"
+                title="Viewing Settings"
               >
-                <Settings className="h-4 w-4" />
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
               </Button>
             </div>
           </div>
@@ -495,11 +497,11 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
             <>
               <SheetHeader>
                 <SheetTitle>
-                  {statusAction === "view" && "Tour Details"}
-                  {statusAction === "confirm" && "Confirm Tour Request"}
+                  {statusAction === "view" && "Viewing Details"}
+                  {statusAction === "confirm" && "Confirm Viewing Request"}
                   {statusAction === "complete" && "Mark as Completed"}
                   {statusAction === "no_show" && "Mark as No-Show"}
-                  {statusAction === "cancel" && "Cancel Tour"}
+                  {statusAction === "cancel" && "Cancel Viewing"}
                 </SheetTitle>
                 <SheetDescription>
                   {format(
@@ -515,7 +517,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Chef</span>
                     <span>
-                      {selectedViewing.chefUsername?.split("@")[0] ||
+                      {selectedViewing.chefName || selectedViewing.chefUsername?.split("@")[0] ||
                         `Chef #${selectedViewing.viewing.chefId}`}
                     </span>
                   </div>
@@ -561,7 +563,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                       <Separator />
                       <div>
                         <p className="text-xs font-medium text-muted-foreground mb-2">
-                          Pre-Tour Screening
+                          Pre-Viewing Screening
                         </p>
                         <div className="space-y-1.5 bg-blue-50/50 p-3 rounded-md border border-blue-100">
                           {Object.entries(selectedViewing.viewing.intakeData)
@@ -684,10 +686,10 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                     {updateStatusMutation.isPending ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : null}
-                    {statusAction === "confirm" && "Confirm Tour"}
+                    {statusAction === "confirm" && "Confirm Viewing"}
                     {statusAction === "complete" && "Mark Completed"}
                     {statusAction === "no_show" && "Confirm No-Show"}
-                    {statusAction === "cancel" && "Cancel Tour"}
+                    {statusAction === "cancel" && "Cancel Viewing"}
                   </Button>
                 </SheetFooter>
               )}
@@ -705,7 +707,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                     className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
                     onClick={() => setStatusAction("confirm")}
                   >
-                    Accept Tour
+                    Accept Viewing
                   </Button>
                 </SheetFooter>
               )}
@@ -718,9 +720,9 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
       <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
           <SheetHeader className="mb-6">
-            <SheetTitle>Tour Settings</SheetTitle>
+            <SheetTitle>Viewing Settings</SheetTitle>
             <SheetDescription>
-              Configure how chefs can book tours at this location.
+              Configure how chefs can book viewings at this location.
             </SheetDescription>
           </SheetHeader>
           <div className="py-2">
@@ -730,7 +732,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
               <div className="text-center py-12 text-muted-foreground border rounded-lg bg-gray-50/50">
                 <Settings className="h-8 w-8 mx-auto mb-3 opacity-40" />
                 <p className="text-sm font-medium">Select a location to manage settings</p>
-                <p className="text-xs mt-1">Tour settings are configured per-location.</p>
+                <p className="text-xs mt-1">Viewing settings are configured per-location.</p>
               </div>
             )}
           </div>

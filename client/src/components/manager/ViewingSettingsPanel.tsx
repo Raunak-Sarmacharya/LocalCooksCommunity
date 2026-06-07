@@ -21,7 +21,8 @@ import {
   EyeOff,
   Shield,
   AlertCircle,
-  AlertTriangle
+  AlertTriangle,
+  Info
 } from "lucide-react"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
@@ -78,6 +79,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { format, isBefore, startOfDay, isWithinInterval, addDays } from "date-fns"
 
@@ -296,7 +303,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
       setBlackoutStart(undefined)
       setBlackoutEnd(undefined)
       setBlackoutReason("")
-      toast.success("Blackout period added!")
+      toast.success("Exception period added!")
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -315,7 +322,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${locationId}`] })
-      toast.success("Blackout removed!")
+      toast.success("Exception removed!")
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -353,10 +360,10 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
             <div>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Settings className="h-5 w-5" />
-                Tour Settings
+                Viewing Settings
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                Configure how chefs can book tours at {locationName || "your location"}
+                Configure how chefs can book viewings at {locationName || "your location"}
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -377,7 +384,19 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-xs sm:text-sm">Tour Duration (minutes)</Label>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs sm:text-sm">Viewing Duration</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
+                      <Info className="h-4 w-4 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>The length of each viewing appointment</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <Select
                 value={String(duration)}
                 onValueChange={(v) => setDuration(Number(v))}
@@ -396,7 +415,19 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
             </div>
 
             <div className="space-y-2">
-              <Label className="text-xs sm:text-sm">Advance Notice (hours)</Label>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs sm:text-sm">Advance Notice</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
+                      <Info className="h-4 w-4 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>The minimum lead time required before a chef can book a viewing</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <Select
                 value={String(advanceNotice)}
                 onValueChange={(v) => setAdvanceNotice(Number(v))}
@@ -415,7 +446,19 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
             </div>
 
             <div className="space-y-2">
-              <Label className="text-xs sm:text-sm">Buffer Before (minutes)</Label>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs sm:text-sm">Buffer Before</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
+                      <Info className="h-4 w-4 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Preparation time automatically blocked before each viewing</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <Select
                 value={String(bufferBefore)}
                 onValueChange={(v) => setBufferBefore(Number(v))}
@@ -434,7 +477,19 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
             </div>
 
             <div className="space-y-2">
-              <Label className="text-xs sm:text-sm">Buffer After (minutes)</Label>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs sm:text-sm">Buffer After</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
+                      <Info className="h-4 w-4 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Buffer time automatically blocked after each viewing</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <Select
                 value={String(bufferAfter)}
                 onValueChange={(v) => setBufferAfter(Number(v))}
@@ -454,7 +509,19 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs sm:text-sm">Max Advance Booking (days)</Label>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs sm:text-sm">Max Advance Booking</Label>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
+                    <Info className="h-4 w-4 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>How far in advance viewings can be scheduled</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
             <Select
               value={String(maxDays)}
               onValueChange={(v) => setMaxDays(Number(v))}
@@ -499,7 +566,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
               <div className="space-y-1">
                 <CardTitle className="text-lg">Recurring Weekly Hours</CardTitle>
-                <CardDescription>Default hours available for kitchen tours.</CardDescription>
+                <CardDescription>Default hours available for kitchen viewings.</CardDescription>
               </div>
               <Button
                 onClick={() => saveAvailabilityMutation.mutate()}
@@ -596,7 +663,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
             <Card className="overflow-hidden flex flex-col justify-between">
               <CardHeader>
                 <CardTitle>Calendar Overview</CardTitle>
-                <CardDescription>View dates blocked from receiving tour bookings.</CardDescription>
+                <CardDescription>View dates blocked from receiving viewing bookings.</CardDescription>
               </CardHeader>
               <CardContent className="p-4 flex justify-center items-center">
                 <Calendar
@@ -612,10 +679,10 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Badge variant="destructive" className="h-2 w-2 p-0 rounded-full" />
-                    <span>Blackout Dates</span>
+                    <span>Exception Dates</span>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => setIsBlackoutDialogOpen(true)}>
-                    <Plus className="h-4 w-4 mr-1" /> Add Blackout
+                    <Plus className="h-4 w-4 mr-1" /> Add Exception
                   </Button>
                 </div>
               </div>
@@ -623,14 +690,14 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
 
             <Card className="flex flex-col h-full">
               <CardHeader>
-                <CardTitle>Upcoming Blackouts</CardTitle>
-                <CardDescription>Periods where tours are completely disabled</CardDescription>
+                <CardTitle>Upcoming Exceptions</CardTitle>
+                <CardDescription>Periods where viewings are completely disabled</CardDescription>
               </CardHeader>
               <CardContent className="flex-1 overflow-auto p-0">
                 {!data?.blackouts || data.blackouts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <CalendarIcon className="h-10 w-10 mb-2 opacity-20" />
-                    <p>No active blackouts.</p>
+                    <p>No active exceptions.</p>
                   </div>
                 ) : (
                   <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
@@ -666,9 +733,9 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>Remove blackout?</AlertDialogTitle>
+                                  <AlertDialogTitle>Remove exception?</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    This will make these dates available for tours again.
+                                    This will make these dates available for viewings again.
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
@@ -703,12 +770,12 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
             <div className="text-xs sm:text-sm text-blue-800 space-y-1">
               <p className="font-medium">How it works</p>
               <p>
-                When you enable tours, chefs will see a "Schedule a Tour" button
+                When you enable viewings, chefs will see a "Schedule a Viewing" button
                 on your kitchen listing. They'll pick a date and time from the availability
-                you set here. Bookings are automatically confirmed in real-time.
+                you set here. Viewing requests will be sent to you for approval.
               </p>
               <p>
-                Adding a blackout will automatically cancel any existing tours in that
+                Adding an exception will automatically cancel any existing viewings in that
                 period and notify the affected chefs.
               </p>
             </div>
@@ -716,12 +783,12 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
         </CardContent>
       </Card>
 
-      {/* Blackout Dialog */}
+      {/* Exception Dialog */}
       <Dialog open={isBlackoutDialogOpen} onOpenChange={setIsBlackoutDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Blackout Period</DialogTitle>
-            <DialogDescription>Block off dates when tours are completely unavailable.</DialogDescription>
+            <DialogTitle>Add Exception Period</DialogTitle>
+            <DialogDescription>Block off dates when viewings are completely unavailable.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
@@ -788,7 +855,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
             </Button>
             <Button onClick={() => addBlackoutMutation.mutate()} disabled={addBlackoutMutation.isPending || !blackoutStart || !blackoutEnd}>
               {addBlackoutMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Save Blackout
+              Save Exception
             </Button>
           </DialogFooter>
         </DialogContent>

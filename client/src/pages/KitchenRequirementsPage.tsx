@@ -338,10 +338,10 @@ export default function KitchenRequirementsPage() {
                                     <Button 
                                         size="lg" 
                                         variant="outline"
-                                        className="border-primary text-primary hover:bg-primary/5"
+                                        className="border-primary text-primary hover:bg-primary/5 w-full sm:w-auto"
                                         onClick={() => setShowTourModal(true)}
                                     >
-                                        Schedule a Tour
+                                        Schedule a Viewing
                                     </Button>
                                 )}
                                 <Button 
@@ -353,7 +353,7 @@ export default function KitchenRequirementsPage() {
                                             setLocation(`/auth?redirect=/kitchen-requirements/${locationId}`);
                                         }
                                     }}
-                                    className="shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
+                                    className="shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all w-full sm:w-auto"
                                 >
                                     Start Application
                                 </Button>

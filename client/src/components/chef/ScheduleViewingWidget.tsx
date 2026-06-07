@@ -1,8 +1,8 @@
 /**
  * ScheduleViewingWidget
  *
- * Chef-facing component for booking kitchen viewings/tours.
- * Features a calendar date picker, time slot selector, and pre-tour intake form.
+ * Chef-facing component for booking kitchen viewings.
+ * Features a calendar date picker, time slot selector, and pre-viewing intake form.
  * Built mobile-first with shadcn/ui components.
  */
 
@@ -382,7 +382,7 @@ export function ScheduleViewingWidget({
         <div>
           <h3 className="text-base sm:text-lg font-semibold">Tell us about your needs</h3>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            This helps the kitchen manager prepare for your tour.
+            This helps the kitchen manager prepare for your viewing.
           </p>
         </div>
       </div>
@@ -563,7 +563,7 @@ export function ScheduleViewingWidget({
           Viewing Requested!
         </h3>
         <p className="text-sm text-muted-foreground">
-          Your kitchen tour at {locationName || "the kitchen"} has been requested and is awaiting manager approval.
+          Your kitchen viewing at {locationName || "the kitchen"} has been requested and is awaiting manager approval.
         </p>
       </div>
 
@@ -622,7 +622,7 @@ export function ScheduleViewingWidget({
               Schedule a Kitchen Viewing
             </SheetTitle>
             <SheetDescription className="text-xs sm:text-sm">
-              Book an in-person tour of {locationName || "the kitchen facility"}
+              Book an in-person viewing of {locationName || "the kitchen facility"}
             </SheetDescription>
           </SheetHeader>
           {content}
@@ -640,7 +640,7 @@ export function ScheduleViewingWidget({
           Schedule a Kitchen Viewing
         </CardTitle>
         <CardDescription className="text-xs sm:text-sm">
-          Book an in-person tour of {locationName || "the kitchen facility"}
+          Book an in-person viewing of {locationName || "the kitchen facility"}
         </CardDescription>
       </CardHeader>
       <CardContent>{content}</CardContent>

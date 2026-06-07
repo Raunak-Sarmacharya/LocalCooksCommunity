@@ -1515,7 +1515,7 @@ export default function KitchenComparisonPage() {
                                       })}
                                       className="flex-1 border-primary text-primary"
                                     >
-                                      Schedule Tour
+                                      Schedule Viewing
                                     </Button>
                                     <Button
                                       size="sm"
@@ -1540,7 +1540,7 @@ export default function KitchenComparisonPage() {
                                       })}
                                       className="flex-1 border-primary text-primary"
                                     >
-                                      Schedule Tour
+                                      Schedule Viewing
                                     </Button>
                                     <Button
                                       size="sm"
@@ -1580,7 +1580,7 @@ export default function KitchenComparisonPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Schedule Tour Modal */}
+      {/* Schedule Viewing Modal */}
       {tourModalState.locationId && (
         <ScheduleViewingWidget
           locationId={tourModalState.locationId}

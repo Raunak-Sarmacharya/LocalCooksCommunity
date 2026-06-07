@@ -31,6 +31,7 @@ import {
   Filter,
   MapPin,
   Building2,
+  Info,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,6 +45,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Tooltip as UITooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   AreaChart,
   Area,
   XAxis,
@@ -56,12 +63,9 @@ import {
   Cell,
 } from "recharts";
 import BookingCalendarWidget from "./BookingCalendarWidget";
+import { TodaysKitchenBookings } from "@/components/manager/TodaysKitchenBookings";
 import { formatCurrency } from "@/lib/formatters";
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// KITCHEN DASHBOARD OVERVIEW - Award-Winning Design
-// Inspired by Peerspace, Splacer, Airbnb, and top booking platforms
-// ═══════════════════════════════════════════════════════════════════════════════
 
 type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'revenue';
 
@@ -216,6 +220,49 @@ export default function KitchenDashboardOverview({
     refetchOnWindowFocus: true,
   });
 
+  // Fetch manager's viewings
+  const { data: viewingsData = [], isLoading: isLoadingViewings } = useQuery({
+    queryKey: ['managerViewings', firebaseUser?.uid],
+    queryFn: async () => {
+      if (!firebaseUser) throw new Error('Not authenticated');
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) throw new Error('Not authenticated');
+      const token = await currentFirebaseUser.getIdToken();
+      
+      const response = await fetch('/api/viewings/manager', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: "include",
+      });
+      
+      if (!response.ok) throw new Error('Failed to fetch viewings');
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      }
+      return [];
+    },
+    enabled: !!firebaseUser,
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
+  });
+
+  // Filter viewings by selected location
+  const filteredViewings = useMemo(() => {
+    const enriched = viewingsData.map((v: any) => {
+      const locationId = v.locationName 
+        ? locationNameToIdMap.get(v.locationName) || null
+        : null;
+      return { ...v, locationId };
+    });
+    
+    if (!selectedLocation) return enriched;
+    return enriched.filter((v: any) => v.locationId === selectedLocation.id);
+  }, [viewingsData, selectedLocation, locationNameToIdMap]);
+
   // Calculate this month's date range (moved outside query for use in queryKey)
   const thisMonthDateRange = useMemo(() => {
     const today = new Date();
@@ -355,6 +402,19 @@ export default function KitchenDashboardOverview({
     const confirmedBookings = filteredBookings.filter((b: any) => b.status === 'confirmed');
     const cancelledBookings = filteredBookings.filter((b: any) => b.status === 'cancelled');
 
+    // Applications & Viewings metrics
+    const pendingApplications = applications.filter((a: any) => a.status === 'pending');
+    
+    const todayViewings = filteredViewings.filter((v: any) => {
+      if (!v.viewing?.scheduledAt) return false;
+      const viewingDateStr = normalizeDate(v.viewing.scheduledAt);
+      return viewingDateStr === todayStr && v.viewing.status !== 'cancelled';
+    });
+
+    const pendingViewings = filteredViewings.filter((v: any) => v.viewing?.status === 'pending');
+    
+    const totalPendingCount = pendingBookings.length + pendingApplications.length + pendingViewings.length;
+
     // This month's bookings
     const thisMonthBookings = filteredBookings.filter((b: any) => {
       if (!b.bookingDate) return false;
@@ -393,8 +453,12 @@ export default function KitchenDashboardOverview({
 
     return {
       todayBookings: todayBookings.length,
+      todayViewings: todayViewings.length,
       weekBookings: weekBookings.length,
       pendingBookings: pendingBookings.length,
+      pendingViewings: pendingViewings.length,
+      pendingApplications: pendingApplications.length,
+      totalPendingCount,
       confirmedBookings: confirmedBookings.length,
       cancelledBookings: cancelledBookings.length,
       totalBookings: filteredBookings.length,
@@ -403,7 +467,7 @@ export default function KitchenDashboardOverview({
       uniqueChefs: uniqueChefs.size,
       utilizationRate: Math.min(utilizationRate, 100),
     };
-  }, [filteredBookings]);
+  }, [filteredBookings, filteredViewings, applications]);
 
   // Generate chart data for weekly bookings (next 7 days including today)
   const weeklyChartData = useMemo(() => {
@@ -455,16 +519,6 @@ export default function KitchenDashboardOverview({
   // Get urgent actions
   const urgentActions = useMemo(() => {
     const actions: { type: 'danger' | 'warning' | 'info'; icon: any; title: string; count: number; action: ViewType }[] = [];
-    
-    if (dashboardMetrics.pendingBookings > 0) {
-      actions.push({
-        type: 'warning',
-        icon: Clock,
-        title: 'Pending Approvals',
-        count: dashboardMetrics.pendingBookings,
-        action: 'bookings'
-      });
-    }
     
     // Check for today's bookings
     if (dashboardMetrics.todayBookings > 0) {
@@ -644,33 +698,60 @@ export default function KitchenDashboardOverview({
             </CardContent>
           </Card>
 
-          {/* This Week */}
+          {/* Today's Viewings */}
           <Card className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300">
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">This Week</p>
-                  <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.weekBookings}</p>
-                  <p className="text-gray-500 text-xs mt-1">Upcoming bookings</p>
+                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">Today</p>
+                  <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.todayViewings}</p>
+                  <p className="text-gray-500 text-xs mt-1">Kitchen viewings</p>
                 </div>
-                <Calendar className="h-4 w-4 text-violet-500" />
+                <Eye className="h-4 w-4 text-violet-500" />
               </div>
             </CardContent>
           </Card>
 
           {/* Pending Review */}
-          <Card className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">Pending</p>
-                  <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.pendingBookings}</p>
-                  <p className="text-gray-500 text-xs mt-1">Needs review</p>
+          <TooltipProvider delayDuration={100}>
+            <UITooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="w-full text-left p-0 m-0 border-none bg-transparent outline-none appearance-none" onClick={(e) => e.preventDefault()}>
+                  <Card className="border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300 cursor-help h-full">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider flex items-center gap-1">
+                            Pending <Info className="h-3 w-3 text-muted-foreground" />
+                          </p>
+                          <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.totalPendingCount}</p>
+                          <p className="text-gray-500 text-xs mt-1">Needs review</p>
+                        </div>
+                        <Clock className="h-4 w-4 text-amber-500" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <div className="text-xs space-y-1 p-1">
+                  <div className="font-semibold pb-1 mb-1 border-b">Pending Items Breakdown</div>
+                  <div className="flex justify-between gap-4">
+                    <span>Kitchen Bookings:</span>
+                    <span className="font-bold">{dashboardMetrics.pendingBookings}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span>Kitchen Viewings:</span>
+                    <span className="font-bold">{dashboardMetrics.pendingViewings}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span>Kitchen Applications:</span>
+                    <span className="font-bold">{dashboardMetrics.pendingApplications}</span>
+                  </div>
                 </div>
-                <Clock className="h-4 w-4 text-amber-500" />
-              </div>
-            </CardContent>
-          </Card>
+              </TooltipContent>
+            </UITooltip>
+          </TooltipProvider>
         </div>
 
         {/* Row 2: Two Larger Cards */}
@@ -980,6 +1061,11 @@ export default function KitchenDashboardOverview({
           </div>
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          UPCOMING BOOKINGS AND VIEWINGS
+      ═══════════════════════════════════════════════════════════════════════ */}
+      <TodaysKitchenBookings />
 
       {/* ═══════════════════════════════════════════════════════════════════════
           BOOKING CALENDAR - Main Highlight

@@ -47,9 +47,9 @@ export default function ChefViewingsList() {
                     <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
                         <Eye className="h-6 w-6 text-primary" />
                     </div>
-                    <h3 className="text-lg font-medium">No Tours Scheduled</h3>
+                    <h3 className="text-lg font-medium">No Viewings Scheduled</h3>
                     <p className="text-muted-foreground mt-1 max-w-sm">
-                        You haven't scheduled any kitchen viewings yet. Explore kitchens and book a tour!
+                        You haven't scheduled any kitchen viewings yet. Explore kitchens and book a viewing!
                     </p>
                 </CardContent>
             </Card>
@@ -119,7 +119,7 @@ export default function ChefViewingsList() {
                                     )}
                                     {viewing.managerNotes && (
                                         <div className="mb-2 last:mb-0">
-                                            <span className="font-medium text-foreground block mb-1">Message from Manager:</span>
+                                            <span className="font-medium text-foreground block mb-1">Message from {item.managerName || 'Manager'}:</span>
                                             <span className="text-muted-foreground">{viewing.managerNotes}</span>
                                         </div>
                                     )}

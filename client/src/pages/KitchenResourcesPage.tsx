@@ -736,7 +736,7 @@ export default function KitchenResourcesPage() {
               <SubHeading id="orientation">Step 4: In-Person Orientation (1.5–2 Hours)</SubHeading>
               <p className="text-gray-600 mb-3">Every renter, regardless of experience, goes through orientation covering:</p>
               <ul className="list-disc pl-5 text-gray-600 space-y-1">
-                <li><strong>Facility tour:</strong> All areas, emergency exits, fire extinguishers, storage assignments</li>
+                <li><strong>Facility viewing:</strong> All areas, emergency exits, fire extinguishers, storage assignments</li>
                 <li><strong>Equipment training:</strong> Have the renter demonstrate back to you — verify understanding</li>
                 <li><strong>Cleaning protocols:</strong> Standards, sanitizing solutions, consequences for non-compliance</li>
                 <li><strong>Safety procedures:</strong> Fire, first aid, spills, emergency contacts</li>

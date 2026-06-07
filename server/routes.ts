@@ -705,7 +705,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Chef notifications routes
   app.use("/api/chef/notifications", (await import("./routes/chef-notifications")).default);
 
-  // Kitchen Viewings / Tour Scheduling routes
+  // Kitchen Viewings / Viewing Scheduling routes
   app.use("/api/viewings", (await import("./routes/viewings")).default);
 
   // Mount Kitchens Router

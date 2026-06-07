@@ -44,6 +44,7 @@ import {
   generateStorageExtensionRejectedEmail,
   // generateBookingStatusChangeEmail // check usage
 } from "../email";
+import { getUserDisplayName } from "../utils/user-display";
 import {
   sendSMS,
   generateChefBookingConfirmationSMS,
@@ -3871,13 +3872,13 @@ router.get(
 );
 
 /**
- * GET /manager/bookings/today
- * Get today's kitchen bookings with check-in status for the manager's live dashboard.
- * Returns confirmed bookings for today with checkinStatus and timing info.
- * NOTE: Must be defined BEFORE /bookings/:id to prevent Express matching "today" as :id
+ * GET /manager/bookings/upcoming
+ * Get upcoming kitchen bookings with check-in status for the manager's live dashboard.
+ * Returns confirmed bookings for today and future.
+ * NOTE: Must be defined BEFORE /bookings/:id to prevent Express matching "upcoming" as :id
  */
 router.get(
-  "/bookings/today",
+  "/bookings/upcoming",
   requireFirebaseAuthWithUser,
   requireManager,
   async (req: Request, res: Response) => {
@@ -3885,9 +3886,8 @@ router.get(
       const managerId = req.neonUser!.id;
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
 
-      const { gte: gteOp, lt: ltOp } = await import("drizzle-orm");
+      const { gte: gteOp, inArray } = await import("drizzle-orm");
 
       const todaysBookings = await db
         .select({
@@ -3932,12 +3932,11 @@ router.get(
         .where(
           and(
             eq(locations.managerId, managerId),
-            eq(kitchenBookings.status, 'confirmed'),
+            inArray(kitchenBookings.status, ['confirmed', 'pending']),
             gteOp(kitchenBookings.bookingDate, todayStart),
-            ltOp(kitchenBookings.bookingDate, todayEnd),
           )
         )
-        .orderBy(kitchenBookings.startTime);
+        .orderBy(kitchenBookings.bookingDate, kitchenBookings.startTime);
 
       // Lazy evaluation: detect no-shows inline (location-aware settings).
       // Resolve bookingStart in the LOCATION's timezone so "00:00" means midnight
@@ -3978,11 +3977,19 @@ router.get(
         }
       }
 
+      // Fetch chef names
+      const bookingsWithNames = await Promise.all(
+        todaysBookings.map(async (booking) => ({
+          ...booking,
+          chefName: booking.chefId ? await getUserDisplayName(booking.chefId, 'chef') : 'A chef'
+        }))
+      );
+
       // Fetch platform defaults for the settings response
       const platformSettings = await getCheckinSettings();
 
       res.json({
-        bookings: todaysBookings,
+        bookings: bookingsWithNames,
         settings: {
           noShowGraceMinutes: platformSettings.noShowGraceMinutes,
           checkoutReviewWindowMinutes: platformSettings.checkoutReviewWindowMinutes,

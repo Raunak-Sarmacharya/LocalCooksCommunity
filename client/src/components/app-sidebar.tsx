@@ -119,7 +119,7 @@ const navData: { navMain: NavGroup[] } = {
                     icon: ChefHat,
                 },
                 {
-                    title: "Kitchen Tours",
+                    title: "Kitchen Viewings",
                     url: "viewings",
                     icon: Eye,
                 },

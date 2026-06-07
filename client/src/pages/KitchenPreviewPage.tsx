@@ -6,7 +6,7 @@ import {
   Building2, MapPin, Loader2, ArrowRight, Calendar, Lock,
   ChevronLeft, ChevronRight, Utensils, Check, ImageOff, FileText, Clock,
   Wrench, Package, Snowflake, Star, Shield, Sparkles, Box, Thermometer,
-  DollarSign, Info, ChefHat, Zap
+  DollarSign, Info, ChefHat, Zap, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -60,24 +60,133 @@ const fadeInUp = {
 };
 
 // Component for individual carousel image with R2 proxy URL
-function CarouselImage({ imageUrl, kitchenName, index }: { imageUrl: string; kitchenName: string; index: number }) {
+function CarouselImage({ imageUrl, kitchenName, index, onClick }: { imageUrl: string; kitchenName: string; index: number; onClick?: () => void }) {
   const proxyUrl = getR2ProxyUrl(imageUrl);
 
   return (
-    <div className="flex-[0_0_100%] min-w-0">
-      <div className="aspect-[16/9] bg-gray-100">
+    <div className="flex-[0_0_100%] min-w-0 cursor-pointer" onClick={onClick}>
+      <div className="aspect-[16/9] bg-gray-100 relative group/img">
         <img
           src={proxyUrl}
           alt={`${kitchenName} - Image ${index + 1}`}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover transition-transform duration-300 group-hover/img:scale-[1.02]"
           onError={(e) => {
             logger.error('Image failed to load:', imageUrl);
             const target = e.target as HTMLImageElement;
             target.style.display = 'none';
           }}
         />
+        <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center pointer-events-none">
+          <div className="bg-white/90 text-black px-3 py-1.5 rounded-full text-sm font-medium opacity-0 group-hover/img:opacity-100 transition-opacity transform translate-y-2 group-hover/img:translate-y-0 shadow-lg backdrop-blur-sm pointer-events-auto">
+            Click to expand
+          </div>
+        </div>
       </div>
     </div>
+  );
+}
+
+// LightboxCarousel Component
+function LightboxCarousel({ images, initialIndex, onClose, kitchenName }: { images: string[]; initialIndex: number; onClose: () => void; kitchenName: string; }) {
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    loop: true,
+    startIndex: initialIndex,
+    containScroll: 'trimSnaps',
+  });
+  const [selectedIndex, setSelectedIndex] = useState(initialIndex);
+  const [canScrollPrev, setCanScrollPrev] = useState(false);
+  const [canScrollNext, setCanScrollNext] = useState(false);
+
+  const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
+  const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
+
+  const onSelect = useCallback(() => {
+    if (!emblaApi) return;
+    setSelectedIndex(emblaApi.selectedScrollSnap());
+    setCanScrollPrev(emblaApi.canScrollPrev());
+    setCanScrollNext(emblaApi.canScrollNext());
+  }, [emblaApi]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    setCanScrollPrev(emblaApi.canScrollPrev());
+    setCanScrollNext(emblaApi.canScrollNext());
+    emblaApi.on('select', onSelect);
+    emblaApi.on('reInit', onSelect);
+    return () => {
+      emblaApi.off('select', onSelect);
+      emblaApi.off('reInit', onSelect);
+    };
+  }, [emblaApi, onSelect]);
+
+  // Handle escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft') scrollPrev();
+      if (e.key === 'ArrowRight') scrollNext();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, scrollPrev, scrollNext]);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-[100] bg-black/95 flex flex-col touch-none"
+    >
+      <div className="flex items-center justify-between p-4 sm:p-6 absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/60 to-transparent">
+        <div className="text-white/90 font-medium text-sm sm:text-base bg-black/40 px-3 py-1 rounded-full backdrop-blur-md">
+          {selectedIndex + 1} / {images.length}
+        </div>
+        <button 
+          onClick={onClose}
+          className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors z-20 backdrop-blur-md"
+          aria-label="Close lightbox"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-hidden relative flex items-center justify-center" ref={emblaRef}>
+        <div className="flex h-full w-full items-center">
+          {images.map((img, index) => (
+            <div key={index} className="flex-[0_0_100%] min-w-0 h-full flex items-center justify-center p-0 sm:p-8">
+              <img 
+                src={getR2ProxyUrl(img)} 
+                alt={`${kitchenName} - Fullscreen Image ${index + 1}`}
+                className="w-full h-full object-contain select-none"
+                draggable={false}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {images.length > 1 && (
+        <>
+          <button
+            onClick={scrollPrev}
+            className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-12 sm:h-12 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full flex items-center justify-center transition-colors disabled:opacity-30 touch-manipulation z-10 text-white backdrop-blur-md"
+            disabled={!canScrollPrev}
+            aria-label="Previous image"
+          >
+            <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" />
+          </button>
+          <button
+            onClick={scrollNext}
+            className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-12 sm:h-12 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full flex items-center justify-center transition-colors disabled:opacity-30 touch-manipulation z-10 text-white backdrop-blur-md"
+            disabled={!canScrollNext}
+            aria-label="Next image"
+          >
+            <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" />
+          </button>
+        </>
+      )}
+    </motion.div>
   );
 }
 
@@ -357,6 +466,13 @@ function ImageCarousel({ images, kitchenName }: { images: string[]; kitchenName:
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [canScrollPrev, setCanScrollPrev] = useState(false);
   const [canScrollNext, setCanScrollNext] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+
+  const openLightbox = (index: number) => {
+    setLightboxIndex(index);
+    setLightboxOpen(true);
+  };
 
   const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
@@ -403,7 +519,7 @@ function ImageCarousel({ images, kitchenName }: { images: string[]; kitchenName:
       <div className="overflow-hidden rounded-xl" ref={emblaRef}>
         <div className="flex">
           {images.map((img, index) => (
-            <CarouselImage key={index} imageUrl={img} kitchenName={kitchenName} index={index} />
+            <CarouselImage key={index} imageUrl={img} kitchenName={kitchenName} index={index} onClick={() => openLightbox(index)} />
           ))}
         </div>
       </div>
@@ -448,9 +564,20 @@ function ImageCarousel({ images, kitchenName }: { images: string[]; kitchenName:
       )}
 
       {/* Image Counter */}
-      <div className="absolute top-3 sm:top-4 right-3 sm:right-4 bg-black/60 text-white text-xs px-2 sm:px-2.5 py-1 rounded-full z-10">
+      <div className="absolute top-3 sm:top-4 right-3 sm:right-4 bg-black/60 text-white text-xs px-2 sm:px-2.5 py-1 rounded-full z-10 pointer-events-none">
         {selectedIndex + 1} / {images.length}
       </div>
+
+      <AnimatePresence>
+        {lightboxOpen && (
+          <LightboxCarousel
+            images={images}
+            initialIndex={lightboxIndex}
+            onClose={() => setLightboxOpen(false)}
+            kitchenName={kitchenName}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1479,7 +1606,7 @@ export default function KitchenPreviewPage() {
                           className="w-full lg:w-auto h-12 px-6 border-primary text-primary hover:bg-primary/5 font-semibold"
                         >
                           <Calendar className="mr-2 h-5 w-5" />
-                          Schedule Tour
+                          Schedule Viewing
                         </Button>
                       )}
                       <Button
@@ -1979,7 +2106,7 @@ export default function KitchenPreviewPage() {
 
       <Footer />
 
-      {/* Schedule Tour Modal */}
+      {/* Schedule Viewing Modal */}
       {selectedKitchen && locationId && (
         <ScheduleViewingWidget
           locationId={locationId as number}

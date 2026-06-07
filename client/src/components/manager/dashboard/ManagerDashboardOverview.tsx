@@ -268,7 +268,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                     <div className="w-1.5 h-1.5 bg-green-500 rounded-full" title={`${confirmedBookingsCount} confirmed`}></div>
                 )}
                 {hasTours && (
-                    <div className="w-1.5 h-1.5 bg-purple-500 rounded-full" title={`${dateViewings.length} tours`}></div>
+                    <div className="w-1.5 h-1.5 bg-purple-500 rounded-full" title={`${dateViewings.length} viewings`}></div>
                 )}
                 {cancelledBookingsCount > 0 && (
                     <div className="w-1.5 h-1.5 bg-gray-400 rounded-full" title={`${cancelledBookingsCount} cancelled`}></div>
@@ -292,7 +292,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
         else if (hasConfirmed) classes.push('has-confirmed-booking');
         else if (dateBookings.length > 0) classes.push('has-booking');
         
-        if (dateViewings.length > 0) classes.push('has-tour');
+        if (dateViewings.length > 0) classes.push('has-viewing');
 
         return classes.join(' ');
     };
@@ -349,14 +349,14 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
 
             {/* Modern Calendar */}
             <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0 pb-4">
                     <div className="flex items-center gap-3">
                         <CardTitle className="text-xl">Booking Calendar</CardTitle>
                         {isLoadingBookings && (
                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
                         )}
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground mt-2 sm:mt-0">
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
                             <span>Pending Booking</span>
@@ -367,7 +367,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                            <span>Tour</span>
+                            <span>Viewing</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
@@ -424,7 +424,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
             .react-calendar-wrapper .react-calendar__tile.has-booking {
               border: 1px solid #cbd5e1;
             }
-            .react-calendar-wrapper .react-calendar__tile.has-tour {
+            .react-calendar-wrapper .react-calendar__tile.has-viewing {
               border: 1px solid #a855f7;
             }
             .react-calendar-wrapper .react-calendar__navigation {
@@ -441,15 +441,15 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
             {/* Selected Date Details */}
             {selectedDate && (
                 <Card className="animate-in fade-in slide-in-from-bottom-5 duration-300">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                        <CardTitle className="text-lg">
+                    <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 gap-4">
+                        <CardTitle className="text-lg leading-tight">
                             Bookings for {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                         </CardTitle>
                         <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => setSelectedDate(null)}
-                            className="text-muted-foreground hover:text-foreground"
+                            className="text-muted-foreground hover:text-foreground shrink-0"
                         >
                             <X className="h-5 w-5" />
                         </Button>
@@ -462,7 +462,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                         ) : getBookingsForDate(selectedDate).length === 0 && getViewingsForDate(selectedDate).length === 0 ? (
                             <div className="text-center py-8">
                                 <Clock className="h-12 w-12 text-muted mx-auto mb-3" />
-                                <p className="text-muted-foreground">No bookings or tours on this date</p>
+                                <p className="text-muted-foreground">No bookings or viewings on this date</p>
                             </div>
                         ) : (
                             <div className="space-y-3">
@@ -480,7 +480,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                         <div
                                             key={`booking-${booking.id}`}
                                             className={cn(
-                                                "p-4 rounded-lg border flex items-start justify-between gap-4",
+                                                "p-4 rounded-lg border flex flex-col sm:flex-row sm:items-start justify-between gap-4",
                                                 booking.status === 'pending' ? "bg-yellow-50 border-yellow-200" :
                                                     booking.status === 'confirmed' ? "bg-green-50 border-green-200" :
                                                         "bg-muted/50 border-border"
@@ -556,7 +556,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                                 variant="ghost"
                                                 size="sm"
                                                 onClick={() => onNavigate('bookings')}
-                                                className="text-primary hover:text-primary hover:bg-primary/10"
+                                                className="w-full sm:w-auto text-primary hover:text-primary hover:bg-primary/10"
                                             >
                                                 View Details
                                             </Button>
@@ -564,7 +564,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                     );
                                 })}
 
-                                {getViewingsForDate(selectedDate).map((tour) => {
+                                {getViewingsForDate(selectedDate).map((viewingRec) => {
                                     const formatTime = (isoString: string, durationMins: number) => {
                                         if (!isoString) return '';
                                         const d = new Date(isoString);
@@ -576,72 +576,72 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
 
                                     return (
                                         <div
-                                            key={`tour-${tour.viewing.id}`}
+                                            key={`viewing-${viewingRec.viewing.id}`}
                                             className={cn(
-                                                "p-4 rounded-lg border flex items-start justify-between gap-4",
-                                                tour.viewing.status === 'pending' ? "bg-purple-50 border-purple-200" :
-                                                    tour.viewing.status === 'confirmed' ? "bg-green-50 border-green-200" :
+                                                "p-4 rounded-lg border flex flex-col sm:flex-row sm:items-start justify-between gap-4",
+                                                viewingRec.viewing.status === 'pending' ? "bg-purple-50 border-purple-200" :
+                                                    viewingRec.viewing.status === 'confirmed' ? "bg-green-50 border-green-200" :
                                                         "bg-muted/50 border-border"
                                             )}
                                         >
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2 mb-2 flex-wrap">
                                                     <Badge className="bg-purple-600 text-white hover:bg-purple-700">
-                                                        TOUR
+                                                        VIEWING
                                                     </Badge>
                                                     <Badge
                                                         variant={
-                                                            tour.viewing.status === 'pending' ? "outline" :
-                                                                tour.viewing.status === 'confirmed' ? "default" :
+                                                            viewingRec.viewing.status === 'pending' ? "outline" :
+                                                                viewingRec.viewing.status === 'confirmed' ? "default" :
                                                                     "secondary"
                                                         }
                                                         className={
-                                                            tour.viewing.status === 'pending' ? "text-purple-800 border-purple-300 bg-purple-100" :
-                                                                tour.viewing.status === 'confirmed' ? "bg-success text-success-foreground hover:bg-success/90" :
+                                                            viewingRec.viewing.status === 'pending' ? "text-purple-800 border-purple-300 bg-purple-100" :
+                                                                viewingRec.viewing.status === 'confirmed' ? "bg-success text-success-foreground hover:bg-success/90" :
                                                                     ""
                                                         }
                                                     >
-                                                        {tour.viewing.status.toUpperCase()}
+                                                        {viewingRec.viewing.status.toUpperCase()}
                                                     </Badge>
                                                     <span className="text-sm font-medium flex items-center gap-1">
                                                         <Clock className="h-3 w-3" />
-                                                        {formatTime(tour.viewing.scheduledAt, tour.viewing.durationMinutes)}
+                                                        {formatTime(viewingRec.viewing.scheduledAt, viewingRec.viewing.durationMinutes)}
                                                     </span>
                                                 </div>
-                                                {tour.kitchenName && (
+                                                {viewingRec.kitchenName && (
                                                     <p className="text-sm text-muted-foreground flex items-center gap-1 mb-1">
                                                         <ChefHat className="h-3 w-3" />
-                                                        {tour.kitchenName}
+                                                        {viewingRec.kitchenName}
                                                     </p>
                                                 )}
-                                                {tour.locationName && (
+                                                {viewingRec.locationName && (
                                                     <p className="text-sm text-muted-foreground flex items-center gap-1 mb-1">
                                                         <MapPin className="h-3 w-3" />
-                                                        {tour.locationName}
+                                                        {viewingRec.locationName}
                                                     </p>
                                                 )}
-                                                {tour.chefUsername && (
-                                                    <p className="text-sm text-muted-foreground flex items-center gap-1 mb-1">
-                                                        <User className="h-3 w-3" />
-                                                        Chef: {tour.chefUsername.split('@')[0]}
-                                                    </p>
+                                                {(viewingRec.chefName || viewingRec.chefUsername) && (
+                                                    <div className="flex items-center text-gray-600 mt-1">
+                                                        <User className="h-3 w-3 mr-1 text-gray-400" />
+                                                        Chef: {viewingRec.chefName || viewingRec.chefUsername?.split('@')[0]}
+                                                    </div>
                                                 )}
                                             </div>
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
                                                 onClick={() => {
-                                                    // Since Tours are managed from the Bookings Dashboard's "Viewings" tab now
+                                                    // Since Viewings are managed from the Bookings Dashboard's "Viewings" tab now
                                                     // if we are using tabs, we just route to bookings (ManagerDashboard routes Viewings properly if it knows)
                                                     // Let's call onNavigate('bookings') which opens ManagerBookingDashboard.
                                                     // ManagerBookingDashboard doesn't take tab argument via this prop currently,
-                                                    // but the user can select the "Kitchen Tours" tab once there.
+                                                    // but the user can select the "Kitchen Viewings" tab once there.
                                                     onNavigate('bookings')
                                                 }}
-                                                className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                                                className="w-full sm:w-auto text-purple-600 hover:text-purple-700 hover:bg-purple-50"
                                             >
                                                 <Eye className="w-4 h-4 mr-2" />
-                                                View Tour
+                                                View Details
                                             </Button>
                                         </div>
                                     );
