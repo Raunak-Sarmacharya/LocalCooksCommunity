@@ -93,6 +93,7 @@ interface AvailabilityResponse {
 
 interface IntakeData {
   intendedUse?: string
+  otherIntendedUse?: string
   estimatedWeeklyHours?: string
   hasLicense?: boolean
   targetStartDate?: string
@@ -400,14 +401,21 @@ export function ScheduleViewingWidget({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="catering">Catering</SelectItem>
-              <SelectItem value="meal_prep">Meal Prep</SelectItem>
-              <SelectItem value="baking">Baking / Pastry</SelectItem>
-              <SelectItem value="food_truck">Food Truck Prep</SelectItem>
+              <SelectItem value="baking_pastry">Baking / Pastry</SelectItem>
               <SelectItem value="food_production">Food Production</SelectItem>
-              <SelectItem value="cooking_class">Cooking Classes</SelectItem>
               <SelectItem value="other">Other</SelectItem>
             </SelectContent>
           </Select>
+          {intakeData.intendedUse === "other" && (
+            <Input
+              placeholder="Please specify intended use"
+              value={intakeData.otherIntendedUse || ""}
+              onChange={(e) =>
+                setIntakeData({ ...intakeData, otherIntendedUse: e.target.value })
+              }
+              className="mt-2"
+            />
+          )}
         </div>
 
         {/* Estimated Hours */}
@@ -463,7 +471,11 @@ export function ScheduleViewingWidget({
         </div>
       </div>
 
-      <Button className="w-full" onClick={() => setStep("confirm")}>
+      <Button 
+        className="w-full" 
+        onClick={() => setStep("confirm")}
+        disabled={intakeData.intendedUse === "other" && !intakeData.otherIntendedUse?.trim()}
+      >
         Review & Confirm
         <ArrowRight className="h-4 w-4 ml-2" />
       </Button>
@@ -513,8 +525,12 @@ export function ScheduleViewingWidget({
               <div className="flex items-start gap-3">
                 <Briefcase className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
                 <div className="text-sm">
-                  <p className="font-medium">
-                    {intakeData.intendedUse?.replace(/_/g, " ")}
+                  <p className="font-medium capitalize">
+                    {intakeData.intendedUse === "other"
+                      ? intakeData.otherIntendedUse || "Other"
+                      : intakeData.intendedUse === "baking_pastry"
+                      ? "Baking / Pastry"
+                      : intakeData.intendedUse?.replace(/_/g, " ")}
                   </p>
                   {intakeData.estimatedWeeklyHours && (
                     <p className="text-xs text-muted-foreground">
