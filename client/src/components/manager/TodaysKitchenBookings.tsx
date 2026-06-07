@@ -107,6 +107,7 @@ interface TodayBooking {
   kitchenName: string | null
   locationName: string | null
   chefEmail: string | null
+  chefName?: string | null
 }
 
 interface TodayResponse {
