@@ -486,6 +486,30 @@ const generateEventUid = (
 
 // Helper function to generate .ics file content (iCalendar format - RFC 5545 compliant)
 // Uses the same UID for synchronization across all attendees
+
+// Helper function to generate Google Calendar URL
+const generateGoogleCalendarUrl = (
+  title: string,
+  startDateTime: Date,
+  endDateTime: Date,
+  location: string,
+  description: string
+): string => {
+  const startDateStr = formatDateForCalendar(startDateTime);
+  const endDateStr = formatDateForCalendar(endDateTime);
+  const baseUrl = 'https://calendar.google.com/calendar/render?action=TEMPLATE';
+  
+  const params = new URLSearchParams({
+    text: title,
+    dates: `${startDateStr}/${endDateStr}`,
+    details: description,
+    location: location,
+    trp: 'true'
+  });
+  
+  return `${baseUrl}&${params.toString()}`;
+};
+
 const generateIcsFile = (
   title: string,
   startDateTime: Date,
@@ -511,7 +535,7 @@ const generateIcsFile = (
     'VERSION:2.0',
     'PRODID:-//Local Cooks Community//Kitchen Booking System//EN',
     'CALSCALE:GREGORIAN',
-    'METHOD:REQUEST', // Indicates this is a calendar invitation
+    'METHOD:PUBLISH', // Changed to PUBLISH for better compatibility
     'BEGIN:VEVENT',
     `UID:${uid}`,
     `DTSTAMP:${now}`, // When the event was created
@@ -3119,6 +3143,8 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail: st
     [bookingData.managerEmail], // Manager is the primary attendee for this email
     eventUid // Use consistent UID for synchronization
   );
+
+
 
   const html = `
 <!DOCTYPE html>
@@ -7134,3 +7160,232 @@ The Local Cooks Team
 
   return { to: data.chefEmail, subject, text, html };
 };
+
+export const generateTourRequestedChefEmail = (data: { chefEmail: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; timezone?: string }): EmailContent => {
+  const styles = getUniformEmailStyles();
+  const dateStr = data.tourDate instanceof Date ? data.tourDate.toLocaleDateString() : new Date(data.tourDate).toLocaleDateString();
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      ${styles}
+    </head>
+    <body>
+      <div class="email-container">
+        <div class="header">
+          <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+        </div>
+        <div class="content">
+          <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${data.chefName.split(' ')[0]},</h2>
+          <p class="message">Your kitchen viewing at <strong>${data.kitchenName}</strong> has been requested.</p>
+          
+          <div class="info-box" style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 24px 0;">
+            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Viewing Details</h3>
+            <p><strong>Date:</strong> ${dateStr}</p>
+            <p><strong>Time:</strong> ${data.startTime} ${data.timezone ? `(${data.timezone})` : ''}</p>
+          </div>
+          
+          <p class="message">The kitchen manager will review your request shortly. You will receive an email once your viewing is confirmed or if they need to reschedule.</p>
+        ${getUniformEmailFooter()}
+      </div>
+    </body>
+    </html>
+  `;
+
+  return {
+    to: data.chefEmail,
+    subject: `Kitchen Viewing Requested - ${data.kitchenName}`,
+    html,
+  };
+};
+
+export const generateTourRequestedManagerEmail = (data: { managerEmail: string; managerName: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; chefNotes?: string; timezone?: string }): EmailContent => {
+  const styles = getUniformEmailStyles();
+  const dateStr = data.tourDate instanceof Date ? data.tourDate.toLocaleDateString() : new Date(data.tourDate).toLocaleDateString();
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      ${styles}
+    </head>
+    <body>
+      <div class="email-container">
+        <div class="header">
+          <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+        </div>
+        <div class="content">
+          <p class="greeting">Hello ${data.managerName},</p>
+          <p class="message">Chef <strong>${data.chefName}</strong> has requested a kitchen viewing at <strong>${data.kitchenName}</strong>.</p>
+          
+          <div class="info-box" style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 24px 0;">
+            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Viewing Details</h3>
+            <p><strong>Date:</strong> ${dateStr}</p>
+            <p><strong>Time:</strong> ${data.startTime} ${data.timezone ? `(${data.timezone})` : ''}</p>
+            ${data.chefNotes ? `<p><strong>Notes from Chef:</strong> ${data.chefNotes}</p>` : ''}
+          </div>
+          
+          <p class="message">Please log in to your dashboard to accept or decline this request.</p>
+          
+          <div style="text-align: center;">
+            <a href="${getSubdomainUrl('kitchen')}/manager/dashboard?view=viewings" class="cta-button">Review Request</a>
+          </div>
+        ${getUniformEmailFooter()}
+      </div>
+    </body>
+    </html>
+  `;
+
+  return {
+    to: data.managerEmail,
+    subject: `New Kitchen Viewing Request from ${data.chefName}`,
+    html,
+  };
+};
+
+export const generateTourConfirmedEmail = (data: { isManager: boolean; email: string; recipientName: string; otherPartyName: string; kitchenName: string; locationAddress: string; tourDate: string | Date; startTime: string; endTime: string; timezone?: string; notes?: string; organizerEmail?: string; attendeeEmails?: string[] }): EmailContent => {
+  const styles = getUniformEmailStyles();
+  const dateStr = data.tourDate instanceof Date ? data.tourDate.toLocaleDateString() : new Date(data.tourDate).toLocaleDateString();
+  const title = `Kitchen Viewing: ${data.otherPartyName} @ ${data.kitchenName}`;
+  
+  // Note: we're using a single start date/time block but calculating a nominal end time if it isn't provided or we just use 30 minutes later for the .ics
+  let startDateTimeObj: Date;
+  let endDateTimeObj: Date;
+  
+  try {
+    const bookingDateStr = data.tourDate instanceof Date ? data.tourDate.toISOString().split('T')[0] : String(data.tourDate).split('T')[0];
+    startDateTimeObj = createBookingDateTime(bookingDateStr, data.startTime, data.timezone || 'America/St_Johns');
+    endDateTimeObj = createBookingDateTime(bookingDateStr, data.endTime, data.timezone || 'America/St_Johns');
+  } catch (err) {
+    logger.error('Error calculating viewing .ics dates, using fallback', err);
+    startDateTimeObj = new Date();
+    endDateTimeObj = new Date(startDateTimeObj.getTime() + 30 * 60000);
+  }
+
+  const icsContent = generateIcsFile(
+    title,
+    startDateTimeObj,
+    endDateTimeObj,
+    data.locationAddress,
+    `Kitchen Viewing at ${data.kitchenName}. ${data.notes ? '\n\nNotes: ' + data.notes : ''}`,
+    data.organizerEmail,
+    data.attendeeEmails
+  );
+
+  const googleCalendarUrl = generateGoogleCalendarUrl(
+    title,
+    startDateTimeObj,
+    endDateTimeObj,
+    data.locationAddress,
+    `Kitchen Viewing at ${data.kitchenName}. ${data.notes ? '\\n\\nNotes: ' + data.notes : ''}`
+  );
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      ${styles}
+    </head>
+    <body>
+      <div class="email-container">
+        <div class="header">
+          <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+        </div>
+        <div class="content">
+          <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${data.recipientName.split(' ')[0]},</h2>
+          <p class="message">The kitchen viewing at <strong>${data.kitchenName}</strong> has been confirmed.</p>
+          
+          <div class="info-box" style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 24px 0;">
+            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Viewing Details</h3>
+            <p><strong>Meeting with:</strong> ${data.otherPartyName}</p>
+            <p><strong>Date:</strong> ${dateStr}</p>
+            <p><strong>Time:</strong> ${data.startTime} ${data.timezone ? `(${data.timezone})` : ''}</p>
+            <p><strong>Address:</strong> ${data.locationAddress}</p>
+            ${data.notes ? `<p><strong>Notes:</strong> ${data.notes}</p>` : ''}
+          </div>
+          <p class="message" style="margin-bottom: 24px;">A calendar invitation is attached to this email. You can also add it directly to your Google Calendar:</p>
+          <div style="margin: 16px 0 32px 0;">
+            <a href="${googleCalendarUrl}" target="_blank" class="cta-button" style="display: inline-block; padding: 10px 24px; background: #4285F4; color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Add to Google Calendar</a>
+          </div>
+        ${getUniformEmailFooter()}
+      </div>
+    </body>
+    </html>
+  `;
+
+  return {
+    to: data.email,
+    subject: `Confirmed: Kitchen Viewing at ${data.kitchenName}`,
+    html,
+    attachments: [
+      {
+        filename: 'kitchen-viewing.ics',
+        contentType: 'text/calendar; charset=utf-8; method=REQUEST',
+        content: icsContent
+      }
+    ]
+  };
+};
+
+export const generateTourRejectedChefEmail = (data: { chefEmail: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; cancellationReason?: string; managerNotes?: string; timezone?: string }): EmailContent => {
+  const styles = getUniformEmailStyles();
+  const dateStr = data.tourDate instanceof Date ? data.tourDate.toLocaleDateString() : new Date(data.tourDate).toLocaleDateString();
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      ${styles}
+    </head>
+    <body>
+      <div class="email-container">
+        <div class="header">
+          <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+        </div>
+        <div class="content">
+          <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${data.chefName.split(' ')[0]},</h2>
+          <p class="message">Unfortunately, the manager at <strong>${data.kitchenName}</strong> was unable to accept your kitchen viewing request for ${dateStr} at ${data.startTime}.</p>
+          
+          ${(data.cancellationReason || data.managerNotes) ? `
+          <div class="info-box">
+            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Message from Manager</h3>
+            ${data.cancellationReason ? `<p><strong>Reason:</strong> ${data.cancellationReason}</p>` : ''}
+            ${data.managerNotes ? `<p>${data.managerNotes}</p>` : ''}
+          </div>
+          ` : ''}
+          
+          <p class="message">We encourage you to log back in and request a viewing for a different time that works for the manager, or explore other available kitchens in your area.</p>
+          
+          <div style="text-align: center;">
+            <a href="${getSubdomainUrl('chef')}/book-kitchen" class="cta-button">Find Kitchens</a>
+          </div>
+        ${getUniformEmailFooter()}
+      </div>
+    </body>
+    </html>
+  `;
+
+  return {
+    to: data.chefEmail,
+    subject: `Kitchen Viewing Request Declined - ${data.kitchenName}`,
+    html,
+  };
+};
+
+export const getUniformEmailFooter = () => `
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" style="color: hsl(347, 91%, 51%); text-decoration: none;">${getSupportEmail()}</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks</p>
+    </div>
+`;

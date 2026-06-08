@@ -739,7 +739,7 @@ export default function ChefNotificationCenter() {
       </PopoverTrigger>
 
       <PopoverContent 
-        className="w-[400px] p-0" 
+        className="w-[calc(100vw-2rem)] sm:w-[400px] p-0" 
         align="end"
         sideOffset={8}
         role="dialog"

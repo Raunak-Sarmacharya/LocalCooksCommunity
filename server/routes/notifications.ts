@@ -138,10 +138,12 @@ async function getNotifications(
     FROM manager_notifications
     WHERE manager_id = ${managerId}
       AND (expires_at IS NULL OR expires_at > NOW())
+      AND NOT (is_read = true AND created_at < NOW() - INTERVAL '10 days')
       ${filterCondition}
       ${typeCondition}
       ${locationCondition}
     ORDER BY 
+      is_read ASC,
       CASE WHEN priority = 'urgent' THEN 0
            WHEN priority = 'high' THEN 1
            WHEN priority = 'normal' THEN 2
@@ -157,6 +159,7 @@ async function getNotifications(
     FROM manager_notifications
     WHERE manager_id = ${managerId}
       AND (expires_at IS NULL OR expires_at > NOW())
+      AND NOT (is_read = true AND created_at < NOW() - INTERVAL '10 days')
       ${filterCondition}
       ${typeCondition}
       ${locationCondition}
@@ -270,11 +273,11 @@ async function unarchiveNotifications(managerId: number, notificationIds: number
 /**
  * Delete old archived notifications (cleanup job)
  */
-async function cleanupOldNotifications(daysOld: number = 90) {
+async function cleanupOldNotifications(daysOld: number = 30) {
   const result = await db.execute(sql`
     DELETE FROM manager_notifications
-    WHERE is_archived = true
-      AND archived_at < NOW() - INTERVAL '${sql.raw(String(daysOld))} days'
+    WHERE created_at < NOW() - INTERVAL '${sql.raw(String(daysOld))} days'
+       OR (is_read = true AND created_at < NOW() - INTERVAL '10 days')
   `);
 
   return { deleted: result.rowCount || 0 };

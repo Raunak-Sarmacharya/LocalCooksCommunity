@@ -25,6 +25,7 @@ import {
   Upload,
   X,
   KeyRound,
+  Calendar,
 } from "lucide-react"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
@@ -106,6 +107,7 @@ interface TodayBooking {
   kitchenName: string | null
   locationName: string | null
   chefEmail: string | null
+  chefName?: string | null
 }
 
 interface TodayResponse {
@@ -309,12 +311,12 @@ export function TodaysKitchenBookings() {
     },
   })
 
-  // Fetch today's bookings
+  // Fetch upcoming bookings
   const { data, isLoading, refetch } = useQuery<TodayResponse>({
-    queryKey: ["/api/manager/bookings/today"],
+    queryKey: ["/api/manager/bookings/upcoming"],
     queryFn: async () => {
       const headers = await getAuthHeaders()
-      const response = await fetch("/api/manager/bookings/today", {
+      const response = await fetch("/api/manager/bookings/upcoming", {
         headers,
         credentials: "include",
       })
@@ -325,7 +327,65 @@ export function TodaysKitchenBookings() {
     refetchOnWindowFocus: true,
   })
 
-  const bookings = data?.bookings ?? []
+  const rawBookings = data?.bookings ?? []
+
+  // Sort upcoming bookings to match viewings priority
+  const bookings = [...rawBookings].sort((a, b) => {
+    const statusPriority: Record<string, number> = {
+      'pending': 1,
+      'confirmed': 2,
+    };
+    const pA = statusPriority[a.status] || 99;
+    const pB = statusPriority[b.status] || 99;
+    if (pA !== pB) return pA - pB;
+
+    const dateA = new Date(`${a.bookingDate.split('T')[0]}T${a.startTime}`);
+    const dateB = new Date(`${b.bookingDate.split('T')[0]}T${b.startTime}`);
+    return dateA.getTime() - dateB.getTime();
+  });
+
+  // Fetch manager's viewings
+  const { data: viewingsData, isLoading: isLoadingViewings } = useQuery<any[]>({
+    queryKey: ["/api/viewings/manager"],
+    queryFn: async () => {
+      const headers = await getAuthHeaders()
+      const response = await fetch("/api/viewings/manager", {
+        headers,
+        credentials: "include",
+      })
+      if (!response.ok) throw new Error("Failed to fetch viewings")
+      return response.json()
+    },
+    refetchInterval: 30000,
+  })
+
+  // Filter for upcoming viewings (today and future)
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const upcomingViewings = (viewingsData || [])
+    .filter((v: any) => {
+      if (!v.viewing?.scheduledAt) return false;
+      const status = v.viewing?.status;
+      if (status === 'completed' || status === 'cancelled') return false;
+      return new Date(v.viewing.scheduledAt) >= now;
+    })
+    .sort((a: any, b: any) => {
+      const statusPriority: Record<string, number> = {
+        'pending': 1,
+        'confirmed': 2,
+        'completed': 3,
+        'cancelled': 4
+      };
+
+      const pA = statusPriority[a.viewing?.status] || 99;
+      const pB = statusPriority[b.viewing?.status] || 99;
+
+      if (pA !== pB) {
+        return pA - pB;
+      }
+
+      return new Date(a.viewing?.scheduledAt).getTime() - new Date(b.viewing?.scheduledAt).getTime();
+    });
 
   // Clear checkout mutation
   const clearCheckoutMutation = useMutation({
@@ -446,17 +506,18 @@ export function TodaysKitchenBookings() {
   ).length
 
   return (
-    <>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Upcoming Bookings */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <ChefHat className="h-5 w-5 text-orange-600" />
-                Today&apos;s Kitchen Bookings
+                Upcoming Kitchen Bookings
               </CardTitle>
               <CardDescription>
-                Live check-in/checkout status for {format(new Date(), "EEEE, MMM d")}.
+                Live check-in/checkout status and upcoming bookings.
               </CardDescription>
             </div>
             <Button
@@ -507,7 +568,7 @@ export function TodaysKitchenBookings() {
           ) : bookings.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <ChefHat className="h-8 w-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No confirmed bookings for today.</p>
+              <p className="text-sm">No upcoming bookings.</p>
             </div>
           ) : (
             <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
@@ -517,7 +578,6 @@ export function TodaysKitchenBookings() {
                     <TableHead className="whitespace-nowrap text-xs sm:text-sm">Time</TableHead>
                     <TableHead className="whitespace-nowrap text-xs sm:text-sm">Kitchen</TableHead>
                     <TableHead className="whitespace-nowrap text-xs sm:text-sm">Chef</TableHead>
-                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Status</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -532,8 +592,19 @@ export function TodaysKitchenBookings() {
                       )}
                     >
                       <TableCell className="font-mono text-xs sm:text-sm whitespace-nowrap">
-                        {formatTime(booking.startTime)} –{" "}
-                        {formatTime(booking.endTime)}
+                        <div>{format(new Date(booking.bookingDate), "MMM d, yyyy")}</div>
+                        <div className="text-muted-foreground mb-1">
+                          {formatTime(booking.startTime)} – {formatTime(booking.endTime)}
+                        </div>
+                        <div className="whitespace-nowrap">
+                          {booking.status === 'pending' ? (
+                            <Badge variant="outline" className="text-muted-foreground">
+                              Awaiting Approval
+                            </Badge>
+                          ) : (
+                            getCheckinBadge(booking.checkinStatus)
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="text-xs sm:text-sm font-medium whitespace-nowrap">
@@ -541,10 +612,15 @@ export function TodaysKitchenBookings() {
                         </div>
                         {booking.referenceCode && (
                           <div className="text-xs text-muted-foreground font-mono">
-                            {booking.referenceCode}
-                          </div>
-                        )}
-                        {booking.hasAccessCodeHash && (
+                          {booking.referenceCode}
+                        </div>
+                      )}
+                      {booking.status === 'pending' && (
+                        <Badge variant="outline" className="mt-1 text-purple-800 border-purple-300 bg-purple-100">
+                          PENDING
+                        </Badge>
+                      )}
+                      {booking.hasAccessCodeHash && (
                           <div className="text-xs text-blue-600 font-mono flex items-center gap-1 mt-0.5">
                             <KeyRound className="h-3 w-3" />
                             Code set
@@ -554,12 +630,7 @@ export function TodaysKitchenBookings() {
                       <TableCell>
                         <div className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap">
                           <User className="h-3 w-3 text-muted-foreground" />
-                          {booking.chefEmail || `Chef #${booking.chefId}`}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="whitespace-nowrap">
-                          {getCheckinBadge(booking.checkinStatus)}
+                          {booking.chefName || booking.chefEmail || `Chef #${booking.chefId}`}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -613,6 +684,92 @@ export function TodaysKitchenBookings() {
               </Table>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Upcoming Viewings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ChefHat className="h-5 w-5 text-purple-600" />
+            Upcoming Kitchen Viewings
+          </CardTitle>
+          <CardDescription>
+            Scheduled viewings for your kitchens
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            {isLoadingViewings ? (
+              <div className="py-8 text-center text-muted-foreground flex items-center justify-center">
+                <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                Loading viewings...
+              </div>
+            ) : upcomingViewings.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground bg-gray-50/50 rounded-lg border border-dashed">
+                <Calendar className="w-10 h-10 mx-auto text-gray-400 mb-2 opacity-50" />
+                <p className="text-sm">No upcoming viewings scheduled.</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Kitchen & Location</TableHead>
+                    <TableHead>Chef</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {upcomingViewings.map((viewingRec: any) => {
+                    const d = new Date(viewingRec.viewing.scheduledAt);
+                    const isToday = d.toDateString() === new Date().toDateString();
+                    const dEnd = new Date(d.getTime() + viewingRec.viewing.durationMinutes * 60000);
+
+                    return (
+                      <TableRow key={`viewing-${viewingRec.viewing.id}`}>
+                        <TableCell className="font-mono text-xs sm:text-sm whitespace-nowrap">
+                          <div>{format(d, "MMM d, yyyy")}</div>
+                          <div className="text-muted-foreground mb-1">{d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} – {dEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                          <div className="whitespace-nowrap">
+                            <Badge
+                              variant={
+                                viewingRec.viewing.status === 'pending' ? "outline" :
+                                viewingRec.viewing.status === 'confirmed' ? "default" :
+                                "secondary"
+                              }
+                              className={
+                                viewingRec.viewing.status === 'pending' ? "text-purple-800 border-purple-300 bg-purple-100" :
+                                viewingRec.viewing.status === 'confirmed' ? "bg-success text-success-foreground hover:bg-success/90" :
+                                ""
+                              }
+                            >
+                              {viewingRec.viewing.status.toUpperCase()}
+                            </Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-xs sm:text-sm font-medium whitespace-nowrap">
+                            {viewingRec.kitchenName}
+                          </div>
+                          {viewingRec.locationName && (
+                            <div className="text-xs text-muted-foreground font-mono">
+                              {viewingRec.locationName}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-xs sm:text-sm whitespace-nowrap">
+                            <User className="h-3 w-3 text-muted-foreground" />
+                            {viewingRec.chefName || viewingRec.chefUsername?.split('@')[0] || `Chef #${viewingRec.viewing.chefId}`}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -1156,6 +1313,6 @@ export function TodaysKitchenBookings() {
           )}
         </SheetContent>
       </Sheet>
-    </>
+    </div>
   )
 }

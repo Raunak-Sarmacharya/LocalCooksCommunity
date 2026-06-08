@@ -24,6 +24,7 @@ import {
 import { useState } from "react";
 import { Link } from "wouter";
 import KitchenBookingSheet from "@/components/booking/KitchenBookingSheet";
+import { ScheduleViewingWidget } from "@/components/chef/ScheduleViewingWidget";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -101,7 +102,6 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
     address?: string;
   } | null>(null);
 
-  // Handler for Book button clicks - opens KitchenBookingSheet
   const handleBookClick = (locationId: number, locationName: string, locationAddress?: string) => {
     setBookingLocation({
       id: locationId,
@@ -110,6 +110,11 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
     });
     setBookingSheetOpen(true);
   };
+
+  const [tourLocation, setTourLocation] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
 
   const {
     applications,
@@ -513,25 +518,36 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                             </div>
 
                             {/* Actions */}
-                            <div className="flex items-center gap-3 mt-auto pt-2">
-                              <Button variant="outline" size="sm" className="gap-2" asChild>
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mt-auto pt-2">
+                              <Button variant="outline" size="sm" className="gap-2 w-full sm:w-auto" asChild>
                                 <Link href={`/kitchen-preview/${kitchen.locationId}`}>
                                   <Eye className="h-4 w-4" />
                                   View Details
                                 </Link>
                               </Button>
                               {kitchen.canAcceptBookings ? (
-                                <Button size="sm" className="gap-2" asChild>
-                                  <Link href={applicationUrl}>
-                                    Apply Now
-                                    <ArrowRight className="h-4 w-4" />
-                                  </Link>
-                                </Button>
+                                <>
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="gap-2 border-primary text-primary hover:bg-primary/5 w-full sm:w-auto"
+                                    onClick={() => setTourLocation({ id: kitchen.locationId, name: kitchen.locationName })}
+                                  >
+                                    <Calendar className="h-4 w-4" />
+                                    Schedule Viewing
+                                  </Button>
+                                  <Button size="sm" className="gap-2 w-full sm:w-auto" asChild>
+                                    <Link href={applicationUrl}>
+                                      Apply Now
+                                      <ArrowRight className="h-4 w-4" />
+                                    </Link>
+                                  </Button>
+                                </>
                               ) : (
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Button size="sm" variant="secondary" disabled className="gap-2 cursor-not-allowed">
+                                      <Button size="sm" variant="secondary" disabled className="gap-2 cursor-not-allowed w-full sm:w-auto">
                                         <AlertCircle className="h-4 w-4" />
                                         Not Available
                                       </Button>
@@ -722,7 +738,6 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
         </Tabs>
       </CardContent>
 
-      {/* Kitchen Booking Sheet - Platform standard booking flow */}
       {bookingLocation && (
         <KitchenBookingSheet
           open={bookingSheetOpen}
@@ -730,6 +745,16 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           locationId={bookingLocation.id}
           locationName={bookingLocation.name}
           locationAddress={bookingLocation.address}
+        />
+      )}
+
+      {/* Schedule Viewing Modal */}
+      {tourLocation && (
+        <ScheduleViewingWidget
+          open={!!tourLocation}
+          onClose={() => setTourLocation(null)}
+          locationId={tourLocation.id}
+          locationName={tourLocation.name}
         />
       )}
     </Card>

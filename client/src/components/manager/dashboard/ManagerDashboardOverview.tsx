@@ -12,6 +12,7 @@ import {
     User,
     Boxes,
     Package,
+    Eye,
 } from "lucide-react";
 // We will stick to the existing calendar for now to minimize logic breakage, 
 // but encapsulate it better. 
@@ -161,8 +162,32 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
         refetchIntervalInBackground: true,
     });
 
+    const { data: viewings = [], isLoading: isLoadingViewings } = useQuery<any[]>({
+        queryKey: ['managerViewings'],
+        queryFn: async () => {
+            const currentFirebaseUser = auth.currentUser;
+            if (!currentFirebaseUser) {
+                throw new Error("Firebase user not available");
+            }
+            const token = await currentFirebaseUser.getIdToken();
+            const headers: HeadersInit = {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            };
+            const response = await fetch('/api/viewings/manager', {
+                headers,
+                credentials: "include",
+            });
+            if (!response.ok) throw new Error('Failed to fetch viewings');
+            return await response.json();
+        },
+        refetchInterval: 15000,
+    });
+
     const pendingBookings = bookings.filter((b) => b.status === "pending");
     const confirmedBookings = bookings.filter((b) => b.status === "confirmed");
+    const pendingTours = viewings.filter((v: any) => v.viewing.status === "pending");
+    const confirmedTours = viewings.filter((v: any) => v.viewing.status === "confirmed");
 
     // Helper function to normalize date to YYYY-MM-DD format
     const normalizeDate = (date: Date | string): string => {
@@ -194,32 +219,59 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
         return grouped;
     }, [bookings]);
 
+    // Group viewings by date
+    const viewingsByDate = useMemo(() => {
+        const grouped: { [key: string]: any[] } = {};
+        viewings.forEach((v: any) => {
+            if (!v.viewing?.scheduledAt) return;
+            const dateStr = normalizeDate(v.viewing.scheduledAt);
+            if (!dateStr) return;
+
+            if (!grouped[dateStr]) {
+                grouped[dateStr] = [];
+            }
+            grouped[dateStr].push(v);
+        });
+        return grouped;
+    }, [viewings]);
+
     // Get bookings for a specific date
     const getBookingsForDate = (date: Date): Booking[] => {
         const dateStr = normalizeDate(date);
         return bookingsByDate[dateStr] || [];
     };
 
+    const getViewingsForDate = (date: Date): any[] => {
+        const dateStr = normalizeDate(date);
+        return viewingsByDate[dateStr] || [];
+    };
+
     // Custom tile content with booking indicators
     const tileContent = ({ date, view }: { date: Date; view: string }) => {
         if (view !== 'month') return null;
         const dateBookings = getBookingsForDate(date);
-        if (dateBookings.length === 0) return null;
+        const dateViewings = getViewingsForDate(date);
+        if (dateBookings.length === 0 && dateViewings.length === 0) return null;
 
-        const pending = dateBookings.filter((b) => b.status === 'pending').length;
-        const confirmed = dateBookings.filter((b) => b.status === 'confirmed').length;
-        const cancelled = dateBookings.filter((b) => b.status === 'cancelled').length;
+        const pendingBookingsCount = dateBookings.filter((b) => b.status === 'pending').length;
+        const confirmedBookingsCount = dateBookings.filter((b) => b.status === 'confirmed').length;
+        const cancelledBookingsCount = dateBookings.filter((b) => b.status === 'cancelled').length;
+        
+        const hasTours = dateViewings.length > 0;
 
         return (
             <div className="absolute bottom-1 left-0 right-0 flex items-center justify-center gap-1 px-1">
-                {pending > 0 && (
-                    <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full" title={`${pending} pending`}></div>
+                {pendingBookingsCount > 0 && (
+                    <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full" title={`${pendingBookingsCount} pending`}></div>
                 )}
-                {confirmed > 0 && (
-                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full" title={`${confirmed} confirmed`}></div>
+                {confirmedBookingsCount > 0 && (
+                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full" title={`${confirmedBookingsCount} confirmed`}></div>
                 )}
-                {cancelled > 0 && (
-                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full" title={`${cancelled} cancelled`}></div>
+                {hasTours && (
+                    <div className="w-1.5 h-1.5 bg-purple-500 rounded-full" title={`${dateViewings.length} viewings`}></div>
+                )}
+                {cancelledBookingsCount > 0 && (
+                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full" title={`${cancelledBookingsCount} cancelled`}></div>
                 )}
             </div>
         );
@@ -229,14 +281,20 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
     const tileClassName = ({ date, view }: { date: Date; view: string }) => {
         if (view !== 'month') return '';
         const dateBookings = getBookingsForDate(date);
-        if (dateBookings.length === 0) return '';
+        const dateViewings = getViewingsForDate(date);
+        if (dateBookings.length === 0 && dateViewings.length === 0) return '';
 
         const hasPending = dateBookings.some((b) => b.status === 'pending');
         const hasConfirmed = dateBookings.some((b) => b.status === 'confirmed');
 
-        if (hasPending) return 'has-pending-booking';
-        if (hasConfirmed) return 'has-confirmed-booking';
-        return 'has-booking';
+        let classes = [];
+        if (hasPending) classes.push('has-pending-booking');
+        else if (hasConfirmed) classes.push('has-confirmed-booking');
+        else if (dateBookings.length > 0) classes.push('has-booking');
+        
+        if (dateViewings.length > 0) classes.push('has-viewing');
+
+        return classes.join(' ');
     };
 
     return (
@@ -291,21 +349,25 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
 
             {/* Modern Calendar */}
             <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0 pb-4">
                     <div className="flex items-center gap-3">
                         <CardTitle className="text-xl">Booking Calendar</CardTitle>
                         {isLoadingBookings && (
                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
                         )}
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground mt-2 sm:mt-0">
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                            <span>Pending</span>
+                            <span>Pending Booking</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                            <span>Confirmed</span>
+                            <span>Confirmed Booking</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                            <span>Viewing</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
@@ -362,6 +424,9 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
             .react-calendar-wrapper .react-calendar__tile.has-booking {
               border: 1px solid #cbd5e1;
             }
+            .react-calendar-wrapper .react-calendar__tile.has-viewing {
+              border: 1px solid #a855f7;
+            }
             .react-calendar-wrapper .react-calendar__navigation {
               margin-bottom: 1rem;
             }
@@ -376,28 +441,28 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
             {/* Selected Date Details */}
             {selectedDate && (
                 <Card className="animate-in fade-in slide-in-from-bottom-5 duration-300">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                        <CardTitle className="text-lg">
+                    <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 gap-4">
+                        <CardTitle className="text-lg leading-tight">
                             Bookings for {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                         </CardTitle>
                         <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => setSelectedDate(null)}
-                            className="text-muted-foreground hover:text-foreground"
+                            className="text-muted-foreground hover:text-foreground shrink-0"
                         >
                             <X className="h-5 w-5" />
                         </Button>
                     </CardHeader>
                     <CardContent>
-                        {isLoadingBookings ? (
+                        {isLoadingBookings || isLoadingViewings ? (
                             <div className="flex items-center justify-center py-8">
                                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                             </div>
-                        ) : getBookingsForDate(selectedDate).length === 0 ? (
+                        ) : getBookingsForDate(selectedDate).length === 0 && getViewingsForDate(selectedDate).length === 0 ? (
                             <div className="text-center py-8">
                                 <Clock className="h-12 w-12 text-muted mx-auto mb-3" />
-                                <p className="text-muted-foreground">No bookings on this date</p>
+                                <p className="text-muted-foreground">No bookings or viewings on this date</p>
                             </div>
                         ) : (
                             <div className="space-y-3">
@@ -413,9 +478,9 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
 
                                     return (
                                         <div
-                                            key={booking.id}
+                                            key={`booking-${booking.id}`}
                                             className={cn(
-                                                "p-4 rounded-lg border flex items-start justify-between gap-4",
+                                                "p-4 rounded-lg border flex flex-col sm:flex-row sm:items-start justify-between gap-4",
                                                 booking.status === 'pending' ? "bg-yellow-50 border-yellow-200" :
                                                     booking.status === 'confirmed' ? "bg-green-50 border-green-200" :
                                                         "bg-muted/50 border-border"
@@ -491,8 +556,91 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                                 variant="ghost"
                                                 size="sm"
                                                 onClick={() => onNavigate('bookings')}
-                                                className="text-primary hover:text-primary hover:bg-primary/10"
+                                                className="w-full sm:w-auto text-primary hover:text-primary hover:bg-primary/10"
                                             >
+                                                View Details
+                                            </Button>
+                                        </div>
+                                    );
+                                })}
+
+                                {getViewingsForDate(selectedDate).map((viewingRec) => {
+                                    const formatTime = (isoString: string, durationMins: number) => {
+                                        if (!isoString) return '';
+                                        const d = new Date(isoString);
+                                        const startTimeStr = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                                        const dEnd = new Date(d.getTime() + durationMins * 60000);
+                                        const endTimeStr = dEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                                        return `${startTimeStr} - ${endTimeStr}`;
+                                    };
+
+                                    return (
+                                        <div
+                                            key={`viewing-${viewingRec.viewing.id}`}
+                                            className={cn(
+                                                "p-4 rounded-lg border flex flex-col sm:flex-row sm:items-start justify-between gap-4",
+                                                viewingRec.viewing.status === 'pending' ? "bg-purple-50 border-purple-200" :
+                                                    viewingRec.viewing.status === 'confirmed' ? "bg-green-50 border-green-200" :
+                                                        "bg-muted/50 border-border"
+                                            )}
+                                        >
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                                    <Badge className="bg-purple-600 text-white hover:bg-purple-700">
+                                                        VIEWING
+                                                    </Badge>
+                                                    <Badge
+                                                        variant={
+                                                            viewingRec.viewing.status === 'pending' ? "outline" :
+                                                                viewingRec.viewing.status === 'confirmed' ? "default" :
+                                                                    "secondary"
+                                                        }
+                                                        className={
+                                                            viewingRec.viewing.status === 'pending' ? "text-purple-800 border-purple-300 bg-purple-100" :
+                                                                viewingRec.viewing.status === 'confirmed' ? "bg-success text-success-foreground hover:bg-success/90" :
+                                                                    ""
+                                                        }
+                                                    >
+                                                        {viewingRec.viewing.status.toUpperCase()}
+                                                    </Badge>
+                                                    <span className="text-sm font-medium flex items-center gap-1">
+                                                        <Clock className="h-3 w-3" />
+                                                        {formatTime(viewingRec.viewing.scheduledAt, viewingRec.viewing.durationMinutes)}
+                                                    </span>
+                                                </div>
+                                                {viewingRec.kitchenName && (
+                                                    <p className="text-sm text-muted-foreground flex items-center gap-1 mb-1">
+                                                        <ChefHat className="h-3 w-3" />
+                                                        {viewingRec.kitchenName}
+                                                    </p>
+                                                )}
+                                                {viewingRec.locationName && (
+                                                    <p className="text-sm text-muted-foreground flex items-center gap-1 mb-1">
+                                                        <MapPin className="h-3 w-3" />
+                                                        {viewingRec.locationName}
+                                                    </p>
+                                                )}
+                                                {(viewingRec.chefName || viewingRec.chefUsername) && (
+                                                    <div className="flex items-center text-gray-600 mt-1">
+                                                        <User className="h-3 w-3 mr-1 text-gray-400" />
+                                                        Chef: {viewingRec.chefName || viewingRec.chefUsername?.split('@')[0]}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => {
+                                                    // Since Viewings are managed from the Bookings Dashboard's "Viewings" tab now
+                                                    // if we are using tabs, we just route to bookings (ManagerDashboard routes Viewings properly if it knows)
+                                                    // Let's call onNavigate('bookings') which opens ManagerBookingDashboard.
+                                                    // ManagerBookingDashboard doesn't take tab argument via this prop currently,
+                                                    // but the user can select the "Kitchen Viewings" tab once there.
+                                                    onNavigate('bookings')
+                                                }}
+                                                className="w-full sm:w-auto text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                                            >
+                                                <Eye className="w-4 h-4 mr-2" />
                                                 View Details
                                             </Button>
                                         </div>

@@ -366,7 +366,7 @@ export default function KitchenLanding() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col overflow-x-hidden">
       <SEOHead
         title="For Kitchen Owners — Turn Idle Hours Into Revenue"
         description="List your commercial kitchen on LocalCooks and earn revenue from idle hours. Automated booking, Stripe payouts, compliance management, and damage protection. Serving St. John's, Newfoundland."

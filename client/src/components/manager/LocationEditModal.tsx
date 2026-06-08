@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { LocationData } from "./types"; // Use shared types
 
+
 // Helper component for authenticated document links
 function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
   const { url: presignedUrl } = usePresignedDocumentUrl(url);
@@ -508,6 +509,8 @@ export default function LocationEditModal({
                     )}
                   />
                 </TabsContent>
+
+
 
                 {/* License Tab */}
                 <TabsContent value="license" className="space-y-4 mt-0">

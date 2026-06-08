@@ -2087,3 +2087,159 @@ export type InsertDamageEvidence = z.infer<typeof insertDamageEvidenceSchema>;
 export type DamageClaimHistory = typeof damageClaimHistory.$inferSelect;
 export type DamageClaimStatus = typeof damageClaimStatusValues[number];
 export type EvidenceType = typeof evidenceTypeValues[number];
+
+
+// ===== KITCHEN VIEWING / TOUR SCHEDULING SYSTEM =====
+
+// Define enum for viewing status
+export const viewingStatusEnum = pgEnum('viewing_status', ['pending', 'confirmed', 'cancelled', 'completed', 'no_show']);
+
+// Define enum for no-show reason (structured tracking for cohort analytics)
+export const noShowReasonEnum = pgEnum('no_show_reason', ['chef_cancelled_late', 'chef_no_response', 'rescheduled_by_manager', 'weather', 'other']);
+
+// Define location viewing settings table (manager configures tour parameters per location)
+export const locationViewingSettings = pgTable("location_viewing_settings", {
+  id: serial("id").primaryKey(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull().unique(),
+  isActive: boolean("is_active").default(false).notNull(), // Toggle viewing feature on/off
+  defaultDurationMinutes: integer("default_duration_minutes").default(30).notNull(), // Default tour length
+  bufferBeforeMinutes: integer("buffer_before_minutes").default(0).notNull(), // Buffer before a tour slot
+  bufferAfterMinutes: integer("buffer_after_minutes").default(15).notNull(), // Buffer after a tour slot
+  advanceNoticeHours: integer("advance_notice_hours").default(24).notNull(), // Minimum hours in advance to book
+  maxAdvanceBookingDays: integer("max_advance_booking_days").default(30).notNull(), // How far ahead chefs can book
+  version: integer("version").default(1).notNull(), // Optimistic locking version
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Define location viewing availability table (recurring weekly schedule for tours)
+export const locationViewingAvailability = pgTable("location_viewing_availability", {
+  id: serial("id").primaryKey(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  dayOfWeek: integer("day_of_week").notNull(), // 0-6, Sunday is 0
+  startTime: text("start_time").notNull(), // HH:MM format
+  endTime: text("end_time").notNull(), // HH:MM format
+  isAvailable: boolean("is_available").default(true).notNull(),
+});
+
+// Define location viewing blackouts table (one-off manager unavailability)
+export const locationViewingBlackouts = pgTable("location_viewing_blackouts", {
+  id: serial("id").primaryKey(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  reason: text("reason"), // e.g., "Holiday", "Sick Day", "Maintenance"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Define kitchen viewings table (the actual booked tours — hybrid model)
+export const kitchenViewings = pgTable("kitchen_viewings", {
+  id: serial("id").primaryKey(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(), // Tours are location-level
+  targetedKitchenId: integer("targeted_kitchen_id").references(() => kitchens.id, { onDelete: "set null" }), // Optional: specific kitchen intent
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  managerId: integer("manager_id").references(() => users.id, { onDelete: "set null" }), // Manager assigned to conduct the tour
+  status: viewingStatusEnum("status").default("pending").notNull(),
+  scheduledAt: timestamp("scheduled_at").notNull(), // The tour date/time
+  durationMinutes: integer("duration_minutes").default(30).notNull(),
+  chefNotes: text("chef_notes"), // What the chef specifically wants to see/discuss
+  managerNotes: text("manager_notes"), // Internal notes from manager
+  noShowReason: noShowReasonEnum("no_show_reason"), // Structured no-show tracking
+  // Pre-tour intake data for lead qualification (JSONB)
+  intakeData: jsonb("intake_data").default({}), // { intendedUse, estimatedWeeklyHours, hasLicense, targetStartDate }
+  // Cancellation tracking
+  cancelledBy: text("cancelled_by"), // 'chef' | 'manager'
+  cancellationReason: text("cancellation_reason"),
+  cancelledAt: timestamp("cancelled_at"),
+  // Completion tracking
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ===== ZOD SCHEMAS FOR KITCHEN VIEWING SYSTEM =====
+
+export const insertLocationViewingSettingsSchema = createInsertSchema(locationViewingSettings, {
+  locationId: z.number(),
+  isActive: z.boolean().optional(),
+  defaultDurationMinutes: z.number().int().min(10).max(120).optional(),
+  bufferBeforeMinutes: z.number().int().min(0).max(60).optional(),
+  bufferAfterMinutes: z.number().int().min(0).max(60).optional(),
+  advanceNoticeHours: z.number().int().min(0).max(168).optional(), // Max 1 week
+  maxAdvanceBookingDays: z.number().int().min(1).max(90).optional(),
+}).omit({
+  id: true,
+  version: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateLocationViewingSettingsSchema = z.object({
+  isActive: z.boolean().optional(),
+  defaultDurationMinutes: z.number().int().min(10).max(120).optional(),
+  bufferBeforeMinutes: z.number().int().min(0).max(60).optional(),
+  bufferAfterMinutes: z.number().int().min(0).max(60).optional(),
+  advanceNoticeHours: z.number().int().min(0).max(168).optional(),
+  maxAdvanceBookingDays: z.number().int().min(1).max(90).optional(),
+});
+
+export const insertLocationViewingAvailabilitySchema = createInsertSchema(locationViewingAvailability, {
+  locationId: z.number(),
+  dayOfWeek: z.number().int().min(0).max(6),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "Time must be in HH:MM format"),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, "Time must be in HH:MM format"),
+  isAvailable: z.boolean().optional(),
+}).omit({
+  id: true,
+});
+
+export const insertLocationViewingBlackoutSchema = createInsertSchema(locationViewingBlackouts, {
+  locationId: z.number(),
+  startDate: z.string().or(z.date()),
+  endDate: z.string().or(z.date()),
+  reason: z.string().max(200).optional(),
+}).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Intake data schema for pre-tour lead qualification
+export const viewingIntakeDataSchema = z.object({
+  intendedUse: z.string().optional(), // e.g., "catering", "meal prep", "food truck"
+  estimatedWeeklyHours: z.string().optional(), // e.g., "1-5", "5-10", "10-20", "20+"
+  hasLicense: z.boolean().optional(), // Do they have a food handler license?
+  targetStartDate: z.string().optional(), // When they want to start renting
+  additionalInfo: z.string().max(500).optional(), // Free-form notes
+});
+
+export const insertKitchenViewingSchema = z.object({
+  locationId: z.number(),
+  targetedKitchenId: z.number().optional(),
+  chefId: z.number(),
+  scheduledAt: z.string().or(z.date()), // ISO date string
+  durationMinutes: z.number().int().min(10).max(120).optional(),
+  chefNotes: z.string().max(500).optional(),
+  intakeData: viewingIntakeDataSchema.optional(),
+});
+
+export const updateKitchenViewingStatusSchema = z.object({
+  id: z.number(),
+  status: z.enum(['pending', 'confirmed', 'cancelled', 'completed', 'no_show']),
+  managerNotes: z.string().max(500).optional(),
+  noShowReason: z.enum(['chef_cancelled_late', 'chef_no_response', 'rescheduled_by_manager', 'weather', 'other']).optional(),
+  cancellationReason: z.string().max(500).optional(),
+  cancelledBy: z.enum(['chef', 'manager']).optional(),
+});
+
+// Type exports for kitchen viewing system
+export type LocationViewingSettings = typeof locationViewingSettings.$inferSelect;
+export type InsertLocationViewingSettings = z.infer<typeof insertLocationViewingSettingsSchema>;
+export type UpdateLocationViewingSettings = z.infer<typeof updateLocationViewingSettingsSchema>;
+export type LocationViewingAvailability = typeof locationViewingAvailability.$inferSelect;
+export type InsertLocationViewingAvailability = z.infer<typeof insertLocationViewingAvailabilitySchema>;
+export type LocationViewingBlackout = typeof locationViewingBlackouts.$inferSelect;
+export type InsertLocationViewingBlackout = z.infer<typeof insertLocationViewingBlackoutSchema>;
+export type KitchenViewing = typeof kitchenViewings.$inferSelect;
+export type InsertKitchenViewing = z.infer<typeof insertKitchenViewingSchema>;
+export type UpdateKitchenViewingStatus = z.infer<typeof updateKitchenViewingStatusSchema>;
+export type ViewingIntakeData = z.infer<typeof viewingIntakeDataSchema>;

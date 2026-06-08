@@ -97,11 +97,6 @@ export const getLocationColumns = ({ onEdit, onManage }: LocationColumnsProps): 
                         <DropdownMenuItem onClick={() => navigator.clipboard.writeText(location.name)}>
                             Copy Location Name
                         </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => onManage(location)}>
-                            <Settings className="mr-2 h-4 w-4" />
-                            Manage Settings
-                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => onEdit(location)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit Details

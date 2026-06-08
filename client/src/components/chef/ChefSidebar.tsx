@@ -14,6 +14,7 @@ import {
     ChefHat,
     CreditCard,
     DollarSign,
+    Eye,
 } from "lucide-react"
 
 import {
@@ -93,6 +94,11 @@ const navGroups: NavGroup[] = [
                 id: "discover-kitchens",
                 label: "Discover Kitchens",
                 icon: Search,
+            },
+            {
+                id: "viewings",
+                label: "Kitchen Viewings",
+                icon: Eye,
             },
             {
                 id: "bookings",

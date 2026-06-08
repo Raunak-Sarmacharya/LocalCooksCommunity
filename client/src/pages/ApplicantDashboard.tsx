@@ -7,6 +7,7 @@ import { auth } from "@/lib/firebase";
 import { useChefKitchenApplications } from "@/hooks/use-chef-kitchen-applications";
 import ChatPanel from "@/components/chat/ChatPanel";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
+import ChefViewingsList from "@/components/chef/ChefViewingsList";
 import { useSubdomain } from "@/hooks/use-subdomain";
 import { getRequiredSubdomainForRole, getSubdomainUrl } from "@shared/subdomain-utils";
 import ChefBookingsView from "@/components/booking/ChefBookingsView";
@@ -98,7 +99,7 @@ export default function ApplicantDashboard() {
   const getInitialTab = () => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages', 'support', 'feedback', 'seller-revenue'].includes(view)) {
+    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'viewings', 'bookings', 'training', 'messages', 'support', 'feedback', 'seller-revenue'].includes(view)) {
       return view;
     }
     return 'overview';
@@ -138,7 +139,7 @@ export default function ApplicantDashboard() {
   useEffect(() => {
     const VALID_VIEWS = [
       'overview', 'applications', 'kitchen-applications', 'discover-kitchens',
-      'bookings', 'training', 'messages', 'support', 'feedback',
+      'viewings', 'bookings', 'training', 'messages', 'support', 'feedback',
       'damage-claims', 'profile', 'seller-revenue'
     ];
     const syncFromUrl = () => {
@@ -1141,6 +1142,18 @@ export default function ApplicantDashboard() {
     <KitchenDiscovery />
   );
 
+  const viewingsTabContent = (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">Kitchen Viewings</h2>
+          <p className="text-muted-foreground mt-1">Manage your scheduled kitchen viewings.</p>
+        </div>
+      </div>
+      <ChefViewingsList />
+    </div>
+  );
+
   // Render content based on activeTab (sidebar-driven navigation)
   const renderContent = () => {
     switch (activeTab) {
@@ -1152,6 +1165,8 @@ export default function ApplicantDashboard() {
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{kitchenApplicationsTabContent}</div>;
       case "discover-kitchens":
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{discoverKitchensTabContent}</div>;
+      case "viewings":
+        return <div className="space-y-8 animate-in fade-in-50 duration-500">{viewingsTabContent}</div>;
       case "bookings":
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{bookingsTabContent}</div>;
       case "training":

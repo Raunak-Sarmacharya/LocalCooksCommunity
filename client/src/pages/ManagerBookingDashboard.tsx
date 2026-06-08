@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
+import ViewingsDashboard from "@/components/manager/ViewingsDashboard";
 import { ManagerKitchenApplicationsContent } from "./ManagerKitchenApplications";
 import KitchenPricingManagement from "./KitchenPricingManagement";
 import StorageListingManagement from "./StorageListingManagement";
@@ -31,7 +32,6 @@ import { OverstayPenaltyQueue } from "@/components/manager/overstays/OverstayPen
 import { DamageClaimQueue } from "@/components/manager/damage-claims/DamageClaimQueue";
 import { PendingStorageCheckouts } from "@/components/manager/PendingStorageCheckouts";
 import { PendingStorageCheckins } from "@/components/manager/PendingStorageCheckins";
-import { TodaysKitchenBookings } from "@/components/manager/TodaysKitchenBookings";
 import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
@@ -164,7 +164,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'overstays' | 'damage-claims' | 'storage-checkouts';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'viewings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'overstays' | 'damage-claims' | 'storage-checkouts';
 
 
 export default function ManagerBookingDashboard() {
@@ -251,7 +251,7 @@ export default function ManagerBookingDashboard() {
     const handleLocationChange = () => {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
-      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
+      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'viewings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
       // Back-compat: redirect legacy URL to the new combined page.
       if (view === 'settings-storage-checkout') {
         setActiveView('settings-storage-checkin-checkout');
@@ -606,15 +606,6 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'overview' && (
         <div className="space-y-6 animate-fade-in">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Welcome back!</h1>
-            <p className="text-muted-foreground">Here&apos;s what&apos;s happening at your kitchens today.</p>
-          </div>
-
-
-
-          <TodaysKitchenBookings />
-
           <KitchenDashboardOverview
             selectedLocation={selectedLocation}
             locations={locations}
@@ -626,6 +617,10 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'bookings' && (
         <ManagerBookingsPanel embedded={true} />
+      )}
+
+      {activeView === 'viewings' && (
+        <ViewingsDashboard locationId={selectedLocation?.id} />
       )}
 
       {activeView === 'availability' && (

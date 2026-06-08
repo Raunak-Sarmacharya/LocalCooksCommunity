@@ -14,6 +14,7 @@ import {
     ClipboardList,
     CreditCard,
     DollarSign,
+    Eye,
     FileText,
     Globe,
     LayoutDashboard,
@@ -116,6 +117,11 @@ const navData: { navMain: NavGroup[] } = {
                     title: "Kitchens",
                     url: "kitchens",
                     icon: ChefHat,
+                },
+                {
+                    title: "Kitchen Viewings",
+                    url: "viewings",
+                    icon: Eye,
                 },
                 {
                     title: "Availability",

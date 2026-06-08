@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
+import ScheduleViewingWidget from "@/components/chef/ScheduleViewingWidget";
 
 export default function KitchenRequirementsPage() {
     const [, params] = useRoute("/kitchen-requirements/:locationId");
@@ -19,6 +20,7 @@ export default function KitchenRequirementsPage() {
     const locationId = params?.locationId;
     const { user, loading: authLoading } = useFirebaseAuth();
     const [activeView, setActiveView] = useState("discover-kitchens");
+    const [showTourModal, setShowTourModal] = useState(false);
 
     // Fetch location details (for name)
     const { data: locationData, isLoading: isLoadingLocation } = useQuery({
@@ -266,6 +268,19 @@ export default function KitchenRequirementsPage() {
                 </Card>
             </div>
 
+            {/* Schedule Viewing Widget as Modal */}
+            {user && !isStep1Done && (
+                <ScheduleViewingWidget 
+                    locationId={Number(locationId)} 
+                    locationName={locationData?.location?.name || kitchen?.name}
+                    targetedKitchenId={kitchen?.id} 
+                    targetedKitchenName={kitchen?.name}
+                    mode="modal"
+                    open={showTourModal}
+                    onClose={() => setShowTourModal(false)}
+                />
+            )}
+
             {/* CTA Section */}
             <Card className={`border-0 shadow-lg overflow-hidden ${
                 isReadyForStep2
@@ -287,6 +302,16 @@ export default function KitchenRequirementsPage() {
                             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
                                 Your initial application was approved. Submit your Step 2 documents to unlock full kitchen access.
                             </p>
+                            <div className="flex gap-4 justify-center">
+                                <Button 
+                                    size="lg" 
+                                    className="bg-green-600 hover:bg-green-700 shadow-lg shadow-green-500/20 hover:shadow-xl hover:shadow-green-500/30 transition-all"
+                                    onClick={() => setLocation(`/apply-kitchen/${locationId}`)}
+                                >
+                                    <ArrowRight className="mr-2 h-4 w-4" />
+                                    Continue to Step 2
+                                </Button>
+                            </div>
                         </>
                     ) : isStep1Done ? (
                         <>
@@ -294,38 +319,47 @@ export default function KitchenRequirementsPage() {
                             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
                                 Your Step 1 application is being reviewed by the kitchen manager. You'll be notified once a decision is made.
                             </p>
+                            <Button 
+                                size="lg" 
+                                onClick={() => setLocation(`/apply-kitchen/${locationId}`)}
+                                className="shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
+                            >
+                                View Application
+                            </Button>
                         </>
                     ) : (
                         <>
-                            <h3 className="text-xl font-semibold mb-2">Ready to apply?</h3>
+                            <h3 className="text-xl font-semibold mb-2">Ready to apply for {locationData?.location?.name || kitchen?.name}?</h3>
                             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                                Ensure you have these documents ready to speed up your verification process.
+                                Ensure you have these documents ready to speed up your verification process. The initial application takes about 5 minutes.
                             </p>
+                            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                                {user && (
+                                    <Button 
+                                        size="lg" 
+                                        variant="outline"
+                                        className="border-primary text-primary hover:bg-primary/5 w-full sm:w-auto"
+                                        onClick={() => setShowTourModal(true)}
+                                    >
+                                        Schedule a Viewing
+                                    </Button>
+                                )}
+                                <Button 
+                                    size="lg" 
+                                    onClick={() => {
+                                        if (user) {
+                                            setLocation(`/apply-kitchen/${locationId}`);
+                                        } else {
+                                            setLocation(`/auth?redirect=/kitchen-requirements/${locationId}`);
+                                        }
+                                    }}
+                                    className="shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all w-full sm:w-auto"
+                                >
+                                    Start Application
+                                </Button>
+                            </div>
                         </>
                     )}
-                    <Button 
-                        size="lg" 
-                        onClick={() => setLocation(`/apply-kitchen/${locationId}`)}
-                        className={`transition-all ${
-                            isReadyForStep2
-                                ? 'bg-green-600 hover:bg-green-700 shadow-lg shadow-green-500/20 hover:shadow-xl hover:shadow-green-500/30'
-                                : isStep1Done
-                                    ? 'shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30'
-                                    : 'shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30'
-                        }`}
-                        disabled={!!(isStep1Done && !isReadyForStep2)}
-                    >
-                        {isReadyForStep2 ? (
-                            <>
-                                <ArrowRight className="mr-2 h-4 w-4" />
-                                Continue to Step 2
-                            </>
-                        ) : isStep1Done ? (
-                            'Application Under Review'
-                        ) : (
-                            'Start Application'
-                        )}
-                    </Button>
                 </CardContent>
             </Card>
         </motion.div>
