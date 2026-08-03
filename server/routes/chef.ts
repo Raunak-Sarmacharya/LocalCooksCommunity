@@ -13,6 +13,8 @@ import { users, applications } from "@shared/schema";
 import { errorResponse } from "../api-response";
 import { getAppBaseUrl } from "../config";
 import * as phpBridge from '../services/php-bridge-service';
+import { generateReportCSV, generateReportPDF, processScheduledReports } from '../services/seller-report-service';
+import { format } from 'date-fns';
 
 const router = Router();
 
@@ -944,6 +946,109 @@ router.get("/seller/stripe-dashboard", requireChef, requireApprovedSeller, async
         res.json(data);
     } catch (error) {
         logger.error('[Seller Revenue] Error fetching Stripe dashboard link:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Export Seller Report (CSV or PDF)
+router.get("/seller/reports/export", requireChef, requireApprovedSeller, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const period = req.query.period as string; // 'weekly' or 'monthly'
+        const formatType = req.query.format as string; // 'csv' or 'pdf'
+
+        if (!['weekly', 'monthly', 'custom'].includes(period)) {
+            return res.status(400).json({ error: "INVALID_PERIOD", message: "Period must be weekly, monthly, or custom." });
+        }
+        if (!['csv', 'pdf'].includes(formatType)) {
+            return res.status(400).json({ error: "INVALID_FORMAT", message: "Format must be csv or pdf." });
+        }
+
+        const [chef] = await db
+            .select({ phpShopId: users.phpShopId, username: users.username })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+        if (!chef?.phpShopId) {
+            return res.status(400).json({ error: "NO_SHOP_LINKED", message: "Link your seller account first." });
+        }
+
+        const now = new Date();
+        let startDate = '';
+        let endDate = '';
+        
+        if (period === 'weekly') {
+            const end = new Date(now);
+            end.setDate(now.getDate() - 1);
+            const start = new Date(now);
+            start.setDate(now.getDate() - 7);
+            startDate = format(start, 'dd-MM-yyyy');
+            endDate = format(end, 'dd-MM-yyyy');
+        } else if (period === 'monthly') {
+            const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const end = new Date(now.getFullYear(), now.getMonth(), 0); 
+            startDate = format(start, 'dd-MM-yyyy');
+            endDate = format(end, 'dd-MM-yyyy');
+        } else if (period === 'custom') {
+            const startQuery = req.query.startDate as string;
+            const endQuery = req.query.endDate as string;
+            if (!startQuery || !endQuery) {
+                return res.status(400).json({ error: "MISSING_DATES", message: "Custom period requires startDate and endDate." });
+            }
+            // convert YYYY-MM-DD from HTML input to DD-MM-YYYY for PHP API
+            const [sYear, sMonth, sDay] = startQuery.split('-');
+            startDate = `${sDay}-${sMonth}-${sYear}`;
+            
+            const [eYear, eMonth, eDay] = endQuery.split('-');
+            endDate = `${eDay}-${eMonth}-${eYear}`;
+        }
+
+        const chefName = chef.username ? chef.username.split('@')[0] : 'Chef';
+        const shopName = chefName + "'s Shop";
+
+        if (formatType === 'csv') {
+            const csv = await generateReportCSV(chef.phpShopId, startDate, endDate);
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="LocalCooks_${period}_Data_${startDate}.csv"`);
+            return res.send(csv);
+        } else {
+            const pdfBuffer = await generateReportPDF(chef.phpShopId, shopName, startDate, endDate, period);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="LocalCooks_${period}_Report_${startDate}.pdf"`);
+            return res.send(pdfBuffer);
+        }
+    } catch (error) {
+        logger.error('[Seller Reports] Error exporting report:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Cron job endpoint for processing and emailing scheduled reports
+router.post("/cron/seller-reports", async (req: Request, res: Response) => {
+    try {
+        const cronSecret = process.env.CRON_SECRET;
+        const authHeader = req.headers.authorization;
+        
+        // We only enforce cron secret if one is set in the environment (e.g. Vercel)
+        if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+            logger.warn("[Cron] Unauthorized seller-reports cron job attempt");
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+
+        const period = req.query.period as string;
+        if (period !== 'weekly' && period !== 'monthly') {
+            return res.status(400).json({ error: "INVALID_PERIOD" });
+        }
+
+        // Run asynchronously, return 200 immediately to avoid cron timeout
+        processScheduledReports(period).catch(err => {
+            logger.error(`[Cron] Background task error processing ${period} seller reports:`, err);
+        });
+
+        res.json({ message: `Started processing ${period} seller reports in the background` });
+    } catch (error) {
+        logger.error('[Cron] Error in seller-reports endpoint:', error);
         return errorResponse(res, error);
     }
 });

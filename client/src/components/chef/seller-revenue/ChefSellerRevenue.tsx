@@ -38,6 +38,12 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Loader2,
   DollarSign,
   TrendingUp,
@@ -62,6 +68,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Minus,
+  FileText,
+  FileSpreadsheet,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/formatters";
@@ -74,6 +83,9 @@ import {
 } from "./hooks/useSellerRevenue";
 import type { SellerOrder } from "./hooks/useSellerRevenue";
 import { ChefRevenueMatrix } from "./ChefRevenueMatrix";
+import { auth } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -749,6 +761,139 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
 // ORDER HISTORY TABLE
 // ═══════════════════════════════════════════════════════════════════════════════
 
+function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
+  const { toast } = useToast();
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState(() => {
+    return new Date().toISOString().split("T")[0];
+  });
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const handlePreset = (days: number) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - days);
+    setEndDate(end.toISOString().split("T")[0]);
+    setStartDate(start.toISOString().split("T")[0]);
+  };
+
+  const handleMonthlyPreset = () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth(), 0); 
+    setStartDate(start.toISOString().split("T")[0]);
+    setEndDate(end.toISOString().split("T")[0]);
+  };
+
+  const downloadSecureReport = async (format: 'csv' | 'pdf') => {
+    try {
+      setIsDownloading(true);
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("Not authenticated");
+      
+      const response = await fetch(`/api/chef/seller/reports/export?period=custom&format=${format}&startDate=${startDate}&endDate=${endDate}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to download report");
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `LocalCooks_Custom_Report_${startDate}_to_${endDate}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast({
+        title: "Report Downloaded",
+        description: `Your custom ${format.toUpperCase()} report has been downloaded.`,
+      });
+      setOpen(false);
+    } catch (error) {
+      console.error("Download error:", error);
+      toast({
+        title: "Download Failed",
+        description: (error as Error).message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Download className="h-4 w-4 mr-1.5" />
+          Export Report
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Export Seller Report</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-medium">Quick Presets</span>
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={() => handlePreset(7)}>Last 7 Days</Button>
+              <Button variant="outline" size="sm" onClick={() => handlePreset(30)}>Last 30 Days</Button>
+              <Button variant="outline" size="sm" onClick={handleMonthlyPreset}>Last Month</Button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Start Date</label>
+              <input 
+                type="date" 
+                value={startDate} 
+                onChange={(e) => setStartDate(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">End Date</label>
+              <input 
+                type="date" 
+                value={endDate} 
+                onChange={(e) => setEndDate(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 mt-4 pt-4 border-t">
+            <Button onClick={() => downloadSecureReport('pdf')} disabled={isDownloading || !startDate || !endDate} className="w-full justify-start">
+              <FileText className="mr-2 h-4 w-4 text-red-500" />
+              Download Statement (PDF)
+            </Button>
+            <Button onClick={() => downloadSecureReport('csv')} variant="outline" disabled={isDownloading || !startDate || !endDate} className="w-full justify-start">
+              <FileSpreadsheet className="mr-2 h-4 w-4 text-green-600" />
+              Download Data (CSV)
+            </Button>
+            <Button onClick={() => { setOpen(false); exportOrdersCSV(orders); }} variant="outline" disabled={orders.length === 0} className="w-full justify-start mt-2 border-dashed">
+              <Download className="mr-2 h-4 w-4" />
+              Export Current Table View (CSV)
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SellerOrderHistory() {
   const [payoutFilter, setPayoutFilter] = useState<"all" | "due" | "paid">("all");
   const [page, setPage] = useState(1);
@@ -756,6 +901,7 @@ function SellerOrderHistory() {
   const [sorting, setSorting] = useState<SortingState>([{ id: "order_time", desc: true }]);
   const [selectedOrder, setSelectedOrder] = useState<SellerOrder | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const { toast } = useToast();
 
   const { data, isLoading, isError, refetch } = useSellerOrders({
     status: payoutFilter,
@@ -835,10 +981,7 @@ function SellerOrderHistory() {
                   </Button>
                 )}
               </div>
-              <Button variant="outline" size="sm" onClick={() => exportOrdersCSV(orders)} disabled={orders.length === 0}>
-                <Download className="h-4 w-4 mr-1.5" />
-                CSV
-              </Button>
+              <ExportReportModal orders={orders} />
               <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
                 <RefreshCw className={cn("h-4 w-4 mr-1.5", isLoading && "animate-spin")} />
                 Refresh

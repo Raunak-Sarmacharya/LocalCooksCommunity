@@ -7389,3 +7389,65 @@ export const getUniformEmailFooter = () => `
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks</p>
     </div>
 `;
+
+export async function sendChefReportEmail(chefEmail: string, chefName: string, pdfBuffer: Buffer, csvContent: string, period: 'weekly' | 'monthly', startDate: string, endDate: string) {
+  const subject = `Your ${period === 'weekly' ? 'Weekly' : 'Monthly'} Seller Report: ${startDate} to ${endDate}`;
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${chefName.split(' ')[0]},</h2>
+      <p class="message" style="margin-bottom: 20px;">Your ${period} seller report for the period <strong>${startDate}</strong> to <strong>${endDate}</strong> is ready.</p>
+      <p class="message" style="margin-bottom: 20px;">We have attached two files to this email for your convenience:</p>
+      <ul style="margin-bottom: 20px; line-height: 1.5; color: #334155;">
+        <li><strong>PDF Statement:</strong> An official, human-readable summary of your revenue and deductions.</li>
+        <li><strong>CSV Data:</strong> A raw data file of all your orders, suitable for importing into accounting software.</li>
+      </ul>
+      ${getUniformEmailFooter()}
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const textContent = `
+Hi ${chefName},
+
+Your ${period} seller report for the period ${startDate} to ${endDate} is ready.
+We have attached the PDF statement and CSV data file to this email.
+
+If you have any questions, contact us at ${getSupportEmail()}
+
+Best,
+The Local Cooks Team
+`;
+
+  return sendEmail({
+    to: chefEmail,
+    subject,
+    html: htmlContent,
+    text: textContent,
+    attachments: [
+      {
+        filename: `LocalCooks_${period}_Report_${startDate}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      },
+      {
+        filename: `LocalCooks_${period}_Data_${startDate}.csv`,
+        content: csvContent,
+        contentType: 'text/csv'
+      }
+    ]
+  });
+}
