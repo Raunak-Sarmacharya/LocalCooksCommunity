@@ -1146,6 +1146,27 @@ function StripeDashboardButton() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PHP SELLER DASHBOARD BUTTON
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function PhpSellerDashboardButton() {
+  const handleOpenDashboard = () => {
+    const isProd = window.location.hostname === "chef.localcooks.ca";
+    const url = isProd
+      ? "https://shop.localcook.shop/app/shop/home.php"
+      : "https://stagingwebapp.localcook.shop/app/shop/home.php";
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  return (
+    <Button onClick={handleOpenDashboard} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+      <Store className="h-4 w-4" />
+      Seller Account
+    </Button>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1194,6 +1215,7 @@ export default function ChefSellerRevenue() {
                   <TabsTrigger value="today" className="text-xs px-3 h-7">Today</TabsTrigger>
                 </TabsList>
               </Tabs>
+              <PhpSellerDashboardButton />
               <StripeDashboardButton />
             </div>
           </div>

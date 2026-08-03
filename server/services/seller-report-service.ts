@@ -1,6 +1,6 @@
 import { db } from "../db";
-import { users } from "@shared/schema";
-import { isNotNull } from "drizzle-orm";
+import { users, applications } from "@shared/schema";
+import { isNotNull, eq, desc } from "drizzle-orm";
 import * as phpBridge from './php-bridge-service';
 import { logger } from "../logger";
 import PDFDocument from 'pdfkit';
@@ -231,8 +231,17 @@ export async function processScheduledReports(period: 'weekly' | 'monthly'): Pro
     if (!chef.email || !chef.phpShopId) continue;
     
     try {
-      const chefName = chef.username ? chef.username.split('@')[0] : 'Chef';
-      const shopName = chefName + "'s Shop";
+      const [app] = await db
+          .select({ fullName: applications.fullName, shopName: applications.shopName })
+          .from(applications)
+          .where(eq(applications.userId, chef.id))
+          .orderBy(desc(applications.id))
+          .limit(1);
+
+      const chefName = app?.fullName || (chef.username ? chef.username.split('@')[0] : 'Chef');
+      const shopName = app?.shopName && app.shopName !== 'Shop Not Named' 
+          ? app.shopName 
+          : chefName + "'s Shop";
 
       const csvContent = await generateReportCSV(chef.phpShopId, startDate, endDate);
       const pdfBuffer = await generateReportPDF(chef.phpShopId, shopName, startDate, endDate, period);

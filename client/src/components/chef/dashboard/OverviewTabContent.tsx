@@ -25,6 +25,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
+import { useShopStatus } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
 import type { 
   AnyApplication, 
   KitchenApplicationWithLocation, 
@@ -68,6 +69,8 @@ export default function OverviewTabContent({
   onBookSessionClick,
 }: OverviewTabContentProps) {
   
+  const { data: shopStatus } = useShopStatus();
+
   // Helper to get kitchen app status for the overview cards
   const getKitchenAppStatus = (app: KitchenApplicationWithLocation) => {
     if (app.status === 'inReview') {
@@ -125,7 +128,7 @@ export default function OverviewTabContent({
   return (
     <div className="space-y-8">
       {/* Welcome Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
             {getGreeting()}{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!
@@ -134,6 +137,23 @@ export default function OverviewTabContent({
             {getSubtitle()}
           </p>
         </div>
+        {shopStatus?.linked && (
+          <div>
+            <Button 
+              onClick={() => {
+                const isProd = window.location.hostname === "chef.localcooks.ca";
+                const url = isProd
+                  ? "https://shop.localcook.shop/app/shop/home.php"
+                  : "https://stagingwebapp.localcook.shop/app/shop/home.php";
+                window.open(url, "_blank", "noopener,noreferrer");
+              }} 
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Store className="h-4 w-4" />
+              Seller Account
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Quick Stats Grid */}

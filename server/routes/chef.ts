@@ -1004,8 +1004,17 @@ router.get("/seller/reports/export", requireChef, requireApprovedSeller, async (
             endDate = `${eDay}-${eMonth}-${eYear}`;
         }
 
-        const chefName = chef.username ? chef.username.split('@')[0] : 'Chef';
-        const shopName = chefName + "'s Shop";
+        const [app] = await db
+            .select({ fullName: applications.fullName, shopName: applications.shopName })
+            .from(applications)
+            .where(eq(applications.userId, chefId))
+            .orderBy(desc(applications.id))
+            .limit(1);
+
+        const chefName = app?.fullName || (chef.username ? chef.username.split('@')[0] : 'Chef');
+        const shopName = app?.shopName && app.shopName !== 'Shop Not Named' 
+            ? app.shopName 
+            : chefName + "'s Shop";
 
         if (formatType === 'csv') {
             const csv = await generateReportCSV(chef.phpShopId, startDate, endDate);
