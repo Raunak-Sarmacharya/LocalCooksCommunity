@@ -73,6 +73,7 @@ import {
   useStripeDashboardLink,
 } from "./hooks/useSellerRevenue";
 import type { SellerOrder } from "./hooks/useSellerRevenue";
+import { ChefRevenueMatrix } from "./ChefRevenueMatrix";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -234,8 +235,7 @@ function OrderItemsList({ itemsStr }: { itemsStr: string | null | undefined }) {
 function exportOrdersCSV(orders: SellerOrder[]) {
   const headers = [
     "Order ID", "Type", "Date", "Customer", "Items",
-    "Shop Charge", "Total Price", "Delivery Charge", "Service Fee",
-    "Discount", "Stripe Fee", "Commission", "Tip (Chef)", "Tip (Driver)",
+    "Shop Charge", "Discount", "Stripe Fee", "Commission", "Tip (Chef)",
     "Your Earnings", "Payout Status", "Delivery Method",
   ];
   const rows = orders.map((o) => [
@@ -245,14 +245,10 @@ function exportOrdersCSV(orders: SellerOrder[]) {
     o.customer_name,
     `"${(o.items_description || "").replace(/"/g, '""')}"`,
     fmtDollars(o.shopcharge),
-    fmtDollars(o.total_price),
-    fmtDollars(o.delivery_charge),
-    fmtDollars(o.service_fee),
     fmtDollars(o.discount_amt),
     fmtDollars(o.stripe_fee),
     fmtDollars(o.commission),
     fmtDollars(o.tip_chef),
-    fmtDollars(o.tip_dboy),
     fmtDollars(o.chef_earnings),
     o.payout_status,
     getDeliveryLabel(o.order_method, o.delivery_provider),
@@ -499,9 +495,6 @@ function OrderDetailSheet({
     { label: "Discount Applied", value: order.discount_amt },
     { label: "Stripe Processing Fee", value: order.stripe_fee },
     { label: "Platform Commission", value: order.commission },
-    { label: "Delivery Charge", value: order.delivery_charge },
-    { label: "Service Fee", value: order.service_fee },
-    { label: "Tip (Driver)", value: order.tip_dboy },
   ];
 
   return (
@@ -586,13 +579,6 @@ function OrderDetailSheet({
               ))}
             </div>
           </div>
-
-          <div className="flex items-center justify-between py-2 px-2 bg-muted/50 rounded-md text-sm font-semibold">
-            <span>Customer Total Paid</span>
-            <span>{fmtDollars(order.total_price)}</span>
-          </div>
-
-          <Separator />
 
           {/* Deductions */}
           <div>
@@ -711,25 +697,6 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
           </div>
         );
       },
-    },
-    {
-      accessorKey: "total_price",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="h-8 justify-end w-full"
-        >
-          Total
-          <ArrowUpDown className="ml-2 h-3 w-3" />
-        </Button>
-      ),
-      cell: ({ row }) => (
-        <div className="text-right text-sm font-medium">
-          {fmtDollars(row.original.total_price)}
-        </div>
-      ),
     },
     {
       accessorKey: "chef_earnings",
@@ -1042,6 +1009,7 @@ function StripeDashboardButton() {
 export default function ChefSellerRevenue() {
   const { data: shopStatus, isLoading: statusLoading } = useShopStatus();
   const [period, setPeriod] = useState("all");
+  const { data: summaryData } = useEarningsSummary({ period, enabled: !!shopStatus?.linked });
 
   if (statusLoading) {
     return (
@@ -1107,6 +1075,7 @@ export default function ChefSellerRevenue() {
           </div>
 
           <EarningsSummaryCards period={period} />
+          <ChefRevenueMatrix data={summaryData?.matrix} />
           <SellerOrderHistory />
         </>
       )}

@@ -62,6 +62,24 @@ export interface EarningsSummary {
     paid: { count: number; total: number };
   };
   period: string;
+  matrix?: {
+    weekly: {
+      period: string;
+      gross_sales: number;
+      earnings: number;
+      orders: number;
+      tips: number;
+      commission: number;
+    }[];
+    monthly: {
+      period: string;
+      gross_sales: number;
+      earnings: number;
+      orders: number;
+      tips: number;
+      commission: number;
+    }[];
+  };
 }
 
 export interface SellerOrder {
