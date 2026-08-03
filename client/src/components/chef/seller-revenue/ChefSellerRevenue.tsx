@@ -1200,7 +1200,7 @@ export default function ChefSellerRevenue() {
                 <DollarSign className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-foreground">Seller Revenue</h1>
+                <h1 className="text-2xl font-bold text-foreground">My Earnings</h1>
                 <p className="text-sm text-muted-foreground">
                   Your food order earnings from LocalCooks
                 </p>
