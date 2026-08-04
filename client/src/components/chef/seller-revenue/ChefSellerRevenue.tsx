@@ -208,14 +208,24 @@ function parseOrderItems(itemsStr: string | null | undefined): OrderItem[] {
     .filter(Boolean);
   
   return items.map((item) => {
-    // Clean: remove leading "o", remove parentheses content for display
-    // "Chicken combo (x1) ($20.00)" -> "Chicken combo"
+    // Extract quantity
+    const qtyMatch = item.match(/\(x(\d+)\)/i);
+    const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+
+    // Extract price: Match ($20.00) or $(20.00) or $20.00
+    const priceMatch = item.match(/\(\$([\d.]+)\)/) || item.match(/\$\([\d.]+\)/) || item.match(/\$([\d.]+)/);
+    const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+
+    // Clean name for display
     const cleaned = item
-      .replace(/^o/, "")
-      .replace(/\s*\(x\d+\)/, "") // Remove (x1), (x3) etc
-      .replace(/\s*\$\([\d.]+\)/, "") // Remove ($20.00), ($12.00) etc
+      .replace(/^o\s*/i, "")
+      .replace(/\s*\(x\d+\)/i, "")
+      .replace(/\s*\(\$[\d.]+\)/, "")
+      .replace(/\s*\$\([\d.]+\)/, "")
+      .replace(/\s*\$[\d.]+/, "")
       .trim();
-    return { name: cleaned, qty: 1, price: 0 };
+      
+    return { name: cleaned, qty, price };
   });
 }
 
@@ -231,7 +241,7 @@ function OrderItemsList({ itemsStr }: { itemsStr: string | null | undefined }) {
             <span className="truncate">{item.name}</span>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground flex-shrink-0">
-            {item.qty > 1 && <span className="font-medium">×{item.qty}</span>}
+            {item.qty > 0 && <span className="font-medium">×{item.qty}</span>}
             {item.price > 0 && <span>{fmtDollars(item.price)}</span>}
           </div>
         </div>
