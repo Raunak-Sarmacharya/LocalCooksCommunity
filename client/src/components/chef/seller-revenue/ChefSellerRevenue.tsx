@@ -83,6 +83,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import Logo from "@/components/ui/logo";
+import locoLogo from "@/assets/LoCoLogo.svg";
 import { SiUber } from "react-icons/si";
 import { formatNumber } from "@/lib/formatters";
 import {
@@ -94,6 +95,7 @@ import {
 } from "./hooks/useSellerRevenue";
 import type { SellerOrder } from "./hooks/useSellerRevenue";
 import { ChefRevenueMatrix } from "./ChefRevenueMatrix";
+import { PickupOrderIcon } from "@/components/ui/PickupOrderIcon";
 import { auth } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -227,9 +229,9 @@ function getDeliveryLabel(method: string, provider: string): string {
 }
 
 function getDeliveryIcon(method: string, provider: string) {
-  if (method === "pickup") return <ShoppingBag className="h-4 w-4 text-blue-600" />;
+  if (method === "pickup") return <PickupOrderIcon className="h-4 w-4 text-black" />;
   if (provider === "uber_direct") return <SiUber className="h-5 w-5" />;
-  return <Logo className="h-5 w-5 object-contain" />;
+  return <img src={locoLogo} alt="Local Cooks" className="h-5 w-5 object-contain" />;
 }
 
 interface OrderItem {
@@ -485,7 +487,7 @@ function EarningsSummaryCards({ period }: { period: string }) {
     {
       label: "Tips Received",
       value: earnings.total_tips,
-      subtitle: `Avg: ${fmtDollars(earnings.avg_order_value)}/order`,
+      subtitle: `${((earnings.total_tips / (earnings.total_earnings || 1)) * 100).toFixed(1)}% tip rate`,
       icon: <TrendingUp className="h-5 w-5 text-purple-600" />,
       color: "text-purple-700",
       bg: "bg-purple-100",
@@ -529,20 +531,55 @@ function EarningsSummaryCards({ period }: { period: string }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {([
-          { key: "pickup" as const, label: "Pickup", icon: <ShoppingBag className="h-6 w-6 text-blue-500" />, data: by_delivery_method.pickup },
-          { key: "inhouse" as const, label: "In-House Delivery", icon: <Logo className="h-6 w-6 object-contain" />, data: by_delivery_method.inhouse },
-          { key: "uber_direct" as const, label: "Uber Direct", icon: <SiUber className="h-7 w-7" />, data: by_delivery_method.uber_direct },
+          { 
+            key: "pickup" as const, 
+            label: "Pickup", 
+            icon: <PickupOrderIcon className="h-6 w-6 text-emerald-600" />,
+            bgIcon: <PickupOrderIcon className="h-20 w-20 text-emerald-600" />,
+            color: "text-emerald-700",
+            bg: "bg-emerald-100",
+            data: by_delivery_method.pickup 
+          },
+          { 
+            key: "inhouse" as const, 
+            label: "In-House Delivery", 
+            icon: <img src={locoLogo} alt="Local Cooks" className="h-6 w-6 object-contain" />,
+            bgIcon: <img src={locoLogo} alt="Local Cooks" className="h-20 w-20 object-contain grayscale" />,
+            color: "text-blue-700",
+            bg: "bg-blue-100",
+            data: by_delivery_method.inhouse 
+          },
+          { 
+            key: "uber_direct" as const, 
+            label: "Uber Direct", 
+            icon: <SiUber className="h-6 w-6 text-slate-800 dark:text-slate-200" />,
+            bgIcon: <SiUber className="h-20 w-20 text-slate-800 dark:text-slate-200" />,
+            color: "text-slate-800 dark:text-slate-100",
+            bg: "bg-slate-100 dark:bg-slate-800",
+            data: by_delivery_method.uber_direct 
+          },
         ]).map((item) => (
-          <Card key={item.key} className="bg-muted/30 border-none shadow-sm">
-            <CardContent className="pt-4 pb-3 text-center">
-              <div className="mx-auto w-10 h-10 flex items-center justify-center mb-2">
+          <Card key={item.key} className="relative overflow-hidden group border-muted shadow-sm">
+            {/* Subtle background icon for that premium feel */}
+            <div className="absolute right-2 bottom-2 opacity-5 group-hover:opacity-10 group-hover:scale-110 origin-bottom-right transition-all duration-500 pointer-events-none flex items-center justify-center">
+              {item.bgIcon}
+            </div>
+            
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5 h-5">
+                {item.label}
+              </CardTitle>
+              <div className={cn("w-10 h-10 rounded-md flex items-center justify-center shrink-0 shadow-sm", item.bg)}>
                 {item.icon}
               </div>
-              <p className="text-xs text-muted-foreground">{item.label}</p>
-              <p className="font-semibold text-sm">{fmtDollars(item.data.earnings)}</p>
-              <p className="text-xs text-muted-foreground">{formatNumber(item.data.count)} orders</p>
+            </CardHeader>
+            <CardContent className="relative z-10">
+              <div className={cn("text-2xl font-bold", item.color)}>{fmtDollars(item.data.earnings)}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {formatNumber(item.data.count)} orders
+              </p>
             </CardContent>
           </Card>
         ))}
@@ -908,29 +945,6 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
     startDate: dateFilters.startDate,
   });
 
-  const [geoData, setGeoData] = useState<{ topAreas: { area: string; count: number }[] } | null>(null);
-  const [geoLoading, setGeoLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchGeo() {
-      try {
-        const response = await fetch(`/api/analytics/seller/${sellerId}`);
-        if (response.ok) {
-          setGeoData(await response.json());
-        }
-      } catch (error) {
-        // ignore
-      } finally {
-        setGeoLoading(false);
-      }
-    }
-    if (sellerId) {
-      fetchGeo();
-    } else {
-      setGeoLoading(false);
-    }
-  }, [sellerId]);
-
   const orders = useMemo(() => data?.orders ?? [], [data?.orders]);
 
   const analytics = useMemo(() => {
@@ -938,8 +952,12 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
 
     let totalRevenue = 0;
     let totalTax = 0;
-    const uniqueCustomers = new Set<string>();
-    const returningCustomers = new Set<string>();
+    let totalItems = 0;
+    let preOrderCount = 0;
+    let pickupCount = 0;
+    let deliveryCount = 0;
+
+    const customerStats: Record<string, { count: number, revenue: number, name: string }> = {};
     const itemCounts: Record<string, { qty: number, revenue: number }> = {};
     const hourCounts: Record<string, number> = {};
 
@@ -947,11 +965,18 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
       totalRevenue += Number(o.shopcharge) || 0;
       totalTax += Number(o.commission) || 0;
       
-      const cname = (o.customer_name || 'Guest').trim().toLowerCase();
-      if (uniqueCustomers.has(cname)) {
-        returningCustomers.add(cname);
+      if (o.type === "pre_order") preOrderCount++;
+      if (o.order_method === "pickup") pickupCount++;
+      else deliveryCount++;
+      
+      const cname = (o.customer_name || 'Guest').trim();
+      const cnameLower = cname.toLowerCase();
+      
+      if (!customerStats[cnameLower]) {
+        customerStats[cnameLower] = { count: 0, revenue: 0, name: cname };
       }
-      uniqueCustomers.add(cname);
+      customerStats[cnameLower].count += 1;
+      customerStats[cnameLower].revenue += (Number(o.shopcharge) || 0);
 
       const d = parsePhpDateToDate(o.order_time);
       if (d) {
@@ -969,6 +994,7 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
       items.forEach(itemStr => {
         const qtyMatch = itemStr.match(/\(x(\d+)\)/i);
         const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+        totalItems += qty;
         
         const priceMatch = itemStr.match(/\(\$([\d.]+)\)/) || itemStr.match(/\$\([\d.]+\)/) || itemStr.match(/\$([\d.]+)/);
         const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
@@ -984,7 +1010,15 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
     });
 
     const aov = totalRevenue / orders.length;
-    const returningPct = uniqueCustomers.size > 0 ? (returningCustomers.size / uniqueCustomers.size) * 100 : 0;
+    const itemsPerOrder = totalItems / orders.length;
+    
+    let returningCount = 0;
+    const topCustomers = Object.values(customerStats).sort((a, b) => b.count - a.count || b.revenue - a.revenue).map(c => {
+      if (c.count > 1) returningCount++;
+      return c;
+    });
+    
+    const returningPct = Object.keys(customerStats).length > 0 ? (returningCount / Object.keys(customerStats).length) * 100 : 0;
     
     const topItems = Object.entries(itemCounts)
       .sort((a, b) => b[1].qty - a[1].qty)
@@ -995,7 +1029,19 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
       .sort((a, b) => b[1] - a[1])
       .map(([window, count]) => ({ window, count }));
 
-    return { aov, returningPct, topItems, peakHours, totalTax };
+    return { 
+      aov, 
+      returningPct, 
+      topItems, 
+      peakHours, 
+      totalTax,
+      itemsPerOrder,
+      topCustomers: topCustomers.slice(0, 5),
+      preOrderCount,
+      pickupCount,
+      deliveryCount,
+      totalOrders: orders.length
+    };
   }, [orders]);
 
   if (isLoading) {
@@ -1013,9 +1059,9 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
       <CardHeader className="pb-4 bg-muted/10 border-b">
         <CardTitle className="text-xl font-semibold flex items-center gap-2">
           <TrendingUp className="h-5 w-5 text-blue-600" />
-          Business & Geographical Insights
+          Business Insights
         </CardTitle>
-        <CardDescription>Comprehensive analytics for your performance and customer demographics</CardDescription>
+        <CardDescription>Comprehensive analytics for your performance and customers</CardDescription>
       </CardHeader>
       <CardContent className="p-0">
         <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x">
@@ -1023,43 +1069,35 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
           {/* Business Analytics Column */}
           <div className="p-6 lg:col-span-2 space-y-6">
             <h3 className="text-base font-semibold flex items-center gap-2">
-              <Store className="h-4 w-4" />
+              <Store className="h-4 w-4 text-indigo-600" />
               Sales & Engagement
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Receipt className="h-4 w-4"/>Total Tax Collected</p>
-                <p className="text-2xl font-bold text-orange-600">{fmtDollars(analytics.totalTax)}</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5"/>Average Order</p>
+                <p className="text-xl font-bold">{fmtDollars(analytics.aov)}</p>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground flex items-center gap-2"><DollarSign className="h-4 w-4"/>Average Order Value</p>
-                <p className="text-2xl font-bold">{fmtDollars(analytics.aov)}</p>
+              <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Users className="h-3.5 w-3.5"/>Returning</p>
+                <p className="text-xl font-bold">{analytics.returningPct.toFixed(1)}%</p>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Users className="h-4 w-4"/>Returning Customers</p>
-                <p className="text-2xl font-bold">{analytics.returningPct.toFixed(1)}%</p>
+              <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><ShoppingBag className="h-3.5 w-3.5"/>Items/Order</p>
+                <p className="text-xl font-bold">{analytics.itemsPerOrder.toFixed(1)}</p>
+              </div>
+              <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5"/>Pre-Orders</p>
+                <p className="text-xl font-bold">{((analytics.preOrderCount / analytics.totalOrders) * 100).toFixed(0)}%</p>
               </div>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
-              <div className="space-y-3">
-                <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Clock className="h-4 w-4"/>Peak Hours</h4>
-                <div className="space-y-2">
-                  {analytics.peakHours.map((ph, i) => (
-                    <div key={i} className="flex justify-between items-center text-sm p-2 bg-muted/30 rounded-md">
-                      <span>{ph.window}</span>
-                      <span className="font-medium">{ph.count} orders</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
               {analytics.topItems.length > 0 && (
                 <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Star className="h-4 w-4"/>Top Selling Items</h4>
+                  <h4 className="text-sm font-medium flex items-center gap-2"><Star className="h-4 w-4 text-amber-500"/>Top Selling Items</h4>
                   <div className="space-y-2">
                     {analytics.topItems.slice(0, 4).map((item, i) => (
-                      <div key={i} className="flex justify-between items-center text-sm p-2 bg-muted/30 rounded-md">
+                      <div key={i} className="flex justify-between items-center text-sm p-2 bg-muted/30 rounded-md hover:bg-muted/50 transition-colors">
                         <span className="font-medium truncate pr-2" title={item.name}>{item.name}</span>
                         <div className="text-right flex-shrink-0">
                           <span className="font-bold">{item.qty}x</span>
@@ -1069,43 +1107,70 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
                   </div>
                 </div>
               )}
+              
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium flex items-center gap-2"><Clock className="h-4 w-4 text-blue-500"/>Peak Hours</h4>
+                <div className="space-y-2">
+                  {analytics.peakHours.map((ph, i) => (
+                    <div key={i} className="flex justify-between items-center text-sm p-2 bg-muted/30 rounded-md hover:bg-muted/50 transition-colors">
+                      <span>{ph.window}</span>
+                      <span className="font-medium">{ph.count} orders</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Geographical Analytics Column */}
+          {/* Top Customers Column */}
           <div className="p-6 lg:col-span-1 bg-muted/5">
             <h3 className="text-base font-semibold flex items-center gap-2 mb-6">
-              <MapPin className="h-4 w-4 text-rose-500" />
-              Top Delivery Areas
+              <Users className="h-4 w-4 text-emerald-600" />
+              Top Customers
             </h3>
             
-            {geoLoading ? (
-              <div className="space-y-4">
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-8 w-full" />
-              </div>
-            ) : !geoData || geoData.topAreas.length === 0 ? (
+            {analytics.topCustomers.length === 0 ? (
               <div className="text-center text-muted-foreground py-8 text-sm">
-                No location data available
+                No customer data available
               </div>
             ) : (
-              <div className="space-y-4">
-                {geoData.topAreas.map((area, i) => {
-                  const totalOrders = geoData.topAreas.reduce((sum, item) => sum + item.count, 0);
-                  const percentage = totalOrders > 0 ? (area.count / totalOrders) * 100 : 0;
-                  return (
-                    <div key={i} className="space-y-1.5">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">{area.area}</span>
-                        <span className="text-muted-foreground font-medium text-xs">{percentage.toFixed(1)}% ({area.count})</span>
+              <div className="space-y-3">
+                {analytics.topCustomers.map((customer, i) => (
+                  <div key={i} className="flex items-center justify-between p-2.5 bg-background rounded-lg border shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                        {customer.name.substring(0, 2).toUpperCase()}
                       </div>
-                      <Progress value={percentage} className="h-1.5 bg-muted-foreground/20" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold leading-none truncate">{customer.name}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{customer.count} order{customer.count > 1 ? 's' : ''}</p>
+                      </div>
                     </div>
-                  );
-                })}
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-bold text-green-700">{fmtDollars(customer.revenue)}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
+            
+            <div className="mt-6 pt-6 border-t">
+              <h4 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider flex items-center gap-1.5"><Truck className="h-3.5 w-3.5"/>Fulfillment Split</h4>
+              <div className="flex items-center gap-0.5">
+                <div 
+                  className="h-2 bg-emerald-500 rounded-l-full" 
+                  style={{ width: `${Math.max((analytics.pickupCount / analytics.totalOrders) * 100, 2)}%` }}
+                />
+                <div 
+                  className="h-2 bg-blue-500 rounded-r-full" 
+                  style={{ width: `${Math.max((analytics.deliveryCount / analytics.totalOrders) * 100, 2)}%` }}
+                />
+              </div>
+              <div className="flex justify-between mt-2 text-xs font-medium">
+                <span className="text-emerald-700">{((analytics.pickupCount / analytics.totalOrders) * 100).toFixed(0)}% Pickup</span>
+                <span className="text-blue-700">{((analytics.deliveryCount / analytics.totalOrders) * 100).toFixed(0)}% Delivery</span>
+              </div>
+            </div>
           </div>
         </div>
       </CardContent>
