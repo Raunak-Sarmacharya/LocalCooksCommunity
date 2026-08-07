@@ -129,7 +129,7 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
           <div className="h-[350px] w-full mt-4">
             <ChartContainer config={chartConfig} className="h-full w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={formattedData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <BarChart data={formattedData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted-foreground)/0.2)" />
                   <XAxis 
                     dataKey="formattedPeriod" 
@@ -139,6 +139,7 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
                     dy={10}
                   />
                   <YAxis 
+                    width={60}
                     tickFormatter={(value) => `$${value}`} 
                     tickLine={false} 
                     axisLine={false}
