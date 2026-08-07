@@ -158,14 +158,19 @@ export function useLinkShop() {
   });
 }
 
-export function useEarningsSummary(options: { period?: string; enabled?: boolean } = {}) {
-  const { period = "all", enabled = true } = options;
+export function useEarningsSummary(options: { period?: string; startDate?: string; endDate?: string; enabled?: boolean } = {}) {
+  const { period = "all", startDate, endDate, enabled = true } = options;
 
   return useQuery<EarningsSummary>({
-    queryKey: ["/api/chef/seller/earnings-summary", period],
+    queryKey: ["/api/chef/seller/earnings-summary", period, startDate, endDate],
     queryFn: async () => {
+      const params = new URLSearchParams();
+      if (period) params.set("period", period);
+      if (startDate) params.set("start_date", startDate);
+      if (endDate) params.set("end_date", endDate);
+
       const headers = await getAuthHeaders();
-      const res = await fetch(`/api/chef/seller/earnings-summary?period=${period}`, { headers });
+      const res = await fetch(`/api/chef/seller/earnings-summary?${params}`, { headers });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.message || "Failed to fetch earnings");

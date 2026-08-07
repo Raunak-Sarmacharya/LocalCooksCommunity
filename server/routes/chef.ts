@@ -853,6 +853,13 @@ router.get("/seller/earnings-summary", requireChef, requireApprovedSeller, async
     try {
         const chefId = req.neonUser!.id;
         const period = (req.query.period as string) || 'all';
+        const startDate = req.query.start_date as string;
+        const endDate = req.query.end_date as string;
+
+        let phpPeriod = period;
+        if (period === 'month') phpPeriod = 'monthly';
+        if (period === 'week') phpPeriod = 'weekly';
+        if (period === 'today') phpPeriod = 'daily';
 
         const [chef] = await db
             .select({ phpShopId: users.phpShopId })
@@ -864,7 +871,115 @@ router.get("/seller/earnings-summary", requireChef, requireApprovedSeller, async
             return res.status(400).json({ error: "NO_SHOP_LINKED", message: "Link your seller account first." });
         }
 
-        const data = await phpBridge.getEarningsSummary(chef.phpShopId, period);
+        const data = await phpBridge.getEarningsSummary(chef.phpShopId, phpPeriod, startDate, endDate);
+
+        // PHP backend doesn't properly filter earnings-summary by date. 
+        // We aggregate it locally if a date filter is applied.
+        if (phpPeriod !== 'all' && startDate) {
+            try {
+                const parsePhpDate = (dateStr: string) => {
+                    if (!dateStr) return null;
+                    const parts = dateStr.split('-');
+                    if (parts.length === 3) {
+                        return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00Z`);
+                    }
+                    return null;
+                };
+                
+                const parseOrderTime = (orderTime: string) => {
+                    if (!orderTime) return null;
+                    const datePart = orderTime.split(' ')[0];
+                    return parsePhpDate(datePart);
+                };
+                
+                const filterStart = parsePhpDate(startDate);
+                
+                let total_earnings = 0;
+                let total_tips = 0;
+                let total_due = 0;
+                let total_paid = 0;
+                let total_orders = 0;
+                let total_pre_orders = 0;
+                
+                const by_delivery_method = {
+                    pickup: { count: 0, earnings: 0 },
+                    inhouse: { count: 0, earnings: 0 },
+                    uber_direct: { count: 0, earnings: 0 },
+                };
+                
+                const by_payment_status = {
+                    due: { count: 0, total: 0 },
+                    paid: { count: 0, total: 0 },
+                };
+                
+                let page = 1;
+                let shouldContinue = true;
+                const MAX_PAGES = 20; // up to 2000 orders
+                
+                while (shouldContinue && page <= MAX_PAGES) {
+                    const ordersData = await phpBridge.getSellerOrders(chef.phpShopId, { page, limit: 100 });
+                    if (!ordersData || !ordersData.orders || ordersData.orders.length === 0) {
+                        break;
+                    }
+                    
+                    for (const order of ordersData.orders) {
+                        const orderDate = parseOrderTime(order.order_time);
+                        if (filterStart && orderDate && orderDate < filterStart) {
+                            shouldContinue = false;
+                            continue;
+                        }
+                        
+                        total_orders++;
+                        if (order.type === 'pre_order') total_pre_orders++;
+                        
+                        const earnings = Number(order.chef_earnings || 0);
+                        const tips = Number(order.tip_chef || 0);
+                        
+                        total_earnings += earnings;
+                        total_tips += tips;
+                        
+                        if (order.payout_status === 'due') {
+                            total_due += earnings;
+                            by_payment_status.due.count++;
+                            by_payment_status.due.total += earnings;
+                        } else if (order.payout_status === 'paid') {
+                            total_paid += earnings;
+                            by_payment_status.paid.count++;
+                            by_payment_status.paid.total += earnings;
+                        }
+                        
+                        if (order.order_method === 'pickup') {
+                            by_delivery_method.pickup.count++;
+                            by_delivery_method.pickup.earnings += earnings;
+                        } else if (order.delivery_provider === 'uber_direct') {
+                            by_delivery_method.uber_direct.count++;
+                            by_delivery_method.uber_direct.earnings += earnings;
+                        } else {
+                            by_delivery_method.inhouse.count++;
+                            by_delivery_method.inhouse.earnings += earnings;
+                        }
+                    }
+                    
+                    if (ordersData.orders.length < 100) {
+                        break;
+                    }
+                    page++;
+                }
+                
+                data.earnings.total_earnings = total_earnings;
+                data.earnings.total_tips = total_tips;
+                data.earnings.total_due = total_due;
+                data.earnings.total_paid = total_paid;
+                data.earnings.total_orders = total_orders;
+                data.earnings.total_pre_orders = total_pre_orders;
+                
+                data.by_delivery_method = by_delivery_method;
+                data.by_payment_status = by_payment_status;
+            } catch (err) {
+                logger.error('[Seller Revenue] Failed to aggregate orders locally:', err);
+            }
+        }
+
         res.json(data);
     } catch (error) {
         logger.error('[Seller Revenue] Error fetching earnings summary:', error);
@@ -946,6 +1061,54 @@ router.get("/seller/stripe-dashboard", requireChef, requireApprovedSeller, async
         res.json(data);
     } catch (error) {
         logger.error('[Seller Revenue] Error fetching Stripe dashboard link:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Export Individual Order Invoice
+router.get("/seller/orders/:orderId/invoice", requireChef, requireApprovedSeller, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const orderId = parseInt(req.params.orderId);
+        const orderDate = req.query.date as string;
+
+        if (isNaN(orderId) || orderId <= 0) {
+            return res.status(400).json({ error: "Invalid order ID" });
+        }
+        if (!orderDate) {
+            return res.status(400).json({ error: "Order date query parameter is required" });
+        }
+
+        const [chef] = await db
+            .select({ phpShopId: users.phpShopId, username: users.username })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+        if (!chef?.phpShopId) {
+            return res.status(403).json({ error: "No seller account linked" });
+        }
+
+        const [app] = await db
+            .select({ fullName: applications.fullName, shopName: applications.shopName })
+            .from(applications)
+            .where(eq(applications.userId, chefId))
+            .orderBy(desc(applications.id))
+            .limit(1);
+
+        const chefName = app?.fullName || (chef.username ? chef.username.split('@')[0] : 'Chef');
+        const shopName = app?.shopName && app.shopName !== 'Shop Not Named' 
+            ? app.shopName 
+            : chefName + "'s Shop";
+
+        const { generateSingleOrderInvoicePDF } = await import('../services/seller-report-service');
+        const pdfBuffer = await generateSingleOrderInvoicePDF(chef.phpShopId, shopName, orderId, orderDate);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="order-invoice-${orderId}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        logger.error('[Seller Revenue] Error generating order invoice:', error);
         return errorResponse(res, error);
     }
 });

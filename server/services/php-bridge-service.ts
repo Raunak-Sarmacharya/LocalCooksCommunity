@@ -214,12 +214,17 @@ export async function lookupShopByEmail(email: string): Promise<PhpShopInfo | nu
 /**
  * Get aggregated earnings summary for a shop.
  */
-export async function getEarningsSummary(sid: number, period: string = 'all'): Promise<EarningsSummary> {
-  return bridgeRequest<EarningsSummary>({
+export async function getEarningsSummary(sid: number, period: string = 'all', startDate?: string, endDate?: string): Promise<EarningsSummary> {
+  const params: Record<string, string> = {
     action: 'earnings-summary',
     sid: sid.toString(),
     period,
-  });
+  };
+  
+  if (startDate) params.start_date = startDate;
+  if (endDate) params.end_date = endDate;
+  
+  return bridgeRequest<EarningsSummary>(params);
 }
 
 /**

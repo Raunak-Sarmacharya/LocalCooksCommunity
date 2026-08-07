@@ -5,7 +5,7 @@
  * Matches TransactionHistory patterns: TanStack Table, Sheet detail view, CSV export.
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   ColumnDef,
   flexRender,
@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
   Table,
@@ -71,8 +72,18 @@ import {
   FileText,
   FileSpreadsheet,
   ChevronDown,
+  Users,
+  Star,
+  MapPin,
 } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import Logo from "@/components/ui/logo";
+import { SiUber } from "react-icons/si";
 import { formatNumber } from "@/lib/formatters";
 import {
   useShopStatus,
@@ -86,10 +97,38 @@ import { ChefRevenueMatrix } from "./ChefRevenueMatrix";
 import { auth } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════════════════════
+
+function getDateFiltersForPeriod(period: string) {
+  if (period === 'all') return {};
+  const now = new Date();
+  
+  const formatDate = (d: Date) => {
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  };
+
+  if (period === 'today') {
+    return { startDate: formatDate(now) };
+  }
+  if (period === 'week') {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return { startDate: formatDate(d) };
+  }
+  if (period === 'month') {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return { startDate: formatDate(d) };
+  }
+  return {};
+}
 
 function fmtDollars(value: number): string {
   return new Intl.NumberFormat("en-CA", {
@@ -188,9 +227,9 @@ function getDeliveryLabel(method: string, provider: string): string {
 }
 
 function getDeliveryIcon(method: string, provider: string) {
-  if (method === "pickup") return <ShoppingBag className="h-3.5 w-3.5 text-blue-600" />;
-  if (provider === "uber_direct") return <Truck className="h-3.5 w-3.5 text-orange-600" />;
-  return <Truck className="h-3.5 w-3.5 text-green-600" />;
+  if (method === "pickup") return <ShoppingBag className="h-4 w-4 text-blue-600" />;
+  if (provider === "uber_direct") return <SiUber className="h-5 w-5" />;
+  return <Logo className="h-5 w-5 object-contain" />;
 }
 
 interface OrderItem {
@@ -257,7 +296,7 @@ function OrderItemsList({ itemsStr }: { itemsStr: string | null | undefined }) {
 function exportOrdersCSV(orders: SellerOrder[]) {
   const headers = [
     "Order ID", "Type", "Date", "Customer", "Items",
-    "Shop Charge", "Discount", "Stripe Fee", "Commission", "Tip (Chef)",
+    "Shop Charge", "Tax Collected", "Discount", "Stripe Fee", "Tip (Chef)",
     "Your Earnings", "Payout Status", "Delivery Method",
   ];
   const rows = orders.map((o) => [
@@ -265,7 +304,7 @@ function exportOrdersCSV(orders: SellerOrder[]) {
     o.type === "pre_order" ? "Pre-Order" : "Order",
     fmtDateTime(o.order_time),
     o.customer_name,
-    `"${(o.items_description || "").replace(/"/g, '""')}"`,
+    `"${parseOrderItems(o.items_description).map(item => `${item.qty}x ${item.name} @ $${item.price.toFixed(2)}`).join('\n')}"`,
     fmtDollars(o.shopcharge),
     fmtDollars(o.discount_amt),
     fmtDollars(o.stripe_fee),
@@ -381,12 +420,13 @@ function LinkSellerAccountBanner() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function EarningsSummaryCards({ period }: { period: string }) {
-  const { data, isLoading, isError } = useEarningsSummary({ period });
+  const dateFilters = useMemo(() => getDateFiltersForPeriod(period), [period]);
+  const { data, isLoading, isError } = useEarningsSummary({ period, startDate: dateFilters.startDate });
 
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
             <Card key={i}>
               <CardContent className="pt-6">
@@ -397,7 +437,7 @@ function EarningsSummaryCards({ period }: { period: string }) {
             </Card>
           ))}
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-lg" />)}
         </div>
       </div>
@@ -423,6 +463,7 @@ function EarningsSummaryCards({ period }: { period: string }) {
       icon: <Clock className="h-5 w-5 text-orange-600" />,
       color: "text-orange-700",
       bg: "bg-orange-100",
+      tooltip: "Funds currently being processed by Stripe or held in your pending balance. These will be automatically paid out to your connected bank account according to your Stripe payout schedule (usually 2-7 rolling days).",
     },
     {
       label: "Paid Earnings",
@@ -431,6 +472,7 @@ function EarningsSummaryCards({ period }: { period: string }) {
       icon: <CheckCircle2 className="h-5 w-5 text-green-600" />,
       color: "text-green-700",
       bg: "bg-green-100",
+      tooltip: "Funds that have been successfully deposited into your connected bank account by Stripe. It may take 1-2 business days for your bank to reflect the transfer.",
     },
     {
       label: "Total Earnings",
@@ -452,36 +494,52 @@ function EarningsSummaryCards({ period }: { period: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {summaryCards.map((card) => (
           <Card key={card.label}>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", card.bg)}>
-                  {card.icon}
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">{card.label}</p>
-                  <p className={cn("text-xl font-bold", card.color)}>{fmtDollars(card.value)}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {card.subtitle || `${formatNumber(card.count ?? 0)} orders`}
-                  </p>
-                </div>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5 h-5">
+                {card.label}
+                {(card.label === "Due Earnings" || card.label === "Paid Earnings") && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button type="button" className="inline-flex items-center justify-center p-0 m-0 border-none bg-transparent outline-none ring-0">
+                        <Info className="h-4 w-4 text-muted-foreground/70 hover:text-muted-foreground cursor-help" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent side="top" className="w-[280px] p-3 shadow-md">
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {card.tooltip}
+                      </p>
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </CardTitle>
+              <div className={cn("w-9 h-9 rounded-md flex items-center justify-center shrink-0", card.bg)}>
+                {card.icon}
               </div>
+            </CardHeader>
+            <CardContent>
+              <div className={cn("text-2xl font-bold", card.color)}>{fmtDollars(card.value)}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {card.subtitle || `${formatNumber(card.count ?? 0)} orders`}
+              </p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {([
-          { key: "pickup" as const, label: "Pickup", icon: <ShoppingBag className="h-4 w-4 text-blue-500" />, data: by_delivery_method.pickup },
-          { key: "inhouse" as const, label: "In-House Delivery", icon: <Truck className="h-4 w-4 text-green-500" />, data: by_delivery_method.inhouse },
-          { key: "uber_direct" as const, label: "Uber Direct", icon: <Truck className="h-4 w-4 text-orange-500" />, data: by_delivery_method.uber_direct },
+          { key: "pickup" as const, label: "Pickup", icon: <ShoppingBag className="h-6 w-6 text-blue-500" />, data: by_delivery_method.pickup },
+          { key: "inhouse" as const, label: "In-House Delivery", icon: <Logo className="h-6 w-6 object-contain" />, data: by_delivery_method.inhouse },
+          { key: "uber_direct" as const, label: "Uber Direct", icon: <SiUber className="h-7 w-7" />, data: by_delivery_method.uber_direct },
         ]).map((item) => (
-          <Card key={item.key} className="bg-muted/30">
+          <Card key={item.key} className="bg-muted/30 border-none shadow-sm">
             <CardContent className="pt-4 pb-3 text-center">
-              <div className="mx-auto mb-1 w-fit">{item.icon}</div>
+              <div className="mx-auto w-10 h-10 flex items-center justify-center mb-2">
+                {item.icon}
+              </div>
               <p className="text-xs text-muted-foreground">{item.label}</p>
               <p className="font-semibold text-sm">{fmtDollars(item.data.earnings)}</p>
               <p className="text-xs text-muted-foreground">{formatNumber(item.data.count)} orders</p>
@@ -506,17 +564,20 @@ function OrderDetailSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const [isDownloading, setIsDownloading] = useState(false);
+  const { toast } = useToast();
+
   if (!order) return null;
 
   const revenueItems = [
     { label: "Shop Charge (Food Total)", value: order.shopcharge, icon: <Receipt className="h-4 w-4" /> },
+    { label: "Tax Collected", value: order.commission, icon: <Receipt className="h-4 w-4" /> },
     { label: "Tip (Chef)", value: order.tip_chef, icon: <TrendingUp className="h-4 w-4" />, highlight: true },
-  ];
+  ].filter(item => item.value > 0 || item.label === "Shop Charge (Food Total)" || item.label === "Tax Collected");
 
   const deductions = [
     { label: "Discount Applied", value: order.discount_amt },
     { label: "Stripe Processing Fee", value: order.stripe_fee },
-    { label: "Platform Commission", value: order.commission },
   ];
 
   return (
@@ -630,6 +691,63 @@ function OrderDetailSheet({
             </div>
             <p className="text-2xl font-bold text-green-700">{fmtDollars(order.chef_earnings)}</p>
           </div>
+
+          <div className="pt-2">
+            <Button 
+              className="w-full" 
+              variant="outline" 
+              disabled={isDownloading}
+              onClick={async () => {
+                try {
+                  setIsDownloading(true);
+                  const d = parsePhpDateToDate(order.order_time);
+                  if (!d) throw new Error("Invalid order date");
+                  
+                  const currentFirebaseUser = auth.currentUser;
+                  if (!currentFirebaseUser) throw new Error("Not authenticated");
+                  const token = await currentFirebaseUser.getIdToken();
+                  
+                  const dateParam = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+                  
+                  const res = await fetch(`/api/chef/seller/orders/${order.id}/invoice?date=${dateParam}`, {
+                    headers: {
+                      Authorization: `Bearer ${token}`
+                    }
+                  });
+                  
+                  if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.message || "Failed to download invoice");
+                  }
+                  
+                  const blob = await res.blob();
+                  const url = window.URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = `invoice-${order.id}.pdf`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  window.URL.revokeObjectURL(url);
+                } catch (error) {
+                  toast({
+                    title: "Download Failed",
+                    description: error instanceof Error ? error.message : "Could not download invoice",
+                    variant: "destructive"
+                  });
+                } finally {
+                  setIsDownloading(false);
+                }
+              }}
+            >
+              {isDownloading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              {isDownloading ? "Downloading..." : "Download Invoice PDF"}
+            </Button>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
@@ -721,6 +839,15 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
       },
     },
     {
+      accessorKey: "commission",
+      header: () => <div className="text-right w-full pr-2">Tax</div>,
+      cell: ({ row }) => (
+        <div className="text-right pr-2">
+          {fmtDollars(row.original.commission)}
+        </div>
+      ),
+    },
+    {
       accessorKey: "chef_earnings",
       header: ({ column }) => (
         <Button
@@ -765,6 +892,225 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
       ),
     },
   ];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SELLER ANALYTICS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: string | number }) {
+  const dateFilters = useMemo(() => getDateFiltersForPeriod(period), [period]);
+  
+  const { data, isLoading } = useSellerOrders({
+    status: "all",
+    page: 1,
+    limit: 1000,
+    startDate: dateFilters.startDate,
+  });
+
+  const [geoData, setGeoData] = useState<{ topAreas: { area: string; count: number }[] } | null>(null);
+  const [geoLoading, setGeoLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchGeo() {
+      try {
+        const response = await fetch(`/api/analytics/seller/${sellerId}`);
+        if (response.ok) {
+          setGeoData(await response.json());
+        }
+      } catch (error) {
+        // ignore
+      } finally {
+        setGeoLoading(false);
+      }
+    }
+    if (sellerId) {
+      fetchGeo();
+    } else {
+      setGeoLoading(false);
+    }
+  }, [sellerId]);
+
+  const orders = useMemo(() => data?.orders ?? [], [data?.orders]);
+
+  const analytics = useMemo(() => {
+    if (orders.length === 0) return null;
+
+    let totalRevenue = 0;
+    let totalTax = 0;
+    const uniqueCustomers = new Set<string>();
+    const returningCustomers = new Set<string>();
+    const itemCounts: Record<string, { qty: number, revenue: number }> = {};
+    const hourCounts: Record<string, number> = {};
+
+    orders.forEach(o => {
+      totalRevenue += Number(o.shopcharge) || 0;
+      totalTax += Number(o.commission) || 0;
+      
+      const cname = (o.customer_name || 'Guest').trim().toLowerCase();
+      if (uniqueCustomers.has(cname)) {
+        returningCustomers.add(cname);
+      }
+      uniqueCustomers.add(cname);
+
+      const d = parsePhpDateToDate(o.order_time);
+      if (d) {
+        const hour = d.getHours();
+        const timeWindow = hour < 12 ? 'Morning (6am-12pm)' : hour < 17 ? 'Afternoon (12pm-5pm)' : 'Evening (5pm+)';
+        hourCounts[timeWindow] = (hourCounts[timeWindow] || 0) + 1;
+      }
+
+      // Items
+      const items = o.items_description
+        .split(/<br\s*\/?>|\n/i)
+        .map((item) => item.trim())
+        .filter(Boolean);
+      
+      items.forEach(itemStr => {
+        const qtyMatch = itemStr.match(/\(x(\d+)\)/i);
+        const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+        
+        const priceMatch = itemStr.match(/\(\$([\d.]+)\)/) || itemStr.match(/\$\([\d.]+\)/) || itemStr.match(/\$([\d.]+)/);
+        const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+        
+        const name = itemStr.replace(/\(x\d+\)/i, '').replace(/\(\$[\d.]+\)/, '').replace(/\$[\d.]+/, '').trim();
+        
+        if (name) {
+          if (!itemCounts[name]) itemCounts[name] = { qty: 0, revenue: 0 };
+          itemCounts[name].qty += qty;
+          itemCounts[name].revenue += (qty * price);
+        }
+      });
+    });
+
+    const aov = totalRevenue / orders.length;
+    const returningPct = uniqueCustomers.size > 0 ? (returningCustomers.size / uniqueCustomers.size) * 100 : 0;
+    
+    const topItems = Object.entries(itemCounts)
+      .sort((a, b) => b[1].qty - a[1].qty)
+      .slice(0, 5)
+      .map(([name, stats]) => ({ name, ...stats }));
+
+    const peakHours = Object.entries(hourCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([window, count]) => ({ window, count }));
+
+    return { aov, returningPct, topItems, peakHours, totalTax };
+  }, [orders]);
+
+  if (isLoading) {
+    return (
+      <Card className="mb-6">
+        <CardContent className="pt-6"><Skeleton className="h-48 w-full" /></CardContent>
+      </Card>
+    );
+  }
+
+  if (!analytics) return null;
+
+  return (
+    <Card className="mb-6 overflow-hidden">
+      <CardHeader className="pb-4 bg-muted/10 border-b">
+        <CardTitle className="text-xl font-semibold flex items-center gap-2">
+          <TrendingUp className="h-5 w-5 text-blue-600" />
+          Business & Geographical Insights
+        </CardTitle>
+        <CardDescription>Comprehensive analytics for your performance and customer demographics</CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x">
+          
+          {/* Business Analytics Column */}
+          <div className="p-6 lg:col-span-2 space-y-6">
+            <h3 className="text-base font-semibold flex items-center gap-2">
+              <Store className="h-4 w-4" />
+              Sales & Engagement
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Receipt className="h-4 w-4"/>Total Tax Collected</p>
+                <p className="text-2xl font-bold text-orange-600">{fmtDollars(analytics.totalTax)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-muted-foreground flex items-center gap-2"><DollarSign className="h-4 w-4"/>Average Order Value</p>
+                <p className="text-2xl font-bold">{fmtDollars(analytics.aov)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Users className="h-4 w-4"/>Returning Customers</p>
+                <p className="text-2xl font-bold">{analytics.returningPct.toFixed(1)}%</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Clock className="h-4 w-4"/>Peak Hours</h4>
+                <div className="space-y-2">
+                  {analytics.peakHours.map((ph, i) => (
+                    <div key={i} className="flex justify-between items-center text-sm p-2 bg-muted/30 rounded-md">
+                      <span>{ph.window}</span>
+                      <span className="font-medium">{ph.count} orders</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              {analytics.topItems.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Star className="h-4 w-4"/>Top Selling Items</h4>
+                  <div className="space-y-2">
+                    {analytics.topItems.slice(0, 4).map((item, i) => (
+                      <div key={i} className="flex justify-between items-center text-sm p-2 bg-muted/30 rounded-md">
+                        <span className="font-medium truncate pr-2" title={item.name}>{item.name}</span>
+                        <div className="text-right flex-shrink-0">
+                          <span className="font-bold">{item.qty}x</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Geographical Analytics Column */}
+          <div className="p-6 lg:col-span-1 bg-muted/5">
+            <h3 className="text-base font-semibold flex items-center gap-2 mb-6">
+              <MapPin className="h-4 w-4 text-rose-500" />
+              Top Delivery Areas
+            </h3>
+            
+            {geoLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            ) : !geoData || geoData.topAreas.length === 0 ? (
+              <div className="text-center text-muted-foreground py-8 text-sm">
+                No location data available
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {geoData.topAreas.map((area, i) => {
+                  const totalOrders = geoData.topAreas.reduce((sum, item) => sum + item.count, 0);
+                  const percentage = totalOrders > 0 ? (area.count / totalOrders) * 100 : 0;
+                  return (
+                    <div key={i} className="space-y-1.5">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium">{area.area}</span>
+                        <span className="text-muted-foreground font-medium text-xs">{percentage.toFixed(1)}% ({area.count})</span>
+                      </div>
+                      <Progress value={percentage} className="h-1.5 bg-muted-foreground/20" />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -846,7 +1192,7 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" className="w-full sm:w-auto">
           <Download className="h-4 w-4 mr-1.5" />
           Export Report
         </Button>
@@ -864,7 +1210,7 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
               <Button variant="outline" size="sm" onClick={handleMonthlyPreset}>Last Month</Button>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">Start Date</label>
               <input 
@@ -904,7 +1250,7 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
   );
 }
 
-function SellerOrderHistory() {
+function SellerOrderHistory({ period }: { period: string }) {
   const [payoutFilter, setPayoutFilter] = useState<"all" | "due" | "paid">("all");
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -913,10 +1259,13 @@ function SellerOrderHistory() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const { toast } = useToast();
 
+  const dateFilters = useMemo(() => getDateFiltersForPeriod(period), [period]);
+
   const { data, isLoading, isError, refetch } = useSellerOrders({
     status: payoutFilter,
     page,
     limit: 50,
+    startDate: dateFilters.startDate,
   });
 
   const orders = useMemo(() => data?.orders ?? [], [data?.orders]);
@@ -970,15 +1319,15 @@ function SellerOrderHistory() {
                 {filteredOrders.length} of {orders.length} order{orders.length !== 1 ? "s" : ""}
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="relative">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+              <div className="relative w-full sm:w-auto">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="text"
                   placeholder="Search orders..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-8 w-[180px] lg:w-[220px]"
+                  className="pl-9 pr-8 w-full sm:w-[180px] lg:w-[220px]"
                 />
                 {searchQuery && (
                   <Button
@@ -992,7 +1341,7 @@ function SellerOrderHistory() {
                 )}
               </div>
               <ExportReportModal orders={orders} />
-              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
+              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading} className="w-full sm:w-auto">
                 <RefreshCw className={cn("h-4 w-4 mr-1.5", isLoading && "animate-spin")} />
                 Refresh
               </Button>
@@ -1132,7 +1481,7 @@ function SellerOrderHistory() {
 // STRIPE DASHBOARD BUTTON
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function StripeDashboardButton() {
+function StripeDashboardButton({ className }: { className?: string }) {
   const { data: shopStatus } = useShopStatus();
   const dashboardLinkMutation = useStripeDashboardLink();
 
@@ -1148,7 +1497,7 @@ function StripeDashboardButton() {
   };
 
   return (
-    <Button variant="outline" onClick={handleOpenDashboard} disabled={dashboardLinkMutation.isPending} className="gap-2">
+    <Button variant="outline" onClick={handleOpenDashboard} disabled={dashboardLinkMutation.isPending} className={cn("gap-2", className)}>
       {dashboardLinkMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
       View Stripe Dashboard
     </Button>
@@ -1159,7 +1508,7 @@ function StripeDashboardButton() {
 // PHP SELLER DASHBOARD BUTTON
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function PhpSellerDashboardButton() {
+function PhpSellerDashboardButton({ className }: { className?: string }) {
   const handleOpenDashboard = () => {
     const isProd = window.location.hostname === "chef.localcooks.ca";
     const url = isProd
@@ -1169,7 +1518,7 @@ function PhpSellerDashboardButton() {
   };
 
   return (
-    <Button onClick={handleOpenDashboard} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+    <Button onClick={handleOpenDashboard} className={cn("gap-2 bg-blue-600 hover:bg-blue-700 text-white", className)}>
       <Store className="h-4 w-4" />
       Seller Account
     </Button>
@@ -1181,9 +1530,18 @@ function PhpSellerDashboardButton() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function ChefSellerRevenue() {
+  const { user } = useFirebaseAuth();
   const { data: shopStatus, isLoading: statusLoading } = useShopStatus();
   const [period, setPeriod] = useState("all");
-  const { data: summaryData } = useEarningsSummary({ period, enabled: !!shopStatus?.linked });
+  const dateFilters = useMemo(() => getDateFiltersForPeriod(period), [period]);
+  
+  // We need all-time matrix data for the chart, even if current period is filtered
+  const { data: allTimeSummary } = useEarningsSummary({ period: 'all', enabled: !!shopStatus?.linked });
+  const { data: summaryData, isLoading, isError } = useEarningsSummary({ 
+    period, 
+    startDate: dateFilters.startDate,
+    enabled: !!shopStatus?.linked 
+  });
 
   if (statusLoading) {
     return (
@@ -1216,17 +1574,17 @@ export default function ChefSellerRevenue() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Tabs value={period} onValueChange={setPeriod}>
-                <TabsList className="h-8">
-                  <TabsTrigger value="all" className="text-xs px-3 h-7">All Time</TabsTrigger>
-                  <TabsTrigger value="month" className="text-xs px-3 h-7">30 Days</TabsTrigger>
-                  <TabsTrigger value="week" className="text-xs px-3 h-7">7 Days</TabsTrigger>
-                  <TabsTrigger value="today" className="text-xs px-3 h-7">Today</TabsTrigger>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+              <Tabs value={period} onValueChange={setPeriod} className="w-full sm:w-auto">
+                <TabsList className="h-8 w-full sm:w-auto">
+                  <TabsTrigger value="all" className="text-xs px-3 h-7 flex-1 sm:flex-none">All Time</TabsTrigger>
+                  <TabsTrigger value="month" className="text-xs px-3 h-7 flex-1 sm:flex-none">30 Days</TabsTrigger>
+                  <TabsTrigger value="week" className="text-xs px-3 h-7 flex-1 sm:flex-none">7 Days</TabsTrigger>
+                  <TabsTrigger value="today" className="text-xs px-3 h-7 flex-1 sm:flex-none">Today</TabsTrigger>
                 </TabsList>
               </Tabs>
-              <PhpSellerDashboardButton />
-              <StripeDashboardButton />
+              <PhpSellerDashboardButton className="w-full sm:w-auto" />
+              <StripeDashboardButton className="w-full sm:w-auto" />
             </div>
           </div>
 
@@ -1250,8 +1608,9 @@ export default function ChefSellerRevenue() {
           </div>
 
           <EarningsSummaryCards period={period} />
-          <ChefRevenueMatrix data={summaryData?.matrix} />
-          <SellerOrderHistory />
+          <ChefRevenueMatrix data={allTimeSummary?.matrix} period={period} />
+          <SellerAnalytics period={period} sellerId={user?.uid} />
+          <SellerOrderHistory period={period} />
         </>
       )}
 

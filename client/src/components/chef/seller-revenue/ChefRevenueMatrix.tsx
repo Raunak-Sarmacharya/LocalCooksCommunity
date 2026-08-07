@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { 
-  Bar, 
   BarChart, 
+  Bar,
   CartesianGrid, 
   XAxis, 
   YAxis, 
@@ -19,6 +19,7 @@ interface MatrixData {
   orders: number;
   tips: number;
   commission: number;
+  stripe_fee?: number;
 }
 
 interface ChefRevenueMatrixProps {
@@ -26,15 +27,33 @@ interface ChefRevenueMatrixProps {
     weekly: MatrixData[];
     monthly: MatrixData[];
   };
+  period?: string;
 }
 
-export function ChefRevenueMatrix({ data }: ChefRevenueMatrixProps) {
+export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
   const [view, setView] = useState<"weekly" | "monthly">("monthly");
+
+  React.useEffect(() => {
+    if (period === 'week' || period === 'today') {
+      setView('weekly');
+    } else if (period === 'month' || period === 'all') {
+      setView('monthly');
+    }
+  }, [period]);
 
   const chartData = useMemo(() => {
     if (!data) return [];
-    return view === "weekly" ? data.weekly : data.monthly;
-  }, [data, view]);
+    const baseData = view === "weekly" ? data.weekly : data.monthly;
+    if (!baseData) return [];
+
+    if (period === 'today' || period === 'week') {
+      return baseData.slice(-1);
+    } else if (period === 'month') {
+      return view === "weekly" ? baseData.slice(-4) : baseData.slice(-1);
+    }
+    
+    return baseData;
+  }, [data, view, period]);
 
   // Format the period string to be more readable
   const formattedData = useMemo(() => {
@@ -55,9 +74,15 @@ export function ChefRevenueMatrix({ data }: ChefRevenueMatrixProps) {
           formattedPeriod = `Week ${week}, ${year}`;
         }
       }
+      
+      const deductions = (item.stripe_fee ?? 0) || ((item.gross_sales || 0) - (item.earnings || 0));
+      const base_earnings = Math.max(0, (item.earnings || 0) - (item.tips || 0));
+      
       return {
         ...item,
-        formattedPeriod
+        formattedPeriod,
+        deductions: Math.max(0, deductions),
+        base_earnings,
       };
     });
   }, [chartData, view]);
@@ -67,13 +92,21 @@ export function ChefRevenueMatrix({ data }: ChefRevenueMatrixProps) {
   }
 
   const chartConfig = {
-    earnings: {
-      label: "Net Earnings",
+    gross_sales: {
+      label: "Gross Sales",
+      color: "hsl(var(--chart-1))",
+    },
+    base_earnings: {
+      label: "Base Earnings",
       color: "hsl(var(--chart-2))",
     },
     tips: {
       label: "Tips",
       color: "hsl(var(--chart-3))",
+    },
+    deductions: {
+      label: "Stripe & Fees",
+      color: "hsl(var(--destructive))",
     }
   };
 
@@ -84,7 +117,7 @@ export function ChefRevenueMatrix({ data }: ChefRevenueMatrixProps) {
           <CardTitle className="text-xl font-bold">Revenue Metrics</CardTitle>
           <CardDescription>Analyze your sales and earnings over time</CardDescription>
         </div>
-        <Tabs value={view} onValueChange={(v) => setView(v as "weekly" | "monthly")} className="w-[200px]">
+        <Tabs value={view} onValueChange={(v) => setView(v as "weekly" | "monthly")} className="w-full sm:w-[200px]">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="weekly">Weekly</TabsTrigger>
             <TabsTrigger value="monthly">Monthly</TabsTrigger>
@@ -113,11 +146,12 @@ export function ChefRevenueMatrix({ data }: ChefRevenueMatrixProps) {
                   />
                   <ChartTooltip 
                     content={<ChartTooltipContent indicator="dot" />}
-                    cursor={{ fill: "hsl(var(--muted)/0.4)" }}
+                    cursor={{ fill: "hsl(var(--muted)/0.1)" }}
                   />
                   <Legend wrapperStyle={{ paddingTop: "20px" }} />
-                  <Bar dataKey="earnings" name="Net Earnings" fill="var(--color-earnings)" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="tips" name="Tips" fill="var(--color-tips)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="base_earnings" name="Base Earnings" stackId="revenue" fill="var(--color-base_earnings)" />
+                  <Bar dataKey="tips" name="Tips" stackId="revenue" fill="var(--color-tips)" />
+                  <Bar dataKey="deductions" name="Stripe & Fees" stackId="revenue" fill="var(--color-deductions)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartContainer>
