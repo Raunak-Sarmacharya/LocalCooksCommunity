@@ -556,7 +556,7 @@ function EarningsSummaryCards({ period }: { period: string }) {
             color: "text-blue-700",
             bg: "bg-blue-100",
             data: by_delivery_method.inhouse,
-            tooltip: "Revenue from orders delivered by your own staff. This is one of the three components that sum up to your Total Earnings."
+            tooltip: "Revenue from orders delivered by Local Cooks delivery partners. This is one of the three components that sum up to your Total Earnings."
           },
           { 
             key: "uber_direct" as const, 
