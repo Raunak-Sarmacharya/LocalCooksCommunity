@@ -459,6 +459,16 @@ function EarningsSummaryCards({ period }: { period: string }) {
   const { earnings, by_delivery_method } = data;
   const summaryCards = [
     {
+      label: "Total Earnings",
+      value: earnings.total_earnings,
+      subtitle: `${formatNumber(earnings.total_orders + earnings.total_pre_orders)} orders (Includes Tips)`,
+      count: earnings.total_orders + earnings.total_pre_orders,
+      icon: <DollarSign className="h-5 w-5 text-blue-600" />,
+      color: "text-blue-700",
+      bg: "bg-blue-100",
+      tooltip: "Your total revenue generated across all payment statuses (Due + Paid). This amount already includes all tips, and is exactly equal to the sum of your Pickup, In-House Delivery, and Uber Direct earnings.",
+    },
+    {
       label: "Due Earnings",
       value: earnings.total_due,
       count: data.by_payment_status.due.count,
@@ -477,20 +487,13 @@ function EarningsSummaryCards({ period }: { period: string }) {
       tooltip: "Funds that have been successfully deposited into your connected bank account by Stripe. It may take 1-2 business days for your bank to reflect the transfer.",
     },
     {
-      label: "Total Earnings",
-      value: earnings.total_earnings,
-      count: earnings.total_orders + earnings.total_pre_orders,
-      icon: <DollarSign className="h-5 w-5 text-blue-600" />,
-      color: "text-blue-700",
-      bg: "bg-blue-100",
-    },
-    {
-      label: "Tips Received",
+      label: "Tips (Included in Total)",
       value: earnings.total_tips,
       subtitle: `${((earnings.total_tips / (earnings.total_earnings || 1)) * 100).toFixed(1)}% tip rate`,
       icon: <TrendingUp className="h-5 w-5 text-purple-600" />,
       color: "text-purple-700",
       bg: "bg-purple-100",
+      tooltip: "Total tips provided by your customers. Note: These tips are already included in your Total Earnings figure.",
     },
   ];
 
@@ -502,7 +505,7 @@ function EarningsSummaryCards({ period }: { period: string }) {
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5 h-5">
                 {card.label}
-                {(card.label === "Due Earnings" || card.label === "Paid Earnings") && (
+                {card.tooltip && (
                   <Popover>
                     <PopoverTrigger asChild>
                       <button type="button" className="inline-flex items-center justify-center p-0 m-0 border-none bg-transparent outline-none ring-0">
@@ -522,7 +525,7 @@ function EarningsSummaryCards({ period }: { period: string }) {
               </div>
             </CardHeader>
             <CardContent>
-              <div className={cn("text-2xl font-bold", card.color)}>{fmtDollars(card.value)}</div>
+              <div className="text-2xl font-bold">{fmtDollars(card.value)}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 {card.subtitle || `${formatNumber(card.count ?? 0)} orders`}
               </p>
@@ -531,7 +534,9 @@ function EarningsSummaryCards({ period }: { period: string }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="pt-2">
+        <h3 className="text-sm font-medium text-muted-foreground mb-3 px-1">Earnings by Delivery Method</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {([
           { 
             key: "pickup" as const, 
@@ -540,7 +545,8 @@ function EarningsSummaryCards({ period }: { period: string }) {
             bgIcon: <PickupOrderIcon className="h-20 w-20 text-emerald-600" />,
             color: "text-emerald-700",
             bg: "bg-emerald-100",
-            data: by_delivery_method.pickup 
+            data: by_delivery_method.pickup,
+            tooltip: "Revenue from orders picked up directly by the customer from your location. This is one of the three components that sum up to your Total Earnings."
           },
           { 
             key: "inhouse" as const, 
@@ -549,7 +555,8 @@ function EarningsSummaryCards({ period }: { period: string }) {
             bgIcon: <img src={locoLogo} alt="Local Cooks" className="h-20 w-20 object-contain grayscale" />,
             color: "text-blue-700",
             bg: "bg-blue-100",
-            data: by_delivery_method.inhouse 
+            data: by_delivery_method.inhouse,
+            tooltip: "Revenue from orders delivered by your own staff. This is one of the three components that sum up to your Total Earnings."
           },
           { 
             key: "uber_direct" as const, 
@@ -558,7 +565,8 @@ function EarningsSummaryCards({ period }: { period: string }) {
             bgIcon: <SiUber className="h-20 w-20 text-slate-800 dark:text-slate-200" />,
             color: "text-slate-800 dark:text-slate-100",
             bg: "bg-slate-100 dark:bg-slate-800",
-            data: by_delivery_method.uber_direct 
+            data: by_delivery_method.uber_direct,
+            tooltip: "Revenue from orders delivered via the Uber Direct integration. This is one of the three components that sum up to your Total Earnings."
           },
         ]).map((item) => (
           <Card key={item.key} className="relative overflow-hidden group border-muted shadow-sm">
@@ -570,19 +578,34 @@ function EarningsSummaryCards({ period }: { period: string }) {
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5 h-5">
                 {item.label}
+                {item.tooltip && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button type="button" className="inline-flex items-center justify-center p-0 m-0 border-none bg-transparent outline-none ring-0">
+                        <Info className="h-4 w-4 text-muted-foreground/70 hover:text-muted-foreground cursor-help" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent side="top" className="w-[280px] p-3 shadow-md">
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {item.tooltip}
+                      </p>
+                    </PopoverContent>
+                  </Popover>
+                )}
               </CardTitle>
               <div className={cn("w-10 h-10 rounded-md flex items-center justify-center shrink-0 shadow-sm", item.bg)}>
                 {item.icon}
               </div>
             </CardHeader>
             <CardContent className="relative z-10">
-              <div className={cn("text-2xl font-bold", item.color)}>{fmtDollars(item.data.earnings)}</div>
+              <div className="text-2xl font-bold">{fmtDollars(item.data.earnings)}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 {formatNumber(item.data.count)} orders
               </p>
             </CardContent>
           </Card>
         ))}
+        </div>
       </div>
     </div>
   );
@@ -1074,19 +1097,34 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
-                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5"/>Average Order</p>
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4"><DollarSign className="h-3.5 w-3.5"/>Average Order</p>
                 <p className="text-xl font-bold">{fmtDollars(analytics.aov)}</p>
               </div>
               <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
-                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Users className="h-3.5 w-3.5"/>Returning</p>
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4">
+                  <Users className="h-3.5 w-3.5"/>
+                  <span>Retention Rate</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button type="button" className="inline-flex items-center justify-center p-0 m-0 h-4 w-4 border-none bg-transparent outline-none ring-0">
+                        <Info className="h-3.5 w-3.5 text-muted-foreground/70 hover:text-muted-foreground cursor-help" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent side="top" className="w-[280px] p-3 shadow-md">
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        The percentage of your customers who have placed more than one order.
+                      </p>
+                    </PopoverContent>
+                  </Popover>
+                </p>
                 <p className="text-xl font-bold">{analytics.returningPct.toFixed(1)}%</p>
               </div>
               <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
-                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><ShoppingBag className="h-3.5 w-3.5"/>Items/Order</p>
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4"><ShoppingBag className="h-3.5 w-3.5"/>Items/Order</p>
                 <p className="text-xl font-bold">{analytics.itemsPerOrder.toFixed(1)}</p>
               </div>
               <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
-                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5"/>Pre-Orders</p>
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4"><Calendar className="h-3.5 w-3.5"/>Pre-Orders</p>
                 <p className="text-xl font-bold">{((analytics.preOrderCount / analytics.totalOrders) * 100).toFixed(0)}%</p>
               </div>
             </div>

@@ -130,6 +130,18 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
             <ChartContainer config={chartConfig} className="h-full w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={formattedData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                  <defs>
+                    <pattern
+                      id="deductions-pattern"
+                      width="6"
+                      height="6"
+                      patternUnits="userSpaceOnUse"
+                      patternTransform="rotate(45)"
+                    >
+                      <rect width="6" height="6" fill="var(--color-deductions)" fillOpacity="0.1" />
+                      <path d="M0,0 L0,6" stroke="var(--color-deductions)" strokeWidth="1.5" opacity="0.6" />
+                    </pattern>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted-foreground)/0.2)" />
                   <XAxis 
                     dataKey="formattedPeriod" 
@@ -152,7 +164,7 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
                   <Legend wrapperStyle={{ paddingTop: "20px" }} />
                   <Bar dataKey="base_earnings" name="Base Earnings" stackId="revenue" fill="var(--color-base_earnings)" />
                   <Bar dataKey="tips" name="Tips" stackId="revenue" fill="var(--color-tips)" />
-                  <Bar dataKey="deductions" name="Stripe & Fees" stackId="revenue" fill="var(--color-deductions)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="deductions" name="Stripe & Fees" stackId="revenue" fill="url(#deductions-pattern)" stroke="var(--color-deductions)" strokeWidth={1} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartContainer>
