@@ -1018,6 +1018,135 @@ router.get("/seller/orders", requireChef, requireApprovedSeller, async (req: Req
     }
 });
 
+// Get true retention rate by fetching historical orders
+router.get("/seller/retention", requireChef, requireApprovedSeller, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+
+        const [chef] = await db
+            .select({ phpShopId: users.phpShopId })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+        if (!chef?.phpShopId) {
+            return res.status(400).json({ error: "NO_SHOP_LINKED", message: "Link your seller account first." });
+        }
+
+        const startDateStr = req.query.start_date as string;
+        const endDateStr = req.query.end_date as string;
+
+        // Fetch up to 10000 historical orders
+        const data = await phpBridge.getSellerOrders(chef.phpShopId, {
+            type: 'all',
+            status: 'all',
+            page: 1,
+            limit: 10000,
+        });
+
+        const orders = data.orders || [];
+        if (!orders.length) {
+             return res.json({ retentionRate: 0 });
+        }
+
+        const parseDateString = (dateStr: string) => {
+            if (!dateStr) return 0;
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                // DD-MM-YYYY
+                const [d, m, y] = parts.map(Number);
+                return new Date(y, m - 1, d).getTime();
+            }
+            return new Date(dateStr).getTime();
+        };
+
+        const startTimestamp = startDateStr ? parseDateString(startDateStr) : 0;
+        const endTimestamp = endDateStr ? parseDateString(endDateStr) : Date.now();
+
+        const historicalCustomers = new Set<string>();
+        const periodCustomers = new Set<string>();
+        const periodCustomerCounts = new Map<string, number>();
+
+        const parsePhpDateToTimestamp = (phpDateStr: string): number => {
+            if (!phpDateStr) return 0;
+            try {
+                const match = phpDateStr.match(/^(\d{1,2})-(\d{2})-(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})(AM|PM)$/i);
+                if (match) {
+                    const [, day, month, year, hour, min, sec, meridiem] = match;
+                    const m = parseInt(month, 10) - 1;
+                    let h = parseInt(hour, 10);
+                    if (meridiem.toUpperCase() === "PM" && h !== 12) h += 12;
+                    if (meridiem.toUpperCase() === "AM" && h === 12) h = 0;
+                    return new Date(parseInt(year), m, parseInt(day), h, parseInt(min), parseInt(sec)).getTime();
+                }
+                const match2 = phpDateStr.match(/^(\d{1,2})-(\w{3})-(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})(AM|PM)$/i);
+                if (match2) {
+                    const [, day, month, year, hour, min, sec, meridiem] = match2;
+                    const monthMap: Record<string, number> = {
+                        JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
+                        JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11,
+                    };
+                    const m = monthMap[month.toUpperCase()] ?? 0;
+                    let h = parseInt(hour, 10);
+                    if (meridiem.toUpperCase() === "PM" && h !== 12) h += 12;
+                    if (meridiem.toUpperCase() === "AM" && h === 12) h = 0;
+                    return new Date(parseInt(year), m, parseInt(day), h, parseInt(min), parseInt(sec)).getTime();
+                }
+                const cleanDate = phpDateStr.replace(/ - /, ' ');
+                const fallback = new Date(cleanDate);
+                return isNaN(fallback.getTime()) ? 0 : fallback.getTime();
+            } catch {
+                return 0;
+            }
+        };
+
+        orders.forEach((o: any) => {
+            const customerName = (o.customer_name || 'Guest').trim().toLowerCase();
+            const orderTimestamp = parsePhpDateToTimestamp(o.order_time);
+            
+            if (orderTimestamp > 0) {
+                if (orderTimestamp < startTimestamp) {
+                    historicalCustomers.add(customerName);
+                } else if (orderTimestamp >= startTimestamp && orderTimestamp <= endTimestamp) {
+                    periodCustomers.add(customerName);
+                    periodCustomerCounts.set(customerName, (periodCustomerCounts.get(customerName) || 0) + 1);
+                }
+            }
+        });
+
+        const s = historicalCustomers.size;
+        const e = periodCustomers.size;
+        let n = 0;
+
+        periodCustomers.forEach(customer => {
+            if (!historicalCustomers.has(customer)) {
+                n++;
+            }
+        });
+
+        let retentionRate = 0;
+        if (s > 0) {
+            retentionRate = ((e - n) / s) * 100;
+        } else {
+            let repeaters = 0;
+            periodCustomerCounts.forEach(count => {
+                if (count > 1) repeaters++;
+            });
+            if (e > 0) {
+                retentionRate = (repeaters / e) * 100;
+            }
+        }
+
+        console.log(`[Retention Calculation] Start: ${startDateStr}, End: ${endDateStr}`);
+        console.log(`[Retention Calculation] S: ${s}, E: ${e}, N: ${n}, Rate: ${retentionRate}%`);
+
+        res.json({ retentionRate: Math.max(0, retentionRate) });
+    } catch (error) {
+        logger.error('[Seller Revenue] Error calculating retention:', error);
+        return errorResponse(res, error);
+    }
+});
+
 // Get Stripe Express Dashboard link via PHP bridge
 router.get("/seller/stripe-dashboard", requireChef, requireApprovedSeller, async (req: Request, res: Response) => {
     try {

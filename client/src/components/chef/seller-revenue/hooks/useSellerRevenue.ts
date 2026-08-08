@@ -231,3 +231,26 @@ export function useStripeDashboardLink() {
     },
   });
 }
+
+export function useSellerRetention(options: { startDate?: string; endDate?: string; enabled?: boolean } = {}) {
+  const { startDate, endDate, enabled = true } = options;
+
+  return useQuery<{ retentionRate: number }>({
+    queryKey: ["/api/chef/seller/retention", startDate, endDate],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (startDate) params.set("start_date", startDate);
+      if (endDate) params.set("end_date", endDate);
+
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/chef/seller/retention?${params}`, { headers });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || "Failed to fetch retention rate");
+      }
+      return res.json();
+    },
+    enabled,
+    staleTime: 60_000,
+  });
+}

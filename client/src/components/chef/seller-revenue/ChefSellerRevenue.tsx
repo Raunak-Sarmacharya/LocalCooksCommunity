@@ -92,6 +92,7 @@ import {
   useEarningsSummary,
   useSellerOrders,
   useStripeDashboardLink,
+  useSellerRetention,
 } from "./hooks/useSellerRevenue";
 import type { SellerOrder } from "./hooks/useSellerRevenue";
 import { ChefRevenueMatrix } from "./ChefRevenueMatrix";
@@ -105,7 +106,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 // HELPERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function getDateFiltersForPeriod(period: string) {
+function getDateFiltersForPeriod(period: string): { startDate?: string; endDate?: string } {
   if (period === 'all') return {};
   const now = new Date();
   
@@ -961,12 +962,19 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
 function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: string | number }) {
   const dateFilters = useMemo(() => getDateFiltersForPeriod(period), [period]);
   
-  const { data, isLoading } = useSellerOrders({
+  const { data, isLoading: ordersLoading } = useSellerOrders({
     status: "all",
     page: 1,
     limit: 1000,
     startDate: dateFilters.startDate,
   });
+
+  const { data: retentionData, isLoading: retentionLoading } = useSellerRetention({
+    startDate: dateFilters.startDate,
+    endDate: dateFilters.endDate,
+  });
+
+  const isLoading = ordersLoading || retentionLoading;
 
   const orders = useMemo(() => data?.orders ?? [], [data?.orders]);
 
@@ -1035,13 +1043,10 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
     const aov = totalRevenue / orders.length;
     const itemsPerOrder = totalItems / orders.length;
     
-    let returningCount = 0;
-    const topCustomers = Object.values(customerStats).sort((a, b) => b.count - a.count || b.revenue - a.revenue).map(c => {
-      if (c.count > 1) returningCount++;
-      return c;
-    });
+    const customerList = Object.values(customerStats);
+    const topCustomers = customerList.sort((a, b) => b.count - a.count || b.revenue - a.revenue);
     
-    const returningPct = Object.keys(customerStats).length > 0 ? (returningCount / Object.keys(customerStats).length) * 100 : 0;
+    const returningPct = retentionData?.retentionRate ?? 0;
     
     const topItems = Object.entries(itemCounts)
       .sort((a, b) => b[1].qty - a[1].qty)
@@ -1054,7 +1059,7 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
 
     return { 
       aov, 
-      returningPct, 
+      returningPct,
       topItems, 
       peakHours, 
       totalTax,
@@ -1065,7 +1070,7 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
       deliveryCount,
       totalOrders: orders.length
     };
-  }, [orders]);
+  }, [orders, retentionData]);
 
   if (isLoading) {
     return (
@@ -1112,8 +1117,16 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
                     </PopoverTrigger>
                     <PopoverContent side="top" className="w-[280px] p-3 shadow-md">
                       <p className="text-xs leading-relaxed text-muted-foreground">
-                        The percentage of your customers who have placed more than one order.
+                        The percentage of your past customers who returned to make another purchase during this period.
                       </p>
+                      <a 
+                        href="https://www.bdc.ca/en/articles-tools/entrepreneur-toolkit/templates-business-guides/glossary/customer-retention-rate" 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-xs text-blue-600 hover:underline mt-2 inline-block font-medium"
+                      >
+                        Learn more about Retention Rate (BDC)
+                      </a>
                     </PopoverContent>
                   </Popover>
                 </p>
