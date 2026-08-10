@@ -209,6 +209,7 @@ interface EquipmentListing {
   equipmentType: string;
   brand?: string;
   model?: string;
+  description?: string | null;
   availabilityType: 'included' | 'rental';
   sessionRate?: number; // Flat per-session rate in dollars (converted from cents)
   currency?: string;
@@ -406,8 +407,8 @@ function KitchenSelectionCard({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="w-5 h-5 rounded-md bg-emerald-100 flex items-center justify-center">
-                      <Wrench className="w-3 h-3 text-emerald-600" />
+                    <div className="flex h-5 w-5 items-center justify-center rounded-md bg-[#FFF8F5] ring-1 ring-[#F51042]/15">
+                      <Wrench className="h-3 w-3 text-[#F51042]" />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="text-xs">
@@ -420,8 +421,8 @@ function KitchenSelectionCard({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="w-5 h-5 rounded-md bg-violet-100 flex items-center justify-center">
-                      <Package className="w-3 h-3 text-violet-600" />
+                    <div className="flex h-5 w-5 items-center justify-center rounded-md bg-[#F8F8F8] ring-1 ring-[#2C2C2C]/10">
+                      <Package className="h-3 w-3 text-[#6B6B6B]" />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="text-xs">
@@ -691,7 +692,7 @@ function MiniCalendarPreview({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PREMIUM EQUIPMENT CARD - Notion-style clean design
+// EQUIPMENT CARD — brand-restrained, marketplace-clean
 // ═══════════════════════════════════════════════════════════════════════════════
 function EquipmentCard({ 
   equipment, 
@@ -705,60 +706,54 @@ function EquipmentCard({
   return (
     <motion.div
       variants={itemVariants}
-      className={cn(
-        "group relative p-4 rounded-xl border transition-all duration-200",
-        "hover:shadow-md hover:-translate-y-0.5",
-        isIncluded 
-          ? "bg-gradient-to-br from-emerald-50/80 to-white border-emerald-200/60 hover:border-emerald-300" 
-          : "bg-gradient-to-br from-slate-50/80 to-white border-slate-200/60 hover:border-slate-300"
-      )}
+      className="group relative rounded-xl border border-[#2C2C2C]/8 bg-white p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#F51042]/25 hover:shadow-[0_8px_24px_rgba(245,16,66,0.08)]"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <div className={cn(
-              "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
-              isIncluded ? "bg-emerald-100" : "bg-slate-100"
-            )}>
-              <Wrench className={cn(
-                "w-4 h-4",
-                isIncluded ? "text-emerald-600" : "text-slate-600"
-              )} />
+          <div className="flex items-center gap-2.5 mb-1">
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#FFF8F5] ring-1 ring-[#F51042]/10">
+              <Wrench className="h-4 w-4 text-[#F51042]" />
             </div>
             <div className="min-w-0 flex-1">
-              <h4 className="font-semibold text-foreground text-sm leading-tight truncate">
+              <h4 className="truncate text-sm font-semibold leading-tight text-[#1A1A1A]">
                 {equipment.equipmentType}
               </h4>
               {equipment.brand && equipment.model && (
-                <p className="text-xs text-muted-foreground truncate">
+                <p className="truncate text-xs text-[#6B6B6B]">
                   {equipment.brand} {equipment.model}
                 </p>
               )}
             </div>
           </div>
+          {equipment.description && (
+            <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[#6B6B6B]">
+              {equipment.description}
+            </p>
+          )}
           {equipment.category && (
-            <Badge variant="secondary" className="text-[10px] mt-2 capitalize">
+            <span className="mt-2 inline-block rounded-full bg-[#FFF8F5] px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#6B4A4F] ring-1 ring-[#F51042]/10">
               {equipment.category}
-            </Badge>
+            </span>
           )}
         </div>
         
-        <div className="text-right flex-shrink-0">
+        <div className="flex-shrink-0 text-right">
           {isIncluded ? (
-            <div className="flex items-center gap-1 text-emerald-600">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span className="text-xs font-semibold">Included</span>
-            </div>
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#F51042]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#F51042]">
+              Included
+            </span>
           ) : (
             <>
               {equipment.sessionRate && equipment.sessionRate > 0 ? (
                 <div>
-                  <p className="text-sm font-bold text-foreground">
+                  <p className="text-sm font-bold text-[#1A1A1A]">
                     ${equipment.sessionRate.toFixed(2)}
                   </p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">per session</p>
+                  <p className="text-[10px] uppercase tracking-wide text-[#6B6B6B]">per session</p>
                 </div>
-              ) : null}
+              ) : (
+                <span className="text-[10px] font-medium uppercase tracking-wider text-[#6B6B6B]">Rental</span>
+              )}
             </>
           )}
         </div>
@@ -768,7 +763,7 @@ function EquipmentCard({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PREMIUM STORAGE CARD - Elegant display with all details
+// STORAGE CARD — brand-restrained, marketplace-clean
 // ═══════════════════════════════════════════════════════════════════════════════
 function StorageCard({ storage }: { storage: StorageListing }) {
   const getStorageIcon = (type: string) => {
@@ -779,48 +774,36 @@ function StorageCard({ storage }: { storage: StorageListing }) {
     }
   };
   
-  const getStorageColor = (type: string) => {
-    switch (type?.toLowerCase()) {
-      case 'freezer': return { bg: 'bg-cyan-100', text: 'text-cyan-600', border: 'border-cyan-200' };
-      case 'cold': case 'refrigerator': return { bg: 'bg-blue-100', text: 'text-blue-600', border: 'border-blue-200' };
-      default: return { bg: 'bg-amber-100', text: 'text-amber-600', border: 'border-amber-200' };
-    }
-  };
-  
   const StorageIcon = getStorageIcon(storage.storageType);
-  const colors = getStorageColor(storage.storageType);
   
   return (
     <motion.div
       variants={itemVariants}
-      className="group relative p-5 rounded-xl bg-gradient-to-br from-violet-50/50 via-white to-white border border-violet-200/50 hover:border-violet-300 hover:shadow-lg transition-all duration-300"
+      className="group relative rounded-xl border border-[#2C2C2C]/8 bg-white p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-[#F51042]/25 hover:shadow-[0_8px_24px_rgba(245,16,66,0.08)]"
     >
       <div className="flex items-start gap-4">
-        <div className={cn(
-          "w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-105",
-          colors.bg
-        )}>
-          <StorageIcon className={cn("w-6 h-6", colors.text)} />
+        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-[#FFF8F5] ring-1 ring-[#F51042]/10 transition-transform group-hover:scale-105">
+          <StorageIcon className="h-6 w-6 text-[#F51042]" />
         </div>
         
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 flex items-start justify-between gap-3">
             <div>
-              <h4 className="font-semibold text-foreground text-base">
+              <h4 className="text-base font-semibold text-[#1A1A1A]">
                 {storage.name || storage.storageType}
               </h4>
-              <p className="text-xs text-muted-foreground capitalize mt-0.5">
+              <p className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-[#6B4A4F]">
                 {storage.storageType} Storage
               </p>
             </div>
             
             {storage.basePrice !== undefined && storage.basePrice > 0 && (
               <div className="text-right">
-                <p className="text-lg font-bold text-foreground">
+                <p className="text-lg font-bold text-[#1A1A1A]">
                   ${storage.basePrice.toFixed(2)}
                 </p>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                  {storage.pricingModel === 'per-cubic-foot' ? 'base price' : 
+                <p className="text-[10px] uppercase tracking-wide text-[#6B6B6B]">
+                  {storage.pricingModel === 'per-cubic-foot' || storage.pricingModel === 'per_cubic_foot' ? 'base price' : 
                    storage.pricingModel === 'daily' ? 'per day' :
                    storage.pricingModel === 'hourly' ? 'per hour' :
                    storage.pricingModel === 'monthly-flat' ? 'per month' : 'per day'}
@@ -830,37 +813,37 @@ function StorageCard({ storage }: { storage: StorageListing }) {
           </div>
           
           {storage.description && (
-            <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+            <p className="mb-3 text-sm leading-relaxed text-[#6B6B6B] line-clamp-3">
               {storage.description}
             </p>
           )}
           
           <div className="flex flex-wrap items-center gap-2">
             {storage.climateControl && (
-              <Badge variant="outline" className={cn("text-xs gap-1", colors.border, colors.text)}>
-                <Snowflake className="w-3 h-3" />
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF8F5] px-2.5 py-1 text-xs text-[#6B4A4F] ring-1 ring-[#F51042]/10">
+                <Snowflake className="h-3 w-3 text-[#F51042]" />
                 Climate Controlled
-              </Badge>
+              </span>
             )}
             
             {storage.totalVolume && (
-              <Badge variant="secondary" className="text-xs gap-1">
-                <Box className="w-3 h-3" />
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#F8F8F8] px-2.5 py-1 text-xs text-[#6B6B6B] ring-1 ring-[#2C2C2C]/8">
+                <Box className="h-3 w-3" />
                 {storage.totalVolume} ft³
-              </Badge>
+              </span>
             )}
             
             {storage.dimensionsLength && storage.dimensionsWidth && storage.dimensionsHeight && (
-              <Badge variant="secondary" className="text-xs">
+              <span className="rounded-full bg-[#F8F8F8] px-2.5 py-1 text-xs text-[#6B6B6B] ring-1 ring-[#2C2C2C]/8">
                 {storage.dimensionsLength}" × {storage.dimensionsWidth}" × {storage.dimensionsHeight}"
-              </Badge>
+              </span>
             )}
             
-            {storage.pricingModel === 'per_cubic_foot' && storage.pricePerCubicFoot && (
-              <Badge variant="outline" className="text-xs gap-1 border-info/30 text-info">
-                <DollarSign className="w-3 h-3" />
+            {(storage.pricingModel === 'per_cubic_foot' || storage.pricingModel === 'per-cubic-foot') && storage.pricePerCubicFoot && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF8F5] px-2.5 py-1 text-xs text-[#F51042] ring-1 ring-[#F51042]/15">
+                <DollarSign className="h-3 w-3" />
                 +${storage.pricePerCubicFoot.toFixed(2)}/ft³
-              </Badge>
+              </span>
             )}
           </div>
         </div>
@@ -876,12 +859,14 @@ interface KitchenDetailsSectionProps {
   kitchen: PublicKitchen;
   locationAddress?: string;
   locationName?: string;
+  locationDescription?: string | null;
 }
 
 function KitchenDetailsSection({
   kitchen,
   locationAddress,
   locationName,
+  locationDescription,
 }: KitchenDetailsSectionProps) {
   const [activeTab, setActiveTab] = useState("overview");
   
@@ -903,6 +888,7 @@ function KitchenDetailsSection({
   const includedCount = kitchen.equipment?.included?.length || 0;
   const rentalCount = kitchen.equipment?.rental?.length || 0;
   const storageCount = kitchen.storage?.length || 0;
+  const aboutCopy = kitchen.description || locationDescription || null;
 
   return (
     <motion.div
@@ -928,8 +914,8 @@ function KitchenDetailsSection({
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-bold text-foreground">{kitchen.name}</h2>
-                {kitchen.description && (
-                  <p className="text-sm text-muted-foreground mt-1 line-clamp-1">{kitchen.description}</p>
+                {aboutCopy && (
+                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{aboutCopy}</p>
                 )}
               </div>
               <div className="flex items-center gap-2">
@@ -937,7 +923,7 @@ function KitchenDetailsSection({
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger>
-                        <Badge variant="success" className="gap-1">
+                        <Badge className="gap-1 bg-[#F51042]/10 text-[#F51042] hover:bg-[#F51042]/15 border-0">
                           <Sparkles className="w-3 h-3" />
                           {includedCount} Included
                         </Badge>
@@ -947,8 +933,8 @@ function KitchenDetailsSection({
                   </TooltipProvider>
                 )}
                 {storageCount > 0 && (
-                  <Badge variant="info" className="gap-1">
-                    <Package className="w-3 h-3" />
+                  <Badge className="gap-1 bg-[#FFF8F5] text-[#6B4A4F] hover:bg-[#FFE8DD] border border-[#F51042]/15">
+                    <Package className="w-3 h-3 text-[#F51042]" />
                     {storageCount} Storage
                   </Badge>
                 )}
@@ -1010,14 +996,14 @@ function KitchenDetailsSection({
                   className="space-y-6"
                 >
                   {/* Description */}
-                  {kitchen.description && (
+                  {aboutCopy && (
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-muted-foreground" />
-                        About This Kitchen
+                        <FileText className="w-4 h-4 text-[#F51042]" />
+                        {kitchen.description ? "About This Kitchen" : "About This Space"}
                       </h3>
-                      <p className="text-muted-foreground leading-relaxed">
-                        {kitchen.description}
+                      <p className="text-[#6B6B6B] leading-relaxed whitespace-pre-wrap">
+                        {aboutCopy}
                       </p>
                     </div>
                   )}
@@ -1026,7 +1012,7 @@ function KitchenDetailsSection({
                   {kitchen.availability && kitchen.availability.length > 0 && (
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-muted-foreground" />
+                        <Calendar className="w-4 h-4 text-[#F51042]" />
                         Weekly Availability
                       </h3>
                       <AvailabilityDisplay availability={kitchen.availability} />
@@ -1037,7 +1023,7 @@ function KitchenDetailsSection({
                   {kitchen.amenities && Array.isArray(kitchen.amenities) && kitchen.amenities.length > 0 && (
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                        <Star className="w-4 h-4 text-muted-foreground" />
+                        <Star className="w-4 h-4 text-[#F51042]" />
                         Kitchen Amenities
                       </h3>
                       <motion.div 
@@ -1050,9 +1036,9 @@ function KitchenDetailsSection({
                           <motion.span
                             key={index}
                             variants={itemVariants}
-                            className="inline-flex items-center px-3 py-1.5 rounded-full text-sm bg-muted/50 text-foreground border border-border/50 hover:border-primary/30 hover:bg-primary/5 transition-colors"
+                            className="inline-flex items-center rounded-full border border-[#F51042]/10 bg-[#FFF8F5] px-3 py-1.5 text-sm text-[#2C2C2C] transition-colors hover:border-[#F51042]/30"
                           >
-                            <Check className="w-3.5 h-3.5 text-emerald-500 mr-1.5 flex-shrink-0" />
+                            <Check className="mr-1.5 h-3.5 w-3.5 flex-shrink-0 text-[#F51042]" />
                             {amenity}
                           </motion.span>
                         ))}
@@ -1064,7 +1050,7 @@ function KitchenDetailsSection({
                   {locationAddress && (
                     <div className="pt-4 border-t border-border/50">
                       <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-muted-foreground" />
+                        <MapPin className="w-4 h-4 text-[#F51042]" />
                         Location
                       </h3>
                       <LocationMap
@@ -1079,53 +1065,53 @@ function KitchenDetailsSection({
                   {(hasEquipment || hasStorage) && (
                     <div className="pt-4 border-t border-border/50">
                       <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-                        <Zap className="w-4 h-4 text-muted-foreground" />
+                        <Zap className="w-4 h-4 text-[#F51042]" />
                         Quick Overview
                       </h3>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {includedCount > 0 && (
                           <motion.div
                             whileHover={{ scale: 1.02 }}
-                            className="p-4 rounded-xl bg-gradient-to-br from-emerald-50 to-white border border-emerald-200/50 cursor-pointer"
+                            className="cursor-pointer rounded-xl border border-[#F51042]/10 bg-[#FFF8F5] p-4"
                             onClick={() => setActiveTab('equipment')}
                           >
-                            <div className="flex items-center gap-2 mb-1">
-                              <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                                <Sparkles className="w-4 h-4 text-emerald-600" />
+                            <div className="mb-1 flex items-center gap-2">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white ring-1 ring-[#F51042]/15">
+                                <Sparkles className="h-4 w-4 text-[#F51042]" />
                               </div>
                             </div>
-                            <p className="text-2xl font-bold text-foreground">{includedCount}</p>
-                            <p className="text-xs text-muted-foreground">Included Equipment</p>
+                            <p className="text-2xl font-bold text-[#1A1A1A]">{includedCount}</p>
+                            <p className="text-xs text-[#6B6B6B]">Included Equipment</p>
                           </motion.div>
                         )}
                         {rentalCount > 0 && (
                           <motion.div
                             whileHover={{ scale: 1.02 }}
-                            className="p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white border border-slate-200/50 cursor-pointer"
+                            className="cursor-pointer rounded-xl border border-[#2C2C2C]/8 bg-white p-4"
                             onClick={() => setActiveTab('equipment')}
                           >
-                            <div className="flex items-center gap-2 mb-1">
-                              <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
-                                <Wrench className="w-4 h-4 text-slate-600" />
+                            <div className="mb-1 flex items-center gap-2">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F8F8F8] ring-1 ring-[#2C2C2C]/8">
+                                <Wrench className="h-4 w-4 text-[#6B6B6B]" />
                               </div>
                             </div>
-                            <p className="text-2xl font-bold text-foreground">{rentalCount}</p>
-                            <p className="text-xs text-muted-foreground">Rental Equipment</p>
+                            <p className="text-2xl font-bold text-[#1A1A1A]">{rentalCount}</p>
+                            <p className="text-xs text-[#6B6B6B]">Rental Equipment</p>
                           </motion.div>
                         )}
                         {storageCount > 0 && (
                           <motion.div
                             whileHover={{ scale: 1.02 }}
-                            className="p-4 rounded-xl bg-gradient-to-br from-violet-50 to-white border border-violet-200/50 cursor-pointer"
+                            className="cursor-pointer rounded-xl border border-[#2C2C2C]/8 bg-white p-4"
                             onClick={() => setActiveTab('storage')}
                           >
-                            <div className="flex items-center gap-2 mb-1">
-                              <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
-                                <Package className="w-4 h-4 text-violet-600" />
+                            <div className="mb-1 flex items-center gap-2">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF8F5] ring-1 ring-[#F51042]/10">
+                                <Package className="h-4 w-4 text-[#F51042]" />
                               </div>
                             </div>
-                            <p className="text-2xl font-bold text-foreground">{storageCount}</p>
-                            <p className="text-xs text-muted-foreground">Storage Options</p>
+                            <p className="text-2xl font-bold text-[#1A1A1A]">{storageCount}</p>
+                            <p className="text-xs text-[#6B6B6B]">Storage Options</p>
                           </motion.div>
                         )}
                       </div>
@@ -1148,17 +1134,17 @@ function KitchenDetailsSection({
                     {/* Included Equipment */}
                     {kitchen.equipment?.included && kitchen.equipment.included.length > 0 && (
                       <div>
-                        <div className="flex items-center gap-2 mb-4">
-                          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                            <Sparkles className="w-4 h-4 text-emerald-600" />
+                        <div className="mb-4 flex items-center gap-2">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF8F5] ring-1 ring-[#F51042]/10">
+                            <Sparkles className="h-4 w-4 text-[#F51042]" />
                           </div>
                           <div>
-                            <h3 className="font-semibold text-foreground">Included with Booking</h3>
-                            <p className="text-xs text-muted-foreground">No additional cost</p>
+                            <h3 className="font-semibold text-[#1A1A1A]">Included with Booking</h3>
+                            <p className="text-xs text-[#6B6B6B]">No additional cost</p>
                           </div>
-                          <Badge variant="success" className="ml-auto">
+                          <span className="ml-auto rounded-full bg-[#F51042]/10 px-2.5 py-1 text-xs font-semibold text-[#F51042]">
                             {kitchen.equipment.included.length} items
-                          </Badge>
+                          </span>
                         </div>
                         <motion.div 
                           variants={containerVariants}
@@ -1177,17 +1163,17 @@ function KitchenDetailsSection({
                     {kitchen.equipment?.rental && kitchen.equipment.rental.length > 0 && (
                       <div>
                         {includedCount > 0 && <Separator className="my-6" />}
-                        <div className="flex items-center gap-2 mb-4">
-                          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
-                            <DollarSign className="w-4 h-4 text-slate-600" />
+                        <div className="mb-4 flex items-center gap-2">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F8F8F8] ring-1 ring-[#2C2C2C]/8">
+                            <DollarSign className="h-4 w-4 text-[#6B6B6B]" />
                           </div>
                           <div>
-                            <h3 className="font-semibold text-foreground">Available for Rent</h3>
-                            <p className="text-xs text-muted-foreground">Additional rental fees apply</p>
+                            <h3 className="font-semibold text-[#1A1A1A]">Available for Rent</h3>
+                            <p className="text-xs text-[#6B6B6B]">Additional rental fees apply</p>
                           </div>
-                          <Badge variant="outline" className="ml-auto text-muted-foreground">
+                          <span className="ml-auto rounded-full bg-[#F8F8F8] px-2.5 py-1 text-xs font-medium text-[#6B6B6B] ring-1 ring-[#2C2C2C]/8">
                             {kitchen.equipment.rental.length} items
-                          </Badge>
+                          </span>
                         </div>
                         <motion.div 
                           variants={containerVariants}
@@ -1215,13 +1201,13 @@ function KitchenDetailsSection({
                     exit={{ opacity: 0, x: 10 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
-                        <Package className="w-4 h-4 text-violet-600" />
+                    <div className="mb-4 flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF8F5] ring-1 ring-[#F51042]/10">
+                        <Package className="h-4 w-4 text-[#F51042]" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-foreground">Storage Solutions</h3>
-                        <p className="text-xs text-muted-foreground">Secure storage for your ingredients and supplies</p>
+                        <h3 className="font-semibold text-[#1A1A1A]">Storage Solutions</h3>
+                        <p className="text-xs text-[#6B6B6B]">Secure storage for your ingredients and supplies</p>
                       </div>
                     </div>
                     <motion.div 
@@ -1298,7 +1284,7 @@ export default function KitchenPreviewPage() {
     }
   }, [locationData?.kitchens, selectedKitchen]);
 
-  // Fetch equipment and storage when kitchen is selected
+  // Fetch equipment and storage when kitchen is selected (public — works logged out)
   useEffect(() => {
     const fetchKitchenAddons = async () => {
       if (!selectedKitchen) {
@@ -1309,30 +1295,9 @@ export default function KitchenPreviewPage() {
 
       setIsLoadingAddons(true);
       try {
-        // Helper to get auth headers if authenticated
-        const getAuthHeaders = async (): Promise<Record<string, string>> => {
-          if (!isAuthenticated) return {};
-          try {
-            const { auth } = await import("@/lib/firebase");
-            const currentUser = auth.currentUser;
-            if (currentUser) {
-              const token = await currentUser.getIdToken();
-              return { Authorization: `Bearer ${token}` };
-            }
-          } catch (error) {
-            logger.error("Error getting Firebase token:", error);
-          }
-          return {};
-        };
-
-        const headers = await getAuthHeaders();
-
-        // Fetch equipment listings
+        // Fetch equipment listings (public browse endpoint)
         try {
-          const equipmentResponse = await fetch(`/api/chef/kitchens/${selectedKitchen.id}/equipment-listings`, {
-            credentials: "include",
-            headers,
-          });
+          const equipmentResponse = await fetch(`/api/public/kitchens/${selectedKitchen.id}/equipment-listings`);
           if (equipmentResponse.ok) {
             const equipmentData = await equipmentResponse.json();
             setKitchenEquipment({
@@ -1342,8 +1307,9 @@ export default function KitchenPreviewPage() {
                 equipmentType: e.equipmentType,
                 brand: e.brand,
                 model: e.model,
+                description: e.description,
                 availabilityType: e.availabilityType,
-                sessionRate: e.sessionRate ? e.sessionRate / 100 : undefined, // Convert cents to dollars
+                sessionRate: e.sessionRate ? e.sessionRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
               rental: (equipmentData.rental || []).map((e: EquipmentListing & { sessionRate?: number }) => ({
@@ -1352,8 +1318,9 @@ export default function KitchenPreviewPage() {
                 equipmentType: e.equipmentType,
                 brand: e.brand,
                 model: e.model,
+                description: e.description,
                 availabilityType: e.availabilityType,
-                sessionRate: e.sessionRate ? e.sessionRate / 100 : undefined, // Convert cents to dollars
+                sessionRate: e.sessionRate ? e.sessionRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
             });
@@ -1365,12 +1332,9 @@ export default function KitchenPreviewPage() {
           setKitchenEquipment({ included: [], rental: [] });
         }
 
-        // Fetch storage listings
+        // Fetch storage listings (public browse endpoint)
         try {
-          const storageResponse = await fetch(`/api/chef/kitchens/${selectedKitchen.id}/storage-listings`, {
-            credentials: "include",
-            headers,
-          });
+          const storageResponse = await fetch(`/api/public/kitchens/${selectedKitchen.id}/storage-listings`);
           if (storageResponse.ok) {
             const storageData = await storageResponse.json();
             setKitchenStorage((storageData || []).map((s: StorageListing & { basePrice?: number; pricePerCubicFoot?: number }) => ({
@@ -1405,7 +1369,7 @@ export default function KitchenPreviewPage() {
     };
 
     fetchKitchenAddons();
-  }, [selectedKitchen, isAuthenticated]);
+  }, [selectedKitchen]);
 
   const handleGetStarted = () => {
     if (isAuthenticated) {
@@ -1566,8 +1530,8 @@ export default function KitchenPreviewPage() {
                       </div>
                       {totalEquipment > 0 && (
                         <div className="flex items-center gap-1.5 text-sm">
-                          <div className="w-6 h-6 rounded-md bg-emerald-100 flex items-center justify-center">
-                            <Wrench className="w-3.5 h-3.5 text-emerald-600" />
+                          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#FFF8F5] ring-1 ring-[#F51042]/15">
+                            <Wrench className="h-3.5 w-3.5 text-[#F51042]" />
                           </div>
                           <span className="font-medium text-foreground">{totalEquipment}</span>
                           <span className="text-muted-foreground">Equipment</span>
@@ -1575,8 +1539,8 @@ export default function KitchenPreviewPage() {
                       )}
                       {totalStorage > 0 && (
                         <div className="flex items-center gap-1.5 text-sm">
-                          <div className="w-6 h-6 rounded-md bg-violet-100 flex items-center justify-center">
-                            <Package className="w-3.5 h-3.5 text-violet-600" />
+                          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#F8F8F8] ring-1 ring-[#2C2C2C]/10">
+                            <Package className="h-3.5 w-3.5 text-[#6B6B6B]" />
                           </div>
                           <span className="font-medium text-foreground">{totalStorage}</span>
                           <span className="text-muted-foreground">Storage</span>
@@ -1842,6 +1806,7 @@ export default function KitchenPreviewPage() {
                   }}
                   locationAddress={location.address}
                   locationName={location.name}
+                  locationDescription={location.description}
                 />
               ) : (
                 <motion.div
@@ -2085,6 +2050,7 @@ export default function KitchenPreviewPage() {
                     }}
                     locationAddress={location.address}
                     locationName={location.name}
+                    locationDescription={location.description}
                   />
                 ) : (
                   <motion.div

@@ -231,4 +231,49 @@ router.get("/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (r
     }
 });
 
+// ===================================
+// PUBLIC EQUIPMENT ENDPOINTS (browse / preview — no auth)
+// ===================================
+
+router.get("/public/kitchens/:kitchenId/equipment-listings", async (req: Request, res: Response) => {
+    try {
+        const kitchenId = parseInt(req.params.kitchenId);
+        if (isNaN(kitchenId) || kitchenId <= 0) {
+            return res.status(400).json({ error: "Invalid kitchen ID" });
+        }
+
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchen || !kitchen.isActive) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const allListings = await inventoryService.getEquipmentListingsByKitchen(kitchenId);
+        const visibleListings = allListings.filter((listing: any) => listing.isActive === true);
+
+        const sanitize = (l: any) => ({
+            id: l.id,
+            category: l.category,
+            equipmentType: l.equipmentType,
+            brand: l.brand ?? null,
+            model: l.model ?? null,
+            description: l.description ?? null,
+            availabilityType: l.availabilityType,
+            sessionRate: l.sessionRate != null ? Number(l.sessionRate) : 0,
+            currency: l.currency || "CAD",
+        });
+
+        const included = visibleListings.filter((l: any) => l.availabilityType === "included").map(sanitize);
+        const rental = visibleListings.filter((l: any) => l.availabilityType === "rental").map(sanitize);
+
+        res.json({
+            all: [...included, ...rental],
+            included,
+            rental,
+        });
+    } catch (error: any) {
+        logger.error("Error getting public equipment listings:", error);
+        res.status(500).json({ error: error.message || "Failed to get equipment listings" });
+    }
+});
+
 export default router;
