@@ -2091,46 +2091,6 @@ export default function ChefLanding() {
         <TestimonialCarouselSection />
 
         {/* ═══════════════════════════════════════════════════════════════════════
-            FAQ
-        ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="faq" className="scroll-mt-24 py-20 md:py-28 px-4 bg-white">
-          <div className="container mx-auto max-w-3xl">
-            <FadeInSection>
-              <div className="text-center mb-12">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-[#F51042]/10 rounded-full">
-                  Questions
-                </span>
-                <h2 className="font-display text-4xl md:text-5xl text-[#F51042]">FAQ</h2>
-              </div>
-            </FadeInSection>
-
-            <FadeInSection delay={1}>
-              <Accordion type="single" collapsible className="space-y-3">
-                {[
-                  { q: "How do I get paid and how much do I keep?", a: "You keep 100% of your earnings during the trial period—we only deduct Stripe's payment processing fee (2.9% + $0.30 per transaction). Payments hit your bank account every week via direct deposit. No waiting around. No complicated calculations. You cook, customers order, money arrives." },
-                  { q: "What does Local Cooks handle for me?", a: "You focus on what you do best—cooking. We handle everything else. We manage customer orders, process payments securely, coordinate delivery logistics, provide ongoing platform support, and guide you through food safety regulations and certification requirements. We also partner you with verified commercial kitchens if you need them—hourly rentals, no long-term commitments. Think of us as your business operations team. You run the kitchen. We run the rest." },
-                  { q: "How long does approval take?", a: "Most approvals happen within 24 hours. We review your food handler certification, verify your kitchen access, and get you live fast—so you can start earning as soon as possible. Your dedicated onboarding specialist will guide you through the process step-by-step and answer any questions along the way." },
-                  { q: "Do I need a commercial kitchen?", a: "No. You can cook from your licensed home kitchen or rent one of our partner commercial kitchens by the hour. Choose what works for you—no long-term commitments, no hidden fees. We'll guide you through the certification requirements for your setup and help you understand local food safety regulations so you launch with confidence." },
-                  { q: "What happens during the trial?", a: "Your trial is your risk-free window to test the platform without any pressure. You keep 100% of your sales (minus Stripe's processing fee only—zero platform fees). No contracts. No commitments. No strings attached. Use this time to build your menu, connect with your first customers, understand how the platform works, and see if it's the right fit for your culinary business. If it's not, walk away anytime with no penalties." },
-                  { q: "Can I do this part-time?", a: "Yes. Set your own hours, take orders when you want, and pause your availability anytime. Local Cooks works around your schedule—whether you're doing this full-time or alongside other work. Many of our chefs use Local Cooks as a side income stream or test their menu before going full-time. It's completely flexible." },
-                  { q: "Can I leave anytime?", a: "Yes. No contracts. No penalties. No minimum commitment. Pause your profile, take a break, or delete it entirely—your choice, anytime. Your culinary business is yours to control." },
-                  { q: "Can I set my own menu and prices?", a: "Completely. You have full control over your menu, pricing, and availability. Add dishes, remove dishes, adjust prices, update descriptions—all on your terms. Change things anytime based on what your customers love, what's in season, or what you feel like cooking." },
-                ].map((item, i) => (
-                  <AccordionItem key={i} value={`item-${i}`} className="border border-gray-100 rounded-xl bg-white px-6 shadow-sm">
-                    <AccordionTrigger className="text-left text-lg font-semibold text-[#2C2C2C] py-5 hover:no-underline hover:text-[#F51042]">
-                      {item.q}
-                    </AccordionTrigger>
-                    <AccordionContent className="text-[#6B6B6B] pb-5 text-base leading-relaxed">
-                      {item.a}
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            </FadeInSection>
-          </div>
-        </section>
-
-        {/* ═══════════════════════════════════════════════════════════════════════
             RESOURCES — Preview section linking to full Chef Resources page
         ═══════════════════════════════════════════════════════════════════════ */}
         <section id="resources" className="scroll-mt-24 py-20 md:py-28 px-4 bg-gradient-to-b from-gray-50/80 to-white relative overflow-hidden">
@@ -2243,6 +2203,46 @@ export default function ChefLanding() {
                   </span>
                 </div>
               </div>
+            </FadeInSection>
+          </div>
+        </section>
+
+        {/* ═══════════════════════════════════════════════════════════════════════
+            FAQ
+        ═══════════════════════════════════════════════════════════════════════ */}
+        <section id="faq" className="scroll-mt-24 py-20 md:py-28 px-4 bg-white">
+          <div className="container mx-auto max-w-3xl">
+            <FadeInSection>
+              <div className="text-center mb-12">
+                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-[#F51042]/10 rounded-full">
+                  Questions
+                </span>
+                <h2 className="font-display text-4xl md:text-5xl text-[#F51042]">FAQ</h2>
+              </div>
+            </FadeInSection>
+
+            <FadeInSection delay={1}>
+              <Accordion type="single" collapsible className="space-y-3">
+                {[
+                  { q: "How do I get paid and how much do I keep?", a: "You keep 100% of your earnings during the trial period—we only deduct Stripe's payment processing fee (2.9% + $0.30 per transaction). Payments hit your bank account every week via direct deposit. No waiting around. No complicated calculations. You cook, customers order, money arrives." },
+                  { q: "What does Local Cooks handle for me?", a: "You focus on what you do best—cooking. We handle everything else. We manage customer orders, process payments securely, coordinate delivery logistics, provide ongoing platform support, and guide you through food safety regulations and certification requirements. We also partner you with verified commercial kitchens if you need them—hourly rentals, no long-term commitments. Think of us as your business operations team. You run the kitchen. We run the rest." },
+                  { q: "How long does approval take?", a: "Most approvals happen within 24 hours. We review your food handler certification, verify your kitchen access, and get you live fast—so you can start earning as soon as possible. Your dedicated onboarding specialist will guide you through the process step-by-step and answer any questions along the way." },
+                  { q: "Do I need a commercial kitchen?", a: "No. You can cook from your licensed home kitchen or rent one of our partner commercial kitchens by the hour. Choose what works for you—no long-term commitments, no hidden fees. We'll guide you through the certification requirements for your setup and help you understand local food safety regulations so you launch with confidence." },
+                  { q: "What happens during the trial?", a: "Your trial is your risk-free window to test the platform without any pressure. You keep 100% of your sales (minus Stripe's processing fee only—zero platform fees). No contracts. No commitments. No strings attached. Use this time to build your menu, connect with your first customers, understand how the platform works, and see if it's the right fit for your culinary business. If it's not, walk away anytime with no penalties." },
+                  { q: "Can I do this part-time?", a: "Yes. Set your own hours, take orders when you want, and pause your availability anytime. Local Cooks works around your schedule—whether you're doing this full-time or alongside other work. Many of our chefs use Local Cooks as a side income stream or test their menu before going full-time. It's completely flexible." },
+                  { q: "Can I leave anytime?", a: "Yes. No contracts. No penalties. No minimum commitment. Pause your profile, take a break, or delete it entirely—your choice, anytime. Your culinary business is yours to control." },
+                  { q: "Can I set my own menu and prices?", a: "Completely. You have full control over your menu, pricing, and availability. Add dishes, remove dishes, adjust prices, update descriptions—all on your terms. Change things anytime based on what your customers love, what's in season, or what you feel like cooking." },
+                ].map((item, i) => (
+                  <AccordionItem key={i} value={`item-${i}`} className="border border-gray-100 rounded-xl bg-white px-6 shadow-sm">
+                    <AccordionTrigger className="text-left text-lg font-semibold text-[#2C2C2C] py-5 hover:no-underline hover:text-[#F51042]">
+                      {item.q}
+                    </AccordionTrigger>
+                    <AccordionContent className="text-[#6B6B6B] pb-5 text-base leading-relaxed">
+                      {item.a}
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
             </FadeInSection>
           </div>
         </section>
