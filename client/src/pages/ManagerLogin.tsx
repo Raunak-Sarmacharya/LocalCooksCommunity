@@ -7,7 +7,7 @@ import LoadingOverlay from "@/components/auth/LoadingOverlay";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
-import { sendEmailVerification } from "firebase/auth";
+// Removed sendEmailVerification from firebase/auth
 // WelcomeScreen removed - managers use ManagerOnboardingWizard instead
 import { motion } from "framer-motion";
 import { Building2, Loader2, LogIn, UserPlus } from "lucide-react";
@@ -47,19 +47,15 @@ export default function ManagerLogin() {
       const currentUser = auth.currentUser;
       if (currentUser) {
         logger.info('📧 Resending Firebase verification email...');
-        const hostname = window.location.hostname;
-        const isLocalhost = hostname === 'localhost' || 
-                           hostname === '127.0.0.1' || 
-                           hostname.endsWith('.localhost');
+        // Send custom verification email
+        const response = await fetch('/api/firebase/send-verification-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: currentUser.email, role: 'manager' })
+        });
         
-        if (isLocalhost) {
-          await sendEmailVerification(currentUser);
-        } else {
-          // ENTERPRISE: Use production subdomain for managers
-          await sendEmailVerification(currentUser, {
-            url: 'https://kitchen.localcooks.ca/manager/login?verified=true',
-            handleCodeInApp: false,
-          });
+        if (!response.ok) {
+          throw new Error('Failed to send verification email');
         }
         logger.info('✅ Firebase verification email resent successfully');
       } else {

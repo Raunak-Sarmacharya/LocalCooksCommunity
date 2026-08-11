@@ -170,7 +170,7 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
           <div className="h-[350px] w-full mt-4">
             <ChartContainer config={chartConfig} className="h-full w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={formattedData} margin={{ top: 10, right: 70, left: 60, bottom: 0 }}>
+                <BarChart data={formattedData} margin={{ top: 10, right: 60, left: 0, bottom: 0 }}>
                   <defs>
                     <pattern
                       id="deductions-pattern"

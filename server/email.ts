@@ -1855,10 +1855,16 @@ The Local Cooks Team
 //   'main'    → localcooks.ca
 export const getSubdomainUrl = (userType: 'chef' | 'kitchen' | 'admin' | 'main' = 'main'): string => {
   const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
-  const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  
+  // Detect environment
+  const isLocalDev = process.env.NODE_ENV === 'development' && !process.env.VERCEL_ENV;
+  
+  // Supabase is used for pre-prod (dev), Neon is used for prod
+  const dbUrl = process.env.DATABASE_URL || '';
+  const isPreProd = dbUrl.includes('supabase') || process.env.VERCEL_ENV === 'preview';
 
   // In development, use localhost (with subdomain prefix if available)
-  if (!isProduction) {
+  if (isLocalDev) {
     const devBase = process.env.BASE_URL || 'http://localhost:5001';
     // If BASE_URL is a localhost URL, use it as-is (subdomain routing handled by client)
     if (devBase.includes('localhost') || devBase.includes('127.0.0.1')) {
@@ -1867,11 +1873,17 @@ export const getSubdomainUrl = (userType: 'chef' | 'kitchen' | 'admin' | 'main' 
     // If BASE_URL is a real domain in dev mode, fall through to production logic
   }
 
+  // Determine prefix based on pre-prod vs prod
+  let prefix = '';
+  if (isPreProd && userType !== 'main') {
+    prefix = 'dev-';
+  }
+
   // Production (and non-localhost dev): Always construct from BASE_DOMAIN
   if (userType === 'main') {
     return `https://${baseDomain}`;
   }
-  return `https://${userType}.${baseDomain}`;
+  return `https://${prefix}${userType}.${baseDomain}`;
 };
 
 // Helper function to get the correct website URL based on environment

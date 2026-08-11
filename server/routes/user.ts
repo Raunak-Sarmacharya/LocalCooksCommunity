@@ -414,6 +414,7 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
       verificationUpdated,
       welcomeEmailSent,
       welcomeEmailPreviouslySent: !!user.welcomeEmailSentAt && !welcomeEmailSent,
+      role: user.role,
       // ENTERPRISE: Include email config status for debugging
       emailConfigStatus: {
         hasEmailUser: !!process.env.EMAIL_USER,
