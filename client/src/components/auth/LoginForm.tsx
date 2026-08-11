@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 // SECURITY FIX: Removed email existence check import to prevent enumeration attacks
 import { zodResolver } from "@hookform/resolvers/zod";
+import EmailVerificationScreen from "./EmailVerificationScreen";
 import { Loader2, Lock, Mail } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -30,10 +31,13 @@ interface LoginFormProps {
 }
 
 export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginFormProps) {
-  const { login, signInWithGoogle, loading, error } = useFirebaseAuth();
+  const { login, signInWithGoogle, loading, error, resendEmailVerification } = useFirebaseAuth();
   const [formError, setFormError] = useState<string | null>(null);
   const [userExists, setUserExists] = useState<boolean | null>(null);
   const [isCheckingUser, setIsCheckingUser] = useState(false);
+  const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState("");
+  const [unverifiedPassword, setUnverifiedPassword] = useState("");
   
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -65,13 +69,38 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
         setFormError("This account has been disabled. Please contact support.");
       } else if (e.message.includes('too-many-requests')) {
         setFormError("Too many failed attempts. Please wait a moment before trying again.");
-      } else if (e.message.includes('EMAIL_NOT_VERIFIED') || e.message.includes('email')) {
+      } else if (e.message.includes('EMAIL_NOT_VERIFIED') || e.message.includes('verify your email')) {
         setFormError("Please verify your email address before signing in. Check your inbox for a verification link.");
+        setUnverifiedEmail(data.email);
+        setUnverifiedPassword(data.password);
+        setShowEmailVerification(true);
       } else {
         setFormError("Sign-in failed. Please check your credentials or register for a new account.");
       }
     }
   };
+
+  const handleResend = async () => {
+    if (!unverifiedEmail || !unverifiedPassword) return;
+    try {
+      await resendEmailVerification(unverifiedEmail, unverifiedPassword);
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  if (showEmailVerification) {
+    return (
+      <EmailVerificationScreen
+        email={unverifiedEmail}
+        onResend={handleResend}
+        onGoBack={() => {
+          setShowEmailVerification(false);
+          setFormError(null);
+        }}
+      />
+    );
+  }
 
   const getButtonText = () => {
     if (userExists === true) {

@@ -74,6 +74,7 @@ interface AuthContextType {
   updateUserVerification: () => Promise<AuthUser | null>;
   sendVerificationEmail: (email: string, fullName: string) => Promise<boolean>;
   resendFirebaseVerification: () => Promise<boolean>;
+  resendEmailVerification: (email: string, password: string) => Promise<boolean>;
   refreshUserData: () => Promise<void>;
   syncUserWithBackend: (firebaseUser: any, role?: string, isRegistration?: boolean, password?: string) => Promise<boolean>;
 }
@@ -547,7 +548,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (syncSuccess) {
         logger.info('✅ User synced successfully during registration');
       } else {
-        logger.error('❌ User sync failed during registration');
+        logger.error('❌ User sync failed during registration, rolling back Firebase user');
+        // CRITICAL FIX: Rollback the Firebase user if backend sync fails
+        try {
+          await cred.user.delete();
+          logger.info('✅ Successfully rolled back (deleted) orphaned Firebase user');
+        } catch (deleteError) {
+          logger.error('❌ Failed to rollback Firebase user:', deleteError);
+        }
+        
+        // Reset states and throw error to stop the flow
+        setPendingSync(false);
+        setPendingRegistration(false);
+        setAuthPhase('error');
+        throw new Error('Failed to create account in the database. Please try again.');
       }
 
       // CRITICAL: Send Firebase's built-in email verification
@@ -1106,6 +1120,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Temporarily signs in to resend email verification for users who are signed out
+  const resendEmailVerification = async (email: string, password: string) => {
+    try {
+      logger.info('📧 Temporarily signing in to resend verification email...');
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      
+      const hostname = window.location.hostname;
+      const isLocalhost = hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.endsWith('.localhost');
+
+      if (isLocalhost) {
+        await sendEmailVerification(cred.user);
+      } else {
+        const redirectUrl = buildVerificationRedirectUrl();
+        await sendEmailVerification(cred.user, {
+          url: redirectUrl,
+          handleCodeInApp: false,
+        });
+      }
+      
+      logger.info('✅ Verification email resent successfully, signing out again.');
+      await signOut(auth);
+      return true;
+    } catch (error) {
+      logger.error('❌ Error in resendEmailVerification:', error);
+      throw error;
+    }
+  };
+
   // Refresh user data from backend (useful after role changes)
   const refreshUserData = async () => {
     try {
@@ -1186,6 +1230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updateUserVerification,
         sendVerificationEmail,
         resendFirebaseVerification,
+        resendEmailVerification,
         refreshUserData,
         syncUserWithBackend,
       }}

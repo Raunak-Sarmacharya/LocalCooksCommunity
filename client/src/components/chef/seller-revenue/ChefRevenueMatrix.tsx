@@ -6,7 +6,8 @@ import {
   XAxis, 
   YAxis, 
   ResponsiveContainer,
-  Legend
+  Legend,
+  Brush
 } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -57,21 +58,60 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
 
   // Format the period string to be more readable
   const formattedData = useMemo(() => {
+    const getWeekLabels = (yearNum: number, weekNum: number) => {
+      const jan4 = new Date(yearNum, 0, 4);
+      const start = new Date(jan4);
+      const dayOfWeek = start.getDay();
+      const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      start.setDate(jan4.getDate() - diffToMonday);
+      start.setDate(start.getDate() + (weekNum - 1) * 7);
+      
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      
+      const startMonth = start.toLocaleDateString("en-US", { month: 'short' });
+      const endMonth = end.toLocaleDateString("en-US", { month: 'short' });
+      const startDay = start.getDate();
+      const endDay = end.getDate();
+
+      let dateLabel = '';
+      if (startMonth === endMonth) {
+        dateLabel = `${startMonth} ${startDay} - ${endDay}`;
+      } else {
+        dateLabel = `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
+      }
+      
+      const shortLabel = `Week ${weekNum}||${dateLabel}`;
+      
+      let fullLabel = '';
+      if (startMonth === endMonth) {
+        fullLabel = `Week ${weekNum}: ${startMonth} ${startDay} - ${endDay}, ${yearNum}`;
+      } else {
+        fullLabel = `Week ${weekNum}: ${startMonth} ${startDay} - ${endMonth} ${endDay}, ${yearNum}`;
+      }
+      
+      return { shortLabel, fullLabel };
+    };
+
     return chartData.map(item => {
       let formattedPeriod = item.period;
+      let tooltipLabel = item.period;
+      
       if (view === "monthly") {
         // "2026-04" -> "Apr 2026"
         const [year, month] = item.period.split("-");
         if (year && month) {
           const date = new Date(parseInt(year), parseInt(month) - 1);
           formattedPeriod = date.toLocaleString("en-US", { month: "short", year: "numeric" });
+          tooltipLabel = formattedPeriod;
         }
       } else {
-        // "2026-W14" -> "Week 14, 2026"
-        const [year, weekStr] = item.period.split("-");
-        if (year && weekStr) {
+        const [yearStr, weekStr] = item.period.split("-");
+        if (yearStr && weekStr) {
           const week = weekStr.replace("W", "");
-          formattedPeriod = `Week ${week}, ${year}`;
+          const labels = getWeekLabels(parseInt(yearStr), parseInt(week));
+          formattedPeriod = labels.shortLabel;
+          tooltipLabel = labels.fullLabel;
         }
       }
       
@@ -81,6 +121,7 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
       return {
         ...item,
         formattedPeriod,
+        tooltipLabel,
         deductions: Math.max(0, deductions),
         base_earnings,
       };
@@ -129,7 +170,7 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
           <div className="h-[350px] w-full mt-4">
             <ChartContainer config={chartConfig} className="h-full w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={formattedData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                <BarChart data={formattedData} margin={{ top: 10, right: 70, left: 60, bottom: 0 }}>
                   <defs>
                     <pattern
                       id="deductions-pattern"
@@ -147,8 +188,30 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
                     dataKey="formattedPeriod" 
                     tickLine={false} 
                     axisLine={false}
-                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                    dy={10}
+                    tick={(props: any) => {
+                      const { x, y, payload } = props;
+                      const parts = (payload.value || "").split("||");
+                      if (parts.length === 2) {
+                        return (
+                          <g transform={`translate(${x},${y})`}>
+                            <text x={0} y={10} textAnchor="middle" fill="hsl(var(--foreground))" fontSize={12} fontWeight={500}>
+                              {parts[0]}
+                            </text>
+                            <text x={0} y={26} textAnchor="middle" fill="hsl(var(--muted-foreground))" fontSize={11}>
+                              {parts[1]}
+                            </text>
+                          </g>
+                        );
+                      }
+                      return (
+                        <g transform={`translate(${x},${y})`}>
+                          <text x={0} y={15} textAnchor="middle" fill="hsl(var(--muted-foreground))" fontSize={12}>
+                            {payload.value}
+                          </text>
+                        </g>
+                      );
+                    }}
+                    height={40}
                   />
                   <YAxis 
                     width={60}
@@ -158,13 +221,47 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
                     tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
                   />
                   <ChartTooltip 
-                    content={<ChartTooltipContent indicator="dot" />}
+                    content={
+                      <ChartTooltipContent 
+                        indicator="dot" 
+                        labelFormatter={(value, payload) => payload?.[0]?.payload?.tooltipLabel || String(value).replace('||', ' - ')}
+                      />
+                    }
                     cursor={{ fill: "hsl(var(--muted)/0.1)" }}
                   />
                   <Legend wrapperStyle={{ paddingTop: "20px" }} />
                   <Bar dataKey="base_earnings" name="Base Earnings" stackId="revenue" fill="var(--color-base_earnings)" />
                   <Bar dataKey="tips" name="Tips" stackId="revenue" fill="var(--color-tips)" />
                   <Bar dataKey="deductions" name="Stripe & Fees" stackId="revenue" fill="url(#deductions-pattern)" stroke="var(--color-deductions)" strokeWidth={1} radius={[4, 4, 0, 0]} />
+                  {formattedData.length > 5 && (
+                    <Brush 
+                      dataKey="formattedPeriod" 
+                      height={24} 
+                      stroke="hsl(var(--muted-foreground)/0.4)"
+                      fill="hsl(var(--muted)/0.2)"
+                      tickFormatter={(value) => String(value).split('||')[0]}
+                      startIndex={Math.max(0, formattedData.length - 12)}
+                      travellerWidth={10}
+                      traveller={(props: any) => {
+                        const { x, y, width, height } = props;
+                        return (
+                          <g transform={`translate(${x},${y})`} style={{ cursor: 'ew-resize' }}>
+                            {/* Invisible hit area */}
+                            <rect width={width} height={height} fill="transparent" />
+                            {/* Minimalist sleek handle */}
+                            <rect 
+                              x={width / 2 - 2} 
+                              y={4} 
+                              width={4} 
+                              height={height - 8} 
+                              rx={2} 
+                              fill="hsl(var(--primary))" 
+                            />
+                          </g>
+                        );
+                      }}
+                    />
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             </ChartContainer>

@@ -3,6 +3,7 @@ import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import TidioController from "@/components/chat/TidioController";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -988,6 +989,7 @@ export default function ChefLanding() {
           { name: "Blog", description: "Stories about local chefs, food trends, and community updates", url: "https://www.localcooks.ca/blog" },
         ]}
       />
+      <TidioController forceShow={true} />
       <Header />
 
       <main className="flex-grow">

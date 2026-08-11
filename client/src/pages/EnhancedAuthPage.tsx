@@ -136,8 +136,7 @@ export default function EnhancedAuthPage() {
             // Check if user needs email verification (for email/password users)
             if (!userData.is_verified) {
               logger.info('📧 EMAIL VERIFICATION REQUIRED');
-              // For now, we'll redirect to dashboard anyway as verification is handled elsewhere
-              // In a full implementation, you might want to show a verification screen here
+              return; // MUST RETURN HERE so it doesn't execute the redirect logic below which bounces unverified users back to login
             }
             
             // User is verified and has seen welcome - redirect to appropriate page

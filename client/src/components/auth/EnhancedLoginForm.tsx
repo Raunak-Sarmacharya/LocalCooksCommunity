@@ -48,7 +48,7 @@ const itemVariants = {
 };
 
 export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: EnhancedLoginFormProps) {
-  const { login, signInWithGoogle, loading, error } = useFirebaseAuth();
+  const { login, signInWithGoogle, loading, error, resendEmailVerification } = useFirebaseAuth();
   const [formError, setFormError] = useState<string | null>(null);
   const [authState, setAuthState] = useState<AuthState>('idle');
   const [googleAuthState, setGoogleAuthState] = useState<AuthState>('idle');
@@ -248,6 +248,10 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
       
       if (e.message.includes('too-many-requests')) {
         errorMessage = "Too many failed attempts. Please wait a few minutes before trying again.";
+      } else if (e.message.includes('verify your email')) {
+        setEmailForVerification(loginIdentifier);
+        setShowEmailVerification(true);
+        return; // Early return to avoid showing alert
       } else if (e.message.includes('network-request-failed')) {
         errorMessage = "Network error. Please check your connection and try again.";
       } else if (e.message.includes('user-disabled')) {
@@ -320,11 +324,12 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
   };
 
   const handleResendVerification = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        resolve();
-      }, 1000);
-    });
+    try {
+      await resendEmailVerification(emailForVerification, form.getValues().password);
+    } catch (err) {
+      logger.error('Failed to resend verification from form:', err);
+      throw err;
+    }
   };
 
   const getButtonState = () => {
