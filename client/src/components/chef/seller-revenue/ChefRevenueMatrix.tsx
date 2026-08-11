@@ -164,9 +164,8 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
     );
   }, [formattedData, needsWindow, clampedWindowStart]);
 
-  if (!data || (!data.weekly?.length && !data.monthly?.length)) return null;
-
   // ── Range label ──────────────────────────────────────────────────────────────
+  // NOTE: Must be declared BEFORE any early returns to satisfy Rules of Hooks.
   const rangeLabel = useMemo(() => {
     if (!needsWindow || displayData.length === 0) return null;
     const first = displayData[0]?.formattedPeriod?.split("||")[0] ?? "";
@@ -174,6 +173,8 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
       displayData[displayData.length - 1]?.formattedPeriod?.split("||")[0] ?? "";
     return `${first} – ${last}`;
   }, [needsWindow, displayData]);
+
+  if (!data || (!data.weekly?.length && !data.monthly?.length)) return null;
 
   const chartConfig = {
     gross_sales: { label: "Gross Sales", color: "hsl(var(--chart-1))" },
