@@ -15,7 +15,7 @@ import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 
 export default function AuthPage() {
   const [location, setLocation] = useLocation();
-  const { user, loading, logout, updateUserVerification, resendFirebaseVerification } = useFirebaseAuth();
+  const { user, loading, logout, updateUserVerification } = useFirebaseAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -30,6 +30,15 @@ export default function AuthPage() {
 
   // Email verification success state
   const [showVerificationSuccess, setShowVerificationSuccess] = useState(false);
+
+  // Post-registration: show resend screen even after RegisterForm unmounts due to loading spinner
+  const [postRegistrationEmail, setPostRegistrationEmail] = useState<string | null>(null);
+
+  // Guard: prevents the userMeta useEffect from navigating while signup() is in-flight.
+  // During registration, Firebase creates the user (triggering onAuthStateChanged → useEffect)
+  // BEFORE signup() signs them out. Without this guard, the useEffect would navigate to
+  // /accept-terms (terms not yet accepted) BEFORE handleRegistrationComplete is called.
+  const isRegistrationInProgress = useRef(false);
 
   const getRedirectPath = () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -78,6 +87,14 @@ export default function AuthPage() {
   // Fetch user metadata when user is available
   useEffect(() => {
     if (user && !hasCheckedUser.current) {
+      // GUARD: If a registration is currently in-flight, do NOT run fetchUserMeta.
+      // signup() creates the Firebase user (triggering this effect) before it signs them
+      // out. Running fetchUserMeta here would redirect to /accept-terms before the
+      // post-registration email verification screen can be shown.
+      if (isRegistrationInProgress.current) {
+        logger.info('⏸️ SKIP fetchUserMeta — registration in progress, waiting for completion');
+        return;
+      }
       hasCheckedUser.current = true;
       
       if (!userMeta && !userMetaLoading) {
@@ -259,6 +276,44 @@ export default function AuthPage() {
     }
   };
 
+  // **PRIORITY 0: POST-REGISTRATION EMAIL VERIFICATION**
+  // Check this BEFORE the loading guard — signup() signs the user out at the end,
+  // which triggers loading=true in auth state, but we must still show this screen.
+  if (showVerifyEmail && verifyEmailAddress) {
+    return (
+      <EmailVerificationScreen
+        email={verifyEmailAddress}
+        onResend={async () => {
+          setVerifyEmailError(null);
+          setVerifyEmailLoading(true);
+          try {
+            // After registration the user is signed out, so call the backend API directly
+            // (resendFirebaseVerification() requires a signed-in user and would fail here)
+            const response = await fetch('/api/firebase/send-verification-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: verifyEmailAddress })
+            });
+            if (!response.ok) {
+              throw new Error('Failed to resend verification email');
+            }
+            logger.info('✅ Verification email resent successfully for:', verifyEmailAddress);
+          } catch (e: any) {
+            setVerifyEmailError("Failed to resend verification email. Please try again later.");
+          } finally {
+            setVerifyEmailLoading(false);
+          }
+        }}
+        onGoBack={() => {
+          setShowVerifyEmail(false);
+          setPostRegistrationEmail(null);
+          setHasAttemptedLogin(false);
+        }}
+        resendLoading={verifyEmailLoading}
+      />
+    );
+  }
+
   // Loading state
   if (loading || isInitialLoad || userMetaLoading) {
     return (
@@ -289,31 +344,7 @@ export default function AuthPage() {
     }
   }
 
-  // **PRIORITY 2: EMAIL VERIFICATION**
-  if (showVerifyEmail && verifyEmailAddress) {
-    return (
-      <EmailVerificationScreen
-        email={verifyEmailAddress}
-        onResend={async () => {
-          setVerifyEmailError(null);
-          setVerifyEmailLoading(true);
-          try {
-            // Use Firebase's built-in verification email resend
-            await resendFirebaseVerification();
-          } catch (e: any) {
-            setVerifyEmailError("Failed to resend verification email. Please try again later.");
-          } finally {
-            setVerifyEmailLoading(false);
-          }
-        }}
-        onGoBack={() => {
-          setShowVerifyEmail(false);
-          setHasAttemptedLogin(false);
-        }}
-        resendLoading={verifyEmailLoading}
-      />
-    );
-  }
+
 
   // **EMAIL VERIFICATION SUCCESS MESSAGE**
   const VerificationSuccessMessage = () => (
@@ -378,6 +409,29 @@ export default function AuthPage() {
     );
   }
 
+  // Called by RegisterForm BEFORE signup() starts — blocks the userMeta useEffect from navigating
+  const handleRegistrationStart = () => {
+    logger.info('🚀 REGISTRATION STARTED — blocking userMeta navigation');
+    isRegistrationInProgress.current = true;
+  };
+
+  // Called by RegisterForm after successful email/password registration
+  const handleRegistrationComplete = (email: string) => {
+    logger.info('✅ REGISTRATION COMPLETE — unblocking navigation, showing verification screen');
+    isRegistrationInProgress.current = false;
+    setPostRegistrationEmail(email);
+    setVerifyEmailAddress(email);
+    setShowVerifyEmail(true);
+    // Do NOT set hasAttemptedLogin here — user is signed-out post-registration
+    // and we don't want the userMeta fetch useEffect to run on a null user.
+  };
+
+  // Called by RegisterForm if signup() throws — resets the guard so normal auth works again
+  const handleRegistrationError = () => {
+    logger.info('❌ REGISTRATION FAILED — unblocking userMeta navigation');
+    isRegistrationInProgress.current = false;
+  };
+
   const handleSuccess = () => {
     setHasAttemptedLogin(true);
   };
@@ -414,6 +468,9 @@ export default function AuthPage() {
                 <RegisterForm 
                   onSuccess={handleSuccess}
                   setHasAttemptedLogin={setHasAttemptedLogin}
+                  onRegistrationStart={handleRegistrationStart}
+                  onRegistrationComplete={handleRegistrationComplete}
+                  onRegistrationError={handleRegistrationError}
                 />
               </TabsContent>
             </div>

@@ -28,9 +28,12 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 interface RegisterFormProps {
   onSuccess?: () => void;
   setHasAttemptedLogin?: (v: boolean) => void;
+  onRegistrationStart?: () => void;
+  onRegistrationComplete?: (email: string) => void;
+  onRegistrationError?: () => void;
 }
 
-export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: RegisterFormProps) {
+export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError }: RegisterFormProps) {
   const { signup, signInWithGoogle, loading, error, sendVerificationEmail } = useFirebaseAuth();
   const [formError, setFormError] = useState<string | null>(null);
   const [showEmailVerification, setShowEmailVerification] = useState(false);
@@ -44,15 +47,32 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: Regist
   });
 
   const onSubmit = async (data: RegisterFormData) => {
-    setHasAttemptedLogin?.(true);
+    // Note: do NOT call setHasAttemptedLogin(true) here at the start.
+    // The signup flow signs the user out at the end, which causes auth-page.tsx
+    // to unmount RegisterForm via a loading spinner, losing local state.
+    // We set it only on error (or not at all for registration).
     setFormError(null);
+
+    // Signal parent that registration is starting so it can block userMeta navigation.
+    // signup() creates the Firebase user (which triggers onAuthStateChanged in auth-page.tsx)
+    // BEFORE it signs the user out. Without this guard, auth-page.tsx would navigate to
+    // /accept-terms because the new user has no terms accepted yet.
+    onRegistrationStart?.();
+
     try {
       await signup(data.email, data.password, data.displayName);
-      // After successful registration, show email verification screen
-      setRegisteredEmail(data.email);
-      setRegisteredName(data.displayName);
-      setShowEmailVerification(true);
+      // After successful registration, show email verification screen.
+      // Prefer the parent-level callback so the screen survives unmount cycles.
+      if (onRegistrationComplete) {
+        onRegistrationComplete(data.email);
+      } else {
+        setRegisteredEmail(data.email);
+        setRegisteredName(data.displayName);
+        setShowEmailVerification(true);
+      }
     } catch (e: any) {
+      // Reset the registration guard so the parent's useEffect works normally again
+      onRegistrationError?.();
       // Handle different Firebase error types with user-friendly messages
       if (e.message.includes('email-already-in-use') || e.message.includes('EMAIL_EXISTS')) {
         setFormError("This email is already registered. Please try signing in instead.");
