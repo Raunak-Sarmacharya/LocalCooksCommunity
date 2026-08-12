@@ -615,6 +615,8 @@ export default function ApplicantDashboard() {
       onSetActiveTab={setActiveTab}
       onSetApplicationViewMode={setApplicationViewMode}
       onBookSessionClick={handleBookSessionClick}
+      isSellerApplicationFullyApproved={isSellerApplicationFullyApproved}
+      isShopCreated={!!getMostRecentApplication()?.phpShopCreated}
     />
   );
 
@@ -765,7 +767,10 @@ export default function ApplicantDashboard() {
 
       {/* Stripe Connect Payment Setup - Only visible after chef's seller application is FULLY approved */}
       {isSellerApplicationFullyApproved && (
-        <ChefStripeConnectSetup isApproved={true} />
+        <ChefStripeConnectSetup 
+          isApproved={true} 
+          isShopCreated={!!getMostRecentApplication()?.phpShopCreated} 
+        />
       )}
 
       {hasAnyApplications ? (
@@ -1206,7 +1211,7 @@ export default function ApplicantDashboard() {
           </div>
         );
       case "seller-revenue":
-        if (!isSellerApplicationFullyApproved) {
+        if (!isSellerApplicationFullyApproved || !getMostRecentApplication()?.phpShopCreated) {
           return <div className="space-y-8 animate-in fade-in-50 duration-500">{overviewTabContent}</div>;
         }
         return (
@@ -1275,7 +1280,7 @@ export default function ApplicantDashboard() {
       }}
       messageBadgeCount={0}
       breadcrumbs={getBreadcrumbs()}
-      hiddenItems={isSellerApplicationFullyApproved ? [] : ['seller-revenue']}
+      hiddenItems={isSellerApplicationFullyApproved && getMostRecentApplication()?.phpShopCreated ? [] : ['seller-revenue']}
     >
       {/* ⌘K Command Palette */}
       <ChefCommandPalette onNavigate={(view) => {

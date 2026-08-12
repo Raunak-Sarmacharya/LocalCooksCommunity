@@ -17,10 +17,11 @@ const CHEF_STRIPE_CONNECT_URL = 'https://stagingwebapp.localcook.shop/app/shop/i
 
 interface ChefStripeConnectSetupProps {
   isApproved?: boolean; // Whether the chef's seller application is approved
+  isShopCreated?: boolean; // Whether the shop is created on PHP side
 }
 
-export default function ChefStripeConnectSetup({ isApproved = false }: ChefStripeConnectSetupProps) {
-  const { data: shopStatus, isLoading: statusLoading } = useShopStatus(isApproved);
+export default function ChefStripeConnectSetup({ isApproved = false, isShopCreated = false }: ChefStripeConnectSetupProps) {
+  const { data: shopStatus, isLoading: statusLoading } = useShopStatus(isApproved && isShopCreated);
   const dashboardLinkMutation = useStripeDashboardLink();
 
   const isConnected = !!shopStatus?.phpShopStripeAccountId;
@@ -38,8 +39,8 @@ export default function ChefStripeConnectSetup({ isApproved = false }: ChefStrip
     }
   };
 
-  // Show locked state if not approved
-  if (!isApproved) {
+  // Show locked state if not approved or shop not created
+  if (!isApproved || !isShopCreated) {
     return (
       <Card className="border-dashed border-2 border-muted-foreground/20">
         <CardHeader>
@@ -55,7 +56,7 @@ export default function ChefStripeConnectSetup({ isApproved = false }: ChefStrip
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Payment setup will be available once your seller application on LocalCooks is approved.
+              Payment setup will be available once your seller application on LocalCooks is approved and your shop is created.
               This is required to receive payments from customers when you sell food on our platform.
             </AlertDescription>
           </Alert>

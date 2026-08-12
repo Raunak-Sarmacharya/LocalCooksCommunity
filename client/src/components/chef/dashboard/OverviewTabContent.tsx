@@ -56,6 +56,8 @@ interface OverviewTabContentProps {
   onSetActiveTab: (tab: string) => void;
   onSetApplicationViewMode: (mode: 'list' | 'form' | 'documents') => void;
   onBookSessionClick: () => void;
+  isSellerApplicationFullyApproved?: boolean;
+  isShopCreated?: boolean;
 }
 
 export default function OverviewTabContent({
@@ -72,6 +74,8 @@ export default function OverviewTabContent({
   onSetActiveTab,
   onSetApplicationViewMode,
   onBookSessionClick,
+  isSellerApplicationFullyApproved,
+  isShopCreated,
 }: OverviewTabContentProps) {
   
   const { data: shopStatus } = useShopStatus();
@@ -213,7 +217,7 @@ export default function OverviewTabContent({
       </div>
 
       {/* Three Path Cards - Sell, Kitchens & Seller Account */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className={cn("grid gap-6", (isSellerApplicationFullyApproved && isShopCreated) ? "lg:grid-cols-3" : "lg:grid-cols-2")}>
         {/* Sell on LocalCooks Path */}
         <Card className="border-border/50 shadow-sm overflow-hidden group hover:shadow-lg transition-all">
           <div className="h-2 bg-gradient-to-r from-primary to-primary/60" />
@@ -384,85 +388,87 @@ export default function OverviewTabContent({
         </Card>
 
         {/* Seller Account / Earnings Path */}
-        <Card className="border-border/50 shadow-sm overflow-hidden group hover:shadow-lg transition-all">
-          <div className="h-2 bg-gradient-to-r from-emerald-600 to-emerald-400" />
-          <CardHeader className="pb-4">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-                  <DollarSign className="h-6 w-6 text-emerald-600" />
+        {isSellerApplicationFullyApproved && isShopCreated && (
+          <Card className="border-border/50 shadow-sm overflow-hidden group hover:shadow-lg transition-all">
+            <div className="h-2 bg-gradient-to-r from-emerald-600 to-emerald-400" />
+            <CardHeader className="pb-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+                    <DollarSign className="h-6 w-6 text-emerald-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Seller Account</CardTitle>
+                    <CardDescription>Manage your store and earnings</CardDescription>
+                  </div>
                 </div>
-                <div>
-                  <CardTitle className="text-xl">Seller Account</CardTitle>
-                  <CardDescription>Manage your store and earnings</CardDescription>
-                </div>
+                {shopStatus?.linked && (
+                  <Badge variant="success" className="text-xs">
+                    Connected
+                  </Badge>
+                )}
               </div>
-              {shopStatus?.linked && (
-                <Badge variant="success" className="text-xs">
-                  Connected
-                </Badge>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Track your food order revenue, view payouts, and manage your Stripe connection for automatic bank transfers.
+              </p>
+              
+              {shopStatus?.linked ? (
+                <div className="space-y-3">
+                  <div className="p-4 bg-emerald-500/5 rounded-lg border border-emerald-500/10 text-center">
+                    <Store className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
+                    <p className="text-sm font-medium">Your store is active</p>
+                    <p className="text-xs text-muted-foreground">Manage your menu and orders in the seller dashboard</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-muted/30 rounded-lg border border-border/50 text-center">
+                  <Link2 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm font-medium">Not Connected</p>
+                  <p className="text-xs text-muted-foreground">Link your account to view earnings</p>
+                </div>
               )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Track your food order revenue, view payouts, and manage your Stripe connection for automatic bank transfers.
-            </p>
-            
-            {shopStatus?.linked ? (
-              <div className="space-y-3">
-                <div className="p-4 bg-emerald-500/5 rounded-lg border border-emerald-500/10 text-center">
-                  <Store className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
-                  <p className="text-sm font-medium">Your store is active</p>
-                  <p className="text-xs text-muted-foreground">Manage your menu and orders in the seller dashboard</p>
-                </div>
-              </div>
-            ) : (
-              <div className="p-4 bg-muted/30 rounded-lg border border-border/50 text-center">
-                <Link2 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm font-medium">Not Connected</p>
-                <p className="text-xs text-muted-foreground">Link your account to view earnings</p>
-              </div>
-            )}
-          </CardContent>
-          <CardFooter className="bg-muted/5 border-t border-border/30 pt-4 gap-2">
-            {shopStatus?.linked ? (
-              <>
+            </CardContent>
+            <CardFooter className="bg-muted/5 border-t border-border/30 pt-4 gap-2">
+              {shopStatus?.linked ? (
+                <>
+                  <Button 
+                    variant="outline"
+                    className="flex-1 px-0 text-xs sm:text-sm"
+                    onClick={() => {
+                      const isProd = window.location.hostname === "chef.localcooks.ca";
+                      const url = isProd
+                        ? "https://shop.localcook.shop/app/shop/home.php"
+                        : "https://stagingwebapp.localcook.shop/app/shop/home.php";
+                      window.open(url, "_blank", "noopener,noreferrer");
+                    }}
+                  >
+                    Manage Shop
+                    <ExternalLink className="ml-1.5 h-3 w-3 sm:h-4 sm:w-4" />
+                  </Button>
+                  <Button 
+                    className="flex-1 px-0 text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-colors gap-1"
+                    onClick={handleOpenDashboard} 
+                    disabled={dashboardLinkMutation.isPending} 
+                  >
+                    {dashboardLinkMutation.isPending ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" /> : <ExternalLink className="h-3 w-3 sm:h-4 sm:w-4" />}
+                    Stripe
+                  </Button>
+                </>
+              ) : (
                 <Button 
-                  variant="outline"
-                  className="flex-1 px-0 text-xs sm:text-sm"
-                  onClick={() => {
-                    const isProd = window.location.hostname === "chef.localcooks.ca";
-                    const url = isProd
-                      ? "https://shop.localcook.shop/app/shop/home.php"
-                      : "https://stagingwebapp.localcook.shop/app/shop/home.php";
-                    window.open(url, "_blank", "noopener,noreferrer");
-                  }}
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => onSetActiveTab("seller-revenue")}
                 >
-                  Manage Shop
-                  <ExternalLink className="ml-1.5 h-3 w-3 sm:h-4 sm:w-4" />
+                  Link Account
+                  <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
-                <Button 
-                  className="flex-1 px-0 text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-colors gap-1"
-                  onClick={handleOpenDashboard} 
-                  disabled={dashboardLinkMutation.isPending} 
-                >
-                  {dashboardLinkMutation.isPending ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" /> : <ExternalLink className="h-3 w-3 sm:h-4 sm:w-4" />}
-                  Stripe
-                </Button>
-              </>
-            ) : (
-              <Button 
-                variant="secondary"
-                className="w-full"
-                onClick={() => onSetActiveTab("seller-revenue")}
-              >
-                Link Account
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            )}
-          </CardFooter>
-        </Card>
+              )}
+            </CardFooter>
+          </Card>
+        )}
       </div>
 
       {/* Upcoming Bookings */}
