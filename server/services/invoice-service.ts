@@ -642,8 +642,6 @@ export async function generateInvoicePDF(
       doc.font('Helvetica');
       doc.text('Payment Method: Credit/Debit Card', 60, currentY);
       currentY += 15;
-      doc.text('Payment Status: Paid', 60, currentY);
-      currentY += 15;
       doc.fontSize(9).fillColor('#6b7280').text('Note: Payment has been processed successfully.', 60, currentY);
       doc.fillColor('#000000');
 
@@ -928,8 +926,6 @@ export async function generateStorageInvoicePDF(
       currentY += 20;
       doc.fontSize(10).font('Helvetica');
       doc.text('Payment Method: Credit/Debit Card', 60, currentY);
-      currentY += 15;
-      doc.text('Payment Status: Paid', 60, currentY);
 
       // Footer
       const pageHeight = doc.page.height;
@@ -1045,7 +1041,6 @@ export async function generateDamageClaimInvoicePDF(
       doc.fontSize(10).font('Helvetica');
       doc.text(`Invoice Number: LC-DC-${claim.id.toString().padStart(6, '0')}`);
       doc.text(`Date: ${chargeDate.toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })}`);
-      doc.text(`Payment Status: Paid`);
       doc.moveDown(1.5);
 
       // Chef info

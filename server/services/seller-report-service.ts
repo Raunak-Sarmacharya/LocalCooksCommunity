@@ -269,6 +269,40 @@ export async function generateReportPDF(phpShopId: number, shopName: string, sta
   });
 }
 
+interface StructuredItem {
+  name: string;
+  qty: number;
+  price: number;
+  isAddon: boolean;
+}
+
+function parseStructuredOrderItems(itemsStr: string | null | undefined): StructuredItem[] {
+  if (!itemsStr) return [];
+  const items = itemsStr
+    .split(/<br\s*\/?>|\n/i)
+    .filter(Boolean);
+  
+  return items.map((item) => {
+    const isAddon = /^[o+]\s/i.test(item.trim()) || item.trim().startsWith('+');
+    
+    const qtyMatch = item.match(/\(x(\d+)\)/i);
+    const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+
+    const priceMatch = item.match(/\(\$([\d.]+)\)/) || item.match(/\$\([\d.]+\)/) || item.match(/\$([\d.]+)/);
+    const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+
+    let cleaned = item
+      .replace(/^[o+]\s*/i, "")
+      .replace(/\s*\(x\d+\)/i, "")
+      .replace(/\s*\(\$[\d.]+\)/, "")
+      .replace(/\s*\$\([\d.]+\)/, "")
+      .replace(/\s*\$[\d.]+/, "")
+      .trim();
+      
+    return { name: cleaned, qty, price, isAddon };
+  });
+}
+
 /**
  * Generate PDF Buffer for a single order invoice
  */
@@ -297,76 +331,159 @@ export async function generateSingleOrderInvoicePDF(phpShopId: number, shopName:
       doc.on('data', (chunk) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       
-      // Header
-      doc.fontSize(22).font('Helvetica-Bold').text('Local Cooks', { align: 'center' });
-      doc.moveDown(0.5);
-      doc.fontSize(16).font('Helvetica').text(`Order Invoice`, { align: 'center' });
+      // Constants
+      const primaryColor = '#E51636'; // Red color
+      const textColor = '#333333';
+      const grayText = '#666666';
+      
+      // Header: INVOICE and Local Cooks
+      doc.fontSize(28).font('Helvetica-Bold').fillColor(primaryColor).text('INVOICE', 50, 50);
+      doc.fontSize(14).font('Helvetica').fillColor(grayText).text(`#${order.id}`, 50, 85);
+      
+      doc.fontSize(20).font('Helvetica-Bold').fillColor(textColor).text('Local Cooks', 50, 50, { align: 'right' });
+      doc.fontSize(12).font('Helvetica').fillColor(grayText).text('localcook.shop', 50, 75, { align: 'right' });
+      
+      // Red line separator
       doc.moveDown(2);
-
-      // Order Info
-      doc.fontSize(12).font('Helvetica');
-      doc.text(`Shop: ${shopName}`);
-      doc.text(`Order ID: #${order.id} (${order.type === 'pre_order' ? 'Pre-Order' : 'Order'})`);
+      let yPos = Math.max(130, doc.y);
+      doc.moveTo(50, yPos).lineTo(545, yPos).lineWidth(2).strokeColor(primaryColor).stroke();
+      
+      // Info section
+      yPos += 20;
+      doc.lineWidth(1); // reset
       
       const shortDate = (order.order_time || '').split(' ')[0] || order.order_time;
-      doc.text(`Order Date: ${shortDate}`);
-      doc.text(`Customer: ${order.customer_name || 'Guest'}`);
-      doc.text(`Delivery Method: ${getDeliveryLabel(order.order_method, order.delivery_provider)}`);
-      doc.text(`Payout Status: ${order.payout_status.toUpperCase()}`);
-      doc.moveDown(2);
+      let orderTime = '';
+      if (order.order_time && order.order_time.includes(' ')) {
+         const parts = order.order_time.split(' ');
+         if (parts.length > 1) {
+            const timeStr = parts.slice(1).join(' '); // Extract time part
+            try {
+               orderTime = format(new Date(`2000-01-01T${timeStr}`), 'h:mm a');
+            } catch (e) {
+               orderTime = timeStr;
+            }
+         }
+      }
 
-      // Items section
-      doc.fontSize(14).font('Helvetica-Bold').text('Items Ordered', { underline: true });
-      doc.moveDown(0.5);
+      // Left Column
+      const leftCol = 50;
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(textColor).text('Date: ', leftCol, yPos, { continued: true })
+         .font('Helvetica').fillColor(grayText).text(shortDate);
+      
+      let nextY = yPos + 20;
+      if (orderTime) {
+         doc.font('Helvetica-Bold').fillColor(textColor).text('Time: ', leftCol, nextY, { continued: true })
+            .font('Helvetica').fillColor(grayText).text(orderTime);
+         nextY += 20;
+      }
+      
+      doc.font('Helvetica-Bold').fillColor(textColor).text('Order Type: ', leftCol, nextY, { continued: true })
+         .font('Helvetica').fillColor(grayText).text(getDeliveryLabel(order.order_method, order.delivery_provider));
+      nextY += 20;
+      
+      // Right Column
+      const rightCol = 300;
+      doc.font('Helvetica-Bold').fillColor(textColor).text('Restaurant: ', rightCol, yPos, { continued: true })
+         .font('Helvetica').fillColor(grayText).text(shopName);
+      
+      doc.font('Helvetica-Bold').fillColor(textColor).text('Customer: ', rightCol, yPos + 20, { continued: true })
+         .font('Helvetica').fillColor(grayText).text(order.customer_name || 'Guest');
+      
+      yPos = nextY + 30;
+
+      // Table Header
+      doc.roundedRect(50, yPos, 495, 30, 5).fill('#F3F4F6');
+      doc.fillColor(textColor).font('Helvetica-Bold').fontSize(11);
+      doc.text('Item', 65, yPos + 10);
+      doc.text('Qty', 350, yPos + 10, { width: 50, align: 'center' });
+      doc.text('Price', 450, yPos + 10, { width: 80, align: 'right' });
+      
+      yPos += 45;
+      
+      // Table Items
+      doc.font('Helvetica').fontSize(11);
+      const items = parseStructuredOrderItems(order.items_description);
+      
+      for (const item of items) {
+          if (yPos > 650) {
+              doc.addPage();
+              yPos = 50;
+          }
+          
+          if (item.isAddon) {
+             doc.fillColor(grayText);
+             doc.text(`+ ${item.name}`, 75, yPos);
+             if (item.price > 0) {
+                doc.text(fmtDollars(item.price), 450, yPos, { width: 80, align: 'right' });
+             }
+          } else {
+             doc.fillColor(textColor);
+             doc.text(item.name, 65, yPos);
+             doc.text(item.qty.toString(), 350, yPos, { width: 50, align: 'center' });
+             doc.text(fmtDollars(item.price), 450, yPos, { width: 80, align: 'right' });
+          }
+          
+          yPos += doc.heightOfString(item.name, { width: 280 }) + 5;
+      }
+      
+      // Table Footer border
+      doc.rect(50, yPos, 495, 1).fill('#E5E7EB');
+      yPos += 15;
+      
+      // Totals
+      const totalColLeft = 250;
+      const totalColRight = 450;
       doc.fontSize(11).font('Helvetica');
       
-      const itemsText = parseOrderItemsForReport(order.items_description);
-      if (itemsText) {
-        doc.text(itemsText, { lineGap: 4 });
-      } else {
-        doc.text('No items description available.');
-      }
-      doc.moveDown(2);
-
-      // Revenue Breakdown
-      doc.fontSize(14).font('Helvetica-Bold').text('Revenue Breakdown', { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(11).font('Helvetica');
-
-      const colLeft = 50;
-      const colRight = 400;
-
-      let yPos = doc.y;
-
-      doc.text('Shop Charge (Food Total):', colLeft, yPos);
-      doc.text(fmtDollars(order.shopcharge), colRight, yPos, { width: 100, align: 'right' });
+      doc.fillColor(grayText).text('Subtotal', totalColLeft, yPos);
+      doc.fillColor(textColor).text(fmtDollars(order.shopcharge), totalColRight, yPos, { width: 80, align: 'right' });
       yPos += 20;
 
       if (order.commission > 0) {
-        doc.text('Tax Collected:', colLeft, yPos);
-        doc.text(fmtDollars(order.commission), colRight, yPos, { width: 100, align: 'right' });
+        doc.fillColor(grayText).text('Tax Collected', totalColLeft, yPos);
+        doc.fillColor(textColor).text(fmtDollars(order.commission), totalColRight, yPos, { width: 80, align: 'right' });
         yPos += 20;
       }
 
       if (order.tip_chef > 0) {
-        doc.text('Tip (Chef):', colLeft, yPos);
-        doc.text(fmtDollars(order.tip_chef), colRight, yPos, { width: 100, align: 'right' });
+        doc.fillColor(grayText).text('Tip', totalColLeft, yPos);
+        doc.fillColor(textColor).text(fmtDollars(order.tip_chef), totalColRight, yPos, { width: 80, align: 'right' });
         yPos += 20;
       }
 
       const deductions = Number(order.discount_amt) + Number(order.stripe_fee);
       if (deductions > 0) {
-        doc.text('Deductions (Discount & Stripe Fee):', colLeft, yPos);
-        doc.text(`-${fmtDollars(deductions)}`, colRight, yPos, { width: 100, align: 'right' });
+        doc.fillColor(grayText).text('Deductions', totalColLeft, yPos);
+        doc.fillColor(textColor).text(`-${fmtDollars(deductions)}`, totalColRight, yPos, { width: 80, align: 'right' });
         yPos += 20;
       }
 
-      doc.moveTo(50, yPos + 5).lineTo(500, yPos + 5).stroke();
-      yPos += 15;
-
-      doc.font('Helvetica-Bold').text('Net Earnings:', colLeft, yPos);
-      doc.text(fmtDollars(order.chef_earnings), colRight, yPos, { width: 100, align: 'right' });
-
+      doc.rect(totalColLeft, yPos, 280, 1).fill('#000000');
+      yPos += 10;
+      
+      doc.font('Helvetica-Bold').fontSize(14).fillColor(textColor).text('Net Earnings', totalColLeft, yPos);
+      doc.text(fmtDollars(order.chef_earnings), totalColRight, yPos, { width: 80, align: 'right' });
+      yPos += 40;
+      
+      // Payment Status Box
+      const isPaid = order.payout_status === 'paid';
+      const statusColor = isPaid ? '#16a34a' : '#d97706'; // green or amber text
+      const statusBg = isPaid ? '#dcfce7' : '#fef3c7'; // light green or amber bg
+      const statusBorder = isPaid ? '#bbf7d0' : '#fde68a';
+      
+      doc.roundedRect(50, yPos, 495, 40, 5)
+         .fillAndStroke(statusBg, statusBorder);
+      
+      doc.font('Helvetica-Bold').fontSize(12).fillColor(textColor)
+         .text('Payment Status: ', 70, yPos + 14, { continued: true })
+         .fillColor(statusColor).text(order.payout_status.toUpperCase());
+         
+      // Footer
+      doc.fontSize(10).font('Helvetica').fillColor('#9CA3AF');
+      doc.text('Thank you for being a Local Cooks seller!', 50, doc.page.height - 100, { align: 'center' });
+      doc.text(`Generated on ${format(new Date(), 'MMM dd, yyyy \\at h:mm a')}`, 50, doc.page.height - 85, { align: 'center' });
+      
       doc.end();
     } catch (error) {
       reject(error);
