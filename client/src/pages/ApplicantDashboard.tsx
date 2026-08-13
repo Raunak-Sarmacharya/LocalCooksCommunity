@@ -1,5 +1,6 @@
 import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
+import { useShopStatus } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
 import { Badge } from "@/components/ui/badge";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
@@ -489,6 +490,10 @@ export default function ApplicantDashboard() {
     return app.status === "approved" && fslApproved && fecApproved;
   }, [getMostRecentApplication]);
 
+  // Shop status to verify if shop is created in case application flag is out of sync
+  const { data: shopStatus } = useShopStatus(isSellerApplicationFullyApproved);
+  const isShopCreated = !!getMostRecentApplication()?.phpShopCreated || !!shopStatus?.phpShopId;
+
   const getApplicationStatus = () => {
     const mostRecentApp = getMostRecentApplication();
     // This is the Chef Dashboard - user is always a chef, never show "Select Role"
@@ -615,6 +620,8 @@ export default function ApplicantDashboard() {
       onSetActiveTab={setActiveTab}
       onSetApplicationViewMode={setApplicationViewMode}
       onBookSessionClick={handleBookSessionClick}
+      isSellerApplicationFullyApproved={isSellerApplicationFullyApproved}
+      isShopCreated={isShopCreated}
     />
   );
 
@@ -765,7 +772,10 @@ export default function ApplicantDashboard() {
 
       {/* Stripe Connect Payment Setup - Only visible after chef's seller application is FULLY approved */}
       {isSellerApplicationFullyApproved && (
-        <ChefStripeConnectSetup isApproved={true} />
+        <ChefStripeConnectSetup 
+          isApproved={true} 
+          isShopCreated={isShopCreated} 
+        />
       )}
 
       {hasAnyApplications ? (
@@ -1206,7 +1216,7 @@ export default function ApplicantDashboard() {
           </div>
         );
       case "seller-revenue":
-        if (!isSellerApplicationFullyApproved) {
+        if (!isSellerApplicationFullyApproved || !isShopCreated) {
           return <div className="space-y-8 animate-in fade-in-50 duration-500">{overviewTabContent}</div>;
         }
         return (
@@ -1275,7 +1285,7 @@ export default function ApplicantDashboard() {
       }}
       messageBadgeCount={0}
       breadcrumbs={getBreadcrumbs()}
-      hiddenItems={isSellerApplicationFullyApproved ? [] : ['seller-revenue']}
+      hiddenItems={isSellerApplicationFullyApproved && isShopCreated ? [] : ['seller-revenue']}
     >
       {/* ⌘K Command Palette */}
       <ChefCommandPalette onNavigate={(view) => {

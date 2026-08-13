@@ -3,6 +3,7 @@ import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import TidioController from "@/components/chat/TidioController";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -988,6 +989,7 @@ export default function ChefLanding() {
           { name: "Blog", description: "Stories about local chefs, food trends, and community updates", url: "https://www.localcooks.ca/blog" },
         ]}
       />
+      <TidioController forceShow={true} />
       <Header />
 
       <main className="flex-grow">
@@ -1124,16 +1126,16 @@ export default function ChefLanding() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.7 }}
-                  className="flex flex-row gap-2 md:gap-4 mb-10"
+                  className="flex flex-row gap-2 sm:gap-3 md:gap-4 mb-10"
                 >
                   <Button
                     onClick={handleGetStarted}
                     size="lg"
-                    className="group relative bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 sm:py-4 md:py-7 px-4 sm:px-6 md:px-12 text-xs sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/30 hover:-translate-y-1 overflow-hidden flex-1 min-h-[44px] sm:min-h-[48px]"
+                    className="group relative bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 sm:py-4 md:py-7 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/30 hover:-translate-y-1 overflow-hidden flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
                   >
-                    <span className="relative z-10 flex items-center justify-center">
-                      Start Your Journey
-                      <ArrowRight className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 group-hover:translate-x-1 transition-transform" />
+                    <span className="relative z-10 flex items-center justify-center truncate">
+                      <span className="truncate">Start Your Journey</span>
+                      <ArrowRight className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
                     </span>
                     <motion.div
                       className="absolute inset-0 bg-gradient-to-r from-[#D90E3A] to-[#F51042]"
@@ -1145,10 +1147,13 @@ export default function ChefLanding() {
                   <Button
                     variant="outline"
                     size="lg"
-                    className="border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-[#F51042]/5 font-semibold py-3 sm:py-4 md:py-7 px-4 sm:px-6 md:px-10 text-xs sm:text-sm md:text-lg rounded-full transition-all duration-300 flex-1 min-h-[44px] sm:min-h-[48px]"
-                    onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="group inline-flex items-center justify-center border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-[#F51042]/5 font-semibold py-3 sm:py-4 md:py-7 px-3 sm:px-6 md:px-10 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
+                    onClick={() => document.getElementById('kitchen-access')?.scrollIntoView({ behavior: 'smooth' })}
+                    aria-label="Book a kitchen — scroll to kitchen listings"
                   >
-                    How It Works
+                    <Building2 className="mr-1 sm:mr-1.5 h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 shrink-0 text-[#F51042] group-hover:scale-110 transition-transform" />
+                    <span className="truncate sm:hidden">Book Kitchen</span>
+                    <span className="hidden sm:inline truncate">Book a Kitchen</span>
                   </Button>
                 </motion.div>
 
@@ -1722,7 +1727,7 @@ export default function ChefLanding() {
         </div>
 
         {/* ══════ MAIN KITCHEN ACCESS SECTION - Bold Primary Background ══════ */}
-        <section id="kitchen-access" className="relative py-20 md:py-28 px-4 overflow-hidden bg-[#F51042]">
+        <section id="kitchen-access" className="relative scroll-mt-24 py-20 md:py-28 px-4 overflow-hidden bg-[#F51042]">
           {/* Animated Background Effects with fade mask to blend into waves */}
           <div
             className="absolute inset-0 overflow-hidden pointer-events-none"
@@ -1821,8 +1826,8 @@ export default function ChefLanding() {
 
             {/* Kitchen Location Cards - White Cards on Red Background */}
             {!kitchensLoading && uniqueLocations.length > 0 ? (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
-                {uniqueLocations.slice(0, 6).map((loc: any, i: number) => (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10 md:mb-12">
+                {uniqueLocations.slice(0, 3).map((loc: any, i: number) => (
                   <FadeInSection key={loc.id} delay={Math.min(i % 4, 3) as 0 | 1 | 2 | 3}>
                     <KitchenLocationCard
                       location={loc}
@@ -1833,7 +1838,7 @@ export default function ChefLanding() {
               </div>
             ) : !kitchensLoading ? (
               <FadeInSection delay={1}>
-                <div className="flex justify-center mb-16">
+                <div className="flex justify-center mb-10 md:mb-12">
                   <div className="bg-white/15 backdrop-blur-md rounded-2xl border border-white/20 px-8 py-10 text-center max-w-md">
                     <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center mx-auto mb-4">
                       <Building2 className="h-7 w-7 text-white" />
@@ -1846,6 +1851,24 @@ export default function ChefLanding() {
                 </div>
               </FadeInSection>
             ) : null}
+
+            {/* Browse all kitchens — discovery path to full listings */}
+            {!kitchensLoading && (
+              <FadeInSection delay={1}>
+                <div className="flex justify-center mb-14 md:mb-16">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="group inline-flex items-center justify-center bg-white/10 hover:bg-white text-white hover:text-[#F51042] border-2 border-white/40 hover:border-white font-semibold rounded-full px-6 sm:px-8 py-5 sm:py-6 text-sm sm:text-base transition-all duration-300 shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5"
+                    onClick={() => navigate('/compare-kitchens')}
+                  >
+                    <Calendar className="mr-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+                    Browse All Kitchens
+                    <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
+                  </Button>
+                </div>
+              </FadeInSection>
+            )}
 
             {/* Partner CTA - Container Card with Bento Grid Inside */}
             <FadeInSection delay={1}>
@@ -2189,7 +2212,7 @@ export default function ChefLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             FAQ
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="faq" className="py-20 md:py-28 px-4 bg-white">
+        <section id="faq" className="scroll-mt-24 py-20 md:py-28 px-4 bg-white">
           <div className="container mx-auto max-w-3xl">
             <FadeInSection>
               <div className="text-center mb-12">

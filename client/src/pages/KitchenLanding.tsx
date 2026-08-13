@@ -1,6 +1,7 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
+import TidioController from "@/components/chat/TidioController";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -397,6 +398,7 @@ export default function KitchenLanding() {
           { name: "Contact", description: "Get in touch with LocalCooks for questions or partnerships", url: "https://www.localcooks.ca/contact" },
         ]}
       />
+      <TidioController forceShow={true} />
       <Header />
       
       <main className="flex-grow">

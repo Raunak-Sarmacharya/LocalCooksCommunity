@@ -23,8 +23,14 @@ import {
   Utensils,
   TrendingUp,
   MessageCircle,
+  DollarSign,
+  Link2,
+  ExternalLink,
+  Loader2,
 } from "lucide-react";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
+import { useShopStatus, useStripeDashboardLink } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
+import { useToast } from "@/hooks/use-toast";
 import type { 
   AnyApplication, 
   KitchenApplicationWithLocation, 
@@ -50,6 +56,8 @@ interface OverviewTabContentProps {
   onSetActiveTab: (tab: string) => void;
   onSetApplicationViewMode: (mode: 'list' | 'form' | 'documents') => void;
   onBookSessionClick: () => void;
+  isSellerApplicationFullyApproved?: boolean;
+  isShopCreated?: boolean;
 }
 
 export default function OverviewTabContent({
@@ -66,8 +74,29 @@ export default function OverviewTabContent({
   onSetActiveTab,
   onSetApplicationViewMode,
   onBookSessionClick,
+  isSellerApplicationFullyApproved,
+  isShopCreated,
 }: OverviewTabContentProps) {
   
+  const { data: shopStatus } = useShopStatus();
+  const dashboardLinkMutation = useStripeDashboardLink();
+  const { toast } = useToast();
+
+  const handleOpenDashboard = async () => {
+    try {
+      const result = await dashboardLinkMutation.mutateAsync();
+      if (result.url) {
+        window.open(result.url, "_blank", "noopener,noreferrer");
+      }
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Failed to fetch Stripe dashboard link. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Helper to get kitchen app status for the overview cards
   const getKitchenAppStatus = (app: KitchenApplicationWithLocation) => {
     if (app.status === 'inReview') {
@@ -125,7 +154,7 @@ export default function OverviewTabContent({
   return (
     <div className="space-y-8">
       {/* Welcome Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
             {getGreeting()}{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!
@@ -187,8 +216,8 @@ export default function OverviewTabContent({
         </Card>
       </div>
 
-      {/* Two Path Cards - Sell on LocalCooks & Kitchen Access */}
-      <div className="grid gap-6 md:grid-cols-2">
+      {/* Three Path Cards - Sell, Kitchens & Seller Account */}
+      <div className={cn("grid gap-6", (isSellerApplicationFullyApproved && isShopCreated) ? "lg:grid-cols-3" : "lg:grid-cols-2")}>
         {/* Sell on LocalCooks Path */}
         <Card className="border-border/50 shadow-sm overflow-hidden group hover:shadow-lg transition-all">
           <div className="h-2 bg-gradient-to-r from-primary to-primary/60" />
@@ -357,13 +386,95 @@ export default function OverviewTabContent({
             )}
           </CardFooter>
         </Card>
+
+        {/* Seller Account / Earnings Path */}
+        {isSellerApplicationFullyApproved && isShopCreated && (
+          <Card className="border-border/50 shadow-sm overflow-hidden group hover:shadow-lg transition-all">
+            <div className="h-2 bg-gradient-to-r from-emerald-600 to-emerald-400" />
+            <CardHeader className="pb-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+                    <DollarSign className="h-6 w-6 text-emerald-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Seller Account</CardTitle>
+                    <CardDescription>Manage your store and earnings</CardDescription>
+                  </div>
+                </div>
+                {shopStatus?.linked && (
+                  <Badge variant="success" className="text-xs">
+                    Connected
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Track your food order revenue, view payouts, and manage your Stripe connection for automatic bank transfers.
+              </p>
+              
+              {shopStatus?.linked ? (
+                <div className="space-y-3">
+                  <div className="p-4 bg-emerald-500/5 rounded-lg border border-emerald-500/10 text-center">
+                    <Store className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
+                    <p className="text-sm font-medium">Your store is active</p>
+                    <p className="text-xs text-muted-foreground">Manage your menu and orders in the seller dashboard</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-muted/30 rounded-lg border border-border/50 text-center">
+                  <Link2 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm font-medium">Not Connected</p>
+                  <p className="text-xs text-muted-foreground">Link your account to view earnings</p>
+                </div>
+              )}
+            </CardContent>
+            <CardFooter className="bg-muted/5 border-t border-border/30 pt-4 gap-2">
+              {shopStatus?.linked ? (
+                <>
+                  <Button 
+                    variant="outline"
+                    className="flex-1 px-0 text-xs sm:text-sm"
+                    onClick={() => {
+                      const isProd = window.location.hostname === "chef.localcooks.ca";
+                      const url = isProd
+                        ? "https://shop.localcook.shop/app/shop/home.php"
+                        : "https://stagingwebapp.localcook.shop/app/shop/home.php";
+                      window.open(url, "_blank", "noopener,noreferrer");
+                    }}
+                  >
+                    Manage Shop
+                    <ExternalLink className="ml-1.5 h-3 w-3 sm:h-4 sm:w-4" />
+                  </Button>
+                  <Button 
+                    className="flex-1 px-0 text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-colors gap-1"
+                    onClick={handleOpenDashboard} 
+                    disabled={dashboardLinkMutation.isPending} 
+                  >
+                    {dashboardLinkMutation.isPending ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" /> : <ExternalLink className="h-3 w-3 sm:h-4 sm:w-4" />}
+                    Stripe
+                  </Button>
+                </>
+              ) : (
+                <Button 
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => onSetActiveTab("seller-revenue")}
+                >
+                  Link Account
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              )}
+            </CardFooter>
+          </Card>
+        )}
       </div>
 
-      {/* Upcoming Bookings + Recent Activity */}
-      {(enrichedBookings?.length > 0 || applications?.length > 0 || kitchenApplications.length > 0) && (
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Upcoming Bookings — Airbnb/Calendly pattern */}
-          {enrichedBookings?.length > 0 && (() => {
+      {/* Upcoming Bookings */}
+      {enrichedBookings?.length > 0 && (
+        <div className="grid gap-6">
+          {(() => {
             const statusBadgeConfig: Record<string, { label: string; dotColor: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" }> = {
               confirmed: { label: 'Confirmed', dotColor: 'bg-green-500', variant: 'success' },
               pending: { label: 'Awaiting Approval', dotColor: 'bg-amber-500', variant: 'secondary' },
@@ -497,60 +608,6 @@ export default function OverviewTabContent({
             );
           })()}
 
-          {/* Recent Activity Feed */}
-          <Card className="border-border/50 shadow-sm">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
-                  <Clock className="h-5 w-5 text-purple-600" />
-                </div>
-                <div>
-                  <CardTitle className="text-lg">Recent Activity</CardTitle>
-                  <CardDescription>Your latest actions</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 max-h-[200px] overflow-y-auto">
-                {/* Generate activity items from existing data */}
-                {[...(applications || []).map(app => ({
-                  icon: Store,
-                  color: 'text-primary',
-                  label: `Seller application ${app.status === 'approved' ? 'approved' : app.status === 'inReview' ? 'submitted' : app.status}`,
-                  time: app.createdAt ? formatDate(app.createdAt, 'short') : '',
-                  sortDate: app.createdAt ? new Date(app.createdAt).getTime() : 0,
-                })),
-                ...kitchenApplications.map(app => ({
-                  icon: Building,
-                  color: 'text-blue-600',
-                  label: `Applied to ${app.location?.name || 'kitchen'}`,
-                  time: app.createdAt ? formatDate(app.createdAt, 'short') : '',
-                  sortDate: app.createdAt ? new Date(app.createdAt).getTime() : 0,
-                })),
-                ...(enrichedBookings || []).slice(0, 3).map(b => ({
-                  icon: Calendar,
-                  color: 'text-amber-600',
-                  label: `Booking at ${b.kitchenName || b.locationName || 'kitchen'} — ${b.status}`,
-                  time: b.bookingDate ? formatDate(b.bookingDate, 'short') : '',
-                  sortDate: b.bookingDate ? new Date(b.bookingDate + 'T00:00:00').getTime() : 0,
-                })),
-                ].sort((a, b) => b.sortDate - a.sortDate).slice(0, 5).map((item, idx) => (
-                  <div key={idx} className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                    <div className="mt-0.5">
-                      <item.icon className={cn("h-4 w-4", item.color)} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{item.label}</p>
-                      <p className="text-xs text-muted-foreground">{item.time}</p>
-                    </div>
-                  </div>
-                ))}
-                {applications?.length === 0 && kitchenApplications.length === 0 && enrichedBookings?.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">No recent activity yet.</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
         </div>
       )}
 

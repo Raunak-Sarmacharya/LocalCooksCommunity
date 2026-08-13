@@ -148,6 +148,14 @@
     {
       "path": "/api/detect-overstays",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/chef/cron/seller-reports?period=weekly",
+      "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/chef/cron/seller-reports?period=monthly",
+      "schedule": "0 8 1 * *"
     }
   ]
 }

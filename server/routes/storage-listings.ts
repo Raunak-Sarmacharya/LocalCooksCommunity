@@ -238,4 +238,49 @@ router.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req
     }
 });
 
+// ===================================
+// PUBLIC STORAGE ENDPOINTS (browse / preview — no auth)
+// ===================================
+
+router.get("/public/kitchens/:kitchenId/storage-listings", async (req: Request, res: Response) => {
+    try {
+        const kitchenId = parseInt(req.params.kitchenId);
+        if (isNaN(kitchenId) || kitchenId <= 0) {
+            return res.status(400).json({ error: "Invalid kitchen ID" });
+        }
+
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchen || !kitchen.isActive) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const allListings = await inventoryService.getStorageListingsByKitchen(kitchenId);
+        const visibleListings = allListings.filter((listing: any) =>
+            (listing.status === "approved" || listing.status === "active") &&
+            listing.isActive === true
+        );
+
+        const sanitized = visibleListings.map((s: any) => ({
+            id: s.id,
+            storageType: s.storageType,
+            name: s.name,
+            description: s.description ?? null,
+            basePrice: s.basePrice != null ? Number(s.basePrice) : 0,
+            pricePerCubicFoot: s.pricePerCubicFoot != null ? Number(s.pricePerCubicFoot) : null,
+            pricingModel: s.pricingModel,
+            dimensionsLength: s.dimensionsLength ?? null,
+            dimensionsWidth: s.dimensionsWidth ?? null,
+            dimensionsHeight: s.dimensionsHeight ?? null,
+            totalVolume: s.totalVolume ?? null,
+            climateControl: !!s.climateControl,
+            currency: s.currency || "CAD",
+        }));
+
+        res.json(sanitized);
+    } catch (error: any) {
+        logger.error("Error getting public storage listings:", error);
+        res.status(500).json({ error: error.message || "Failed to get storage listings" });
+    }
+});
+
 export default router;

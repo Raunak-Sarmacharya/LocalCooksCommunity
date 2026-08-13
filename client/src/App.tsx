@@ -373,6 +373,7 @@ function Router() {
             </ManagerProtectedRoute>
           ) : null}
         </Route>
+        
         <Route path="/manager/booking/:id">
           {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
             <ManagerProtectedRoute>

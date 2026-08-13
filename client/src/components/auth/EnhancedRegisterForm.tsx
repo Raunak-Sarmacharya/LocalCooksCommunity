@@ -2,7 +2,7 @@ import { logger } from "@/lib/logger";
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
-import { sendEmailVerification } from "firebase/auth";
+// Removed sendEmailVerification from firebase/auth
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
 import { Lock, Mail, User } from "lucide-react";
@@ -249,46 +249,15 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
       if (currentUser) {
         // User is still signed in, send verification directly
-        logger.info('📧 Resending Firebase verification email...');
-        const hostname = window.location.hostname;
-        const isLocalhost = hostname === 'localhost' ||
-          hostname === '127.0.0.1' ||
-          hostname.endsWith('.localhost');
-
-        if (isLocalhost) {
-          // Simple verification without custom redirect - works on localhost
-          await sendEmailVerification(currentUser);
-        } else {
-          // ENTERPRISE: Determine the correct redirect URL based on subdomain/path context
-          // Production subdomains: kitchen.localcooks.ca (managers), chef.localcooks.ca (chefs), admin.localcooks.ca (admins)
-          const pathname = window.location.pathname.toLowerCase();
-          let redirectUrl = 'https://chef.localcooks.ca/auth?verified=true'; // Default for chefs
-
-          // Detect role from subdomain
-          if (hostname.includes('kitchen') || hostname.startsWith('kitchen.')) {
-            if (pathname.includes('/manager')) {
-              redirectUrl = 'https://kitchen.localcooks.ca/manager/login?verified=true';
-            } else {
-              redirectUrl = 'https://chef.localcooks.ca/auth?verified=true';
-            }
-          } else if (hostname.includes('admin') || hostname.startsWith('admin.')) {
-            redirectUrl = 'https://admin.localcooks.ca/admin/login?verified=true';
-          } else if (hostname.includes('chef') || hostname.startsWith('chef.')) {
-            redirectUrl = 'https://chef.localcooks.ca/auth?verified=true';
-          } else {
-            // Fallback: detect from path
-            if (pathname.includes('/admin')) {
-              redirectUrl = 'https://admin.localcooks.ca/admin/login?verified=true';
-            } else if (pathname.includes('/manager')) {
-              redirectUrl = 'https://kitchen.localcooks.ca/manager/login?verified=true';
-            }
-          }
-
-          logger.info(`📧 Using redirect URL: ${redirectUrl}`);
-          await sendEmailVerification(currentUser, {
-            url: redirectUrl,
-            handleCodeInApp: false,
-          });
+        // Send custom verification email
+        const response = await fetch('/api/firebase/send-verification-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: currentUser.email, role: 'chef' }) // Form handles both, backend determines actual role
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to send verification email');
         }
         logger.info('✅ Firebase verification email resent successfully');
       } else {

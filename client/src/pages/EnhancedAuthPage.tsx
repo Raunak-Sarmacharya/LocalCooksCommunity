@@ -32,6 +32,8 @@ export default function EnhancedAuthPage() {
   const hasCheckedUser = useRef(false);
   const hasUserMetaRef = useRef(false); // Track if userMeta was successfully fetched (avoids stale closure)
 
+  const [retryCount, setRetryCount] = useState(0);
+
   // Check for success messages from URL parameters
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -136,8 +138,7 @@ export default function EnhancedAuthPage() {
             // Check if user needs email verification (for email/password users)
             if (!userData.is_verified) {
               logger.info('📧 EMAIL VERIFICATION REQUIRED');
-              // For now, we'll redirect to dashboard anyway as verification is handled elsewhere
-              // In a full implementation, you might want to show a verification screen here
+              return; // MUST RETURN HERE so it doesn't execute the redirect logic below which bounces unverified users back to login
             }
             
             // User is verified and has seen welcome - redirect to appropriate page
@@ -179,7 +180,7 @@ export default function EnhancedAuthPage() {
       hasUserMetaRef.current = false;
       setUserMeta(null);
     }
-  }, [loading, user, hasAttemptedLogin, setLocation]);
+  }, [loading, user, hasAttemptedLogin, retryCount, setLocation]);
 
   // Handle welcome screen completion
   const handleWelcomeContinue = async () => {
@@ -353,8 +354,19 @@ export default function EnhancedAuthPage() {
     if (!hasUserMetaRef.current) {
       logger.info('🔄 Resetting hasCheckedUser for retry (userMeta not fetched yet)');
       hasCheckedUser.current = false;
+      setRetryCount(c => c + 1); // Force a re-render to trigger fetchUserMeta again
     }
     setHasAttemptedLogin(true);
+
+    // Fallback: If we're still stuck on the auth page after 3 seconds, force a hard reload.
+    // This catches edge cases where state updates fail to trigger the redirect.
+    setTimeout(() => {
+      const currentPath = window.location.pathname;
+      if (currentPath === '/auth' || currentPath.includes('login') || currentPath.includes('register')) {
+        logger.warn('⚠️ STUCK ON AUTH PAGE DETECTED! Forcing hard page reload to complete login.');
+        window.location.reload();
+      }
+    }, 3000);
   };
 
   // Skip welcome screen for admins and managers

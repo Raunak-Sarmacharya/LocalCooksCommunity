@@ -285,6 +285,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Send Verification Email (Firebase Backend Custom Email)
+  app.post("/api/firebase/send-verification-email", async (req, res) => {
+    try {
+      const { email, role } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      // We need to use firebase-admin to generate the verification link
+      const { getAuth } = await import('firebase-admin/auth');
+      const { initializeFirebaseAdmin } = await import('./firebase-setup');
+      
+      const firebaseApp = initializeFirebaseAdmin();
+      if (!firebaseApp) {
+        throw new Error('Firebase Admin not initialized');
+      }
+
+      // Lookup the user to ensure we have the correct role and name
+      const existingUser = await userService.getUserByUsername(email);
+      const userRole = existingUser ? (existingUser as any).role || role || 'chef' : role || 'chef';
+      
+      const { getSubdomainUrl } = await import('./email');
+      const userType = userRole === 'manager' ? 'kitchen' : userRole === 'admin' ? 'admin' : 'chef';
+      const baseUrl = getSubdomainUrl(userType);
+
+      // We don't necessarily need a redirectPath because EmailAction.tsx handles the ?mode=verifyEmail flow
+      // The user is redirected to EmailAction by Firebase's default handlers if we don't set it,
+      // but wait, we are generating an OOB URL and sending it directly. 
+      // The generated OOB URL by Firebase Admin SDK will point to the Firebase project's action URL 
+      // (e.g. auth.localcooks.ca/__/auth/action) UNLESS we specify a custom URL in actionCodeSettings.
+      // If we specify a custom URL, Firebase embeds it in the action link. 
+      // Actually, if we use actionCodeSettings, the link points to OUR URL instead of Firebase's.
+      // E.g., `https://kitchen.localcooks.ca/auth/action?mode=verifyEmail&oobCode=...` 
+      // Wait, let's see how forgot-password uses actionCodeSettings.
+      const redirectPath = userRole === 'manager'
+        ? '/manager/login?verified=true'
+        : userRole === 'admin'
+          ? '/admin/login?verified=true'
+          : '/auth?verified=true';
+
+      const actionCodeSettings = {
+        url: `${baseUrl}${redirectPath}`,
+        handleCodeInApp: false,
+      };
+
+      const verificationUrl = await getAuth(firebaseApp).generateEmailVerificationLink(email, actionCodeSettings);
+
+      const { sendEmail, generateEmailVerificationEmail } = await import('./email');
+      
+      const rawFirstName = existingUser ? ((existingUser as any).firstName || (existingUser as any).first_name) : null;
+      const rawLastName = existingUser ? ((existingUser as any).lastName || (existingUser as any).last_name) : null;
+      const fullName = rawFirstName ? `${rawFirstName} ${rawLastName || ''}`.trim() : email.split('@')[0];
+      
+      const emailContent = generateEmailVerificationEmail({
+        fullName,
+        email,
+        verificationToken: "firebase-token",
+        verificationUrl
+      });
+
+      const emailSent = await sendEmail(emailContent, {
+        trackingId: `email_verify_${existingUser?.id || email}_${Date.now()}`
+      });
+
+      if (!emailSent) {
+        throw new Error('Failed to send verification email');
+      }
+
+      logger.info(`✅ Custom branded email verification sent to ${email} (role: ${userRole})`);
+      res.json({ success: true, message: "Verification email sent." });
+    } catch (error: any) {
+      logger.error("Error sending verification email:", error);
+      res.status(500).json({ error: "Failed to send verification email" });
+    }
+  });
+
   // Manager Forgot Password (backward-compatible alias — both endpoints now use the same role-aware logic)
   app.post("/api/manager/forgot-password", async (req, res) => {
     try {
@@ -753,6 +829,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
 
 
+
+  // Analytics Routes
+  app.use("/api/analytics", (await import("./routes/analytics")).default);
 
   // Chef Routes
   app.use("/api/chef", (await import("./routes/chef")).default);

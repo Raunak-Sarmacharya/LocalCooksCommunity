@@ -130,7 +130,7 @@ function detectRoleFromCurrentHostname(): 'manager' | 'chef' | 'admin' | null {
  * If continueUrl is valid and from a trusted domain, use it directly
  * Otherwise, construct a URL based on detected role
  */
-function buildRedirectUrl(continueUrl: string | null): string {
+function buildRedirectUrl(continueUrl: string | null, databaseRole?: 'manager' | 'chef' | 'admin' | null): string {
   // Trusted domains for security validation
   const TRUSTED_DOMAINS = [
     'localcooks.ca',
@@ -140,8 +140,8 @@ function buildRedirectUrl(continueUrl: string | null): string {
     'localhost',
   ];
 
-  // If we have a valid continueUrl from a trusted domain, use it
-  if (continueUrl) {
+  // If we have a valid continueUrl from a trusted domain, and NO databaseRole to override, use it directly
+  if (continueUrl && !databaseRole) {
     try {
       const url = new URL(decodeURIComponent(continueUrl));
       const isTrusted = TRUSTED_DOMAINS.some(domain =>
@@ -159,10 +159,10 @@ function buildRedirectUrl(continueUrl: string | null): string {
     }
   }
 
-  // Fallback: Build URL based on detected role
-  const role = continueUrl
+  // Fallback: Build URL based on detected or provided role
+  const role = databaseRole || (continueUrl
     ? detectRoleFromContinueUrl(continueUrl)
-    : detectRoleFromCurrentHostname();
+    : detectRoleFromCurrentHostname());
 
   logger.info('🔍 Detected role for redirect:', role);
 
@@ -312,6 +312,7 @@ export default function EmailAction() {
         // This endpoint uses Firebase Admin SDK to verify the email is actually verified
         // and sends the welcome email. It doesn't require authentication because
         // the user is NOT signed in when clicking the verification link.
+        let databaseRole: 'manager' | 'chef' | 'admin' | null = null;
         if (email) {
           logger.info('🔄 Calling public verify-email-complete endpoint...');
           try {
@@ -325,9 +326,13 @@ export default function EmailAction() {
 
             if (syncResponse.ok) {
               const syncResult = await syncResponse.json();
+              if (syncResult.role) {
+                databaseRole = syncResult.role;
+              }
               logger.info('✅ DATABASE VERIFICATION SYNC SUCCESS:', JSON.stringify(syncResult, null, 2));
               logger.info(`   - Database verified: ${syncResult.databaseVerified}`);
               logger.info(`   - Welcome email sent: ${syncResult.welcomeEmailSent}`);
+              logger.info(`   - Role from DB: ${databaseRole}`);
               logger.info(`   - Email config status:`, syncResult.emailConfigStatus);
               
               // ENTERPRISE: Warn if email wasn't sent so we can investigate
@@ -360,7 +365,7 @@ export default function EmailAction() {
         setMessage('Your email has been verified successfully! You can now log in to your account.');
 
         // Build the redirect URL based on continueUrl or detected role
-        const finalRedirectUrl = buildRedirectUrl(continueUrl);
+        const finalRedirectUrl = buildRedirectUrl(continueUrl, databaseRole);
         setRedirectUrl(finalRedirectUrl);
 
         logger.info('🎯 Will redirect to:', finalRedirectUrl);

@@ -294,10 +294,28 @@ function TermsAcceptanceScreen() {
                                 initial={{ opacity: 0, y: 5 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -5 }}
-                                className="flex items-center gap-2 text-slate-400"
+                                className="flex items-center"
                               >
-                                <ArrowDown className="h-3 w-3 animate-bounce" />
-                                <span className="text-[11px] font-semibold tracking-wide uppercase">Scroll to read all {activeTab === 'terms' ? 'Terms' : 'Policies'}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="flex items-center gap-2 text-primary hover:text-primary/80 hover:bg-primary/5 rounded-full h-8 px-4 border border-primary/20 bg-white/50 shadow-sm transition-all"
+                                  onClick={() => {
+                                    const isTerms = activeTab === 'terms';
+                                    const ref = isTerms ? termsRef : privacyRef;
+                                    if (ref.current) {
+                                      ref.current.scrollTo({
+                                        top: ref.current.scrollHeight,
+                                        behavior: 'smooth'
+                                      });
+                                    }
+                                    if (isTerms) setTermsRead(true);
+                                    else setPrivacyRead(true);
+                                  }}
+                                >
+                                  <ArrowDown className="h-3.5 w-3.5 animate-bounce" />
+                                  <span className="text-[11px] font-bold tracking-wide uppercase">Scroll to bottom to read</span>
+                                </Button>
                               </motion.div>
                             ) : (
                               <motion.div 

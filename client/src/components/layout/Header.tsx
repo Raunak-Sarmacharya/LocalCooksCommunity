@@ -294,20 +294,20 @@ export default function Header() {
             </li>
             <li>
               <a
-                href="#faq"
-                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
-                onClick={(e) => scrollToSection("faq", e)}
-              >
-                FAQ
-              </a>
-            </li>
-            <li>
-              <a
                 href="#resources"
                 className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
                 onClick={(e) => scrollToSection("resources", e)}
               >
                 Resources
+              </a>
+            </li>
+            <li>
+              <a
+                href="#faq"
+                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
+                onClick={(e) => scrollToSection("faq", e)}
+              >
+                FAQ
               </a>
             </li>
             {user && user.role !== 'admin' && (user as any).isChef && (
@@ -443,18 +443,6 @@ export default function Header() {
               </li>
               <li>
                 <a
-                  href="#faq"
-                  className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                  onClick={(e) => {
-                    scrollToSection("faq", e);
-                    closeMenu();
-                  }}
-                >
-                  FAQ
-                </a>
-              </li>
-              <li>
-                <a
                   href="#resources"
                   className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
                   onClick={(e) => {
@@ -463,6 +451,18 @@ export default function Header() {
                   }}
                 >
                   Resources
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#faq"
+                  className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
+                  onClick={(e) => {
+                    scrollToSection("faq", e);
+                    closeMenu();
+                  }}
+                >
+                  FAQ
                 </a>
               </li>
               {user && (

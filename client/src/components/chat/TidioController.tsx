@@ -60,11 +60,12 @@ const injectTidioScript = (): void => {
 // Set visitor identity for conversation merging (must be called before script loads)
 const ensureVisitorIdentity = (userId?: string, userEmail?: string, userName?: string): void => {
   if (userEmail || userName || userId) {
-    window.tidioIdentify = {
-      distinct_id: userId,
-      email: userEmail,
-      name: userName,
-    };
+    const identity: Record<string, string> = {};
+    if (userId) identity.distinct_id = userId;
+    if (userEmail) identity.email = userEmail;
+    if (userName) identity.name = userName;
+    // Use window.tidioIdentify as defined in types
+    window.tidioIdentify = identity;
   }
 };
 
@@ -72,9 +73,10 @@ interface TidioControllerProps {
   userEmail?: string;
   userName?: string;
   userId?: string;
+  forceShow?: boolean;
 }
 
-export default function TidioController({ userEmail, userName, userId }: TidioControllerProps) {
+export default function TidioController({ userEmail, userName, userId, forceShow }: TidioControllerProps) {
   const [location] = useLocation();
   const listenersAttached = useRef(false);
   const chatOpenRef = useRef(false);
@@ -96,12 +98,17 @@ export default function TidioController({ userEmail, userName, userId }: TidioCo
 
   // Step 2: Lazy-load Tidio script ONLY when needed (support page or active chat session)
   useEffect(() => {
-    const shouldLoad = isOnSupportPage() || hasActiveChatSession();
+    const shouldLoad = isOnSupportPage() || hasActiveChatSession() || forceShow;
     if (shouldLoad) {
       ensureVisitorIdentity(userId, userEmail, userName);
       injectTidioScript();
     }
-  }, [location, userEmail, userName, userId]);
+  }, [location, userEmail, userName, userId, forceShow]);
+
+  const forceShowRef = useRef(forceShow);
+  useEffect(() => {
+    forceShowRef.current = forceShow;
+  }, [forceShow]);
 
   // Step 3: Once Tidio is ready, hide widget and attach event listeners (once)
   useEffect(() => {
@@ -109,12 +116,13 @@ export default function TidioController({ userEmail, userName, userId }: TidioCo
       if (!window.tidioChatApi || listenersAttached.current) return;
       listenersAttached.current = true;
 
-      // Hide widget immediately — chef must explicitly open it from support page
-      window.tidioChatApi.hide();
-
-      // If on support page or has active session, show the bubble
-      if (isOnSupportPage() || hasActiveChatSession()) {
-        window.tidioChatApi.show();
+      // Determine if widget should be visible
+      const shouldBeVisible = isOnSupportPage() || hasActiveChatSession() || forceShowRef.current;
+      
+      // Do NOT call show() here. Tidio displays by default. Calling show() immediately 
+      // interrupts Tidio's initialization, breaking chat delivery and hiding the label.
+      if (!shouldBeVisible) {
+        if (typeof window.tidioChatApi.hide === 'function') window.tidioChatApi.hide();
       }
 
       // Define named handlers so we can remove them with .off()
@@ -126,9 +134,13 @@ export default function TidioController({ userEmail, userName, userId }: TidioCo
         chatOpenRef.current = false;
         // Chef manually closed the chat — clear session so it won't reappear on reload
         setActiveChatSession(false);
-        // Hide the widget bubble too, UNLESS they're on the support page
-        if (!isOnSupportPage()) {
-          window.tidioChatApi?.hide();
+        // Hide the widget bubble too, UNLESS they're on the support page or forced to show
+        if (!isOnSupportPage() && !forceShowRef.current) {
+          if (typeof window.tidioChatApi?.display === 'function') {
+            window.tidioChatApi.display(false);
+          } else if (typeof window.tidioChatApi?.hide === 'function') {
+            window.tidioChatApi.hide();
+          }
         }
       };
 
@@ -151,12 +163,15 @@ export default function TidioController({ userEmail, userName, userId }: TidioCo
     };
 
     // Tidio may already be loaded (SPA navigation back to dashboard)
-    if (window.tidioChatApi) {
+    // Ensure we check if it's fully loaded by checking if .on is a function
+    if (window.tidioChatApi && typeof window.tidioChatApi.on === 'function') {
       attachListeners();
     } else {
       const onReady = () => {
-        // Hide immediately on load before any automation can fire
-        window.tidioChatApi?.hide();
+        const shouldBeVisible = isOnSupportPage() || hasActiveChatSession() || forceShowRef.current;
+        if (!shouldBeVisible) {
+          if (typeof window.tidioChatApi?.hide === 'function') window.tidioChatApi.hide();
+        }
         attachListeners();
       };
       document.addEventListener("tidioChat-ready", onReady);
@@ -165,30 +180,62 @@ export default function TidioController({ userEmail, userName, userId }: TidioCo
       };
     }
 
-    // Cleanup: remove Tidio event listeners on unmount
+    // Cleanup: remove Tidio event listeners on unmount safely
     return () => {
       if (window.tidioChatApi && listenersAttached.current) {
-        if (onOpenRef.current) window.tidioChatApi.off("open", onOpenRef.current);
-        if (onCloseRef.current) window.tidioChatApi.off("close", onCloseRef.current);
-        if (onConversationStartRef.current) window.tidioChatApi.off("conversationStart", onConversationStartRef.current);
-        if (onConversationEndRef.current) window.tidioChatApi.off("conversationEnd", onConversationEndRef.current);
+        if (typeof window.tidioChatApi.off === 'function') {
+          if (onOpenRef.current) window.tidioChatApi.off("open", onOpenRef.current);
+          if (onCloseRef.current) window.tidioChatApi.off("close", onCloseRef.current);
+          if (onConversationStartRef.current) window.tidioChatApi.off("conversationStart", onConversationStartRef.current);
+          if (onConversationEndRef.current) window.tidioChatApi.off("conversationEnd", onConversationEndRef.current);
+        }
         listenersAttached.current = false;
       }
     };
   }, []);
 
   // Step 4: React to SPA navigation — show/hide widget based on page context
-  useEffect(() => {
-    if (!window.tidioChatApi) return;
+  const hasBeenHiddenRef = useRef(false);
 
-    if (isOnSupportPage() || hasActiveChatSession()) {
-      window.tidioChatApi.show();
-    } else if (!chatOpenRef.current) {
-      // Not on support page, no active session, chat popup not open — hide bubble
-      window.tidioChatApi.hide();
-    }
-    // If chatOpenRef.current is true (popup is open), do nothing — let the user finish their chat
-  }, [location]);
+  useEffect(() => {
+    const handleContextChange = (event?: Event) => {
+      if (!window.tidioChatApi) return;
+
+      const shouldBeVisible = isOnSupportPage() || hasActiveChatSession() || forceShow;
+
+      if (shouldBeVisible) {
+        // Only call show/display(true) if we previously hid it.
+        // Tidio is visible by default on load, and calling API show methods immediately breaks it.
+        if (hasBeenHiddenRef.current) {
+          if (typeof window.tidioChatApi.display === 'function') {
+            window.tidioChatApi.display(true);
+          } else if (typeof window.tidioChatApi.show === 'function') {
+            window.tidioChatApi.show();
+          }
+          hasBeenHiddenRef.current = false;
+        }
+      } else if (!chatOpenRef.current) {
+        // Not on support page, no active session, chat popup not open — hide bubble
+        if (!hasBeenHiddenRef.current) {
+          if (typeof window.tidioChatApi.display === 'function') {
+            window.tidioChatApi.display(false);
+          } else if (typeof window.tidioChatApi.hide === 'function') {
+            window.tidioChatApi.hide();
+          }
+          hasBeenHiddenRef.current = true;
+        }
+      }
+    };
+
+    // Run on location/forceShow change
+    handleContextChange();
+
+    // In case tidioChatApi becomes ready later, we should also trigger this
+    document.addEventListener("tidioChat-ready", handleContextChange);
+    return () => {
+      document.removeEventListener("tidioChat-ready", handleContextChange);
+    };
+  }, [location, forceShow]);
 
   return null;
 }
@@ -198,8 +245,8 @@ export default function TidioController({ userEmail, userName, userId }: TidioCo
 export function useTidioChat() {
   const openChat = useCallback(() => {
     // If Tidio is already loaded, open immediately
-    if (window.tidioChatApi) {
-      window.tidioChatApi.show();
+    if (window.tidioChatApi && typeof window.tidioChatApi.open === 'function') {
+      if (typeof window.tidioChatApi.show === 'function') window.tidioChatApi.show();
       window.tidioChatApi.open();
       return;
     }
@@ -208,28 +255,30 @@ export function useTidioChat() {
     injectTidioScript();
     const onReady = () => {
       if (window.tidioChatApi) {
-        window.tidioChatApi.show();
-        window.tidioChatApi.open();
+        if (typeof window.tidioChatApi.show === 'function') window.tidioChatApi.show();
+        if (typeof window.tidioChatApi.open === 'function') window.tidioChatApi.open();
       }
     };
     document.addEventListener("tidioChat-ready", onReady, { once: true });
   }, []);
 
   const closeChat = useCallback(() => {
-    if (window.tidioChatApi) {
+    if (window.tidioChatApi && typeof window.tidioChatApi.close === 'function') {
       window.tidioChatApi.close();
     }
   }, []);
 
   const hideWidget = useCallback(() => {
     if (window.tidioChatApi) {
-      window.tidioChatApi.hide();
+      if (typeof window.tidioChatApi.display === 'function') window.tidioChatApi.display(false);
+      else if (typeof window.tidioChatApi.hide === 'function') window.tidioChatApi.hide();
     }
   }, []);
 
   const showWidget = useCallback(() => {
     if (window.tidioChatApi) {
-      window.tidioChatApi.show();
+      if (typeof window.tidioChatApi.display === 'function') window.tidioChatApi.display(true);
+      else if (typeof window.tidioChatApi.show === 'function') window.tidioChatApi.show();
     }
   }, []);
 

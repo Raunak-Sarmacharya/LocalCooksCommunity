@@ -13,6 +13,8 @@ import { users, applications } from "@shared/schema";
 import { errorResponse } from "../api-response";
 import { getAppBaseUrl } from "../config";
 import * as phpBridge from '../services/php-bridge-service';
+import { generateReportCSV, generateReportPDF, processScheduledReports } from '../services/seller-report-service';
+import { format } from 'date-fns';
 
 const router = Router();
 
@@ -851,6 +853,13 @@ router.get("/seller/earnings-summary", requireChef, requireApprovedSeller, async
     try {
         const chefId = req.neonUser!.id;
         const period = (req.query.period as string) || 'all';
+        const startDate = req.query.start_date as string;
+        const endDate = req.query.end_date as string;
+
+        let phpPeriod = period;
+        if (period === 'month') phpPeriod = 'monthly';
+        if (period === 'week') phpPeriod = 'weekly';
+        if (period === 'today') phpPeriod = 'daily';
 
         const [chef] = await db
             .select({ phpShopId: users.phpShopId })
@@ -862,7 +871,115 @@ router.get("/seller/earnings-summary", requireChef, requireApprovedSeller, async
             return res.status(400).json({ error: "NO_SHOP_LINKED", message: "Link your seller account first." });
         }
 
-        const data = await phpBridge.getEarningsSummary(chef.phpShopId, period);
+        const data = await phpBridge.getEarningsSummary(chef.phpShopId, phpPeriod, startDate, endDate);
+
+        // PHP backend doesn't properly filter earnings-summary by date. 
+        // We aggregate it locally if a date filter is applied.
+        if (phpPeriod !== 'all' && startDate) {
+            try {
+                const parsePhpDate = (dateStr: string) => {
+                    if (!dateStr) return null;
+                    const parts = dateStr.split('-');
+                    if (parts.length === 3) {
+                        return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00Z`);
+                    }
+                    return null;
+                };
+                
+                const parseOrderTime = (orderTime: string) => {
+                    if (!orderTime) return null;
+                    const datePart = orderTime.split(' ')[0];
+                    return parsePhpDate(datePart);
+                };
+                
+                const filterStart = parsePhpDate(startDate);
+                
+                let total_earnings = 0;
+                let total_tips = 0;
+                let total_due = 0;
+                let total_paid = 0;
+                let total_orders = 0;
+                let total_pre_orders = 0;
+                
+                const by_delivery_method = {
+                    pickup: { count: 0, earnings: 0 },
+                    inhouse: { count: 0, earnings: 0 },
+                    uber_direct: { count: 0, earnings: 0 },
+                };
+                
+                const by_payment_status = {
+                    due: { count: 0, total: 0 },
+                    paid: { count: 0, total: 0 },
+                };
+                
+                let page = 1;
+                let shouldContinue = true;
+                const MAX_PAGES = 20; // up to 2000 orders
+                
+                while (shouldContinue && page <= MAX_PAGES) {
+                    const ordersData = await phpBridge.getSellerOrders(chef.phpShopId, { page, limit: 100 });
+                    if (!ordersData || !ordersData.orders || ordersData.orders.length === 0) {
+                        break;
+                    }
+                    
+                    for (const order of ordersData.orders) {
+                        const orderDate = parseOrderTime(order.order_time);
+                        if (filterStart && orderDate && orderDate < filterStart) {
+                            shouldContinue = false;
+                            continue;
+                        }
+                        
+                        total_orders++;
+                        if (order.type === 'pre_order') total_pre_orders++;
+                        
+                        const earnings = Number(order.chef_earnings || 0);
+                        const tips = Number(order.tip_chef || 0);
+                        
+                        total_earnings += earnings;
+                        total_tips += tips;
+                        
+                        if (order.payout_status === 'due') {
+                            total_due += earnings;
+                            by_payment_status.due.count++;
+                            by_payment_status.due.total += earnings;
+                        } else if (order.payout_status === 'paid') {
+                            total_paid += earnings;
+                            by_payment_status.paid.count++;
+                            by_payment_status.paid.total += earnings;
+                        }
+                        
+                        if (order.order_method === 'pickup') {
+                            by_delivery_method.pickup.count++;
+                            by_delivery_method.pickup.earnings += earnings;
+                        } else if (order.delivery_provider === 'uber_direct') {
+                            by_delivery_method.uber_direct.count++;
+                            by_delivery_method.uber_direct.earnings += earnings;
+                        } else {
+                            by_delivery_method.inhouse.count++;
+                            by_delivery_method.inhouse.earnings += earnings;
+                        }
+                    }
+                    
+                    if (ordersData.orders.length < 100) {
+                        break;
+                    }
+                    page++;
+                }
+                
+                data.earnings.total_earnings = total_earnings;
+                data.earnings.total_tips = total_tips;
+                data.earnings.total_due = total_due;
+                data.earnings.total_paid = total_paid;
+                data.earnings.total_orders = total_orders;
+                data.earnings.total_pre_orders = total_pre_orders;
+                
+                data.by_delivery_method = by_delivery_method;
+                data.by_payment_status = by_payment_status;
+            } catch (err) {
+                logger.error('[Seller Revenue] Failed to aggregate orders locally:', err);
+            }
+        }
+
         res.json(data);
     } catch (error) {
         logger.error('[Seller Revenue] Error fetching earnings summary:', error);
@@ -897,6 +1014,135 @@ router.get("/seller/orders", requireChef, requireApprovedSeller, async (req: Req
         res.json(data);
     } catch (error) {
         logger.error('[Seller Revenue] Error fetching orders:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Get true retention rate by fetching historical orders
+router.get("/seller/retention", requireChef, requireApprovedSeller, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+
+        const [chef] = await db
+            .select({ phpShopId: users.phpShopId })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+        if (!chef?.phpShopId) {
+            return res.status(400).json({ error: "NO_SHOP_LINKED", message: "Link your seller account first." });
+        }
+
+        const startDateStr = req.query.start_date as string;
+        const endDateStr = req.query.end_date as string;
+
+        // Fetch up to 10000 historical orders
+        const data = await phpBridge.getSellerOrders(chef.phpShopId, {
+            type: 'all',
+            status: 'all',
+            page: 1,
+            limit: 10000,
+        });
+
+        const orders = data.orders || [];
+        if (!orders.length) {
+             return res.json({ retentionRate: 0 });
+        }
+
+        const parseDateString = (dateStr: string) => {
+            if (!dateStr) return 0;
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                // DD-MM-YYYY
+                const [d, m, y] = parts.map(Number);
+                return new Date(y, m - 1, d).getTime();
+            }
+            return new Date(dateStr).getTime();
+        };
+
+        const startTimestamp = startDateStr ? parseDateString(startDateStr) : 0;
+        const endTimestamp = endDateStr ? parseDateString(endDateStr) : Date.now();
+
+        const historicalCustomers = new Set<string>();
+        const periodCustomers = new Set<string>();
+        const periodCustomerCounts = new Map<string, number>();
+
+        const parsePhpDateToTimestamp = (phpDateStr: string): number => {
+            if (!phpDateStr) return 0;
+            try {
+                const match = phpDateStr.match(/^(\d{1,2})-(\d{2})-(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})(AM|PM)$/i);
+                if (match) {
+                    const [, day, month, year, hour, min, sec, meridiem] = match;
+                    const m = parseInt(month, 10) - 1;
+                    let h = parseInt(hour, 10);
+                    if (meridiem.toUpperCase() === "PM" && h !== 12) h += 12;
+                    if (meridiem.toUpperCase() === "AM" && h === 12) h = 0;
+                    return new Date(parseInt(year), m, parseInt(day), h, parseInt(min), parseInt(sec)).getTime();
+                }
+                const match2 = phpDateStr.match(/^(\d{1,2})-(\w{3})-(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})(AM|PM)$/i);
+                if (match2) {
+                    const [, day, month, year, hour, min, sec, meridiem] = match2;
+                    const monthMap: Record<string, number> = {
+                        JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
+                        JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11,
+                    };
+                    const m = monthMap[month.toUpperCase()] ?? 0;
+                    let h = parseInt(hour, 10);
+                    if (meridiem.toUpperCase() === "PM" && h !== 12) h += 12;
+                    if (meridiem.toUpperCase() === "AM" && h === 12) h = 0;
+                    return new Date(parseInt(year), m, parseInt(day), h, parseInt(min), parseInt(sec)).getTime();
+                }
+                const cleanDate = phpDateStr.replace(/ - /, ' ');
+                const fallback = new Date(cleanDate);
+                return isNaN(fallback.getTime()) ? 0 : fallback.getTime();
+            } catch {
+                return 0;
+            }
+        };
+
+        orders.forEach((o: any) => {
+            const customerName = (o.customer_name || 'Guest').trim().toLowerCase();
+            const orderTimestamp = parsePhpDateToTimestamp(o.order_time);
+            
+            if (orderTimestamp > 0) {
+                if (orderTimestamp < startTimestamp) {
+                    historicalCustomers.add(customerName);
+                } else if (orderTimestamp >= startTimestamp && orderTimestamp <= endTimestamp) {
+                    periodCustomers.add(customerName);
+                    periodCustomerCounts.set(customerName, (periodCustomerCounts.get(customerName) || 0) + 1);
+                }
+            }
+        });
+
+        const s = historicalCustomers.size;
+        const e = periodCustomers.size;
+        let n = 0;
+
+        periodCustomers.forEach(customer => {
+            if (!historicalCustomers.has(customer)) {
+                n++;
+            }
+        });
+
+        let retentionRate = 0;
+        if (s > 0) {
+            retentionRate = ((e - n) / s) * 100;
+        } else {
+            let repeaters = 0;
+            periodCustomerCounts.forEach(count => {
+                if (count > 1) repeaters++;
+            });
+            if (e > 0) {
+                retentionRate = (repeaters / e) * 100;
+            }
+        }
+
+        console.log(`[Retention Calculation] Start: ${startDateStr}, End: ${endDateStr}`);
+        console.log(`[Retention Calculation] S: ${s}, E: ${e}, N: ${n}, Rate: ${retentionRate}%`);
+
+        res.json({ retentionRate: Math.max(0, retentionRate) });
+    } catch (error) {
+        logger.error('[Seller Revenue] Error calculating retention:', error);
         return errorResponse(res, error);
     }
 });
@@ -944,6 +1190,166 @@ router.get("/seller/stripe-dashboard", requireChef, requireApprovedSeller, async
         res.json(data);
     } catch (error) {
         logger.error('[Seller Revenue] Error fetching Stripe dashboard link:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Export Individual Order Invoice
+router.get("/seller/orders/:orderId/invoice", requireChef, requireApprovedSeller, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const orderId = parseInt(req.params.orderId);
+        const orderDate = req.query.date as string;
+
+        if (isNaN(orderId) || orderId <= 0) {
+            return res.status(400).json({ error: "Invalid order ID" });
+        }
+        if (!orderDate) {
+            return res.status(400).json({ error: "Order date query parameter is required" });
+        }
+
+        const [chef] = await db
+            .select({ phpShopId: users.phpShopId, username: users.username })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+        if (!chef?.phpShopId) {
+            return res.status(403).json({ error: "No seller account linked" });
+        }
+
+        const [app] = await db
+            .select({ fullName: applications.fullName, shopName: applications.shopName })
+            .from(applications)
+            .where(eq(applications.userId, chefId))
+            .orderBy(desc(applications.id))
+            .limit(1);
+
+        const chefName = app?.fullName || (chef.username ? chef.username.split('@')[0] : 'Chef');
+        const shopName = app?.shopName && app.shopName !== 'Shop Not Named' 
+            ? app.shopName 
+            : chefName + "'s Shop";
+
+        const { generateSingleOrderInvoicePDF } = await import('../services/seller-report-service');
+        const pdfBuffer = await generateSingleOrderInvoicePDF(chef.phpShopId, shopName, orderId, orderDate);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="order-invoice-${orderId}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        logger.error('[Seller Revenue] Error generating order invoice:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Export Seller Report (CSV or PDF)
+router.get("/seller/reports/export", requireChef, requireApprovedSeller, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const period = req.query.period as string; // 'weekly' or 'monthly'
+        const formatType = req.query.format as string; // 'csv' or 'pdf'
+
+        if (!['weekly', 'monthly', 'custom'].includes(period)) {
+            return res.status(400).json({ error: "INVALID_PERIOD", message: "Period must be weekly, monthly, or custom." });
+        }
+        if (!['csv', 'pdf'].includes(formatType)) {
+            return res.status(400).json({ error: "INVALID_FORMAT", message: "Format must be csv or pdf." });
+        }
+
+        const [chef] = await db
+            .select({ phpShopId: users.phpShopId, username: users.username })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+        if (!chef?.phpShopId) {
+            return res.status(400).json({ error: "NO_SHOP_LINKED", message: "Link your seller account first." });
+        }
+
+        const now = new Date();
+        let startDate = '';
+        let endDate = '';
+        
+        if (period === 'weekly') {
+            const end = new Date(now);
+            end.setDate(now.getDate() - 1);
+            const start = new Date(now);
+            start.setDate(now.getDate() - 7);
+            startDate = format(start, 'dd-MM-yyyy');
+            endDate = format(end, 'dd-MM-yyyy');
+        } else if (period === 'monthly') {
+            const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const end = new Date(now.getFullYear(), now.getMonth(), 0); 
+            startDate = format(start, 'dd-MM-yyyy');
+            endDate = format(end, 'dd-MM-yyyy');
+        } else if (period === 'custom') {
+            const startQuery = req.query.startDate as string;
+            const endQuery = req.query.endDate as string;
+            if (!startQuery || !endQuery) {
+                return res.status(400).json({ error: "MISSING_DATES", message: "Custom period requires startDate and endDate." });
+            }
+            // convert YYYY-MM-DD from HTML input to DD-MM-YYYY for PHP API
+            const [sYear, sMonth, sDay] = startQuery.split('-');
+            startDate = `${sDay}-${sMonth}-${sYear}`;
+            
+            const [eYear, eMonth, eDay] = endQuery.split('-');
+            endDate = `${eDay}-${eMonth}-${eYear}`;
+        }
+
+        const [app] = await db
+            .select({ fullName: applications.fullName, shopName: applications.shopName })
+            .from(applications)
+            .where(eq(applications.userId, chefId))
+            .orderBy(desc(applications.id))
+            .limit(1);
+
+        const chefName = app?.fullName || (chef.username ? chef.username.split('@')[0] : 'Chef');
+        const shopName = app?.shopName && app.shopName !== 'Shop Not Named' 
+            ? app.shopName 
+            : chefName + "'s Shop";
+
+        if (formatType === 'csv') {
+            const csv = await generateReportCSV(chef.phpShopId, startDate, endDate);
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="LocalCooks_${period}_Data_${startDate}.csv"`);
+            return res.send(csv);
+        } else {
+            const pdfBuffer = await generateReportPDF(chef.phpShopId, shopName, startDate, endDate, period);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="LocalCooks_${period}_Report_${startDate}.pdf"`);
+            return res.send(pdfBuffer);
+        }
+    } catch (error) {
+        logger.error('[Seller Reports] Error exporting report:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Cron job endpoint for processing and emailing scheduled reports
+router.post("/cron/seller-reports", async (req: Request, res: Response) => {
+    try {
+        const cronSecret = process.env.CRON_SECRET;
+        const authHeader = req.headers.authorization;
+        
+        // We only enforce cron secret if one is set in the environment (e.g. Vercel)
+        if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+            logger.warn("[Cron] Unauthorized seller-reports cron job attempt");
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+
+        const period = req.query.period as string;
+        if (period !== 'weekly' && period !== 'monthly') {
+            return res.status(400).json({ error: "INVALID_PERIOD" });
+        }
+
+        // Run asynchronously, return 200 immediately to avoid cron timeout
+        processScheduledReports(period).catch(err => {
+            logger.error(`[Cron] Background task error processing ${period} seller reports:`, err);
+        });
+
+        res.json({ message: `Started processing ${period} seller reports in the background` });
+    } catch (error) {
+        logger.error('[Cron] Error in seller-reports endpoint:', error);
         return errorResponse(res, error);
     }
 });

@@ -72,7 +72,7 @@ const navGroups: NavGroup[] = [
             },
             {
                 id: "seller-revenue",
-                label: "Seller Revenue",
+                label: "My Earnings",
                 icon: DollarSign,
             },
             {

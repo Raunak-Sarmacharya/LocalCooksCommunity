@@ -62,6 +62,24 @@ export interface EarningsSummary {
     paid: { count: number; total: number };
   };
   period: string;
+  matrix?: {
+    weekly: {
+      period: string;
+      gross_sales: number;
+      earnings: number;
+      orders: number;
+      tips: number;
+      commission: number;
+    }[];
+    monthly: {
+      period: string;
+      gross_sales: number;
+      earnings: number;
+      orders: number;
+      tips: number;
+      commission: number;
+    }[];
+  };
 }
 
 export interface SellerOrder {
@@ -140,14 +158,19 @@ export function useLinkShop() {
   });
 }
 
-export function useEarningsSummary(options: { period?: string; enabled?: boolean } = {}) {
-  const { period = "all", enabled = true } = options;
+export function useEarningsSummary(options: { period?: string; startDate?: string; endDate?: string; enabled?: boolean } = {}) {
+  const { period = "all", startDate, endDate, enabled = true } = options;
 
   return useQuery<EarningsSummary>({
-    queryKey: ["/api/chef/seller/earnings-summary", period],
+    queryKey: ["/api/chef/seller/earnings-summary", period, startDate, endDate],
     queryFn: async () => {
+      const params = new URLSearchParams();
+      if (period) params.set("period", period);
+      if (startDate) params.set("start_date", startDate);
+      if (endDate) params.set("end_date", endDate);
+
       const headers = await getAuthHeaders();
-      const res = await fetch(`/api/chef/seller/earnings-summary?period=${period}`, { headers });
+      const res = await fetch(`/api/chef/seller/earnings-summary?${params}`, { headers });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.message || "Failed to fetch earnings");
@@ -206,5 +229,28 @@ export function useStripeDashboardLink() {
       }
       return data;
     },
+  });
+}
+
+export function useSellerRetention(options: { startDate?: string; endDate?: string; enabled?: boolean } = {}) {
+  const { startDate, endDate, enabled = true } = options;
+
+  return useQuery<{ retentionRate: number }>({
+    queryKey: ["/api/chef/seller/retention", startDate, endDate],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (startDate) params.set("start_date", startDate);
+      if (endDate) params.set("end_date", endDate);
+
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/chef/seller/retention?${params}`, { headers });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || "Failed to fetch retention rate");
+      }
+      return res.json();
+    },
+    enabled,
+    staleTime: 60_000,
   });
 }

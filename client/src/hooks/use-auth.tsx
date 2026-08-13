@@ -74,6 +74,7 @@ interface AuthContextType {
   updateUserVerification: () => Promise<AuthUser | null>;
   sendVerificationEmail: (email: string, fullName: string) => Promise<boolean>;
   resendFirebaseVerification: () => Promise<boolean>;
+  resendEmailVerification: (email: string, password: string) => Promise<boolean>;
   refreshUserData: () => Promise<void>;
   syncUserWithBackend: (firebaseUser: any, role?: string, isRegistration?: boolean, password?: string) => Promise<boolean>;
 }
@@ -547,64 +548,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (syncSuccess) {
         logger.info('✅ User synced successfully during registration');
       } else {
-        logger.error('❌ User sync failed during registration');
+        logger.error('❌ User sync failed during registration, rolling back Firebase user');
+        // CRITICAL FIX: Rollback the Firebase user if backend sync fails
+        try {
+          await cred.user.delete();
+          logger.info('✅ Successfully rolled back (deleted) orphaned Firebase user');
+        } catch (deleteError) {
+          logger.error('❌ Failed to rollback Firebase user:', deleteError);
+        }
+        
+        // Reset states and throw error to stop the flow
+        setPendingSync(false);
+        setPendingRegistration(false);
+        setAuthPhase('error');
+        throw new Error('Failed to create account in the database. Please try again.');
       }
 
-      // CRITICAL: Send Firebase's built-in email verification
-      logger.info('📧 Sending Firebase email verification...');
+      // CRITICAL: Send Custom Backend email verification
+      logger.info('📧 Sending Custom email verification...');
       let emailSent = false;
       try {
-        // For localhost development, don't include actionCodeSettings to avoid domain whitelist issues
-        // Firebase will use its default email template which works without domain configuration
-        // Check for localhost, 127.0.0.1, and any subdomain of localhost (e.g., kitchen.localhost)
-        const hostname = window.location.hostname;
-        const isLocalhost = hostname === 'localhost' ||
-          hostname === '127.0.0.1' ||
-          hostname.endsWith('.localhost');
-
-        if (isLocalhost) {
-          // Simple verification without custom redirect - works on localhost
-          logger.info('📧 Using simple email verification (localhost mode)');
-          await sendEmailVerification(updatedUser);
-        } else {
-          // ENTERPRISE: Determine the correct redirect URL based on user role
-          // Production subdomains: kitchen.localcooks.ca (managers), chef.localcooks.ca (chefs), admin.localcooks.ca (admins)
-          let redirectUrl = `${window.location.origin}/auth?verified=true`;
-
-          // Determine redirect based on detected role
-          if (detectedRole === 'manager') {
-            redirectUrl = 'https://kitchen.localcooks.ca/manager/login?verified=true';
-          } else if (detectedRole === 'chef') {
-            redirectUrl = 'https://chef.localcooks.ca/auth?verified=true';
-          } else if (detectedRole === 'admin') {
-            redirectUrl = 'https://admin.localcooks.ca/admin/login?verified=true';
-          }
-
-          logger.info(`📧 Using redirect URL for ${detectedRole}: ${redirectUrl}`);
-
-          await sendEmailVerification(updatedUser, {
-            url: redirectUrl,
-            handleCodeInApp: false,
-          });
+        const response = await fetch('/api/firebase/send-verification-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: updatedUser.email, role: detectedRole })
+        });
+        if (!response.ok) {
+          throw new Error('Failed to send custom verification email');
         }
-        logger.info('✅ Firebase email verification sent successfully');
+        logger.info('✅ Custom email verification sent successfully');
         emailSent = true;
       } catch (emailError: any) {
-        logger.error('❌ Failed to send Firebase verification email:', emailError);
-        logger.error('❌ Error code:', emailError?.code);
-        logger.error('❌ Error message:', emailError?.message);
-
-        // If domain not whitelisted, try without actionCodeSettings
-        if (emailError?.code === 'auth/unauthorized-continue-uri') {
-          logger.info('🔄 Retrying email verification without custom redirect...');
-          try {
-            await sendEmailVerification(updatedUser);
-            logger.info('✅ Firebase email verification sent (fallback mode)');
-            emailSent = true;
-          } catch (retryError) {
-            logger.error('❌ Fallback email verification also failed:', retryError);
-          }
-        }
+        logger.error('❌ Failed to send Custom verification email:', emailError);
       }
 
       if (!emailSent) {
@@ -929,42 +904,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Send verification email to a user (Firebase only)
   const sendVerificationEmail = async (email: string, fullName: string) => {
     try {
-      // Use Firebase's built-in verification email only
-      const firebaseUser = auth.currentUser;
-      if (!firebaseUser) {
-        throw new Error('No user is currently signed in');
+      logger.info('📧 Sending Custom verification email to:', email);
+      const response = await fetch('/api/firebase/send-verification-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      if (!response.ok) {
+        throw new Error('Failed to send verification email');
       }
 
-      if (firebaseUser.emailVerified) {
-        logger.info('User is already verified');
-        return true;
-      }
-
-      const hostname = window.location.hostname;
-      const isLocalhost = hostname === 'localhost' ||
-        hostname === '127.0.0.1' ||
-        hostname.endsWith('.localhost');
-
-      logger.info('📧 Sending Firebase verification email to:', email);
-
-      if (isLocalhost) {
-        // Development: Simple verification without custom redirect
-        logger.info('📧 Using simple verification (localhost mode)');
-        await sendEmailVerification(firebaseUser);
-      } else {
-        // Production: Use role-based redirect URL
-        const redirectUrl = buildVerificationRedirectUrl();
-        logger.info(`📧 Using redirect URL: ${redirectUrl}`);
-        await sendEmailVerification(firebaseUser, {
-          url: redirectUrl,
-          handleCodeInApp: false, // Let Firebase handle the email action page
-        });
-      }
-
-      logger.info('✅ Firebase verification email sent successfully');
+      logger.info('✅ Custom verification email sent successfully');
       return true;
     } catch (error) {
-      logger.error('❌ Error sending Firebase verification email:', error);
+      logger.error('❌ Error sending Custom verification email:', error);
       throw error;
     }
   };
@@ -1077,31 +1030,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return true;
       }
 
-      const hostname = window.location.hostname;
-      const isLocalhost = hostname === 'localhost' ||
-        hostname === '127.0.0.1' ||
-        hostname.endsWith('.localhost');
-
-      logger.info('📧 Resending Firebase verification email...');
-
-      if (isLocalhost) {
-        // Development: Simple verification without custom redirect
-        logger.info('📧 Using simple verification (localhost mode)');
-        await sendEmailVerification(firebaseUser);
-      } else {
-        // Production: Use role-based redirect URL
-        const redirectUrl = buildVerificationRedirectUrl();
-        logger.info(`📧 Using redirect URL: ${redirectUrl}`);
-        await sendEmailVerification(firebaseUser, {
-          url: redirectUrl,
-          handleCodeInApp: false, // Let Firebase handle the email action page
-        });
+      logger.info('📧 Resending Custom verification email...');
+      
+      const response = await fetch('/api/firebase/send-verification-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: firebaseUser.email })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to send verification email');
       }
 
-      logger.info('✅ Firebase verification email resent successfully');
+      logger.info('✅ Custom verification email resent successfully');
       return true;
     } catch (error) {
-      logger.error('❌ Failed to resend Firebase verification email:', error);
+      logger.error('❌ Failed to resend Custom verification email:', error);
+      throw error;
+    }
+  };
+
+  // Temporarily signs in to resend email verification for users who are signed out
+  const resendEmailVerification = async (email: string, password: string) => {
+    try {
+      logger.info('📧 Sending verification email...');
+      const response = await fetch('/api/firebase/send-verification-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to send verification email');
+      }
+      
+      logger.info('✅ Verification email resent successfully.');
+      return true;
+    } catch (error) {
+      logger.error('❌ Error in resendEmailVerification:', error);
       throw error;
     }
   };
@@ -1186,6 +1152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updateUserVerification,
         sendVerificationEmail,
         resendFirebaseVerification,
+        resendEmailVerification,
         refreshUserData,
         syncUserWithBackend,
       }}
