@@ -16,9 +16,10 @@ import {
     CreditCard,
     Clock,
     Package,
-    Wrench,
+    CookingPot,
     PartyPopper,
-    Sparkles
+    Handshake,
+    Loader2
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
@@ -26,14 +27,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 // Step icon mapping
 const STEP_ICONS: Record<string, React.ElementType> = {
-    'welcome': Sparkles,
+    'welcome': Handshake,
     'location': MapPin,
     'create-kitchen': ChefHat,
     'application-requirements': ClipboardList,
     'payment-setup': CreditCard,
     'availability': Clock,
     'storage-listings': Package,
-    'equipment-listings': Wrench,
+    'equipment-listings': CookingPot,
     'completion-summary': PartyPopper,
 };
 
@@ -79,7 +80,7 @@ function ManagerSetupPageContent() {
     // Get current step info
     const currentStep = visibleSteps[currentStepIndex];
     const isOptional = currentStep?.metadata?.isOptional;
-    const StepIcon = STEP_ICONS[currentStep?.id] || Sparkles;
+    const StepIcon = STEP_ICONS[currentStep?.id] || ClipboardList;
 
     // Calculate step number (excluding optional from count for display)
     const requiredSteps = visibleSteps.filter((s: any) => !s.metadata?.isOptional);
@@ -211,7 +212,7 @@ function ManagerSetupPageContent() {
                                 ) : (
                                     <div className="flex flex-col items-center justify-center p-12 text-slate-400 dark:text-slate-500">
                                         <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
-                                            <Sparkles className="w-6 h-6 animate-pulse" />
+                                            <Loader2 className="w-6 h-6 animate-spin" />
                                         </div>
                                         <p className="text-sm font-medium">Loading step...</p>
                                     </div>

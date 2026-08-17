@@ -1271,13 +1271,16 @@ router.patch(
 
 /**
  * GET /api/viewings/location/:locationId/is-active
- * Quick check if viewings are enabled for a location (public, for chef UI)
+ * Quick check if kitchen tours can be scheduled at this location.
  */
 router.get(
   "/location/:locationId/is-active",
   async (req: Request, res: Response) => {
     try {
       const locationId = parseInt(req.params.locationId);
+      if (isNaN(locationId)) {
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
 
       const [settings] = await db
         .select({ isActive: locationViewingSettings.isActive })
@@ -1285,7 +1288,22 @@ router.get(
         .where(eq(locationViewingSettings.locationId, locationId))
         .limit(1);
 
-      res.json({ isActive: settings?.isActive ?? false });
+      const [openTourDay] = await db
+        .select({ id: locationViewingAvailability.id })
+        .from(locationViewingAvailability)
+        .where(
+          and(
+            eq(locationViewingAvailability.locationId, locationId),
+            eq(locationViewingAvailability.isAvailable, true)
+          )
+        )
+        .limit(1);
+
+      const isActive = settings?.isActive ?? false;
+      const hasSchedule = Boolean(openTourDay);
+      const toursAvailable = isActive && hasSchedule;
+
+      res.json({ isActive, hasSchedule, toursAvailable });
     } catch (error) {
       logger.error("Error checking viewing status:", error);
       return errorResponse(res, error);

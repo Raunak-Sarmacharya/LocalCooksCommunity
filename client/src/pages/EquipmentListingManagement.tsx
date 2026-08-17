@@ -13,7 +13,7 @@ import { logger } from "@/lib/logger";
 import { 
   Wrench, Save, Loader2, Plus, X, Check, Search, Pencil, Trash2, 
   Package, Grid3X3, DollarSign, ChevronDown, ChevronUp,
-  Flame, ChefHat, Snowflake, Sparkles, SprayCan, PlusCircle, SearchX
+  Flame, ChefHat, Snowflake, UtensilsCrossed, SprayCan, PlusCircle, SearchX
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,7 +45,7 @@ import { EQUIPMENT_CATEGORIES, type EquipmentTemplate, type EquipmentCategoryId 
 // Icon component mapping for categories (enterprise pattern - no emojis)
 const CategoryIcon = ({ iconName, className }: { iconName: string; className?: string }) => {
   const icons: Record<string, React.ComponentType<{ className?: string }>> = {
-    Flame, ChefHat, Snowflake, Sparkles, SprayCan
+    Flame, ChefHat, Snowflake, UtensilsCrossed, SprayCan
   };
   const Icon = icons[iconName] || Package;
   return <Icon className={className} />;

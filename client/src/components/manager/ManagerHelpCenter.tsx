@@ -13,7 +13,7 @@ import {
   X,
   ChevronRight,
   ChevronLeft,
-  Sparkles,
+  ClipboardList,
   Info,
   AlertCircle,
   Upload
@@ -31,7 +31,7 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
     {
       id: "setup",
       title: "Onboarding Wizard",
-      icon: <Sparkles className="h-5 w-5" />,
+      icon: <ClipboardList className="h-5 w-5" />,
       description: "Complete step-by-step guide to setting up your kitchen",
       content: (
         <div className="space-y-4">

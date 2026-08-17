@@ -14,8 +14,7 @@ import {
   ArrowRight, 
   Home,
   LayoutDashboard,
-  ChefHat,
-  Sparkles
+  ChefHat
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useEffect } from "react";
@@ -53,23 +52,6 @@ export default function Success() {
               <div className="w-24 h-24 md:w-28 md:h-28 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-xl shadow-green-500/30">
                 <CheckCircle className="h-12 w-12 md:h-14 md:w-14 text-white" />
               </div>
-              {/* Sparkle decorations */}
-              <motion.div 
-                initial={{ opacity: 0, scale: 0 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.5 }}
-                className="absolute -top-2 -right-2"
-              >
-                <Sparkles className="h-6 w-6 text-yellow-500" />
-              </motion.div>
-              <motion.div 
-                initial={{ opacity: 0, scale: 0 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.6 }}
-                className="absolute -bottom-1 -left-3"
-              >
-                <Sparkles className="h-5 w-5 text-yellow-400" />
-              </motion.div>
             </motion.div>
 
             <motion.div

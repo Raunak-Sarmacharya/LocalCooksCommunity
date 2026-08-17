@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { CheckCircle, Plus, ChefHat, Edit2, ChevronDown, ChevronUp, Image, DollarSign, Clock, Sparkles, Info } from "lucide-react";
+import { CheckCircle, Plus, ChefHat, Edit2, ChevronDown, ChevronUp, Image, DollarSign, Clock, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";

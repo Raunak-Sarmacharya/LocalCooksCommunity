@@ -24,7 +24,7 @@ import {
     PackageCheck,
     Send,
     Settings,
-    Sparkles,
+    Building2,
     Users,
     Wrench,
 } from "lucide-react"
@@ -412,7 +412,7 @@ export function AppSidebar({
                                     onSelect={() => onCreateLocation?.()}
                                 >
                                     <div className="flex size-6 items-center justify-center rounded-md border bg-primary/10">
-                                        <Sparkles className="size-4 text-primary" />
+                                        <Building2 className="size-4 text-primary" />
                                     </div>
                                     <span className="font-medium">Add new location</span>
                                 </DropdownMenuItem>

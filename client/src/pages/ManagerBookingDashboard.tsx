@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar, Clock, ChefHat, Settings,
   Check, Save, AlertCircle, FileText,
-  ChevronRight, Info, Mail, Upload, Image as ImageIcon, Globe, CheckCircle, Plus, Loader2, HelpCircle, Sparkles, Trash2
+  ChevronRight, Info, Mail, Upload, Image as ImageIcon, Globe, CheckCircle, Plus, Loader2, HelpCircle, Trash2
 } from "lucide-react";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";

@@ -9,7 +9,7 @@ import FadeInSection from "@/components/ui/FadeInSection";
 import { 
   Building2, Calendar, ArrowRight, CheckCircle2, Shield, 
   Clock, DollarSign, Zap, TrendingUp, Lock,
-  CreditCard, Package, Wrench, Sparkles, HandCoins, HeartHandshake,
+  CreditCard, Package, Wrench, HandCoins, HeartHandshake,
   Settings, Eye, BadgeCheck, Wallet, MessageCircle, Scale, ClipboardCheck
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
@@ -1094,12 +1094,6 @@ export default function KitchenLanding() {
                   <div className="relative h-full bg-white rounded-3xl border border-slate-200/80 p-8 md:p-10 shadow-[0_4px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(245,16,66,0.18)] hover:border-rose-200/60 transition-all duration-500 overflow-hidden">
                     {/* Decorative elements */}
                     <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-[#F51042]/20 to-rose-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-                    <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-[#F51042]/8 to-transparent" />
-                    
-                    {/* Sparkle decoration */}
-                    <div className="absolute top-6 right-6">
-                      <Sparkles className="h-6 w-6 text-rose-300/70" />
-                    </div>
                     
                     {/* Icon */}
                     <div className="relative mb-6">

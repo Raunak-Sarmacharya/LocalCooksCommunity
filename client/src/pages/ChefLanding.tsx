@@ -12,7 +12,7 @@ import FadeInSection from "@/components/ui/FadeInSection";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import {
   ChefHat, Clock, Users, Target, Utensils,
-  Building2, ArrowRight, CheckCircle2, Check, X, Sparkles,
+  Building2, ArrowRight, CheckCircle2, Check, X, Settings2,
   Heart, Rocket, Star, Zap, Shield, MessageCircle,
   CreditCard, Truck, Instagram, Phone, Calendar, ChevronLeft, ChevronRight,
   HeartHandshake, HandCoins, BadgeCheck, Scale
@@ -1657,7 +1657,7 @@ export default function ChefLanding() {
                   {[
                     { text: "Sell from home or a commercial kitchen — pick what works for you.", icon: Building2, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
                     { text: "We handle the complexity — regulations, certifications, partnerships taken care of.", icon: Shield, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },
-                    { text: "Smart tools that grow with you — built for chefs, shaped by your needs, evolving constantly.", icon: Sparkles, borderColor: "border-[#8B5CF6]/20", iconColor: "text-[#8B5CF6]" },
+                    { text: "Smart tools that grow with you — built for chefs, shaped by your needs, evolving constantly.", icon: Settings2, borderColor: "border-[#8B5CF6]/20", iconColor: "text-[#8B5CF6]" },
                     { text: "You stay in control — your schedule, your recipes, your profit margins.", icon: Zap, borderColor: "border-[#F59E0B]/20", iconColor: "text-[#F59E0B]" },
                     { text: "Money flows weekly — fast payouts, direct to your bank.", icon: CreditCard, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
                     { text: "Real support behind you — actual people who want you to win.", icon: Heart, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },

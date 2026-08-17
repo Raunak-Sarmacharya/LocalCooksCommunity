@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, KeyRound } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
 import EnhancedAuthPage from "./EnhancedAuthPage";
@@ -35,7 +35,7 @@ export default function AuthDemo() {
             whileHover={{ scale: 1.05 }}
             transition={{ duration: 0.2 }}
           >
-            <Sparkles className="w-8 h-8 text-blue-600 mr-3" />
+            <KeyRound className="w-8 h-8 text-blue-600 mr-3" />
             <h1 className="text-4xl font-bold text-gray-900">
               Enhanced Authentication Demo
             </h1>
