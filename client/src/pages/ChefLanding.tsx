@@ -930,6 +930,7 @@ export default function ChefLanding() {
 
       return {
         id: loc.id,
+        slug: loc.slug || undefined,
         name: loc.name,
         address: loc.address || "",
         logoUrl: loc.logoUrl || null,

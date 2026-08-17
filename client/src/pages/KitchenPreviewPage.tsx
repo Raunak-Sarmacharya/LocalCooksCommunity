@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Helmet } from "react-helmet-async";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1166,9 +1166,25 @@ export default function KitchenPreviewPage() {
       return response.json();
     },
     enabled: !!identifier,
+    placeholderData: keepPreviousData,
   });
 
   const locationId = locationData?.id;
+  const previewSlug = locationData?.slug || identifier;
+
+  // Canonicalize numeric IDs (e.g. /kitchen-preview/94) to the location slug.
+  useEffect(() => {
+    if (!identifier || !locationData?.slug) return;
+    let current = identifier;
+    try {
+      current = decodeURIComponent(identifier);
+    } catch {
+      // keep raw identifier
+    }
+    if (current !== locationData.slug) {
+      navigate(`/kitchen-preview/${locationData.slug}`, { replace: true });
+    }
+  }, [identifier, locationData?.slug, navigate]);
 
   const { data: tourStatus, isLoading: tourStatusLoading } = useQuery<{
     isActive?: boolean;
@@ -1317,7 +1333,7 @@ export default function KitchenPreviewPage() {
       // If canAcceptApplications is false, do nothing (button should be disabled)
     } else {
       // Navigate to auth page with redirect
-      navigate(`/auth?redirect=/kitchen-preview/${identifier}`);
+      navigate(`/auth?redirect=/kitchen-preview/${previewSlug}`);
     }
   };
 
