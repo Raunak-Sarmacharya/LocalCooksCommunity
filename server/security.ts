@@ -203,8 +203,9 @@ export function registerSecurityMiddleware(app: Express): void {
           ...(isProduction ? [] : ["http://localhost:*"]),
         ],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:", "https://*.tidio.co", "https://*.tidiochat.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:", "https://*.tidio.co", "https://*.tidiochat.com", "https://frontend-cdn.perplexity.ai"],
         imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
+        workerSrc: ["'self'", "blob:"],
         connectSrc: [
           "'self'",
           "https://api.stripe.com",

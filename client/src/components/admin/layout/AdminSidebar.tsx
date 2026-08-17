@@ -33,6 +33,7 @@ import {
   FileWarning,
   Key,
   KeyRound,
+  Mail,
 } from "lucide-react";
 
 export type AdminSection =
@@ -55,7 +56,8 @@ export type AdminSection =
   | "damage-claims-history"
   | "security-settings"
   | "access-codes"
-  | "password-reset";
+  | "password-reset"
+  | "email-log";
 
 interface AdminSidebarProps {
   activeSection: AdminSection;
@@ -94,6 +96,7 @@ const NAV_GROUPS = [
     label: "Communications",
     items: [
       { id: "promos" as AdminSection, label: "Send Promo Codes", icon: Gift },
+      { id: "email-log" as AdminSection, label: "Email Log", icon: Mail },
     ],
   },
   {

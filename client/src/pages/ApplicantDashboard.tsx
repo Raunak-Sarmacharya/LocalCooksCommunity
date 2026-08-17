@@ -1156,8 +1156,8 @@ export default function ApplicantDashboard() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Kitchen Viewings</h2>
-          <p className="text-muted-foreground mt-1">Manage your scheduled kitchen viewings.</p>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">Kitchen Tours</h2>
+          <p className="text-muted-foreground mt-1">Manage your scheduled kitchen tours.</p>
         </div>
       </div>
       <ChefViewingsList />

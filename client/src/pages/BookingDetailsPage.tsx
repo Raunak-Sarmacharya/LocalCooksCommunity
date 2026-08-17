@@ -1553,13 +1553,31 @@ export default function BookingDetailsPage() {
                         </div>
                       ) : null;
                     })()}
+                    {(() => {
+                      const platformCommission = totals.serviceFee || 0;
+                      
+                      return platformCommission > 0 ? (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Platform Commission</span>
+                          <span className="font-mono">{formatCurrency(platformCommission)}</span>
+                        </div>
+                      ) : null;
+                    })()}
                     <Separator className="my-2" />
                     <div className="flex justify-between text-sm font-medium">
                       <span>
                         {booking.paymentStatus === 'authorized' ? 'Amount Authorized' : 'Amount Charged'}
                       </span>
                       <span className="font-mono">
-                        {formatCurrency(booking.paymentTransaction.amount)}
+                    {(() => {
+                      const platformCommission = totals.serviceFee || 0;
+                      const ptAmount = booking.paymentTransaction.amount || 0;
+                      const expectedCharged = (totals.subtotal || 0) + platformCommission;
+                      const amountCharged = ptAmount >= expectedCharged - 1
+                        ? ptAmount
+                        : ptAmount + platformCommission;
+                      return formatCurrency(amountCharged);
+                    })()}
                       </span>
                     </div>
                     {refundAmount > 0 && (
@@ -1572,7 +1590,15 @@ export default function BookingDetailsPage() {
                         <div className="flex justify-between text-sm font-medium">
                           <span>Net Charged</span>
                           <span className="font-mono">
-                            {formatCurrency(booking.paymentTransaction.amount - refundAmount)}
+                            {(() => {
+                              const platformCommission = totals.serviceFee || 0;
+                              const ptAmount = booking.paymentTransaction.amount || 0;
+                              const expectedCharged = (totals.subtotal || 0) + platformCommission;
+                              const amountCharged = ptAmount >= expectedCharged - 1
+                                ? ptAmount
+                                : ptAmount + platformCommission;
+                              return formatCurrency(amountCharged - refundAmount);
+                            })()}
                           </span>
                         </div>
                       </>
@@ -1593,7 +1619,7 @@ export default function BookingDetailsPage() {
                     {booking.paymentStatus !== 'authorized' && (
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Gross</span>
-                        <span className="font-mono">{formatCurrency(booking.paymentTransaction.amount)}</span>
+                        <span className="font-mono">{formatCurrency(totals.subtotal)}</span>
                       </div>
                     )}
                     {(() => {
@@ -1625,15 +1651,10 @@ export default function BookingDetailsPage() {
                               </span>
                             </div>
                           )}
-                          {!isAuthorized && platformFee > 0 && (
+                          {!isAuthorized && stripeProcessingFee > 0 && (
                             <div className="flex justify-between text-sm">
                               <span className="text-muted-foreground">Stripe Fee</span>
-                              <span className="font-mono text-muted-foreground">−{formatCurrency(platformFee)}</span>
-                            </div>
-                          )}
-                          {!isAuthorized && stripeProcessingFee > 0 && stripeProcessingFee !== platformFee && (
-                            <div className="flex justify-between text-[11px] text-muted-foreground italic pl-3">
-                              <span>(actual Stripe processing fee: {formatCurrency(stripeProcessingFee)})</span>
+                              <span className="font-mono text-muted-foreground">−{formatCurrency(stripeProcessingFee)}</span>
                             </div>
                           )}
                           {!isAuthorized && ptRefundAmount > 0 && (
@@ -1648,7 +1669,7 @@ export default function BookingDetailsPage() {
                               {isAuthorized ? 'Total Payment' : 'Net Revenue'}
                             </span>
                             <span className="font-mono">
-                              {formatCurrency(isAuthorized ? amount : netRevenue - ptRefundAmount)}
+                              {formatCurrency(isAuthorized ? (totals.subtotal || amount) : netRevenue - ptRefundAmount)}
                             </span>
                           </div>
                           {!isAuthorized && managerRevenue > 0 && (

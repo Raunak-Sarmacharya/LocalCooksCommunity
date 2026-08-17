@@ -857,15 +857,28 @@ async function handleCheckoutSessionCompleted(
 
               // AUTH-THEN-CAPTURE: Use 'authorized' status for manual capture, 'succeeded' for auto capture
               const ptStatus = isManualCapture ? "authorized" : "succeeded";
+              
+              const amountTotal = session.amount_total ?? parseInt(metadata.booking_price_cents);
+              const platformFeeCents = parseInt(metadata.platform_fee_cents || "0");
+              const stripeFeeCents = parseInt(metadata.stripe_fee_cents || "0");
+              const baseAmount = totalPriceCents + taxCents;
+
+              // For legacy bookings (no stripe_fee_cents), platformFeeCents IS the total platform fee.
+              // For new bookings, platformFeeCents is JUST the commission.
+              const managerRevenue = metadata.stripe_fee_cents 
+                ? baseAmount - stripeFeeCents 
+                : parseInt(metadata.booking_price_cents) - platformFeeCents;
+
               const ptRecord = await createPaymentTransaction({
                 bookingId: booking.id,
                 bookingType: "kitchen",
                 chefId,
                 managerId: location.managerId,
-                amount: parseInt(metadata.booking_price_cents),
-                baseAmount: totalPriceCents + taxCents,
-                serviceFee: parseInt(metadata.platform_fee_cents || "0"),
-                managerRevenue: parseInt(metadata.booking_price_cents) - parseInt(metadata.platform_fee_cents || "0"),
+                amount: amountTotal,
+                baseAmount: baseAmount,
+                serviceFee: platformFeeCents,
+                stripeProcessingFee: stripeFeeCents > 0 ? stripeFeeCents : undefined,
+                managerRevenue: managerRevenue,
                 currency: "CAD",
                 paymentIntentId,
                 status: ptStatus,
@@ -940,9 +953,9 @@ async function handleCheckoutSessionCompleted(
                     });
                     if (transferResult.transferred) {
                       await updatePaymentTransaction(ptRecord.id, {
-                        serviceFee: transferResult.feeWithheldCents,
+                        serviceFee: transferResult.platformCommissionCents,
                         managerRevenue: transferResult.transferredCents,
-                        stripePlatformFee: transferResult.feeWithheldCents,
+                        stripePlatformFee: transferResult.platformCommissionCents,
                         stripeNetAmount: transferResult.transferredCents,
                       }, db);
                       logger.info(`[Webhook] Kitchen booking ${booking.id}: Transferred $${(transferResult.transferredCents / 100).toFixed(2)} to manager (transferId=${transferResult.transferId})`);
@@ -1461,9 +1474,9 @@ async function handleStorageExtensionPaymentCompleted(
               });
               if (transferResult.transferred) {
                 await updatePaymentTransaction(ptRecord.id, {
-                  serviceFee: transferResult.feeWithheldCents,
+                  serviceFee: transferResult.platformCommissionCents,
                   managerRevenue: transferResult.transferredCents,
-                  stripePlatformFee: transferResult.feeWithheldCents,
+                  stripePlatformFee: transferResult.platformCommissionCents,
                   stripeNetAmount: transferResult.transferredCents,
                   metadata: {
                     checkout_session_id: sessionId,
@@ -1771,9 +1784,9 @@ async function handlePaymentIntentSucceeded(
 
           if (transferResult.transferred) {
             // Update PT to reflect actual transfer amounts
-            updateParams.serviceFee = transferResult.feeWithheldCents;
+            updateParams.serviceFee = transferResult.platformCommissionCents;
             updateParams.managerRevenue = transferResult.transferredCents;
-            updateParams.stripePlatformFee = transferResult.feeWithheldCents;
+            updateParams.stripePlatformFee = transferResult.platformCommissionCents;
             updateParams.stripeNetAmount = transferResult.transferredCents;
             updateParams.metadata = {
               ...mergedMetadata,
@@ -2696,9 +2709,9 @@ async function handleOverstayPenaltyPaymentCompleted(
               });
               if (transferResult.transferred) {
                 await updatePaymentTransaction(ptRecord.id, {
-                  serviceFee: transferResult.feeWithheldCents,
+                  serviceFee: transferResult.platformCommissionCents,
                   managerRevenue: transferResult.transferredCents,
-                  stripePlatformFee: transferResult.feeWithheldCents,
+                  stripePlatformFee: transferResult.platformCommissionCents,
                   stripeNetAmount: transferResult.transferredCents,
                   metadata: {
                     checkout_session_id: sessionId,
@@ -2996,9 +3009,9 @@ async function handleDamageClaimPaymentCompleted(
               });
               if (transferResult.transferred) {
                 await updatePaymentTransaction(ptRecord.id, {
-                  serviceFee: transferResult.feeWithheldCents,
+                  serviceFee: transferResult.platformCommissionCents,
                   managerRevenue: transferResult.transferredCents,
-                  stripePlatformFee: transferResult.feeWithheldCents,
+                  stripePlatformFee: transferResult.platformCommissionCents,
                   stripeNetAmount: transferResult.transferredCents,
                   metadata: {
                     checkout_session_id: sessionId,
@@ -3241,9 +3254,9 @@ async function handleChargeUpdated(
         });
 
         if (transferResult.transferred) {
-          updateParams.serviceFee = transferResult.feeWithheldCents;
+          updateParams.serviceFee = transferResult.platformCommissionCents;
           updateParams.managerRevenue = transferResult.transferredCents;
-          updateParams.stripePlatformFee = transferResult.feeWithheldCents;
+          updateParams.stripePlatformFee = transferResult.platformCommissionCents;
           updateParams.stripeNetAmount = transferResult.transferredCents;
           updateParams.metadata = {
             ...existingMetadata,

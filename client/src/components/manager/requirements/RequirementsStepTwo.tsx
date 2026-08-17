@@ -16,7 +16,7 @@ import {
   FileCheck,
   ShieldAlert,
   ClipboardList,
-  Sparkles,
+  BadgeCheck,
   Info,
   AlertTriangle,
 } from 'lucide-react';
@@ -154,7 +154,7 @@ export function RequirementsStepTwo({
                                 variant="outline"
                                 className="text-[10px] px-1.5 py-0 h-4 border-warning/30 text-warning bg-warning/10"
                               >
-                                <Sparkles className="h-2.5 w-2.5 mr-0.5" />
+                                <BadgeCheck className="h-2.5 w-2.5 mr-0.5" />
                                 Recommended
                               </Badge>
                             )}
@@ -192,7 +192,7 @@ export function RequirementsStepTwo({
       <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
         <div className="px-5 py-4 border-b border-slate-200/80 dark:border-slate-700/80 bg-gradient-to-r from-emerald-50/50 to-teal-50/50 dark:from-emerald-950/30 dark:to-teal-950/30">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <ClipboardList className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
               Custom Questions for Step 2
             </h4>

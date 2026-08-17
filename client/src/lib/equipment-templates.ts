@@ -29,7 +29,7 @@ export const CATEGORY_ICONS: Record<EquipmentCategoryId, string> = {
   'cooking': 'Flame',
   'food-prep': 'ChefHat',
   'refrigeration': 'Snowflake',
-  'specialty': 'Sparkles',
+  'specialty': 'UtensilsCrossed',
   'cleaning': 'SprayCan',
 };
 
@@ -94,7 +94,7 @@ export const EQUIPMENT_CATEGORIES: EquipmentCategory[] = [
   {
     id: 'specialty',
     name: 'Specialty Equipment',
-    iconName: 'Sparkles',
+    iconName: 'UtensilsCrossed',
     items: [
       { id: 'pasta-maker', name: 'Pasta Maker/Extruder', category: 'specialty', defaultCondition: 'good', suggestedSessionRate: 25 },
       { id: 'chocolate-tempering', name: 'Chocolate Tempering Machine', category: 'specialty', defaultCondition: 'good', suggestedSessionRate: 30 },

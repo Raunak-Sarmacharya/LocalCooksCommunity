@@ -21,7 +21,6 @@ import {
     GraduationCap,
     Play,
     Shield,
-    Sparkles,
     Star,
     Trophy,
     Users
@@ -490,7 +489,7 @@ export default function MicrolearningOverview() {
                           animate={{ opacity: [0.5, 1, 0.5] }}
                           transition={{ duration: 1.5, repeat: Infinity }}
                         >
-                          <Sparkles className="h-6 w-6 text-yellow-500" />
+                          <Award className="h-6 w-6 text-yellow-500" />
                         </motion.div>
                         <Badge variant="success" className="px-3 py-1 font-semibold">
                           <BadgeCheck className="h-4 w-4 mr-1" />
@@ -500,7 +499,7 @@ export default function MicrolearningOverview() {
                           animate={{ opacity: [0.5, 1, 0.5] }}
                           transition={{ duration: 1.5, repeat: Infinity, delay: 0.3 }}
                         >
-                          <Sparkles className="h-6 w-6 text-yellow-500" />
+                          <Award className="h-6 w-6 text-yellow-500" />
                         </motion.div>
                       </div>
                       <motion.div

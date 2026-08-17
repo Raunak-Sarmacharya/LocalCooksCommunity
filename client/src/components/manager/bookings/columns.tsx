@@ -463,7 +463,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
             const managerRevenue = row.original.managerRevenue;
             
             // Fall back to booking totalPrice if no transaction data
-            const displayAmount = transactionAmount ?? row.original.totalPrice ?? 0;
+            const displayAmount = row.original.totalPrice ?? transactionAmount ?? 0;
             
             // Reverse-calculate correct tax from tax-inclusive total
             // Server's taxAmount is wrong (calculated on total instead of base amount)

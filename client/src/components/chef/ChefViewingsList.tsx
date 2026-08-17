@@ -49,7 +49,7 @@ export default function ChefViewingsList() {
                     </div>
                     <h3 className="text-lg font-medium">No Viewings Scheduled</h3>
                     <p className="text-muted-foreground mt-1 max-w-sm">
-                        You haven't scheduled any kitchen viewings yet. Explore kitchens and book a viewing!
+                        You haven't scheduled any kitchen tours yet. Explore kitchens and book a tour!
                     </p>
                 </CardContent>
             </Card>

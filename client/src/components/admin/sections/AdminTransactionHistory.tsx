@@ -421,15 +421,16 @@ function TransactionDetailSheet({
           <div className="space-y-2">
             <h4 className="text-sm font-semibold">Financial Details</h4>
             <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">Total Amount</span><span className="font-medium">{formatCurrency(tx.amount)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Base Amount</span><span>{formatCurrency(tx.baseAmount)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Service Fee</span><span>{formatCurrency(tx.serviceFee)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Amount Charged</span><span className="font-medium">{formatCurrency(tx.amount)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Booking Subtotal</span><span>{formatCurrency(tx.baseAmount)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Platform Commission</span><span>{formatCurrency(tx.serviceFee)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Stripe Fee</span><span>{formatCurrency(tx.stripeProcessingFee)}</span></div>
-              <div className="flex justify-between border-t pt-1.5"><span className="text-muted-foreground">Manager Revenue</span><span className="font-medium text-green-700">{formatCurrency(tx.managerRevenue)}</span></div>
+              <div className="flex justify-between border-t pt-1.5"><span className="text-muted-foreground">Manager Payout</span><span className="font-medium text-green-700">{formatCurrency(tx.managerRevenue)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Platform Kept</span><span className="font-medium text-blue-700">{formatCurrency(tx.serviceFee)}</span></div>
               {tx.refundAmount > 0 && (
                 <div className="flex justify-between text-purple-700"><span>Refunded</span><span className="font-medium">-{formatCurrency(tx.refundAmount)}</span></div>
               )}
-              <div className="flex justify-between border-t pt-1.5"><span className="text-muted-foreground font-medium">Net Amount</span><span className="font-bold">{formatCurrency(tx.netAmount)}</span></div>
+              <div className="flex justify-between border-t pt-1.5"><span className="text-muted-foreground font-medium">Net Charged</span><span className="font-bold">{formatCurrency(tx.amount - tx.refundAmount)}</span></div>
             </div>
           </div>
 
@@ -821,7 +822,7 @@ function transactionsToCSV(transactions: AdminTransaction[]): string {
     "TX ID", "Reference Code", "Booking ID", "Booking Type", "Status", "Stripe Status",
     "Chef Name", "Chef Email", "Chef ID", "Manager Email", "Manager ID",
     "Location", "Location ID", "Kitchen", "Kitchen ID",
-    "Amount (CAD)", "Base Amount", "Service Fee", "Stripe Fee", "Manager Revenue", "Refund Amount", "Net Amount",
+    "Amount Charged (CAD)", "Booking Subtotal", "Platform Commission", "Stripe Fee", "Manager Payout", "Refund Amount", "Net Charged",
     "Payment Intent ID", "Charge ID", "Refund ID", "Payment Method ID", "Stripe Customer ID", "Webhook Event ID",
     "Booking Status", "Booking Payment Status",
     "Refund Reason", "Failure Reason",
@@ -833,7 +834,7 @@ function transactionsToCSV(transactions: AdminTransaction[]): string {
     tx.locationName || "", tx.locationId || "", tx.kitchenName || "", tx.kitchenId || "",
     formatPrice(tx.amount), formatPrice(tx.baseAmount), formatPrice(tx.serviceFee),
     formatPrice(tx.stripeProcessingFee), formatPrice(tx.managerRevenue),
-    formatPrice(tx.refundAmount), formatPrice(tx.netAmount),
+    formatPrice(tx.refundAmount), formatPrice(tx.amount - tx.refundAmount),
     tx.paymentIntentId || "", tx.chargeId || "", tx.refundId || "", tx.paymentMethodId || "",
     tx.stripeCustomerId || "", tx.webhookEventId || "",
     tx.bookingStatus || "", tx.bookingPaymentStatus || "",

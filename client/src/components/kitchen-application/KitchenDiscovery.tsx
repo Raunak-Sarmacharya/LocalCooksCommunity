@@ -55,6 +55,7 @@ interface PublicKitchen {
   minimumBookingHours?: number | null;
   locationId: number;
   locationName: string;
+  locationSlug?: string;
   address: string;
   canAcceptBookings: boolean;
   isLocationApproved: boolean;
@@ -520,7 +521,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                             {/* Actions */}
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mt-auto pt-2">
                               <Button variant="outline" size="sm" className="gap-2 w-full sm:w-auto" asChild>
-                                <Link href={`/kitchen-preview/${kitchen.locationId}`}>
+                                <Link href={`/kitchen-preview/${kitchen.locationSlug || kitchen.locationId}`}>
                                   <Eye className="h-4 w-4" />
                                   View Details
                                 </Link>

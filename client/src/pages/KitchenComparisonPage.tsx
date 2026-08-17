@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 
 interface PublicLocation {
   id: number;
+  slug?: string;
   name: string;
   address: string;
   description?: string | null;
@@ -288,11 +289,13 @@ export default function KitchenComparisonPage() {
   }, [publicLocations, searchQuery]);
 
   const handleViewDetails = (locationId: number) => {
-    navigate(`/kitchen-preview/${locationId}`);
+    const location = publicLocations.find((l) => l.id === locationId);
+    navigate(`/kitchen-preview/${location?.slug || locationId}`);
   };
 
   const handlePrimaryAction = (locationId: number, action: LocationAction) => {
-    const redirectPreview = `/kitchen-preview/${locationId}`;
+    const location = publicLocations.find((l) => l.id === locationId);
+    const redirectPreview = `/kitchen-preview/${location?.slug || locationId}`;
     switch (action.kind) {
       case "book":
         navigate(`/book-kitchen?location=${locationId}`);

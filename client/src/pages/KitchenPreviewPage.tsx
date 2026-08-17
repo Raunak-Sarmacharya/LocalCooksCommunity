@@ -1,24 +1,24 @@
 import { logger } from "@/lib/logger";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { Helmet } from "react-helmet-async";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Building2, MapPin, Loader2, ArrowRight, Calendar, Lock,
+  Building2, MapPin, Loader2, Calendar, DoorOpen,
   ChevronLeft, ChevronRight, Utensils, Check, ImageOff, FileText, Clock,
-  Wrench, Package, Snowflake, Star, Shield, Sparkles, Box, Thermometer,
-  DollarSign, Info, ChefHat, Zap, X
+  CookingPot, Warehouse, Snowflake, ListChecks, BadgeCheck, Refrigerator,
+  DollarSign, LayoutGrid, X, CheckCircle2, ClipboardList, Images, Ruler
 } from "lucide-react";
+import { formatCurrency, formatTime } from "@/lib/formatters";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import useEmblaCarousel from 'embla-carousel-react';
-import kitchenTableIcon from "@assets/kitchen-table.png";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
@@ -26,7 +26,8 @@ import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LocationMap } from "@/components/ui/location-map";
 import { cn } from "@/lib/utils";
-import ScheduleViewingWidget from "@/components/chef/ScheduleViewingWidget";
+import { ScheduleViewingWidget } from "@/components/chef/ScheduleViewingWidget";
+import { getAuthHeaders } from "@/lib/api";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ENTERPRISE-GRADE DESIGN SYSTEM - Notion-Inspired Kitchen Preview
@@ -60,29 +61,43 @@ const fadeInUp = {
 };
 
 // Component for individual carousel image with R2 proxy URL
-function CarouselImage({ imageUrl, kitchenName, index, onClick }: { imageUrl: string; kitchenName: string; index: number; onClick?: () => void }) {
+function PhotoTile({
+  imageUrl,
+  kitchenName,
+  index,
+  onClick,
+  className,
+  overlay,
+}: {
+  imageUrl: string;
+  kitchenName: string;
+  index: number;
+  onClick: () => void;
+  className?: string;
+  overlay?: React.ReactNode;
+}) {
   const proxyUrl = getR2ProxyUrl(imageUrl);
 
   return (
-    <div className="flex-[0_0_100%] min-w-0 cursor-pointer" onClick={onClick}>
-      <div className="aspect-[16/9] bg-gray-100 relative group/img">
-        <img
-          src={proxyUrl}
-          alt={`${kitchenName} - Image ${index + 1}`}
-          className="w-full h-full object-cover transition-transform duration-300 group-hover/img:scale-[1.02]"
-          onError={(e) => {
-            logger.error('Image failed to load:', imageUrl);
-            const target = e.target as HTMLImageElement;
-            target.style.display = 'none';
-          }}
-        />
-        <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center pointer-events-none">
-          <div className="bg-white/90 text-black px-3 py-1.5 rounded-full text-sm font-medium opacity-0 group-hover/img:opacity-100 transition-opacity transform translate-y-2 group-hover/img:translate-y-0 shadow-lg backdrop-blur-sm pointer-events-auto">
-            Click to expand
-          </div>
-        </div>
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "relative min-h-0 overflow-hidden bg-gray-100 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-inset",
+        className
+      )}
+    >
+      <img
+        src={proxyUrl}
+        alt={`${kitchenName} photo ${index + 1}`}
+        className="h-full w-full object-cover transition-transform duration-300 hover:scale-[1.03]"
+        onError={(e) => {
+          logger.error("Image failed to load:", imageUrl);
+          (e.target as HTMLImageElement).style.display = "none";
+        }}
+      />
+      {overlay}
+    </button>
   );
 }
 
@@ -192,6 +207,7 @@ function LightboxCarousel({ images, initialIndex, onClose, kitchenName }: { imag
 
 interface PublicLocation {
   id: number;
+  slug?: string;
   name: string;
   address: string;
   logoUrl?: string | null;
@@ -240,7 +256,11 @@ interface PublicKitchen {
   amenities?: string[] | null;
   locationId: number;
   locationName?: string | null;
+  locationSlug?: string | null;
   locationAddress?: string | null;
+  hourlyRate?: number | null;
+  pricingModel?: string | null;
+  currency?: string | null;
   equipment?: {
     included: EquipmentListing[];
     rental: EquipmentListing[];
@@ -254,41 +274,28 @@ interface PublicKitchen {
   }>;
 }
 
-// Helper to format availability
-function formatAvailability(availability?: PublicKitchen['availability']) {
+const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+function formatHourLabel(time: string): string {
+  return formatTime(time.slice(0, 5));
+}
+
+function formatKitchenRate(kitchen: PublicKitchen): string | null {
+  if (kitchen.hourlyRate == null || kitchen.hourlyRate <= 0) return null;
+  const amount = formatCurrency(kitchen.hourlyRate, kitchen.currency || "CAD");
+  const model = kitchen.pricingModel || "hourly";
+  if (model === "daily") return `${amount}/day`;
+  if (model === "hourly") return `${amount}/hr`;
+  return amount;
+}
+
+function availableDaySummary(availability?: PublicKitchen["availability"]): string | null {
   if (!availability || availability.length === 0) return null;
-
-  const availableDays = availability.filter(a => a.isAvailable);
-  if (availableDays.length === 0) return "Not available";
-
-  if (availableDays.length === 7) return "Available 7 days a week";
-
-  return `Available ${availableDays.length} days a week`;
-}
-
-// Helper functions for mini calendar
-function getDaysInMonth(year: number, month: number) {
-  return new Date(year, month + 1, 0).getDate();
-}
-
-function getFirstDayOfMonth(year: number, month: number) {
-  return new Date(year, month, 1).getDay();
-}
-
-function getMiniCalendarDays(year: number, month: number) {
-  const daysInMonth = getDaysInMonth(year, month);
-  const firstDay = getFirstDayOfMonth(year, month);
-  const days: (number | null)[] = [];
-
-  for (let i = 0; i < firstDay; i++) {
-    days.push(null);
-  }
-
-  for (let day = 1; day <= daysInMonth; day++) {
-    days.push(day);
-  }
-
-  return days;
+  const days = availability.filter((a) => a.isAvailable);
+  if (days.length === 0) return "Hours not listed";
+  if (days.length === 7) return "Open every day";
+  return `Open ${days.map((a) => DAY_SHORT[a.dayOfWeek]).join(", ")}`;
 }
 
 // Availability Display Component (Old Eagle 35 Style)
@@ -333,360 +340,136 @@ function AvailabilityDisplay({ availability }: { availability: PublicKitchen['av
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// PREMIUM KITCHEN SELECTION CARD - Notion-style selection with elegant transitions
-// ═══════════════════════════════════════════════════════════════════════════════
-function KitchenSelectionCard({
-  kitchen,
-  isSelected,
-  onSelect
-}: {
-  kitchen: PublicKitchen;
-  isSelected: boolean;
-  onSelect: () => void;
-}) {
-  const hasEquipment = kitchen.equipment && (
-    (kitchen.equipment.included?.length || 0) + (kitchen.equipment.rental?.length || 0) > 0
-  );
-  const hasStorage = kitchen.storage && kitchen.storage.length > 0;
-  
-  return (
-    <motion.button
-      onClick={onSelect}
-      whileHover={{ scale: 1.01 }}
-      whileTap={{ scale: 0.98 }}
-      className={cn(
-        "w-full text-left p-3 rounded-xl border-2 transition-all duration-300 touch-manipulation relative overflow-hidden",
-        isSelected
-          ? "border-primary bg-primary/5 shadow-lg shadow-primary/10"
-          : "border-border/60 hover:border-primary/40 hover:bg-muted/30 bg-background"
-      )}
-    >
-      {/* Selection indicator line */}
-      <motion.div
-        initial={false}
-        animate={{ 
-          scaleY: isSelected ? 1 : 0,
-          opacity: isSelected ? 1 : 0
-        }}
-        transition={{ duration: 0.2 }}
-        className="absolute left-0 top-2 bottom-2 w-1 bg-primary rounded-r-full"
-      />
-      
-      <div className="flex items-center gap-3">
-        {/* Thumbnail with gradient overlay */}
-        <div className="relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 bg-muted">
-          {kitchen.imageUrl ? (
-            <>
-              <img
-                src={kitchen.imageUrl}
-                alt={kitchen.name}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-            </>
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
-              <ChefHat className="w-6 h-6 text-primary/60" />
-            </div>
-          )}
-        </div>
-
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <h3 className={cn(
-            "font-semibold text-sm truncate transition-colors",
-            isSelected ? "text-primary" : "text-foreground"
-          )}>
-            {kitchen.name}
-          </h3>
-          
-          {/* Feature indicators */}
-          <div className="flex items-center gap-1.5 mt-1.5">
-            {hasEquipment && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex h-5 w-5 items-center justify-center rounded-md bg-[#FFF8F5] ring-1 ring-[#F51042]/15">
-                      <Wrench className="h-3 w-3 text-[#F51042]" />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs">
-                    Equipment available
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            {hasStorage && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex h-5 w-5 items-center justify-center rounded-md bg-[#F8F8F8] ring-1 ring-[#2C2C2C]/10">
-                      <Package className="h-3 w-3 text-[#6B6B6B]" />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs">
-                    Storage available
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            {kitchen.availability && (
-              <span className="text-[10px] text-muted-foreground ml-1">
-                {formatAvailability(kitchen.availability)}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Selected indicator */}
-        <motion.div 
-          initial={false}
-          animate={{ 
-            scale: isSelected ? 1 : 0.8,
-            opacity: isSelected ? 1 : 0
-          }}
-          transition={{ type: "spring", stiffness: 400, damping: 25 }}
-          className="w-6 h-6 rounded-full bg-primary flex items-center justify-center flex-shrink-0"
-        >
-          <Check className="w-3.5 h-3.5 text-white" />
-        </motion.div>
-      </div>
-    </motion.button>
-  );
-}
-
 // Image Carousel Component - Mobile Optimized
-function ImageCarousel({ images, kitchenName }: { images: string[]; kitchenName: string }) {
-  const [emblaRef, emblaApi] = useEmblaCarousel({
-    loop: true,
-    dragFree: false,
-    containScroll: 'trimSnaps',
-    slidesToScroll: 1
-  });
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [canScrollPrev, setCanScrollPrev] = useState(false);
-  const [canScrollNext, setCanScrollNext] = useState(false);
+function KitchenPhotoCollage({ images, kitchenName }: { images: string[]; kitchenName: string }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [showAll, setShowAll] = useState(false);
 
-  const openLightbox = (index: number) => {
+  const openAt = (index: number) => {
     setLightboxIndex(index);
     setLightboxOpen(true);
   };
 
-  const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
-  const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
-
-  const onSelect = useCallback(() => {
-    if (!emblaApi) return;
-    setSelectedIndex(emblaApi.selectedScrollSnap());
-    setCanScrollPrev(emblaApi.canScrollPrev());
-    setCanScrollNext(emblaApi.canScrollNext());
-  }, [emblaApi]);
-
-  useEffect(() => {
-    if (!emblaApi) return;
-    // Initialize state from embla on mount
-    const initializeState = () => {
-      setSelectedIndex(emblaApi.selectedScrollSnap());
-      setCanScrollPrev(emblaApi.canScrollPrev());
-      setCanScrollNext(emblaApi.canScrollNext());
-    };
-    initializeState();
-    emblaApi.on('select', onSelect);
-    emblaApi.on('reInit', onSelect);
-    return () => {
-      emblaApi.off('select', onSelect);
-      emblaApi.off('reInit', onSelect);
-    };
-  }, [emblaApi, onSelect]);
-
   if (images.length === 0) {
     return (
-      <div className="aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex flex-col items-center justify-center">
-        <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center mb-4">
-          <ImageOff className="w-10 h-10 text-gray-400" />
+      <div className="aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex flex-col items-center justify-center">
+        <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center mb-3">
+          <ImageOff className="w-8 h-8 text-gray-400" />
         </div>
-        <p className="text-gray-500 font-medium">No images available</p>
+        <p className="text-gray-500 font-medium">No photos yet</p>
         <p className="text-gray-400 text-sm mt-1">Photos coming soon</p>
       </div>
     );
   }
 
-  return (
-    <div className="relative group">
-      {/* Main Carousel */}
-      <div className="overflow-hidden rounded-xl" ref={emblaRef}>
-        <div className="flex">
-          {images.map((img, index) => (
-            <CarouselImage key={index} imageUrl={img} kitchenName={kitchenName} index={index} onClick={() => openLightbox(index)} />
-          ))}
-        </div>
-      </div>
+  const PREVIEW_COUNT = 5;
+  const extraCount = images.length - PREVIEW_COUNT;
+  const previewImages = showAll ? images : images.slice(0, Math.min(images.length, PREVIEW_COUNT));
+  const count = previewImages.length;
+  const lastPreviewHasMore = !showAll && extraCount > 0;
 
-      {/* Navigation Arrows - Visible on mobile, hover on desktop */}
-      {images.length > 1 && (
-        <>
-          <button
-            onClick={scrollPrev}
-            className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 bg-white/95 hover:bg-white active:bg-white rounded-full shadow-lg flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity disabled:opacity-30 touch-manipulation z-10"
-            disabled={!canScrollPrev}
-            aria-label="Previous image"
-          >
-            <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" />
-          </button>
-          <button
-            onClick={scrollNext}
-            className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 bg-white/95 hover:bg-white active:bg-white rounded-full shadow-lg flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity disabled:opacity-30 touch-manipulation z-10"
-            disabled={!canScrollNext}
-            aria-label="Next image"
-          >
-            <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" />
-          </button>
-        </>
+  const lightbox = (
+    <AnimatePresence>
+      {lightboxOpen && (
+        <LightboxCarousel
+          images={images}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxOpen(false)}
+          kitchenName={kitchenName}
+        />
       )}
+    </AnimatePresence>
+  );
 
-      {/* Dots Indicator - Larger and more touch-friendly on mobile */}
-      {images.length > 1 && (
-        <div className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 sm:gap-2 z-10">
-          {images.map((_, index) => (
-            <button
-              key={index}
-              onClick={() => emblaApi?.scrollTo(index)}
-              className={`rounded-full transition-all touch-manipulation ${index === selectedIndex
-                ? 'bg-white w-6 sm:w-6 h-2 sm:h-2'
-                : 'bg-white/50 hover:bg-white/75 w-2 h-2 sm:w-2 sm:h-2'
-                }`}
-              aria-label={`Go to image ${index + 1}`}
+  if (showAll) {
+    return (
+      <div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 rounded-2xl overflow-hidden shadow-xl">
+          {images.map((img, index) => (
+            <PhotoTile
+              key={`${img}-${index}`}
+              imageUrl={img}
+              kitchenName={kitchenName}
+              index={index}
+              onClick={() => openAt(index)}
+              className={cn(
+                "aspect-[4/3]",
+                index === 0 && "col-span-2 aspect-[16/9] sm:aspect-auto sm:row-span-2 sm:min-h-[280px]"
+              )}
             />
           ))}
         </div>
-      )}
-
-      {/* Image Counter */}
-      <div className="absolute top-3 sm:top-4 right-3 sm:right-4 bg-black/60 text-white text-xs px-2 sm:px-2.5 py-1 rounded-full z-10 pointer-events-none">
-        {selectedIndex + 1} / {images.length}
+        <button
+          type="button"
+          onClick={() => setShowAll(false)}
+          className="mt-3 text-sm font-medium text-gray-600 hover:text-gray-900"
+        >
+          Show fewer photos
+        </button>
+        {lightbox}
       </div>
-
-      <AnimatePresence>
-        {lightboxOpen && (
-          <LightboxCarousel
-            images={images}
-            initialIndex={lightboxIndex}
-            onClose={() => setLightboxOpen(false)}
-            kitchenName={kitchenName}
-          />
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// Mini Calendar Component - Mobile Responsive
-function MiniCalendarPreview({
-  isAuthenticated,
-  canBook,
-  canAcceptApplications,
-  onBookClick,
-  onApplyClick: _onApplyClick
-}: {
-  isAuthenticated: boolean;
-  canBook: boolean;
-  canAcceptApplications: boolean;
-  onBookClick: () => void;
-  onApplyClick: () => void;
-}) {
-  const today = new Date();
-  const currentYear = today.getFullYear();
-  const currentMonth = today.getMonth();
-  const days = getMiniCalendarDays(currentYear, currentMonth);
-  const todayDate = today.getDate();
-
-  const monthNames = ["January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"];
+    );
+  }
 
   return (
-    <div className="relative">
-      {/* Calendar Content - Fully visible */}
-      <div className="p-3 sm:p-4">
-        {/* Month/Year Header */}
-        <div className="text-center mb-3 sm:mb-4">
-          <h3 className="text-sm sm:text-base font-bold text-gray-800">
-            {monthNames[currentMonth]} {currentYear}
-          </h3>
-        </div>
+    <div>
+      <div
+        className={cn(
+          "grid gap-1.5 overflow-hidden rounded-2xl bg-white shadow-xl",
+          count === 1 && "grid-cols-1",
+          count === 2 && "grid-cols-2",
+          count === 3 && "grid-cols-2 grid-rows-2 sm:h-[360px]",
+          count >= 4 && "grid-cols-2 sm:grid-cols-4 sm:grid-rows-2 sm:h-[380px]"
+        )}
+      >
+        {previewImages.map((img, index) => {
+          const isHero = count >= 3 && index === 0;
+          const isLastWithMore = lastPreviewHasMore && index === previewImages.length - 1;
 
-        {/* Day Headers */}
-        <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-1.5 sm:mb-2">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => (
-            <div key={i} className="text-[9px] sm:text-[10px] text-gray-500 font-semibold text-center py-1">
-              {d}
-            </div>
-          ))}
-        </div>
-
-        {/* Calendar Days */}
-        <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
-          {days.map((day, index) => {
-            if (day === null) {
-              return <div key={index} className="aspect-square" />;
-            }
-
-            const isPast = day < todayDate;
-            const isToday = day === todayDate;
-
-            return (
-              <div
-                key={index}
-                className={`
-                  aspect-square flex items-center justify-center rounded-md text-[10px] sm:text-xs font-medium
-                  transition-colors
-                  ${isPast ? 'text-gray-300 bg-gray-50' : 'text-gray-700 bg-white'}
-                  ${isToday
-                    ? 'bg-[#F51042] text-white font-bold ring-2 ring-[#F51042]/30'
-                    : ''
-                  }
-                `}
-              >
-                {day}
-              </div>
-            );
-          })}
-        </div>
+          return (
+            <PhotoTile
+              key={`${img}-${index}`}
+              imageUrl={img}
+              kitchenName={kitchenName}
+              index={index}
+              onClick={() => (isLastWithMore ? setShowAll(true) : openAt(index))}
+              className={cn(
+                count === 1 && "aspect-[16/9] min-h-[220px] sm:min-h-[360px]",
+                count === 2 && "aspect-[4/3] sm:aspect-auto sm:min-h-[320px]",
+                isHero && count === 3 && "row-span-2 min-h-[200px] sm:min-h-0",
+                !isHero && count === 3 && "min-h-[100px] sm:min-h-0",
+                isHero && count >= 4 && "col-span-2 aspect-[16/9] sm:aspect-auto sm:row-span-2 sm:min-h-0",
+                !isHero && count >= 4 && "aspect-[4/3] sm:aspect-auto"
+              )}
+              overlay={
+                isLastWithMore ? (
+                  <span className="absolute inset-0 flex flex-col items-center justify-center bg-black/55 text-white">
+                    <Images className="h-5 w-5 mb-1" />
+                    <span className="text-sm font-semibold">View {extraCount} more</span>
+                  </span>
+                ) : undefined
+              }
+            />
+          );
+        })}
       </div>
-
-      {/* Overlay - Only show if not authenticated or can't book */}
-      {(!isAuthenticated || !canBook) && (
-        <div className="absolute inset-0 bg-white/70 z-10 flex items-center justify-center rounded-b-lg">
-          <div className="text-center px-3 sm:px-4 py-2.5 sm:py-3 bg-white/90 rounded-xl shadow-lg border border-gray-100 mx-2">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 mx-auto mb-1.5 sm:mb-2 bg-[#F51042]/10 rounded-full flex items-center justify-center">
-              <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-[#F51042]" />
-            </div>
-            <p className="text-xs sm:text-sm font-semibold text-gray-800">
-              {!isAuthenticated ? 'Sign in to book' : !canAcceptApplications ? 'Not accepting applications' : 'Apply to book'}
-            </p>
-            <p className="text-[10px] sm:text-xs text-gray-500 mt-1">
-              {!isAuthenticated ? 'View availability & reserve' : !canAcceptApplications ? 'License pending approval' : 'View availability & reserve'}
-            </p>
-          </div>
+      {images.length > 1 && (
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <p className="text-xs text-gray-500">Click a photo to enlarge</p>
+          {extraCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAll(true)}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-800 hover:text-[#F51042]"
+            >
+              <Images className="h-4 w-4" />
+              View all {images.length} photos
+            </button>
+          )}
         </div>
       )}
-
-      {/* Book Button - Only show if authenticated and can book */}
-      {isAuthenticated && canBook && (
-        <div className="p-3 sm:p-4 pt-0">
-          <Button
-            onClick={onBookClick}
-            className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2 mt-3"
-            size="sm"
-          >
-            <Calendar className="mr-2 h-3.5 w-3.5" />
-            Book This Kitchen
-            <ArrowRight className="ml-2 h-3.5 w-3.5" />
-          </Button>
-        </div>
-      )}
+      {lightbox}
     </div>
   );
 }
@@ -712,7 +495,7 @@ function EquipmentCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5 mb-1">
             <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#FFF8F5] ring-1 ring-[#F51042]/10">
-              <Wrench className="h-4 w-4 text-[#F51042]" />
+              <CookingPot className="h-4 w-4 text-[#F51042]" />
             </div>
             <div className="min-w-0 flex-1">
               <h4 className="truncate text-sm font-semibold leading-tight text-[#1A1A1A]">
@@ -767,11 +550,12 @@ function EquipmentCard({
 // ═══════════════════════════════════════════════════════════════════════════════
 function StorageCard({ storage }: { storage: StorageListing }) {
   const getStorageIcon = (type: string) => {
-    switch (type?.toLowerCase()) {
-      case 'freezer': return Snowflake;
-      case 'cold': case 'refrigerator': return Thermometer;
-      default: return Box;
+    const t = (type || "").toLowerCase();
+    if (t.includes("freez")) return Snowflake;
+    if (t.includes("cold") || t.includes("refrig") || t.includes("chill") || t.includes("cooler")) {
+      return Refrigerator;
     }
+    return Warehouse;
   };
   
   const StorageIcon = getStorageIcon(storage.storageType);
@@ -828,7 +612,7 @@ function StorageCard({ storage }: { storage: StorageListing }) {
             
             {storage.totalVolume && (
               <span className="inline-flex items-center gap-1 rounded-full bg-[#F8F8F8] px-2.5 py-1 text-xs text-[#6B6B6B] ring-1 ring-[#2C2C2C]/8">
-                <Box className="h-3 w-3" />
+                <Ruler className="h-3 w-3" />
                 {storage.totalVolume} ft³
               </span>
             )}
@@ -852,14 +636,236 @@ function StorageCard({ storage }: { storage: StorageListing }) {
   );
 }
 
+function KitchenAmenitiesList({ amenities }: { amenities: string[] }) {
+  return (
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="flex flex-wrap gap-2"
+    >
+      {amenities.map((amenity, index) => (
+        <motion.span
+          key={index}
+          variants={itemVariants}
+          className="inline-flex items-center rounded-full border border-[#F51042]/10 bg-[#FFF8F5] px-3 py-1.5 text-sm text-[#2C2C2C]"
+        >
+          <Check className="mr-1.5 h-3.5 w-3.5 flex-shrink-0 text-[#F51042]" />
+          {amenity}
+        </motion.span>
+      ))}
+    </motion.div>
+  );
+}
+
+function KitchenEquipmentSections({ kitchen }: { kitchen: PublicKitchen }) {
+  const includedCount = kitchen.equipment?.included?.length || 0;
+
+  return (
+    <div className="space-y-6">
+      {kitchen.equipment?.included && kitchen.equipment.included.length > 0 && (
+        <div>
+          <div className="mb-4 flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF8F5] ring-1 ring-[#F51042]/10">
+              <CheckCircle2 className="h-4 w-4 text-[#F51042]" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-[#1A1A1A]">Included with your booking</h3>
+              <p className="text-xs text-[#6B6B6B]">No extra charge</p>
+            </div>
+            <span className="ml-auto rounded-full bg-[#F51042]/10 px-2.5 py-1 text-xs font-semibold text-[#F51042]">
+              {kitchen.equipment.included.length} {kitchen.equipment.included.length === 1 ? "item" : "items"}
+            </span>
+          </div>
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="grid gap-3 sm:grid-cols-2"
+          >
+            {kitchen.equipment.included.map((eq) => (
+              <EquipmentCard key={eq.id} equipment={eq} type="included" />
+            ))}
+          </motion.div>
+        </div>
+      )}
+
+      {kitchen.equipment?.rental && kitchen.equipment.rental.length > 0 && (
+        <div>
+          {includedCount > 0 && <Separator className="my-6" />}
+          <div className="mb-4 flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F8F8F8] ring-1 ring-[#2C2C2C]/8">
+              <DollarSign className="h-4 w-4 text-[#6B6B6B]" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-[#1A1A1A]">Available to rent</h3>
+              <p className="text-xs text-[#6B6B6B]">Optional add-on for your session</p>
+            </div>
+            <span className="ml-auto rounded-full bg-[#F8F8F8] px-2.5 py-1 text-xs font-medium text-[#6B6B6B] ring-1 ring-[#2C2C2C]/8">
+              {kitchen.equipment.rental.length} {kitchen.equipment.rental.length === 1 ? "item" : "items"}
+            </span>
+          </div>
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="grid gap-3 sm:grid-cols-2"
+          >
+            {kitchen.equipment.rental.map((eq) => (
+              <EquipmentCard key={eq.id} equipment={eq} type="rental" />
+            ))}
+          </motion.div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KitchenStorageSections({ kitchen }: { kitchen: PublicKitchen }) {
+  return (
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="grid gap-4"
+    >
+      {kitchen.storage?.map((storage) => (
+        <StorageCard key={storage.id} storage={storage} />
+      ))}
+    </motion.div>
+  );
+}
+
+function KitchenFactChip({
+  icon: Icon,
+  label,
+}: {
+  icon: typeof Clock;
+  label: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700">
+      <Icon className="h-3.5 w-3.5 text-[#F51042]" />
+      {label}
+    </span>
+  );
+}
+
+function KitchenTourBanner({
+  toursAvailable,
+  isLoading,
+  onSchedule,
+}: {
+  toursAvailable: boolean;
+  isLoading: boolean;
+  onSchedule: () => void;
+}) {
+  if (isLoading) {
+    return <Skeleton className="h-[120px] w-full rounded-2xl" />;
+  }
+
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border p-5 sm:p-6",
+        toursAvailable
+          ? "border-[#F51042]/20 bg-[#FFF8F5]"
+          : "border-gray-200 bg-white"
+      )}
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+        <div
+          className={cn(
+            "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl",
+            toursAvailable
+              ? "bg-white ring-1 ring-[#F51042]/15"
+              : "bg-[#F8F8F8] ring-1 ring-gray-200"
+          )}
+        >
+          {toursAvailable ? (
+            <DoorOpen className="h-6 w-6 text-[#F51042]" />
+          ) : (
+            <Clock className="h-6 w-6 text-gray-500" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Optional kitchen tour — not an application
+          </p>
+          <h2 className="mt-1 text-base sm:text-lg font-semibold text-gray-900">
+            {toursAvailable ? "Want to see the kitchen first?" : "Tour dates coming soon"}
+          </h2>
+          {toursAvailable ? (
+            <p className="mt-1 text-sm text-gray-600 leading-relaxed">
+              Book a short in-person walkthrough. A tour does not submit an application, and it does not reserve cooking time.
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-gray-600 leading-relaxed">
+              Stay tuned for available dates. The kitchen manager has not published a tour schedule yet. You can still look around here, and apply separately if you want to cook.
+            </p>
+          )}
+        </div>
+        {toursAvailable && (
+          <Button className="shrink-0 w-full sm:w-auto" onClick={onSchedule}>
+            <Calendar className="mr-2 h-4 w-4" />
+            Schedule a tour
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GuestHoursCard({ availability }: { availability?: PublicKitchen["availability"] }) {
+  const openDays = availability?.filter((a) => a.isAvailable) ?? [];
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <h2 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
+        <Clock className="h-4 w-4 text-[#F51042]" />
+        When you can cook
+      </h2>
+      <p className="text-xs text-gray-500 mt-0.5">Regular hours for this kitchen</p>
+      <div className="mt-4 space-y-4">
+        {availability && availability.length > 0 ? (
+          <>
+            <AvailabilityDisplay availability={availability} />
+            {openDays.length > 0 ? (
+              <div className="space-y-1.5">
+                {openDays.map((a) => (
+                  <div key={a.dayOfWeek} className="flex justify-between text-sm">
+                    <span className="text-gray-600">{DAY_LABELS[a.dayOfWeek]}</span>
+                    <span className="text-gray-900 font-medium">
+                      {formatHourLabel(a.startTime)} – {formatHourLabel(a.endTime)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">Hours have not been published yet.</p>
+            )}
+            <p className="text-xs text-gray-500 leading-relaxed">
+              You pick exact session times after you&apos;re approved to book.
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-gray-500">Hours have not been published yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// KITCHEN DETAILS SECTION - Enterprise-grade Notion-inspired design
+// KITCHEN DETAILS SECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 interface KitchenDetailsSectionProps {
   kitchen: PublicKitchen;
   locationAddress?: string;
   locationName?: string;
   locationDescription?: string | null;
+  layout?: "tabs" | "stacked";
+  addonsLoading?: boolean;
 }
 
 function KitchenDetailsSection({
@@ -867,9 +873,12 @@ function KitchenDetailsSection({
   locationAddress,
   locationName,
   locationDescription,
+  layout = "tabs",
+  addonsLoading = false,
 }: KitchenDetailsSectionProps) {
   const [activeTab, setActiveTab] = useState("overview");
-  
+  const isStacked = layout === "stacked";
+
   const allImages: string[] = useMemo(() => {
     const images: string[] = [];
     if (kitchen.imageUrl) images.push(kitchen.imageUrl);
@@ -884,11 +893,40 @@ function KitchenDetailsSection({
     (kitchen.equipment.rental && kitchen.equipment.rental.length > 0)
   );
   const hasStorage = kitchen.storage && kitchen.storage.length > 0;
-  
+
   const includedCount = kitchen.equipment?.included?.length || 0;
   const rentalCount = kitchen.equipment?.rental?.length || 0;
   const storageCount = kitchen.storage?.length || 0;
-  const aboutCopy = kitchen.description || locationDescription || null;
+  const rateLabel = formatKitchenRate(kitchen);
+  const hoursSummary = availableDaySummary(kitchen.availability);
+  const aboutCopy = isStacked
+    ? (kitchen.description || null)
+    : (kitchen.description || locationDescription || null);
+  const showFactChips = includedCount > 0 || rentalCount > 0 || storageCount > 0 || !!hoursSummary;
+
+  const factChips = showFactChips ? (
+    <div className="flex flex-wrap gap-2">
+      {hoursSummary && <KitchenFactChip icon={Clock} label={hoursSummary} />}
+      {includedCount > 0 && (
+        <KitchenFactChip
+          icon={CheckCircle2}
+          label={`${includedCount} included ${includedCount === 1 ? "item" : "items"}`}
+        />
+      )}
+      {rentalCount > 0 && (
+        <KitchenFactChip
+          icon={CookingPot}
+          label={`${rentalCount} rental ${rentalCount === 1 ? "option" : "options"}`}
+        />
+      )}
+      {storageCount > 0 && (
+        <KitchenFactChip
+          icon={Warehouse}
+          label={`${storageCount} storage ${storageCount === 1 ? "option" : "options"}`}
+        />
+      )}
+    </div>
+  ) : null;
 
   return (
     <motion.div
@@ -899,52 +937,80 @@ function KitchenDetailsSection({
       variants={fadeInUp}
       className="space-y-6"
     >
-      {/* Hero Image Carousel */}
-      <div className="relative rounded-2xl overflow-hidden shadow-xl">
-        <ImageCarousel images={allImages} kitchenName={kitchen.name} />
-        
-        {/* Floating kitchen name badge */}
-        <div className="absolute bottom-4 left-4 right-4">
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="bg-white/95 backdrop-blur-md rounded-xl p-4 shadow-lg border border-white/20"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-bold text-foreground">{kitchen.name}</h2>
-                {aboutCopy && (
-                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{aboutCopy}</p>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {includedCount > 0 && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <Badge className="gap-1 bg-[#F51042]/10 text-[#F51042] hover:bg-[#F51042]/15 border-0">
-                          <Sparkles className="w-3 h-3" />
-                          {includedCount} Included
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>Equipment included with booking</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-                {storageCount > 0 && (
-                  <Badge className="gap-1 bg-[#FFF8F5] text-[#6B4A4F] hover:bg-[#FFE8DD] border border-[#F51042]/15">
-                    <Package className="w-3 h-3 text-[#F51042]" />
-                    {storageCount} Storage
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </motion.div>
+      <KitchenPhotoCollage images={allImages} kitchenName={kitchen.name} />
+
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">{kitchen.name}</h2>
+          {rateLabel && (
+            <p className="text-lg font-semibold text-[#F51042] shrink-0">{rateLabel}</p>
+          )}
         </div>
+        {factChips}
+        {aboutCopy && isStacked && (
+          <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{aboutCopy}</p>
+        )}
       </div>
 
-      {/* Content Tabs - Notion-style */}
+      {isStacked ? (
+        <>
+          {kitchen.amenities && kitchen.amenities.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <ListChecks className="w-4 h-4 text-[#F51042]" />
+                Amenities
+              </h3>
+              <KitchenAmenitiesList amenities={kitchen.amenities} />
+            </div>
+          )}
+
+          {addonsLoading && (
+            <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 space-y-3">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          )}
+
+          {!addonsLoading && hasEquipment && (
+            <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6">
+              <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <CookingPot className="w-4 h-4 text-[#F51042]" />
+                Equipment
+              </h3>
+              <KitchenEquipmentSections kitchen={kitchen} />
+            </div>
+          )}
+
+          {!addonsLoading && hasStorage && (
+            <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6">
+              <h3 className="text-sm font-semibold text-gray-900 mb-1 flex items-center gap-2">
+                <Warehouse className="w-4 h-4 text-[#F51042]" />
+                Storage
+              </h3>
+              <p className="text-xs text-gray-500 mb-4">Secure space for ingredients and supplies</p>
+              <KitchenStorageSections kitchen={kitchen} />
+            </div>
+          )}
+
+          {locationAddress && (
+            <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-[#F51042]" />
+                Where it is
+              </h3>
+              {locationName && (
+                <p className="text-sm text-gray-600 mb-3">{locationAddress}</p>
+              )}
+              <LocationMap
+                address={locationAddress}
+                name={locationName || kitchen.name}
+                heightClassName="h-[220px]"
+              />
+            </div>
+          )}
+        </>
+      ) : (
       <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="border-b border-border/50 bg-muted/30 px-6 pt-4">
@@ -953,7 +1019,7 @@ function KitchenDetailsSection({
                 value="overview" 
                 className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-primary px-4 py-2.5 text-sm font-medium"
               >
-                <Info className="w-4 h-4 mr-2" />
+                <LayoutGrid className="w-4 h-4 mr-2" />
                 Overview
               </TabsTrigger>
               {hasEquipment && (
@@ -961,7 +1027,7 @@ function KitchenDetailsSection({
                   value="equipment" 
                   className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-primary px-4 py-2.5 text-sm font-medium"
                 >
-                  <Wrench className="w-4 h-4 mr-2" />
+                  <CookingPot className="w-4 h-4 mr-2" />
                   Equipment
                   <Badge variant="count" className="ml-2">
                     {includedCount + rentalCount}
@@ -973,7 +1039,7 @@ function KitchenDetailsSection({
                   value="storage" 
                   className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-primary px-4 py-2.5 text-sm font-medium"
                 >
-                  <Package className="w-4 h-4 mr-2" />
+                  <Warehouse className="w-4 h-4 mr-2" />
                   Storage
                   <Badge variant="count" className="ml-2">
                     {storageCount}
@@ -985,17 +1051,15 @@ function KitchenDetailsSection({
           
           <CardContent className="p-6">
             <AnimatePresence mode="wait">
-              {/* Overview Tab */}
-              <TabsContent value="overview" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
-                <motion.div
-                  key="overview"
+              {activeTab === "overview" && (
+                <TabsContent forceMount key="overview" value="overview" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+                  <motion.div
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 10 }}
                   transition={{ duration: 0.2 }}
                   className="space-y-6"
                 >
-                  {/* Description */}
                   {aboutCopy && (
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
@@ -1008,7 +1072,6 @@ function KitchenDetailsSection({
                     </div>
                   )}
                   
-                  {/* Availability */}
                   {kitchen.availability && kitchen.availability.length > 0 && (
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
@@ -1019,34 +1082,16 @@ function KitchenDetailsSection({
                     </div>
                   )}
                   
-                  {/* Amenities */}
                   {kitchen.amenities && Array.isArray(kitchen.amenities) && kitchen.amenities.length > 0 && (
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                        <Star className="w-4 h-4 text-[#F51042]" />
+                        <ListChecks className="w-4 h-4 text-[#F51042]" />
                         Kitchen Amenities
                       </h3>
-                      <motion.div 
-                        variants={containerVariants}
-                        initial="hidden"
-                        animate="visible"
-                        className="flex flex-wrap gap-2"
-                      >
-                        {kitchen.amenities.map((amenity, index) => (
-                          <motion.span
-                            key={index}
-                            variants={itemVariants}
-                            className="inline-flex items-center rounded-full border border-[#F51042]/10 bg-[#FFF8F5] px-3 py-1.5 text-sm text-[#2C2C2C] transition-colors hover:border-[#F51042]/30"
-                          >
-                            <Check className="mr-1.5 h-3.5 w-3.5 flex-shrink-0 text-[#F51042]" />
-                            {amenity}
-                          </motion.span>
-                        ))}
-                      </motion.div>
+                      <KitchenAmenitiesList amenities={kitchen.amenities} />
                     </div>
                   )}
                   
-                  {/* Location Map */}
                   {locationAddress && (
                     <div className="pt-4 border-t border-border/50">
                       <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
@@ -1060,166 +1105,32 @@ function KitchenDetailsSection({
                       />
                     </div>
                   )}
-
-                  {/* Quick Stats */}
-                  {(hasEquipment || hasStorage) && (
-                    <div className="pt-4 border-t border-border/50">
-                      <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-                        <Zap className="w-4 h-4 text-[#F51042]" />
-                        Quick Overview
-                      </h3>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {includedCount > 0 && (
-                          <motion.div
-                            whileHover={{ scale: 1.02 }}
-                            className="cursor-pointer rounded-xl border border-[#F51042]/10 bg-[#FFF8F5] p-4"
-                            onClick={() => setActiveTab('equipment')}
-                          >
-                            <div className="mb-1 flex items-center gap-2">
-                              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white ring-1 ring-[#F51042]/15">
-                                <Sparkles className="h-4 w-4 text-[#F51042]" />
-                              </div>
-                            </div>
-                            <p className="text-2xl font-bold text-[#1A1A1A]">{includedCount}</p>
-                            <p className="text-xs text-[#6B6B6B]">Included Equipment</p>
-                          </motion.div>
-                        )}
-                        {rentalCount > 0 && (
-                          <motion.div
-                            whileHover={{ scale: 1.02 }}
-                            className="cursor-pointer rounded-xl border border-[#2C2C2C]/8 bg-white p-4"
-                            onClick={() => setActiveTab('equipment')}
-                          >
-                            <div className="mb-1 flex items-center gap-2">
-                              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F8F8F8] ring-1 ring-[#2C2C2C]/8">
-                                <Wrench className="h-4 w-4 text-[#6B6B6B]" />
-                              </div>
-                            </div>
-                            <p className="text-2xl font-bold text-[#1A1A1A]">{rentalCount}</p>
-                            <p className="text-xs text-[#6B6B6B]">Rental Equipment</p>
-                          </motion.div>
-                        )}
-                        {storageCount > 0 && (
-                          <motion.div
-                            whileHover={{ scale: 1.02 }}
-                            className="cursor-pointer rounded-xl border border-[#2C2C2C]/8 bg-white p-4"
-                            onClick={() => setActiveTab('storage')}
-                          >
-                            <div className="mb-1 flex items-center gap-2">
-                              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF8F5] ring-1 ring-[#F51042]/10">
-                                <Package className="h-4 w-4 text-[#F51042]" />
-                              </div>
-                            </div>
-                            <p className="text-2xl font-bold text-[#1A1A1A]">{storageCount}</p>
-                            <p className="text-xs text-[#6B6B6B]">Storage Options</p>
-                          </motion.div>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </motion.div>
-              </TabsContent>
+                </TabsContent>
+              )}
               
-              {/* Equipment Tab */}
-              {hasEquipment && (
-                <TabsContent value="equipment" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+              {activeTab === "equipment" && hasEquipment && (
+                <TabsContent forceMount key="equipment" value="equipment" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
                   <motion.div
-                    key="equipment"
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 10 }}
                     transition={{ duration: 0.2 }}
-                    className="space-y-6"
                   >
-                    {/* Included Equipment */}
-                    {kitchen.equipment?.included && kitchen.equipment.included.length > 0 && (
-                      <div>
-                        <div className="mb-4 flex items-center gap-2">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF8F5] ring-1 ring-[#F51042]/10">
-                            <Sparkles className="h-4 w-4 text-[#F51042]" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-[#1A1A1A]">Included with Booking</h3>
-                            <p className="text-xs text-[#6B6B6B]">No additional cost</p>
-                          </div>
-                          <span className="ml-auto rounded-full bg-[#F51042]/10 px-2.5 py-1 text-xs font-semibold text-[#F51042]">
-                            {kitchen.equipment.included.length} items
-                          </span>
-                        </div>
-                        <motion.div 
-                          variants={containerVariants}
-                          initial="hidden"
-                          animate="visible"
-                          className="grid gap-3 sm:grid-cols-2"
-                        >
-                          {kitchen.equipment.included.map((eq) => (
-                            <EquipmentCard key={eq.id} equipment={eq} type="included" />
-                          ))}
-                        </motion.div>
-                      </div>
-                    )}
-                    
-                    {/* Rental Equipment */}
-                    {kitchen.equipment?.rental && kitchen.equipment.rental.length > 0 && (
-                      <div>
-                        {includedCount > 0 && <Separator className="my-6" />}
-                        <div className="mb-4 flex items-center gap-2">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F8F8F8] ring-1 ring-[#2C2C2C]/8">
-                            <DollarSign className="h-4 w-4 text-[#6B6B6B]" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-[#1A1A1A]">Available for Rent</h3>
-                            <p className="text-xs text-[#6B6B6B]">Additional rental fees apply</p>
-                          </div>
-                          <span className="ml-auto rounded-full bg-[#F8F8F8] px-2.5 py-1 text-xs font-medium text-[#6B6B6B] ring-1 ring-[#2C2C2C]/8">
-                            {kitchen.equipment.rental.length} items
-                          </span>
-                        </div>
-                        <motion.div 
-                          variants={containerVariants}
-                          initial="hidden"
-                          animate="visible"
-                          className="grid gap-3 sm:grid-cols-2"
-                        >
-                          {kitchen.equipment.rental.map((eq) => (
-                            <EquipmentCard key={eq.id} equipment={eq} type="rental" />
-                          ))}
-                        </motion.div>
-                      </div>
-                    )}
+                    <KitchenEquipmentSections kitchen={kitchen} />
                   </motion.div>
                 </TabsContent>
               )}
               
-              {/* Storage Tab */}
-              {hasStorage && (
-                <TabsContent value="storage" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+              {activeTab === "storage" && hasStorage && (
+                <TabsContent forceMount key="storage" value="storage" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
                   <motion.div
-                    key="storage"
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 10 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <div className="mb-4 flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF8F5] ring-1 ring-[#F51042]/10">
-                        <Package className="h-4 w-4 text-[#F51042]" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-[#1A1A1A]">Storage Solutions</h3>
-                        <p className="text-xs text-[#6B6B6B]">Secure storage for your ingredients and supplies</p>
-                      </div>
-                    </div>
-                    <motion.div 
-                      variants={containerVariants}
-                      initial="hidden"
-                      animate="visible"
-                      className="grid gap-4"
-                    >
-                      {kitchen.storage?.map((storage) => (
-                        <StorageCard key={storage.id} storage={storage} />
-                      ))}
-                    </motion.div>
+                    <KitchenStorageSections kitchen={kitchen} />
                   </motion.div>
                 </TabsContent>
               )}
@@ -1227,6 +1138,7 @@ function KitchenDetailsSection({
           </CardContent>
         </Tabs>
       </Card>
+      )}
     </motion.div>
   );
 }
@@ -1236,15 +1148,46 @@ export default function KitchenPreviewPage() {
   const { user, loading: authLoading } = useFirebaseAuth();
   const isAuthenticated = !!user;
 
-  const locationIdMatch = locationPath.match(/\/kitchen-preview\/(\d+)/);
-  const locationId = locationIdMatch ? parseInt(locationIdMatch[1]) : null;
+  const locationIdMatch = locationPath.match(/\/kitchen-preview\/(.+)/);
+  const identifier = locationIdMatch ? locationIdMatch[1] : null;
 
   const [selectedKitchen, setSelectedKitchen] = useState<PublicKitchen | null>(null);
   const [kitchenEquipment, setKitchenEquipment] = useState<{ included: EquipmentListing[]; rental: EquipmentListing[] } | null>(null);
   const [kitchenStorage, setKitchenStorage] = useState<StorageListing[] | null>(null);
-  const [, setIsLoadingAddons] = useState(false);
+  const [isLoadingAddons, setIsLoadingAddons] = useState(false);
   const [activeView, setActiveView] = useState("discover-kitchens");
   const [tourModalOpen, setTourModalOpen] = useState(false);
+
+  const { data: locationData, isLoading, error } = useQuery<PublicLocation & { kitchens: PublicKitchen[], slug?: string }>({
+    queryKey: [`/api/public/locations/${identifier}/details`],
+    queryFn: async () => {
+      const response = await fetch(`/api/public/locations/${identifier}/details`);
+      if (!response.ok) throw new Error("Location not found");
+      return response.json();
+    },
+    enabled: !!identifier,
+  });
+
+  const locationId = locationData?.id;
+
+  const { data: tourStatus, isLoading: tourStatusLoading } = useQuery<{
+    isActive?: boolean;
+    hasSchedule?: boolean;
+    toursAvailable?: boolean;
+  }>({
+    queryKey: [`/api/viewings/location/${locationId}/is-active`],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/viewings/location/${locationId}/is-active`, {
+        headers,
+        credentials: "include",
+      });
+      if (!response.ok) return { toursAvailable: false };
+      return response.json();
+    },
+    enabled: isAuthenticated && !!locationId,
+  });
+  const toursAvailable = tourStatus?.toursAvailable ?? tourStatus?.isActive ?? false;
 
   // Check if chef has an approved application for this location
   // Only check if user is authenticated
@@ -1253,7 +1196,7 @@ export default function KitchenPreviewPage() {
     hasApplication,
     canBook,
     isLoading: applicationLoading
-  } = useChefKitchenApplicationForLocation(isAuthenticated ? locationId : null);
+  } = useChefKitchenApplicationForLocation(isAuthenticated && locationId ? locationId : null);
 
   // Debug logging
   useEffect(() => {
@@ -1268,16 +1211,6 @@ export default function KitchenPreviewPage() {
     }
   }, [isAuthenticated, locationId, hasApplication, canBook, application?.status, applicationLoading]);
 
-  const { data: locationData, isLoading, error } = useQuery<PublicLocation & { kitchens: PublicKitchen[] }>({
-    queryKey: [`/api/public/locations/${locationId}/details`],
-    queryFn: async () => {
-      const response = await fetch(`/api/public/locations/${locationId}/details`);
-      if (!response.ok) throw new Error("Location not found");
-      return response.json();
-    },
-    enabled: !!locationId,
-  });
-
   useEffect(() => {
     if (locationData?.kitchens?.length && !selectedKitchen) {
       setSelectedKitchen(locationData.kitchens[0]);
@@ -1290,6 +1223,7 @@ export default function KitchenPreviewPage() {
       if (!selectedKitchen) {
         setKitchenEquipment(null);
         setKitchenStorage(null);
+        setIsLoadingAddons(false);
         return;
       }
 
@@ -1383,7 +1317,7 @@ export default function KitchenPreviewPage() {
       // If canAcceptApplications is false, do nothing (button should be disabled)
     } else {
       // Navigate to auth page with redirect
-      navigate(`/auth?redirect=/kitchen-preview/${locationId}`);
+      navigate(`/auth?redirect=/kitchen-preview/${identifier}`);
     }
   };
 
@@ -1436,365 +1370,207 @@ export default function KitchenPreviewPage() {
     </div>
   );
 
-  // Main kitchen preview content
+  // Main kitchen preview content — same layout for guests and signed-in chefs
   const mainContent = (locationData: PublicLocation & { kitchens: PublicKitchen[] }) => {
     const { kitchens, ...location } = locationData;
-    
-    // Calculate totals for display
-    const totalEquipment = kitchens.reduce((acc, k) => 
-      acc + (k.equipment?.included?.length || 0) + (k.equipment?.rental?.length || 0), 0
-    );
-    const totalStorage = kitchens.reduce((acc, k) => 
-      acc + (k.storage?.length || 0), 0
-    );
+    const appStatus = application?.status;
+    const currentTier = ((application as unknown as { current_tier?: number })?.current_tier ?? 1);
+
+    const nextSteps = (() => {
+      if (!isAuthenticated) {
+        if (location.canAcceptApplications === false) {
+          return (
+            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
+              This location is not accepting new chef applications yet. You can still look around, and check back once it opens.
+            </p>
+          );
+        }
+        return (
+          <>
+            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
+              Applying is how you request permission to cook here. Photos, hours, equipment, and storage are public — an account is only needed to submit an application.
+            </p>
+            <ol className="mt-4 space-y-2.5 text-sm text-gray-600">
+              <li className="flex gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#F8F8F8] text-[11px] font-semibold text-gray-500">1</span>
+                Apply to this kitchen
+              </li>
+              <li className="flex gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#F8F8F8] text-[11px] font-semibold text-gray-500">2</span>
+                After approval, book cooking sessions on the calendar
+              </li>
+            </ol>
+            <Button onClick={handleGetStarted} variant="outline" className="mt-4 w-full">
+              Continue with an account
+            </Button>
+          </>
+        );
+      }
+
+      if (applicationLoading) {
+        return (
+          <div className="mt-4 space-y-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        );
+      }
+
+      if (canBook) {
+        return (
+          <>
+            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
+              You&apos;re approved to cook here. Booking reserves a cooking session on the calendar — it is not a tour.
+            </p>
+            <Button onClick={handleBookClick} className="mt-4 w-full">
+              <Calendar className="mr-2 h-4 w-4" />
+              Book this kitchen
+            </Button>
+          </>
+        );
+      }
+
+      if (appStatus === "approved" && currentTier < 3) {
+        return (
+          <>
+            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
+              Finish the rest of your application to unlock booking. A tour does not complete this for you.
+            </p>
+            <Button onClick={handleApplyClick} className="mt-4 w-full">
+              Continue application
+            </Button>
+          </>
+        );
+      }
+
+      if (appStatus === "inReview" || appStatus === "pending") {
+        return (
+          <p className="mt-2 text-sm text-gray-600 leading-relaxed">
+            Your application is in review. Booking opens after you&apos;re approved. A tour is optional and separate from this application.
+          </p>
+        );
+      }
+
+      if (location.canAcceptApplications === false) {
+        return (
+          <p className="mt-2 text-sm text-gray-600 leading-relaxed">
+            This location is not accepting new chef applications yet.
+          </p>
+        );
+      }
+
+      return (
+        <>
+          <p className="mt-2 text-sm text-gray-600 leading-relaxed">
+            Applying requests permission to cook here. It is not a tour, and a tour does not apply for you.
+          </p>
+          <Button onClick={handleApplyClick} className="mt-4 w-full">
+            <ClipboardList className="mr-2 h-4 w-4" />
+            Apply to this kitchen
+          </Button>
+        </>
+      );
+    })();
 
     return (
-      <motion.div
-        initial="hidden"
-        animate="visible"
-        variants={containerVariants}
-        className="space-y-6"
-      >
-        {/* ═══════════════════════════════════════════════════════════════════════════════
-            PREMIUM LOCATION HEADER - Notion-inspired hero section
-            ═══════════════════════════════════════════════════════════════════════════════ */}
-        <motion.div variants={itemVariants}>
-          <Card className="border-0 shadow-xl rounded-2xl overflow-hidden bg-gradient-to-br from-background via-background to-muted/20">
-            <CardContent className="p-6">
-              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-                {/* Location info */}
-                <div className="flex items-start gap-4 flex-1">
-                  {/* Logo with elegant shadow */}
-                  <motion.div 
-                    whileHover={{ scale: 1.05 }}
-                    className="relative"
-                  >
-                    {location.logoUrl ? (
-                      <img
-                        src={location.logoUrl}
-                        alt={location.name}
-                        className="h-16 w-16 rounded-2xl object-cover shadow-lg ring-2 ring-white"
-                      />
-                    ) : (
-                      <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-primary via-primary to-primary/80 flex items-center justify-center shadow-lg ring-2 ring-white">
-                        <Building2 className="h-8 w-8 text-white" />
-                      </div>
-                    )}
-                    {/* Status indicator dot */}
-                    {location.kitchenLicenseStatus === 'approved' && (
-                      <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center">
-                        <Check className="w-3 h-3 text-white" />
-                      </div>
-                    )}
-                  </motion.div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 flex-wrap mb-2">
-                      <h1 className="text-2xl font-bold text-foreground tracking-tight">
-                        {location.name}
-                      </h1>
-                      {location.kitchenLicenseStatus === 'approved' ? (
-                        <Badge variant="success" className="gap-1">
-                          <Shield className="h-3 w-3" />
-                          Verified Kitchen
-                        </Badge>
-                      ) : location.kitchenLicenseStatus === 'pending' ? (
-                        <Badge variant="warning" className="gap-1">
-                          <Clock className="h-3 w-3" />
-                          Pending Verification
-                        </Badge>
-                      ) : null}
-                    </div>
-                    
-                    <div className="flex items-center gap-4 text-muted-foreground text-sm mb-3">
-                      <span className="flex items-center gap-1.5">
-                        <MapPin className="h-4 w-4 text-primary/60" />
-                        {location.address}
-                      </span>
-                    </div>
-                    
-                    {location.description && (
-                      <p className="text-muted-foreground text-sm leading-relaxed max-w-2xl">
-                        {location.description}
-                      </p>
-                    )}
-                    
-                    {/* Quick stats row */}
-                    <div className="flex items-center gap-4 mt-4">
-                      <div className="flex items-center gap-1.5 text-sm">
-                        <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center">
-                          <ChefHat className="w-3.5 h-3.5 text-primary" />
-                        </div>
-                        <span className="font-medium text-foreground">{kitchens.length}</span>
-                        <span className="text-muted-foreground">Kitchen{kitchens.length !== 1 ? 's' : ''}</span>
-                      </div>
-                      {totalEquipment > 0 && (
-                        <div className="flex items-center gap-1.5 text-sm">
-                          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#FFF8F5] ring-1 ring-[#F51042]/15">
-                            <Wrench className="h-3.5 w-3.5 text-[#F51042]" />
-                          </div>
-                          <span className="font-medium text-foreground">{totalEquipment}</span>
-                          <span className="text-muted-foreground">Equipment</span>
-                        </div>
-                      )}
-                      {totalStorage > 0 && (
-                        <div className="flex items-center gap-1.5 text-sm">
-                          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#F8F8F8] ring-1 ring-[#2C2C2C]/10">
-                            <Package className="h-3.5 w-3.5 text-[#6B6B6B]" />
-                          </div>
-                          <span className="font-medium text-foreground">{totalStorage}</span>
-                          <span className="text-muted-foreground">Storage</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+      <div className="space-y-6">
+        <Helmet>
+          <title>{location.name} Commercial Kitchen | Local Cooks</title>
+          <meta
+            name="description"
+            content={
+              location.description ||
+              `See photos, hours, equipment, and pricing for ${location.name}.`
+            }
+          />
+        </Helmet>
 
-                {/* Main CTA Button - respects license approval status */}
-                <div className="w-full lg:w-auto">
-                  {isAuthenticated && !location.canAcceptApplications && !canBook ? (
-                    <Button
-                      variant="secondary"
-                      disabled
-                      className="w-full lg:w-auto cursor-not-allowed h-12 px-6"
-                    >
-                      <Clock className="mr-2 h-4 w-4" />
-                      Not Accepting Applications
-                    </Button>
-                  ) : (
-                    <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-                      {isAuthenticated && !canBook && (
-                        <Button
-                          variant="outline"
-                          onClick={() => setTourModalOpen(true)}
-                          className="w-full lg:w-auto h-12 px-6 border-primary text-primary hover:bg-primary/5 font-semibold"
-                        >
-                          <Calendar className="mr-2 h-5 w-5" />
-                          Schedule Viewing
-                        </Button>
-                      )}
-                      <Button
-                        onClick={handleGetStarted}
-                        className="w-full lg:w-auto shadow-lg shadow-primary/25 h-12 px-6 text-base font-semibold"
-                        disabled={isAuthenticated && applicationLoading}
-                      >
-                        {applicationLoading ? (
-                          <>
-                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                            Checking...
-                          </>
-                        ) : isAuthenticated && canBook ? (
-                          <>
-                            <Calendar className="mr-2 h-5 w-5" />
-                            Book Now
-                          </>
-                        ) : isAuthenticated && application?.status === 'approved' && ((application as unknown as { current_tier?: number })?.current_tier ?? 1) < 3 ? (
-                          <>
-                            <ArrowRight className="mr-2 h-5 w-5" />
-                            Continue Application
-                          </>
-                        ) : isAuthenticated ? (
-                          <>
-                            <Sparkles className="mr-2 h-5 w-5" />
-                            Apply to Kitchen
-                          </>
-                        ) : (
-                          <>
-                            <ArrowRight className="mr-2 h-5 w-5" />
-                            Sign In to Book
-                          </>
+        <div className="flex items-start gap-3 sm:gap-4 min-w-0">
+          {location.logoUrl ? (
+            <img
+              src={location.logoUrl}
+              alt={location.name}
+              className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl object-cover flex-shrink-0"
+            />
+          ) : (
+            <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl bg-gradient-to-br from-[#F51042] to-[#FF6B7A] flex items-center justify-center flex-shrink-0">
+              <Building2 className="h-6 w-6 text-white" />
+            </div>
+          )}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{location.name}</h1>
+              {location.kitchenLicenseStatus === "pending" && (
+                <Badge variant="warning" className="text-xs">
+                  <Clock className="h-3 w-3 mr-1" />
+                  Verification in progress
+                </Badge>
+              )}
+              {location.kitchenLicenseStatus === "approved" && (
+                <Badge variant="success" className="text-xs">
+                  <BadgeCheck className="h-3 w-3 mr-1" />
+                  Licensed kitchen
+                </Badge>
+              )}
+            </div>
+            <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-500">
+              <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+              <span>{location.address}</span>
+            </p>
+            {location.description && (
+              <p className="mt-2 text-sm text-gray-600 leading-relaxed max-w-2xl">
+                {location.description}
+              </p>
+            )}
+            <p className="mt-2 text-sm text-gray-500">
+              {kitchens.length} {kitchens.length === 1 ? "kitchen" : "kitchens"} at this location
+              {location.canAcceptApplications === false ? " · Not accepting new applications yet" : ""}
+            </p>
+          </div>
+        </div>
+
+        {isAuthenticated && (
+          <KitchenTourBanner
+            toursAvailable={toursAvailable}
+            isLoading={tourStatusLoading}
+            onSchedule={() => setTourModalOpen(true)}
+          />
+        )}
+
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 sm:gap-8">
+          <div className="lg:col-span-8 xl:col-span-9 space-y-5">
+            {kitchens.length > 1 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Choose a kitchen
+                </p>
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                  {kitchens.map((kitchen) => {
+                    const selected = selectedKitchen?.id === kitchen.id;
+                    const rate = formatKitchenRate(kitchen);
+                    return (
+                      <button
+                        key={kitchen.id}
+                        type="button"
+                        onClick={() => setSelectedKitchen(kitchen)}
+                        className={cn(
+                          "shrink-0 rounded-xl border px-4 py-2.5 text-left transition-colors",
+                          selected
+                            ? "border-[#F51042] bg-[#FFF8F5] shadow-sm"
+                            : "border-gray-200 bg-white hover:border-gray-300"
                         )}
-                      </Button>
-                    </div>
-                  )}
+                      >
+                        <span className={cn("block text-sm font-semibold", selected ? "text-[#F51042]" : "text-gray-900")}>
+                          {kitchen.name}
+                        </span>
+                        {rate && <span className="block text-xs text-gray-500 mt-0.5">{rate}</span>}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* ═══════════════════════════════════════════════════════════════════════════════
-            MAIN CONTENT GRID - Notion-style layout
-            ═══════════════════════════════════════════════════════════════════════════════ */}
-        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6">
-          {/* Left Sidebar - Kitchen Selection */}
-          <motion.div 
-            variants={itemVariants}
-            className="lg:col-span-3 space-y-4 order-2 lg:order-1"
-          >
-            {/* Kitchen Selection Card */}
-            <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
-              <div className="bg-muted/30 border-b border-border/50 px-5 py-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <ChefHat className="w-4 h-4 text-primary" />
-                  </div>
-                  <h2 className="font-semibold text-foreground text-sm">
-                    Select Kitchen
-                  </h2>
-                  <Badge variant="count" className="ml-auto">
-                    {kitchens.length}
-                  </Badge>
-                </div>
-              </div>
-              <CardContent className="p-4">
-                <div className="space-y-2.5">
-                  {kitchens.map((kitchen, index) => (
-                    <motion.div
-                      key={kitchen.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                    >
-                      <KitchenSelectionCard
-                        kitchen={kitchen}
-                        isSelected={selectedKitchen?.id === kitchen.id}
-                        onSelect={() => setSelectedKitchen(kitchen)}
-                      />
-                    </motion.div>
-                  ))}
-                </div>
-
-                {kitchens.length === 0 && (
-                  <div className="text-center py-10 text-muted-foreground">
-                    <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
-                      <Utensils className="h-6 w-6 text-muted-foreground/50" />
-                    </div>
-                    <p className="text-sm font-medium">No kitchens available</p>
-                    <p className="text-xs mt-1">Check back later</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Pending Approval Notice */}
-            {location.kitchenLicenseStatus === 'pending' && (
-              <motion.div variants={itemVariants}>
-                <Card className="border-amber-200/50 bg-gradient-to-br from-amber-50 to-white rounded-2xl overflow-hidden">
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-                        <Clock className="h-5 w-5 text-amber-600" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-sm font-semibold text-amber-900 mb-1">
-                          Verification in Progress
-                        </h3>
-                        <p className="text-xs text-amber-700 leading-relaxed">
-                          This kitchen&apos;s license is being verified. Bookings will be available once approved.
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
             )}
 
-            {/* Mini Calendar */}
-            <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
-                <div className="bg-gradient-to-r from-primary to-primary/90 p-4 text-white">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5" />
-                    <span className="font-semibold">Availability</span>
-                  </div>
-                  <p className="text-xs text-white/70 mt-1">View open slots</p>
-                </div>
-                <CardContent className="p-0">
-                  <MiniCalendarPreview
-                    isAuthenticated={isAuthenticated}
-                    canBook={canBook}
-                    canAcceptApplications={location.canAcceptApplications !== false}
-                    onBookClick={handleBookClick}
-                    onApplyClick={handleApplyClick}
-                  />
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* CTA Card */}
-            <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-lg rounded-2xl overflow-hidden bg-gradient-to-br from-background to-muted/20">
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-3 mb-4">
-                    <img
-                      src={kitchenTableIcon}
-                      alt="Kitchen"
-                      className="h-8 w-auto flex-shrink-0"
-                    />
-                    <div>
-                      <span className="font-semibold text-foreground text-sm block">Ready to Cook?</span>
-                      <span className="text-xs text-muted-foreground">Start at {location.name}</span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-                    Get instant access to professional kitchen spaces and bring your culinary vision to life.
-                  </p>
-                  {isAuthenticated && canBook ? (
-                    <Button
-                      onClick={handleBookClick}
-                      className="w-full shadow-lg shadow-primary/20"
-                      size="sm"
-                    >
-                      <Calendar className="mr-2 h-4 w-4" />
-                      Book This Kitchen
-                    </Button>
-                  ) : isAuthenticated && application?.status === 'approved' && ((application as unknown as { current_tier?: number })?.current_tier ?? 1) < 3 ? (
-                    <Button
-                      onClick={handleApplyClick}
-                      className="w-full shadow-lg shadow-primary/20"
-                      size="sm"
-                    >
-                      <ArrowRight className="mr-2 h-4 w-4" />
-                      Continue Application
-                    </Button>
-                  ) : isAuthenticated && !location.canAcceptApplications ? (
-                    <Button
-                      variant="secondary"
-                      disabled
-                      className="w-full cursor-not-allowed"
-                      size="sm"
-                    >
-                      <Clock className="mr-2 h-4 w-4" />
-                      Not Accepting Applications
-                    </Button>
-                  ) : isAuthenticated ? (
-                    <Button
-                      onClick={handleApplyClick}
-                      className="w-full shadow-lg shadow-primary/20"
-                      size="sm"
-                    >
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      Apply to Kitchen
-                    </Button>
-                  ) : (
-                    <>
-                    <Button
-                      onClick={handleGetStarted}
-                      className="w-full shadow-lg shadow-primary/20"
-                      size="sm"
-                    >
-                      Create Free Account
-                      <ArrowRight className="ml-2 h-3.5 w-3.5" />
-                    </Button>
-                    <p className="text-center text-xs text-muted-foreground mt-3">
-                      Already have an account?{' '}
-                      <button
-                        onClick={() => navigate('/auth')}
-                        className="text-primary hover:underline font-medium"
-                      >
-                        Log in
-                      </button>
-                    </p>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-          </motion.div>
-
-          {/* Main Content - Selected Kitchen Details */}
-          <motion.div variants={itemVariants} className="lg:col-span-9 order-1 lg:order-2">
             <AnimatePresence mode="wait">
               {selectedKitchen ? (
                 <KitchenDetailsSection
@@ -1807,23 +1583,39 @@ export default function KitchenPreviewPage() {
                   locationAddress={location.address}
                   locationName={location.name}
                   locationDescription={location.description}
+                  layout="stacked"
+                  addonsLoading={isLoadingAddons}
                 />
               ) : (
                 <motion.div
+                  key="empty-state"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="flex items-center justify-center h-64 sm:h-96 bg-card rounded-xl border shadow-lg"
+                  exit={{ opacity: 0 }}
+                  className="flex items-center justify-center h-64 sm:h-96 bg-white rounded-xl border border-gray-200"
                 >
                   <div className="text-center px-4">
-                    <Utensils className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3" />
-                    <p className="text-sm sm:text-base text-muted-foreground">Select a kitchen to view details</p>
+                    <Utensils className="h-10 w-10 sm:h-12 sm:w-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-sm sm:text-base text-gray-500">No kitchens are listed at this location yet.</p>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
-          </motion.div>
+          </div>
+
+          <aside className="lg:col-span-4 xl:col-span-3 space-y-4 lg:sticky lg:top-24 self-start">
+            <GuestHoursCard availability={selectedKitchen?.availability} />
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h2 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
+                <ClipboardList className="h-4 w-4 text-[#F51042]" />
+                How to cook here
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">Application and booking</p>
+              {nextSteps}
+            </div>
+          </aside>
         </div>
-      </motion.div>
+      </div>
     );
   };
 
@@ -1848,20 +1640,32 @@ export default function KitchenPreviewPage() {
     else if (view === 'training') navigate('/dashboard?view=training', opts);
   };
 
+  const scheduleTourSheet = isAuthenticated && locationId != null ? (
+    <ScheduleViewingWidget
+      locationId={locationId}
+      locationName={locationData?.name}
+      open={tourModalOpen}
+      onClose={() => setTourModalOpen(false)}
+    />
+  ) : null;
+
   // If user is authenticated, wrap in ChefDashboardLayout
   if (isAuthenticated) {
     return (
-      <ChefDashboardLayout
-        activeView={activeView}
-        onViewChange={handleViewChange}
-        breadcrumbs={[
-          { label: "Dashboard", onClick: () => navigate('/dashboard') },
-          { label: "Discover Kitchens", onClick: () => navigate('/dashboard?view=discover-kitchens') },
-          { label: locationData?.name || 'Kitchen' },
-        ]}
-      >
-        {getContent()}
-      </ChefDashboardLayout>
+      <>
+        <ChefDashboardLayout
+          activeView={activeView}
+          onViewChange={handleViewChange}
+          breadcrumbs={[
+            { label: "Dashboard", onClick: () => navigate('/dashboard') },
+            { label: "Discover Kitchens", onClick: () => navigate('/dashboard?view=discover-kitchens') },
+            { label: locationData?.name || 'Kitchen' },
+          ]}
+        >
+          {getContent()}
+        </ChefDashboardLayout>
+        {scheduleTourSheet}
+      </>
     );
   }
 
@@ -1890,200 +1694,15 @@ export default function KitchenPreviewPage() {
   }
 
   // Public view for unauthenticated users
-  const { kitchens, ...location } = locationData;
-
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
-
       <main className="flex-1 pt-16 sm:pt-20 pb-8 sm:pb-12">
-        {/* Location Header - Responsive */}
-        <div className="bg-white border-b border-gray-200 py-4 sm:py-5">
-          <div className="container mx-auto px-4 sm:px-6 max-w-7xl">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-              <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
-                {location.logoUrl ? (
-                  <img
-                    src={location.logoUrl}
-                    alt={location.name}
-                    className="h-10 w-auto sm:h-12 rounded-lg flex-shrink-0"
-                  />
-                ) : (
-                  <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg bg-gradient-to-br from-[#F51042] to-[#FF6B7A] flex items-center justify-center flex-shrink-0">
-                    <Building2 className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{location.name}</h1>
-                    {location.description && (
-                      <p className="w-full text-sm sm:text-base text-gray-600 mt-2 leading-relaxed">
-                        {location.description}
-                      </p>
-                    )}
-                    {location.kitchenLicenseStatus === 'pending' && (
-                      <Badge variant="warning" className="text-xs">
-                        <Clock className="h-3 w-3 mr-1" />
-                        Pending Approval
-                      </Badge>
-                    )}
-                    {location.kitchenLicenseStatus === 'approved' && (
-                      <Badge variant="success" className="text-xs">
-                        <Check className="h-3 w-3 mr-1" />
-                        Licensed Kitchen
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-gray-500 text-xs sm:text-sm">
-                    <MapPin className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
-                    <span className="truncate">{location.address}</span>
-                  </div>
-                </div>
-              </div>
-
-                <div className="flex flex-col gap-2 w-full sm:w-auto">
-                  <Button
-                    onClick={handleGetStarted}
-                    className="bg-[#F51042] hover:bg-[#D90E3A] text-white w-full sm:w-auto text-sm sm:text-base"
-                    size="sm"
-                  >
-                    Sign In to Book
-                    <ArrowRight className="ml-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  </Button>
-                </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Main Content */}
         <div className="container mx-auto px-4 sm:px-6 max-w-7xl py-6 sm:py-8">
-          <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 sm:gap-8">
-            {/* Left Sidebar - Kitchen Selection */}
-            <div className="lg:col-span-3 space-y-4 order-2 lg:order-1">
-              <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
-                <h2 className="text-xs sm:text-sm font-semibold text-gray-900 mb-3 sm:mb-4 uppercase tracking-wide">
-                  Select a Kitchen
-                </h2>
-                <div className="space-y-2 sm:space-y-2.5">
-                  {kitchens.map((kitchen) => (
-                    <KitchenSelectionCard
-                      key={kitchen.id}
-                      kitchen={kitchen}
-                      isSelected={selectedKitchen?.id === kitchen.id}
-                      onSelect={() => setSelectedKitchen(kitchen)}
-                    />
-                  ))}
-                </div>
-
-                {kitchens.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    <Utensils className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm">No kitchens available</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Mini Calendar */}
-              <Card className="overflow-hidden border-gray-200">
-                <div className="bg-gradient-to-r from-[#F51042] to-[#FF6B7A] p-3 text-white">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                    <span className="font-semibold text-xs sm:text-sm">Availability</span>
-                  </div>
-                </div>
-                <CardContent className="p-0">
-                  <MiniCalendarPreview
-                    isAuthenticated={isAuthenticated}
-                    canBook={canBook}
-                    canAcceptApplications={location.canAcceptApplications !== false}
-                    onBookClick={handleBookClick}
-                    onApplyClick={handleApplyClick}
-                  />
-                </CardContent>
-              </Card>
-
-              {/* CTA Card */}
-              <Card className="border-gray-200 overflow-hidden">
-                <CardContent className="p-4 sm:p-5">
-                  <div className="flex items-center gap-2 mb-2 sm:mb-3">
-                    <img
-                      src={kitchenTableIcon}
-                      alt="Kitchen"
-                      className="h-4 w-auto sm:h-5 flex-shrink-0"
-                    />
-                    <span className="font-semibold text-gray-900 text-xs sm:text-sm leading-tight">Start Cooking at {location.name}</span>
-                  </div>
-                  <p className="text-xs text-gray-600 mb-3 sm:mb-4 leading-relaxed">
-                    Join LocalCooks and get instant access to professional kitchen spaces. Book your slot today and bring your culinary vision to life.
-                  </p>
-                  <Button
-                    onClick={handleGetStarted}
-                    className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
-                    size="sm"
-                  >
-                    Create Free Account
-                    <ArrowRight className="ml-2 h-3.5 w-3.5" />
-                  </Button>
-                  <p className="text-center text-xs text-gray-500 mt-2 sm:mt-3">
-                    Already have an account?{' '}
-                    <button
-                      onClick={() => navigate('/auth')}
-                      className="text-[#F51042] hover:underline font-medium"
-                    >
-                      Log in
-                    </button>
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Main Content - Selected Kitchen Details */}
-            <div className="lg:col-span-9 order-1 lg:order-2">
-              <AnimatePresence mode="wait">
-                {selectedKitchen ? (
-                  <KitchenDetailsSection
-                    key={selectedKitchen.id}
-                    kitchen={{
-                      ...selectedKitchen,
-                      equipment: kitchenEquipment || undefined,
-                      storage: kitchenStorage || undefined,
-                    }}
-                    locationAddress={location.address}
-                    locationName={location.name}
-                    locationDescription={location.description}
-                  />
-                ) : (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="flex items-center justify-center h-64 sm:h-96 bg-white rounded-xl border border-gray-200"
-                  >
-                    <div className="text-center px-4">
-                      <Utensils className="h-10 w-10 sm:h-12 sm:w-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-sm sm:text-base text-gray-500">Select a kitchen to view details</p>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
+          {mainContent(locationData)}
         </div>
       </main>
-
       <Footer />
-
-      {/* Schedule Viewing Modal */}
-      {selectedKitchen && locationId && (
-        <ScheduleViewingWidget
-          locationId={locationId as number}
-          locationName={locationData?.name}
-          targetedKitchenId={selectedKitchen.id}
-          targetedKitchenName={selectedKitchen.name}
-          mode="modal"
-          open={tourModalOpen}
-          onClose={() => setTourModalOpen(false)}
-        />
-      )}
     </div>
   );
 }

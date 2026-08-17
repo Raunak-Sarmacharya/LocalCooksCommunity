@@ -29,6 +29,7 @@ import {
     Bell,
     ClipboardList,
     PackageCheck,
+    Mail,
 } from "lucide-react"
 
 import {
@@ -421,6 +422,17 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("kitchen-management"))}>
                                     <Building2 className="mr-2 h-4 w-4" />
                                     <span>Manage Kitchens</span>
+                                </CommandItem>
+                            </CommandGroup>
+                            <CommandSeparator />
+                            <CommandGroup heading="Communications">
+                                <CommandItem onSelect={() => runCommand(() => onViewChange?.("promos"))}>
+                                    <Gift className="mr-2 h-4 w-4" />
+                                    <span>Send Promo Codes</span>
+                                </CommandItem>
+                                <CommandItem onSelect={() => runCommand(() => onViewChange?.("email-log"))}>
+                                    <Mail className="mr-2 h-4 w-4" />
+                                    <span>Email Log</span>
                                 </CommandItem>
                             </CommandGroup>
                             <CommandSeparator />

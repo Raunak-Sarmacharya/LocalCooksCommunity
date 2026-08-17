@@ -150,25 +150,11 @@ export async function calculateKitchenBookingPrice(
  */
 export async function getServiceFeeRate(): Promise<number> {
   try {
-    const [setting] = await db
-      .select({ value: platformSettings.value })
-      .from(platformSettings)
-      .where(eq(platformSettings.key, 'service_fee_rate'));
-
-    if (!setting) {
-      return 0.05; // Default 5%
-    }
-
-    const rate = parseFloat(setting.value);
-
-    // Validate rate is between 0 and 1
-    if (isNaN(rate) || rate < 0 || rate > 1) {
-      return 0.05;
-    }
-
-    return rate;
+    const { getFeeConfig } = await import('./stripe-checkout-fee-service');
+    const config = await getFeeConfig();
+    return config.platformCommissionRate;
   } catch (error) {
-    logger.error('Error getting service fee rate from platform_settings:', error);
+    logger.error('Error getting platform commission rate from fee config:', error);
     return 0.05; // Default to 5% on error
   }
 }

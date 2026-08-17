@@ -10,9 +10,10 @@ import {
     CreditCard, 
     Clock, 
     Package, 
-    Wrench, 
+    CookingPot, 
     PartyPopper,
-    Sparkles,
+    Handshake,
+    ClipboardCheck,
     Lock
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,14 +24,14 @@ import Logo from "@/components/ui/logo";
 
 // Step icon mapping for visual richness
 const STEP_ICONS: Record<string, React.ElementType> = {
-    'welcome': Sparkles,
+    'welcome': Handshake,
     'location': MapPin,
     'create-kitchen': ChefHat,
     'application-requirements': ClipboardList,
     'payment-setup': CreditCard,
     'availability': Clock,
     'storage-listings': Package,
-    'equipment-listings': Wrench,
+    'equipment-listings': CookingPot,
     'completion-summary': PartyPopper,
 };
 
@@ -199,7 +200,7 @@ const EnterpriseStepper = () => {
                 <div className="p-4 border-t border-slate-200/80 dark:border-slate-800 bg-gradient-to-r from-slate-50 to-white dark:from-slate-900 dark:to-slate-900">
                     <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/50 dark:border-amber-800/30">
                         <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center shrink-0">
-                            <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                            <ClipboardCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                         </div>
                         <div>
                             <p className="text-xs font-medium text-amber-800 dark:text-amber-300">

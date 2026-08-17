@@ -19,6 +19,7 @@ export interface CreatePaymentTransactionParams {
   amount: number; // Total amount in cents (includes service fee)
   baseAmount: number; // Base amount in cents (before service fee)
   serviceFee: number; // Service fee in cents
+  stripeProcessingFee?: number; // Actual Stripe processing fee in cents
   managerRevenue: number; // Manager revenue in cents (baseAmount - serviceFee)
   currency?: string;
   paymentIntentId?: string;
@@ -106,6 +107,7 @@ export async function createPaymentTransaction(
     baseAmount,
     serviceFee,
     managerRevenue,
+    stripeProcessingFee,
     currency = 'CAD',
     paymentIntentId,
     chargeId,
@@ -117,6 +119,7 @@ export async function createPaymentTransaction(
 
   // Calculate net amount (amount - refund_amount, initially just amount)
   const netAmount = amount;
+  const stripeProcessingFeeCents = stripeProcessingFee != null ? stripeProcessingFee : 0;
 
   const result = await db.execute(sql`
     INSERT INTO payment_transactions (
@@ -127,6 +130,7 @@ export async function createPaymentTransaction(
       amount,
       base_amount,
       service_fee,
+      stripe_processing_fee,
       manager_revenue,
       refund_amount,
       net_amount,
@@ -145,6 +149,7 @@ export async function createPaymentTransaction(
       ${amount.toString()},
       ${baseAmount.toString()},
       ${serviceFee.toString()},
+      ${stripeProcessingFeeCents.toString()},
       ${managerRevenue.toString()},
       '0',
       ${netAmount.toString()},
@@ -276,53 +281,43 @@ export async function updatePaymentTransaction(
     updates.push(sql`webhook_event_id = ${params.webhookEventId}`);
   }
 
-  // Handle Stripe-synced amounts (override calculated amounts with actual Stripe amounts)
+  // Handle Stripe-synced amounts. `amount` is what the chef was charged (includes commission).
+  // Do not overwrite explicit serviceFee / managerRevenue — the transfer engine sets those
+  // to platform commission and the Connect transfer, respectively.
   if (params.stripeAmount !== undefined || params.stripeNetAmount !== undefined) {
-    // If Stripe amounts are provided, update the transaction amounts with actual Stripe values
-    // This ensures all amounts match what Stripe shows
-
     if (params.stripeAmount !== undefined) {
       updates.push(sql`amount = ${params.stripeAmount.toString()}`);
+      if (params.refundAmount === undefined) {
+        const netCharged = params.stripeAmount - currentRefundAmount;
+        updates.push(sql`net_amount = ${netCharged.toString()}`);
+      }
     }
 
-    if (params.stripeNetAmount !== undefined) {
-      // Net amount is what manager actually receives after all fees
-      updates.push(sql`net_amount = ${params.stripeNetAmount.toString()}`);
-
-      // Update manager_revenue to match Stripe net amount (what manager actually receives)
-      // This ensures manager_revenue reflects actual Stripe payout
-      updates.push(sql`manager_revenue = ${params.stripeNetAmount.toString()}`);
-    }
-
-    // Store actual Stripe processing fee in dedicated column
     if (params.stripeProcessingFee !== undefined) {
       updates.push(sql`stripe_processing_fee = ${params.stripeProcessingFee.toString()}`);
     }
 
-    // Update service_fee (platform fee) with actual Stripe platform fee
-    // For Stripe Connect: platform fee = application_fee_amount (explicitly set)
-    // Platform fee is what goes to the platform, not including Stripe processing fees
-    if (params.stripePlatformFee !== undefined && params.stripePlatformFee > 0) {
-      // Use the explicit platform fee from Stripe (application fee)
+    // Legacy destination charges used application_fee_amount (stripePlatformFee > 0).
+    // New separate-charges flow keeps commission in params.serviceFee instead.
+    if (params.serviceFee === undefined && params.stripePlatformFee !== undefined && params.stripePlatformFee > 0) {
       updates.push(sql`service_fee = ${params.stripePlatformFee.toString()}`);
-    } else if (params.stripeAmount !== undefined && params.stripeNetAmount !== undefined) {
-      // Fallback: calculate platform fee as difference
-      // But this includes processing fees, so we need to subtract processing fee
-      const totalFees = params.stripeAmount - params.stripeNetAmount;
-      const processingFee = params.stripeProcessingFee || 0;
-      const actualPlatformFee = Math.max(0, totalFees - processingFee);
-      updates.push(sql`service_fee = ${actualPlatformFee.toString()}`);
     }
 
-    // Update base_amount: for Stripe Connect, base = amount - platform fee
-    // This represents the amount before platform fee is deducted
+    if (
+      params.managerRevenue === undefined
+      && params.stripePlatformFee !== undefined
+      && params.stripePlatformFee > 0
+      && params.stripeNetAmount !== undefined
+    ) {
+      updates.push(sql`manager_revenue = ${params.stripeNetAmount.toString()}`);
+    }
+
     if (params.stripeAmount !== undefined) {
-      const platformFee = params.stripePlatformFee ||
-        (params.stripeAmount !== undefined && params.stripeNetAmount !== undefined
-          ? Math.max(0, (params.stripeAmount - params.stripeNetAmount) - (params.stripeProcessingFee || 0))
-          : 0);
-      const baseAmount = params.stripeAmount - platformFee;
-      updates.push(sql`base_amount = ${baseAmount.toString()}`);
+      const platformFee = params.serviceFee
+        ?? ((params.stripePlatformFee && params.stripePlatformFee > 0) ? params.stripePlatformFee : 0);
+      if (platformFee > 0) {
+        updates.push(sql`base_amount = ${(params.stripeAmount - platformFee).toString()}`);
+      }
     }
 
     // Store Stripe fees in metadata for reference
@@ -343,6 +338,7 @@ export async function updatePaymentTransaction(
 
     const updatedMetadata = {
       ...currentMetadata,
+      ...(params.metadata || {}),
       stripeFees,
     };
 
@@ -775,13 +771,22 @@ export async function syncExistingPaymentTransactionsFromStripe(
         }
 
         // Update payment transaction with Stripe amounts
-        await updatePaymentTransaction(transaction.id, {
+        const updateParams: any = {
           stripeAmount: stripeAmounts.stripeAmount,
-          stripeNetAmount: stripeAmounts.stripeNetAmount,
           stripeProcessingFee: stripeAmounts.stripeProcessingFee,
-          stripePlatformFee: stripeAmounts.stripePlatformFee,
           lastSyncedAt: new Date(),
-        }, db);
+        };
+
+        // If stripePlatformFee > 0, it means the old flow (application_fee_amount) was used
+        // and we should sync net amounts.
+        // If it's 0, it's the new Separate Charges and Transfers flow where the transfer engine sets net amounts,
+        // so we must NOT overwrite them with pre-transfer Stripe charge data.
+        if (stripeAmounts.stripePlatformFee > 0) {
+          updateParams.stripeNetAmount = stripeAmounts.stripeNetAmount;
+          updateParams.stripePlatformFee = stripeAmounts.stripePlatformFee;
+        }
+
+        await updatePaymentTransaction(transaction.id, updateParams, db);
 
         // Sync to booking tables
         await syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db);
@@ -1082,11 +1087,13 @@ export async function getChefPaymentTransactions(
         ELSE NULL
       END as item_name,
       l.name as location_name,
-      CASE 
+      CASE
         WHEN pt.booking_type = 'kitchen' THEN kb.reference_code
         WHEN pt.booking_type = 'storage' THEN sb.reference_code
         ELSE NULL
-      END as reference_code
+      END as reference_code,
+      kb.total_price as kb_total_price,
+      kb.service_fee as kb_service_fee
     FROM payment_transactions pt
     LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
     LEFT JOIN kitchens k ON kb.kitchen_id = k.id

@@ -148,8 +148,29 @@ const getEmailConfig = (): EmailConfig => {
   };
 };
 
+async function persistEmailLog(params: {
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+  status: "sent" | "failed" | "skipped_duplicate";
+  errorMessage?: string;
+  trackingId?: string;
+  smtpMessageId?: string;
+  emailType?: string;
+  fromAddress?: string;
+  retryOfId?: number;
+}): Promise<void> {
+  try {
+    const { logOutgoingEmail } = await import("./services/email-log-service");
+    await logOutgoingEmail(params);
+  } catch (logError) {
+    logger.error("Failed to persist email log:", logError);
+  }
+}
+
 // Enhanced send email function with Vercel serverless optimizations
-export const sendEmail = async (content: EmailContent, options?: { trackingId?: string }): Promise<boolean> => {
+export const sendEmail = async (content: EmailContent, options?: { trackingId?: string; emailType?: string; retryOfId?: number }): Promise<boolean> => {
   const startTime = Date.now();
   let transporter: any = null;
 
@@ -161,6 +182,18 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
 
       if (lastSent && (now - lastSent) < DUPLICATE_PREVENTION_WINDOW) {
         logger.info(`Preventing duplicate email for tracking ID: ${options.trackingId} (sent ${now - lastSent}ms ago)`);
+        await persistEmailLog({
+          to: content.to,
+          subject: content.subject,
+          text: content.text,
+          html: content.html,
+          status: "skipped_duplicate",
+          errorMessage: "Duplicate send prevented",
+          trackingId: options.trackingId,
+          emailType: options.emailType,
+          fromAddress: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+          retryOfId: options.retryOfId,
+        });
         return true; // Return true to avoid breaking existing code
       }
 
@@ -179,6 +212,18 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     // Check if email configuration is available
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       logger.error('Email configuration is missing. Please set EMAIL_USER and EMAIL_PASS environment variables.');
+      await persistEmailLog({
+        to: content.to,
+        subject: content.subject,
+        text: content.text,
+        html: content.html,
+        status: "failed",
+        errorMessage: "Email configuration is missing",
+        trackingId: options?.trackingId,
+        emailType: options?.emailType,
+        fromAddress: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+        retryOfId: options?.retryOfId,
+      });
       return false;
     }
 
@@ -328,7 +373,25 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       transporter.close();
     }
 
-    return true;
+    const accepted = Array.isArray((info as any)?.accepted) ? (info as any).accepted as string[] : [];
+    const rejected = Array.isArray((info as any)?.rejected) ? (info as any).rejected as string[] : [];
+    const smtpRejected = rejected.length > 0 && accepted.length === 0;
+
+    await persistEmailLog({
+      to: content.to,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+      status: smtpRejected ? "failed" : "sent",
+      errorMessage: smtpRejected ? `SMTP rejected recipient(s): ${rejected.join(", ")}` : undefined,
+      trackingId: options?.trackingId,
+      smtpMessageId: (info as any)?.messageId,
+      emailType: options?.emailType,
+      fromAddress: fromEmail,
+      retryOfId: options?.retryOfId,
+    });
+
+    return !smtpRejected;
   } catch (error) {
     const executionTime = Date.now() - startTime;
     logger.error('Error sending email:', {
@@ -358,6 +421,19 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
         logger.error('Error closing transporter:', closeError);
       }
     }
+
+    await persistEmailLog({
+      to: content.to,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+      status: "failed",
+      errorMessage: error instanceof Error ? error.message : String(error),
+      trackingId: options?.trackingId,
+      emailType: options?.emailType,
+      fromAddress: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+      retryOfId: options?.retryOfId,
+    });
 
     return false;
   }

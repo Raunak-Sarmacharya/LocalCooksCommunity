@@ -71,6 +71,8 @@ export interface CreatePendingCheckoutSessionParams {
     taxCents: number;
     hourlyRateCents: number;
     durationHours: number;
+    platform_fee_cents?: number;
+    stripe_fee_cents?: number;
   };
   /** Custom line item name shown to customer (default: 'Kitchen Session Booking') */
   lineItemName?: string;
@@ -82,6 +84,8 @@ export interface CreatePendingCheckoutSessionParams {
     equipmentItems?: Array<{ name: string; priceCents: number }>;
     taxCents: number;
     taxLabel?: string; // e.g. "Tax (13%)"
+    platformCommissionCents?: number;
+    platformCommissionLabel?: string;
   };
 }
 
@@ -121,9 +125,6 @@ export async function createPendingCheckoutSession(
   }
   if (platformFeeInCents < 0) {
     throw new Error('Platform fee cannot be negative');
-  }
-  if (platformFeeInCents >= bookingPriceInCents) {
-    throw new Error('Platform fee must be less than booking price');
   }
   if (!managerStripeAccountId) {
     throw new Error('Manager Stripe account ID is required');
@@ -199,6 +200,18 @@ export async function createPendingCheckoutSession(
         });
       }
 
+      // Platform Commission line item (only if > 0)
+      if (lineItemBreakdown.platformCommissionCents && lineItemBreakdown.platformCommissionCents > 0) {
+        lineItems.push({
+          price_data: {
+            currency: currency.toLowerCase(),
+            product_data: { name: lineItemBreakdown.platformCommissionLabel || 'Platform Commission' },
+            unit_amount: lineItemBreakdown.platformCommissionCents,
+          },
+          quantity: 1,
+        });
+      }
+
       // Fallback: if breakdown produced no items, use single combined line item
       if (lineItems.length === 0) {
         lineItems.push({
@@ -253,7 +266,9 @@ export async function createPendingCheckoutSession(
       hourly_rate_cents: bookingData.hourlyRateCents.toString(),
       duration_hours: bookingData.durationHours.toString(),
       booking_price_cents: bookingPriceInCents.toString(),
-      platform_fee_cents: platformFeeInCents.toString(),
+      platform_fee_cents: (bookingData as any).platform_fee_cents 
+        ? (bookingData as any).platform_fee_cents.toString() 
+        : platformFeeInCents.toString(),
       manager_account_id: managerStripeAccountId,
     };
 

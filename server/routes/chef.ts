@@ -11,6 +11,7 @@ import { pool, db } from "../db";
 import { sql, eq, desc, and } from "drizzle-orm";
 import { users, applications } from "@shared/schema";
 import { errorResponse } from "../api-response";
+import { resolveChefChargedAmountCents } from "../services/stripe-checkout-fee-service";
 import { getAppBaseUrl } from "../config";
 import * as phpBridge from '../services/php-bridge-service';
 import { generateReportCSV, generateReportPDF, processScheduledReports } from '../services/seller-report-service';
@@ -658,13 +659,22 @@ router.get("/transactions", requireChef, async (req: Request, res: Response) => 
         );
 
         // Transform transactions for frontend consumption
-        const formattedTransactions = transactions.map((tx: any) => ({
+        const formattedTransactions = transactions.map((tx: any) => {
+            const storedAmount = parseFloat(tx.amount || '0');
+            const kbTotal = parseFloat(tx.kb_total_price || '0');
+            const kbCommission = parseFloat(tx.kb_service_fee || '0');
+            const chargedAmount = resolveChefChargedAmountCents(
+                storedAmount,
+                kbTotal || storedAmount,
+                kbCommission,
+            );
+            return {
             id: tx.id,
             bookingId: tx.booking_id,
             bookingType: tx.booking_type,
-            amount: parseFloat(tx.amount || '0'),
+            amount: chargedAmount,
             baseAmount: parseFloat(tx.base_amount || '0'),
-            serviceFee: parseFloat(tx.service_fee || '0'),
+            serviceFee: kbCommission > 0 ? kbCommission : parseFloat(tx.service_fee || '0'),
             netAmount: parseFloat(tx.net_amount || '0'),
             refundAmount: parseFloat(tx.refund_amount || '0'),
             currency: tx.currency,
@@ -685,7 +695,8 @@ router.get("/transactions", requireChef, async (req: Request, res: Response) => 
             referenceCode: tx.reference_code,
             // Metadata for additional context
             metadata: tx.metadata,
-        }));
+        };
+        });
 
         res.json({ transactions: formattedTransactions, total });
     } catch (error) {

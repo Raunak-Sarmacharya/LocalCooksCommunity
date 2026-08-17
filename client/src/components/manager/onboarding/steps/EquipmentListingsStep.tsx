@@ -7,7 +7,7 @@ import { logger } from "@/lib/logger";
  */
 
 import React, { useState, useMemo } from "react";
-import { Info, Plus, CheckCircle, Loader2, Search, Check, ChevronDown, ChevronUp, X, DollarSign, Package, Flame, ChefHat, Snowflake, Sparkles, SprayCan, PlusCircle, SearchX } from "lucide-react";
+import { Info, Plus, CheckCircle, Loader2, Search, Check, ChevronDown, ChevronUp, X, DollarSign, Package, Flame, ChefHat, Snowflake, UtensilsCrossed, SprayCan, PlusCircle, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,7 @@ import { EQUIPMENT_CATEGORIES, type EquipmentTemplate, type EquipmentCategoryId 
 // Icon component mapping for categories (enterprise pattern - no emojis)
 const CategoryIcon = ({ iconName, className }: { iconName: string; className?: string }) => {
   const icons: Record<string, React.ComponentType<{ className?: string }>> = {
-    Flame, ChefHat, Snowflake, Sparkles, SprayCan
+    Flame, ChefHat, Snowflake, UtensilsCrossed, SprayCan
   };
   const Icon = icons[iconName] || Package;
   return <Icon className={className} />;

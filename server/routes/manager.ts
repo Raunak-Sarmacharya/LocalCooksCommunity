@@ -4536,7 +4536,7 @@ router.put(
             }
           }
 
-          // ── Step 4: Calculate approved subtotal + proportional tax ───────────────
+          // ── Step 4: Calculate approved subtotal + proportional tax + commission ─
           // Kitchen is always approved when status === 'confirmed'
           const approvedSubtotalCents = kitchenOnlyPriceCents + approvedStorageCents + approvedEquipmentCents;
 
@@ -4545,18 +4545,23 @@ router.put(
             ? parseFloat(String(kitchen.taxRatePercent))
             : 0;
           const approvedTaxCents = Math.round((approvedSubtotalCents * taxRatePercent) / 100);
-          const captureAmountCents = approvedSubtotalCents + approvedTaxCents;
 
-          // ── Step 5: Recalculate application_fee for platform break-even ─────────
-          // On partial capture, we MUST recalculate the fee on the smaller amount
-          // Otherwise the original (higher) fee would exceed what we capture
-          const feeCalc = await calculateCheckoutFeesAsync(captureAmountCents);
-          const newApplicationFeeCents = feeCalc.totalPlatformFeeInCents;
+          // Chef pays platform commission on top of the approved booking subtotal.
+          // Capture must include that commission so Stripe's charge matches checkout.
+          const feeCalc = approvedSubtotalCents > 0
+            ? await calculateCheckoutFeesAsync(approvedSubtotalCents)
+            : null;
+          const platformCommissionCents = feeCalc?.platformCommissionInCents ?? 0;
+          const captureAmountCents = approvedSubtotalCents + approvedTaxCents + platformCommissionCents;
+
+          // Kept for metadata/audit; Separate Charges flow does not send this to Stripe.
+          const newApplicationFeeCents = platformCommissionCents;
 
           // ── Step 6: Determine if this is a partial or full capture ──────────────
           const originalTotalPriceCents = Math.round(parseFloat(String((booking as any).totalPrice || "0")));
           const originalTaxCents = Math.round((originalTotalPriceCents * taxRatePercent) / 100);
-          const originalAuthorizedAmount = originalTotalPriceCents + originalTaxCents;
+          const originalCommissionCents = Math.round(parseFloat(String((booking as any).serviceFee || "0")));
+          const originalAuthorizedAmount = originalTotalPriceCents + originalTaxCents + originalCommissionCents;
           const isPartialCapture = captureAmountCents < originalAuthorizedAmount;
 
           logger.info(`[Manager] PARTIAL CAPTURE ENGINE for booking ${id}:`, {
@@ -4641,6 +4646,7 @@ router.put(
             .set({
               paymentStatus: "paid",
               totalPrice: approvedSubtotalCents.toString(),
+              serviceFee: platformCommissionCents.toString(),
               storageItems: updatedStorageItems,
               equipmentItems: updatedEquipmentItems,
               updatedAt: new Date(),
@@ -4680,11 +4686,8 @@ router.put(
           try {
             const ptRecord = await findPaymentTransactionByIntentId(bookingPaymentIntentId, db);
             if (ptRecord) {
-              // base_amount = captured amount minus platform fee
-              const capturedBaseAmount = captureAmountCents - newApplicationFeeCents;
-              // manager_revenue = base_amount (before Stripe processing fee is known)
-              // Will be overwritten by webhook with actual Stripe net amount
-              const capturedManagerRevenue = capturedBaseAmount;
+              // Booking subtotal (manager gross) vs chef charged amount (includes commission).
+              const capturedBaseAmount = approvedSubtotalCents + approvedTaxCents;
 
               // Build metadata with capture details for audit trail
               const existingMetadata = ptRecord.metadata
@@ -4699,6 +4702,7 @@ router.put(
                 approvedTax: approvedTaxCents,
                 taxRatePercent,
                 applicationFee: newApplicationFeeCents,
+                platformCommission: platformCommissionCents,
                 approvedStorageIds: Array.from(approvedStorageIds),
                 approvedEquipmentIds: Array.from(approvedEquipmentIds),
                 rejectedStorageIds: Array.from(rejectedStorageIds),
@@ -4711,21 +4715,21 @@ router.put(
                 stripeStatus: "succeeded",
                 paidAt: new Date(),
                 amount: captureAmountCents,
+                serviceFee: platformCommissionCents,
                 metadata: captureMetadata,
               }, db);
 
-              // Also update base_amount, service_fee, manager_revenue, net_amount directly
-              // (updatePaymentTransaction doesn't have dedicated params for these non-Stripe fields)
+              // Persist subtotal + charged total. Do NOT overwrite manager_revenue or
+              // stripe_processing_fee — payment_intent.succeeded sets those from the transfer.
               await db.execute(sql`
                 UPDATE payment_transactions
                 SET base_amount = ${capturedBaseAmount.toString()},
-                    service_fee = ${newApplicationFeeCents.toString()},
-                    manager_revenue = ${capturedManagerRevenue.toString()},
+                    service_fee = ${platformCommissionCents.toString()},
                     net_amount = ${captureAmountCents.toString()}
                 WHERE id = ${ptRecord.id}
               `);
 
-              logger.info(`[Manager] Updated payment_transactions ${ptRecord.id}: amount=${captureAmountCents}, base=${capturedBaseAmount}, fee=${newApplicationFeeCents}, revenue=${capturedManagerRevenue}`);
+              logger.info(`[Manager] Updated payment_transactions ${ptRecord.id}: charged=${captureAmountCents}, base=${capturedBaseAmount}, commission=${platformCommissionCents}`);
             }
           } catch (ptErr: any) {
             logger.warn(`[Manager] Could not update payment_transactions after capture:`, ptErr);

@@ -21,7 +21,7 @@ import {
   Shield,
   ExternalLink,
   Headphones,
-  Sparkles,
+  BadgeCheck,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTidioChat } from "@/components/chat/TidioController";
@@ -175,7 +175,7 @@ export default function ChefSupportPage({ userEmail, userName, userId }: ChefSup
             {method.highlight && (
               <div className="absolute top-0 right-0">
                 <Badge className="rounded-none rounded-bl-lg bg-primary text-primary-foreground">
-                  <Sparkles className="h-3 w-3 mr-1" />
+                  <BadgeCheck className="h-3 w-3 mr-1" />
                   Recommended
                 </Badge>
               </div>

@@ -190,7 +190,7 @@ export function ScheduleViewingWidget({
     onSuccess: () => {
       setStep("success")
       queryClient.invalidateQueries({ queryKey: ["/api/viewings/chef"] })
-      toast.success("Kitchen viewing booked!")
+      toast.success("Kitchen tour booked!")
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -383,7 +383,7 @@ export function ScheduleViewingWidget({
         <div>
           <h3 className="text-base sm:text-lg font-semibold">Tell us about your needs</h3>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            This helps the kitchen manager prepare for your viewing.
+            This helps the kitchen manager prepare for your kitchen tour.
           </p>
         </div>
       </div>
@@ -488,7 +488,7 @@ export function ScheduleViewingWidget({
         <Button variant="ghost" size="icon" onClick={handleBack} className="h-8 w-8">
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h3 className="text-base sm:text-lg font-semibold">Confirm your viewing</h3>
+        <h3 className="text-base sm:text-lg font-semibold">Confirm your kitchen tour</h3>
       </div>
 
       <Card className="border-primary/20">
@@ -558,7 +558,7 @@ export function ScheduleViewingWidget({
         ) : (
           <>
             <Send className="h-4 w-4 mr-2" />
-            Book Viewing
+            Book Kitchen Tour
           </>
         )}
       </Button>
@@ -576,10 +576,10 @@ export function ScheduleViewingWidget({
       </div>
       <div className="space-y-1">
         <h3 className="text-lg sm:text-xl font-semibold text-green-700">
-          Viewing Requested!
+          Kitchen Tour Requested!
         </h3>
         <p className="text-sm text-muted-foreground">
-          Your kitchen viewing at {locationName || "the kitchen"} has been requested and is awaiting manager approval.
+          Your kitchen tour at {locationName || "the kitchen"} has been requested and is awaiting manager approval.
         </p>
       </div>
 
@@ -635,10 +635,10 @@ export function ScheduleViewingWidget({
           <SheetHeader className="mb-6">
             <SheetTitle className="flex items-center gap-2 text-base sm:text-lg">
               <MapPin className="h-5 w-5 text-primary" />
-              Schedule a Kitchen Viewing
+              Schedule a Kitchen Tour
             </SheetTitle>
             <SheetDescription className="text-xs sm:text-sm">
-              Book an in-person viewing of {locationName || "the kitchen facility"}
+              Book an in-person kitchen tour of {locationName || "the kitchen facility"}
             </SheetDescription>
           </SheetHeader>
           {content}
@@ -653,10 +653,10 @@ export function ScheduleViewingWidget({
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
           <MapPin className="h-5 w-5 text-primary" />
-          Schedule a Kitchen Viewing
+          Schedule a Kitchen Tour
         </CardTitle>
         <CardDescription className="text-xs sm:text-sm">
-          Book an in-person viewing of {locationName || "the kitchen facility"}
+          Book an in-person kitchen tour of {locationName || "the kitchen facility"}
         </CardDescription>
       </CardHeader>
       <CardContent>{content}</CardContent>

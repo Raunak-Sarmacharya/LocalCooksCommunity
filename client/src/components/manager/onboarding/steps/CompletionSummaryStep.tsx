@@ -5,7 +5,6 @@ import {
     CheckCircle2,
     Circle,
     Clock,
-    Sparkles,
     ArrowRight,
     Building,
     ChefHat,
@@ -248,7 +247,7 @@ export default function CompletionSummaryStep() {
                     ) : isOnboardingComplete && isLicensePending ? (
                         <Shield className="w-7 h-7 text-amber-600 dark:text-amber-400" />
                     ) : (
-                        <Sparkles className="w-7 h-7 text-slate-500 dark:text-slate-400" />
+                        <ClipboardList className="w-7 h-7 text-slate-500 dark:text-slate-400" />
                     )}
                 </div>
                 <h2 className="text-lg font-medium text-slate-900 dark:text-slate-100 tracking-tight mb-1">

@@ -204,39 +204,38 @@ export function calculateCheckoutFees(
   // Convert booking price to cents (round to avoid floating point issues)
   const bookingPriceInCents = Math.round(bookingPrice * 100);
 
-  // Calculate Stripe processing fee (what Stripe will charge the platform)
-  // Formula: (totalCharge * 2.9%) + $0.30
-  // For destination charges, this is deducted from the platform's application fee
-  const stripeProcessingFeeInCents = Math.round(
-    bookingPriceInCents * FEE_CONFIG.STRIPE_PERCENTAGE_FEE + FEE_CONFIG.STRIPE_FLAT_FEE_CENTS
-  );
-
-  // Calculate platform commission (platform's revenue after covering Stripe fees)
+  // Calculate platform commission (platform's revenue)
+  // Shifted to Chef: Chef now pays this on top of the booking price
   const platformCommissionInCents = Math.round(bookingPriceInCents * platformCommissionRate);
 
-  // Total application fee = Stripe fee + Platform commission
-  // This ensures platform covers Stripe fees AND earns revenue
+  // Total amount customer will be charged
+  // Chef pays booking price + platform commission
+  const totalChargeInCents = bookingPriceInCents + platformCommissionInCents;
+
+  // Calculate Stripe processing fee (what Stripe will charge the platform)
+  // Formula: (totalCharge * 2.9%) + $0.30
+  // Since Stripe charges on the total processed amount, we calculate it on totalChargeInCents
+  const stripeProcessingFeeInCents = Math.round(
+    totalChargeInCents * FEE_CONFIG.STRIPE_PERCENTAGE_FEE + FEE_CONFIG.STRIPE_FLAT_FEE_CENTS
+  );
+
+  // Total application fee withheld from the manager transfer
+  // We withhold the Stripe fee (which the manager pays) + the platform commission (which we collected from the chef)
   let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
 
   // Ensure minimum application fee
   totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, FEE_CONFIG.MINIMUM_APPLICATION_FEE_CENTS);
 
   // What the manager actually receives after platform takes application fee
-  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
+  // The manager receives the base booking price minus the actual Stripe fees
+  const managerReceivesInCents = bookingPriceInCents - stripeProcessingFeeInCents;
 
   // Validate manager receives positive amount
   if (managerReceivesInCents <= 0) {
     throw new Error(
-      `Application fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
+      `Stripe fees (${stripeProcessingFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
     );
   }
-
-  // Total amount customer will be charged
-  // Option 1 (default): Customer pays booking price only, fees come from manager's share
-  // Option 2: Customer pays booking price + fees (transparent pricing)
-  const totalChargeInCents = chargeFeesToCustomer
-    ? bookingPriceInCents + totalPlatformFeeInCents
-    : bookingPriceInCents;
 
   return {
     bookingPriceInCents,
@@ -325,7 +324,9 @@ export async function calculateCheckoutFeesAsync(
   let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
   totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, config.minimumApplicationFeeCents);
 
-  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
+  // Chef pays booking price + commission; manager receives booking price minus Stripe's fee.
+  const totalChargeInCents = bookingPriceInCents + platformCommissionInCents;
+  const managerReceivesInCents = bookingPriceInCents - stripeProcessingFeeInCents;
 
   if (managerReceivesInCents <= 0) {
     throw new Error(
@@ -338,9 +339,55 @@ export async function calculateCheckoutFeesAsync(
     stripeProcessingFeeInCents,
     platformCommissionInCents,
     totalPlatformFeeInCents,
-    totalChargeInCents: bookingPriceInCents,
+    totalChargeInCents,
     managerReceivesInCents,
     percentageFeeInCents: stripeProcessingFeeInCents,
     flatFeeInCents: config.stripeFlatFeeCents,
   };
+}
+
+/**
+ * Chef-facing charged amount. Stripe charges subtotal + platform commission.
+ * Some rows still store the booking subtotal (capture engine used to omit commission);
+ * add commission in that case so transaction UIs match booking details.
+ */
+export function resolveChefChargedAmountCents(
+  storedAmountCents: number,
+  bookingSubtotalCents: number,
+  platformCommissionCents: number,
+): number {
+  if (!Number.isFinite(storedAmountCents) || storedAmountCents <= 0) {
+    return Math.max(0, bookingSubtotalCents + Math.max(0, platformCommissionCents));
+  }
+  if (platformCommissionCents <= 0 || bookingSubtotalCents <= 0) {
+    return storedAmountCents;
+  }
+  const expectedCharged = bookingSubtotalCents + platformCommissionCents;
+  if (storedAmountCents >= expectedCharged - 1) {
+    return storedAmountCents;
+  }
+  const rate = platformCommissionCents / bookingSubtotalCents;
+  const isChefPaidCommission = rate >= 0.06 && rate <= 0.08;
+  if (isChefPaidCommission) {
+    return expectedCharged;
+  }
+  return storedAmountCents;
+}
+
+/**
+ * Platform commission kept by us. Prefer the kitchen booking's 7% commission
+ * over payment_transactions.service_fee, which used to store Stripe fee + commission.
+ */
+export function resolvePlatformCommissionCents(
+  storedServiceFeeCents: number,
+  bookingSubtotalCents: number,
+  bookingCommissionCents: number,
+): number {
+  if (bookingCommissionCents > 0 && bookingSubtotalCents > 0) {
+    const rate = bookingCommissionCents / bookingSubtotalCents;
+    if (rate >= 0.06 && rate <= 0.08) {
+      return bookingCommissionCents;
+    }
+  }
+  return Math.max(0, storedServiceFeeCents || 0);
 }

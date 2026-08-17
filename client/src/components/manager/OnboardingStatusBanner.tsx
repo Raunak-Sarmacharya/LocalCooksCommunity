@@ -2,7 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { 
-  Sparkles, 
+  ClipboardList, 
   ChevronRight, 
   Clock, 
   CheckCircle2, 
@@ -55,7 +55,7 @@ export function OnboardingStatusBanner({
               <div className="flex-shrink-0">
                 <div className="relative">
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 flex items-center justify-center ring-1 ring-white/10">
-                    <Sparkles className="w-6 h-6 text-blue-400" />
+                    <ClipboardList className="w-6 h-6 text-blue-400" />
                   </div>
                   {/* Steps indicator badge */}
                   <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center ring-2 ring-slate-900">
