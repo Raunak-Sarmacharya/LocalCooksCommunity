@@ -15,8 +15,9 @@ import {
     storageListings,
     equipmentListings,
     locationRequirements,
+    emailLogs,
 } from "@shared/schema";
-import { eq, sql, desc, ilike, and } from "drizzle-orm";
+import { eq, sql, desc, ilike, and, inArray, count, type SQL } from "drizzle-orm";
 import { resolveChefChargedAmountCents, resolvePlatformCommissionCents } from "../services/stripe-checkout-fee-service";
 
 // Import Domain Services
@@ -3977,6 +3978,182 @@ router.post("/generate-password-reset-link", requireFirebaseAuthWithUser, requir
         }
 
         res.status(500).json({ error: error.message || "Failed to generate password reset link" });
+    }
+});
+
+const CHEF_MANAGER_ROLES = ["chef", "manager", "chef_and_manager"] as const;
+const EMAIL_LOG_STATUSES = ["sent", "failed", "skipped_duplicate"] as const;
+const EMAIL_LOG_ROLES = [
+    "chefs_and_managers",
+    "chef",
+    "manager",
+    "admin",
+    "portal",
+    "unknown",
+    "all",
+] as const;
+
+/**
+ * GET /admin/email-logs/stats
+ * Summary counts for the outgoing email log.
+ */
+router.get("/email-logs/stats", requireFirebaseAuthWithUser, requireAdmin, async (_req: Request, res: Response) => {
+    try {
+        const [row] = await db
+            .select({
+                total: sql<number>`count(*)::int`,
+                sent: sql<number>`count(*) filter (where status = 'sent')::int`,
+                failed: sql<number>`count(*) filter (where status = 'failed')::int`,
+                skipped: sql<number>`count(*) filter (where status = 'skipped_duplicate')::int`,
+                last24h: sql<number>`count(*) filter (where created_at >= now() - interval '24 hours')::int`,
+                failedLast24h: sql<number>`count(*) filter (where status = 'failed' and created_at >= now() - interval '24 hours')::int`,
+                chefs: sql<number>`count(*) filter (where recipient_role in ('chef', 'chef_and_manager'))::int`,
+                managers: sql<number>`count(*) filter (where recipient_role in ('manager', 'chef_and_manager'))::int`,
+            })
+            .from(emailLogs);
+
+        res.json({
+            total: row?.total ?? 0,
+            sent: row?.sent ?? 0,
+            failed: row?.failed ?? 0,
+            skipped: row?.skipped ?? 0,
+            last24h: row?.last24h ?? 0,
+            failedLast24h: row?.failedLast24h ?? 0,
+            chefs: row?.chefs ?? 0,
+            managers: row?.managers ?? 0,
+        });
+    } catch (error) {
+        logger.error("[Admin Email Logs] Error fetching stats:", error);
+        res.status(500).json({ error: "Failed to fetch email log stats" });
+    }
+});
+
+/**
+ * GET /admin/email-logs
+ * Paginated outgoing email history for chefs, managers, and other recipients.
+ */
+router.get("/email-logs", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const {
+            search,
+            status,
+            role = "chefs_and_managers",
+            category,
+            limit = "50",
+            offset = "0",
+        } = req.query;
+
+        const parsedLimit = Math.min(Math.max(parseInt(limit as string, 10) || 50, 1), 200);
+        const parsedOffset = Math.max(parseInt(offset as string, 10) || 0, 0);
+
+        const conditions: SQL[] = [];
+
+        if (status && EMAIL_LOG_STATUSES.includes(status as typeof EMAIL_LOG_STATUSES[number])) {
+            conditions.push(sql`${emailLogs.status} = ${status as string}`);
+        }
+
+        const roleFilter = EMAIL_LOG_ROLES.includes(role as typeof EMAIL_LOG_ROLES[number])
+            ? (role as string)
+            : "chefs_and_managers";
+
+        if (roleFilter === "chefs_and_managers") {
+            conditions.push(inArray(emailLogs.recipientRole, [...CHEF_MANAGER_ROLES]));
+        } else if (roleFilter === "chef") {
+            conditions.push(inArray(emailLogs.recipientRole, ["chef", "chef_and_manager"]));
+        } else if (roleFilter === "manager") {
+            conditions.push(inArray(emailLogs.recipientRole, ["manager", "chef_and_manager"]));
+        } else if (roleFilter !== "all") {
+            conditions.push(eq(emailLogs.recipientRole, roleFilter));
+        }
+
+        if (category && category !== "all" && typeof category === "string") {
+            conditions.push(eq(emailLogs.category, category));
+        }
+
+        if (search && typeof search === "string" && search.trim()) {
+            const q = `%${search.trim()}%`;
+            conditions.push(sql`(
+                ${emailLogs.recipientEmail} ILIKE ${q}
+                OR ${emailLogs.subject} ILIKE ${q}
+                OR COALESCE(${emailLogs.trackingId}, '') ILIKE ${q}
+            )`);
+        }
+
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+        const [countRow] = await db
+            .select({ total: count() })
+            .from(emailLogs)
+            .where(whereClause);
+
+        const logs = await db
+            .select({
+                id: emailLogs.id,
+                recipientEmail: emailLogs.recipientEmail,
+                recipientUserId: emailLogs.recipientUserId,
+                recipientRole: emailLogs.recipientRole,
+                subject: emailLogs.subject,
+                previewText: emailLogs.previewText,
+                category: emailLogs.category,
+                status: emailLogs.status,
+                errorMessage: emailLogs.errorMessage,
+                trackingId: emailLogs.trackingId,
+                smtpMessageId: emailLogs.smtpMessageId,
+                fromAddress: emailLogs.fromAddress,
+                retryCount: emailLogs.retryCount,
+                retriedAt: emailLogs.retriedAt,
+                retryOfId: emailLogs.retryOfId,
+                createdAt: emailLogs.createdAt,
+                canRetry: sql<boolean>`(
+                    ${emailLogs.status} = 'failed'
+                    AND (
+                        COALESCE(LENGTH(${emailLogs.htmlBody}), 0) > 0
+                        OR COALESCE(LENGTH(${emailLogs.textBody}), 0) > 0
+                    )
+                )`,
+            })
+            .from(emailLogs)
+            .where(whereClause)
+            .orderBy(desc(emailLogs.createdAt))
+            .limit(parsedLimit)
+            .offset(parsedOffset);
+
+        res.json({
+            logs,
+            total: Number(countRow?.total ?? 0),
+            limit: parsedLimit,
+            offset: parsedOffset,
+        });
+    } catch (error) {
+        logger.error("[Admin Email Logs] Error fetching logs:", error);
+        res.status(500).json({ error: "Failed to fetch email logs" });
+    }
+});
+
+/**
+ * POST /admin/email-logs/:id/retry
+ * Resend a failed email using the stored original content.
+ */
+router.post("/email-logs/:id/retry", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const logId = parseInt(req.params.id, 10);
+        if (Number.isNaN(logId) || logId < 1) {
+            return res.status(400).json({ error: "Invalid email log ID" });
+        }
+
+        const { retryFailedEmail } = await import("../services/email-log-service");
+        const result = await retryFailedEmail(logId);
+
+        if (!result.success) {
+            const status = result.error === "Email log not found" ? 404 : 400;
+            return res.status(status).json({ error: result.error });
+        }
+
+        logger.info(`[Admin Email Logs] Admin ${req.neonUser?.id} retried email log ${logId}`);
+        res.json({ success: true, message: "Email resent successfully" });
+    } catch (error) {
+        logger.error("[Admin Email Logs] Error retrying email:", error);
+        res.status(500).json({ error: "Failed to retry email" });
     }
 });
 

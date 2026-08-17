@@ -18,6 +18,7 @@ import AdminOverstayPenalties from "@/components/admin/sections/AdminOverstayPen
 import AdminDamageClaimsHistory from "@/components/admin/sections/AdminDamageClaimsHistory";
 import { AccessCodeDashboard } from "@/components/admin/sections/AccessCodeDashboard";
 import { PasswordResetSection } from "@/components/admin/sections/PasswordResetSection";
+import { EmailLogSection } from "@/components/admin/sections/EmailLogSection";
 import {
   formatApplicationStatus,
   formatCertificationStatus,
@@ -115,7 +116,7 @@ function AdminDashboard() {
     "platform-overview", "platform-settings", "overstay-settings",
     "damage-claim-settings", "account-settings", "overview", "transactions",
     "overstay-penalties-history", "damage-claims-history",
-    "security-settings", "access-codes", "password-reset",
+    "security-settings", "access-codes", "password-reset", "email-log",
   ], []);
 
   const [activeSection, setActiveSection] = useState<AdminSection>(() => {
@@ -1253,6 +1254,13 @@ function AdminDashboard() {
         return (
           <ErrorBoundary>
             <PasswordResetSection getFirebaseToken={getFirebaseToken} />
+          </ErrorBoundary>
+        );
+
+      case "email-log":
+        return (
+          <ErrorBoundary>
+            <EmailLogSection getFirebaseToken={getFirebaseToken} />
           </ErrorBoundary>
         );
 

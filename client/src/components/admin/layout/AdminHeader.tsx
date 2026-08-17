@@ -39,6 +39,7 @@ const SECTION_META: Record<AdminSection, { category: string; title: string }> = 
   "security-settings": { category: "Settings", title: "Security & Rate Limits" },
   "access-codes": { category: "Management", title: "Access Codes" },
   "password-reset": { category: "Management", title: "Password Reset" },
+  "email-log": { category: "Communications", title: "Email Log" },
 };
 
 export function AdminHeader({ activeSection, onRefresh, isRefreshing, onSearchClick }: AdminHeaderProps) {

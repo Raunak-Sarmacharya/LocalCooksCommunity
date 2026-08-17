@@ -2158,6 +2158,31 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Outgoing email log — every sendEmail() attempt is recorded for admin tracking
+export const emailLogs = pgTable("email_logs", {
+  id: serial("id").primaryKey(),
+  recipientEmail: text("recipient_email").notNull(),
+  recipientUserId: integer("recipient_user_id").references(() => users.id, { onDelete: "set null" }),
+  recipientRole: text("recipient_role").notNull().default("unknown"), // chef | manager | chef_and_manager | admin | portal | unknown
+  subject: text("subject").notNull(),
+  previewText: text("preview_text"),
+  category: text("category").notNull().default("general"),
+  status: text("status").notNull(), // sent | failed | skipped_duplicate
+  errorMessage: text("error_message"),
+  trackingId: text("tracking_id"),
+  smtpMessageId: text("smtp_message_id"),
+  fromAddress: text("from_address"),
+  htmlBody: text("html_body"),
+  textBody: text("text_body"),
+  retryCount: integer("retry_count").default(0).notNull(),
+  retriedAt: timestamp("retried_at"),
+  retryOfId: integer("retry_of_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type EmailLog = typeof emailLogs.$inferSelect;
+export type InsertEmailLog = typeof emailLogs.$inferInsert;
+
 // ===== ZOD SCHEMAS FOR KITCHEN VIEWING SYSTEM =====
 
 export const insertLocationViewingSettingsSchema = createInsertSchema(locationViewingSettings, {
