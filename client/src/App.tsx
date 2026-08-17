@@ -402,7 +402,7 @@ function Router() {
         </Route>
 
         {/* Kitchen Preview Page - Public, no auth required */}
-        <Route path="/kitchen-preview/:locationId" component={KitchenPreviewPage} />
+        <Route path="/kitchen-preview/:identifier" component={KitchenPreviewPage} />
 
         <Route component={NotFound} />
       </Switch>

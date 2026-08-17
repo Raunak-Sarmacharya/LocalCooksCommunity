@@ -1,6 +1,7 @@
 import { logger } from "@/lib/logger";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { Helmet } from "react-helmet-async";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Building2, MapPin, Loader2, ArrowRight, Calendar, Lock,
@@ -26,7 +27,7 @@ import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LocationMap } from "@/components/ui/location-map";
 import { cn } from "@/lib/utils";
-import ScheduleViewingWidget from "@/components/chef/ScheduleViewingWidget";
+import { ScheduleViewingWidget } from "@/components/chef/ScheduleViewingWidget";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ENTERPRISE-GRADE DESIGN SYSTEM - Notion-Inspired Kitchen Preview
@@ -192,6 +193,7 @@ function LightboxCarousel({ images, initialIndex, onClose, kitchenName }: { imag
 
 interface PublicLocation {
   id: number;
+  slug?: string;
   name: string;
   address: string;
   logoUrl?: string | null;
@@ -240,6 +242,7 @@ interface PublicKitchen {
   amenities?: string[] | null;
   locationId: number;
   locationName?: string | null;
+  locationSlug?: string | null;
   locationAddress?: string | null;
   equipment?: {
     included: EquipmentListing[];
@@ -589,19 +592,34 @@ function MiniCalendarPreview({
   canBook,
   canAcceptApplications,
   onBookClick,
-  onApplyClick: _onApplyClick
+  onApplyClick: _onApplyClick,
+  availability
 }: {
   isAuthenticated: boolean;
   canBook: boolean;
   canAcceptApplications: boolean;
   onBookClick: () => void;
   onApplyClick: () => void;
+  availability?: PublicKitchen['availability'];
 }) {
   const today = new Date();
-  const currentYear = today.getFullYear();
-  const currentMonth = today.getMonth();
+  const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth();
   const days = getMiniCalendarDays(currentYear, currentMonth);
   const todayDate = today.getDate();
+
+  const isCurrentMonth = currentYear === today.getFullYear() && currentMonth === today.getMonth();
+
+  const handlePrevMonth = () => {
+    if (isCurrentMonth) return;
+    setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
+  };
 
   const monthNames = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
@@ -611,10 +629,23 @@ function MiniCalendarPreview({
       {/* Calendar Content - Fully visible */}
       <div className="p-3 sm:p-4">
         {/* Month/Year Header */}
-        <div className="text-center mb-3 sm:mb-4">
+        <div className="flex items-center justify-between mb-3 sm:mb-4 px-1">
+          <button 
+            onClick={handlePrevMonth}
+            disabled={isCurrentMonth}
+            className={`p-1 rounded-full transition-colors ${isCurrentMonth ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-100'}`}
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
           <h3 className="text-sm sm:text-base font-bold text-gray-800">
             {monthNames[currentMonth]} {currentYear}
           </h3>
+          <button 
+            onClick={handleNextMonth}
+            className="p-1 rounded-full text-gray-500 hover:bg-gray-100 transition-colors"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Day Headers */}
@@ -633,20 +664,32 @@ function MiniCalendarPreview({
               return <div key={index} className="aspect-square" />;
             }
 
-            const isPast = day < todayDate;
-            const isToday = day === todayDate;
+            const isPast = (currentYear < today.getFullYear()) || 
+                          (currentYear === today.getFullYear() && currentMonth < today.getMonth()) ||
+                          (currentYear === today.getFullYear() && currentMonth === today.getMonth() && day < todayDate);
+            const isToday = currentYear === today.getFullYear() && currentMonth === today.getMonth() && day === todayDate;
+            
+            const dateObj = new Date(currentYear, currentMonth, day);
+            const dayOfWeek = dateObj.getDay();
+            
+            // If availability array exists and has at least one true value, we use it. Otherwise, assume no availability or let it fall back.
+            const hasAvailabilityData = availability && availability.length > 0;
+            const isAvailableDay = hasAvailabilityData 
+              ? availability.some(a => a.dayOfWeek === dayOfWeek && a.isAvailable)
+              : false; // If no data, assume not available to prevent false expectations
+              
+            const isDisabled = isPast || (!hasAvailabilityData) || (!isAvailableDay);
 
             return (
               <div
                 key={index}
                 className={`
-                  aspect-square flex items-center justify-center rounded-md text-[10px] sm:text-xs font-medium
+                  relative aspect-square flex items-center justify-center rounded-md text-[10px] sm:text-xs font-medium
                   transition-colors
-                  ${isPast ? 'text-gray-300 bg-gray-50' : 'text-gray-700 bg-white'}
-                  ${isToday
-                    ? 'bg-[#F51042] text-white font-bold ring-2 ring-[#F51042]/30'
-                    : ''
-                  }
+                  ${isDisabled ? 'text-gray-300 bg-gray-50 opacity-50 cursor-not-allowed' : 'text-gray-700 bg-white'}
+                  ${isToday && !isDisabled ? 'bg-[#F51042] text-white font-bold ring-2 ring-[#F51042]/30' : ''}
+                  ${!isDisabled && isAvailableDay ? 'bg-green-50 text-green-700 ring-1 ring-green-200 shadow-sm font-semibold' : ''}
+                  ${isToday && isDisabled ? 'ring-1 ring-gray-300' : ''}
                 `}
               >
                 {day}
@@ -656,22 +699,33 @@ function MiniCalendarPreview({
         </div>
       </div>
 
-      {/* Overlay - Only show if not authenticated or can't book */}
-      {(!isAuthenticated || !canBook) && (
-        <div className="absolute inset-0 bg-white/70 z-10 flex items-center justify-center rounded-b-lg">
-          <div className="text-center px-3 sm:px-4 py-2.5 sm:py-3 bg-white/90 rounded-xl shadow-lg border border-gray-100 mx-2">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 mx-auto mb-1.5 sm:mb-2 bg-[#F51042]/10 rounded-full flex items-center justify-center">
-              <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-[#F51042]" />
+      {/* Available Timings List */}
+      {availability && availability.length > 0 && (
+        <div className="px-3 sm:px-4 pb-3">
+          <div className="pt-3 border-t border-gray-100">
+            <h4 className="text-[10px] sm:text-xs font-semibold text-gray-800 mb-2 flex items-center gap-1">
+              <Clock className="w-3 h-3 text-gray-500" />
+              Available Hours
+            </h4>
+            <div className="space-y-1">
+              {availability.filter(a => a.isAvailable).length > 0 ? (
+                availability.filter(a => a.isAvailable).map((a, i) => (
+                  <div key={i} className="flex justify-between text-[10px] sm:text-[11px]">
+                    <span className="text-gray-600 font-medium">
+                      {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][a.dayOfWeek]}
+                    </span>
+                    <span className="text-gray-800 font-mono text-[9px] sm:text-[10px]">{a.startTime} - {a.endTime}</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-[10px] text-gray-500 italic">No available hours set.</p>
+              )}
             </div>
-            <p className="text-xs sm:text-sm font-semibold text-gray-800">
-              {!isAuthenticated ? 'Sign in to book' : !canAcceptApplications ? 'Not accepting applications' : 'Apply to book'}
-            </p>
-            <p className="text-[10px] sm:text-xs text-gray-500 mt-1">
-              {!isAuthenticated ? 'View availability & reserve' : !canAcceptApplications ? 'License pending approval' : 'View availability & reserve'}
-            </p>
           </div>
         </div>
       )}
+
+
 
       {/* Book Button - Only show if authenticated and can book */}
       {isAuthenticated && canBook && (
@@ -986,9 +1040,9 @@ function KitchenDetailsSection({
           <CardContent className="p-6">
             <AnimatePresence mode="wait">
               {/* Overview Tab */}
-              <TabsContent value="overview" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
-                <motion.div
-                  key="overview"
+              {activeTab === "overview" && (
+                <TabsContent forceMount key="overview" value="overview" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+                  <motion.div
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 10 }}
@@ -1118,13 +1172,13 @@ function KitchenDetailsSection({
                     </div>
                   )}
                 </motion.div>
-              </TabsContent>
+                </TabsContent>
+              )}
               
               {/* Equipment Tab */}
-              {hasEquipment && (
-                <TabsContent value="equipment" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+              {activeTab === "equipment" && hasEquipment && (
+                <TabsContent forceMount key="equipment" value="equipment" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
                   <motion.div
-                    key="equipment"
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 10 }}
@@ -1192,10 +1246,9 @@ function KitchenDetailsSection({
               )}
               
               {/* Storage Tab */}
-              {hasStorage && (
-                <TabsContent value="storage" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+              {activeTab === "storage" && hasStorage && (
+                <TabsContent forceMount key="storage" value="storage" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
                   <motion.div
-                    key="storage"
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 10 }}
@@ -1236,8 +1289,8 @@ export default function KitchenPreviewPage() {
   const { user, loading: authLoading } = useFirebaseAuth();
   const isAuthenticated = !!user;
 
-  const locationIdMatch = locationPath.match(/\/kitchen-preview\/(\d+)/);
-  const locationId = locationIdMatch ? parseInt(locationIdMatch[1]) : null;
+  const locationIdMatch = locationPath.match(/\/kitchen-preview\/(.+)/);
+  const identifier = locationIdMatch ? locationIdMatch[1] : null;
 
   const [selectedKitchen, setSelectedKitchen] = useState<PublicKitchen | null>(null);
   const [kitchenEquipment, setKitchenEquipment] = useState<{ included: EquipmentListing[]; rental: EquipmentListing[] } | null>(null);
@@ -1246,6 +1299,18 @@ export default function KitchenPreviewPage() {
   const [activeView, setActiveView] = useState("discover-kitchens");
   const [tourModalOpen, setTourModalOpen] = useState(false);
 
+  const { data: locationData, isLoading, error } = useQuery<PublicLocation & { kitchens: PublicKitchen[], slug?: string }>({
+    queryKey: [`/api/public/locations/${identifier}/details`],
+    queryFn: async () => {
+      const response = await fetch(`/api/public/locations/${identifier}/details`);
+      if (!response.ok) throw new Error("Location not found");
+      return response.json();
+    },
+    enabled: !!identifier,
+  });
+
+  const locationId = locationData?.id;
+
   // Check if chef has an approved application for this location
   // Only check if user is authenticated
   const {
@@ -1253,7 +1318,7 @@ export default function KitchenPreviewPage() {
     hasApplication,
     canBook,
     isLoading: applicationLoading
-  } = useChefKitchenApplicationForLocation(isAuthenticated ? locationId : null);
+  } = useChefKitchenApplicationForLocation(isAuthenticated && locationId ? locationId : null);
 
   // Debug logging
   useEffect(() => {
@@ -1267,16 +1332,6 @@ export default function KitchenPreviewPage() {
       });
     }
   }, [isAuthenticated, locationId, hasApplication, canBook, application?.status, applicationLoading]);
-
-  const { data: locationData, isLoading, error } = useQuery<PublicLocation & { kitchens: PublicKitchen[] }>({
-    queryKey: [`/api/public/locations/${locationId}/details`],
-    queryFn: async () => {
-      const response = await fetch(`/api/public/locations/${locationId}/details`);
-      if (!response.ok) throw new Error("Location not found");
-      return response.json();
-    },
-    enabled: !!locationId,
-  });
 
   useEffect(() => {
     if (locationData?.kitchens?.length && !selectedKitchen) {
@@ -1383,7 +1438,7 @@ export default function KitchenPreviewPage() {
       // If canAcceptApplications is false, do nothing (button should be disabled)
     } else {
       // Navigate to auth page with redirect
-      navigate(`/auth?redirect=/kitchen-preview/${locationId}`);
+      navigate(`/auth?redirect=/kitchen-preview/${identifier}`);
     }
   };
 
@@ -1455,6 +1510,10 @@ export default function KitchenPreviewPage() {
         variants={containerVariants}
         className="space-y-6"
       >
+        <Helmet>
+          <title>Book {location.name} Commercial Kitchen | Local Cooks</title>
+          <meta name="description" content={`Book ${location.name} commercial kitchen. Available for food prep, cooking, and storage. Schedule a kitchen tour today.`} />
+        </Helmet>
         {/* ═══════════════════════════════════════════════════════════════════════════════
             PREMIUM LOCATION HEADER - Notion-inspired hero section
             ═══════════════════════════════════════════════════════════════════════════════ */}
@@ -1563,16 +1622,7 @@ export default function KitchenPreviewPage() {
                     </Button>
                   ) : (
                     <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-                      {isAuthenticated && !canBook && (
-                        <Button
-                          variant="outline"
-                          onClick={() => setTourModalOpen(true)}
-                          className="w-full lg:w-auto h-12 px-6 border-primary text-primary hover:bg-primary/5 font-semibold"
-                        >
-                          <Calendar className="mr-2 h-5 w-5" />
-                          Schedule Viewing
-                        </Button>
-                      )}
+
                       <Button
                         onClick={handleGetStarted}
                         className="w-full lg:w-auto shadow-lg shadow-primary/25 h-12 px-6 text-base font-semibold"
@@ -1609,6 +1659,38 @@ export default function KitchenPreviewPage() {
                   )}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* ═══════════════════════════════════════════════════════════════════════════════
+            AVAILABILITY & TOURS BANNER - Prominent section requested by user
+            ═══════════════════════════════════════════════════════════════════════════════ */}
+        <motion.div variants={itemVariants}>
+          <Card className="border-0 shadow-md rounded-2xl overflow-hidden bg-primary/5 border border-primary/20">
+            <CardContent className="p-4 sm:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <Calendar className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-foreground">Availability & Kitchen Tours</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Check when kitchens are available and schedule an in-person tour before you apply.
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="lg"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setTourModalOpen(true);
+                }}
+                className="w-full md:w-auto shrink-0 shadow-lg shadow-primary/20 hover:scale-105 transition-transform"
+              >
+                <Calendar className="mr-2 h-5 w-5" />
+                Schedule Kitchen Tour
+              </Button>
             </CardContent>
           </Card>
         </motion.div>
@@ -1707,6 +1789,7 @@ export default function KitchenPreviewPage() {
                     canAcceptApplications={location.canAcceptApplications !== false}
                     onBookClick={handleBookClick}
                     onApplyClick={handleApplyClick}
+                    availability={selectedKitchen?.availability}
                   />
                 </CardContent>
               </Card>
@@ -1848,20 +1931,32 @@ export default function KitchenPreviewPage() {
     else if (view === 'training') navigate('/dashboard?view=training', opts);
   };
 
+  const scheduleTourSheet = locationId != null ? (
+    <ScheduleViewingWidget
+      locationId={locationId}
+      locationName={locationData?.name}
+      open={tourModalOpen}
+      onClose={() => setTourModalOpen(false)}
+    />
+  ) : null;
+
   // If user is authenticated, wrap in ChefDashboardLayout
   if (isAuthenticated) {
     return (
-      <ChefDashboardLayout
-        activeView={activeView}
-        onViewChange={handleViewChange}
-        breadcrumbs={[
-          { label: "Dashboard", onClick: () => navigate('/dashboard') },
-          { label: "Discover Kitchens", onClick: () => navigate('/dashboard?view=discover-kitchens') },
-          { label: locationData?.name || 'Kitchen' },
-        ]}
-      >
-        {getContent()}
-      </ChefDashboardLayout>
+      <>
+        <ChefDashboardLayout
+          activeView={activeView}
+          onViewChange={handleViewChange}
+          breadcrumbs={[
+            { label: "Dashboard", onClick: () => navigate('/dashboard') },
+            { label: "Discover Kitchens", onClick: () => navigate('/dashboard?view=discover-kitchens') },
+            { label: locationData?.name || 'Kitchen' },
+          ]}
+        >
+          {getContent()}
+        </ChefDashboardLayout>
+        {scheduleTourSheet}
+      </>
     );
   }
 
@@ -1998,6 +2093,7 @@ export default function KitchenPreviewPage() {
                     canAcceptApplications={location.canAcceptApplications !== false}
                     onBookClick={handleBookClick}
                     onApplyClick={handleApplyClick}
+                    availability={selectedKitchen?.availability}
                   />
                 </CardContent>
               </Card>
@@ -2054,8 +2150,10 @@ export default function KitchenPreviewPage() {
                   />
                 ) : (
                   <motion.div
+                    key="empty-state"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
                     className="flex items-center justify-center h-64 sm:h-96 bg-white rounded-xl border border-gray-200"
                   >
                     <div className="text-center px-4">
@@ -2072,18 +2170,7 @@ export default function KitchenPreviewPage() {
 
       <Footer />
 
-      {/* Schedule Viewing Modal */}
-      {selectedKitchen && locationId && (
-        <ScheduleViewingWidget
-          locationId={locationId as number}
-          locationName={locationData?.name}
-          targetedKitchenId={selectedKitchen.id}
-          targetedKitchenName={selectedKitchen.name}
-          mode="modal"
-          open={tourModalOpen}
-          onClose={() => setTourModalOpen(false)}
-        />
-      )}
+      {scheduleTourSheet}
     </div>
   );
 }

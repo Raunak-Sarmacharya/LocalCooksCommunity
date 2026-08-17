@@ -705,7 +705,7 @@ export default function KitchenDashboardOverview({
                 <div>
                   <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">Today</p>
                   <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.todayViewings}</p>
-                  <p className="text-gray-500 text-xs mt-1">Kitchen viewings</p>
+                  <p className="text-gray-500 text-xs mt-1">Kitchen tours</p>
                 </div>
                 <Eye className="h-4 w-4 text-violet-500" />
               </div>
@@ -741,7 +741,7 @@ export default function KitchenDashboardOverview({
                     <span className="font-bold">{dashboardMetrics.pendingBookings}</span>
                   </div>
                   <div className="flex justify-between gap-4">
-                    <span>Kitchen Viewings:</span>
+                    <span className="flex items-center gap-2"><Eye className="h-4 w-4 text-primary" /> Kitchen Tours</span>
                     <span className="font-bold">{dashboardMetrics.pendingViewings}</span>
                   </div>
                   <div className="flex justify-between gap-4">

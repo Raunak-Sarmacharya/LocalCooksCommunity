@@ -219,7 +219,12 @@ export default function KitchenBookingSheet({
     return Math.round((combinedSubtotal * taxRatePercent) / 100);
   }, [combinedSubtotal, selectedKitchen?.taxRatePercent]);
 
-  const grandTotal = useMemo(() => combinedSubtotal + tax, [combinedSubtotal, tax]);
+  const platformCommission = useMemo(() => {
+    if (combinedSubtotal <= 0) return 0;
+    return Math.round(combinedSubtotal * 0.07); // 7% platform commission
+  }, [combinedSubtotal]);
+
+  const grandTotal = useMemo(() => combinedSubtotal + tax + platformCommission, [combinedSubtotal, tax, platformCommission]);
 
   const monthNames = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
@@ -1495,6 +1500,14 @@ export default function KitchenBookingSheet({
                     </div>
                   )}
                   
+                  {/* Platform Commission */}
+                  {platformCommission > 0 && (
+                    <div className="flex justify-between pt-2 border-t">
+                      <span className="text-muted-foreground">Platform Commission (7%)</span>
+                      <span className="font-medium">{formatCurrency(platformCommission)}</span>
+                    </div>
+                  )}
+                  
                   {/* Total */}
                   <div className="flex justify-between pt-2 border-t">
                     <span className="font-semibold">Total</span>
@@ -1579,6 +1592,12 @@ export default function KitchenBookingSheet({
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Tax</span>
               <span className="font-medium">{formatCurrency(tax)}</span>
+            </div>
+          )}
+          {platformCommission > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Platform Commission (7%)</span>
+              <span className="font-medium">{formatCurrency(platformCommission)}</span>
             </div>
           )}
         </div>

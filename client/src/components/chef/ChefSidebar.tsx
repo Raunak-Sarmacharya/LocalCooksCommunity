@@ -97,7 +97,7 @@ const navGroups: NavGroup[] = [
             },
             {
                 id: "viewings",
-                label: "Kitchen Viewings",
+                label: "Kitchen Tours",
                 icon: Eye,
             },
             {

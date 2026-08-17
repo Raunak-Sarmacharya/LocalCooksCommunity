@@ -43,7 +43,7 @@ const viewLabels: Record<string, string> = {
     messages: "Messages",
     discover: "Discover Kitchens",
     "discover-kitchens": "Discover Kitchens",
-    viewings: "Kitchen Viewings",
+    viewings: "Kitchen Tours",
     profile: "Profile",
     support: "Support",
     feedback: "Feedback",

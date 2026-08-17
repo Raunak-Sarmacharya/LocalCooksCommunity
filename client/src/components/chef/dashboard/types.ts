@@ -23,6 +23,7 @@ export interface PublicKitchen {
   hourlyRate?: number | null;
   locationId: number;
   locationName: string;
+  locationSlug?: string;
   address: string;
   storageSummary?: {
     hasDryStorage: boolean;

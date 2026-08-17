@@ -17,6 +17,7 @@ import {
     locationRequirements,
 } from "@shared/schema";
 import { eq, sql, desc, ilike, and } from "drizzle-orm";
+import { resolveChefChargedAmountCents, resolvePlatformCommissionCents } from "../services/stripe-checkout-fee-service";
 
 // Import Domain Services
 
@@ -3313,22 +3314,31 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
                     WHEN pt.booking_type = 'kitchen' THEN kb.reference_code
                     WHEN pt.booking_type = 'storage' THEN sb.reference_code
                     ELSE NULL
-                END as reference_code
+                END as reference_code,
+                kb.total_price as kb_total_price,
+                kb.service_fee as kb_service_fee
             ${joinBlock}
             ${whereClause}
             ORDER BY pt.created_at DESC
             LIMIT ${parsedLimit} OFFSET ${parsedOffset}
         `);
 
-        const formattedTransactions = result.rows.map((tx: any) => ({
+        const formattedTransactions = result.rows.map((tx: any) => {
+            const storedAmount = parseFloat(tx.amount || '0');
+            const storedServiceFee = parseFloat(tx.service_fee || '0');
+            const kbTotal = parseFloat(tx.kb_total_price || '0');
+            const kbCommission = parseFloat(tx.kb_service_fee || '0');
+            const chargedAmount = resolveChefChargedAmountCents(storedAmount, kbTotal || storedAmount, kbCommission);
+            const platformCommission = resolvePlatformCommissionCents(storedServiceFee, kbTotal || storedAmount, kbCommission);
+            return {
             id: tx.id,
             bookingId: tx.booking_id,
             bookingType: tx.booking_type,
             chefId: tx.chef_id,
             managerId: tx.manager_id,
-            amount: parseFloat(tx.amount || '0'),
-            baseAmount: parseFloat(tx.base_amount || '0'),
-            serviceFee: parseFloat(tx.service_fee || '0'),
+            amount: chargedAmount,
+            baseAmount: kbTotal > 0 ? kbTotal : parseFloat(tx.base_amount || '0'),
+            serviceFee: platformCommission,
             stripeProcessingFee: parseFloat(tx.stripe_processing_fee || '0'),
             managerRevenue: parseFloat(tx.manager_revenue || '0'),
             refundAmount: parseFloat(tx.refund_amount || '0'),
@@ -3365,7 +3375,8 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
             bookingEnd: tx.booking_end,
             kitchenStartTime: tx.kitchen_start_time,
             kitchenEndTime: tx.kitchen_end_time,
-        }));
+        };
+        });
 
         res.json({ transactions: formattedTransactions, total });
     } catch (error: any) {

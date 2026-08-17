@@ -298,6 +298,7 @@ export type InsertVideoProgress = z.infer<typeof insertVideoProgressSchema>;
 export const locations = pgTable("locations", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  slug: text("slug").unique(),
   address: text("address").notNull(),
   managerId: integer("manager_id").references(() => users.id),
   notificationEmail: text("notification_email"), // Email where notifications will be sent

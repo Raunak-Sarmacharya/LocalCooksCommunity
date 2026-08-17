@@ -69,6 +69,7 @@ router.get('/public/locations', async (req: Request, res: Response) => {
             return {
                 id: location.id,
                 name: location.name,
+                slug: location.slug,
                 address: location.address,
                 brandImageUrl,
                 brand_image_url: brandImageUrl, // compatibility
@@ -197,6 +198,7 @@ router.get('/public/kitchens', async (req: Request, res: Response) => {
                 // Location info
                 locationId: location.id,
                 locationName: location.name,
+                locationSlug: location.slug,
                 address: location.address,
                 // Booking status
                 canAcceptBookings,
@@ -218,15 +220,27 @@ router.get('/public/kitchens', async (req: Request, res: Response) => {
 // 🔥 Public Location Details
 router.get('/public/locations/:locationId/details', async (req: Request, res: Response) => {
     try {
-        const locationId = parseInt(req.params.locationId);
-        if (isNaN(locationId)) {
-            return res.status(400).json({ error: 'Invalid location ID' });
+        const identifier = req.params.locationId;
+        let location;
+        
+        const { db } = await import('../db');
+        const { locations, kitchenAvailability } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+
+        if (isNaN(Number(identifier))) {
+            // It's a slug
+            const result = await db.select().from(locations).where(eq(locations.slug, identifier));
+            location = result.length > 0 ? result[0] : null;
+        } else {
+            // It's an ID
+            location = await locationService.getLocationById(parseInt(identifier));
         }
 
-        const location = await locationService.getLocationById(locationId);
         if (!location) {
             return res.status(404).json({ error: 'Location not found' });
         }
+        
+        const locationId = location.id;
 
         // Get kitchens for this location (active only)
         const activeKitchens = await kitchenService.getKitchensByLocationId(locationId, true);
@@ -242,7 +256,7 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
         );
 
         // Sanitize and normalize kitchens
-        const sanitizedKitchens = activeKitchens.map((kitchen: any) => {
+        const sanitizedKitchens = await Promise.all(activeKitchens.map(async (kitchen: any) => {
             const kImageUrl = normalizeImageUrl(
                 kitchen.imageUrl || null,
                 req
@@ -256,6 +270,9 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
             const hourlyRateCents = kitchen.hourlyRate !== null && kitchen.hourlyRate !== undefined
                 ? (typeof kitchen.hourlyRate === 'string' ? parseFloat(kitchen.hourlyRate) : kitchen.hourlyRate)
                 : null;
+            
+            // Fetch availability for this kitchen
+            const availability = await db.select().from(kitchenAvailability).where(eq(kitchenAvailability.kitchenId, kitchen.id));
 
             return {
                 id: kitchen.id,
@@ -269,9 +286,10 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
                 hourlyRate: hourlyRateCents,
                 hourly_rate: hourlyRateCents,
                 pricingModel: kitchen.pricingModel || 'hourly',
-                currency: kitchen.currency || 'CAD'
+                currency: kitchen.currency || 'CAD',
+                availability,
             };
-        });
+        }));
 
         // Determine if location can accept applications/bookings:
         // - Kitchen license must be approved
@@ -283,6 +301,7 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
         res.json({
             id: location.id,
             name: location.name,
+            slug: location.slug,
             address: location.address,
             brandImageUrl,
             brand_image_url: brandImageUrl, // compatibility

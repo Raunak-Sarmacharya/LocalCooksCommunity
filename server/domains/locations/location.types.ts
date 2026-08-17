@@ -77,6 +77,7 @@ export interface VerifyKitchenLicenseDTO {
  */
 export interface LocationDTO {
   id: number;
+  slug: string | null;
   name: string;
   address: string;
   managerId: number;

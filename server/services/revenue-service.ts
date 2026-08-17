@@ -52,7 +52,7 @@ export interface RevenueByDate {
 
 /**
  * Calculate manager revenue from total revenue
- * Formula: Manager Revenue = Total Revenue × (1 - service_fee_rate)
+ * Formula: Manager Revenue = Total Revenue × (1 - platform_commission_rate)
  * 
  * @param totalRevenue - Total revenue in cents
  * @param serviceFeeRate - Service fee rate as decimal (e.g., 0.05 for 5%)
@@ -67,7 +67,7 @@ export function calculateManagerRevenue(
     return totalRevenue; // If invalid, manager gets 100%
   }
 
-  // Manager gets (100% - service_fee_rate)
+  // Manager gets (100% - platform_commission_rate)
   const managerRate = 1 - serviceFeeRate;
   return Math.round(totalRevenue * managerRate);
 }
@@ -407,8 +407,8 @@ export async function getRevenueMetrics(
       const estimatedStripeFee = actualStripeFeeFromDb > 0 ? actualStripeFeeFromDb : 0;
       // Tax amount calculated from kitchen tax_rate_percent (not service_fee)
       const taxAmount = pendingTaxAmount + completedTaxAmount;
-      // Net revenue = total - tax - stripe fees
-      const netRevenue = totalRevenueWithAllPayments - taxAmount - estimatedStripeFee;
+      // Net revenue = manager revenue (base price + tax) - tax - stripe fees
+      const netRevenue = managerRevenue - taxAmount - estimatedStripeFee;
 
       return {
         totalRevenue: totalRevenueWithAllPayments || 0,
@@ -998,21 +998,17 @@ export async function getTransactionHistory(
       let serviceFeeCents: number;
       
       if (hasPaymentTransaction) {
-        // Use actual values from payment_transactions
-        // pt.amount is the total charged to Stripe (subtotal + tax)
-        totalPriceCents = ptAmount;
-        // EXCEPTION: Damage claims have NO TAX - they are reimbursements, not revenue
+        // Manager-facing total is the booking subtotal (kb.total_price), not the chef's
+        // Stripe charge. Chefs pay platform commission on top; managers never see that extra.
+        totalPriceCents = !isDamageClaim && kbTotalPrice > 0 ? kbTotalPrice : ptAmount;
         if (isDamageClaim) {
           taxCents = 0;
         } else if (ptMetadata.partialCapture && ptMetadata.approvedTax != null) {
-          // PARTIAL CAPTURE: Use exact tax from capture engine metadata (source of truth)
-          // kb.total_price may be stale due to race condition between capture engine
-          // and payment_intent.succeeded webhook's syncStripeAmountsToBookings
           taxCents = parseInt(String(ptMetadata.approvedTax)) || 0;
         } else {
           taxCents = Math.round((kbTotalPrice * taxRatePercent) / 100);
         }
-        serviceFeeCents = ptServiceFee > 0 ? ptServiceFee : kbServiceFee;
+        serviceFeeCents = kbServiceFee > 0 ? kbServiceFee : ptServiceFee;
       } else {
         // Fallback: use kitchen_bookings values
         // kb.total_price is the SUBTOTAL (before tax) - this matches what metric cards use

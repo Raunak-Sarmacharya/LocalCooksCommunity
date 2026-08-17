@@ -10,6 +10,7 @@ import { useState } from "react";
 // Define interface matching the data structure in ChefLanding
 export interface KitchenLocation {
     id: number;
+    slug?: string;
     name: string;
     address: string;
     logoUrl: string | null;
@@ -116,7 +117,7 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
 
                     <Button
                         className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold rounded-lg py-2.5 text-sm transition-all duration-300 group/btn"
-                        onClick={() => navigate(`/kitchen-preview/${location.id}`)}
+                        onClick={() => navigate(`/kitchen-preview/${location.slug || location.id}`)}
                     >
                         <Calendar className="mr-1.5 h-4 w-4" />
                         View Availability

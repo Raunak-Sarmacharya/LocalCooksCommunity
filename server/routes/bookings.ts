@@ -3479,7 +3479,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         const taxLabel = taxRatePercent > 0 ? `Tax (${taxRatePercent}%)` : 'Tax';
 
         const checkoutSession = await createPendingCheckoutSession({
-            bookingPriceInCents: totalWithTaxCents,
+            bookingPriceInCents: feeCalculation.totalChargeInCents,
             platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
             managerStripeAccountId,
             customerEmail: chefEmail,
@@ -3500,6 +3500,8 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                 taxCents,
                 hourlyRateCents: kitchenPricing.hourlyRateCents,
                 durationHours: effectiveDurationHours,
+                platform_fee_cents: feeCalculation.platformCommissionInCents,
+                stripe_fee_cents: feeCalculation.stripeProcessingFeeInCents,
             },
             // Separate line items for Stripe Dashboard & receipt visibility
             lineItemBreakdown: {
@@ -3509,6 +3511,8 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                 equipmentItems: equipmentLineItems,
                 taxCents,
                 taxLabel,
+                platformCommissionCents: feeCalculation.platformCommissionInCents,
+                platformCommissionLabel: 'Platform Commission',
             },
         });
 

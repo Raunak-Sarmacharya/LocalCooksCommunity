@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 interface PublicLocation {
   id: number;
+  slug?: string;
   name: string;
   address: string;
   city?: string;

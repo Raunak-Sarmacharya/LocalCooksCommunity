@@ -200,10 +200,17 @@ export async function transferToManagerForBooking(
   }
 
   const platformCommissionRate = await fetchPlatformCommission();
-  const platformCommissionCents = Math.round(params.chargeAmountCents * platformCommissionRate);
-  const feeWithheldCents = params.actualStripeFeeCents + platformCommissionCents;
-  const transferredCents = params.chargeAmountCents - feeWithheldCents;
-
+  
+  // Under the new model, the chef paid: Base Price + (Base Price * Commission Rate)
+  // Therefore, Base Price = Total Charge / (1 + Commission Rate)
+  const baseBookingPriceCents = Math.round(params.chargeAmountCents / (1 + platformCommissionRate));
+  const platformCommissionCents = params.chargeAmountCents - baseBookingPriceCents;
+  
+  // The manager receives the base booking price minus the actual Stripe fees
+  const transferredCents = baseBookingPriceCents - params.actualStripeFeeCents;
+  
+  // The amount the platform keeps in its Stripe balance
+  const feeWithheldCents = params.chargeAmountCents - transferredCents;
   if (transferredCents <= 0) {
     return {
       ...baseResult,
