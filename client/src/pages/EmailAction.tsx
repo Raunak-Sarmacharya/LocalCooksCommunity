@@ -133,6 +133,9 @@ const POST_SIGNIN_REDIRECT_PATHS = {
  * Aggressively normalizes Firebase action mode parameter.
  * Handles case variations, whitespace, and potential invisible/Unicode characters.
  * Firebase Admin SDK, console templates, or proxies may send modes with slight variations.
+ *
+ * DEFENSE-IN-DEPTH MATCHING: supports every plausible sign-in variant:
+ *   signIn | signin | SIGNIN | SignIn | sign-in | sign_in | sign in | oobSignIn | signinlink | signInWithEmailLink
  */
 function normalizeActionMode(mode: string | null): ActionMode | null {
   if (!mode) return null;
@@ -143,26 +146,44 @@ function normalizeActionMode(mode: string | null): ActionMode | null {
     .replace(/[\u200B-\u200D\uFEFF]/g, '') // zero-width chars
     .trim();
 
-  // Lowercase alpha-only comparison
+  // Lowercase alpha-only comparison (strips hyphens, underscores, spaces, digits — everything)
   const lower = cleaned.toLowerCase().replace(/[^a-z]/g, '');
 
-  logger.info(`🔍 Mode normalization: raw="${mode}", cleaned="${cleaned}", lowerAlpha="${lower}"`);
+  // Debug log: include raw bytes so we can catch spoofed homoglyphs / invisible Unicode
+  const hexDump = Array.from(mode).map(ch => ch.charCodeAt(0).toString(16).padStart(4, '0')).join(' ');
+  logger.info(`🔍 Mode normalization: raw="${mode}", cleaned="${cleaned}", lowerAlpha="${lower}", hex=[${hexDump}]`);
 
+  // --- Exact lower-alpha match (primary, handles 99.9% of cases including canonical camelCase) ---
   if (lower === 'verifyemail') return 'verifyEmail';
   if (lower === 'resetpassword') return 'resetPassword';
   if (lower === 'recoveremail') return 'recoverEmail';
   if (lower === 'signin') return 'signIn';
 
-  // Exact string fallback after aggressive cleaning
+  // --- Substring fallback: catches sign-in / sign_in / signInWithEmailLink etc ---
+  //    (order matters — most specific first)
+  if (lower.includes('resetpassword') || lower.includes('passwordreset')) return 'resetPassword';
+  if (lower.includes('verifyemail')    || lower.includes('emailverify'))    return 'verifyEmail';
+  if (lower.includes('recoveremail')   || lower.includes('emailrecover'))   return 'recoverEmail';
+  if (lower.includes('signin') || lower.includes('signintwithemail') || lower.includes('emaillink') || lower.includes('magiclink')) {
+    logger.info(`✅ signIn matched via lowerAlpha substring: lower="${lower}"`);
+    return 'signIn';
+  }
+
+  // --- Exact canonical fallback ---
   const CANONICAL: ActionMode[] = ['verifyEmail', 'resetPassword', 'recoverEmail', 'signIn'];
   for (const c of CANONICAL) {
     if (cleaned === c) {
       logger.info(`✅ Matched canonical mode via exact cleaned string: "${c}"`);
       return c;
     }
+    // Case-insensitive exact cleaned match
+    if (cleaned.toLowerCase() === c.toLowerCase()) {
+      logger.info(`✅ Matched canonical mode via case-insensitive cleaned: "${c}"`);
+      return c;
+    }
   }
 
-  logger.warn(`⚠️ Could not normalize action mode: raw="${mode}", cleaned="${cleaned}"`);
+  logger.warn(`⚠️ Could not normalize action mode: raw="${mode}", cleaned="${cleaned}", lower="${lower}"`);
   return null;
 }
 
@@ -413,7 +434,20 @@ export default function EmailAction() {
         } else if (modeIs('signIn')) {
           await handleSignInLink(oobCode, continueUrl, Object.fromEntries(urlParams.entries()));
         } else {
-          throw new Error(`Unknown action mode: ${rawMode}`);
+          // LAST-DITCH SNIFF (stale cached bundles / proxy mangling defense).
+          // Even if normalizeActionMode returned null for a mode that *contains*
+          // sign-in-ish tokens (signin, sign-in, sign_in, magic-link, passwordless)
+          // we treat it as signIn rather than erroring out — because the cost of
+          // dispatching signIn incorrectly is just "invalid sign-in link", while
+          // the cost of throwing here is an unrecoverable dead-end UX.
+          const raw = (rawMode ?? '').toLowerCase().replace(/[^a-z]/g, '');
+          if (raw && (raw.includes('signin') || raw.includes('emaillink') || raw.includes('magiclink') || raw.includes('passwordless'))) {
+            logger.warn(`⚠️ Dispatching as signIn via last-ditch raw-sniff (normalize returned null). rawMode="${rawMode}"`);
+            await handleSignInLink(oobCode, continueUrl, Object.fromEntries(urlParams.entries()));
+          } else {
+            logger.error(`🛑 Giving up on mode dispatch. rawMode="${rawMode}", normalized=${String(mode)}, params=${JSON.stringify(Object.fromEntries(urlParams.entries()))}`);
+            throw new Error(`Unknown action mode: ${rawMode}`);
+          }
         }
       } catch (error: any) {
         logger.error('❌ Email action error:', error);
