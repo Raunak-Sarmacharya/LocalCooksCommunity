@@ -2,7 +2,6 @@ import { logger } from "../logger";
 import { Request, Response, Router } from "express";
 import { userService } from "../domains/users/user.service";
 import { microlearningService } from "../domains/microlearning/microlearning.service";
-import { applicationService } from "../domains/applications/application.service";
 import { generateCertificatePDF } from "../certificate-utils";
 import { upload } from "../fileUpload";
 import { pool } from "../db";
@@ -10,17 +9,6 @@ import { pool } from "../db";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "../alwaysFoodSafeAPI";
 
 const router = Router();
-
-// Helper
-const hasApprovedApplication = async (userId: number) => {
-  try {
-    const applications = await applicationService.getApplicationsByUserId(userId);
-    return applications.some(app => app.status === 'approved');
-  } catch (error) {
-    logger.error('Error checking application status:', error);
-    return false;
-  }
-};
 
 // Get current user's microlearning progress (no userId param - uses authenticated user)
 router.get("/progress", async (req: Request, res: Response) => {
@@ -32,11 +20,7 @@ router.get("/progress", async (req: Request, res: Response) => {
     const userId = req.neonUser.id;
     const progress = await microlearningService.getUserProgress(userId);
     const completionStatus = await microlearningService.getUserCompletion(userId);
-    const hasApproval = await hasApprovedApplication(userId);
-
     const isAdmin = req.neonUser.role === 'admin';
-    const isCompleted = completionStatus?.confirmed || false;
-    const accessLevel = isAdmin || hasApproval || isCompleted ? 'full' : 'limited';
 
     res.json({
       success: true,
@@ -44,8 +28,7 @@ router.get("/progress", async (req: Request, res: Response) => {
       confirmed: completionStatus?.confirmed || false,
       completionConfirmed: completionStatus?.confirmed || false,
       completedAt: completionStatus?.completedAt,
-      hasApprovedApplication: hasApproval,
-      accessLevel: accessLevel,
+      accessLevel: 'full',
       isAdmin: isAdmin
     });
   } catch (error) {
@@ -80,20 +63,15 @@ router.get("/progress/:userId", async (req: Request, res: Response) => {
 
     const progress = await microlearningService.getUserProgress(userId);
     const completionStatus = await microlearningService.getUserCompletion(userId);
-    const hasApproval = await hasApprovedApplication(userId);
-
-    // Admins and completed users have unrestricted access regardless of application status
     const isAdmin = req.neonUser.role === 'admin';
-    const isCompleted = completionStatus?.confirmed || false;
-    const accessLevel = isAdmin || hasApproval || isCompleted ? 'full' : 'limited';
 
     res.json({
       success: true,
       progress: progress || [],
+      confirmed: completionStatus?.confirmed || false,
       completionConfirmed: completionStatus?.confirmed || false,
       completedAt: completionStatus?.completedAt,
-      hasApprovedApplication: hasApproval,
-      accessLevel: accessLevel, // admins get full access, others limited to first video only
+      accessLevel: 'full',
       isAdmin: isAdmin
     });
   } catch (error) {
@@ -123,22 +101,6 @@ router.post("/progress", async (req: Request, res: Response) => {
       if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
       }
-    }
-
-    // Check if user has approved application for videos beyond the first one
-    const hasApproval = await hasApprovedApplication(userId);
-    const completionStatus = await microlearningService.getUserCompletion(userId);
-    const isCompleted = completionStatus?.confirmed || false;
-    const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
-    const isAdmin = req.neonUser.role === 'admin';
-
-    // Admins and completed users have unrestricted access to all videos
-    if (!hasApproval && !isAdmin && !isCompleted && videoId !== firstVideoId) {
-      return res.status(403).json({
-        message: 'Application approval required to access this video',
-        accessLevel: 'limited',
-        firstVideoOnly: true
-      });
     }
 
     // Accept completion status as provided
@@ -173,25 +135,16 @@ router.post("/complete", async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
-    const { userId, completionDate, videoProgress } = req.body;
+    const { userId: requestUserId, completionDate, videoProgress } = req.body;
 
-    // Verify user can complete this (either their own or admin)
-    if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied' });
-    }
-
-    // Check if user has approved application to complete full training
-    const hasApproval = await hasApprovedApplication(userId);
-    const isAdmin = req.neonUser.role === 'admin';
-
-    // Admins can complete certification without application approval
-    // Regular users need approval unless they're completing as admin
-    if (!hasApproval && !isAdmin) {
-      return res.status(403).json({
-        message: 'Application approval required to complete full certification',
-        accessLevel: 'limited',
-        requiresApproval: true
-      });
+    let userId: number;
+    if (!requestUserId || typeof requestUserId === 'string' || Number.isNaN(parseInt(String(requestUserId), 10))) {
+      userId = req.neonUser.id;
+    } else {
+      userId = parseInt(String(requestUserId), 10);
+      if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+      }
     }
 
     // Verify all required videos are completed (2 comprehensive modules)

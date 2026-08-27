@@ -63,6 +63,7 @@ import {
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { SmartImage } from "@/components/ui/smart-image";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -382,7 +383,7 @@ function CheckinDetailSheet({
                     rel="noopener noreferrer"
                     className="group relative aspect-square overflow-hidden rounded-lg border bg-muted/30"
                   >
-                    <img
+                    <SmartImage
                       src={getR2ProxyUrl(url)}
                       alt={`Check-in photo ${i + 1}`}
                       className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"

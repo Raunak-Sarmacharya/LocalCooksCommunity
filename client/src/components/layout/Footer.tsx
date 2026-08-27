@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import Logo from "@/components/ui/logo";
 import { useApplicationStatus } from "@/hooks/use-application-status";
 import { Building2, Mail, MapPin, Phone } from "lucide-react";
@@ -5,10 +6,13 @@ import { FaFacebook, FaLinkedin } from "react-icons/fa";
 import { Link, useLocation } from "wouter";
 import { useMemo, forwardRef } from "react";
 import { getSubdomainFromHostname } from "@shared/subdomain-utils";
+import { parseLocationLocale } from "@/i18n/routing";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 
 const Footer = forwardRef<HTMLElement>((props, ref) => {
   const [location, navigate] = useLocation();
   const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
+  const { t } = useTranslation("common");
 
   // Get current subdomain
   const currentSubdomain = useMemo(() => {
@@ -18,9 +22,11 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
     return null;
   }, []);
 
-  // Check if we're on specific landing pages
-  const isChefLanding = currentSubdomain === 'chef' && location === '/';
-  const isKitchenLanding = currentSubdomain === 'kitchen' && location === '/';
+  // Check if we're on specific landing pages (ignore locale prefixes like /en-CA)
+  const { pathWithoutLocale } = parseLocationLocale(location);
+  const isLandingRoot = pathWithoutLocale === '/';
+  const isChefLanding = currentSubdomain === 'chef' && isLandingRoot;
+  const isKitchenLanding = currentSubdomain === 'kitchen' && isLandingRoot;
 
   const handleCTAClick = () => {
     navigate(getNavigationPath());
@@ -28,39 +34,39 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
 
 
   const handleAnchorClick = (anchor: string) => {
-    if (location === '/') {
-      // If we're on the homepage, scroll to the anchor
+    if (isLandingRoot) {
+      // On the landing page — scroll directly (sections are rendered inline)
       const element = document.querySelector(anchor);
       if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
-    } else {
-      // If we're on a different page, navigate to homepage first
-      navigate('/');
-      // Wait for navigation to complete, then scroll
-      setTimeout(() => {
-        const element = document.querySelector(anchor);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        } else {
-          // If element not found immediately, try again after a short delay
-          setTimeout(() => {
-            const retryElement = document.querySelector(anchor);
-            if (retryElement) {
-              retryElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-          }, 300);
-        }
-      }, 200);
+      return;
     }
+    // If we're on a different page, navigate to homepage first
+    navigate('/');
+    // Wait for navigation to complete, then scroll
+    setTimeout(() => {
+      const element = document.querySelector(anchor);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        // If element not found immediately, try again after a short delay
+        setTimeout(() => {
+          const retryElement = document.querySelector(anchor);
+          if (retryElement) {
+            retryElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 300);
+      }
+    }, 200);
   };
 
   const getCTAButtonText = () => {
-    return getButtonText("Join as a Cook");
+    return getButtonText(t("joinAsCook"));
   };
 
   const getApplyLinkText = () => {
-    return getButtonText("Apply Now");
+    return getButtonText(t("applyNow"));
   };
 
   return (
@@ -77,14 +83,12 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
             <div className="mb-4">
               <Logo variant="white" className="h-12 sm:h-14 md:h-16 w-auto" />
             </div>
-            <p className="text-gray-300 mb-6 max-w-md text-sm sm:text-base leading-relaxed">
-              Connecting talented home chefs with hungry customers. We're building more than a platform – we're creating a community where cooks and customers connect directly.
-            </p>
+            <p className="text-gray-300 mb-6 max-w-md text-sm sm:text-base leading-relaxed">{t("connectingTalentedHomeChefs")}</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 md:w-3/5">
             <div>
-              <h3 className="text-xl md:text-2xl font-bold mb-4 text-brand-primary">Contact Us</h3>
+              <h3 className="text-xl md:text-2xl font-bold mb-4 text-brand-primary">{t("contactUs")}</h3>
               <ul className="space-y-3">
                 <li>
                   <a
@@ -107,14 +111,14 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                 <li>
                   <div className="flex items-center gap-3 text-gray-300 py-1">
                     <MapPin className="h-5 w-5 text-brand-primary flex-shrink-0" />
-                    <span className="text-sm sm:text-base">St. John's, NL, Canada</span>
+                    <span className="text-sm sm:text-base">{t("stJohns")}</span>
                   </div>
                 </li>
               </ul>
             </div>
 
             <div>
-              <h3 className="text-xl md:text-2xl font-bold mb-4 text-brand-primary">Quick Links</h3>
+              <h3 className="text-xl md:text-2xl font-bold mb-4 text-brand-primary">{t("quickLinks")}</h3>
               <ul className="space-y-2">
                 {isChefLanding ? (
                   <>
@@ -122,41 +126,31 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                       <button
                         onClick={() => handleAnchorClick('#how-it-works')}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        How It Works
-                      </button>
+                      >{t("howItWorks")}</button>
                     </li>
                     <li>
                       <button
                         onClick={() => handleAnchorClick('#kitchen-access')}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        Kitchen Access
-                      </button>
+                      >{t("kitchenAccess")}</button>
                     </li>
                     <li>
                       <button
                         onClick={() => handleAnchorClick('#testimonials')}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        Testimonials
-                      </button>
+                      >{t("testimonials")}</button>
                     </li>
                     <li>
                       <button
                         onClick={() => handleAnchorClick('#faq')}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        FAQ
-                      </button>
+                      >{t("faq")}</button>
                     </li>
                     <li>
                       <Link
                         href="/resources"
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        Resources
-                      </Link>
+                      >{t("resources")}</Link>
                     </li>
                     <li>
                       <button
@@ -164,7 +158,7 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                         disabled={isLoading}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 disabled:opacity-50 disabled:cursor-not-allowed mobile-touch-target"
                       >
-                        {isLoading ? "Loading..." : getApplyLinkText()}
+                        {isLoading ? t("loading") : getApplyLinkText()}
                       </button>
                     </li>
                   </>
@@ -174,41 +168,31 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                       <button
                         onClick={() => handleAnchorClick('#revenue-streams')}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        Revenue Streams
-                      </button>
+                      >{t("revenueStreams")}</button>
                     </li>
                     <li>
                       <button
                         onClick={() => handleAnchorClick('#how-it-works')}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        How It Works
-                      </button>
+                      >{t("howItWorks")}</button>
                     </li>
                     <li>
                       <button
                         onClick={() => handleAnchorClick('#everything-included')}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        Everything Included
-                      </button>
+                      >{t("everythingIncluded")}</button>
                     </li>
                     <li>
                       <button
                         onClick={() => handleAnchorClick('#faq')}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        FAQ
-                      </button>
+                      >{t("faq")}</button>
                     </li>
                     <li>
                       <Link
                         href="/resources"
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        Resources
-                      </Link>
+                      >{t("resources")}</Link>
                     </li>
                   </>
                 ) : (
@@ -217,25 +201,19 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                       <button
                         onClick={() => handleAnchorClick('#how-it-works')}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        How It Works
-                      </button>
+                      >{t("howItWorks")}</button>
                     </li>
                     <li>
                       <button
                         onClick={() => handleAnchorClick('#benefits')}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        Benefits
-                      </button>
+                      >{t("benefits")}</button>
                     </li>
                     <li>
                       <button
                         onClick={() => handleAnchorClick('#about')}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        About Us
-                      </button>
+                      >{t("aboutUs")}</button>
                     </li>
                     <li>
                       <button
@@ -243,7 +221,7 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                         disabled={isLoading}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 disabled:opacity-50 disabled:cursor-not-allowed mobile-touch-target"
                       >
-                        {isLoading ? "Loading..." : getApplyLinkText()}
+                        {isLoading ? t("loading") : getApplyLinkText()}
                       </button>
                     </li>
                     <li>
@@ -251,9 +229,7 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                         href="/manager/login"
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium flex items-center gap-2 py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
                       >
-                        <Building2 className="h-4 w-4 text-brand-primary flex-shrink-0" />
-                        Partner Login
-                      </Link>
+                        <Building2 className="h-4 w-4 text-brand-primary flex-shrink-0" />{t("partnerLogin")}</Link>
                     </li>
                   </>
                 )}
@@ -261,7 +237,7 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
             </div>
 
             <div>
-              <h3 className="text-xl md:text-2xl font-bold mb-4 text-[#F51042]">Connect</h3>
+              <h3 className="text-xl md:text-2xl font-bold mb-4 text-[#F51042]">{t("connect")}</h3>
               <div className="flex space-x-3 mb-4">
                 <a
                   href="https://www.facebook.com/LocalCooks"
@@ -282,34 +258,31 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                   <FaLinkedin className="h-5 w-5" />
                 </a>
               </div>
-              <p className="text-sm md:text-base text-gray-400 leading-relaxed">
-                Follow us on social media for updates and news.
-              </p>
+              <p className="text-sm md:text-base text-gray-400 leading-relaxed">{t("followUsOnSocialMedia")}</p>
             </div>
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-between items-center text-xs sm:text-sm md:text-base text-gray-400 pt-6 gap-4">
-          <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 text-center sm:text-left">
-            <p className="font-medium">&copy; {new Date().getFullYear()} Local Cooks. All rights reserved.</p>
-            <div className="flex flex-wrap justify-center sm:justify-start gap-3 sm:gap-4">
-              <a
-                href="https://www.localcooks.ca/terms"
-                className="text-gray-400 hover:text-white transition-all duration-300 hover:underline mobile-touch-target py-1"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Terms & Conditions
-              </a>
-              <a
-                href="https://www.localcooks.ca/privacy"
-                className="text-gray-400 hover:text-white transition-all duration-300 hover:underline mobile-touch-target py-1"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Privacy Policy
-              </a>
-            </div>
+        <div className="flex flex-col lg:flex-row justify-between items-center text-xs sm:text-sm text-gray-400 pt-6 gap-6 lg:gap-4 pb-24 lg:pb-10">
+          <div className="flex items-center w-full lg:w-1/3 justify-center lg:justify-start">
+            <LanguageSwitcher size="sm" variant="footer" />
+          </div>
+          <div className="flex items-center justify-center lg:justify-end gap-2 sm:gap-3 text-center w-full lg:w-2/3 lg:pr-20">
+            <p className="font-medium whitespace-nowrap">&copy; {new Date().getFullYear()} Local Cooks. {t("allRightsReserved")}</p>
+            <span className="text-gray-600 hidden sm:inline">|</span>
+            <a
+              href="https://www.localcooks.ca/terms"
+              className="text-gray-400 hover:text-white transition-colors duration-300 hover:underline whitespace-nowrap"
+              target="_blank"
+              rel="noopener noreferrer"
+            >{t("termsAndConditions")}</a>
+            <span className="text-gray-600 hidden sm:inline">|</span>
+            <a
+              href="https://www.localcooks.ca/privacy"
+              className="text-gray-400 hover:text-white transition-colors duration-300 hover:underline whitespace-nowrap"
+              target="_blank"
+              rel="noopener noreferrer"
+            >{t("privacyPolicy")}</a>
           </div>
         </div>
       </div>

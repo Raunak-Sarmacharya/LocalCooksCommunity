@@ -22,6 +22,7 @@ import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 import { auth } from "@/lib/firebase";
 import {
   EmailAuthProvider,
@@ -124,6 +125,7 @@ export default function ChangePassword({ onSuccess }: ChangePasswordProps) {
 
 // ─── Change Password Form (for email/password users) ───
 function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
+  const { t } = useTranslation("chef");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<ChangePasswordFormData>({
@@ -198,10 +200,10 @@ function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <KeyRound className="h-5 w-5" />
-          Change Password
+          {t("pwChangePassword")}
         </CardTitle>
         <CardDescription>
-          Update your account password. Make sure to use a strong password with at least 8 characters.
+          {t("pwUpdateDesc")}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -212,9 +214,9 @@ function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
               name="currentPassword"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Current Password</FormLabel>
+                  <FormLabel>{t("pwCurrentLabel")}</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="Enter your current password" {...field} disabled={isSubmitting} />
+                    <Input type="password" placeholder={t("pwCurrentPlaceholder")} {...field} disabled={isSubmitting} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -225,9 +227,9 @@ function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
               name="newPassword"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>New Password</FormLabel>
+                  <FormLabel>{t("pwNewLabel")}</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="Enter your new password (min 8 characters)" {...field} disabled={isSubmitting} />
+                    <Input type="password" placeholder={t("pwNewPlaceholder")} {...field} disabled={isSubmitting} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -238,9 +240,9 @@ function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
               name="confirmPassword"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Confirm New Password</FormLabel>
+                  <FormLabel>{t("pwConfirmLabel")}</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="Confirm your new password" {...field} disabled={isSubmitting} />
+                    <Input type="password" placeholder={t("pwConfirmPlaceholder")} {...field} disabled={isSubmitting} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -248,9 +250,9 @@ function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
             />
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Changing Password...</>
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("pwChanging")}</>
               ) : (
-                <><KeyRound className="mr-2 h-4 w-4" />Change Password</>
+                <><KeyRound className="mr-2 h-4 w-4" />{t("pwChangePassword")}</>
               )}
             </Button>
           </form>

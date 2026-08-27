@@ -21,6 +21,10 @@ import { applicationService } from '../../domains/applications/application.servi
 import { CreateApplicationDTO } from '../../domains/applications/application.types';
 import { DomainError } from '../../shared/errors/domain-error';
 import { normalizePhoneForStorage } from '../../phone-utils';
+import { db } from '../../db';
+import { locations } from '@shared/schema';
+import { eq } from 'drizzle-orm';
+import { notificationService } from '../../services/notification.service';
 import {
     sendEmail,
     generateApplicationWithDocumentsEmail,
@@ -135,6 +139,28 @@ router.post('/firebase/applications',
 
             // Send email notification
             await sendApplicationEmail(application);
+
+            if (req.body.intendedLocationId) {
+                try {
+                    const locationId = parseInt(req.body.intendedLocationId, 10);
+                    const location = await db.query.locations.findFirst({
+                        where: eq(locations.id, locationId)
+                    });
+                    
+                    if (location && location.managerId) {
+                        await notificationService.notifySystemAnnouncement(
+                            location.managerId,
+                            {
+                                title: "New Incoming Application",
+                                message: `Chef ${application.fullName} has submitted their Global Platform Application and intends to apply to ${location.name} once approved by the Admin.`
+                            }
+                        );
+                        logger.info(`✅ Sent intended application notification to manager of location ${locationId}`);
+                    }
+                } catch (notifyErr) {
+                    logger.error('❌ Failed to send intended application notification:', notifyErr);
+                }
+            }
 
             res.status(201).json(application);
 

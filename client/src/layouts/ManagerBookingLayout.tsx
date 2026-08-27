@@ -19,9 +19,10 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useFirebaseAuth } from "@/hooks/use-auth"
-import { LogOut, User as UserIcon, ChevronDown } from "lucide-react"
+import { LogOut, User as UserIcon, ChevronDown, Languages } from "lucide-react"
 import { useLocation } from "wouter"
 import { AppSidebar } from "@/components/app-sidebar"
+import { LanguageMenuItems } from "@/components/i18n/LanguageSwitcher"
 
 interface ManagerBookingLayoutProps {
     children: React.ReactNode
@@ -139,6 +140,14 @@ export default function ManagerBookingLayout({
                                         <span className="text-sm font-medium tracking-tight">Dashboard</span>
                                     </DropdownMenuItem>
                                 </div>
+
+                                <div className="px-3 pt-2 pb-1">
+                                    <p className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                                        <Languages className="h-3 w-3" />
+                                        Language
+                                    </p>
+                                </div>
+                                <LanguageMenuItems />
 
                                 <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
 

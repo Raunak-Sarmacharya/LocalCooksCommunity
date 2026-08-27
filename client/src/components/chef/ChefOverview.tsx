@@ -23,6 +23,10 @@ import {
 import { Link } from "wouter";
 import { Application } from "@shared/schema";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
+import { StatTile } from "@/components/chef/ui";
+import { TruncatedText } from "@/components/common/TruncatedText";
+import { applicationStatusVariant } from "@/components/chef/applications/status";
+import { useTranslation } from "react-i18next";
 
 interface ChefOverviewProps {
   user: { displayName?: string | null } | null;
@@ -51,15 +55,17 @@ export function ChefOverview({
   getDocumentStatus,
   getStatusVariant,
 }: ChefOverviewProps) {
+  const { t } = useTranslation("chef");
+
   // Helper to get kitchen applications status summary
   const getKitchenAccessSummary = () => {
     const approved = kitchenApplications.filter((a) => a.status === "approved").length;
     const pending = kitchenApplications.filter((a) => a.status === "inReview").length;
     const total = kitchenApplications.length;
-    if (total === 0) return { label: "No Applications", variant: "outline" as const };
-    if (approved > 0) return { label: `${approved} Approved`, variant: "success" as const };
-    if (pending > 0) return { label: `${pending} Pending`, variant: "secondary" as const };
-    return { label: `${total} Total`, variant: "outline" as const };
+    if (total === 0) return { label: t("overviewNotStarted", "Not Started"), variant: "outline" as const };
+    if (approved > 0) return { label: t("overviewApprovedCount", { count: approved, defaultValue: "{count} Approved" }), variant: "success" as const };
+    if (pending > 0) return { label: t("overviewPendingCount", { count: pending, defaultValue: "{count} Pending" }), variant: "outline" as const };
+    return { label: t("overviewTotalCount", { count: total, defaultValue: "{count} Total" }), variant: "outline" as const };
   };
 
   const kitchenSummary = getKitchenAccessSummary();
@@ -67,9 +73,9 @@ export function ChefOverview({
   // Dynamic greeting based on time of day
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return "Good morning";
-    if (hour < 17) return "Good afternoon";
-    return "Good evening";
+    if (hour < 12) return t("overviewGoodMorning", "Good morning");
+    if (hour < 17) return t("overviewGoodAfternoon", "Good afternoon");
+    return t("overviewGoodEvening", "Good evening");
   };
 
   // Dynamic subtitle based on chef's current state
@@ -80,18 +86,18 @@ export function ChefOverview({
     const appStatus = getApplicationStatus();
 
     if (!hasApp && kitchenApplications.length === 0) {
-      return "Get started by applying to sell or booking a commercial kitchen.";
+      return t("overviewGetStartedSubtitle", "Get started by applying to sell or booking a commercial kitchen.");
     }
     if (appStatus === "In Review" || pendingKitchens > 0) {
       const parts: string[] = [];
-      if (appStatus === "In Review") parts.push("your seller application is under review");
-      if (pendingKitchens > 0) parts.push(`${pendingKitchens} kitchen application${pendingKitchens > 1 ? "s" : ""} pending`);
-      return `Heads up — ${parts.join(" and ")}.`;
+      if (appStatus === "In Review") parts.push(t("overviewSellerAppUnderReview", "your seller application is under review"));
+      if (pendingKitchens > 0) parts.push(t("overviewKitchenAppsPending", { count: pendingKitchens, defaultValue: "{count, plural, one {# kitchen application pending} other {# kitchen applications pending}}" }));
+      return t("overviewHeadsUpPrefix", { parts: parts.join(` ${t("overviewAndJoiner", "and")} `), defaultValue: "Heads up — {parts}." });
     }
     if (activeBookings > 0) {
-      return `You have ${activeBookings} active booking${activeBookings > 1 ? "s" : ""}. Here\u2019s your dashboard.`;
+      return t("overviewActiveBookingsSubtitle", { count: activeBookings, defaultValue: "{count, plural, one {You have # active booking. Here\u2019s your dashboard.} other {You have # active bookings. Here\u2019s your dashboard.}}" });
     }
-    return "Here\u2019s an overview of your LocalCooks journey.";
+    return t("overviewDefaultSubtitle", "Here\u2019s an overview of your LocalCooks journey.");
   };
 
   return (
@@ -110,88 +116,46 @@ export function ChefOverview({
 
       {/* Quick Stats Grid */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-border/50 shadow-sm overflow-hidden transition-all hover:shadow-md">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
-              <Store className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Seller Status
-              </p>
-              <p className="text-sm font-bold text-foreground">
-                {getApplicationStatus() || "Not Started"}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 shadow-sm overflow-hidden transition-all hover:shadow-md">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-              <Building className="h-6 w-6 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Kitchen Access
-              </p>
-              <p className="text-sm font-bold text-foreground">{kitchenSummary.label}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 shadow-sm overflow-hidden transition-all hover:shadow-md">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center border border-green-500/20">
-              <BookOpen className="h-6 w-6 text-green-600" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Training
-              </p>
-              <p className="text-sm font-bold text-foreground">
-                {microlearningCompletion?.confirmed ? "Completed" : "In Progress"}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 shadow-sm overflow-hidden transition-all hover:shadow-md">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-              <Calendar className="h-6 w-6 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Bookings
-              </p>
-              <p className="text-sm font-bold text-foreground">
-                {enrichedBookings?.length || 0} Active
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatTile
+          label={t("overviewSellerStatus", "Seller Status")}
+          value={getApplicationStatus() || t("overviewNotStarted", "Not Started")}
+          tone="neutral"
+        />
+        <StatTile
+          label={t("overviewKitchenAccess", "Kitchen Access")}
+          value={kitchenSummary.label}
+          tone={kitchenSummary.variant === "success" ? "success" : "neutral"}
+        />
+        <StatTile
+          label={t("overviewTraining", "Training")}
+          value={microlearningCompletion?.confirmed ? t("overviewCompleted", "Completed") : t("overviewNotStarted", "Not Started")}
+          tone={microlearningCompletion?.confirmed ? "success" : "neutral"}
+        />
+        <StatTile
+          label={t("overviewBookings", "Bookings")}
+          value={enrichedBookings?.length ? t("overviewBookingsActiveCount", { count: enrichedBookings.length, defaultValue: "{count} Active" }) : t("overviewNone", "None")}
+          tone={enrichedBookings?.length ? "progress" : "neutral"}
+        />
       </div>
 
       {/* Two Path Cards - Sell on LocalCooks & Kitchen Access */}
       <div className="grid gap-6 md:grid-cols-2">
         {/* Sell on LocalCooks Path */}
-        <Card className="border-border/50 shadow-sm overflow-hidden group hover:shadow-lg transition-all">
-          <div className="h-2 bg-gradient-to-r from-primary to-primary/60" />
+        <Card className="shadow-none overflow-hidden group">
           <CardHeader className="pb-4">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
-                  <Store className="h-6 w-6 text-primary" />
+                <div className="w-12 h-12 rounded-lg border flex items-center justify-center">
+                  <Store className="h-6 w-6 text-muted-foreground" />
                 </div>
                 <div>
-                  <CardTitle className="text-xl">Sell on LocalCooks</CardTitle>
-                  <CardDescription>Become a verified seller on our platform</CardDescription>
+                  <CardTitle className="text-xl">{t("overviewSellOnLocalCooksTitle", "Sell on LocalCooks")}</CardTitle>
+                  <CardDescription>{t("overviewSellOnLocalCooksDesc", "Become a verified seller on our platform")}</CardDescription>
                 </div>
               </div>
               {applications?.length > 0 && (
                 <Badge
-                  variant={getStatusVariant(getMostRecentApplication()?.status || "")}
+                  variant={applicationStatusVariant(getMostRecentApplication()?.status || "")}
                   className="text-xs"
                 >
                   {formatApplicationStatus(getMostRecentApplication()?.status || "")}
@@ -201,8 +165,7 @@ export function ChefOverview({
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Join our marketplace and sell your homemade food to customers in your area. We
-              handle delivery, payments, and customer support.
+              {t("overviewSellOnLocalCooksBody", "Join our marketplace and sell your homemade food to customers in your area. We handle delivery, payments, and customer support.")}
             </p>
 
             {applications?.length > 0 ? (
@@ -211,7 +174,7 @@ export function ChefOverview({
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">
-                      Application #{getMostRecentApplication()?.id}
+                      {t("overviewApplicationNumber", { id: getMostRecentApplication()?.id, defaultValue: "Application #{id}" })}
                     </span>
                   </div>
                   <span className="text-xs text-muted-foreground">
@@ -223,7 +186,7 @@ export function ChefOverview({
                 <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/50">
                   <div className="flex items-center gap-2">
                     <Shield className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Documents</span>
+                    <span className="text-sm font-medium">{t("overviewDocuments", "Documents")}</span>
                   </div>
                   <Badge variant="outline" className="text-xs">
                     {getDocumentStatus()}
@@ -231,23 +194,23 @@ export function ChefOverview({
                 </div>
               </div>
             ) : (
-              <div className="p-4 bg-primary/5 rounded-lg border border-primary/10 text-center">
-                <Utensils className="h-8 w-8 text-primary mx-auto mb-2" />
-                <p className="text-sm font-medium">Ready to start selling?</p>
+              <div className="p-4 rounded-lg border text-center">
+                <Utensils className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm font-medium">{t("overviewReadyToStartSelling", "Ready to start selling?")}</p>
                 <p className="text-xs text-muted-foreground">
-                  Apply now to become a LocalCooks seller
+                  {t("overviewApplyNowToSell", "Apply now to become a LocalCooks seller")}
                 </p>
               </div>
             )}
           </CardContent>
-          <CardFooter className="bg-muted/5 border-t border-border/30 pt-4">
+          <CardFooter className="border-t pt-4">
             {applications?.length > 0 ? (
               <Button
                 variant="outline"
-                className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                className="w-full"
                 onClick={() => onNavigate("applications")}
               >
-                View Application Details
+                {t("overviewViewApplicationDetails", "View Application Details")}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
@@ -255,7 +218,7 @@ export function ChefOverview({
                 className="w-full"
                 onClick={onStartApplication}
               >
-                Apply to Sell
+                {t("overviewApplyToSell", "Apply to Sell")}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             )}
@@ -263,17 +226,16 @@ export function ChefOverview({
         </Card>
 
         {/* Kitchen Access Path */}
-        <Card className="border-border/50 shadow-sm overflow-hidden group hover:shadow-lg transition-all">
-          <div className="h-2 bg-gradient-to-r from-blue-600 to-blue-400" />
+        <Card className="shadow-none overflow-hidden group">
           <CardHeader className="pb-4">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-                  <Building className="h-6 w-6 text-blue-600" />
+                <div className="w-12 h-12 rounded-lg border flex items-center justify-center">
+                  <Building className="h-6 w-6 text-muted-foreground" />
                 </div>
                 <div>
-                  <CardTitle className="text-xl">Kitchen Access</CardTitle>
-                  <CardDescription>Book commercial kitchen spaces</CardDescription>
+                  <CardTitle className="text-xl">{t("overviewKitchenAccess", "Kitchen Access")}</CardTitle>
+                  <CardDescription>{t("overviewBookCommercialKitchenSpaces", "Book commercial kitchen spaces")}</CardDescription>
                 </div>
               </div>
               {kitchenApplications.length > 0 && (
@@ -285,8 +247,7 @@ export function ChefOverview({
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Access our network of commercial kitchens. Apply to kitchens, get approved, and
-              book time slots to prepare your food.
+              {t("overviewKitchenAccessBody", "Access our network of commercial kitchens. Apply to kitchens, get approved, and book time slots to prepare your food.")}
             </p>
 
             {kitchenApplications.length > 0 ? (
@@ -298,33 +259,33 @@ export function ChefOverview({
                   >
                     <div className="flex items-center gap-2">
                       <Building className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium truncate max-w-[150px]">
-                        {app.location?.name || "Kitchen"}
-                      </span>
+                      <TruncatedText className="text-sm font-medium truncate max-w-[150px]">
+                        {app.location?.name || t("overviewKitchenFallbackName", "Kitchen")}
+                      </TruncatedText>
                     </div>
                     <Badge
-                      variant={app.status === "approved" ? "default" : "secondary"}
+                      variant={app.status === "approved" ? "success" : "outline"}
                       className="text-xs"
                     >
-                      {app.status === "approved" ? "Approved" : "Pending"}
+                      {app.status === "approved" ? t("overviewStatusApproved", "Approved") : t("overviewStatusPending", "Pending")}
                     </Badge>
                   </div>
                 ))}
                 {kitchenApplications.length > 2 && (
                   <p className="text-xs text-muted-foreground text-center">
-                    +{kitchenApplications.length - 2} more kitchens
+                    {t("overviewMoreKitchens", { count: kitchenApplications.length - 2, defaultValue: "{count, plural, one {+# more kitchen} other {+# more kitchens}}" })}
                   </p>
                 )}
               </div>
             ) : (
-              <div className="p-4 bg-blue-500/5 rounded-lg border border-blue-500/10 text-center">
-                <Building className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-                <p className="text-sm font-medium">Need a commercial kitchen?</p>
-                <p className="text-xs text-muted-foreground">Explore our partner kitchens</p>
+              <div className="p-4 rounded-lg border text-center">
+                <Building className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm font-medium">{t("overviewNeedCommercialKitchen", "Need a commercial kitchen?")}</p>
+                <p className="text-xs text-muted-foreground">{t("overviewExplorePartnerKitchens", "Explore our partner kitchens")}</p>
               </div>
             )}
           </CardContent>
-          <CardFooter className="bg-muted/5 border-t border-border/30 pt-4 gap-2">
+          <CardFooter className="border-t pt-4 gap-2">
             {kitchenApplications.length > 0 ? (
               <>
                 <Button
@@ -332,24 +293,24 @@ export function ChefOverview({
                   className="flex-1"
                   onClick={() => onNavigate("kitchen-applications")}
                 >
-                  My Kitchens
+                  {t("overviewMyKitchensButton", "My Kitchens")}
                 </Button>
                 <Button
                   variant="outline"
-                  className="flex-1 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                  className="flex-1"
                   onClick={() => (window.location.href = "/compare-kitchens")}
                 >
-                  Discover More
+                  {t("overviewDiscoverMore", "Discover More")}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </>
             ) : (
               <Button
-                variant="secondary"
+                variant="outline"
                 className="w-full"
                 onClick={() => (window.location.href = "/compare-kitchens")}
               >
-                Explore Kitchens
+                {t("overviewExploreKitchens", "Explore Kitchens")}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             )}
@@ -358,15 +319,15 @@ export function ChefOverview({
       </div>
 
       {/* Quick Actions / Next Steps */}
-      <Card className="border-border/50 shadow-sm">
+      <Card className="shadow-none">
         <CardHeader className="pb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-              <TrendingUp className="h-5 w-5 text-amber-600" />
+            <div className="w-10 h-10 rounded-lg border flex items-center justify-center">
+              <TrendingUp className="h-5 w-5 text-muted-foreground" />
             </div>
             <div>
-              <CardTitle className="text-lg">Recommended Next Steps</CardTitle>
-              <CardDescription>Continue your journey with LocalCooks</CardDescription>
+              <CardTitle className="text-lg">{t("overviewRecommendedNextSteps", "Recommended Next Steps")}</CardTitle>
+              <CardDescription>{t("overviewContinueJourney", "Continue your journey with LocalCooks")}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -375,14 +336,14 @@ export function ChefOverview({
             {!microlearningCompletion?.confirmed && (
               <Button
                 variant="outline"
-                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
+                className="h-auto py-4 px-4 justify-start gap-3"
                 asChild
               >
-                <Link href="/microlearning/overview">
-                  <BookOpen className="h-5 w-5 text-green-600" />
+                <Link href="/dashboard?view=training">
+                  <BookOpen className="h-5 w-5 text-muted-foreground" />
                   <div className="text-left">
-                    <p className="font-medium text-sm">Complete Training</p>
-                    <p className="text-xs text-muted-foreground">Food safety certification</p>
+                    <p className="font-medium text-sm">{t("overviewStartTraining", "Start Training")}</p>
+                    <p className="text-xs text-muted-foreground">{t("overviewFoodSafetyVideos", "Food safety videos (not official cert)")}</p>
                   </div>
                 </Link>
               </Button>
@@ -391,13 +352,13 @@ export function ChefOverview({
             {applications?.length === 0 && (
               <Button
                 variant="outline"
-                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
+                className="h-auto py-4 px-4 justify-start gap-3"
                 onClick={onStartApplication}
               >
-                <Store className="h-5 w-5 text-primary" />
+                <Store className="h-5 w-5 text-muted-foreground" />
                 <div className="text-left">
-                  <p className="font-medium text-sm">Apply to Sell</p>
-                  <p className="text-xs text-muted-foreground">Start your seller journey</p>
+                  <p className="font-medium text-sm">{t("overviewApplyToSell", "Apply to Sell")}</p>
+                  <p className="text-xs text-muted-foreground">{t("overviewStartSellerJourney", "Start your seller journey")}</p>
                 </div>
               </Button>
             )}
@@ -405,13 +366,13 @@ export function ChefOverview({
             {kitchenApplications.length === 0 && (
               <Button
                 variant="outline"
-                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
+                className="h-auto py-4 px-4 justify-start gap-3"
                 onClick={() => (window.location.href = "/compare-kitchens")}
               >
-                <Building className="h-5 w-5 text-blue-600" />
+                <Building className="h-5 w-5 text-muted-foreground" />
                 <div className="text-left">
-                  <p className="font-medium text-sm">Find a Kitchen</p>
-                  <p className="text-xs text-muted-foreground">Browse commercial spaces</p>
+                  <p className="font-medium text-sm">{t("overviewFindKitchen", "Find a Kitchen")}</p>
+                  <p className="text-xs text-muted-foreground">{t("overviewBrowseCommercialSpaces", "Browse commercial spaces")}</p>
                 </div>
               </Button>
             )}
@@ -420,26 +381,26 @@ export function ChefOverview({
               kitchenApplications.some((a) => a.status === "approved") && (
                 <Button
                   variant="outline"
-                  className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
+                  className="h-auto py-4 px-4 justify-start gap-3"
                   onClick={() => onNavigate("bookings")}
                 >
-                  <Calendar className="h-5 w-5 text-amber-600" />
+                  <Calendar className="h-5 w-5 text-muted-foreground" />
                   <div className="text-left">
-                    <p className="font-medium text-sm">Book a Session</p>
-                    <p className="text-xs text-muted-foreground">Schedule kitchen time</p>
+                    <p className="font-medium text-sm">{t("overviewBookSession", "Book a Session")}</p>
+                    <p className="text-xs text-muted-foreground">{t("overviewScheduleKitchenTime", "Schedule kitchen time")}</p>
                   </div>
                 </Button>
               )}
 
             <Button
               variant="outline"
-              className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
+              className="h-auto py-4 px-4 justify-start gap-3"
               onClick={() => onNavigate("messages")}
             >
-              <MessageCircle className="h-5 w-5 text-purple-600" />
+              <MessageCircle className="h-5 w-5 text-muted-foreground" />
               <div className="text-left">
-                <p className="font-medium text-sm">Messages</p>
-                <p className="text-xs text-muted-foreground">Chat with managers</p>
+                <p className="font-medium text-sm">{t("overviewMessages", "Messages")}</p>
+                <p className="text-xs text-muted-foreground">{t("overviewChatWithManagers", "Chat with managers")}</p>
               </div>
             </Button>
           </div>

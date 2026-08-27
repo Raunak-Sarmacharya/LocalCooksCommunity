@@ -6,8 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Calendar, MapPin, Eye, Building } from "lucide-react";
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { auth } from "@/lib/firebase";
+import { Button } from "@/components/ui/button";
 
-export default function ChefViewingsList() {
+export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitchens?: () => void }) {
     const { user } = useFirebaseAuth();
 
     const { data: viewings, isLoading } = useQuery({
@@ -42,15 +43,18 @@ export default function ChefViewingsList() {
 
     if (!viewings || viewings.length === 0) {
         return (
-            <Card className="bg-muted/30 border-dashed">
+            <Card className="border-dashed shadow-none">
                 <CardContent className="flex flex-col items-center justify-center p-12 text-center">
-                    <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                        <Eye className="h-6 w-6 text-primary" />
-                    </div>
-                    <h3 className="text-lg font-medium">No Viewings Scheduled</h3>
+                    <Eye className="mb-4 h-6 w-6 text-muted-foreground" />
+                    <h3 className="text-lg font-medium">No viewings scheduled</h3>
                     <p className="text-muted-foreground mt-1 max-w-sm">
                         You haven't scheduled any kitchen tours yet. Explore kitchens and book a tour!
                     </p>
+                    {onExploreKitchens && (
+                        <Button className="mt-4" onClick={onExploreKitchens}>
+                            Explore kitchens
+                        </Button>
+                    )}
                 </CardContent>
             </Card>
         );
@@ -65,12 +69,12 @@ export default function ChefViewingsList() {
                 const kitName = item.kitchenName || viewing.kitchen?.name;
                 
                 return (
-                <Card key={viewing.id} className="overflow-hidden hover:shadow-md transition-shadow">
-                    <CardHeader className="bg-muted/20 pb-4">
+                <Card key={viewing.id} className="shadow-none">
+                    <CardHeader className="pb-4">
                         <div className="flex items-start justify-between">
                             <div>
                                 <CardTitle className="text-lg flex items-center gap-2">
-                                    <Building className="h-5 w-5 text-primary" />
+                                    <Building className="h-5 w-5 text-muted-foreground" />
                                     {locName || "Kitchen Location"}
                                 </CardTitle>
                                 {locAddress && (
@@ -80,7 +84,7 @@ export default function ChefViewingsList() {
                                     </CardDescription>
                                 )}
                             </div>
-                            <Badge variant={viewing.status === "completed" ? "default" : viewing.status === "cancelled" || viewing.status === "no_show" ? "destructive" : "secondary"}>
+                            <Badge variant={viewing.status === "completed" ? "success" : viewing.status === "cancelled" || viewing.status === "no_show" ? "destructive" : "outline"}>
                                 {(viewing.status || "").replace("_", " ").toUpperCase()}
                             </Badge>
                         </div>
@@ -88,8 +92,8 @@ export default function ChefViewingsList() {
                     <CardContent className="pt-4">
                         <div className="flex flex-col gap-3">
                             <div className="flex items-center gap-4 text-sm">
-                                <div className="flex items-center text-muted-foreground bg-primary/5 px-3 py-1.5 rounded-md">
-                                    <Calendar className="h-4 w-4 mr-2 text-primary" />
+                                <div className="flex items-center text-muted-foreground">
+                                    <Calendar className="h-4 w-4 mr-2" />
                                     <span className="text-sm font-medium">
                                         {new Date(viewing.scheduledAt).toLocaleString('en-US', {
                                             timeZone: DEFAULT_TIMEZONE,

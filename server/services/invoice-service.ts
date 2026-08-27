@@ -1,5 +1,6 @@
 import { logger } from "../logger";
 import PDFDocument from 'pdfkit';
+import { tLocale } from "../i18n";
 import { db } from "../db";
 import { paymentTransactions } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -17,9 +18,10 @@ export async function generateInvoicePDF(
   storageBookings: any[],
   equipmentBookings: any[],
   paymentIntentId: string | null,
-  options?: { viewer?: 'chef' | 'manager' }
+  options?: { viewer?: 'chef' | 'manager', locale?: string }
 ): Promise<Buffer> {
   const invoiceViewer = options?.viewer ?? 'chef';
+  const locale = options?.locale || 'en';
   // Get Stripe-synced amounts from payment_transactions if available
   let stripePlatformFee = 0; // Platform fee from Stripe (in cents)
   let stripeTotalAmount = 0; // Total amount from Stripe (in cents)
@@ -145,7 +147,7 @@ export async function generateInvoicePDF(
 
           totalAmount += kitchenAmount;
           items.push({
-            description: `Kitchen Booking (${durationHours.toFixed(1)} hour${durationHours !== 1 ? 's' : ''})`,
+            description: tLocale(locale, "kitchenBookingWithHours", { ns: "chef", defaultValue: "Kitchen Booking ({hours} hours)", hours: durationHours.toFixed(1) }),
             quantity: durationHours,
             rate: hourlyRate,
             amount: kitchenAmount,
@@ -192,19 +194,19 @@ export async function generateInvoicePDF(
                 totalAmount += amount;
                 
                 // Construct detailed description with storage name and type
-                let name = 'Storage Booking';
+                let name = tLocale(locale, "storageBooking", { ns: "chef", defaultValue: "Storage Booking" });
                 if (storage.storageName) {
                     name = storage.storageName;
                     if (storage.storageType) name += ` (${storage.storageType})`;
                 } else if (storage.storageType) {
-                    name = `Storage - ${storage.storageType}`;
+                    name = tLocale(locale, "storageWithType", { ns: "chef", defaultValue: "Storage - {type}", type: storage.storageType });
                 }
 
                 // Add note about extensions if booking period is longer than 1 day
-                const daysNote = quantity > 1 ? ` (incl. extensions)` : '';
+                const daysNote = quantity > 1 ? tLocale(locale, "inclExtensions", { ns: "chef", defaultValue: " (incl. extensions)" }) : '';
                 
                 items.push({
-                   description: `${name} - ${quantity} day${quantity !== 1 ? 's' : ''}${daysNote}`,
+                   description: tLocale(locale, "storageBookingWithDays", { ns: "chef", defaultValue: "{name} - {days} days{note}", name, days: quantity, note: daysNote }),
                    quantity: quantity || 1,
                    rate: rate || (amount / (quantity || 1)),
                    amount: amount
@@ -225,7 +227,7 @@ export async function generateInvoicePDF(
               totalAmount += amount;
               
               // Construct detailed description
-              let name = 'Equipment Rental';
+              let name = tLocale(locale, "equipmentRental", { ns: "chef", defaultValue: "Equipment Rental" });
               if (eqBooking.brand) {
                   name = eqBooking.brand;
                   if (eqBooking.equipmentType) name += ` (${eqBooking.equipmentType})`;
@@ -345,7 +347,7 @@ export async function generateInvoicePDF(
       doc.on('error', reject);
 
       // Header Section
-      doc.fontSize(28).font('Helvetica-Bold').text('INVOICE', 50, 50);
+      doc.fontSize(28).font('Helvetica-Bold').text(tLocale(locale, "invoiceTitle", { ns: "chef", defaultValue: "INVOICE" }), 50, 50);
       doc.fontSize(10).font('Helvetica');
 
       // Invoice details (right-aligned)
@@ -366,14 +368,14 @@ export async function generateInvoicePDF(
 
       // Invoice Number
       doc.fontSize(10).font('Helvetica-Bold');
-      doc.text('Invoice #:', valueStartX, rightY, { width: labelWidth, align: 'right' });
+      doc.text(tLocale(locale, "invoiceNumberLabel", { ns: "chef", defaultValue: "Invoice #:" }), valueStartX, rightY, { width: labelWidth, align: 'right' });
       doc.font('Helvetica');
       doc.text(invoiceNumber, valueStartX + labelWidth + 5, rightY);
       rightY += 15;
 
       // Date
       doc.font('Helvetica-Bold');
-      doc.text('Date:', valueStartX, rightY, { width: labelWidth, align: 'right' });
+      doc.text(tLocale(locale, "dateLabel", { ns: "chef", defaultValue: "Date:" }), valueStartX, rightY, { width: labelWidth, align: 'right' });
       doc.font('Helvetica');
       doc.text(invoiceDate, valueStartX + labelWidth + 5, rightY);
 
@@ -385,7 +387,7 @@ export async function generateInvoicePDF(
       leftY += 30;
 
       // Bill To section - use fullName from chef_kitchen_applications
-      doc.fontSize(12).font('Helvetica-Bold').text('Bill To:', 50, leftY);
+      doc.fontSize(12).font('Helvetica-Bold').text(tLocale(locale, "billToLabel", { ns: "chef", defaultValue: "Bill To:" }), 50, leftY);
       leftY += 18;
       doc.fontSize(10).font('Helvetica');
       if (chef) {
@@ -400,8 +402,8 @@ export async function generateInvoicePDF(
       }
       leftY += 20;
 
-      // Booking details section
-      doc.fontSize(12).font('Helvetica-Bold').text('Booking Details:', 50, leftY);
+      // Booking Details section
+      doc.fontSize(12).font('Helvetica-Bold').text(tLocale(locale, "bookingDetailsLabel", { ns: "chef", defaultValue: "Booking Details:" }), 50, leftY);
       leftY += 18;
       doc.fontSize(10).font('Helvetica');
 
@@ -412,13 +414,13 @@ export async function generateInvoicePDF(
         day: 'numeric'
       }) : 'N/A';
 
-      doc.text(`Kitchen: ${kitchen?.name || 'Kitchen'}`, 50, leftY);
+      doc.text(tLocale(locale, "kitchenLabelValue", { ns: "chef", defaultValue: "Kitchen: {name}", name: kitchen?.name || tLocale(locale, "kitchenDefault", { ns: "chef", defaultValue: "Kitchen" }) }), 50, leftY);
       leftY += 15;
       if (location?.name) {
-        doc.text(`Location: ${location.name}`, 50, leftY);
+        doc.text(tLocale(locale, "locationLabelValue", { ns: "chef", defaultValue: "Location: {name}", name: location.name }), 50, leftY);
         leftY += 15;
       }
-      doc.text(`Date: ${bookingDateStr}`, 50, leftY);
+      doc.text(tLocale(locale, "dateLabelValue", { ns: "chef", defaultValue: "Date: {date}", date: bookingDateStr }), 50, leftY);
       leftY += 15;
       
       // Format time - show discrete slots if available and non-contiguous
@@ -460,7 +462,7 @@ export async function generateInvoicePDF(
         }
       }
       
-      doc.text(`Time: ${timeDisplay}`, 50, leftY);
+      doc.text(tLocale(locale, "timeLabelValue", { ns: "chef", defaultValue: "Time: {time}", time: timeDisplay }), 50, leftY);
       leftY += 30;
 
       // Items table - define column positions and widths for proper table layout
@@ -486,10 +488,10 @@ export async function generateInvoicePDF(
       doc.moveTo(col4X, tableTop).lineTo(col4X, tableTop + rowHeight).stroke('#d1d5db');
       
       doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold');
-      doc.text('Description', col1X + 5, tableTop + 8, { width: col1Width - 10 });
-      doc.text('Qty', col2X + 5, tableTop + 8, { width: col2Width - 10, align: 'center' });
-      doc.text('Rate', col3X + 5, tableTop + 8, { width: col3Width - 10, align: 'center' });
-      doc.text('Amount', col4X + 5, tableTop + 8, { width: col4Width - 10, align: 'right' });
+      doc.text(tLocale(locale, "descriptionHeader", { ns: "chef", defaultValue: "Description" }), col1X + 5, tableTop + 8, { width: col1Width - 10 });
+      doc.text(tLocale(locale, "qtyHeader", { ns: "chef", defaultValue: "Qty" }), col2X + 5, tableTop + 8, { width: col2Width - 10, align: 'center' });
+      doc.text(tLocale(locale, "rateHeader", { ns: "chef", defaultValue: "Rate" }), col3X + 5, tableTop + 8, { width: col3Width - 10, align: 'center' });
+      doc.text(tLocale(locale, "amountHeader", { ns: "chef", defaultValue: "Amount" }), col4X + 5, tableTop + 8, { width: col4Width - 10, align: 'right' });
 
       let currentY = tableTop + rowHeight;
 
@@ -565,38 +567,38 @@ export async function generateInvoicePDF(
 
         // Section header for earnings breakdown
         doc.fontSize(11).font('Helvetica-Bold').fillColor('#1f2937');
-        doc.text('EARNINGS BREAKDOWN', 60, currentY);
+        doc.text(tLocale(locale, "earningsBreakdown", { ns: "chef", defaultValue: "EARNINGS BREAKDOWN" }), 60, currentY);
         currentY += 25;
         doc.fontSize(10).font('Helvetica').fillColor('#000000');
 
-        addTotalRow('Subtotal (Services):', totalAmount);
+        addTotalRow(tLocale(locale, "subtotalServices", { ns: "chef", defaultValue: "Subtotal (Services):" }), totalAmount);
         if (taxAmount > 0) {
-          addTotalRow('Tax Collected:', taxAmount);
+          addTotalRow(tLocale(locale, "taxCollected", { ns: "chef", defaultValue: "Tax Collected:" }), taxAmount);
         }
 
         // Gross revenue line
         doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
         currentY += 5;
-        addTotalRow('Gross Revenue:', grossRevenue, false, true);
+        addTotalRow(tLocale(locale, "grossRevenue", { ns: "chef", defaultValue: "Gross Revenue:" }), grossRevenue, false, true);
         currentY += 5;
 
         // Deductions section — single line for what Stripe actually deducted from payout
         doc.fontSize(10).fillColor('#6b7280');
-        doc.text('Deductions:', 60, currentY);
+        doc.text(tLocale(locale, "deductions", { ns: "chef", defaultValue: "Deductions:" }), 60, currentY);
         currentY += 18;
         doc.fillColor('#000000');
 
         // Show actual Stripe processing fee (from BalanceTransaction API)
         const stripeFeeLabel = dataSource === 'pending_sync'
-          ? 'Stripe Fee (pending sync):'
-          : 'Stripe Fee:';
+          ? tLocale(locale, "stripeFeePending", { ns: "chef", defaultValue: "Stripe Fee (pending sync):" })
+          : tLocale(locale, "stripeFee", { ns: "chef", defaultValue: "Stripe Fee:" });
         addTotalRow(stripeFeeLabel, stripeProcessingFee, true);
 
         // Net payout (bold, highlighted) — what was actually deposited to manager's Stripe account
         doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
         currentY += 10;
         doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669');
-        doc.text('Net Payout:', 380, currentY, { align: 'right', width: 110 });
+        doc.text(tLocale(locale, "netPayout", { ns: "chef", defaultValue: "Net Payout:" }), 380, currentY, { align: 'right', width: 110 });
         doc.text(`$${stripeNetPayout.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
         doc.font('Helvetica').fontSize(10).fillColor('#000000');
 
@@ -669,9 +671,10 @@ export async function generateStorageInvoicePDF(
   storageBooking: any,
   chef: any,
   extensionDetails: any,
-  options?: { viewer?: 'chef' | 'manager' }
+  options?: { viewer?: 'chef' | 'manager', locale?: string }
 ): Promise<Buffer> {
   const invoiceViewer = options?.viewer ?? 'chef';
+  const locale = options?.locale || 'en';
 
   return new Promise((resolve, reject) => {
     try {
@@ -964,7 +967,7 @@ export async function generateDamageClaimInvoicePDF(
     kitchenBookingId: number | null;
     storageBookingId: number | null;
   },
-  options?: { viewer?: 'chef' | 'manager' }
+  options?: { viewer?: 'chef' | 'manager' }, locale?: string
 ): Promise<Buffer> {
   const invoiceViewer = options?.viewer ?? 'chef';
   

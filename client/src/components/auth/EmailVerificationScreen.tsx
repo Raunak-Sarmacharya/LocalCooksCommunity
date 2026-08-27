@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { ArrowLeft, Clock, Mail, RefreshCw } from "lucide-react";
+import { ArrowLeft, Clock, Mail, RefreshCw, CheckCircle2, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import AnimatedButton from "./AnimatedButton";
 
@@ -8,7 +8,9 @@ interface EmailVerificationScreenProps {
   email: string;
   onResend: () => Promise<void>;
   onGoBack: () => void;
+  onCheckVerified?: () => Promise<void>;
   resendLoading?: boolean;
+  mode?: "verification" | "magic-link";
 }
 
 const containerVariants = {
@@ -44,12 +46,15 @@ export default function EmailVerificationScreen({
   email,
   onResend,
   onGoBack,
-  resendLoading = false
+  onCheckVerified,
+  resendLoading = false,
+  mode = "verification"
 }: EmailVerificationScreenProps) {
   const [resendCount, setResendCount] = useState(0);
   const [resendDisabled, setResendDisabled] = useState(false);
   const [resendTimer, setResendTimer] = useState(60);
   const [resendError, setResendError] = useState<string | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -91,7 +96,7 @@ export default function EmailVerificationScreen({
         className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-8"
       >
         <ArrowLeft className="w-4 h-4" />
-        <span>Back to login</span>
+        <span>Change email or login</span>
       </Button>
 
       {/* Email Icon */}
@@ -115,7 +120,9 @@ export default function EmailVerificationScreen({
           Check your email
         </h2>
         <p className="text-gray-600 leading-relaxed">
-          We sent a verification link to:
+          {mode === "magic-link" 
+            ? "We sent a magic sign-in link to:" 
+            : "We sent a verification link to:"}
         </p>
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
@@ -128,23 +135,54 @@ export default function EmailVerificationScreen({
       </motion.div>
 
       {/* Instructions */}
-      <motion.div variants={itemVariants} className="text-center mb-8">
+      <motion.div variants={itemVariants} className="text-center mb-6">
         <p className="text-gray-600 text-sm leading-relaxed">
-          Click the link to verify your account and unlock your learning journey.
+          {mode === "magic-link"
+            ? "Click the link in the email to instantly sign in to your account."
+            : "Click the link to verify your account and unlock your learning journey."}
         </p>
         {resendCount > 0 && (
           <p className="text-sm text-gray-500 mt-2">
-            {resendCount === 1 ? 'Verification email resent.' : `Verification email resent ${resendCount} times.`}
+            {mode === "magic-link"
+              ? resendCount === 1 ? 'Sign-in link resent.' : `Sign-in link resent ${resendCount} times.`
+              : resendCount === 1 ? 'Verification email resent.' : `Verification email resent ${resendCount} times.`}
           </p>
         )}
       </motion.div>
 
-      {/* Resend Button */}
-      <motion.div variants={itemVariants} className="flex justify-center">
+      {/* Action Buttons */}
+      <motion.div variants={itemVariants} className="flex flex-col gap-4">
+        {mode !== "magic-link" && (
+          <Button
+            onClick={async () => {
+              if (isChecking) return;
+              setIsChecking(true);
+            try {
+              if (onCheckVerified) {
+                await onCheckVerified();
+              } else {
+                onGoBack();
+              }
+            } finally {
+              setIsChecking(false);
+            }
+          }}
+          disabled={isChecking}
+          className="w-full bg-[#10b981] hover:bg-[#059669] text-white flex items-center justify-center gap-2 h-12 rounded-md font-medium transition-colors"
+        >
+          {isChecking ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <CheckCircle2 className="w-5 h-5" />
+          )}
+          {isChecking ? "Checking..." : "I have verified my email"}
+        </Button>
+        )}
+        
         <AnimatedButton
           onClick={handleResend}
           disabled={resendDisabled || resendLoading}
-          className="flex items-center gap-2"
+          className="w-full flex items-center justify-center gap-2 h-12 bg-white text-gray-700 border hover:bg-gray-50 hover:text-gray-900 font-medium"
         >
           {resendLoading ? (
             <>
@@ -154,12 +192,12 @@ export default function EmailVerificationScreen({
           ) : resendDisabled ? (
             <>
               <Clock className="w-4 h-4" />
-              Resend in {resendTimer}s
+              Wait {resendTimer}s to resend
             </>
           ) : (
             <>
               <RefreshCw className="w-4 h-4" />
-              Resend verification email
+              {mode === "magic-link" ? "Resend sign-in link" : "Resend verification email"}
             </>
           )}
         </AnimatedButton>

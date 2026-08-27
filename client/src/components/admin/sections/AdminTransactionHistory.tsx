@@ -423,7 +423,7 @@ function TransactionDetailSheet({
             <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-sm">
               <div className="flex justify-between"><span className="text-muted-foreground">Amount Charged</span><span className="font-medium">{formatCurrency(tx.amount)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Booking Subtotal</span><span>{formatCurrency(tx.baseAmount)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Platform Commission</span><span>{formatCurrency(tx.serviceFee)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Service Fee</span><span>{formatCurrency(tx.serviceFee)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Stripe Fee</span><span>{formatCurrency(tx.stripeProcessingFee)}</span></div>
               <div className="flex justify-between border-t pt-1.5"><span className="text-muted-foreground">Manager Payout</span><span className="font-medium text-green-700">{formatCurrency(tx.managerRevenue)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Platform Kept</span><span className="font-medium text-blue-700">{formatCurrency(tx.serviceFee)}</span></div>
@@ -822,7 +822,7 @@ function transactionsToCSV(transactions: AdminTransaction[]): string {
     "TX ID", "Reference Code", "Booking ID", "Booking Type", "Status", "Stripe Status",
     "Chef Name", "Chef Email", "Chef ID", "Manager Email", "Manager ID",
     "Location", "Location ID", "Kitchen", "Kitchen ID",
-    "Amount Charged (CAD)", "Booking Subtotal", "Platform Commission", "Stripe Fee", "Manager Payout", "Refund Amount", "Net Charged",
+    "Amount Charged (CAD)", "Booking Subtotal", "Service Fee", "Stripe Fee", "Manager Payout", "Refund Amount", "Net Charged",
     "Payment Intent ID", "Charge ID", "Refund ID", "Payment Method ID", "Stripe Customer ID", "Webhook Event ID",
     "Booking Status", "Booking Payment Status",
     "Refund Reason", "Failure Reason",

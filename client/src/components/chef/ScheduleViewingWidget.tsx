@@ -6,9 +6,12 @@
  * Built mobile-first with shadcn/ui components.
  */
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { KitchenNextStepsDescription } from "@/components/common/KitchenNextStepsDescription"
 import {
+  KeyRound,
   CalendarDays,
   Clock,
   MapPin,
@@ -24,6 +27,10 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
+import { useFirebaseAuth } from "@/hooks/use-auth"
+import { useAuthModal } from "@/components/auth/AuthModalProvider"
+import { useLocation } from "wouter"
+import { chefDashboardHref } from "@/lib/chef-dashboard-nav"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -46,12 +53,12 @@ import {
 import { Calendar } from "@/components/ui/calendar"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet"
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { format, addDays, isBefore, startOfDay, endOfDay } from "date-fns"
@@ -92,6 +99,8 @@ interface AvailabilityResponse {
 }
 
 interface IntakeData {
+  name?: string
+  email?: string
   intendedUse?: string
   otherIntendedUse?: string
   estimatedWeeklyHours?: string
@@ -102,7 +111,7 @@ interface IntakeData {
 
 // ─── Steps ────────────────────────────────────────────────────────────────────
 
-type BookingStep = "date" | "time" | "intake" | "confirm" | "success"
+type BookingStep = "date" | "time" | "intake" | "register" | "confirm" | "success"
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -113,6 +122,7 @@ interface ScheduleViewingWidgetProps {
   targetedKitchenName?: string
   mode?: "inline" | "modal"
   onClose?: () => void
+  onRequireOpen?: () => void
   open?: boolean
 }
 
@@ -121,10 +131,20 @@ export function ScheduleViewingWidget({
   locationName,
   targetedKitchenId,
   targetedKitchenName,
+  mode,
   onClose,
+  onRequireOpen,
   open = true,
 }: ScheduleViewingWidgetProps) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation("kitchen")
+  const { user, refreshUserData } = useFirebaseAuth()
+  const { openAuthModal, showAuthForms } = useAuthModal()
+  const [, setLocation] = useLocation()
+  const isAuthenticated = !!user
+  // Check if user is fully authenticated (verified and accepted terms)
+  // For users created by admins/managers, they might not need terms, but regular users do
+  const isFullyAuthenticated = isAuthenticated && user?.emailVerified && user?.termsAccepted;
 
   // Step management
   const [step, setStep] = useState<BookingStep>("date")
@@ -132,6 +152,46 @@ export function ScheduleViewingWidget({
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null)
   const [chefNotes, setChefNotes] = useState("")
   const [intakeData, setIntakeData] = useState<IntakeData>({})
+  const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+
+  // Auto-save state to sessionStorage on every change for guests
+  useEffect(() => {
+    if (!isFullyAuthenticated && (selectedDate || selectedSlot || Object.keys(intakeData).length > 0)) {
+      sessionStorage.setItem(`viewing_booking_${locationId}`, JSON.stringify({
+        date: selectedDate,
+        slot: selectedSlot,
+        intake: intakeData,
+        step: step
+      }))
+    }
+  }, [isFullyAuthenticated, locationId, selectedDate, selectedSlot, intakeData, step])
+
+  // Restore state from sessionStorage
+  useEffect(() => {
+    // Only restore once on mount if FULLY authenticated
+    if (!isFullyAuthenticated) return
+
+    try {
+      const savedData = sessionStorage.getItem(`viewing_booking_${locationId}`)
+      if (savedData) {
+        const parsed = JSON.parse(savedData)
+        if (parsed.date) setSelectedDate(new Date(parsed.date))
+        if (parsed.slot) setSelectedSlot(parsed.slot)
+        if (parsed.intake) setIntakeData(parsed.intake)
+        
+        if (isFullyAuthenticated) {
+          setStep("confirm")
+          onRequireOpen?.() // Open modal if we're in hidden state so user can manually submit
+          sessionStorage.removeItem(`viewing_booking_${locationId}`)
+        } else if (parsed.step) {
+          setStep(parsed.step)
+        }
+      }
+    } catch (e) {
+      console.error("Failed to restore booking data", e)
+    }
+  }, [isAuthenticated, isFullyAuthenticated, locationId, onRequireOpen])
 
   // Fetch available slots for the selected date
   const dateStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""
@@ -181,16 +241,16 @@ export function ScheduleViewingWidget({
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
         if (err.code === "SLOT_TAKEN") {
-          throw new Error("This time slot was just taken. Please pick another.")
+          throw new Error(t("timeSlotJustTaken", "This time slot was just taken. Please pick another."))
         }
-        throw new Error(err.error || "Failed to book viewing")
+        throw new Error(err.error || t("failedToBookViewing", "Failed to book viewing"))
       }
       return response.json()
     },
     onSuccess: () => {
       setStep("success")
       queryClient.invalidateQueries({ queryKey: ["/api/viewings/chef"] })
-      toast.success("Kitchen tour booked!")
+      toast.success(t("kitchenTourBookedSuccess", "Kitchen tour booked!"))
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -201,6 +261,8 @@ export function ScheduleViewingWidget({
       }
     },
   })
+
+
 
   const maxBookingDays = availability?.settings?.maxAdvanceBookingDays || 30
   const today = startOfDay(new Date())
@@ -237,37 +299,43 @@ export function ScheduleViewingWidget({
 
   const renderStepIndicator = () => {
     const steps = [
-      { key: "date", label: "Date", icon: CalendarDays },
-      { key: "time", label: "Time", icon: Clock },
-      { key: "intake", label: "Details", icon: ClipboardList },
-      { key: "confirm", label: "Confirm", icon: CheckCircle },
+      { key: "date", label: t("dateLabel", "Date").replace(":", ""), icon: CalendarDays },
+      { key: "time", label: t("timeLabel", "Time").replace(":", ""), icon: Clock },
+      { key: "intake", label: t("applyFlowTourDetails", "Details").split(" ")[0], icon: ClipboardList },
+      { key: "confirm", label: t("reviewAndConfirm", "Confirm").split(" ")[0] || "Confirm", icon: CheckCircle },
     ]
 
     const currentIndex = steps.findIndex((s) => s.key === step)
 
     return (
-      <div className="flex items-center justify-center gap-1 sm:gap-2 mb-4 sm:mb-6">
+      <div className="flex items-center justify-center w-full max-w-md mx-auto mb-6 sm:mb-8">
         {steps.map((s, i) => {
           const Icon = s.icon
           const isActive = s.key === step
           const isCompleted = i < currentIndex
+          
           return (
-            <div key={s.key} className="flex items-center gap-1">
+            <div key={s.key} className="flex items-center">
               <div
                 className={cn(
-                  "flex items-center gap-1 px-2 py-1 rounded-full text-xs sm:text-sm transition-colors",
-                  isActive && "bg-primary text-primary-foreground",
-                  isCompleted && "bg-green-100 text-green-700",
-                  !isActive && !isCompleted && "bg-muted text-muted-foreground"
+                  "flex items-center justify-center rounded-full transition-all duration-300 ease-in-out",
+                  isActive 
+                    ? "bg-primary text-primary-foreground px-3 py-1.5 gap-2" 
+                    : "bg-muted text-muted-foreground w-8 h-8",
+                  isCompleted && "bg-primary/10 text-primary border border-primary/20"
                 )}
               >
-                <Icon className="h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="hidden sm:inline">{s.label}</span>
+                <Icon className={cn("h-4 w-4 shrink-0", isActive && "h-3.5 w-3.5")} />
+                {isActive && (
+                  <span className="text-xs font-medium whitespace-nowrap">
+                    {s.label}
+                  </span>
+                )}
               </div>
               {i < steps.length - 1 && (
                 <div className={cn(
-                  "w-4 sm:w-8 h-0.5",
-                  i < currentIndex ? "bg-green-400" : "bg-muted"
+                  "w-4 sm:w-8 h-[2px] mx-1 sm:mx-2 rounded-full transition-colors",
+                  i < currentIndex ? "bg-primary/40" : "bg-border"
                 )} />
               )}
             </div>
@@ -280,9 +348,9 @@ export function ScheduleViewingWidget({
   const renderDateStep = () => (
     <div className="space-y-4">
       <div className="text-center space-y-1">
-        <h3 className="text-base sm:text-lg font-semibold">Pick a date</h3>
+        <h3 className="text-base sm:text-lg font-semibold">{t("pickADate", "Pick a date")}</h3>
         <p className="text-xs sm:text-sm text-muted-foreground">
-          Choose when you'd like to visit {locationName || "the kitchen"}
+          {t("chooseWhenToVisitLocation", { defaultValue: "Choose when you'd like to visit {locationName}", locationName: locationName || t("theKitchen", "the kitchen") })}
         </p>
       </div>
       <div className="flex justify-center">
@@ -293,7 +361,7 @@ export function ScheduleViewingWidget({
           disabled={(date) => {
             const maxDays = calMetadata?.settings?.maxAdvanceBookingDays || maxBookingDays;
             if (isBefore(date, today) || isBefore(addDays(today, maxDays), date)) return true;
-            if (!calMetadata) return false;
+            if (!calMetadata) return true;
 
             // Check day of week
             const dayOfWeek = date.getDay();
@@ -327,7 +395,7 @@ export function ScheduleViewingWidget({
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h3 className="text-base sm:text-lg font-semibold">Choose a time</h3>
+          <h3 className="text-base sm:text-lg font-semibold">{t("chooseATime", "Choose a time")}</h3>
           <p className="text-xs sm:text-sm text-muted-foreground">
             {selectedDate && format(selectedDate, "EEEE, MMMM d, yyyy")}
           </p>
@@ -337,17 +405,17 @@ export function ScheduleViewingWidget({
       {(slotsLoading || slotsFetching) ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-sm text-muted-foreground">Loading available times...</span>
+          <span className="ml-2 text-sm text-muted-foreground">{t("loadingAvailableTimes", "Loading available times...")}</span>
         </div>
       ) : availability?.slots.length === 0 ? (
         <div className="text-center py-12 space-y-3">
           <Clock className="h-10 w-10 mx-auto text-muted-foreground opacity-40" />
           <p className="text-sm text-muted-foreground">
-            No available time slots on this date.
+            {t("noAvailableTimeSlots", "No available time slots on this date.")}
           </p>
           <Button variant="outline" size="sm" onClick={() => setStep("date")}>
             <CalendarDays className="h-4 w-4 mr-2" />
-            Try another date
+            {t("tryAnotherDate", "Try another date")}
           </Button>
         </div>
       ) : (
@@ -365,7 +433,7 @@ export function ScheduleViewingWidget({
             >
               <span className="text-sm font-medium">{slot.startTime}</span>
               <span className="text-[10px] text-muted-foreground">
-                to {slot.endTime}
+                {t("toTime", { defaultValue: "to {endTime}", endTime: slot.endTime })}
               </span>
             </Button>
           ))}
@@ -381,9 +449,9 @@ export function ScheduleViewingWidget({
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h3 className="text-base sm:text-lg font-semibold">Tell us about your needs</h3>
+          <h3 className="text-base sm:text-lg font-semibold">{t("tellUsAboutYourNeeds", "Tell us about your needs")}</h3>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            This helps the kitchen manager prepare for your kitchen tour.
+            {t("helpsManagerPrepareTour", "This helps the kitchen manager prepare for your kitchen tour.")}
           </p>
         </div>
       </div>
@@ -391,24 +459,24 @@ export function ScheduleViewingWidget({
       <div className="space-y-4">
         {/* Intended Use */}
         <div className="space-y-2">
-          <Label className="text-sm">What will you use the kitchen for?</Label>
+          <Label className="text-sm">{t("whatWillYouUseKitchenFor", "What will you use the kitchen for?")}</Label>
           <Select
             value={intakeData.intendedUse || ""}
             onValueChange={(v) => setIntakeData({ ...intakeData, intendedUse: v })}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select intended use" />
+              <SelectValue placeholder={t("selectIntendedUse", "Select intended use")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="catering">Catering</SelectItem>
-              <SelectItem value="baking_pastry">Baking / Pastry</SelectItem>
-              <SelectItem value="food_production">Food Production</SelectItem>
-              <SelectItem value="other">Other</SelectItem>
+              <SelectItem value="catering">{t("catering", "Catering")}</SelectItem>
+              <SelectItem value="baking_pastry">{t("bakingPastry", "Baking / Pastry")}</SelectItem>
+              <SelectItem value="food_production">{t("foodProduction", "Food Production")}</SelectItem>
+              <SelectItem value="other">{t("other", "Other")}</SelectItem>
             </SelectContent>
           </Select>
           {intakeData.intendedUse === "other" && (
             <Input
-              placeholder="Please specify intended use"
+              placeholder={t("pleaseSpecifyIntendedUse", "Please specify intended use")}
               value={intakeData.otherIntendedUse || ""}
               onChange={(e) =>
                 setIntakeData({ ...intakeData, otherIntendedUse: e.target.value })
@@ -420,7 +488,7 @@ export function ScheduleViewingWidget({
 
         {/* Estimated Hours */}
         <div className="space-y-2">
-          <Label className="text-sm">Estimated weekly hours needed?</Label>
+          <Label className="text-sm">{t("estimatedWeeklyHoursNeeded", "Estimated weekly hours needed?")}</Label>
           <Select
             value={intakeData.estimatedWeeklyHours || ""}
             onValueChange={(v) =>
@@ -428,13 +496,13 @@ export function ScheduleViewingWidget({
             }
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select estimated hours" />
+              <SelectValue placeholder={t("selectEstimatedHours", "Select estimated hours")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="1-5">1 – 5 hours</SelectItem>
-              <SelectItem value="5-10">5 – 10 hours</SelectItem>
-              <SelectItem value="10-20">10 – 20 hours</SelectItem>
-              <SelectItem value="20+">20+ hours</SelectItem>
+              <SelectItem value="1-5">{t("hours1to5", "1 – 5 hours")}</SelectItem>
+              <SelectItem value="5-10">{t("hours5to10", "5 – 10 hours")}</SelectItem>
+              <SelectItem value="10-20">{t("hours10to20", "10 – 20 hours")}</SelectItem>
+              <SelectItem value="20+">{t("hours20Plus", "20+ hours")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -449,19 +517,19 @@ export function ScheduleViewingWidget({
             }
           />
           <Label htmlFor="hasLicense" className="text-sm cursor-pointer">
-            I have a valid food safety license
+            {t("haveValidFoodSafetyLicense", "I have a valid food safety license")}
           </Label>
         </div>
 
         {/* Notes */}
         <div className="space-y-2">
           <Label className="text-sm">
-            Anything specific you want to see or discuss? (optional)
+            {t("anythingSpecificToSee", "Anything specific you want to see or discuss? (optional)")}
           </Label>
           <Textarea
             value={chefNotes}
             onChange={(e) => setChefNotes(e.target.value)}
-            placeholder="e.g., equipment needs, storage requirements..."
+            placeholder={t("egEquipmentNeeds", "e.g., equipment needs, storage requirements...")}
             maxLength={500}
             rows={3}
           />
@@ -473,10 +541,33 @@ export function ScheduleViewingWidget({
 
       <Button 
         className="w-full" 
-        onClick={() => setStep("confirm")}
+        onClick={() => {
+          if (!isFullyAuthenticated) {
+            // Fulfill user request to remember dates when they get to login
+            sessionStorage.removeItem('pending_application_modal');
+            sessionStorage.removeItem(`kitchen_dates_${locationId}_pending_modal`);
+            sessionStorage.setItem(`viewing_booking_${locationId}`, JSON.stringify({
+              date: selectedDate,
+              slot: selectedSlot,
+              step: 3,
+              intake: intakeData
+            }));
+            if (mode === "inline" && showAuthForms) {
+              showAuthForms();
+            } else {
+              openAuthModal({ 
+                title: t("authModalScheduleTourTitle", "Almost there!"),
+                description: <KitchenNextStepsDescription type="tour" />,
+                defaultTab: "register" 
+              });
+            }
+            return;
+          }
+          setStep("confirm")
+        }}
         disabled={intakeData.intendedUse === "other" && !intakeData.otherIntendedUse?.trim()}
       >
-        Review & Confirm
+        {t("reviewAndConfirm", "Review & Confirm")}
         <ArrowRight className="h-4 w-4 ml-2" />
       </Button>
     </div>
@@ -488,7 +579,7 @@ export function ScheduleViewingWidget({
         <Button variant="ghost" size="icon" onClick={handleBack} className="h-8 w-8">
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h3 className="text-base sm:text-lg font-semibold">Confirm your kitchen tour</h3>
+        <h3 className="text-base sm:text-lg font-semibold">{t("confirmKitchenTour", "Confirm your kitchen tour")}</h3>
       </div>
 
       <Card className="border-primary/20">
@@ -496,10 +587,10 @@ export function ScheduleViewingWidget({
           <div className="flex items-start gap-3">
             <Building2 className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-sm font-medium">{locationName || "Kitchen"}</p>
+              <p className="text-sm font-medium">{locationName || t("applyFlowKitchenFallbackName", "Kitchen")}</p>
               {targetedKitchenName && (
                 <p className="text-xs text-muted-foreground">
-                  Interested in: {targetedKitchenName}
+                  {t("interestedIn", { defaultValue: "Interested in: {name}", name: targetedKitchenName })}
                 </p>
               )}
             </div>
@@ -527,9 +618,13 @@ export function ScheduleViewingWidget({
                 <div className="text-sm">
                   <p className="font-medium capitalize">
                     {intakeData.intendedUse === "other"
-                      ? intakeData.otherIntendedUse || "Other"
+                      ? intakeData.otherIntendedUse || t("other", "Other")
                       : intakeData.intendedUse === "baking_pastry"
-                      ? "Baking / Pastry"
+                      ? t("bakingPastry", "Baking / Pastry")
+                      : intakeData.intendedUse === "catering"
+                      ? t("catering", "Catering")
+                      : intakeData.intendedUse === "food_production"
+                      ? t("foodProduction", "Food Production")
                       : intakeData.intendedUse?.replace(/_/g, " ")}
                   </p>
                   {intakeData.estimatedWeeklyHours && (
@@ -553,46 +648,52 @@ export function ScheduleViewingWidget({
         {bookMutation.isPending ? (
           <>
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Booking...
+            {t("bookingStatus", "Booking...")}
           </>
         ) : (
           <>
             <Send className="h-4 w-4 mr-2" />
-            Book Kitchen Tour
+            {t("bookKitchenTour", "Book Kitchen Tour")}
           </>
         )}
       </Button>
 
       <p className="text-xs text-center text-muted-foreground">
-        You'll receive a confirmation notification and email.
+        {t("receiveConfirmationNotification", "You'll receive a confirmation notification and email.")}
       </p>
     </div>
   )
 
   const renderSuccessStep = () => (
     <div className="text-center space-y-4 py-4 sm:py-8">
-      <div className="mx-auto w-14 h-14 sm:w-16 sm:h-16 bg-green-100 rounded-full flex items-center justify-center">
-        <CheckCircle className="h-7 w-7 sm:h-8 sm:w-8 text-green-600" />
+      <div className="mx-auto w-14 h-14 sm:w-16 sm:h-16 rounded-full border flex items-center justify-center">
+        <CheckCircle className="h-7 w-7 sm:h-8 sm:w-8 text-success" />
       </div>
       <div className="space-y-1">
-        <h3 className="text-lg sm:text-xl font-semibold text-green-700">
-          Kitchen Tour Requested!
-        </h3>
+        <div className="flex items-center justify-center gap-2">
+          <h3 className="text-lg sm:text-xl font-semibold">
+            {t("kitchenTourRequested", "Kitchen Tour Requested")}
+          </h3>
+          <Badge variant="success">{t("confirmed", "Confirmed")}</Badge>
+        </div>
         <p className="text-sm text-muted-foreground">
-          Your kitchen tour at {locationName || "the kitchen"} has been requested and is awaiting manager approval.
+          {t("kitchenTourRequestedAwaitingApproval", { defaultValue: "Your kitchen tour at {locationName} has been requested and is awaiting manager approval.", locationName: locationName || t("theKitchen", "the kitchen") })}
+        </p>
+        <p className="text-sm text-muted-foreground mt-2">
+          {t("kitchenTourWhereToCheck", "You can view your scheduled tours in the Kitchen Tours tab under Discover Kitchens.")}
         </p>
       </div>
 
       <Card className="bg-muted/50">
         <CardContent className="pt-4 text-sm space-y-1.5">
           <p>
-            <span className="text-muted-foreground">Date:</span>{" "}
+            <span className="text-muted-foreground">{t("dateLabel", "Date:")}</span>{" "}
             <span className="font-medium">
               {selectedDate && format(selectedDate, "EEEE, MMMM d, yyyy")}
             </span>
           </p>
           <p>
-            <span className="text-muted-foreground">Time:</span>{" "}
+            <span className="text-muted-foreground">{t("timeLabel", "Time:")}</span>{" "}
             <span className="font-medium">
               {selectedSlot?.startTime} — {selectedSlot?.endTime}
             </span>
@@ -602,13 +703,17 @@ export function ScheduleViewingWidget({
 
       <div className="flex flex-col sm:flex-row gap-2 pt-2">
         <Button variant="outline" className="flex-1" onClick={resetForm}>
-          Book Another
+          {t("bookAnother", "Book Another")}
         </Button>
-        {onClose && (
-          <Button className="flex-1" onClick={onClose}>
-            Done
-          </Button>
-        )}
+        <Button 
+          className="flex-1" 
+          onClick={() => {
+            if (onClose) onClose();
+            setLocation(chefDashboardHref("viewings"));
+          }}
+        >
+          {t("viewMyTours", "View My Tours")}
+        </Button>
       </div>
     </div>
   )
@@ -630,20 +735,20 @@ export function ScheduleViewingWidget({
   // If used as a modal (with open/onClose props)
   if (onClose !== undefined) {
     return (
-      <Sheet open={open} onOpenChange={(o) => !o && onClose?.()}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto p-4 sm:p-6">
-          <SheetHeader className="mb-6">
-            <SheetTitle className="flex items-center gap-2 text-base sm:text-lg">
+      <Dialog open={open} onOpenChange={(o) => !o && onClose?.()}>
+        <DialogContent className="w-full sm:max-w-lg overflow-y-auto max-h-[90vh] p-4 sm:p-6">
+          <DialogHeader className="mb-6">
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
               <MapPin className="h-5 w-5 text-primary" />
-              Schedule a Kitchen Tour
-            </SheetTitle>
-            <SheetDescription className="text-xs sm:text-sm">
-              Book an in-person kitchen tour of {locationName || "the kitchen facility"}
-            </SheetDescription>
-          </SheetHeader>
+              {t("scheduleKitchenTour", "Schedule a Kitchen Tour")}
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              {t("bookInPersonKitchenTour", { defaultValue: "Book an in-person kitchen tour of {locationName}", locationName: locationName || t("theKitchenFacility", "the kitchen facility") })}
+            </DialogDescription>
+          </DialogHeader>
           {content}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     )
   }
 
@@ -653,10 +758,10 @@ export function ScheduleViewingWidget({
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
           <MapPin className="h-5 w-5 text-primary" />
-          Schedule a Kitchen Tour
+          {t("scheduleKitchenTour", "Schedule a Kitchen Tour")}
         </CardTitle>
         <CardDescription className="text-xs sm:text-sm">
-          Book an in-person kitchen tour of {locationName || "the kitchen facility"}
+          {t("bookInPersonKitchenTour", { defaultValue: "Book an in-person kitchen tour of {locationName}", locationName: locationName || t("theKitchenFacility", "the kitchen facility") })}
         </CardDescription>
       </CardHeader>
       <CardContent>{content}</CardContent>

@@ -12,8 +12,8 @@ import { logger } from "../logger";
  * 
  * Fee Structure:
  * - Stripe Processing Fee: Configurable (default 2.9% + $0.30 CAD)
- * - Platform Commission: Configurable (default 5%)
- * - Total Application Fee: Stripe fee + Platform commission
+ * - Service Fee: Configurable (default 5%)
+ * - Total Application Fee: Stripe fee + service fee
  * 
  * With destination charges, the platform pays Stripe fees from the application_fee_amount.
  * Therefore, application_fee must be >= Stripe processing fee to avoid losses.

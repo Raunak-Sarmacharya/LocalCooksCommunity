@@ -31,9 +31,8 @@ const hasActiveApplication = (applications?: Application[]) => {
 
 // This component renders the appropriate form based on the current step
 function FormStep() {
-  const { currentStep, goToPreviousStep } = useApplicationForm();
+  const { currentStep } = useApplicationForm();
   const [, navigate] = useLocation();
-
   // Ensure page always starts at the top when step changes
   useEffect(() => {
     // Use instant scroll behavior and scroll to top of page
@@ -83,7 +82,7 @@ function FormStep() {
                   onClick={() => navigate("/")}
                   className="text-gray-600 hover:text-primary transition-colors"
                 >
-                  Back to Information
+                  Back to Home
                 </Button>
               </div>
             )}

@@ -29,6 +29,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TruncatedText } from "@/components/common/TruncatedText";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -507,9 +508,9 @@ function BookingActionSheetContent({
         {/* Booking Summary */}
         <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border">
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm truncate">
+            <TruncatedText as="p" className="font-semibold text-sm truncate">
               {booking.kitchenName || "Kitchen Booking"}
-            </p>
+            </TruncatedText>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
               {booking.chefName && (
                 <span className="flex items-center gap-1">

@@ -13,6 +13,7 @@ import {
     Wrench,
     Package,
     DollarSign,
+    Store,
     MessageCircle,
     FileText,
     Loader2,
@@ -45,6 +46,7 @@ import {
 import { useQuery } from "@tanstack/react-query"
 import { auth } from "@/lib/firebase"
 import { useLocation } from "wouter"
+import { useTranslation } from "react-i18next"
 
 export type PortalType = 'chef' | 'manager' | 'admin'
 
@@ -54,6 +56,7 @@ interface CommandMenuProps {
     onViewChange?: (view: string) => void
     onLogout?: () => void
     portalType?: PortalType
+    hiddenItems?: string[]
 }
 
 // Reference code pattern: KB-XXXXXX, SB-XXXXXX, EXT-XXXXXX, OP-XXXXXX, DC-XXXXXX
@@ -67,8 +70,9 @@ const REFERENCE_TYPE_LABELS: Record<string, string> = {
     damage_claim: "Damage Claim",
 }
 
-export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portalType = 'manager' }: CommandMenuProps) {
+export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portalType = 'manager', hiddenItems = [] }: CommandMenuProps) {
     const [, navigate] = useLocation()
+    const { t } = useTranslation("chef")
     const [searchValue, setSearchValue] = React.useState("")
     const [refLookupResult, setRefLookupResult] = React.useState<{
         type: string; id: number; referenceCode: string; url: string;
@@ -234,57 +238,73 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                     {/* ═══ CHEF Portal Navigation ═══ */}
                     {portalType === 'chef' && (
                         <>
-                            <CommandGroup heading="Navigation">
+                            <CommandGroup heading={t("shellNavigation")}>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("overview"))}>
                                     <LayoutDashboard className="mr-2 h-4 w-4" />
-                                    <span>Overview</span>
+                                    <span>{t("shellOverview")}</span>
                                 </CommandItem>
+                                {!hiddenItems.includes("bookings") && (
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("bookings"))}>
                                     <Calendar className="mr-2 h-4 w-4" />
-                                    <span>My Bookings</span>
+                                    <span>{t("shellMyBookings")}</span>
                                 </CommandItem>
+                                )}
+                                {!hiddenItems.includes("kitchen-applications") && (
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("kitchen-applications"))}>
                                     <Building2 className="mr-2 h-4 w-4" />
-                                    <span>My Kitchens</span>
+                                    <span>{t("shellMyKitchens")}</span>
                                 </CommandItem>
+                                )}
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("discover-kitchens"))}>
                                     <Search className="mr-2 h-4 w-4" />
-                                    <span>Discover Kitchens</span>
+                                    <span>{t("shellDiscoverKitchens")}</span>
                                 </CommandItem>
+                                {!hiddenItems.includes("messages") && (
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("messages"))}>
                                     <MessageCircle className="mr-2 h-4 w-4" />
-                                    <span>Messages</span>
+                                    <span>{t("shellMessages")}</span>
                                 </CommandItem>
+                                )}
                             </CommandGroup>
                             <CommandSeparator />
-                            <CommandGroup heading="Account">
+                            <CommandGroup heading={t("shellAccount")}>
+                                {!hiddenItems.includes("applications") && (
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("applications"))}>
                                     <FileText className="mr-2 h-4 w-4" />
-                                    <span>My Application</span>
+                                    <span>{t("shellMyApplication")}</span>
                                 </CommandItem>
+                                )}
+                                {!hiddenItems.includes("my-account") && (
+                                <CommandItem onSelect={() => runCommand(() => onViewChange?.("my-account"))}>
+                                    <Store className="mr-2 h-4 w-4" />
+                                    <span>{t("shellLinkedAccounts")}</span>
+                                </CommandItem>
+                                )}
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("training"))}>
                                     <BookOpen className="mr-2 h-4 w-4" />
-                                    <span>Training</span>
+                                    <span>{t("shellTraining")}</span>
                                 </CommandItem>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("transactions"))}>
                                     <CreditCard className="mr-2 h-4 w-4" />
-                                    <span>My Transactions</span>
+                                    <span>{t("shellMyTransactions")}</span>
                                 </CommandItem>
+                                {!hiddenItems.includes("issues-refunds") && (
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("issues-refunds"))}>
                                     <AlertTriangle className="mr-2 h-4 w-4" />
-                                    <span>Resolution Center</span>
+                                    <span>{t("shellResolutionCenter")}</span>
                                 </CommandItem>
+                                )}
                             </CommandGroup>
                             <CommandSeparator />
-                            <CommandGroup heading="Profile">
+                            <CommandGroup heading={t("shellProfile")}>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("profile"))}>
                                     <User className="mr-2 h-4 w-4" />
-                                    <span>Profile</span>
+                                    <span>{t("shellProfile")}</span>
                                 </CommandItem>
                                 {onLogout && (
                                     <CommandItem onSelect={() => runCommand(() => onLogout())}>
                                         <LogOut className="mr-2 h-4 w-4" />
-                                        <span>Sign Out</span>
+                                        <span>{t("shellSignOut")}</span>
                                         <CommandShortcut>⇧⌘Q</CommandShortcut>
                                     </CommandItem>
                                 )}

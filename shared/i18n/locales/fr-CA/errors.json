@@ -1,0 +1,20 @@
+{
+  "UNAUTHORIZED": "Veuillez vous connecter pour continuer.",
+  "FORBIDDEN": "Vous n'avez pas l'autorisation d'effectuer cette action.",
+  "NOT_FOUND": "Nous n'avons pas trouvé ce que vous cherchiez.",
+  "VALIDATION_FAILED": "Vérifiez vos informations et réessayez.",
+  "CONFLICT": "Cette action est en conflit avec l'état actuel.",
+  "RATE_LIMITED": "Trop de requêtes. Veuillez patienter et réessayer.",
+  "INTERNAL_ERROR": "Une erreur s'est produite de notre côté. Veuillez réessayer.",
+  "BOOKING_NOT_FOUND": "Réservation introuvable.",
+  "KITCHEN_NOT_FOUND": "Cuisine introuvable.",
+  "LOCATION_NOT_FOUND": "Emplacement introuvable.",
+  "USER_NOT_FOUND": "Utilisateur introuvable.",
+  "USERNAME_TAKEN": "Ce nom d'utilisateur est déjà pris.",
+  "PAYMENT_REQUIRED": "Un paiement est requis pour continuer.",
+  "PAYMENT_FAILED": "Le paiement a échoué. Essayez un autre mode.",
+  "EMAIL_NOT_VERIFIED": "Veuillez vérifier votre courriel avant de continuer.",
+  "TERMS_NOT_ACCEPTED": "Veuillez accepter les conditions pour continuer.",
+  "ACCOUNT_NOT_REGISTERED": "Ce compte n'est pas inscrit chez LocalCooks.",
+  "INVALID_LOCALE": "Cette langue n'est pas prise en charge."
+}

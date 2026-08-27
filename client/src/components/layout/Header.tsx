@@ -5,10 +5,18 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { Application } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
-import { Building2, GraduationCap, LogOut, Menu, User, X } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Building2, Check, ChevronDown, CookingPot, GraduationCap, LogOut, Menu, User, Warehouse, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { getSubdomainFromHostname } from "@shared/subdomain-utils";
+import { parseLocationLocale } from "@/i18n/routing";
+import { useTranslation } from "react-i18next";
 
 // Helper to check if an application is active (not cancelled, rejected)
 const isApplicationActive = (app: Application) => {
@@ -25,6 +33,7 @@ export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [location, setLocation] = useLocation();
   const firebaseAuth = useFirebaseAuth();
+  const { t } = useTranslation("common");
 
   // Get current subdomain
   const currentSubdomain = useMemo(() => {
@@ -38,6 +47,28 @@ export default function Header() {
   const showPartnerLogin = useMemo(() => {
     return currentSubdomain === 'kitchen';
   }, [currentSubdomain]);
+
+  // Services: cross-subdomain audience links (full URLs — subdomain hops are hard navigations)
+  // Derive sibling subdomains from the current origin so preview/staging environments keep working.
+  const serviceUrls = useMemo(() => {
+    try {
+      const url = new URL(window.location.origin);
+      let labels = url.hostname.split('.');
+      // Strip a leading "www" so www.localcooks.ca maps to chef.localcooks.ca
+      if (labels[0] === 'www') labels = labels.slice(1);
+      const isLocalhost = labels[labels.length - 1] === 'localhost';
+      const baseLabelCount = isLocalhost ? 1 : 2; // "localhost" vs "localcooks.ca"
+      const apex = labels.length > baseLabelCount ? labels.slice(1).join('.') : labels.join('.');
+      // Keep the port for local dev (e.g. localhost:5001 → chef.localhost:5001)
+      const port = url.port ? `:${url.port}` : '';
+      return {
+        chef: `${url.protocol}//chef.${apex}${port}`,
+        kitchen: `${url.protocol}//kitchen.${apex}${port}`,
+      };
+    } catch {
+      return { chef: 'https://chef.localcooks.ca', kitchen: 'https://kitchen.localcooks.ca' };
+    }
+  }, []);
 
   // Use Firebase auth (session auth removed)
   const { user: firebaseUser } = useFirebaseAuth();
@@ -166,18 +197,8 @@ export default function Header() {
   const scrollToSection = useCallback((sectionId: string, event?: React.MouseEvent) => {
     event?.preventDefault();
 
-    // If not on the homepage, navigate to homepage first with the hash
-    if (location !== "/") {
-      // Navigate to homepage with hash - Home component will handle scrolling
-      setLocation(`/#${sectionId}`);
-      // Also update the URL hash directly to ensure it's set
-      window.location.hash = sectionId;
-      return;
-    }
-
-    // If already on homepage, scroll to the section smoothly
     const scrollToElement = () => {
-      const element = document.getElementById(sectionId) || document.querySelector(`#${sectionId}`);
+      const element = document.getElementById(sectionId);
       if (element) {
         // Use scrollIntoView - sections have scroll-mt-24 class for header offset
         element.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -187,19 +208,30 @@ export default function Header() {
       return false;
     };
 
-    // Update URL hash
+    // Landing pages (main, chef, kitchen) render these sections inline.
+    // Strip any locale prefix (/en-CA, /fr-CA, /uk) before deciding we're "home",
+    // otherwise the locale-prefixed URL makes us navigate instead of scroll.
+    const { pathWithoutLocale } = parseLocationLocale(location);
+    if (pathWithoutLocale === "/") {
+      // Update the URL hash without triggering a wouter navigation/re-render
+      window.history.replaceState(window.history.state, "", `#${sectionId}`);
+
+      // Try immediately
+      if (scrollToElement()) return;
+
+      // If not found, try with delays (for dynamic content)
+      const delays = [100, 300, 500, 1000, 2000, 3500];
+      delays.forEach((delay) => {
+        setTimeout(scrollToElement, delay);
+      });
+      return;
+    }
+
+    // On a non-landing page: navigate to the landing root with the hash —
+    // the landing page will scroll to the section once mounted
+    setLocation(`/#${sectionId}`);
+    // Also update the URL hash directly to ensure it survives the locale redirect
     window.location.hash = sectionId;
-
-    // Try immediately
-    if (scrollToElement()) return;
-
-    // If not found, try with delays (for dynamic content)
-    const delays = [100, 300, 500, 1000, 2000, 3500];
-    delays.forEach((delay) => {
-      setTimeout(() => {
-        scrollToElement();
-      }, delay);
-    });
   }, [location, setLocation]);
 
   // Helper function to get dashboard link and text
@@ -251,14 +283,10 @@ export default function Header() {
               LocalCooks
             </span>
             {currentSubdomain === 'chef' && (
-              <span className="text-[9px] sm:text-[10px] md:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
-                for chefs
-              </span>
+              <span className="text-[9px] sm:text-[10px] md:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">{t("forChefs")}</span>
             )}
             {currentSubdomain === 'kitchen' && (
-              <span className="text-[9px] sm:text-[10px] md:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
-                for kitchens
-              </span>
+              <span className="text-[9px] sm:text-[10px] md:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">{t("forKitchens")}</span>
             )}
           </div>
         </Link>
@@ -266,49 +294,78 @@ export default function Header() {
         <nav className="hidden md:block">
           <ul className="flex space-x-1 items-center">
             <li>
-              <a
-                href="#revenue-streams"
-                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
-                onClick={(e) => scrollToSection("revenue-streams", e)}
-              >
-                Revenue Streams
-              </a>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="flex items-center gap-1 text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/40"
+                    aria-haspopup="menu"
+                  >
+                    {t("services")}
+                    <ChevronDown className="h-4 w-4 opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-72 p-2">
+                  <DropdownMenuItem asChild>
+                    <a
+                      href={serviceUrls.chef}
+                      className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"
+                    >
+                      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F51042]/10 text-[#F51042]">
+                        <CookingPot className="h-5 w-5" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-1.5 font-medium text-sm text-gray-900">
+                          {t("servicesForCooks")}
+                          {currentSubdomain === 'chef' && (
+                            <Check className="h-3.5 w-3.5 text-[#F51042]" aria-label={t("services")} />
+                          )}
+                        </span>
+                        <span className="block text-xs text-gray-500 mt-0.5">{t("servicesForCooksDesc")}</span>
+                      </span>
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a
+                      href={serviceUrls.kitchen}
+                      className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"
+                    >
+                      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700">
+                        <Warehouse className="h-5 w-5" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-1.5 font-medium text-sm text-gray-900">
+                          {t("servicesForKitchens")}
+                          {currentSubdomain === 'kitchen' && (
+                            <Check className="h-3.5 w-3.5 text-[#F51042]" aria-label={t("services")} />
+                          )}
+                        </span>
+                        <span className="block text-xs text-gray-500 mt-0.5">{t("servicesForKitchensDesc")}</span>
+                      </span>
+                    </a>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </li>
             <li>
               <a
                 href="#how-it-works"
                 className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
                 onClick={(e) => scrollToSection("how-it-works", e)}
-              >
-                How It Works
-              </a>
-            </li>
-            <li>
-              <a
-                href="#everything-included"
-                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
-                onClick={(e) => scrollToSection("everything-included", e)}
-              >
-                Everything Included
-              </a>
+              >{t("howItWorks")}</a>
             </li>
             <li>
               <a
                 href="#resources"
                 className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
                 onClick={(e) => scrollToSection("resources", e)}
-              >
-                Resources
-              </a>
+              >{t("resources")}</a>
             </li>
             <li>
               <a
                 href="#faq"
                 className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
                 onClick={(e) => scrollToSection("faq", e)}
-              >
-                FAQ
-              </a>
+              >{t("faq")}</a>
             </li>
             {user && user.role !== 'admin' && (user as any).isChef && (
               <li>
@@ -316,9 +373,7 @@ export default function Header() {
                   href="/microlearning/overview"
                   className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium hover:bg-gray-50/80"
                 >
-                  <GraduationCap className="h-4 w-4" />
-                  Food Safety Training
-                </Link>
+                  <GraduationCap className="h-4 w-4" />{t("foodSafetyTraining")}</Link>
               </li>
             )}
             {!user && (
@@ -330,7 +385,7 @@ export default function Header() {
                     className="border-[#F51042] text-[#F51042] hover:bg-[#F51042] hover:text-white transition-all duration-300 rounded-lg font-medium shadow-sm hover:shadow-md ml-2"
                   >
                     <Link href={showPartnerLogin ? "/manager/login" : "/auth"}>
-                      {showPartnerLogin ? "Partner Login / Register" : "Login / Register"}
+                      {showPartnerLogin ? t("partnerLoginRegister") : t("loginRegister")}
                     </Link>
                   </Button>
                 </li>
@@ -355,9 +410,7 @@ export default function Header() {
                     onClick={handleLogout}
                     className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 rounded-lg font-medium shadow-sm hover:shadow-md transition-all duration-200 ml-2"
                   >
-                    <LogOut className="h-4 w-4" />
-                    Logout
-                  </Button>
+                    <LogOut className="h-4 w-4" />{t("logout")}</Button>
                 </li>
               </>
             )}
@@ -406,17 +459,43 @@ export default function Header() {
           <div className="container mx-auto px-4 sm:px-6 py-5">
             <ul className="space-y-3">
               <li>
+                <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-gray-400">{t("services")}</p>
                 <a
-                  href="#revenue-streams"
-                  className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                  onClick={(e) => {
-                    scrollToSection("revenue-streams", e);
-                    closeMenu();
-                  }}
+                  href={serviceUrls.chef}
+                  className="flex items-center gap-3 py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
+                  onClick={closeMenu}
                 >
-                  Revenue Streams
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F51042]/10 text-[#F51042]">
+                    <CookingPot className="h-5 w-5" />
+                  </span>
+                  <span>
+                    <span className="flex items-center gap-1.5 block text-sm font-medium text-gray-900">
+                      {t("servicesForCooks")}
+                      {currentSubdomain === 'chef' && <Check className="h-3.5 w-3.5 text-[#F51042]" />}
+                    </span>
+                    <span className="block text-xs text-gray-500">{t("servicesForCooksDesc")}</span>
+                  </span>
                 </a>
               </li>
+              <li>
+                <a
+                  href={serviceUrls.kitchen}
+                  className="flex items-center gap-3 py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
+                  onClick={closeMenu}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700">
+                    <Warehouse className="h-5 w-5" />
+                  </span>
+                  <span>
+                    <span className="flex items-center gap-1.5 block text-sm font-medium text-gray-900">
+                      {t("servicesForKitchens")}
+                      {currentSubdomain === 'kitchen' && <Check className="h-3.5 w-3.5 text-[#F51042]" />}
+                    </span>
+                    <span className="block text-xs text-gray-500">{t("servicesForKitchensDesc")}</span>
+                  </span>
+                </a>
+              </li>
+              <li role="separator" className="border-t border-gray-200/70 my-1" />
               <li>
                 <a
                   href="#how-it-works"
@@ -425,21 +504,7 @@ export default function Header() {
                     scrollToSection("how-it-works", e);
                     closeMenu();
                   }}
-                >
-                  How It Works
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#everything-included"
-                  className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                  onClick={(e) => {
-                    scrollToSection("everything-included", e);
-                    closeMenu();
-                  }}
-                >
-                  Everything Included
-                </a>
+                >{t("howItWorks")}</a>
               </li>
               <li>
                 <a
@@ -449,9 +514,7 @@ export default function Header() {
                     scrollToSection("resources", e);
                     closeMenu();
                   }}
-                >
-                  Resources
-                </a>
+                >{t("resources")}</a>
               </li>
               <li>
                 <a
@@ -461,10 +524,9 @@ export default function Header() {
                     scrollToSection("faq", e);
                     closeMenu();
                   }}
-                >
-                  FAQ
-                </a>
+                >{t("faq")}</a>
               </li>
+
               {user && (
                 <>
                   {user.role !== 'admin' && (user as any).isChef && (
@@ -474,9 +536,7 @@ export default function Header() {
                         className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
                         onClick={closeMenu}
                       >
-                        <GraduationCap className="h-4 w-4" />
-                        Food Safety Training
-                      </Link>
+                        <GraduationCap className="h-4 w-4" />{t("foodSafetyTraining")}</Link>
                     </li>
                   )}
                   <li>
@@ -499,9 +559,7 @@ export default function Header() {
                       }}
                       className="w-full gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
                     >
-                      <LogOut className="h-4 w-4" />
-                      Logout
-                    </Button>
+                      <LogOut className="h-4 w-4" />{t("logout")}</Button>
                   </li>
                 </>
               )}
@@ -513,7 +571,7 @@ export default function Header() {
                       className="w-full bg-primary hover:bg-opacity-90 hover-standard text-white"
                     >
                       <Link href={showPartnerLogin ? "/manager/login" : "/auth"} onClick={closeMenu}>
-                        {showPartnerLogin ? "Partner Login / Register" : "Login / Register"}
+                        {showPartnerLogin ? t("partnerLoginRegister") : t("loginRegister")}
                       </Link>
                     </Button>
                   </li>

@@ -11,6 +11,7 @@ import { useForm } from "react-hook-form";
 import { useLocation } from "wouter";
 import { z } from "zod";
 import { useApplicationForm } from "./ApplicationFormContext";
+import { useTranslation } from "react-i18next";
 import { auth } from "@/lib/firebase";
 
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ const certificationsSchema = z.object({
 type CertificationsFormData = z.infer<typeof certificationsSchema>;
 
 export default function CertificationsForm() {
+  const { t } = useTranslation("chef");
   const { formData, updateFormData, goToPreviousStep } = useApplicationForm();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -121,6 +123,16 @@ export default function CertificationsForm() {
           formData.append(fieldName, file);
         });
         
+        // Extract intended location from URL if we are coming from a kitchen page
+        const urlParams = new URLSearchParams(window.location.search);
+        const redirectUrl = urlParams.get('redirect');
+        if (redirectUrl) {
+          const match = redirectUrl.match(/\/(?:kitchen|apply-kitchen|kitchen-preview)\/(.+)/);
+          if (match && match[1]) {
+            formData.append('intendedLocationId', match[1]);
+          }
+        }
+        
         const headers: Record<string, string> = {
           "Authorization": `Bearer ${authToken}`
         };
@@ -150,10 +162,20 @@ export default function CertificationsForm() {
           foodEstablishmentCertUrl: data.foodEstablishmentCertUrl || null
         });
 
+        const urlParams = new URLSearchParams(window.location.search);
+        const redirectUrl = urlParams.get('redirect');
+        let intendedLocationId;
+        if (redirectUrl) {
+          const match = redirectUrl.match(/\/(?:kitchen|apply-kitchen|kitchen-preview)\/(.+)/);
+          if (match && match[1]) {
+            intendedLocationId = match[1];
+          }
+        }
+
         const response = await fetch("/api/firebase/applications", {
           method: "POST",
           headers,
-          body: JSON.stringify(data),
+          body: JSON.stringify({ ...data, intendedLocationId }),
         });
 
         if (!response.ok) {
@@ -253,12 +275,24 @@ export default function CertificationsForm() {
         mutate(completeFormData);
         
       } else if (hasUrls) {
+        // Extract intended location from URL if we are coming from a kitchen page
+        const urlParams = new URLSearchParams(window.location.search);
+        const redirectUrl = urlParams.get('redirect');
+        let intendedLocationId;
+        if (redirectUrl) {
+          const match = redirectUrl.match(/\/(?:kitchen|apply-kitchen|kitchen-preview)\/(.+)/);
+          if (match && match[1]) {
+            intendedLocationId = match[1];
+          }
+        }
+
         // Use pre-uploaded URLs via JSON submission
         const completeFormData = {
           ...formData,
           ...data,
           ...documentUrls, // Add the URL inputs
           userId: user.uid,
+          intendedLocationId
         } as ApplicationFormData;
 
         logger.info("🔗 Submitting with pre-uploaded URLs");
@@ -330,12 +364,12 @@ export default function CertificationsForm() {
                 <Info className="h-5 w-5 text-indigo-700" />
               </div>
               <div>
-                <h3 className="text-indigo-800 font-medium text-lg mb-1">We're here to help!</h3>
+                <h3 className="text-indigo-800 font-medium text-lg mb-1">{t("sellerApp_certHelpTitle")}</h3>
                 <p className="text-indigo-700 text-sm leading-relaxed mb-2">
-                  Don't worry if you don't have certifications yet. We can guide you through the process once you're approved.
+                  {t("sellerApp_certHelpBody")}
                 </p>
                 <p className="text-indigo-600 text-xs font-medium">
-                  💡 If you have documents, you can upload files directly or provide cloud storage links (Google Drive, Dropbox, etc.)
+                  {t("sellerApp_certHelpTip")}
                 </p>
               </div>
             </div>
@@ -351,9 +385,9 @@ export default function CertificationsForm() {
                   <span className="bg-green-100 p-2 rounded-full mr-3">
                     <Check className="h-5 w-5 text-green-600" />
                   </span>
-                  <h3 className="text-xl font-semibold text-gray-800">Food Safety License</h3>
+                  <h3 className="text-xl font-semibold text-gray-800">{t("sellerApp_foodSafetyTitle")}</h3>
                 </div>
-                <p className="text-gray-600 mt-2 ml-10 max-w-xl">Required for professional food preparation</p>
+                <p className="text-gray-600 mt-2 ml-10 max-w-xl">{t("sellerApp_foodSafetyDesc")}</p>
               </div>
               <a
                 href="https://skillspassnl.com"
@@ -361,12 +395,12 @@ export default function CertificationsForm() {
                 rel="noopener noreferrer"
                 className="bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-medium py-2 px-4 rounded-lg transition-all duration-200 inline-flex items-center whitespace-nowrap border border-blue-200"
               >
-                Learn more <ExternalLink className="h-3.5 w-3.5 ml-2" />
+                {t("sellerApp_learnMore")} <ExternalLink className="h-3.5 w-3.5 ml-2" />
               </a>
             </div>
 
             <div className="ml-10">
-              <p className="mb-4 text-gray-700 font-medium">Do you have a Food Safety License?*</p>
+              <p className="mb-4 text-gray-700 font-medium">{t("sellerApp_foodSafetyQuestion")}</p>
               <div className="flex flex-col space-y-4">
                 <div 
                   className="flex items-start space-x-3 py-2 cursor-pointer" 
@@ -380,7 +414,7 @@ export default function CertificationsForm() {
                     </div>
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium cursor-pointer">Yes</span>
+                    <span className="font-medium cursor-pointer">{t("sellerApp_yes")}</span>
                     
                     {/* Document Upload Section for Food Safety License */}
                     {form.watch("foodSafetyLicense") === "yes" && (
@@ -389,11 +423,11 @@ export default function CertificationsForm() {
                           <TabsList className="grid w-full grid-cols-2">
                             <TabsTrigger value="upload" className="flex items-center gap-2 text-xs">
                               <Upload className="h-3 w-3" />
-                              Upload File
+                              {t("sellerApp_uploadFile")}
                             </TabsTrigger>
                             <TabsTrigger value="url" className="flex items-center gap-2 text-xs">
                               <LinkIcon className="h-3 w-3" />
-                              Provide URL
+                              {t("sellerApp_provideUrl")}
                             </TabsTrigger>
                           </TabsList>
                           
@@ -401,7 +435,7 @@ export default function CertificationsForm() {
                             <div className="w-full max-w-full">
                               <FileUpload
                                 fieldName="foodSafetyLicense"
-                                label="Upload Food Safety License"
+                                label={t("sellerApp_uploadFoodSafety")}
                                 required={true}
                                 currentFile={fileUploads.foodSafetyLicense}
                                 onFileChange={(file) => handleFileUpload("foodSafetyLicense", file)}
@@ -412,7 +446,7 @@ export default function CertificationsForm() {
                               <div className="flex items-start space-x-2">
                                 <AlertTriangle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
                                 <p className="text-sm text-blue-700">
-                                  <strong>Upload from device:</strong> Select a clear photo or scan of your Food Safety License certificate.
+                                  <strong>{t("sellerApp_uploadFromDevice")}</strong> {t("sellerApp_uploadFoodSafetyTip")}
                                 </p>
                               </div>
                             </div>
@@ -421,7 +455,7 @@ export default function CertificationsForm() {
                           <TabsContent value="url" className="mt-3 w-full overflow-hidden">
                             <div className="space-y-2 w-full max-w-full">
                               <Label htmlFor="foodSafetyLicenseUrl" className="text-sm font-medium">
-                                Food Safety License URL
+                                {t("sellerApp_foodSafetyUrl")}
                               </Label>
                               <Input
                                 id="foodSafetyLicenseUrl"
@@ -438,7 +472,7 @@ export default function CertificationsForm() {
                                 <div className="flex items-start space-x-2">
                                   <Info className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
                                   <p className="text-sm text-green-700">
-                                    <strong>Cloud storage:</strong> Provide a shareable link from Google Drive, Dropbox, OneDrive, etc. Make sure the link allows public viewing.
+                                    <strong>{t("sellerApp_cloudStorage")}</strong> {t("sellerApp_cloudStorageTip")}
                                   </p>
                                 </div>
                               </div>
@@ -461,7 +495,7 @@ export default function CertificationsForm() {
                     </div>
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium cursor-pointer">No</span>
+                    <span className="font-medium cursor-pointer">{t("sellerApp_no")}</span>
                   </div>
                 </div>
               </div>
@@ -474,7 +508,7 @@ export default function CertificationsForm() {
               <div className="mt-5 p-4 bg-gray-50 rounded-lg border border-gray-100">
                 <p className="text-sm text-gray-600 flex items-start">
                   <HelpCircle className="h-4 w-4 mr-2 text-primary mt-0.5 flex-shrink-0" />
-                  <span>The Food Safety License is typically obtained through a 5 hours course offered by SkillPass NL or other accepted food safety certification providers by the provincial government. It teaches proper food handling, storage, and preparation methods to prevent foodborne illness.</span>
+                  <span>{t("sellerApp_foodSafetyInfo")}</span>
                 </p>
               </div>
             </div>
@@ -488,9 +522,9 @@ export default function CertificationsForm() {
                   <span className="bg-orange-100 p-2 rounded-full mr-3">
                     <Check className="h-5 w-5 text-orange-600" />
                   </span>
-                  <h3 className="text-xl font-semibold text-gray-800">Food Establishment Certificate</h3>
+                  <h3 className="text-xl font-semibold text-gray-800">{t("sellerApp_foodEstTitle")}</h3>
                 </div>
-                <p className="text-gray-600 mt-2 ml-10 max-w-xl">Required for operating a food business</p>
+                <p className="text-gray-600 mt-2 ml-10 max-w-xl">{t("sellerApp_foodEstDesc")}</p>
               </div>
               <a
                 href="https://www.gov.nl.ca/dgsnl/licences/env-health/food/"
@@ -498,12 +532,12 @@ export default function CertificationsForm() {
                 rel="noopener noreferrer"
                 className="bg-orange-50 hover:bg-orange-100 text-orange-700 text-sm font-medium py-2 px-4 rounded-lg transition-all duration-200 inline-flex items-center whitespace-nowrap border border-orange-200"
               >
-                Provincial Guidelines <ExternalLink className="h-3.5 w-3.5 ml-2" />
+                {t("sellerApp_provincialGuidelines")} <ExternalLink className="h-3.5 w-3.5 ml-2" />
               </a>
             </div>
 
             <div className="ml-10">
-              <p className="mb-4 text-gray-700 font-medium">Do you have a Food Establishment Certificate?*</p>
+              <p className="mb-4 text-gray-700 font-medium">{t("sellerApp_foodEstQuestion")}</p>
               <div className="flex flex-col space-y-4">
                 <div 
                   className="flex items-start space-x-3 py-2 cursor-pointer" 
@@ -517,7 +551,7 @@ export default function CertificationsForm() {
                     </div>
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium cursor-pointer">Yes</span>
+                    <span className="font-medium cursor-pointer">{t("sellerApp_yes")}</span>
                     
                     {/* Document Upload Section for Food Establishment Certificate */}
                     {form.watch("foodEstablishmentCert") === "yes" && (
@@ -526,11 +560,11 @@ export default function CertificationsForm() {
                           <TabsList className="grid w-full grid-cols-2">
                             <TabsTrigger value="upload" className="flex items-center gap-2 text-xs">
                               <Upload className="h-3 w-3" />
-                              Upload File
+                              {t("sellerApp_uploadFile")}
                             </TabsTrigger>
                             <TabsTrigger value="url" className="flex items-center gap-2 text-xs">
                               <LinkIcon className="h-3 w-3" />
-                              Provide URL
+                              {t("sellerApp_provideUrl")}
                             </TabsTrigger>
                           </TabsList>
                           
@@ -538,7 +572,7 @@ export default function CertificationsForm() {
                             <div className="w-full max-w-full">
                               <FileUpload
                                 fieldName="foodEstablishmentCert"
-                                label="Upload Food Establishment Certificate"
+                                label={t("sellerApp_uploadFoodEst")}
                                 required={false}
                                 currentFile={fileUploads.foodEstablishmentCert}
                                 onFileChange={(file) => handleFileUpload("foodEstablishmentCert", file)}
@@ -549,7 +583,7 @@ export default function CertificationsForm() {
                               <div className="flex items-start space-x-2">
                                 <Check className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
                                 <p className="text-sm text-green-700">
-                                  <strong>Optional but recommended:</strong> Upload your Food Establishment Certificate to speed up the verification process.
+                                  <strong>{t("sellerApp_optionalRecommended")}</strong> {t("sellerApp_uploadFoodEstTip")}
                                 </p>
                               </div>
                             </div>
@@ -558,7 +592,7 @@ export default function CertificationsForm() {
                           <TabsContent value="url" className="mt-3 w-full overflow-hidden">
                             <div className="space-y-2 w-full max-w-full">
                               <Label htmlFor="foodEstablishmentCertUrl" className="text-sm font-medium">
-                                Food Establishment Certificate URL (Optional)
+                                {t("sellerApp_foodEstUrl")}
                               </Label>
                               <Input
                                 id="foodEstablishmentCertUrl"
@@ -575,7 +609,7 @@ export default function CertificationsForm() {
                                 <div className="flex items-start space-x-2">
                                   <Info className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
                                   <p className="text-sm text-orange-700">
-                                    <strong>Optional:</strong> Provide a shareable link to your Food Establishment Certificate. This helps us verify your business setup faster.
+                                    <strong>{t("sellerApp_optional")}</strong> {t("sellerApp_foodEstUrlTip")}
                                   </p>
                                 </div>
                               </div>
@@ -598,7 +632,7 @@ export default function CertificationsForm() {
                     </div>
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium cursor-pointer">No</span>
+                    <span className="font-medium cursor-pointer">{t("sellerApp_no")}</span>
                   </div>
                 </div>
               </div>
@@ -611,7 +645,7 @@ export default function CertificationsForm() {
               <div className="mt-5 p-4 bg-gray-50 rounded-lg border border-gray-100">
                 <p className="text-sm text-gray-600 flex items-start">
                   <HelpCircle className="h-4 w-4 mr-2 text-primary mt-0.5 flex-shrink-0" />
-                  <span>This certificate is issued by Environmental Health Services after inspecting your food preparation area. It ensures your kitchen meets health and safety standards. We have relationships with commercial kitchens if you need a certified space.</span>
+                  <span>{t("sellerApp_foodEstInfo")}</span>
                 </p>
               </div>
             </div>
@@ -624,9 +658,9 @@ export default function CertificationsForm() {
                 <span className="bg-purple-100 p-2 rounded-full mr-3">
                   <HelpCircle className="h-5 w-5 text-purple-600" />
                 </span>
-                <h3 className="text-xl font-semibold text-gray-800">Questions or Feedback?</h3>
+                <h3 className="text-xl font-semibold text-gray-800">{t("sellerApp_feedbackTitle")}</h3>
               </div>
-              <p className="text-gray-600 mt-2 ml-10 max-w-xl">Optional: Share any questions or additional information</p>
+              <p className="text-gray-600 mt-2 ml-10 max-w-xl">{t("sellerApp_feedbackDesc")}</p>
             </div>
 
             <div className="ml-10">
@@ -637,7 +671,7 @@ export default function CertificationsForm() {
                   <FormItem>
                     <FormControl>
                       <Textarea
-                        placeholder="Any other information you'd like to share or questions you have?"
+                        placeholder={t("sellerApp_certNotesPlaceholder")}
                         className="resize-none h-28 border-gray-200 focus:border-primary focus:ring-primary"
                         {...field}
                       />
@@ -661,7 +695,7 @@ export default function CertificationsForm() {
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M9.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L7.414 9H15a1 1 0 110 2H7.414l2.293 2.293a1 1 0 010 1.414z" clipRule="evenodd" />
             </svg>
-            Previous Step
+            {t("sellerApp_previousStep")}
           </Button>
 
           <Button
@@ -671,12 +705,12 @@ export default function CertificationsForm() {
           >
             <span className="relative z-10 flex items-center">
               {isUploading ? (
-                <>Uploading files... {uploadProgress > 0 && `${Math.round(uploadProgress)}%`}</>
+                <>{t("sellerApp_uploadingFiles")} {uploadProgress > 0 && `${Math.round(uploadProgress)}%`}</>
               ) : isPending ? (
-                <>Submitting...</>
+                <>{t("sellerApp_certSubmitting")}</>
               ) : (
                 <>
-                  Submit Application
+                  {t("sellerApp_submitApp")}
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform duration-200" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
                   </svg>

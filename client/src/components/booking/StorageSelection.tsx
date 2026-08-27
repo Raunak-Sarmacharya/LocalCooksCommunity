@@ -57,20 +57,20 @@ const STORAGE_TYPE_CONFIG: Record<
   freezer: {
     icon: Snowflake,
     label: "Freezer",
-    iconBg: "bg-blue-50 text-blue-600",
-    badgeClass: "bg-blue-50 text-blue-700 border-blue-200",
+    iconBg: "bg-muted text-muted-foreground",
+    badgeClass: "",
   },
   cold: {
     icon: Thermometer,
     label: "Refrigerator",
-    iconBg: "bg-cyan-50 text-cyan-600",
-    badgeClass: "bg-cyan-50 text-cyan-700 border-cyan-200",
+    iconBg: "bg-muted text-muted-foreground",
+    badgeClass: "",
   },
   dry: {
     icon: Package,
     label: "Dry Storage",
-    iconBg: "bg-amber-50 text-amber-600",
-    badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
+    iconBg: "bg-muted text-muted-foreground",
+    badgeClass: "",
   },
 };
 

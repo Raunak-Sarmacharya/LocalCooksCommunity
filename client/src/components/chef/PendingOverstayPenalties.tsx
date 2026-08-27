@@ -109,7 +109,7 @@ export function PendingOverstayPenalties() {
 
   if (isLoading) {
     return (
-      <Card className="border-orange-200 bg-orange-50/50">
+      <Card className="border">
         <CardHeader className="pb-3">
           <Skeleton className="h-6 w-48" />
         </CardHeader>
@@ -126,15 +126,16 @@ export function PendingOverstayPenalties() {
 
   // Only show pending penalties - resolved ones show on storage cards
   return (
-    <Card className="border-orange-300 bg-gradient-to-r from-orange-50 to-red-50">
+    <Card className="border border-destructive/30">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-orange-600" />
-          <CardTitle className="text-lg text-orange-800">
+          <AlertTriangle className="h-5 w-5 text-destructive" />
+          <CardTitle className="text-lg">
             Outstanding Overstay Penalties
           </CardTitle>
+          <Badge variant="destructive" className="text-xs">Payment required</Badge>
         </div>
-        <CardDescription className="text-orange-700">
+        <CardDescription>
           You have {pendingPenalties.length} pending penalty{pendingPenalties.length !== 1 ? 'ies' : 'y'} that require{pendingPenalties.length === 1 ? 's' : ''} payment.
         </CardDescription>
       </CardHeader>
@@ -142,7 +143,7 @@ export function PendingOverstayPenalties() {
         {pendingPenalties.map((penalty) => (
           <div
             key={penalty.overstayId}
-            className="bg-white rounded-lg border border-orange-200 p-4 space-y-3"
+            className="rounded-lg border p-4 space-y-3"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-2">
@@ -173,14 +174,13 @@ export function PendingOverstayPenalties() {
               </div>
 
               <div className="text-right space-y-2">
-                <div className="text-xl font-bold text-orange-700">
+                <div className="text-xl font-bold">
                   {formatCurrency(penalty.penaltyAmountCents)}
                 </div>
                 <Button
                   size="sm"
                   onClick={() => payMutation.mutate(penalty.overstayId)}
                   disabled={payMutation.isPending}
-                  className="bg-orange-600 hover:bg-orange-700"
                 >
                   <CreditCard className="h-4 w-4 mr-1" />
                   {payMutation.isPending ? 'Processing...' : 'Pay Now'}
@@ -194,7 +194,7 @@ export function PendingOverstayPenalties() {
           </div>
         ))}
 
-        <p className="text-xs text-orange-700 text-center pt-2">
+        <p className="text-xs text-muted-foreground text-center pt-2">
           Please pay your outstanding penalties to maintain good standing and continue using storage facilities.
         </p>
       </CardContent>

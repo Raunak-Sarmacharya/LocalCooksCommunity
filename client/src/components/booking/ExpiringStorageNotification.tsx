@@ -3,8 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { AlertTriangle, Package, CalendarPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
 import { getAuthHeaders } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface ExpiringStorageBooking {
   id: number;
@@ -25,6 +28,7 @@ interface ExpiringStorageBooking {
 }
 
 export function ExpiringStorageNotification() {
+  const { t } = useTranslation("chef");
   const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
   const [extendDialogBooking, setExtendDialogBooking] = useState<ExpiringStorageBooking | null>(null);
 
@@ -64,77 +68,84 @@ export function ExpiringStorageNotification() {
     <>
       <div className="space-y-3 mb-6">
         {visibleBookings.map((booking) => {
-          const theme = booking.isExpired
-            ? { border: 'border-red-200', bg: 'bg-red-50', text: 'text-red-900', muted: 'text-red-700', icon: 'text-red-600', btn: 'bg-red-600 hover:bg-red-700' }
+          const badgeVariant = booking.isExpired
+            ? "destructive" as const
             : booking.isExpiringSoon
-            ? { border: 'border-amber-200', bg: 'bg-amber-50', text: 'text-amber-900', muted: 'text-amber-700', icon: 'text-amber-600', btn: 'bg-amber-600 hover:bg-amber-700' }
-            : { border: 'border-blue-200', bg: 'bg-blue-50', text: 'text-blue-900', muted: 'text-blue-700', icon: 'text-blue-600', btn: 'bg-blue-600 hover:bg-blue-700' };
+            ? "warning" as const
+            : "outline" as const;
+
+          const title = booking.isExpired
+            ? t('sbStorageExpired')
+            : booking.daysUntilExpiry === 0
+            ? t('sbExpiresToday')
+            : booking.daysUntilExpiry === 1
+            ? t('sbExpiresTomorrow')
+            : t('sbExpiresInDays', { count: booking.daysUntilExpiry });
 
           return (
             <div
               key={booking.id}
-              className={`rounded-lg border ${theme.border} ${theme.bg} p-4`}
+              className={cn(
+                "rounded-lg border p-4",
+                booking.isExpired && "border-destructive/30"
+              )}
             >
               <div className="flex items-start gap-3">
                 {booking.isExpired ? (
-                  <AlertTriangle className={`h-5 w-5 mt-0.5 shrink-0 ${theme.icon}`} />
+                  <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0 text-destructive" />
                 ) : (
-                  <Package className={`h-5 w-5 mt-0.5 shrink-0 ${theme.icon}`} />
+                  <Package className="h-5 w-5 mt-0.5 shrink-0 text-muted-foreground" />
                 )}
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <h3 className={`text-sm font-semibold ${theme.text}`}>
-                        {booking.isExpired
-                          ? 'Storage Expired'
-                          : booking.daysUntilExpiry === 0
-                          ? 'Storage Expires Today'
-                          : booking.daysUntilExpiry === 1
-                          ? 'Storage Expires Tomorrow'
-                          : `Storage Expires in ${booking.daysUntilExpiry} Days`}
-                      </h3>
-                      <p className={`text-xs ${theme.muted} mt-1`}>
-                        Extend your storage at <span className="font-medium">{booking.kitchenName}</span> to avoid losing your spot.
-                      </p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm font-semibold">{title}</h3>
+                        <Badge variant={badgeVariant} className="text-xs">
+                          {booking.isExpired ? t('sbBadgeExpired') : booking.daysUntilExpiry === 0 ? t('sbBadgeToday') : t('sbBadgeDaysLeft', { count: booking.daysUntilExpiry })}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1"
+                        dangerouslySetInnerHTML={{ __html: t('sbExtendBody', { kitchen: booking.kitchenName }) }}
+                      />
                     </div>
                     <Button
                       size="icon"
                       variant="ghost"
-                      className={`h-6 w-6 -mt-1 -mr-1 shrink-0 ${theme.muted} hover:${theme.text}`}
+                      className="h-6 w-6 -mt-1 -mr-1 shrink-0 text-muted-foreground"
                       onClick={() => handleDismiss(booking.id)}
                     >
                       <X className="h-3.5 w-3.5" />
                     </Button>
                   </div>
 
-                  <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-xs ${theme.muted}`}>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-xs text-muted-foreground">
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium">{booking.storageName}</span>
-                      <span className="px-1.5 py-0.5 rounded-full bg-white/60 border border-current/20 capitalize">
+                      <Badge variant="outline" className="text-[10px] capitalize px-1.5 py-0">
                         {booking.storageType}
-                      </span>
+                      </Badge>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span>Ends</span>
+                      <span>{t("sbEnds")}</span>
                       <span className="font-medium">
                         {format(new Date(booking.endDate), "MMM d, yyyy")}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span>${((booking.basePrice || 0) / 100).toFixed(2)}</span>
-                      <span>/day</span>
+                      <span>{t("sbPerDay")}</span>
                     </div>
                   </div>
 
                   <div className="flex flex-wrap gap-2 mt-4">
                     <Button
                       size="sm"
-                      className={`${theme.btn} text-white`}
                       onClick={() => setExtendDialogBooking(booking)}
                     >
                       <CalendarPlus className="h-3.5 w-3.5 mr-1.5" />
-                      Extend Storage
+                      {t("sbExtendStorage")}
                     </Button>
                   </div>
                 </div>

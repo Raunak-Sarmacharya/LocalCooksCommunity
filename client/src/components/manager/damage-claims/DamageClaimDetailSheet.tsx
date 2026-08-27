@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { SmartImage } from "@/components/ui/smart-image";
 
 interface ClaimHistoryEntry {
   id: number;
@@ -583,7 +584,7 @@ export function DamageClaimDetailSheet({
                       {/* Thumbnail or Icon */}
                       <div className="w-16 h-16 rounded bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
                         {evidence.fileUrl.match(/\.(jpg|jpeg|png|webp|gif)$/i) ? (
-                          <img
+                          <SmartImage
                             src={getR2ProxyUrl(evidence.fileUrl)}
                             alt={evidence.fileName || 'Evidence'}
                             className="w-full h-full object-cover"

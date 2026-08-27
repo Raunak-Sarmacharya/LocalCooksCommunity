@@ -345,7 +345,7 @@ export function PlatformSettingsSection() {
         </CardContent>
       </Card>
 
-      {/* Platform Commission Card */}
+      {/* Service Fee Card */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
@@ -353,9 +353,9 @@ export function PlatformSettingsSection() {
               <TrendingUp className="h-5 w-5 text-green-600" />
             </div>
             <div>
-              <CardTitle>Platform Commission</CardTitle>
+              <CardTitle>Service Fee</CardTitle>
               <CardDescription>
-                Your platform&apos;s commission on each booking. Set to 0% for break-even mode (only cover Stripe fees).
+                Your service fee on each booking. Set to 0% for break-even mode (only cover Stripe fees).
               </CardDescription>
             </div>
           </div>
@@ -363,7 +363,7 @@ export function PlatformSettingsSection() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <Label>Platform Commission Rate</Label>
+              <Label>Service Fee Rate</Label>
               <NumericInput
                 suffix="%"
                 allowDecimals
@@ -397,7 +397,7 @@ export function PlatformSettingsSection() {
           <p>2. Stripe deducts the actual processing fee (varies by card type) from the platform balance.</p>
           <p>3. The webhook reads the actual fee from <code>balance_transaction.fee</code>.</p>
           <p>4. The platform calls <code>stripe.transfers.create()</code> to send the manager
-            <strong> charge − actual Stripe fee − platform commission</strong> to their Connect account.</p>
+            <strong> charge − actual Stripe fee − service fee</strong> to their Connect account.</p>
           <p>The Stripe % and flat fee values above are display-only estimates; the actual fee
             from Stripe is always used for the transfer.</p>
         </AlertDescription>
@@ -420,7 +420,7 @@ export function PlatformSettingsSection() {
                 <p className="font-bold">{currentConfig.config.stripeFlatFeeDisplay}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">Platform %</p>
+                <p className="text-muted-foreground">Service Fee</p>
                 <p className="font-bold">{currentConfig.config.platformCommissionRateDisplay}</p>
               </div>
               <div>
@@ -611,8 +611,8 @@ export function PlatformSettingsSection() {
         <AlertDescription>
           <ul className="list-disc list-inside space-y-1 mt-2 text-sm">
             <li><strong>Stripe Fee:</strong> Covers Stripe&apos;s processing cost (2.9% + $0.30 for Canada)</li>
-            <li><strong>Platform Commission:</strong> Your profit margin (set to 0% for break-even)</li>
-            <li><strong>Application Fee:</strong> Stripe Fee + Platform Commission (sent to your Stripe account)</li>
+            <li><strong>Service Fee:</strong> Your profit margin (set to 0% for break-even)</li>
+            <li><strong>Application Fee:</strong> Stripe Fee + Service Fee (sent to your Stripe account)</li>
             <li><strong>Manager Receives:</strong> Booking Amount - Application Fee</li>
             <li>Changes apply to all new bookings immediately</li>
           </ul>

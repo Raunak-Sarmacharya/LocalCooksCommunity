@@ -55,6 +55,7 @@ export interface UpdateUserDTO {
   termsAccepted?: boolean;
   termsAcceptedAt?: Date | null;
   termsVersion?: string | null;
+  preferredLocale?: string | null;
 }
 
 /**
@@ -88,6 +89,7 @@ export interface UserDTO {
   termsAccepted: boolean;
   termsAcceptedAt: Date | null;
   termsVersion: string | null;
+  preferredLocale: string | null;
 }
 
 /**

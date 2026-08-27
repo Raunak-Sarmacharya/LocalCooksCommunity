@@ -1,5 +1,5 @@
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { useChefKitchenApplications, useChefApprovedKitchens, useChefKitchenApplicationsStatus } from "@/hooks/use-chef-kitchen-applications";
+import { useChefKitchenApplicationsStatus } from "@/hooks/use-chef-kitchen-applications";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -12,29 +12,36 @@ import {
   MapPin,
   Plus,
   Search,
-  XCircle,
   DollarSign,
   Utensils,
   AlertCircle,
   Eye,
+  FileText,
+  Info,
   Snowflake,
   Thermometer,
   Package,
 } from "lucide-react";
-import { useState } from "react";
-import { Link } from "wouter";
+import { useState, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { Link, useLocation } from "wouter";
 import KitchenBookingSheet from "@/components/booking/KitchenBookingSheet";
 import { ScheduleViewingWidget } from "@/components/chef/ScheduleViewingWidget";
+import ChefViewingsList from "@/components/chef/ChefViewingsList";
+import { DiscoverKitchensButtonTour, consumeDiscoverKitchensWalkthroughRequest, peekDiscoverKitchensWalkthroughRequest } from "@/components/kitchen-application/DiscoverKitchensButtonTour";
 
+import { ChefPageHeader } from "@/components/chef/ui";
+import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
+import { getKitchenDisplayStatus, kitchenLocationId, isActiveKitchenApplication, toneToBadgeVariant } from "@/components/chef/applications/status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { SmartImage } from "@/components/ui/smart-image";
+import { TruncatedText } from "@/components/common/TruncatedText";
 
 interface StorageSummary {
   hasDryStorage: boolean;
@@ -86,14 +93,29 @@ const itemVariants = {
   },
 };
 
+const kitchenCardActionClass = "h-11 min-h-[44px] w-full sm:w-auto box-border";
+
 interface KitchenDiscoveryProps {
   compact?: boolean;
+  defaultTab?: string;
+  onViewKitchenApplication?: () => void;
 }
 
-export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryProps) {
+export default function KitchenDiscovery({
+  compact = false,
+  defaultTab = "discover",
+  onViewKitchenApplication,
+}: KitchenDiscoveryProps) {
+  const { t, i18n } = useTranslation("kitchen");
+  const { t: tChef } = useTranslation("chef");
   const { user } = useFirebaseAuth();
+  const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("discover");
+  const [activeTab, setActiveTab] = useState(defaultTab);
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
   
   // Booking sheet state for platform standard booking flow
   const [bookingSheetOpen, setBookingSheetOpen] = useState(false);
@@ -112,10 +134,27 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
     setBookingSheetOpen(true);
   };
 
+  const handleViewKitchenApplication = () => {
+    if (onViewKitchenApplication) {
+      onViewKitchenApplication();
+      return;
+    }
+    navigate(chefDashboardHref("applications"));
+  };
+
   const [tourLocation, setTourLocation] = useState<{
     id: number;
     name: string;
   } | null>(null);
+  const [tourReplayToken, setTourReplayToken] = useState(() =>
+    peekDiscoverKitchensWalkthroughRequest() ? 1 : 0
+  );
+
+  useEffect(() => {
+    if (!consumeDiscoverKitchensWalkthroughRequest()) return;
+    setActiveTab("discover");
+    setTourReplayToken((token) => Math.max(token, 1));
+  }, []);
 
   const {
     applications,
@@ -125,8 +164,6 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
     pendingCount,
     isLoading: applicationsLoading,
   } = useChefKitchenApplicationsStatus();
-
-  const { approvedKitchens, isLoading: approvedLoading } = useChefApprovedKitchens();
 
   // Fetch all public kitchens (individual kitchen listings)
   const { data: publicKitchens, isLoading: kitchensLoading } = useQuery<PublicKitchen[]>({
@@ -143,64 +180,62 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
 
   const isLoading = applicationsLoading || kitchensLoading;
 
-  // Filter out kitchens at locations the chef has active applications for (inReview or approved)
-  // Allow kitchens at locations with rejected/cancelled applications to show up so chefs can re-apply
-  const activeApplicationLocationIds = new Set(
-    applications
-      .filter((a) => a.status === "inReview" || a.status === "approved")
-      .map((a) => a.locationId)
-  );
+  const applicationByLocationId = useMemo(() => {
+    const map = new Map<number, (typeof applications)[number]>();
+    for (const app of applications) {
+      const locationId = kitchenLocationId(app);
+      if (locationId == null) continue;
+      const existing = map.get(locationId);
+      if (
+        !existing ||
+        new Date(app.createdAt).getTime() > new Date(existing.createdAt).getTime()
+      ) {
+        map.set(locationId, app);
+      }
+    }
+    return map;
+  }, [applications]);
 
-  const availableKitchens = (publicKitchens || []).filter(
-    (kitchen) => !activeApplicationLocationIds.has(kitchen.locationId)
-  );
-
-  const filteredAvailableKitchens = availableKitchens.filter(
+  const filteredAvailableKitchens = (publicKitchens || []).filter(
     (kitchen) =>
       kitchen.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       kitchen.locationName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       kitchen.address.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Get status config for badges
-  const getStatusConfig = (status: string) => {
-    switch (status) {
-      case "approved":
-        return {
-          label: "Approved",
-          color: "bg-green-100 text-green-800 border-green-200",
-          icon: Check,
-        };
-      case "inReview":
-        return {
-          label: "Pending Review",
-          color: "bg-yellow-100 text-yellow-800 border-yellow-200",
-          icon: Clock,
-        };
-      case "rejected":
-        return {
-          label: "Rejected",
-          color: "bg-red-100 text-red-800 border-red-200",
-          icon: XCircle,
-        };
-      default:
-        return {
-          label: status,
-          color: "bg-muted text-foreground border-border",
-          icon: Clock,
-        };
-    }
-  };
+  const firstTourKitchenId = useMemo(() => {
+    const openKitchen = filteredAvailableKitchens.find((kitchen) => {
+      const locationId = kitchenLocationId(kitchen);
+      const application = locationId != null ? applicationByLocationId.get(locationId) : undefined;
+      return kitchen.canAcceptBookings && !isActiveKitchenApplication(application);
+    });
+    return (openKitchen ?? filteredAvailableKitchens[0])?.id;
+  }, [filteredAvailableKitchens, applicationByLocationId]);
+
+  const kitchenStatusVariant = (status: string) =>
+    toneToBadgeVariant(getKitchenDisplayStatus({ status }, tChef).tone);
+
+  const kitchenStatusLabel = (status: string) => getKitchenDisplayStatus({ status }, tChef).label;
+
+  const walkthrough = (
+    <DiscoverKitchensButtonTour
+      enabled={!isLoading && activeTab === "discover" && filteredAvailableKitchens.length > 0}
+      replayToken={tourReplayToken}
+    />
+  );
 
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="p-8">
-          <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-          </div>
-        </CardContent>
-      </Card>
+      <>
+        <Card>
+          <CardContent className="p-8">
+            <div className="flex items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+        {walkthrough}
+      </>
     );
   }
 
@@ -210,20 +245,20 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-blue-600" />
-            Kitchen Access
+            <Building2 className="h-5 w-5 text-muted-foreground" />
+            {t("kitchenAccessBadge", "Kitchen Access")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {/* Stats */}
-          <div className="grid grid-cols-2 gap-2 text-center">
-            <div className="p-2 bg-green-50 rounded-lg">
-              <p className="text-2xl font-bold text-green-600">{approvedCount}</p>
-              <p className="text-xs text-muted-foreground">Approved</p>
+            <div className="grid grid-cols-2 gap-2 text-center">
+            <div className="rounded-lg border p-2">
+              <p className="text-2xl font-semibold">{approvedCount}</p>
+              <p className="text-xs text-muted-foreground">{t("applyFlowApprovedLabel", "Approved")}</p>
             </div>
-            <div className="p-2 bg-yellow-50 rounded-lg">
-              <p className="text-2xl font-bold text-yellow-600">{pendingCount}</p>
-              <p className="text-xs text-muted-foreground">Pending</p>
+            <div className="rounded-lg border p-2">
+              <p className="text-2xl font-semibold">{pendingCount}</p>
+              <p className="text-xs text-muted-foreground">{t("applyFlowPendingLabel", "Pending")}</p>
             </div>
           </div>
 
@@ -233,7 +268,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
               <Link href="/compare-kitchens">
                 <Button className="w-full" size="sm">
                   <Calendar className="mr-2 h-4 w-4" />
-                  Book a Kitchen
+                  {t("applyFlowBookAKitchenButton", "Book a Kitchen")}
                 </Button>
               </Link>
             )}
@@ -241,7 +276,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
             <Link href="/compare-kitchens">
               <Button variant="outline" className="w-full" size="sm">
                 <Plus className="mr-2 h-4 w-4" />
-                Compare Kitchens
+                {t("applyFlowCompareKitchensButton", "Compare Kitchens")}
               </Button>
             </Link>
           </div>
@@ -249,20 +284,19 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           {/* Recent applications */}
           {applications.length > 0 && (
             <div className="pt-2 border-t">
-              <p className="text-xs font-medium text-muted-foreground mb-2">Recent Applications</p>
+              <p className="text-xs font-medium text-muted-foreground mb-2">{t("applyFlowRecentApplications", "Recent Applications")}</p>
               <div className="space-y-1">
-                {applications.slice(0, 3).map((app) => {
-                  const config = getStatusConfig(app.status);
-                  return (
+                {applications.slice(0, 3).map((app) => (
                     <div
                       key={app.id}
-                      className="flex items-center justify-between p-2 bg-muted/50 rounded text-sm"
+                      className="flex items-center justify-between rounded p-2 text-sm"
                     >
-                      <span className="truncate flex-1">{app.location?.name || "Location"}</span>
-                      <Badge className={`text-xs ${config.color}`}>{config.label}</Badge>
+                      <span className="min-w-0 flex-1 truncate">{app.location?.name || t("location", "Location")}</span>
+                      <Badge variant={kitchenStatusVariant(app.status)} className="text-xs font-medium">
+                        {kitchenStatusLabel(app.status)}
+                      </Badge>
                     </div>
-                  );
-                })}
+                ))}
               </div>
             </div>
           )}
@@ -273,47 +307,58 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
 
   // Full view
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-blue-600" />
-              Kitchen Discovery
-            </CardTitle>
-            <CardDescription>
-              Apply to kitchens to start booking. Once approved, you can book anytime.
-            </CardDescription>
-          </div>
-
-          {/* Stats Summary */}
+    <div className="space-y-6">
+      <ChefPageHeader
+        title={t("applyFlowDiscoverKitchensTitle", "Discover kitchens")}
+        description={t("applyFlowDiscoverKitchensDesc", "Apply first. Booking opens after approval.")}
+        titleAccessory={
+          filteredAvailableKitchens.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 -ml-2 gap-1.5 px-2 font-normal text-muted-foreground"
+              onClick={() => {
+                setActiveTab("discover");
+                setTourReplayToken((token) => token + 1);
+              }}
+            >
+              <Info />
+              {t("whatButtonsDo", "What buttons do?")}
+            </Button>
+          ) : null
+        }
+        actions={
           <div className="flex gap-3">
-            <div className="text-center px-3 py-2 bg-green-50 rounded-lg">
-              <p className="text-xl font-bold text-green-600">{approvedCount}</p>
-              <p className="text-xs text-muted-foreground">Approved</p>
+            <div className="rounded-lg border px-3 py-2 text-center">
+              <p className="text-xl font-semibold">{approvedCount}</p>
+              <p className="text-xs text-muted-foreground">{t("applyFlowApprovedLabel", "Approved")}</p>
             </div>
-            <div className="text-center px-3 py-2 bg-yellow-50 rounded-lg">
-              <p className="text-xl font-bold text-yellow-600">{pendingCount}</p>
-              <p className="text-xs text-muted-foreground">Pending</p>
+            <div className="rounded-lg border px-3 py-2 text-center">
+              <p className="text-xl font-semibold">{pendingCount}</p>
+              <p className="text-xs text-muted-foreground">{t("applyFlowPendingLabel", "Pending")}</p>
             </div>
           </div>
-        </div>
-      </CardHeader>
+        }
+      />
 
-      <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-4">
-            <TabsTrigger value="discover">
+          <TabsList className="mb-4 h-auto flex-wrap">
+            <TabsTrigger value="discover" data-kitchen-tour="tab-discover">
               <Plus className="h-4 w-4 mr-2" />
-              Discover ({filteredAvailableKitchens.length})
+              {t("applyFlowDiscoverTabLabel", { count: filteredAvailableKitchens.length, defaultValue: "Discover ({count})" })}
             </TabsTrigger>
-            <TabsTrigger value="applications">
+            <TabsTrigger value="applications" data-kitchen-tour="tab-applications">
               <Clock className="h-4 w-4 mr-2" />
-              My Applications ({applications.length})
+              {t("applyFlowMyApplicationsTabLabel", { count: applications.length, defaultValue: "My Applications ({count})" })}
             </TabsTrigger>
-            <TabsTrigger value="approved">
+            <TabsTrigger value="approved" data-kitchen-tour="tab-approved">
               <Check className="h-4 w-4 mr-2" />
-              Approved ({approvedCount})
+              {t("applyFlowApprovedTabLabel", { count: approvedCount, defaultValue: "Approved ({count})" })}
+            </TabsTrigger>
+            <TabsTrigger value="tours" data-kitchen-tour="tab-tours">
+              <Eye className="h-4 w-4 mr-2" />
+              {t("applyFlowKitchenToursTab", "Kitchen Tours")}
             </TabsTrigger>
           </TabsList>
 
@@ -323,7 +368,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
             <div className="relative max-w-md">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search kitchens by name or location..."
+                placeholder={t("applyFlowSearchPlaceholder", "Search kitchens by name or location...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 h-11 bg-muted/30 border-border/50 focus:bg-background"
@@ -337,16 +382,16 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                     <ChefHat className="h-8 w-8 text-muted-foreground" />
                   </div>
                   <h3 className="text-lg font-semibold text-foreground mb-2">
-                    {searchQuery ? "No kitchens match your search" : "You've applied to all available kitchens!"}
+                    {searchQuery ? t("applyFlowNoKitchensMatchSearch", "No kitchens match your search") : t("applyFlowNoKitchensListedYet", "No kitchens listed yet")}
                   </h3>
                   <p className="text-sm text-muted-foreground max-w-sm mx-auto">
                     {searchQuery
-                      ? "Try a different search term or browse all kitchens"
-                      : "Check your applications tab for status updates"}
+                      ? t("applyFlowTryDifferentSearchTerm", "Try a different search term or browse all kitchens")
+                      : t("applyFlowNewKitchensComingSoon", "New commercial kitchens will show up here as they join Local Cooks.")}
                   </p>
                   {searchQuery && (
                     <Button variant="outline" className="mt-4" onClick={() => setSearchQuery("")}>
-                      Clear Search
+                      {t("applyFlowClearSearchButton", "Clear Search")}
                     </Button>
                   )}
                 </CardContent>
@@ -363,6 +408,10 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                   const equipment = kitchen.equipment || [];
                   const displayEquipment = equipment.slice(0, 3);
                   const remainingEquipment = equipment.length - 3;
+                  const kitchenLocId = kitchenLocationId(kitchen);
+                  const application = kitchenLocId != null ? applicationByLocationId.get(kitchenLocId) : undefined;
+                  const display = application ? getKitchenDisplayStatus(application, tChef) : null;
+                  const alreadyApplied = isActiveKitchenApplication(application);
 
                   // Format price (cents to dollars)
                   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -370,23 +419,28 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
 
                   // Always use the internal application URL
                   const applicationUrl = `/kitchen-requirements/${kitchen.locationId}`;
+                  const previewHref = `/kitchen-preview/${kitchen.locationSlug || kitchen.locationId}`;
+                  const isTourCard = kitchen.id === firstTourKitchenId;
 
                   return (
                     <motion.div key={kitchen.id} variants={itemVariants}>
-                      <Card className="overflow-hidden border-border/50 hover:shadow-lg hover:border-border transition-all duration-300 group">
+                      <Card
+                        className="overflow-hidden border-border/50 hover:shadow-lg hover:border-border transition-all duration-300 group cursor-pointer"
+                        onClick={() => navigate(previewHref)}
+                      >
                         <div className="flex flex-col md:flex-row">
                           {/* Image Section */}
                           <div className="md:w-72 lg:w-80 flex-shrink-0">
                             <AspectRatio ratio={16 / 10} className="md:h-full">
                               {hasImage ? (
-                                <img
+                                <SmartImage
                                   src={kitchen.imageUrl!}
                                   alt={kitchen.name}
                                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                 />
                               ) : (
-                                <div className="w-full h-full bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 flex items-center justify-center">
-                                  <Building2 className="h-16 w-16 text-white/80" />
+                                <div className="flex h-full w-full items-center justify-center bg-muted">
+                                  <Building2 className="h-12 w-12 text-muted-foreground" />
                                 </div>
                               )}
                             </AspectRatio>
@@ -398,25 +452,29 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                             <div className="flex items-start justify-between gap-4 mb-3">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap mb-1">
-                                  <h3 className="text-xl font-bold text-foreground truncate">
+                                  <TruncatedText as="h3" className="text-xl font-bold text-foreground truncate">
                                     {kitchen.name}
-                                  </h3>
-                                  {kitchen.canAcceptBookings ? (
+                                  </TruncatedText>
+                                  {display && alreadyApplied ? (
+                                    <Badge variant={toneToBadgeVariant(display.tone)} className="text-xs font-medium">
+                                      {display.label}
+                                    </Badge>
+                                  ) : kitchen.canAcceptBookings ? (
                                     <Badge variant="success" className="text-xs uppercase tracking-wider">
                                       <Check className="h-3 w-3 mr-1" />
-                                      Accepting Bookings
+                                      {t("applyFlowAcceptingBookings", "Accepting Bookings")}
                                     </Badge>
                                   ) : (
                                     <TooltipProvider>
                                       <Tooltip>
                                         <TooltipTrigger>
-                                          <Badge variant="secondary" className="text-xs uppercase tracking-wider">
+                                          <Badge variant="outline" className="text-xs font-medium">
                                             <Clock className="h-3 w-3 mr-1" />
-                                            Coming Soon
+                                            {t("applyFlowComingSoonBadge", "Coming Soon")}
                                           </Badge>
                                         </TooltipTrigger>
                                         <TooltipContent>
-                                          <p>This kitchen is not yet accepting bookings</p>
+                                          <p>{t("applyFlowNotAcceptingBookingsTooltip", "This kitchen is not yet accepting bookings")}</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
@@ -436,10 +494,10 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                               {priceDisplay && (
                                 <div className="text-right flex-shrink-0">
                                   <div className="flex items-center gap-1 text-lg font-bold text-foreground">
-                                    <DollarSign className="h-4 w-4 text-green-600" />
+                                    <DollarSign className="h-4 w-4 text-muted-foreground" />
                                     <span>{priceDisplay.replace('$', '')}</span>
                                   </div>
-                                  <p className="text-xs text-muted-foreground uppercase tracking-wider">per hour</p>
+                                  <p className="text-xs text-muted-foreground uppercase tracking-wider">{t("applyFlowPerHour", "per hour")}</p>
                                 </div>
                               )}
                             </div>
@@ -468,7 +526,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                   ))}
                                   {remainingEquipment > 0 && (
                                     <Badge variant="outline" className="text-xs font-normal bg-muted/30 border-border/50">
-                                      +{remainingEquipment} more
+                                      {t("applyFlowMoreEquipmentCount", { count: remainingEquipment, defaultValue: "+{count} more" })}
                                     </Badge>
                                   )}
                                 </>
@@ -482,11 +540,11 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                     <TooltipProvider>
                                       <Tooltip>
                                         <TooltipTrigger>
-                                          <div className="w-6 h-6 rounded bg-blue-100 flex items-center justify-center">
-                                            <Thermometer className="h-3.5 w-3.5 text-blue-600" />
+                                          <div className="flex h-6 w-6 items-center justify-center rounded bg-muted">
+                                            <Thermometer className="h-3.5 w-3.5 text-muted-foreground" />
                                           </div>
                                         </TooltipTrigger>
-                                        <TooltipContent><p>Cold Storage Available</p></TooltipContent>
+                                        <TooltipContent><p>{t("applyFlowColdStorageAvailable", "Cold Storage Available")}</p></TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
                                   )}
@@ -494,11 +552,11 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                     <TooltipProvider>
                                       <Tooltip>
                                         <TooltipTrigger>
-                                          <div className="w-6 h-6 rounded bg-cyan-100 flex items-center justify-center">
-                                            <Snowflake className="h-3.5 w-3.5 text-cyan-600" />
+                                          <div className="flex h-6 w-6 items-center justify-center rounded bg-muted">
+                                            <Snowflake className="h-3.5 w-3.5 text-muted-foreground" />
                                           </div>
                                         </TooltipTrigger>
-                                        <TooltipContent><p>Freezer Storage Available</p></TooltipContent>
+                                        <TooltipContent><p>{t("applyFlowFreezerStorageAvailable", "Freezer Storage Available")}</p></TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
                                   )}
@@ -506,11 +564,11 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                     <TooltipProvider>
                                       <Tooltip>
                                         <TooltipTrigger>
-                                          <div className="w-6 h-6 rounded bg-amber-100 flex items-center justify-center">
-                                            <Package className="h-3.5 w-3.5 text-amber-600" />
+                                          <div className="flex h-6 w-6 items-center justify-center rounded bg-muted">
+                                            <Package className="h-3.5 w-3.5 text-muted-foreground" />
                                           </div>
                                         </TooltipTrigger>
-                                        <TooltipContent><p>Dry Storage Available</p></TooltipContent>
+                                        <TooltipContent><p>{t("applyFlowDryStorageAvailable", "Dry Storage Available")}</p></TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
                                   )}
@@ -519,42 +577,93 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                             </div>
 
                             {/* Actions */}
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mt-auto pt-2">
-                              <Button variant="outline" size="sm" className="gap-2 w-full sm:w-auto" asChild>
-                                <Link href={`/kitchen-preview/${kitchen.locationSlug || kitchen.locationId}`}>
-                                  <Eye className="h-4 w-4" />
-                                  View Details
-                                </Link>
+                            <div
+                              className="flex flex-col sm:flex-row sm:flex-wrap items-stretch gap-2 mt-auto pt-2"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className={kitchenCardActionClass}
+                                data-kitchen-tour={isTourCard ? "details" : undefined}
+                                onClick={() => navigate(previewHref)}
+                              >
+                                <Eye />
+                                {t("applyFlowViewDetailsButton", "View details")}
                               </Button>
-                              {kitchen.canAcceptBookings ? (
+                              {alreadyApplied ? (
+                                display?.actionKind === "book" ? (
+                                  <Button
+                                    size="sm"
+                                    className={kitchenCardActionClass}
+                                    onClick={() =>
+                                      handleBookClick(
+                                        kitchen.locationId,
+                                        kitchen.locationName,
+                                        kitchen.address
+                                      )
+                                    }
+                                  >
+                                    <Calendar />
+                                    {t("applyFlowBookButton", "Book")}
+                                  </Button>
+                                ) : display?.actionKind === "complete-step" ? (
+                                  <Button
+                                    size="sm"
+                                    className={kitchenCardActionClass}
+                                    onClick={() => navigate(applicationUrl)}
+                                  >
+                                    {t("applyFlowContinueButton", "Continue")}
+                                    <ArrowRight />
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className={kitchenCardActionClass}
+                                    onClick={handleViewKitchenApplication}
+                                  >
+                                    <FileText />
+                                    {t("viewApplicationBtn", "View application")}
+                                  </Button>
+                                )
+                              ) : kitchen.canAcceptBookings ? (
                                 <>
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    className="gap-2 border-primary text-primary hover:bg-primary/5 w-full sm:w-auto"
+                                  <Button
+                                    size="sm"
+                                    className={kitchenCardActionClass}
+                                    data-kitchen-tour={isTourCard ? "tour" : undefined}
                                     onClick={() => setTourLocation({ id: kitchen.locationId, name: kitchen.locationName })}
                                   >
-                                    <Calendar className="h-4 w-4" />
-                                    Schedule Viewing
+                                    <Calendar />
+                                    {t("applyFlowScheduleTourButton", "Schedule tour")}
                                   </Button>
-                                  <Button size="sm" className="gap-2 w-full sm:w-auto" asChild>
-                                    <Link href={applicationUrl}>
-                                      Apply Now
-                                      <ArrowRight className="h-4 w-4" />
-                                    </Link>
+                                  <Button
+                                    size="sm"
+                                    className={kitchenCardActionClass}
+                                    data-kitchen-tour={isTourCard ? "apply" : undefined}
+                                    onClick={() => navigate(applicationUrl)}
+                                  >
+                                    {display?.actionKind === "discover" ? t("applyAgainBtn", "Apply again") : t("applyFlowApplyNowButton", "Apply Now")}
+                                    <ArrowRight />
                                   </Button>
                                 </>
                               ) : (
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Button size="sm" variant="secondary" disabled className="gap-2 cursor-not-allowed w-full sm:w-auto">
-                                        <AlertCircle className="h-4 w-4" />
-                                        Not Available
+                                      <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        disabled
+                                        className={`${kitchenCardActionClass} cursor-not-allowed`}
+                                      >
+                                        <AlertCircle />
+                                        {t("applyFlowNotAvailableBadge", "Not Available")}
                                       </Button>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                      <p>This kitchen is not yet accepting applications</p>
+                                      <p>{t("applyFlowNotAcceptingApplicationsTooltip", "This kitchen is not yet accepting applications")}</p>
                                     </TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
@@ -575,13 +684,13 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
             {applications.length === 0 ? (
               <div className="text-center py-12 bg-muted/50 rounded-lg">
                 <Clock className="h-12 w-12 text-muted-foreground/40 mx-auto mb-3" />
-                <p className="text-muted-foreground font-medium">No applications yet</p>
+                <p className="text-muted-foreground font-medium">{t("applyFlowNoApplicationsYet", "No applications yet")}</p>
                 <p className="text-sm text-muted-foreground/70 mt-1">
-                  Apply to a kitchen to get started
+                  {t("applyFlowApplyToGetStarted", "Apply to a kitchen to get started")}
                 </p>
                 <Button className="mt-4" onClick={() => setActiveTab("discover")}>
                   <Plus className="mr-2 h-4 w-4" />
-                  Explore Kitchens
+                  {t("applyFlowExploreKitchensButton", "Explore Kitchens")}
                 </Button>
               </div>
             ) : (
@@ -592,60 +701,55 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                 className="space-y-3"
               >
                 {applications.map((app) => {
-                  const config = getStatusConfig(app.status);
-                  const StatusIcon = config.icon;
-
                   return (
                     <motion.div key={app.id} variants={itemVariants}>
-                      <Card>
+                      <Card className="shadow-none">
                         <CardContent className="p-4">
                           <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0">
-                              <Building2 className="h-6 w-6 text-white" />
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted">
+                              <Building2 className="h-6 w-6 text-muted-foreground" />
                             </div>
 
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-semibold">
-                                  {app.location?.name || "Unknown Location"}
+                                  {app.location?.name || t("applyFlowUnknownLocation", "Unknown Location")}
                                 </h3>
-                                <Badge className={config.color}>
-                                  <StatusIcon className="h-3 w-3 mr-1" />
-                                  {config.label}
+                                <Badge variant={kitchenStatusVariant(app.status)} className="font-medium">
+                                  {kitchenStatusLabel(app.status)}
                                 </Badge>
                               </div>
-                              <p className="text-sm text-muted-foreground truncate">
-                                {app.location?.address || "Address not available"}
-                              </p>
+                              <TruncatedText as="p" className="text-sm text-muted-foreground truncate">
+                                {app.location?.address || t("applyFlowAddressNotAvailable", "Address not available")}
+                              </TruncatedText>
                               <p className="text-xs text-muted-foreground/70 mt-1">
-                                Applied: {new Date(app.createdAt).toLocaleDateString()}
+                                {t("applyFlowAppliedDateLabel", { date: new Date(app.createdAt).toLocaleDateString(i18n.language), defaultValue: "Applied: {date}" })}
                               </p>
                             </div>
 
                             <div className="flex gap-2">
                               {(app.current_tier ?? 1) >= 3 && (
                                 <Button 
-                                  size="sm" 
-                                  className="bg-green-600 hover:bg-green-700"
+                                  size="sm"
                                   onClick={() => handleBookClick(
                                     app.locationId,
-                                    app.location?.name || 'Kitchen',
+                                    app.location?.name || t("applyFlowKitchenFallbackName", "Kitchen"),
                                     app.location?.address
                                   )}
                                 >
                                   <Calendar className="mr-2 h-4 w-4" />
-                                  Book
+                                  {t("applyFlowBookButton", "Book")}
                                 </Button>
                               )}
                               {app.status === "approved" && (app.current_tier ?? 1) < 3 && (
                                 <Button size="sm" variant="outline" disabled className="cursor-not-allowed">
-                                  Complete tiers to book
+                                  {t("applyFlowCompleteTiersToBook", "Complete tiers to book")}
                                 </Button>
                               )}
                               {(app.status === "rejected" || app.status === "cancelled") && (
                                 <Link href={`/kitchen-requirements/${app.locationId}`}>
                                   <Button size="sm" variant="outline">
-                                    Re-apply
+                                    {t("applyFlowReapplyButton", "Re-apply")}
                                   </Button>
                                 </Link>
                               )}
@@ -653,8 +757,9 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                           </div>
 
                           {app.feedback && app.status === "rejected" && (
-                            <div className="mt-3 p-3 bg-red-50 rounded-lg text-sm text-red-800">
-                              <strong>Feedback:</strong> {app.feedback}
+                            <div className="mt-3 rounded-lg border border-destructive/30 px-3 py-2 text-sm">
+                              <strong className="font-medium">{t("applyFlowFeedbackLabel", "Feedback:")}</strong>{" "}
+                              <span className="text-muted-foreground">{app.feedback}</span>
                             </div>
                           )}
                         </CardContent>
@@ -671,9 +776,9 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
             {approvedCount === 0 ? (
               <div className="text-center py-12 bg-muted/50 rounded-lg">
                 <Check className="h-12 w-12 text-muted-foreground/40 mx-auto mb-3" />
-                <p className="text-muted-foreground font-medium">No approved applications yet</p>
+                <p className="text-muted-foreground font-medium">{t("applyFlowNoApprovedApplicationsYet", "No approved applications yet")}</p>
                 <p className="text-sm text-muted-foreground/70 mt-1">
-                  Once your applications are approved, they&apos;ll appear here
+                  {t("applyFlowApprovedAppsWillAppearHere", "Once your applications are approved, they'll appear here")}
                 </p>
               </div>
             ) : (
@@ -687,16 +792,16 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                   .filter((a) => a.status === "approved")
                   .map((app) => (
                     <motion.div key={app.id} variants={itemVariants}>
-                      <Card className="border-green-200 bg-green-50/30">
+                      <Card className="shadow-none">
                         <CardContent className="p-4">
                           <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0">
-                              <Check className="h-6 w-6 text-white" />
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted">
+                              <Check className="h-6 w-6 text-muted-foreground" />
                             </div>
 
                             <div className="flex-1 min-w-0">
                               <h3 className="font-semibold">
-                                {app.location?.name || "Unknown Location"}
+                                {app.location?.name || t("applyFlowUnknownLocation", "Unknown Location")}
                               </h3>
                               <p className="text-sm text-muted-foreground truncate">
                                 {app.location?.address}
@@ -704,17 +809,16 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
 
                               <div className="mt-3">
                                 {(app.current_tier ?? 1) >= 3 ? (
-                                  <Button 
-                                    className="bg-green-600 hover:bg-green-700" 
+                                  <Button
                                     size="sm"
                                     onClick={() => handleBookClick(
                                       app.locationId,
-                                      app.location?.name || 'Kitchen',
+                                      app.location?.name || t("applyFlowKitchenFallbackName", "Kitchen"),
                                       app.location?.address
                                     )}
                                   >
                                     <Calendar className="mr-2 h-4 w-4" />
-                                    Book Kitchen
+                                    {t("applyFlowBookKitchenButton", "Book Kitchen")}
                                   </Button>
                                 ) : (
                                   <Button
@@ -723,7 +827,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                     disabled
                                     className="cursor-not-allowed"
                                   >
-                                    Complete all tiers to book
+                                    {t("applyFlowCompleteAllTiersToBook", "Complete all tiers to book")}
                                   </Button>
                                 )}
                               </div>
@@ -736,8 +840,11 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
               </motion.div>
             )}
           </TabsContent>
+
+          <TabsContent value="tours" className="space-y-4">
+            <ChefViewingsList onExploreKitchens={() => setActiveTab("discover")} />
+          </TabsContent>
         </Tabs>
-      </CardContent>
 
       {bookingLocation && (
         <KitchenBookingSheet
@@ -749,7 +856,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
         />
       )}
 
-      {/* Schedule Viewing Modal */}
+      {/* Schedule tour modal */}
       {tourLocation && (
         <ScheduleViewingWidget
           open={!!tourLocation}
@@ -758,7 +865,9 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           locationName={tourLocation.name}
         />
       )}
-    </Card>
+
+      {walkthrough}
+    </div>
   );
 }
 

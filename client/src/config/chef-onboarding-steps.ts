@@ -1,26 +1,43 @@
 import { OnboardingStep } from '@onboardjs/core';
 
-// Extend the base type to include our custom metadata
-export interface ChefOnboardingStep extends Omit<OnboardingStep, 'metadata'> {
+export interface ChefOnboardingGuidance {
+    title: string;
+    description: string;
+    href?: string;
+    external?: boolean;
+}
+
+export interface ChefOnboardingStep extends Omit<OnboardingStep, 'metadata' | 'payload'> {
     metadata?: {
         label: string;
-        path?: 'localcooks' | 'kitchen' | 'both'; // Which path this step belongs to
+        path?: 'localcooks' | 'kitchen' | 'both';
+        sidebarDescription: string;
+        canSkip?: boolean;
+        ctaLabel?: string;
+        skipLabel?: string;
+    };
+    payload: {
+        componentKey: string;
+        title: string;
+        description: string;
+        guidance?: ChefOnboardingGuidance[];
     };
 }
 
-// Chef onboarding steps with dual-path support
 export const chefOnboardingSteps: ChefOnboardingStep[] = [
     {
         id: 'welcome',
         type: 'CUSTOM_COMPONENT',
         metadata: {
             label: 'Welcome',
-            path: 'both'
+            path: 'both',
+            sidebarDescription: 'See how chef setup works and what you will need.',
+            ctaLabel: 'Get started',
         },
         payload: {
             componentKey: 'chef-welcome',
-            title: 'Welcome to Local Cooks',
-            description: 'Get started with your chef journey',
+            title: 'Welcome to LocalCooks',
+            description: 'This short setup gets you ready to sell food, book commercial kitchens, or both.',
         },
         nextStep: 'path-selection'
     },
@@ -28,29 +45,49 @@ export const chefOnboardingSteps: ChefOnboardingStep[] = [
         id: 'path-selection',
         type: 'CUSTOM_COMPONENT',
         metadata: {
-            label: 'Choose Path',
-            path: 'both'
+            label: 'Choose path',
+            path: 'both',
+            sidebarDescription: 'Pick selling food, booking kitchens, or both — you can change this later.',
+            ctaLabel: 'Save and continue',
         },
         payload: {
             componentKey: 'chef-path-selection',
             title: 'What would you like to do?',
-            description: 'Select one or both options',
+            description: 'Select one or both. We will only show the steps that match your choice.',
         },
-        // nextStep is dynamically determined based on selected paths
         nextStep: 'localcooks-application'
     },
-    // LocalCooks Seller Path Steps
     {
         id: 'localcooks-application',
         type: 'CUSTOM_COMPONENT',
         metadata: {
             label: 'Application',
-            path: 'localcooks'
+            path: 'localcooks',
+            sidebarDescription: 'Share your details, kitchen setting, and food safety documents.',
+            canSkip: true,
+            ctaLabel: 'Start your application',
+            skipLabel: 'Continue for now',
         },
         payload: {
             componentKey: 'chef-localcooks-application',
-            title: 'Start Selling on Local Cooks',
-            description: 'Submit your application to become a Local Cooks chef',
+            title: 'Start selling on LocalCooks',
+            description: 'Submit a short application so we can review your profile and certifications. Most reviews take 24–48 hours.',
+            guidance: [
+                {
+                    title: 'What you will fill in',
+                    description: 'Personal details, kitchen setting, and food safety documents in three short screens.',
+                },
+                {
+                    title: 'Official food handler cert',
+                    description: 'SkillsPass NL offers a free recognized food handler certificate if you need one.',
+                    href: 'https://skillspassnl.bluedrop.io/storefront/online-registration/10863',
+                    external: true,
+                },
+                {
+                    title: 'After you submit',
+                    description: 'We email you when status changes. You can keep setting up while we review.',
+                },
+            ],
         },
         nextStep: 'food-safety-training'
     },
@@ -59,64 +96,101 @@ export const chefOnboardingSteps: ChefOnboardingStep[] = [
         type: 'CUSTOM_COMPONENT',
         metadata: {
             label: 'Training',
-            path: 'localcooks'
+            path: 'localcooks',
+            sidebarDescription: 'Watch food safety videos and learn how official certification works.',
+            canSkip: true,
+            ctaLabel: 'Start training',
+            skipLabel: 'Continue for now',
         },
         payload: {
             componentKey: 'chef-training',
-            title: 'Food Safety Training',
-            description: 'Learn about food safety best practices',
+            title: 'Food safety training (optional)',
+            description: 'Learn handling basics in short videos. This is separate from an official food handler certificate.',
+            guidance: [
+                {
+                    title: 'LocalCooks videos',
+                    description: '14 basics videos and 8 hygiene how-tos. Finish them to unlock a completion certificate.',
+                },
+                {
+                    title: 'Official certification',
+                    description: 'Kitchens may still require a government-recognized food handler certificate.',
+                    href: 'https://skillspassnl.bluedrop.io/storefront/online-registration/10863',
+                    external: true,
+                },
+                {
+                    title: 'Watch at your pace',
+                    description: 'Start now or come back from Overview in your dashboard anytime.',
+                },
+            ],
         },
-        // nextStep is dynamically determined: goes to kitchen-discovery if kitchen path selected, else summary
         nextStep: 'summary'
     },
-    // Kitchen Access Path Step (combined browse + apply)
     {
         id: 'browse-kitchens',
         type: 'CUSTOM_COMPONENT',
         metadata: {
-            label: 'Browse Kitchens',
-            path: 'kitchen'
+            label: 'Kitchens',
+            path: 'kitchen',
+            sidebarDescription: 'Find a commercial kitchen, apply for access, then book prep time.',
+            canSkip: true,
+            ctaLabel: 'Browse kitchens',
+            skipLabel: 'Continue for now',
         },
         payload: {
             componentKey: 'chef-browse-kitchens',
-            title: 'Browse & Apply to Kitchens',
-            description: 'Find commercial kitchens and submit applications',
+            title: 'Find a commercial kitchen',
+            description: 'Browse kitchens near you, apply for access, and book time once the kitchen approves you.',
+            guidance: [
+                {
+                    title: 'How access works',
+                    description: 'Browse listings, submit an application, then book slots after approval.',
+                },
+                {
+                    title: 'What to compare',
+                    description: 'Look at hourly rates, equipment, storage, and location before you apply.',
+                },
+                {
+                    title: 'Need help choosing?',
+                    description: 'Chat with support if you are unsure which kitchen fits your menu.',
+                },
+            ],
         },
         nextStep: 'summary'
     },
-    // Summary before completion
     {
         id: 'summary',
         type: 'CUSTOM_COMPONENT',
         metadata: {
-            label: 'Summary',
-            path: 'both'
+            label: 'Review',
+            path: 'both',
+            sidebarDescription: 'Check what is done and what you can finish later from your dashboard.',
+            ctaLabel: 'Finish setup',
         },
         payload: {
             componentKey: 'chef-summary',
-            title: 'Onboarding Summary',
-            description: 'Review your progress',
+            title: 'You are ready to go',
+            description: 'Setup is complete. Anything left can be finished anytime from your dashboard.',
         },
         nextStep: 'completion'
     },
-    // Completion
     {
         id: 'completion',
         type: 'CUSTOM_COMPONENT',
         metadata: {
             label: 'Complete',
-            path: 'both'
+            path: 'both',
+            sidebarDescription: 'Open your dashboard and start cooking.',
+            ctaLabel: 'Go to dashboard',
         },
         payload: {
             componentKey: 'chef-completion',
-            title: 'Onboarding Complete!',
-            description: 'You\'re ready to start your journey',
+            title: 'You are all set',
+            description: 'Your chef account is ready. Here is what happens next.',
         },
         nextStep: null
     },
 ];
 
-// Helper to get steps for a specific path
 export const getStepsForPath = (selectedPaths: ('localcooks' | 'kitchen')[]): ChefOnboardingStep[] => {
     return chefOnboardingSteps.filter(step => {
         if (step.metadata?.path === 'both') return true;
@@ -125,7 +199,6 @@ export const getStepsForPath = (selectedPaths: ('localcooks' | 'kitchen')[]): Ch
     });
 };
 
-// Step IDs for easy reference
 export const CHEF_STEP_IDS = {
     WELCOME: 'welcome',
     PATH_SELECTION: 'path-selection',
@@ -135,3 +208,52 @@ export const CHEF_STEP_IDS = {
     SUMMARY: 'summary',
     COMPLETION: 'completion',
 } as const;
+
+export function isChefUser(user?: {
+    role?: string | null;
+    isChef?: boolean;
+} | null): boolean {
+    if (!user) return false;
+    if (user.role === 'admin' || user.role === 'manager') return false;
+    return user.role === 'chef' || user.isChef === true;
+}
+
+/** True when this chef still needs the existing OnboardJS /chef-setup flow. */
+export function needsChefOnboarding(user?: {
+    role?: string | null;
+    isChef?: boolean;
+    chefOnboardingCompleted?: boolean;
+} | null): boolean {
+    return isChefUser(user) && !user?.chefOnboardingCompleted;
+}
+
+export function chefOnboardingStartedStorageKey(uid: string): string {
+    return `chef_onboarding_started_${uid}`;
+}
+
+export function markChefOnboardingStarted(uid?: string | null): void {
+    if (!uid || typeof window === 'undefined') return;
+    localStorage.setItem(chefOnboardingStartedStorageKey(uid), 'true');
+}
+
+export function clearChefOnboardingStarted(uid?: string | null): void {
+    if (!uid || typeof window === 'undefined') return;
+    localStorage.removeItem(chefOnboardingStartedStorageKey(uid));
+}
+
+export function hasChefOnboardingStarted(uid?: string | null): boolean {
+    if (!uid || typeof window === 'undefined') return false;
+    return localStorage.getItem(chefOnboardingStartedStorageKey(uid)) === 'true';
+}
+
+/** Landing path for chefs after auth/terms/welcome. Incomplete chefs start in OnboardJS; they can leave to the dashboard and resume via the continue-setup banner. */
+export function getChefPostAuthPath(user?: {
+    role?: string | null;
+    isChef?: boolean;
+    chefOnboardingCompleted?: boolean;
+} | null): string {
+    if (needsChefOnboarding(user)) {
+        return '/chef-setup';
+    }
+    return '/dashboard';
+}

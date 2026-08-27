@@ -1,5 +1,6 @@
 import { MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface LocationMapProps {
   /** The location's address — passed directly to Google Maps. */
@@ -28,8 +29,9 @@ export function LocationMap({
   zoom = 15,
   className,
 }: LocationMapProps) {
+  const { i18n } = useTranslation();
   const encodedAddress = encodeURIComponent(address);
-  const embedUrl = `https://maps.google.com/maps?q=${encodedAddress}&z=${zoom}&t=m&output=embed&iwloc=B`;
+  const embedUrl = `https://maps.google.com/maps?q=${encodedAddress}&z=${zoom}&t=m&output=embed&iwloc=B&hl=${i18n.language}`;
 
   return (
     <div

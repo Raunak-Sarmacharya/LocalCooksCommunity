@@ -2,6 +2,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useChefKitchenApplicationsStatus } from "@/hooks/use-chef-kitchen-applications";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import { useEffect, useMemo, useState } from "react";
 import SEOHead from "@/components/SEO/SEOHead";
 import { motion } from "framer-motion";
@@ -23,6 +24,7 @@ import FadeInSection from "@/components/ui/FadeInSection";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { formatCurrency } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
+import { SmartImage } from "@/components/ui/smart-image";
 
 interface PublicLocation {
   id: number;
@@ -73,6 +75,7 @@ function BrowseLocationCard({
   onPrimaryAction: () => void;
   index: number;
 }) {
+  const { t } = useTranslation("kitchen");
   const [imageError, setImageError] = useState(false);
   const img = locationImage(location);
   const showImage = !!img && !imageError;
@@ -82,17 +85,17 @@ function BrowseLocationCard({
   const primaryLabel = (() => {
     switch (action.kind) {
       case "book":
-        return "Book Now";
+        return t("bookNow", "Book Now");
       case "continue":
-        return "Continue Application";
+        return t("continueApplication", "Continue Application");
       case "pending":
-        return "Under Review";
+        return t("underReview", "Under Review");
       case "reapply":
-        return "Apply Again";
+        return t("applyAgain", "Apply Again");
       case "apply":
-        return "Apply to Book";
+        return t("applyToBook", "Apply to Book");
       case "guest":
-        return "Sign In to Book";
+        return t("signInToBook", "Sign In to Book");
     }
   })();
 
@@ -109,10 +112,10 @@ function BrowseLocationCard({
         type="button"
         onClick={onViewDetails}
         className="relative block aspect-[4/3] w-full overflow-hidden text-left"
-        aria-label={`View ${location.name}`}
+        aria-label={t("viewLocationAria", { name: location.name, defaultValue: `View ${location.name}` })}
       >
         {showImage ? (
-          <img
+          <SmartImage
             src={img!}
             alt={location.name}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
@@ -129,25 +132,23 @@ function BrowseLocationCard({
         <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
 
         {location.logoUrl && (
-          <img
+          <SmartImage
             src={location.logoUrl}
             alt=""
             className="absolute left-3 top-3 h-10 w-auto rounded-lg bg-white/95 p-1.5 shadow-md"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
+            hideOnError
           />
         )}
 
         {(location.kitchenCount ?? 0) > 1 && (
           <span className="absolute right-3 top-3 rounded-full bg-white/95 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#F51042] shadow-sm">
-            {location.kitchenCount} kitchens
+            {location.kitchenCount} {location.kitchenCount === 1 ? t("kitchenSingular", "kitchen") : t("kitchenPlural", "kitchens")}
           </span>
         )}
 
         {rateLabel && (
           <span className="absolute bottom-3 left-3 rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-[#2C2C2C] shadow-sm backdrop-blur-sm">
-            From <span className="text-[#F51042]">{rateLabel}</span>
+            {t("fromPrefix", "From")} <span className="text-[#F51042]">{rateLabel}</span>
           </span>
         )}
       </button>
@@ -182,14 +183,7 @@ function BrowseLocationCard({
           )}
         </div>
 
-        <div className="mt-auto flex flex-col gap-2 sm:flex-row">
-          <Button
-            variant="outline"
-            className="min-h-[44px] flex-1 rounded-full border-[#2C2C2C]/15 font-semibold text-[#2C2C2C] hover:border-[#F51042] hover:bg-[#F51042]/5 hover:text-[#F51042]"
-            onClick={onViewDetails}
-          >
-            View Details
-          </Button>
+        <div className="mt-auto flex flex-col gap-2">
           <Button
             disabled={primaryDisabled}
             className={cn(
@@ -204,6 +198,13 @@ function BrowseLocationCard({
             {action.kind === "book" && <Calendar className="mr-1.5 h-3.5 w-3.5" />}
             {primaryLabel}
             {!primaryDisabled && <ArrowRight className="ml-1.5 h-3.5 w-3.5" />}
+          </Button>
+          <Button
+            variant="outline"
+            className="min-h-[44px] flex-1 rounded-full border-[#2C2C2C]/15 font-semibold text-[#2C2C2C] hover:border-[#F51042] hover:bg-[#F51042]/5 hover:text-[#F51042]"
+            onClick={onViewDetails}
+          >
+            {t("viewDetails", "View Details")}
           </Button>
         </div>
       </div>
@@ -229,6 +230,7 @@ function CardSkeleton() {
 }
 
 export default function KitchenComparisonPage() {
+  const { t } = useTranslation("kitchen");
   const { user, loading: authLoading } = useFirebaseAuth();
   const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
@@ -318,12 +320,12 @@ export default function KitchenComparisonPage() {
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-b from-[#FFF8F5] via-white to-[#FFF8F5]">
       <SEOHead
-        title="Browse Kitchens — Commercial Kitchen Access"
-        description="Browse certified commercial kitchens in St. John's, Newfoundland. Compare amenities, pricing, and availability — then book by the hour."
+        title={t("seoBrowseKitchensTitle", "Browse Kitchens — Commercial Kitchen Access")}
+        description={t("seoBrowseKitchensDesc", "Browse certified commercial kitchens in St. John's, Newfoundland. Compare amenities, pricing, and availability — then book by the hour.")}
         canonicalUrl="/compare-kitchens"
         breadcrumbs={[
           { name: "LocalCooks", url: "https://chef.localcooks.ca/" },
-          { name: "Browse Kitchens", url: "https://chef.localcooks.ca/compare-kitchens" },
+          { name: t("browseKitchens", "Browse Kitchens"), url: "https://chef.localcooks.ca/compare-kitchens" },
         ]}
       />
 
@@ -363,18 +365,18 @@ export default function KitchenComparisonPage() {
             <div className="mb-8 max-w-3xl sm:mb-10">
               <span className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#F51042]/10 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.3em] text-[#F51042] sm:text-xs">
                 <ChefHat className="h-3.5 w-3.5" />
-                Kitchen Access
+                {t("kitchenAccessBadge", "Kitchen Access")}
               </span>
               <h1 className="mb-3 text-3xl font-bold leading-tight text-[#1A1A1A] sm:text-4xl lg:text-5xl">
-                Find your{" "}
+                {t("findYour", "Find your")}{" "}
                 <span className="relative inline-block">
                   <span className="bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A] bg-clip-text text-transparent">
-                    kitchen
+                    {t("kitchenWord", "kitchen")}
                   </span>
                 </span>
               </h1>
               <p className="max-w-2xl text-sm leading-relaxed text-[#6B6B6B] sm:text-base lg:text-lg">
-                Browse certified commercial kitchens in St. John&apos;s. Explore spaces freely — sign in when you&apos;re ready to book.
+                {t("browseKitchensHeroDesc", "Browse certified commercial kitchens in St. John's. Explore spaces freely — sign in when you're ready to book.")}
               </p>
             </div>
           </FadeInSection>
@@ -387,15 +389,15 @@ export default function KitchenComparisonPage() {
                 <Input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by name, address, or amenity…"
+                  placeholder={t("searchKitchensPlaceholder", "Search by name, address, or amenity…")}
                   className="h-12 rounded-xl border-[#2C2C2C]/10 bg-[#FFF8F5]/50 pl-10 text-sm focus-visible:ring-[#F51042]/30"
-                  aria-label="Search kitchens"
+                  aria-label={t("searchKitchensAria", "Search kitchens")}
                 />
               </div>
               {!isLoading && (
                 <p className="mt-2 px-1 font-mono text-[10px] uppercase tracking-wider text-[#6B6B6B]">
-                  {filteredLocations.length} space{filteredLocations.length === 1 ? "" : "s"}
-                  {searchQuery.trim() ? " matching your search" : " available"}
+                  {filteredLocations.length} {filteredLocations.length === 1 ? t("spaceSingular", "space") : t("spacePlural", "spaces")}
+                  {searchQuery.trim() ? (" " + t("matchingYourSearch", "matching your search")) : (" " + t("availableWord", "available"))}
                 </p>
               )}
             </div>
@@ -431,12 +433,10 @@ export default function KitchenComparisonPage() {
                   <Building2 className="h-7 w-7 text-[#F51042]" />
                 </div>
                 <h2 className="mb-2 text-xl font-bold text-[#1A1A1A]">
-                  {searchQuery.trim() ? "No matches found" : "Kitchens coming soon"}
+                  {searchQuery.trim() ? t("noMatchesFound", "No matches found") : t("kitchensComingSoon", "Kitchens coming soon")}
                 </h2>
                 <p className="text-sm leading-relaxed text-[#6B6B6B]">
-                  {searchQuery.trim()
-                    ? "Try a different search, or clear the filter to see all spaces."
-                    : "We're onboarding certified commercial kitchens in St. John's. Check back soon."}
+                  {searchQuery.trim() ? t("tryDifferentSearch", "Try a different search, or clear the filter to see all spaces.") : t("kitchensOnboardingNotice", "We're onboarding certified commercial kitchens in St. John's. Check back soon.")}
                 </p>
                 {searchQuery.trim() && (
                   <Button
@@ -458,19 +458,19 @@ export default function KitchenComparisonPage() {
                 <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#F51042]/10">
                   <Lock className="h-4 w-4 text-[#F51042]" />
                 </div>
-                <p className="mb-1 text-sm font-semibold text-[#1A1A1A]">Ready to book a kitchen?</p>
+                <p className="mb-1 text-sm font-semibold text-[#1A1A1A]">{t("readyToBookKitchen", "Ready to book a kitchen?")}</p>
                 <p className="mb-5 text-xs leading-relaxed text-[#6B6B6B] sm:text-sm">
-                  Create a free account to view availability and reserve your slot. Browsing stays open — no pressure.
+                  {t("readyToBookKitchenDesc", "Create a free account to view availability and reserve your slot. Browsing stays open — no pressure.")}
                 </p>
                 <Button
                   className="w-full rounded-full bg-[#F51042] font-semibold text-white hover:bg-[#D90E3A] sm:w-auto sm:px-8"
                   onClick={() => navigate("/auth?redirect=/compare-kitchens")}
                 >
-                  Create Free Account
+                  {t("createFreeAccount", "Create Free Account")}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
                 <p className="mt-3 text-xs text-[#6B6B6B]">
-                  Already have an account?{" "}
+                  {t("alreadyHaveAccount", "Already have an account?")}{" "}
                   <button
                     type="button"
                     onClick={() => navigate("/auth?redirect=/compare-kitchens")}

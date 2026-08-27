@@ -3,9 +3,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { QuietNotice } from '@/components/chef/ui';
 import { useFirebaseAuth } from '@/hooks/use-auth';
+import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
-import { AlertCircle, ArrowRight, Award, CheckCircle, ChefHat, Clock, FileText } from 'lucide-react';
+import { AlertCircle, ArrowRight, Award, CheckCircle, Clock, FileText } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
 
@@ -18,6 +20,38 @@ interface Application {
 interface UnlockProgressProps {
   hasApprovedApplication: boolean;
   className?: string;
+}
+
+type StepStatus = 'completed' | 'current' | 'pending' | 'rejected' | 'waiting';
+
+function stepBadgeVariant(status: StepStatus): 'success' | 'warning' | 'destructive' | 'outline' {
+  switch (status) {
+    case 'completed':
+      return 'success';
+    case 'current':
+      return 'outline';
+    case 'pending':
+      return 'warning';
+    case 'rejected':
+      return 'destructive';
+    default:
+      return 'outline';
+  }
+}
+
+function stepBadgeLabel(status: StepStatus): string {
+  switch (status) {
+    case 'completed':
+      return 'Done';
+    case 'current':
+      return 'Action';
+    case 'pending':
+      return 'Review';
+    case 'rejected':
+      return 'Update';
+    default:
+      return 'Wait';
+  }
 }
 
 export default function UnlockProgress({ hasApprovedApplication, className = "" }: UnlockProgressProps) {
@@ -62,8 +96,6 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
     }
   };
 
-  // Determine current step and progress
-  // Only consider active applications (not cancelled or rejected)
   const activeApplications = applications.filter(app =>
     app.status !== 'cancelled' && app.status !== 'rejected'
   );
@@ -73,28 +105,24 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
   const isApplicationPending = latestApplication?.status === 'inReview';
   const isApplicationRejected = latestApplication?.status === 'rejected';
 
-  // Check if user has any rejected applications (for messaging purposes)
   const hasRejectedApplications = applications.some(app => app.status === 'rejected');
   const hasCancelledApplications = applications.some(app => app.status === 'cancelled');
 
-  // Calculate progress percentage
-  let progressPercentage = 20; // Account created
-  let currentStep = 2; // Default to needing to submit application
+  let progressPercentage = 20;
+  let currentStep = 2;
 
   if (hasSubmittedApplication) {
     progressPercentage = 50;
-    currentStep = 3; // Waiting for approval
+    currentStep = 3;
 
     if (isApplicationApproved) {
       progressPercentage = 100;
-      currentStep = 4; // Completed
+      currentStep = 4;
     } else if (isApplicationPending) {
       progressPercentage = 75;
       currentStep = 3;
     }
   } else if (hasRejectedApplications || hasCancelledApplications) {
-    // User had applications before but they were rejected/cancelled
-    // Keep them at the "submit application" step but show they need to reapply
     progressPercentage = 20;
     currentStep = 2;
   }
@@ -104,10 +132,9 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
       id: 1,
       title: "Create Account",
       description: "Sign up for LocalCooks",
-      status: "completed",
+      status: "completed" as StepStatus,
       icon: CheckCircle,
-      color: "text-green-600",
-      bgColor: "bg-green-100"
+      action: null as string | null,
     },
     {
       id: 2,
@@ -115,30 +142,37 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
       description: hasRejectedApplications ? "Submit a new application" :
         hasCancelledApplications ? "Submit a new application" :
           "Complete your chef application",
-      status: hasSubmittedApplication ? "completed" : "current",
+      status: (hasSubmittedApplication ? "completed" : "current") as StepStatus,
       icon: hasSubmittedApplication ? CheckCircle : FileText,
-      color: hasSubmittedApplication ? "text-green-600" : "text-blue-600",
-      bgColor: hasSubmittedApplication ? "bg-green-100" : "bg-blue-100",
       action: !hasSubmittedApplication ? "/dashboard?view=applications&action=new" : null
     },
     {
       id: 3,
       title: "Get Approved",
       description: "Wait for application review",
-      status: isApplicationApproved ? "completed" :
+      status: (isApplicationApproved ? "completed" :
         isApplicationPending ? "pending" :
-          isApplicationRejected ? "rejected" : "waiting",
+          isApplicationRejected ? "rejected" : "waiting") as StepStatus,
       icon: isApplicationApproved ? CheckCircle :
         isApplicationPending ? Clock :
           isApplicationRejected ? AlertCircle : Clock,
-      color: isApplicationApproved ? "text-green-600" :
-        isApplicationPending ? "text-yellow-600" :
-          isApplicationRejected ? "text-red-600" : "text-gray-400",
-      bgColor: isApplicationApproved ? "bg-green-100" :
-        isApplicationPending ? "bg-yellow-100" :
-          isApplicationRejected ? "bg-red-100" : "bg-gray-100"
+      action: null as string | null,
     }
   ];
+
+  const statusTitle = isApplicationApproved ? "Training now available"
+    : isApplicationPending ? "Application under review"
+      : hasSubmittedApplication ? "Application submitted"
+        : hasRejectedApplications ? "Ready to reapply"
+          : hasCancelledApplications ? "Ready to apply again"
+            : "Ready to apply";
+
+  const statusDescription = isApplicationApproved ? "You now have access to all training videos."
+    : isApplicationPending ? "Our team is reviewing your application. You'll be notified once approved."
+      : hasSubmittedApplication ? "Great! Your application is in our system."
+        : hasRejectedApplications ? "Your previous application was not approved. You can submit a new application anytime."
+          : hasCancelledApplications ? "Your previous application was cancelled. Feel free to submit a new one!"
+            : "Complete your chef application to access all training videos.";
 
   if (loading) {
     return (
@@ -150,7 +184,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
 
   return (
     <div className={`space-y-4 ${className}`}>
-      <Card className="overflow-hidden border border-gray-200 shadow-sm">
+      <Card className="overflow-hidden border shadow-none">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Award className="h-5 w-5 text-primary flex-shrink-0" />
@@ -158,16 +192,15 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          {/* Progress Bar */}
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
-              <span className="font-medium text-sm text-gray-900">Application Progress</span>
-              <Badge variant="secondary" className="text-xs font-medium w-fit">
+              <span className="font-medium text-sm">Application Progress</span>
+              <Badge variant="outline" className="text-xs font-medium w-fit">
                 {progressPercentage}% Complete
               </Badge>
             </div>
             <Progress value={progressPercentage} className="h-2.5" />
-            <div className="grid grid-cols-3 gap-2 text-xs text-gray-500">
+            <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
               <div className="text-center">
                 <span className="block">Account</span>
                 <span className="block">Created</span>
@@ -183,34 +216,10 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
             </div>
           </div>
 
-          {/* Current Status */}
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
-            <div className="flex items-start gap-3">
-              <div className="bg-blue-100 p-2.5 rounded-xl flex-shrink-0">
-                <ChefHat className="h-5 w-5 text-blue-600" />
-              </div>
-              <div className="flex-1 min-w-0 space-y-2">
-                <h3 className="font-semibold text-blue-900 text-sm">
-                  {isApplicationApproved ? "🎉 Training Now Available!" :
-                    isApplicationPending ? "⏳ Application Under Review" :
-                      hasSubmittedApplication ? "✅ Application Submitted" :
-                        hasRejectedApplications ? "🔄 Ready to Reapply" :
-                          hasCancelledApplications ? "🔄 Ready to Apply Again" :
-                            "🚀 Ready to Apply"}
-                </h3>
-                <p className="text-blue-700 text-sm leading-relaxed">
-                  {isApplicationApproved ? "You now have access to all training videos!" :
-                    isApplicationPending ? "Our team is reviewing your application. You'll be notified once approved." :
-                      hasSubmittedApplication ? "Great! Your application is in our system." :
-                        hasRejectedApplications ? "Your previous application was not approved. You can submit a new application anytime." :
-                          hasCancelledApplications ? "Your previous application was cancelled. Feel free to submit a new one!" :
-                            "Complete your chef application to access all training videos."}
-                </p>
-              </div>
-            </div>
-          </div>
+          <QuietNotice title={statusTitle}>
+            {statusDescription}
+          </QuietNotice>
 
-          {/* Steps */}
           <div className="space-y-3">
             {steps.map((step, index) => {
               const Icon = step.icon;
@@ -222,37 +231,30 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className={`flex items-start gap-3 p-3 rounded-xl border transition-all duration-200
-                    ${isActive ? 'border-primary bg-primary/5 shadow-sm' : 'border-gray-200 bg-gray-50/50'}
-                    ${step.status === 'completed' ? 'border-green-200 bg-green-50/50' : ''}
-                    ${step.status === 'rejected' ? 'border-red-200 bg-red-50/50' : ''}
-                  `}
+                  className={cn(
+                    "flex items-start gap-3 p-3 rounded-lg border transition-all duration-200",
+                    isActive && "border-primary/40 bg-muted/30",
+                    !isActive && "border-border bg-card"
+                  )}
                 >
-                  <div className={`p-2 rounded-lg ${step.bgColor} flex-shrink-0`}>
-                    <Icon className={`h-4 w-4 ${step.color}`} />
+                  <div className="p-2 rounded-lg border bg-muted flex-shrink-0">
+                    <Icon className={cn(
+                      "h-4 w-4",
+                      step.status === 'completed' && "text-success",
+                      step.status === 'pending' && "text-warning",
+                      step.status === 'rejected' && "text-destructive",
+                      (step.status === 'current' || step.status === 'waiting') && "text-muted-foreground"
+                    )} />
                   </div>
 
                   <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-medium text-sm text-gray-900">{step.title}</h4>
-                      <Badge
-                        variant="outline"
-                        className={`text-xs px-2 py-0.5
-                          ${step.status === 'completed' ? 'bg-green-100 text-green-800 border-green-300' : ''}
-                          ${step.status === 'current' ? 'bg-blue-100 text-blue-800 border-blue-300' : ''}
-                          ${step.status === 'pending' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' : ''}
-                          ${step.status === 'rejected' ? 'bg-red-100 text-red-800 border-red-300' : ''}
-                          ${step.status === 'waiting' ? 'bg-gray-100 text-gray-600 border-gray-300' : ''}
-                        `}
-                      >
-                        {step.status === 'completed' ? 'Done' :
-                          step.status === 'current' ? 'Action' :
-                            step.status === 'pending' ? 'Review' :
-                              step.status === 'rejected' ? 'Update' :
-                                'Wait'}
+                      <h4 className="font-medium text-sm">{step.title}</h4>
+                      <Badge variant={stepBadgeVariant(step.status)} className="text-xs px-2 py-0.5">
+                        {stepBadgeLabel(step.status)}
                       </Badge>
                     </div>
-                    <p className="text-xs text-gray-600 leading-relaxed">{step.description}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{step.description}</p>
 
                     {step.action && step.status === 'current' && (
                       <Button asChild size="sm" className="mt-2 h-8 text-xs">
@@ -277,9 +279,8 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
             })}
           </div>
 
-          {/* Action Section - Simplified without Start Application button */}
           {!isApplicationApproved && hasSubmittedApplication && (
-            <div className="border-t border-gray-200 pt-4">
+            <div className="border-t pt-4">
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-2">
                   <Button asChild variant="outline" className="h-10 text-sm">
@@ -289,7 +290,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                     </Link>
                   </Button>
 
-                  <Button asChild variant="ghost" size="sm" className="h-8 text-xs text-gray-600">
+                  <Button asChild variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground">
                     <Link href="/">
                       Learn More About LocalCooks
                     </Link>
@@ -299,41 +300,31 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
             </div>
           )}
 
-          {/* Previous Application Notice */}
           {(hasRejectedApplications || hasCancelledApplications) && !hasSubmittedApplication && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-              <div className="flex items-start gap-2 text-amber-800 text-xs">
-                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                <div className="min-w-0 flex-1 space-y-1">
-                  <span className="font-medium block">Fresh Start Available</span>
-                  <span className="leading-relaxed">
-                    {hasRejectedApplications ?
-                      "Submit a new application anytime with updated information." :
-                      "You can submit a new application whenever you're ready!"}
-                  </span>
-                </div>
-              </div>
-            </div>
+            <QuietNotice title="Fresh start available">
+              {hasRejectedApplications
+                ? "Submit a new application anytime with updated information."
+                : "You can submit a new application whenever you're ready!"}
+            </QuietNotice>
           )}
 
-          {/* Benefits Preview */}
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4">
-            <h4 className="font-semibold text-gray-900 mb-3 text-sm">🎓 What You'll Access:</h4>
-            <div className="grid grid-cols-1 gap-2.5 text-sm text-gray-700">
+          <div className="rounded-lg border p-4">
+            <h4 className="font-semibold mb-3 text-sm">What you&apos;ll access</h4>
+            <div className="grid grid-cols-1 gap-2.5 text-sm text-muted-foreground">
               <div className="flex items-start gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+                <CheckCircle className="h-4 w-4 text-success flex-shrink-0 mt-0.5" />
                 <span className="leading-relaxed">13 remaining videos from Food Safety Basics module</span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-                <span className="leading-relaxed">1 additional training module (Safety & Hygiene How-To's)</span>
+                <CheckCircle className="h-4 w-4 text-success flex-shrink-0 mt-0.5" />
+                <span className="leading-relaxed">1 additional training module (Safety & Hygiene How-To&apos;s)</span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+                <CheckCircle className="h-4 w-4 text-success flex-shrink-0 mt-0.5" />
                 <span className="leading-relaxed">Food Safety Certification Preparation Content</span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+                <CheckCircle className="h-4 w-4 text-success flex-shrink-0 mt-0.5" />
                 <span className="leading-relaxed">Completion Certificate</span>
               </div>
             </div>
@@ -342,4 +333,4 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
       </Card>
     </div>
   );
-} 
+}

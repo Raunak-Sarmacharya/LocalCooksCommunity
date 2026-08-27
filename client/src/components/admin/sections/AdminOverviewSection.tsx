@@ -185,7 +185,7 @@ export function AdminOverviewSection({
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-semibold flex items-center gap-2">
                     <Shield className="h-4 w-4 text-primary" />
-                    Chef Applications
+                    Seller Applications
                   </CardTitle>
                   {pendingReviewCount > 0 && (
                     <span className="inline-flex items-center rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">
@@ -293,7 +293,7 @@ export function AdminOverviewSection({
               </CardHeader>
               <CardContent className="pt-0">
                 <p className="text-sm text-muted-foreground mb-3">
-                  Configure fees, commissions, and platform behavior.
+                  Configure fees and platform behavior.
                 </p>
                 <Button variant="ghost" size="sm" className="px-0 text-primary">
                   Open Settings <ArrowRight className="h-3.5 w-3.5 ml-1" />

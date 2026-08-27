@@ -75,12 +75,12 @@ export function CancellationRequestSheet({
     <Sheet open={open} onOpenChange={handleClose}>
       <SheetContent className="sm:max-w-[440px] flex flex-col p-0 gap-0">
         {/* Header */}
-        <SheetHeader className={`px-6 pt-6 pb-4 border-b ${isRequest ? "bg-gradient-to-br from-amber-50 to-orange-50" : "bg-gradient-to-br from-red-50 to-orange-50"}`}>
+        <SheetHeader className="px-6 pt-6 pb-4 border-b">
           <SheetTitle className="flex items-center gap-2 text-base">
             {isRequest ? (
-              <Send className="h-5 w-5 text-amber-600" />
+              <Send className="h-5 w-5 text-muted-foreground" />
             ) : (
-              <AlertTriangle className="h-5 w-5 text-red-600" />
+              <AlertTriangle className="h-5 w-5 text-destructive" />
             )}
             {isRequest ? `Request ${typeLabel} Cancellation` : `Cancel ${typeLabel}`}
           </SheetTitle>
@@ -112,12 +112,12 @@ export function CancellationRequestSheet({
 
           {/* Process Explanation */}
           {isRequest ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 space-y-3">
+            <div className="rounded-lg border p-4 space-y-3">
               <div className="flex items-start gap-2.5">
-                <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-amber-900">How this works</p>
-                  <ol className="text-xs text-amber-800 space-y-1.5 list-decimal list-inside">
+                  <p className="text-sm font-medium">How this works</p>
+                  <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside">
                     <li>Your cancellation request is sent to the kitchen manager</li>
                     <li>The manager reviews and approves or declines within the review window</li>
                     <li>If approved, a refund will be processed to your payment method</li>
@@ -132,12 +132,12 @@ export function CancellationRequestSheet({
               </div>
             </div>
           ) : (
-            <div className="rounded-lg border border-red-200 bg-red-50/50 p-4">
+            <div className="rounded-lg border border-destructive/30 p-4">
               <div className="flex items-start gap-2.5">
-                <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-red-900">Immediate cancellation</p>
-                  <p className="text-xs text-red-700">
+                  <p className="text-sm font-medium">Immediate cancellation</p>
+                  <p className="text-xs text-muted-foreground">
                     This booking will be cancelled immediately. Any payment hold will be released back to your account.
                   </p>
                 </div>

@@ -1,14 +1,12 @@
 import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { useShopStatus } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
-import { Badge } from "@/components/ui/badge";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { useChefKitchenApplications } from "@/hooks/use-chef-kitchen-applications";
 import ChatPanel from "@/components/chat/ChatPanel";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
-import ChefViewingsList from "@/components/chef/ChefViewingsList";
 import { useSubdomain } from "@/hooks/use-subdomain";
 import { getRequiredSubdomainForRole, getSubdomainUrl } from "@shared/subdomain-utils";
 import ChefBookingsView from "@/components/booking/ChefBookingsView";
@@ -23,12 +21,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import {
-  Card,
-  CardContent,
   CardDescription,
-  CardHeader,
-  CardTitle,
-  CardFooter,
 } from "@/components/ui/card";
 import {
   formatApplicationStatus
@@ -38,45 +31,46 @@ import { Application, UserWithFlags } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import {
   ChevronRight,
-  Building,
   CheckCircle,
   ChefHat,
-  Clock,
-  FileText,
   Shield,
-  XCircle,
   AlertCircle,
   MessageCircle,
-  Store,
-  ArrowRight,
+  CreditCard,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
-import ChefStripeConnectSetup from "@/components/chef/ChefStripeConnectSetup";
 import { useChefOnboardingStatus } from "@/hooks/use-chef-onboarding-status";
 import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
+import { requestDiscoverKitchensWalkthrough } from "@/components/kitchen-application/DiscoverKitchensButtonTour";
 import KitchenBookingSheet from "@/components/booking/KitchenBookingSheet";
 import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
 import ApplicationFormPanel from "@/components/application/ApplicationFormPanel";
 import ChefSupportPage from "@/components/chef/ChefSupportPage";
 import { IssuesAndRefunds } from "@/components/chef/IssuesAndRefunds";
 import { TransactionHistory } from "@/components/chef/TransactionHistory";
+import { useChefResolutionCenter } from "@/hooks/use-chef-resolution-center";
+import { useChefSidebarHiddenItems } from "@/hooks/use-chef-sidebar-hidden-items";
 import TidioController from "@/components/chat/TidioController";
 import OutstandingDuesBanner from "@/components/chef/OutstandingDuesBanner";
 import ChefProfileSettings from "@/components/chef/ChefProfileSettings";
 import ChefSellerRevenue from "@/components/chef/seller-revenue/ChefSellerRevenue";
+import ChefSellerAccount from "@/components/chef/ChefSellerAccount";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
-import { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
-import { SellerApplicationCard, KitchenApplicationCard } from "@/components/chef/applications";
+import { applicationStatusVariant, hasStep2BeenSubmitted } from "@/components/chef/applications/status";
+import { ChefPageHeader } from "@/components/chef/ui";
+import { useTranslation } from "react-i18next";
 import {
   OverviewTabContent,
   MyKitchensTabContent,
   DocumentVerificationView,
+  SellerApplicationTabContent,
   type PublicKitchen,
   type KitchenApplicationWithLocation,
   type BookingLocation,
+  getTrainingStatusLabel,
 } from "@/components/chef/dashboard";
 
 // Type alias for application
@@ -85,12 +79,16 @@ type AnyApplication = Application;
 
 export default function ApplicantDashboard() {
   const { user: authUser } = useFirebaseAuth();
+  const { t } = useTranslation("chef");
   const user = authUser as UserWithFlags | null;
   const [showVendorPortalPopup, setShowVendorPortalPopup] = useState(false);
   const [showChatDialog, setShowChatDialog] = useState(false);
 
   // Chef onboarding status for "Continue Setup" banner
-  const { showSetupBanner, missingSteps } = useChefOnboardingStatus();
+  const { showSetupBanner } = useChefOnboardingStatus();
+  const { hasAnyItems: hasResolutionItems, pendingDamageClaims, pendingPenalties } = useChefResolutionCenter();
+  const sidebarHiddenItems = useChefSidebarHiddenItems();
+  const hasKitchenMessages = !sidebarHiddenItems.includes("messages");
   const [chatApplication, setChatApplication] = useState<any | null>(null);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const subdomain = useSubdomain();
@@ -100,7 +98,7 @@ export default function ApplicantDashboard() {
   const getInitialTab = () => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'viewings', 'bookings', 'training', 'messages', 'support', 'feedback', 'seller-revenue'].includes(view)) {
+    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'viewings', 'bookings', 'training', 'messages', 'support', 'feedback', 'seller-revenue', 'my-account', 'transactions', 'issues-refunds'].includes(view)) {
       return view;
     }
     return 'overview';
@@ -141,7 +139,7 @@ export default function ApplicantDashboard() {
     const VALID_VIEWS = [
       'overview', 'applications', 'kitchen-applications', 'discover-kitchens',
       'viewings', 'bookings', 'training', 'messages', 'support', 'feedback',
-      'damage-claims', 'profile', 'seller-revenue'
+      'damage-claims', 'issues-refunds', 'profile', 'seller-revenue', 'my-account', 'transactions'
     ];
     const syncFromUrl = () => {
       const params = new URLSearchParams(window.location.search);
@@ -149,7 +147,7 @@ export default function ApplicantDashboard() {
       const action = params.get('action');
 
       if (view && VALID_VIEWS.includes(view)) {
-        setActiveTabState(view);
+        setActiveTabState(view === 'damage-claims' ? 'issues-refunds' : view);
 
         // If navigating to applications with action=new, open the form
         if (view === 'applications' && action === 'new') {
@@ -178,9 +176,6 @@ export default function ApplicantDashboard() {
     name: string;
     address?: string;
   } | null>(null);
-
-  // Document management modal state for seller application
-  const [showDocumentModal, setShowDocumentModal] = useState(false);
 
   // Get document verification status for seller application
   const { verification: docData, error: docError, forceRefresh: refetchDocs } = useDocumentVerification();
@@ -498,36 +493,27 @@ export default function ApplicantDashboard() {
     const mostRecentApp = getMostRecentApplication();
     // This is the Chef Dashboard - user is always a chef, never show "Select Role"
     if (!mostRecentApp) return null;
-    return formatApplicationStatus(mostRecentApp.status);
+    return formatApplicationStatus(mostRecentApp.status, t);
   };
 
   const getDocumentStatus = () => {
     const mostRecentApp = getMostRecentApplication();
     // This is the Chef Dashboard - user is always a chef, never show "Select Role"
-    if (!mostRecentApp) return "No Documents Uploaded";
+    if (!mostRecentApp) return t("ovDocNone");
 
     const chefApp = mostRecentApp as Application;
     if (chefApp.status === "approved") {
       const hasValidFoodSafety = chefApp.foodSafetyLicenseStatus === "approved";
       const hasValidEstablishment = !chefApp.foodEstablishmentCertUrl || chefApp.foodEstablishmentCertStatus === "approved";
-      return hasValidFoodSafety && hasValidEstablishment ? "Verified" :
-        (chefApp.foodSafetyLicenseStatus === "rejected" || chefApp.foodEstablishmentCertStatus === "rejected") ? "Rejected" : "Pending Review";
+      return hasValidFoodSafety && hasValidEstablishment ? t("ovDocVerified") :
+        (chefApp.foodSafetyLicenseStatus === "rejected" || chefApp.foodEstablishmentCertStatus === "rejected") ? t("ovDocRejected") : t("ovDocPendingReview");
     } else if (chefApp.status === "inReview") {
-      return (chefApp.foodSafetyLicenseUrl && (chefApp.foodEstablishmentCertUrl || !chefApp.foodEstablishmentCert)) ? "Documents Uploaded" : "Documents Needed";
+      return (chefApp.foodSafetyLicenseUrl && (chefApp.foodEstablishmentCertUrl || !chefApp.foodEstablishmentCert)) ? t("ovDocUploaded") : t("ovDocNeeded");
     }
-    return "Upload Required";
+    return t("ovDocUploadRequired");
   };
 
-  const getStatusVariant = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'approved': return 'default';
-      case 'pending':
-      case 'in review': return 'secondary';
-      case 'rejected':
-      case 'cancelled': return 'destructive';
-      default: return 'outline';
-    }
-  };
+  const getStatusVariant = (status: string) => applicationStatusVariant(status);
 
   // Query microlearning completion status (only for chefs)
   const { data: microlearningCompletion } = useQuery({
@@ -545,13 +531,34 @@ export default function ApplicantDashboard() {
     enabled: !!user?.uid && !!user?.isChef,
   });
 
+  const { data: trainingAccess } = useQuery({
+    queryKey: ["training-access", user?.uid],
+    queryFn: async () => {
+      if (!user?.uid || !user?.isChef) return null;
+      const currentUser = auth.currentUser;
+      if (!currentUser) return null;
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`/api/firebase/microlearning/progress/${user.uid}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      return response.ok ? await response.json() : null;
+    },
+    enabled: !!user?.uid && !!user?.isChef,
+  });
+
+  const trainingStatusLabel = getTrainingStatusLabel(
+    microlearningCompletion,
+    trainingAccess?.progress,
+    t
+  );
+
   // Handle cancel application
   const handleCancelApplication = (_applicationType: 'chef' | 'delivery' = 'chef', applicationId?: number) => {
     showConfirm({
-      title: "Cancel Application",
-      description: "Are you sure you want to cancel this application? This action cannot be undone.",
-      confirmText: "Yes, Cancel",
-      cancelText: "Keep Application",
+      title: t("shellCancelApplication"),
+      description: t("shellCancelApplicationDesc"),
+      confirmText: t("shellYesCancel"),
+      cancelText: t("shellKeepApplication"),
       type: "warning",
       onConfirm: async () => {
         try {
@@ -562,7 +569,7 @@ export default function ApplicantDashboard() {
           });
           if (response.ok) {
             queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] });
-            toast({ title: "Application cancelled", variant: "destructive" });
+            toast({ title: t("shellApplicationCancelled"), variant: "destructive" });
           }
         } catch (error) {
           logger.error("Dashboard error", error);
@@ -583,21 +590,38 @@ export default function ApplicantDashboard() {
   // - Tier 3: Fully approved (current_tier >= 3), ready to book
   const getKitchenAccessSummary = () => {
     const total = kitchenApplications.length;
-    if (total === 0) return { label: "No Applications", variant: "outline" as const };
+    if (total === 0) return { label: t("ksNotStarted"), variant: "outline" as const };
 
-    // Count by tier status - use current_tier as source of truth
-    const readyToBook = kitchenApplications.filter(a =>
-      a.status === 'approved' && (a.current_tier ?? 1) >= 3
+    const readyToBook = kitchenApplications.filter((a) =>
+      a.status === "approved" && (a.current_tier ?? 1) >= 3
     ).length;
-    const inProgress = kitchenApplications.filter(a =>
-      a.status === 'approved' && (a.current_tier ?? 1) < 3
+    const actionNeeded = kitchenApplications.filter((a) =>
+      a.status === "approved" && (a.current_tier ?? 1) < 3 && !hasStep2BeenSubmitted(a)
     ).length;
-    const pending = kitchenApplications.filter(a => a.status === 'inReview').length;
+    const pending = kitchenApplications.filter((a) =>
+      a.status === "inReview" ||
+      (a.status === "approved" && (a.current_tier ?? 1) < 3 && hasStep2BeenSubmitted(a))
+    ).length;
 
-    if (readyToBook > 0) return { label: `${readyToBook} Ready`, variant: "default" as const };
-    if (inProgress > 0) return { label: `${inProgress} In Progress`, variant: "secondary" as const };
-    if (pending > 0) return { label: `${pending} Pending`, variant: "secondary" as const };
-    return { label: `${total} Total`, variant: "outline" as const };
+    if (actionNeeded > 0) {
+      return {
+        label: actionNeeded === 1 ? t("ksActionNeeded") : t("ksNeedAction", { count: actionNeeded }),
+        variant: "warning" as const,
+      };
+    }
+    if (pending > 0) {
+      return {
+        label: pending === 1 ? t("ksInReview") : t("ksInReviewCount", { count: pending }),
+        variant: "outline" as const,
+      };
+    }
+    if (readyToBook > 0) {
+      return {
+        label: readyToBook === 1 ? t("ksReadyToBook") : t("ksReadyCount", { count: readyToBook }),
+        variant: "success" as const,
+      };
+    }
+    return { label: t("ksTotalCount", { count: total }), variant: "outline" as const };
   };
 
   const kitchenSummary = getKitchenAccessSummary();
@@ -611,489 +635,46 @@ export default function ApplicantDashboard() {
       applications={userDisplayInfo.applications || []}
       kitchenApplications={typedKitchenApplications}
       kitchenSummary={kitchenSummary}
-      microlearningCompletion={microlearningCompletion}
+      trainingStatusLabel={trainingStatusLabel}
       enrichedBookings={enrichedBookings}
       getMostRecentApplication={getMostRecentApplication}
       getApplicationStatus={getApplicationStatus}
       getDocumentStatus={getDocumentStatus}
-      getStatusVariant={getStatusVariant}
       onSetActiveTab={setActiveTab}
       onSetApplicationViewMode={setApplicationViewMode}
-      onBookSessionClick={handleBookSessionClick}
       isSellerApplicationFullyApproved={isSellerApplicationFullyApproved}
       isShopCreated={isShopCreated}
     />
   );
 
-  // Helper to check if user has an active application (not cancelled/rejected)
-  const hasActiveSellerApplication = useMemo(() => {
-    if (!userDisplayInfo.applications || userDisplayInfo.applications.length === 0) return false;
-    return userDisplayInfo.applications.some((app: AnyApplication) =>
-      app.status !== 'cancelled' && app.status !== 'rejected'
-    );
-  }, [userDisplayInfo.applications]);
-
-  // Helper to check if user has an active kitchen application (not cancelled/rejected)
-  const hasActiveKitchenApplication = useMemo(() => {
-    if (!kitchenApplications || kitchenApplications.length === 0) return false;
-    return kitchenApplications.some((app) =>
-      app.status !== 'cancelled' && app.status !== 'rejected'
-    );
-  }, [kitchenApplications]);
-
-  // Get the most recent kitchen application for status display
-  const getMostRecentKitchenApplication = () => {
-    if (!kitchenApplications || kitchenApplications.length === 0) return null;
-    return kitchenApplications.reduce((latest, current) => {
-      const latestDate = new Date(latest.createdAt || 0);
-      const currentDate = new Date(current.createdAt || 0);
-      return currentDate > latestDate ? current : latest;
-    });
-  };
-
-  // Get kitchen application status configuration
-  const getKitchenApplicationStatusConfig = (app: typeof kitchenApplications[0]) => {
-    if (app.status === 'inReview') {
-      return {
-        label: 'In Review',
-        variant: 'secondary' as const,
-        bgColor: 'bg-amber-500',
-        icon: Clock,
-        description: 'Your application is being reviewed by the kitchen manager.'
-      };
-    }
-    if (app.status === 'rejected') {
-      return {
-        label: 'Rejected',
-        variant: 'destructive' as const,
-        bgColor: 'bg-red-500',
-        icon: XCircle,
-        description: app.feedback || 'Your application was not approved. You may submit a new application.'
-      };
-    }
-    if (app.status === 'cancelled') {
-      return {
-        label: 'Cancelled',
-        variant: 'outline' as const,
-        bgColor: 'bg-gray-500',
-        icon: AlertCircle,
-        description: 'This application was cancelled.'
-      };
-    }
-    if (app.status === 'approved') {
-      const tier = app.current_tier ?? 1;
-      if (tier >= 3) {
-        return {
-          label: 'Fully Approved',
-          variant: 'default' as const,
-          bgColor: 'bg-green-600',
-          icon: CheckCircle,
-          description: 'Your application is fully approved. You can now book kitchens!'
-        };
-      }
-      if (tier === 2 && app.tier2_completed_at) {
-        return {
-          label: 'Step 2 Under Review',
-          variant: 'secondary' as const,
-          bgColor: 'bg-orange-500',
-          icon: Clock,
-          description: 'Your Step 2 documents are being reviewed.'
-        };
-      }
-      if (tier === 2 && !app.tier2_completed_at) {
-        return {
-          label: 'Step 2 Required',
-          variant: 'secondary' as const,
-          bgColor: 'bg-blue-500',
-          icon: FileText,
-          description: 'Step 1 approved! Please complete Step 2 requirements.'
-        };
-      }
-      return {
-        label: 'Step 1 Approved',
-        variant: 'default' as const,
-        bgColor: 'bg-blue-600',
-        icon: CheckCircle,
-        description: 'Step 1 approved. Continue to the next step.'
-      };
-    }
-    return {
-      label: 'Unknown',
-      variant: 'outline' as const,
-      bgColor: 'bg-muted-foreground/40',
-      icon: AlertCircle,
-      description: 'Status unknown.'
-    };
-  };
-
-  // Check if there are any applications (seller or kitchen)
-  const hasAnyApplications = (userDisplayInfo.applications && userDisplayInfo.applications.length > 0) || kitchenApplications.length > 0;
-
-  const applicationsTabContent = applicationViewMode === 'form' ? (
-    <ApplicationFormPanel onBack={() => setApplicationViewMode('list')} />
-  ) : applicationViewMode === 'documents' ? (
+  const applicationsTabContent = applicationViewMode === "form" ? (
+    <ApplicationFormPanel onBack={() => setApplicationViewMode("list")} />
+  ) : applicationViewMode === "documents" ? (
     <DocumentVerificationView
       documentVerification={docData || undefined}
-      onBack={() => setApplicationViewMode('list')}
+      onBack={() => setApplicationViewMode("list")}
     />
   ) : (
-    <div className="space-y-8">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-sm">
-            <FileText className="h-6 w-6 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight text-foreground">My Applications</h2>
-            <p className="text-muted-foreground mt-1">Track all your seller and kitchen applications in one place</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          {!hasActiveSellerApplication && (
-            <Button
-              onClick={() => setApplicationViewMode('form')}
-              className="rounded-xl shadow-lg shadow-primary/10"
-            >
-              <Store className="h-4 w-4 mr-2" />
-              New Seller Application
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            onClick={() => setActiveTab("discover-kitchens")}
-            className="rounded-xl"
-          >
-            <Building className="h-4 w-4 mr-2" />
-            Discover Kitchens
-          </Button>
-        </div>
-      </div>
-
-      {/* Stripe Connect Payment Setup - Only visible after chef's seller application is FULLY approved */}
-      {isSellerApplicationFullyApproved && (
-        <ChefStripeConnectSetup 
-          isApproved={true} 
-          isShopCreated={isShopCreated} 
-        />
-      )}
-
-      {hasAnyApplications ? (
-        <div className="space-y-6">
-          {/* ============================================== */}
-          {/* SELLER APPLICATIONS SECTION */}
-          {/* ============================================== */}
-          {userDisplayInfo.applications && userDisplayInfo.applications.length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Store className="h-4 w-4 text-primary" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground">Seller Applications</h3>
-                <Badge variant="secondary" className="text-xs">
-                  {userDisplayInfo.applications.length}
-                </Badge>
-              </div>
-
-              <div className="space-y-3">
-                {userDisplayInfo.applications.map((app: AnyApplication) => (
-                  <SellerApplicationCard
-                    key={app.id}
-                    application={app}
-                    onCancelApplication={handleCancelApplication}
-                    onManageDocuments={() => setApplicationViewMode('documents')}
-                    getStatusVariant={getStatusVariant}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ============================================== */}
-          {/* KITCHEN APPLICATIONS SECTION */}
-          {/* ============================================== */}
-          {kitchenApplications.length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                  <Building className="h-4 w-4 text-blue-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground">Kitchen Applications</h3>
-                <Badge variant="info" className="text-xs">
-                  {kitchenApplications.length}
-                </Badge>
-              </div>
-
-              <div className="space-y-3">
-                {kitchenApplications.map((app) => {
-                  const kitchenData = publicKitchens?.find(k => k.locationId === app.locationId);
-                  return (
-                    <KitchenApplicationCard
-                      key={app.id}
-                      application={app}
-                      kitchenImageUrl={kitchenData?.imageUrl}
-                      onBookKitchen={(locationId, locationName, locationAddress) => {
-                        setBookingLocation({
-                          id: locationId,
-                          name: locationName,
-                          address: locationAddress,
-                        });
-                        setBookingSheetOpen(true);
-                      }}
-                      onDiscoverKitchens={() => setActiveTab("discover-kitchens")}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* ============================================== */
-        /* EMPTY STATE - NO APPLICATIONS YET */
-        /* Award-winning UI/UX design with dual-path CTAs */
-        /* ============================================== */
-        <div className="space-y-8">
-          {/* Hero Welcome Section */}
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/5 via-primary/10 to-blue-500/5 border border-primary/10 p-8 md:p-12">
-            {/* Decorative background elements */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-primary/10 to-transparent rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-            <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-blue-500/10 to-transparent rounded-full blur-2xl translate-y-1/2 -translate-x-1/2" />
-
-            <div className="relative z-10 text-center max-w-2xl mx-auto">
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
-                <ChefHat className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium text-primary">Welcome to LocalCooks</span>
-              </div>
-
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground mb-4">
-                Start Your Culinary Journey
-              </h2>
-              <p className="text-lg text-muted-foreground leading-relaxed">
-                Whether you want to sell your homemade food or cook in professional kitchens,
-                LocalCooks has the perfect path for you. Choose how you'd like to get started.
-              </p>
-            </div>
-          </div>
-
-          {/* Dual Path Cards - Side by Side */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Path 1: Sell on LocalCooks */}
-            <Card className="group relative overflow-hidden border-2 border-primary/20 hover:border-primary/40 transition-all duration-300 hover:shadow-xl hover:shadow-primary/5">
-              {/* Top accent bar */}
-              <div className="h-1.5 w-full bg-gradient-to-r from-primary via-primary/80 to-primary/60" />
-
-              {/* Floating badge */}
-              <div className="absolute top-6 right-6">
-                <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-xs font-semibold">
-                  Recommended
-                </Badge>
-              </div>
-
-              <CardHeader className="pb-4 pt-8">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
-                  <Store className="h-8 w-8 text-primary" />
-                </div>
-                <CardTitle className="text-2xl font-bold">Sell on LocalCooks</CardTitle>
-                <CardDescription className="text-base">
-                  Become a verified seller and share your culinary creations with customers in your area.
-                </CardDescription>
-              </CardHeader>
-
-              <CardContent className="space-y-6">
-                {/* Benefits list */}
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Reach Local Customers</p>
-                      <p className="text-xs text-muted-foreground">Connect with food lovers in your community</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Secure Payments</p>
-                      <p className="text-xs text-muted-foreground">Get paid directly via Stripe Connect</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Build Your Brand</p>
-                      <p className="text-xs text-muted-foreground">Create your own storefront and menu</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Process steps */}
-                <div className="p-4 bg-muted/30 rounded-xl border border-border/50">
-                  <p className="text-xs font-bold uppercase text-muted-foreground tracking-wider mb-3">How it works</p>
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">1</div>
-                      <span className="text-muted-foreground">Apply</span>
-                    </div>
-                    <div className="flex-1 h-px bg-border mx-2" />
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">2</div>
-                      <span className="text-muted-foreground">Verify</span>
-                    </div>
-                    <div className="flex-1 h-px bg-border mx-2" />
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">3</div>
-                      <span className="text-muted-foreground">Sell</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-
-              <CardFooter className="pt-2 pb-6">
-                <Button
-                  size="lg"
-                  onClick={() => setApplicationViewMode('form')}
-                  className="w-full rounded-xl shadow-lg shadow-primary/20 group-hover:shadow-primary/30 transition-all"
-                >
-                  <Store className="h-5 w-5 mr-2" />
-                  Start Seller Application
-                  <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                </Button>
-              </CardFooter>
-            </Card>
-
-            {/* Path 2: Cook at Commercial Kitchens */}
-            <Card className="group relative overflow-hidden border-2 border-blue-500/20 hover:border-blue-500/40 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/5">
-              {/* Top accent bar */}
-              <div className="h-1.5 w-full bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400" />
-
-              {/* Floating badge */}
-              <div className="absolute top-6 right-6">
-                <Badge variant="info" className="text-xs font-semibold">
-                  Popular
-                </Badge>
-              </div>
-
-              <CardHeader className="pb-4 pt-8">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
-                  <Building className="h-8 w-8 text-blue-600" />
-                </div>
-                <CardTitle className="text-2xl font-bold">Cook at Commercial Kitchens</CardTitle>
-                <CardDescription className="text-base">
-                  Access professional kitchen spaces to prepare your food in a certified environment.
-                </CardDescription>
-              </CardHeader>
-
-              <CardContent className="space-y-6">
-                {/* Benefits list */}
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <CheckCircle className="h-4 w-4 text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Professional Equipment</p>
-                      <p className="text-xs text-muted-foreground">Access commercial-grade kitchen tools</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <CheckCircle className="h-4 w-4 text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Flexible Booking</p>
-                      <p className="text-xs text-muted-foreground">Book time slots that fit your schedule</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <CheckCircle className="h-4 w-4 text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Certified Spaces</p>
-                      <p className="text-xs text-muted-foreground">Meet health & safety requirements</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Process steps */}
-                <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100">
-                  <p className="text-xs font-bold uppercase text-muted-foreground tracking-wider mb-3">How it works</p>
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">1</div>
-                      <span className="text-muted-foreground">Discover</span>
-                    </div>
-                    <div className="flex-1 h-px bg-blue-200 mx-2" />
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">2</div>
-                      <span className="text-muted-foreground">Apply</span>
-                    </div>
-                    <div className="flex-1 h-px bg-blue-200 mx-2" />
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">3</div>
-                      <span className="text-muted-foreground">Book</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-
-              <CardFooter className="pt-2 pb-6">
-                <Button
-                  size="lg"
-                  onClick={() => setActiveTab("discover-kitchens")}
-                  variant="secondary"
-                  className="w-full rounded-xl shadow-lg shadow-primary/10 group-hover:shadow-primary/20 transition-all"
-                >
-                  <Building className="h-5 w-5 mr-2" />
-                  Discover Kitchens
-                  <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                </Button>
-              </CardFooter>
-            </Card>
-          </div>
-
-          {/* Bottom info section */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 p-6 bg-muted/30 rounded-2xl border border-border/50">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Shield className="h-5 w-5" />
-              <span className="text-sm">Secure & Verified</span>
-            </div>
-            <div className="hidden sm:block w-px h-4 bg-border" />
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Clock className="h-5 w-5" />
-              <span className="text-sm">Quick Approval Process</span>
-            </div>
-            <div className="hidden sm:block w-px h-4 bg-border" />
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <MessageCircle className="h-5 w-5" />
-              <span className="text-sm">24/7 Support Available</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Duplicate Application Prevention Notice */}
-      {hasActiveSellerApplication && (
-        <div className="p-4 bg-amber-50 rounded-lg border border-amber-200 flex items-start gap-3">
-          <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-amber-800">Active Application in Progress</p>
-            <p className="text-sm text-amber-700 mt-1">
-              You already have an active seller application. You cannot submit another application until the current one is resolved.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Document Management Modal */}
-      <DocumentManagementModal open={showDocumentModal} onOpenChange={setShowDocumentModal} />
-    </div>
+    <SellerApplicationTabContent
+      applications={userDisplayInfo.applications || []}
+      kitchenApplications={typedKitchenApplications}
+      publicKitchens={publicKitchens}
+      onStartApplication={() => setApplicationViewMode("form")}
+      onManageDocuments={() => setApplicationViewMode("documents")}
+      onCancelApplication={handleCancelApplication}
+      onDiscoverKitchens={() => {
+        requestDiscoverKitchensWalkthrough();
+        setActiveTab("discover-kitchens");
+      }}
+      onBookKitchen={(locationId, locationName, locationAddress) => {
+        setBookingLocation({
+          id: locationId,
+          name: locationName,
+          address: locationAddress,
+        });
+        setBookingSheetOpen(true);
+      }}
+    />
   );
 
   const trainingTabContent = (
@@ -1105,12 +686,16 @@ export default function ApplicantDashboard() {
 
   const bookingsTabContent = (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Kitchen Bookings</h2>
-          <p className="text-muted-foreground mt-1">View and manage your upcoming kitchen sessions.</p>
-        </div>
-      </div>
+      <ChefPageHeader
+        title={t("shellKitchenBookings")}
+        description={t("shellKitchenBookingsDesc")}
+        actions={
+          <Button variant="outline" onClick={() => setActiveTab("transactions")}>
+            <CreditCard className="h-4 w-4 mr-2" />
+            {t("shellTransactions")}
+          </Button>
+        }
+      />
 
       {/* Pending Storage Extension Requests */}
       <PendingStorageExtensions />
@@ -1149,19 +734,10 @@ export default function ApplicantDashboard() {
   );
 
   const discoverKitchensTabContent = (
-    <KitchenDiscovery />
-  );
-
-  const viewingsTabContent = (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Kitchen Tours</h2>
-          <p className="text-muted-foreground mt-1">Manage your scheduled kitchen tours.</p>
-        </div>
-      </div>
-      <ChefViewingsList />
-    </div>
+    <KitchenDiscovery
+      defaultTab={activeTab === "viewings" ? "tours" : "discover"}
+      onViewKitchenApplication={() => setActiveTab("applications")}
+    />
   );
 
   // Render content based on activeTab (sidebar-driven navigation)
@@ -1174,14 +750,16 @@ export default function ApplicantDashboard() {
       case "kitchen-applications":
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{kitchenApplicationsTabContent}</div>;
       case "discover-kitchens":
-        return <div className="space-y-8 animate-in fade-in-50 duration-500">{discoverKitchensTabContent}</div>;
       case "viewings":
-        return <div className="space-y-8 animate-in fade-in-50 duration-500">{viewingsTabContent}</div>;
+        return <div className="space-y-8 animate-in fade-in-50 duration-500">{discoverKitchensTabContent}</div>;
       case "bookings":
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{bookingsTabContent}</div>;
       case "training":
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{trainingTabContent}</div>;
       case "messages":
+        if (!hasKitchenMessages) {
+          return <div className="space-y-8 animate-in fade-in-50 duration-500">{overviewTabContent}</div>;
+        }
         return <div className="animate-in fade-in-50 duration-500">{messagesTabContent}</div>;
       case "support":
         return (
@@ -1190,6 +768,8 @@ export default function ApplicantDashboard() {
               userEmail={authUser?.email || undefined}
               userName={authUser?.displayName || undefined}
               userId={authUser?.uid}
+              onOpenResolutionCenter={() => setActiveTab("issues-refunds")}
+              pendingResolutionCount={pendingDamageClaims + pendingPenalties}
             />
           </div>
         );
@@ -1200,6 +780,8 @@ export default function ApplicantDashboard() {
               userEmail={authUser?.email || undefined}
               userName={authUser?.displayName || undefined}
               userId={authUser?.uid}
+              onOpenResolutionCenter={() => setActiveTab("issues-refunds")}
+              pendingResolutionCount={pendingDamageClaims + pendingPenalties}
             />
           </div>
         );
@@ -1224,6 +806,15 @@ export default function ApplicantDashboard() {
             <ChefSellerRevenue />
           </div>
         );
+      case "my-account":
+        if (!isSellerApplicationFullyApproved || !isShopCreated) {
+          return <div className="space-y-8 animate-in fade-in-50 duration-500">{overviewTabContent}</div>;
+        }
+        return (
+          <div className="space-y-8 animate-in fade-in-50 duration-500">
+            <ChefSellerAccount onOpenApplications={() => setActiveTab("applications")} />
+          </div>
+        );
       case "profile":
         return (
           <div className="space-y-8 animate-in fade-in-50 duration-500">
@@ -1237,14 +828,14 @@ export default function ApplicantDashboard() {
 
   // Generate dynamic breadcrumbs based on current view and sub-view
   const getBreadcrumbs = () => {
-    const baseBreadcrumbs = [{ label: "Chef Portal", href: "#" }];
+    const baseBreadcrumbs = [{ label: t("shellChefPortal"), href: "#" }];
 
     // If in applications tab with documents view, add nested breadcrumb
     if (activeTab === 'applications' && applicationViewMode === 'documents') {
       return [
         ...baseBreadcrumbs,
-        { label: "My Application", onClick: () => setApplicationViewMode('list') },
-        { label: "Document Verification" }
+        { label: t("shellMyApplication"), onClick: () => setApplicationViewMode('list') },
+        { label: t("shellDocumentVerification") }
       ];
     }
 
@@ -1252,8 +843,8 @@ export default function ApplicantDashboard() {
     if (activeTab === 'applications' && applicationViewMode === 'form') {
       return [
         ...baseBreadcrumbs,
-        { label: "My Application", onClick: () => setApplicationViewMode('list') },
-        { label: "New Application" }
+        { label: t("shellMyApplication"), onClick: () => setApplicationViewMode('list') },
+        { label: t("shellNewApplication") }
       ];
     }
 
@@ -1261,8 +852,39 @@ export default function ApplicantDashboard() {
     if (activeTab === 'training' && trainingViewMode === 'player') {
       return [
         ...baseBreadcrumbs,
-        { label: "Training", onClick: () => setTrainingViewMode('overview') },
-        { label: "Video Player" }
+        { label: t("shellTraining"), onClick: () => setTrainingViewMode('overview') },
+        { label: t("shellVideoPlayer") }
+      ];
+    }
+
+    if (activeTab === 'viewings') {
+      return [
+        ...baseBreadcrumbs,
+        { label: t("shellDiscoverKitchens"), onClick: () => setActiveTab("discover-kitchens") },
+        { label: t("shellKitchenTours") }
+      ];
+    }
+
+    if (activeTab === 'bookings') {
+      return [
+        ...baseBreadcrumbs,
+        { label: t("shellMyBookings") }
+      ];
+    }
+
+    if (activeTab === 'transactions') {
+      return [
+        ...baseBreadcrumbs,
+        { label: t("shellMyBookings"), onClick: () => setActiveTab("bookings") },
+        { label: t("shellTransactions") }
+      ];
+    }
+
+    if (activeTab === 'issues-refunds') {
+      return [
+        ...baseBreadcrumbs,
+        { label: t("shellSupport"), onClick: () => setActiveTab("support") },
+        { label: t("shellResolutionCenter") }
       ];
     }
 
@@ -1272,7 +894,13 @@ export default function ApplicantDashboard() {
 
   return (
     <ChefDashboardLayout
-      activeView={activeTab}
+      activeView={
+        activeTab === "viewings"
+          ? "discover-kitchens"
+          : activeTab === "transactions"
+            ? "bookings"
+            : activeTab
+      }
       onViewChange={(view) => {
         setActiveTab(view);
         // Reset sub-view modes when switching tabs
@@ -1285,7 +913,10 @@ export default function ApplicantDashboard() {
       }}
       messageBadgeCount={0}
       breadcrumbs={getBreadcrumbs()}
-      hiddenItems={isSellerApplicationFullyApproved && isShopCreated ? [] : ['seller-revenue']}
+      hiddenItems={[
+        ...(!(isSellerApplicationFullyApproved && isShopCreated) ? ['seller-revenue', 'my-account'] : []),
+        ...(!hasResolutionItems ? ['issues-refunds'] : []),
+      ]}
     >
       {/* ⌘K Command Palette */}
       <ChefCommandPalette onNavigate={(view) => {
@@ -1294,7 +925,7 @@ export default function ApplicantDashboard() {
         if (view !== 'training') setTrainingViewMode('overview');
       }} />
 
-      {/* Tidio Chat Controller - manages widget visibility based on current view */}
+      {/* Identifies the chef in Tidio; the widget script loads only when chat is opened */}
       <TidioController
         userEmail={authUser?.email || undefined}
         userName={authUser?.displayName || undefined}
@@ -1303,27 +934,17 @@ export default function ApplicantDashboard() {
 
       {/* Continue Setup Banner - Like managers have */}
       {showSetupBanner && (
-        <div className="bg-blue-600 text-white px-6 py-4 shadow-md mb-6 rounded-lg flex items-center justify-between animate-in slide-in-from-top-2">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-white/20 rounded-full">
-              <ChefHat className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-semibold">Complete Your Chef Setup</p>
-              <p className="text-sm text-blue-100">
-                {missingSteps.length > 0
-                  ? `Next: ${missingSteps[0]}`
-                  : "Finish setting up your chef profile to start booking kitchens"}
-              </p>
-            </div>
+        <div className="mb-6 flex flex-col gap-3 rounded-lg border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium">{t("shellFinishChefSetup")}</p>
+            <p className="text-sm text-muted-foreground">
+              {t("shellFinishChefSetupDesc")}
+            </p>
           </div>
-          <Button
-            asChild
-            variant="secondary"
-            className="font-semibold shadow-lg hover:bg-blue-50"
-          >
+          <Button asChild variant="outline" size="sm">
             <Link href="/chef-setup">
-              Continue Setup <ChevronRight className="ml-2 h-4 w-4" />
+              {t("shellContinue")}
+              <ChevronRight />
             </Link>
           </Button>
         </div>
@@ -1348,16 +969,16 @@ export default function ApplicantDashboard() {
       <Dialog open={showVendorPortalPopup} onOpenChange={setShowVendorPortalPopup}>
         <DialogContent className="sm:max-w-[500px] gap-0 p-0 overflow-hidden border-border/50 shadow-2xl">
           <DialogHeader className="p-8 pb-4">
-            <div className="flex justify-center mb-6">
-              <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center border-4 border-background shadow-inner text-green-600">
-                <CheckCircle className="h-10 w-10" />
+              <div className="mb-6 flex justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <CheckCircle className="h-8 w-8" />
               </div>
             </div>
-            <DialogTitle className="text-3xl text-center font-bold tracking-tight">
-              Fully Verified!
+            <DialogTitle className="text-center text-2xl font-semibold tracking-tight">
+              {t("shellFullyVerified")}
             </DialogTitle>
             <CardDescription className="text-center text-base pt-2">
-              Your account documents have been approved. You are ready to start your business.
+              {t("shellFullyVerifiedDesc")}
             </CardDescription>
           </DialogHeader>
 
@@ -1366,18 +987,18 @@ export default function ApplicantDashboard() {
               <Button asChild className="w-full h-12 text-base font-semibold shadow-lg shadow-primary/10 rounded-xl" onClick={handleCloseVendorPopup}>
                 <a href="https://stagingwebapp.localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Fstagingwebapp.localcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2">
                   <Shield className="h-5 w-5" />
-                  Proceed to Vendor Storefront
+                  {t("shellProceedToVendorStorefront")}
                 </a>
               </Button>
               <Button variant="outline" className="w-full h-12 text-base rounded-xl" onClick={() => { handleCloseVendorPopup(); setActiveTab("discover-kitchens"); }}>
-                Explore Commercial Kitchens
+                {t("shellExploreCommercialKitchens")}
               </Button>
             </div>
 
             <div className="p-4 bg-muted/50 rounded-xl border border-border/50 flex gap-3 italic">
               <AlertCircle className="h-5 w-5 text-muted-foreground flex-shrink-0" />
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Next steps: Configure your Stripe payouts in the vendor portal to start accepting payments from customers.
+                {t("shellNextStepsStripe")}
               </p>
             </div>
           </div>
@@ -1393,8 +1014,8 @@ export default function ApplicantDashboard() {
                 <div className="flex items-center gap-3">
                   <MessageCircle className="h-5 w-5 text-primary" />
                   <div>
-                    <h4 className="font-bold text-sm">Chat with {chatApplication.location?.name || "Kitchen Manager"}</h4>
-                    <p className="text-xs text-muted-foreground">Application #{chatApplication.id}</p>
+                    <h4 className="font-bold text-sm">{t("shellChatWith", { name: chatApplication.location?.name || t("shellKitchenManager") })}</h4>
+                    <p className="text-xs text-muted-foreground">{t("shellApplicationNumber", { id: chatApplication.id })}</p>
                   </div>
                 </div>
               </div>
@@ -1405,7 +1026,7 @@ export default function ApplicantDashboard() {
                   chefId={chefId}
                   managerId={chatApplication.location?.managerId || 0}
                   locationId={chatApplication.locationId}
-                  locationName={chatApplication.location?.name || "Unknown Location"}
+                  locationName={chatApplication.location?.name || t("shellUnknownLocation")}
                   onClose={() => {
                     setShowChatDialog(false);
                     setChatApplication(null);

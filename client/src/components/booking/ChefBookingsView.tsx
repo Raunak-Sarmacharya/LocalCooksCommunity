@@ -1,6 +1,4 @@
 import { logger } from "@/lib/logger";
-"use client"
-
 import { useState, useMemo, useEffect } from "react"
 import { useLocation } from "wouter"
 import {
@@ -45,6 +43,8 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useTranslation } from "react-i18next"
+import type { TFunction } from "i18next"
 import { Separator } from "@/components/ui/separator"
 import {
   Table,
@@ -257,12 +257,14 @@ const formatBookingTimeSlots = (booking: Booking): string => {
   return sorted.map(s => `${formatTime(s.startTime)}-${formatTime(s.endTime)}`).join(', ')
 }
 
-const getTimeUntilBooking = (bookingDateTime: Date, now: Date) => {
+type LooseTFunction = (key: string, options?: Record<string, unknown>) => string
+
+const getTimeUntilBooking = (bookingDateTime: Date, now: Date, t?: LooseTFunction) => {
   const hoursUntil = Math.floor((bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60))
   const daysUntil = Math.floor(hoursUntil / 24)
   if (daysUntil > 0) return `${daysUntil}d`
   if (hoursUntil > 0) return `${hoursUntil}h`
-  return "Soon"
+  return t ? (t("bkSoon") as string) : "Soon"
 }
 
 const canCancelBooking = (booking: Booking, now: Date): boolean => {
@@ -299,6 +301,7 @@ interface BookingColumnsProps {
   kitchens: Array<{ id: number; name: string; locationName?: string }>
   storageBookings: StorageBooking[]
   equipmentBookings: EquipmentBooking[]
+  t: LooseTFunction
 }
 
 const getChefBookingColumns = ({
@@ -311,6 +314,7 @@ const getChefBookingColumns = ({
   kitchens,
   storageBookings: allStorageBookings,
   equipmentBookings: allEquipmentBookings,
+  t,
 }: BookingColumnsProps): ColumnDef<Booking>[] => [
   {
     accessorKey: "createdAt",
@@ -320,7 +324,7 @@ const getChefBookingColumns = ({
   },
   {
     id: "reference",
-    header: "Ref",
+    header: t("bkColRef"),
     cell: ({ row }) => {
       const ref = row.original.referenceCode || row.original.id;
       return (
@@ -339,7 +343,7 @@ const getChefBookingColumns = ({
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
       >
-        Status
+        {t("bkColStatus")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
@@ -347,57 +351,49 @@ const getChefBookingColumns = ({
       const status = row.getValue("status") as string
       const booking = row.original
 
-      let variant: "default" | "secondary" | "destructive" | "outline" = "outline"
+      let variant: "success" | "destructive" | "outline" | "warning" = "outline"
       let icon = null
-      let className = ""
       let label = status as string
 
       if (status === 'confirmed') {
-        variant = "default"
+        variant = "success"
         icon = <CheckCircle className="h-3 w-3 mr-1" />
-        className = "bg-green-600 hover:bg-green-700"
-        label = "Confirmed"
+        label = t("bkStatusConfirmed")
       } else if (status === 'cancelled') {
         // Industry standard: distinguish by cause
         if (booking.paymentStatus === 'failed' || booking.isVoidedAuthorization) {
           // Payment auth expired or voided — never charged
           variant = "outline"
           icon = <Clock className="h-3 w-3 mr-1" />
-          className = "bg-muted text-muted-foreground border-border"
-          label = "Expired"
+          label = t("bkStatusExpired")
         } else if (booking.cancellationRequestedAt) {
           // Chef requested cancellation, manager accepted
           variant = "outline"
           icon = <XCircle className="h-3 w-3 mr-1" />
-          className = "bg-muted text-muted-foreground border-border"
-          label = "Cancelled"
+          label = t("bkStatusCancelled")
         } else if (booking.paymentStatus === 'refunded') {
           // Cancelled and fully refunded
           variant = "outline"
           icon = <XCircle className="h-3 w-3 mr-1" />
-          className = "bg-muted text-muted-foreground border-border"
-          label = "Refunded"
+          label = t("bkStatusRefunded")
         } else {
           // Manager declined the booking
           variant = "destructive"
           icon = <XCircle className="h-3 w-3 mr-1" />
-          label = "Declined"
+          label = t("bkStatusDeclined")
         }
       } else if (status === 'completed') {
-        variant = "default"
+        variant = "success"
         icon = <CheckCircle className="h-3 w-3 mr-1" />
-        className = "bg-blue-600 hover:bg-blue-700"
-        label = "Completed"
+        label = t("bkStatusCompleted")
       } else if (status === 'cancellation_requested') {
-        variant = "secondary"
+        variant = "warning"
         icon = <Clock className="h-3 w-3 mr-1" />
-        className = "bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200"
-        label = "Cancellation Pending"
+        label = t("bkStatusCancellationPending")
       } else {
-        variant = "secondary"
+        variant = "outline"
         icon = <Clock className="h-3 w-3 mr-1" />
-        className = "bg-yellow-100 text-yellow-800 border-yellow-300 hover:bg-yellow-200"
-        label = "Pending Approval"
+        label = t("bkStatusPendingApproval")
       }
 
       let timeBadge = null
@@ -412,7 +408,7 @@ const getChefBookingColumns = ({
           if (isUpcoming && status !== 'cancelled') {
             timeBadge = (
               <span className="text-xs text-muted-foreground ml-1">
-                ({getTimeUntilBooking(bookingDateTime, now)})
+                ({getTimeUntilBooking(bookingDateTime, now, t)})
               </span>
             )
           }
@@ -439,35 +435,35 @@ const getChefBookingColumns = ({
 
       // ── Kitchen Check-In/Check-Out lifecycle badge (chef-facing) ──────────
       const checkinStatus = booking.checkinStatus
-      let checkinBadge: { label: string; bg: string; text: string; border: string; icon: React.ReactNode } | null = null
+      let checkinBadge: { label: string; variant: "success" | "warning" | "destructive" | "outline"; icon: React.ReactNode } | null = null
       if ((status === 'confirmed' || status === 'completed') && checkinStatus) {
         if (checkinStatus === 'checked_in') {
-          checkinBadge = { label: 'Checked In', bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', icon: <LogIn className="h-2.5 w-2.5" /> }
+          checkinBadge = { label: 'Checked In', variant: 'success', icon: <LogIn className="h-2.5 w-2.5" /> }
         } else if (checkinStatus === 'checkout_requested') {
-          checkinBadge = { label: 'Checkout Pending Review', bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', icon: <Clock className="h-2.5 w-2.5" /> }
+          checkinBadge = { label: 'Checkout Pending Review', variant: 'warning', icon: <Clock className="h-2.5 w-2.5" /> }
         } else if (checkinStatus === 'checked_out') {
-          checkinBadge = { label: 'Checked Out', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: <CheckCircle className="h-2.5 w-2.5" /> }
+          checkinBadge = { label: 'Checked Out', variant: 'success', icon: <CheckCircle className="h-2.5 w-2.5" /> }
         } else if (checkinStatus === 'no_show') {
-          checkinBadge = { label: 'No-Show', bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', icon: <XCircle className="h-2.5 w-2.5" /> }
+          checkinBadge = { label: 'No-Show', variant: 'destructive', icon: <XCircle className="h-2.5 w-2.5" /> }
         } else if (checkinStatus === 'checkout_claim_filed') {
-          checkinBadge = { label: 'Claim Filed', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', icon: <AlertTriangle className="h-2.5 w-2.5" /> }
+          checkinBadge = { label: 'Claim Filed', variant: 'warning', icon: <AlertTriangle className="h-2.5 w-2.5" /> }
         }
       }
 
       return (
         <div className="flex flex-col gap-1">
           <div className="flex items-center">
-            <Badge variant={variant} className={cn("items-center flex w-fit text-xs", className)}>
+            <Badge variant={variant} className="items-center flex w-fit text-xs">
               {icon}
               {label}
             </Badge>
             {timeBadge}
           </div>
           {checkinBadge && (
-            <div className={cn("flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border w-fit", checkinBadge.bg, checkinBadge.text, checkinBadge.border)}>
+            <Badge variant={checkinBadge.variant} className="items-center flex w-fit text-xs gap-1">
               {checkinBadge.icon}
               {checkinBadge.label}
-            </div>
+            </Badge>
           )}
           {isVoided && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded border border-border w-fit">
@@ -476,37 +472,37 @@ const getChefBookingColumns = ({
             </div>
           )}
           {isAuthHold && status === 'pending' && (
-            <div className="flex items-center gap-1 text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 w-fit">
+            <Badge variant="outline" className="items-center flex w-fit text-xs gap-1 text-muted-foreground">
               <Clock className="h-2.5 w-2.5" />
               Payment held
-            </div>
+            </Badge>
           )}
           {/* Only show individual addon rejection badges when the booking itself was NOT fully voided.
               Full voided auth already communicates everything was rejected — individual badges would be redundant
               and misleading (implying kitchen was approved but specific addons were individually rejected). */}
           {!isVoided && rejectedStorageCount > 0 && (
-            <div className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded w-fit">
+            <Badge variant="destructive" className="items-center flex w-fit text-xs gap-1">
               <Package className="h-2.5 w-2.5" />
               {rejectedStorageCount} storage declined
-            </div>
+            </Badge>
           )}
           {!isVoided && rejectedEquipmentCount > 0 && (
-            <div className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded w-fit">
+            <Badge variant="destructive" className="items-center flex w-fit text-xs gap-1">
               <Package className="h-2.5 w-2.5" />
               {rejectedEquipmentCount} equipment declined
-            </div>
+            </Badge>
           )}
           {pendingStorageCount > 0 && status === 'confirmed' && (
-            <div className="flex items-center gap-1 text-xs text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded w-fit">
+            <Badge variant="warning" className="items-center flex w-fit text-xs gap-1">
               <Package className="h-2.5 w-2.5" />
               {pendingStorageCount} storage pending
-            </div>
+            </Badge>
           )}
           {status === 'cancelled' && booking.paymentStatus === 'partially_refunded' && (
-            <div className="flex items-center gap-1 text-xs text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200 w-fit">
+            <Badge variant="warning" className="items-center flex w-fit text-xs gap-1">
               <AlertTriangle className="h-2.5 w-2.5" />
               Partial refund
-            </div>
+            </Badge>
           )}
         </div>
       )
@@ -525,14 +521,14 @@ const getChefBookingColumns = ({
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
       >
-        Kitchen
+        {t("bkColKitchen")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
     cell: ({ row }) => {
       const booking = row.original
       const kitchen = kitchens.find((k) => k.id === booking.kitchenId)
-      const kitchenName = kitchen?.name || booking.kitchenName || `Kitchen #${booking.kitchenId}`
+      const kitchenName = kitchen?.name || booking.kitchenName || t("bkKitchenFallback", { id: booking.kitchenId })
       const locationName = kitchen?.locationName || booking.locationName || 'Unknown Location'
 
       return (
@@ -558,7 +554,7 @@ const getChefBookingColumns = ({
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
       >
-        Date & Time
+        {t("bkColDateTime")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
@@ -588,7 +584,7 @@ const getChefBookingColumns = ({
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 justify-end w-full"
       >
-        Amount
+        {t("bkColAmount")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
@@ -610,21 +606,21 @@ const getChefBookingColumns = ({
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="text-right cursor-help">
-                  <div className="font-medium text-sm text-muted-foreground">No Charge</div>
-                  <div className="text-xs text-muted-foreground">Hold released</div>
+                  <div className="font-medium text-sm text-muted-foreground">{t("payNoCharge")}</div>
+                  <div className="text-xs text-muted-foreground">{t("payHoldReleased")}</div>
                 </div>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
                 <div className="space-y-1 text-sm">
-                  <p className="font-medium">Booking Rejected</p>
+                  <p className="font-medium">{t("payBookingRejected")}</p>
                   {originalAuthAmount != null && originalAuthAmount > 0 && (
                     <div className="flex justify-between gap-4 text-muted-foreground">
-                      <span>Original hold:</span>
+                      <span>{t("payOriginalHold")}</span>
                       <span className="font-mono line-through">{formatPrice(originalAuthAmount)}</span>
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    The payment hold on your card was released. You were not charged.
+                    {t("payHoldReleasedNote")}
                   </p>
                 </div>
               </TooltipContent>
@@ -645,12 +641,12 @@ const getChefBookingColumns = ({
               <TooltipTrigger asChild>
                 <div className="text-right cursor-help">
                   <div className="font-medium text-sm">{formatPrice(totalPrice)}</div>
-                  <div className="text-xs text-blue-600">Payment held</div>
+                  <div className="text-xs text-muted-foreground">Payment held</div>
                 </div>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
                 <div className="space-y-1 text-sm">
-                  <p className="font-medium text-blue-700">Payment Hold</p>
+                  <p className="font-medium">Payment Hold</p>
                   <p className="text-xs text-muted-foreground">
                     This amount is held on your card. The charge will be finalized once the kitchen manager approves your booking.
                   </p>
@@ -675,18 +671,18 @@ const getChefBookingColumns = ({
               <TooltipTrigger asChild>
                 <div className="text-right cursor-help">
                   <div className="font-medium text-sm text-muted-foreground line-through">{formatPrice(totalPrice)}</div>
-                  <div className="text-xs text-orange-600">Refunded: {formatPrice(refundAmount)}</div>
+                  <div className="text-xs text-muted-foreground">Refunded: {formatPrice(refundAmount)}</div>
                 </div>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
                 <div className="space-y-1 text-sm">
-                  <p className="font-medium text-orange-700">{isRefunded ? 'Fully Refunded' : 'Partially Refunded'}</p>
+                  <p className="font-medium">{isRefunded ? t('payFullyRefunded') : t('payPartiallyRefunded')}</p>
                   <div className="flex justify-between gap-4 text-muted-foreground">
-                    <span>Original Charge:</span>
+                    <span>{t("payOriginalCharge")}</span>
                     <span className="font-mono line-through">{formatPrice(totalPrice)}</span>
                   </div>
-                  <div className="flex justify-between gap-4 font-semibold text-green-600">
-                    <span>Refunded to You:</span>
+                  <div className="flex justify-between gap-4 font-semibold">
+                    <span>{t("payRefundedToYou")}</span>
                     <span>{formatPrice(refundAmount)}</span>
                   </div>
                 </div>
@@ -704,18 +700,18 @@ const getChefBookingColumns = ({
               <TooltipTrigger asChild>
                 <div className="text-right cursor-help">
                   <div className="font-medium text-sm">{formatPrice(totalPrice)}</div>
-                  <div className="text-xs text-amber-600">Refund: {formatPrice(refundAmount)}</div>
+                  <div className="text-xs text-muted-foreground">Refund: {formatPrice(refundAmount)}</div>
                 </div>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
                 <div className="space-y-1 text-sm">
-                  <p className="font-medium text-amber-700">Partial Refund Issued</p>
+                  <p className="font-medium">{t("bkPartialRefundIssued")}</p>
                   <div className="flex justify-between gap-4">
-                    <span>Total Charged:</span>
+                    <span>{t("bkTotalCharged")}</span>
                     <span className="font-medium font-mono">{formatPrice(totalPrice)}</span>
                   </div>
-                  <div className="flex justify-between gap-4 text-green-600">
-                    <span>Refunded to You:</span>
+                  <div className="flex justify-between gap-4">
+                    <span>{t("bkRefundedToYou")}</span>
                     <span>{formatPrice(refundAmount)}</span>
                   </div>
                 </div>
@@ -726,14 +722,14 @@ const getChefBookingColumns = ({
       }
 
       // Default: no refund
-      const statusLabel = paymentStatus === 'paid' ? 'Paid'
-        : paymentStatus === 'refunded' ? 'Refunded'
-        : paymentStatus === 'partially_refunded' ? 'Partial Refund'
-        : paymentStatus === 'processing' ? 'Processing'
-        : 'Pending'
+      const statusLabel = paymentStatus === 'paid' ? t("bkPaymentPaid")
+        : paymentStatus === 'refunded' ? t("bkPaymentRefunded")
+        : paymentStatus === 'partially_refunded' ? t("bkPaymentPartialRefund")
+        : paymentStatus === 'processing' ? t("bkPaymentProcessing")
+        : t("bkPaymentPending")
 
-      const statusColor = paymentStatus === 'paid' ? 'text-green-600'
-        : paymentStatus === 'refunded' || paymentStatus === 'partially_refunded' ? 'text-orange-600'
+      const statusColor = paymentStatus === 'paid' ? 'text-muted-foreground'
+        : paymentStatus === 'refunded' || paymentStatus === 'partially_refunded' ? 'text-muted-foreground'
         : 'text-muted-foreground'
 
       return (
@@ -746,7 +742,7 @@ const getChefBookingColumns = ({
   },
   {
     accessorKey: "specialNotes",
-    header: "Notes",
+    header: t("bkColNotes"),
     cell: ({ row }) => {
       const notes = row.getValue("specialNotes") as string
       if (!notes) return <span className="text-muted-foreground text-xs">—</span>
@@ -787,19 +783,19 @@ const getChefBookingColumns = ({
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => onNavigate(`/booking/${booking.id}`)}>
               <Eye className="h-4 w-4 mr-2" />
-              View Details
+              {t("bkViewDetails")}
             </DropdownMenuItem>
 
             {(booking.status === 'confirmed' || booking.status === 'completed') && (
               <DropdownMenuItem onClick={() => onCheckinTracker(booking.id)}>
                 <LogIn className="h-4 w-4 mr-2" />
                 {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
-                  ? 'Check In'
+                  ? t("bkCheckIn")
                   : booking.status === 'completed'
-                    ? 'View Session Summary'
+                    ? t("bkViewSessionSummary")
                     : booking.checkinStatus === 'checked_in'
-                      ? 'View Check-In Status'
-                      : 'Check-In / Checkout Status'}
+                      ? t("bkViewCheckinStatus")
+                      : t("bkCheckinCheckoutStatus")}
               </DropdownMenuItem>
             )}
 
@@ -813,7 +809,7 @@ const getChefBookingColumns = ({
                 ) : (
                   <Download className="h-4 w-4 mr-2" />
                 )}
-                Download Invoice
+                {t("bkDownloadInvoice")}
               </DropdownMenuItem>
             )}
 
@@ -825,10 +821,10 @@ const getChefBookingColumns = ({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => onCancelBooking(booking.id)}
-                    className={isConfirmedPaid ? "text-amber-600 focus:text-amber-700" : "text-destructive focus:text-destructive"}
+                    className={isConfirmedPaid ? "text-warning focus:text-warning" : "text-destructive focus:text-destructive"}
                   >
                     <Ban className="h-4 w-4 mr-2" />
-                    {isConfirmedPaid ? "Request Cancellation" : "Cancel Booking"}
+                    {isConfirmedPaid ? t("bkRequestCancellation") : t("bkCancelBooking")}
                   </DropdownMenuItem>
                 </>
               )
@@ -865,10 +861,11 @@ const getStorageBookingColumns = ({
   downloadingInvoiceId,
   now,
   kitchenBookings,
-}: StorageBookingColumnsProps): ColumnDef<StorageBooking>[] => [
+  t,
+}: StorageBookingColumnsProps & { t: LooseTFunction }): ColumnDef<StorageBooking>[] => [
   {
     id: "reference",
-    header: "Ref",
+    header: t("bkColRef"),
     cell: ({ row }) => {
       const ref = row.original.referenceCode || row.original.id;
       return (
@@ -887,7 +884,7 @@ const getStorageBookingColumns = ({
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
       >
-        Storage
+        {t("bkColStorage")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
@@ -897,11 +894,12 @@ const getStorageBookingColumns = ({
         <div className="flex flex-col">
           <div className="flex items-center gap-2">
             <Package className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-            <span className="font-medium text-sm">{storageBooking.storageName || 'Storage Unit'}</span>
+            <span className="font-medium text-sm">{storageBooking.storageName ||
+              t("sxDefaultUnitName")}</span>
           </div>
           <div className="flex items-center text-xs text-muted-foreground mt-0.5 ml-5">
             <MapPin className="h-3 w-3 mr-1" />
-            <span>{storageBooking.locationName || 'Unknown Location'}</span>
+            <span>{storageBooking.locationName || t("bkUnknownLocation")}</span>
           </div>
         </div>
       )
@@ -909,7 +907,7 @@ const getStorageBookingColumns = ({
   },
   {
     accessorKey: "storageType",
-    header: "Type",
+    header: t("bkColType"),
     cell: ({ row }) => {
       const storageType = row.getValue("storageType") as string
       return (
@@ -928,7 +926,7 @@ const getStorageBookingColumns = ({
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
       >
-        Period
+        {t("bkColPeriod")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
@@ -947,13 +945,13 @@ const getStorageBookingColumns = ({
             {format(new Date(storageBooking.startDate), "MMM d")} - {format(endDate, "MMM d, yyyy")}
           </div>
           {isActive && isExpiringSoon && !isExpired && (
-            <div className="text-xs text-amber-600 mt-0.5 ml-5">
-              Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}
+            <div className="text-xs text-muted-foreground mt-0.5 ml-5">
+              {t("bkExpiresIn", { count: daysUntilExpiry })}
             </div>
           )}
           {isActive && isExpired && (
-            <div className="text-xs text-red-600 mt-0.5 ml-5">
-              Expired {Math.abs(daysUntilExpiry)} day{Math.abs(daysUntilExpiry) !== 1 ? 's' : ''} ago
+            <div className="text-xs text-destructive mt-0.5 ml-5">
+              {t("bkExpiredAgo", { count: Math.abs(daysUntilExpiry) })}
             </div>
           )}
         </div>
@@ -962,7 +960,7 @@ const getStorageBookingColumns = ({
   },
   {
     accessorKey: "status",
-    header: "Status",
+    header: t("bkColStatus"),
     cell: ({ row }) => {
       const storageBooking = row.original
       const status = storageBooking.status
@@ -973,14 +971,14 @@ const getStorageBookingColumns = ({
         return (
           <Badge variant="warning">
             <AlertTriangle className="h-3 w-3 mr-1" />
-            Claim Filed
+            {t("bkClaimFiled")}
           </Badge>
         )
       } else if (status === 'completed') {
         return (
           <Badge variant="success">
             <CheckCircle className="h-3 w-3 mr-1" />
-            Cleared
+            {t("bkCleared")}
           </Badge>
         )
       // Cancelled bookings — distinguish by cause for intuitive labels
@@ -1011,7 +1009,7 @@ const getStorageBookingColumns = ({
         return (
           <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
             <XCircle className="h-3 w-3 mr-1" />
-            Cancelled
+            {t("bkStatusCancelled")}
           </Badge>
         )
       } else if (status === 'cancelled' && storageBooking.paymentStatus === 'refunded') {
@@ -1019,7 +1017,7 @@ const getStorageBookingColumns = ({
         return (
           <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
             <XCircle className="h-3 w-3 mr-1" />
-            Refunded
+            {t("bkStatusRefunded")}
           </Badge>
         )
       } else if (status === 'cancelled') {
@@ -1027,49 +1025,49 @@ const getStorageBookingColumns = ({
         return (
           <Badge variant="outline" className="text-destructive border-destructive/30">
             <XCircle className="h-3 w-3 mr-1" />
-            Declined
+            {t("bkStatusDeclined")}
           </Badge>
         )
       } else if (status === 'cancellation_requested') {
         return (
           <Badge variant="warning">
             <Clock className="h-3 w-3 mr-1" />
-            Cancellation Pending
+            {t("bkStatusCancellationPending")}
           </Badge>
         )
       } else if (status === 'pending') {
         return (
           <Badge variant="warning">
             <Clock className="h-3 w-3 mr-1" />
-            Pending Approval
+            {t("bkStatusPendingApproval")}
           </Badge>
         )
       } else if (status === 'confirmed' && checkoutStatus === 'checkout_requested') {
         return (
-          <Badge variant="info">
+          <Badge variant="warning">
             <Clock className="h-3 w-3 mr-1" />
-            Checkout Under Review
+            {t("bkCheckoutUnderReview")}
           </Badge>
         )
       } else if (status === 'confirmed' && checkoutStatus === 'checkout_approved') {
         return (
           <Badge variant="success">
             <CheckCircle className="h-3 w-3 mr-1" />
-            Checkout Approved
+            {t("bkCheckoutApproved")}
           </Badge>
         )
       } else if (status === 'confirmed' && checkoutStatus === 'active') {
         return (
           <Badge variant="success">
             <CheckCircle className="h-3 w-3 mr-1" />
-            Active
+            {t("bkActive")}
           </Badge>
         )
       } else if (status === 'confirmed') {
         return (
           <Badge variant="success">
             <CheckCircle className="h-3 w-3 mr-1" />
-            Confirmed
+            {t("bkStatusConfirmed")}
           </Badge>
         )
       }
@@ -1130,7 +1128,7 @@ const getStorageBookingColumns = ({
             {canExtend && (
               <DropdownMenuItem onClick={() => onExtend(storageBooking.id)}>
                 <CalendarPlus className="h-4 w-4 mr-2" />
-                Extend Storage
+                {t("bkExtendStorage")}
               </DropdownMenuItem>
             )}
 
@@ -1143,7 +1141,7 @@ const getStorageBookingColumns = ({
               ) : (
                 <Download className="h-4 w-4 mr-2" />
               )}
-              Download Invoice
+              {t("bkDownloadInvoice")}
             </DropdownMenuItem>
 
             {canCheckin && (
@@ -1151,7 +1149,7 @@ const getStorageBookingColumns = ({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => onCheckin(storageBooking.id)}>
                   <LogIn className="h-4 w-4 mr-2" />
-                  Check In
+                  {t("bkCheckIn")}
                 </DropdownMenuItem>
               </>
             )}
@@ -1160,8 +1158,8 @@ const getStorageBookingColumns = ({
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => onViewCheckinStatus(storageBooking.id)}>
-                  <CheckCircle className="h-4 w-4 mr-2 text-emerald-600" />
-                  View Check-In History
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  {t("bkViewCheckinHistory")}
                 </DropdownMenuItem>
               </>
             )}
@@ -1171,7 +1169,7 @@ const getStorageBookingColumns = ({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => onCheckout(storageBooking.id)}>
                   <LogOut className="h-4 w-4 mr-2" />
-                  Request Checkout
+                  {t("bkRequestCheckout")}
                 </DropdownMenuItem>
               </>
             )}
@@ -1181,7 +1179,7 @@ const getStorageBookingColumns = ({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => onViewCheckoutStatus(storageBooking.id)}>
                   <Eye className="h-4 w-4 mr-2" />
-                  View Checkout Status
+                  {t("bkViewCheckoutStatus")}
                 </DropdownMenuItem>
               </>
             )}
@@ -1194,10 +1192,10 @@ const getStorageBookingColumns = ({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => onCancelStorage(storageBooking.id)}
-                    className={isConfirmedPaid ? "text-amber-600 focus:text-amber-700 focus:bg-amber-50" : "text-red-600 focus:text-red-700 focus:bg-red-50"}
+                    className={isConfirmedPaid ? "text-warning focus:text-warning" : "text-destructive focus:text-destructive"}
                   >
                     <XCircle className="h-4 w-4 mr-2" />
-                    {isConfirmedPaid ? "Request Cancellation" : "Cancel Storage"}
+                    {isConfirmedPaid ? t("bkRequestCancellation") : t("bkCancelStorage")}
                   </DropdownMenuItem>
                 </>
               )
@@ -1217,6 +1215,8 @@ export default function ChefBookingsView({
   kitchens = [],
 }: ChefBookingsViewProps) {
   const [, navigate] = useLocation()
+  const { t: tStrict } = useTranslation("chef")
+  const t = tStrict as unknown as (key: string, options?: Record<string, unknown>) => string
   const [statusFilter, setStatusFilter] = useState<FilterType>("all")
   const [viewType, setViewType] = useState<ViewType>("upcoming")
   const [searchQuery, setSearchQuery] = useState("")
@@ -1344,7 +1344,7 @@ export default function ChefBookingsView({
       const query = searchQuery.toLowerCase().trim()
       filtered = filtered.filter((b) => {
         const kitchen = kitchens.find((k) => k.id === b.kitchenId)
-        const kitchenName = kitchen?.name || b.kitchenName || `Kitchen #${b.kitchenId}`
+        const kitchenName = kitchen?.name || b.kitchenName || t("bkKitchenFallback", { id: b.kitchenId })
         const locationName = kitchen?.locationName || b.locationName || "Unknown Location"
         const searchableText = [
           kitchenName,
@@ -1376,7 +1376,7 @@ export default function ChefBookingsView({
     try {
       const currentUser = auth.currentUser
       if (!currentUser) {
-        toast.error("Please log in to download invoice")
+        toast.error(t("bkLoginToDownload"))
         setDownloadingInvoiceId(null)
         return
       }
@@ -1413,9 +1413,9 @@ export default function ChefBookingsView({
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
 
-      toast.success("Invoice downloaded successfully!")
+      toast.success(t("bkInvoiceDownloaded"))
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to download invoice"
+      const errorMessage = err instanceof Error ? err.message : t("bkInvoiceFailed")
       toast.error(errorMessage)
     } finally {
       setDownloadingInvoiceId(null)
@@ -1428,7 +1428,7 @@ export default function ChefBookingsView({
     try {
       const currentUser = auth.currentUser
       if (!currentUser) {
-        toast.error("Please log in to download invoice")
+        toast.error(t("bkLoginToDownload"))
         setDownloadingInvoiceId(null)
         return
       }
@@ -1464,9 +1464,9 @@ export default function ChefBookingsView({
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
 
-      toast.success("Storage invoice downloaded successfully!")
+      toast.success(t("bkStorageInvoiceDownloaded"))
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to download invoice"
+      const errorMessage = err instanceof Error ? err.message : t("bkInvoiceFailed")
       toast.error(errorMessage)
     } finally {
       setDownloadingInvoiceId(null)
@@ -1536,7 +1536,7 @@ export default function ChefBookingsView({
     const bookingDateTime = createBookingDateTime(dateStr, booking.startTime, timezone)
 
     if (isNaN(bookingDateTime.getTime())) {
-      toast.error("Invalid booking date format")
+      toast.error(t("bkInvalidDateFormat"))
       return
     }
 
@@ -1548,7 +1548,7 @@ export default function ChefBookingsView({
     const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)
 
     if (hoursUntilBooking < 0) {
-      toast.error("This booking has already started or passed")
+      toast.error(t("bkAlreadyStarted"))
       return
     }
 
@@ -1586,8 +1586,9 @@ export default function ChefBookingsView({
       kitchens,
       storageBookings: storageBookings as StorageBooking[],
       equipmentBookings: equipmentBookings as EquipmentBooking[],
+      t,
     }),
-    [downloadingInvoiceId, now, kitchens, navigate, storageBookings, equipmentBookings, bookings]
+    [downloadingInvoiceId, now, kitchens, navigate, storageBookings, equipmentBookings, bookings, t]
   )
 
   // Storage table columns
@@ -1603,8 +1604,9 @@ export default function ChefBookingsView({
       downloadingInvoiceId,
       now,
       kitchenBookings: bookings,
+      t,
     }),
-    [downloadingInvoiceId, now, storageBookings, bookings]
+    [downloadingInvoiceId, now, storageBookings, bookings, t]
   )
 
   // TanStack Table instance for kitchen bookings
@@ -1642,11 +1644,11 @@ export default function ChefBookingsView({
 
   const statusConfig = {
     all: { variant: "outline" as const, className: "" },
-    pending: { variant: "secondary" as const, className: "bg-yellow-100 text-yellow-800 border-yellow-300 hover:bg-yellow-200" },
-    confirmed: { variant: "default" as const, className: "bg-green-600 hover:bg-green-700" },
+    pending: { variant: "outline" as const, className: "" },
+    confirmed: { variant: "success" as const, className: "" },
     cancelled: { variant: "destructive" as const, className: "" },
-    completed: { variant: "outline" as const, className: "bg-green-50 text-green-700 border-green-200 hover:bg-green-100" },
-    cancellation_requested: { variant: "secondary" as const, className: "bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200" },
+    completed: { variant: "success" as const, className: "" },
+    cancellation_requested: { variant: "outline" as const, className: "" },
   }
 
   // ── Compute bookings needing check-in/check-out action ──────────────────
@@ -1702,31 +1704,30 @@ export default function ChefBookingsView({
 
       {/* ── Check-In Action Banner ──────────────────────────────────────── */}
       {needsCheckinBookings.length > 0 && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+        <div className="rounded-lg border p-4">
           <div className="flex items-start gap-3">
-            <LogIn className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+            <LogIn className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-blue-900">
+              <h3 className="text-sm font-semibold">
                 {needsCheckinBookings.length === 1
-                  ? "Time to Check In!"
-                  : `${needsCheckinBookings.length} Bookings Need Check-In`}
+                  ? t("bkTimeToCheckIn")
+                  : t("bkBookingsNeedCheckin", { count: needsCheckinBookings.length })}
               </h3>
-              <p className="text-xs text-blue-700 mt-1">
-                You must check in when you arrive at the kitchen. Complete a quick checklist and snap photos to document the condition — this protects you if any issues arise.
+              <p className="text-xs text-muted-foreground mt-1">
+                {t("bkCheckinBannerBody")}
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
                 {needsCheckinBookings.map(b => {
                   const kitchen = kitchens.find(k => k.id === b.kitchenId)
-                  const kitchenName = kitchen?.name || b.kitchenName || `Kitchen #${b.kitchenId}`
+                  const kitchenName = kitchen?.name || b.kitchenName || t("bkKitchenFallback", { id: b.kitchenId })
                   return (
                     <Button
                       key={b.id}
                       size="sm"
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
                       onClick={() => setCheckinTrackerBookingId(b.id)}
                     >
                       <LogIn className="h-3.5 w-3.5 mr-1.5" />
-                      Check In — {kitchenName}
+                      {t("bkCheckinAction", { name: kitchenName })}
                     </Button>
                   )
                 })}
@@ -1738,32 +1739,31 @@ export default function ChefBookingsView({
 
       {/* ── Check-Out Action Banner ─────────────────────────────────────── */}
       {needsCheckoutBookings.length > 0 && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+        <div className="rounded-lg border p-4">
           <div className="flex items-start gap-3">
-            <LogOut className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
+            <LogOut className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-emerald-900">
+              <h3 className="text-sm font-semibold">
                 {needsCheckoutBookings.length === 1
-                  ? "Ready to Check Out?"
-                  : `${needsCheckoutBookings.length} Bookings Need Check-Out`}
+                  ? t("bkReadyToCheckOut")
+                  : t("bkBookingsNeedCheckout", { count: needsCheckoutBookings.length })}
               </h3>
-              <p className="text-xs text-emerald-700 mt-1">
-                Submit your check-out photos when you're done. The manager will review and clear your session.
+              <p className="text-xs text-muted-foreground mt-1">
+                {t("bkCheckoutBannerBody")}
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
                 {needsCheckoutBookings.map(b => {
                   const kitchen = kitchens.find(k => k.id === b.kitchenId)
-                  const kitchenName = kitchen?.name || b.kitchenName || `Kitchen #${b.kitchenId}`
+                  const kitchenName = kitchen?.name || b.kitchenName || t("bkKitchenFallback", { id: b.kitchenId })
                   return (
                     <Button
                       key={b.id}
                       size="sm"
                       variant="outline"
-                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-100"
                       onClick={() => setCheckinTrackerBookingId(b.id)}
                     >
                       <LogOut className="h-3.5 w-3.5 mr-1.5" />
-                      Check Out — {kitchenName}
+                      {t("bkCheckoutAction", { name: kitchenName })}
                     </Button>
                   )
                 })}
@@ -1775,28 +1775,26 @@ export default function ChefBookingsView({
 
       {/* ── Storage Check-In Action Banner (only when not checked in) ──── */}
       {needsStorageCheckin.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <div className="rounded-lg border p-4">
           <div className="flex items-start gap-3">
-            <Package className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+            <Package className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-amber-900">
+              <h3 className="text-sm font-semibold">
                 {needsStorageCheckin.length === 1
-                  ? "Storage Move-In Inspection Due"
-                  : `${needsStorageCheckin.length} Storage Units Need Check-In`}
+                  ? t("sbMoveInDue")
+                  : t("sbUnitsNeedCheckin", { count: needsStorageCheckin.length })}
               </h3>
-              <p className="text-xs text-amber-700 mt-1">
-                Complete the move-in checklist and upload photos of your storage unit. This establishes the baseline condition and protects you from unfair damage claims. You must check in before you can check out.
+              <p className="text-xs text-muted-foreground mt-1">
+                {t("sbMoveInBody")}
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
                 {needsStorageCheckin.map(sb => (
                   <Button
                     key={`checkin-${sb.id}`}
                     size="sm"
-                    className="bg-amber-600 hover:bg-amber-700 text-white"
-                    variant="default"
                     onClick={() => setCheckinDialogOpen(sb.id)}
                   >
-                    <LogIn className="h-3.5 w-3.5 mr-1.5" />Check In — {sb.storageName || `Storage #${sb.id}`}
+                    <LogIn className="h-3.5 w-3.5 mr-1.5" />{t("bkCheckIn")} — {sb.storageName || `Storage #${sb.id}`}
                   </Button>
                 ))}
               </div>
@@ -1807,17 +1805,17 @@ export default function ChefBookingsView({
 
       {/* ── Storage Check-Out Action Banner (only after check-in completed) ── */}
       {needsStorageCheckout.length > 0 && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+        <div className="rounded-lg border p-4">
           <div className="flex items-start gap-3">
-            <LogOut className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
+            <LogOut className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-emerald-900">
+              <h3 className="text-sm font-semibold">
                 {needsStorageCheckout.length === 1
-                  ? "Ready to Move Out?"
-                  : `${needsStorageCheckout.length} Storage Units Ready for Check-Out`}
+                  ? t("bkReadyToMoveOut")
+                  : t("bkStorageReadyCheckout", { count: needsStorageCheckout.length })}
               </h3>
-              <p className="text-xs text-emerald-700 mt-1">
-                Submit your check-out photos showing the unit is clean and empty. The manager will review and clear you.
+              <p className="text-xs text-muted-foreground mt-1">
+                {t("bkMoveOutBannerBody")}
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
                 {needsStorageCheckout.map(sb => (
@@ -1825,11 +1823,10 @@ export default function ChefBookingsView({
                     key={`checkout-${sb.id}`}
                     size="sm"
                     variant="outline"
-                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-100"
                     onClick={() => setCheckoutDialogOpen(sb.id)}
                   >
                     <LogOut className="h-3.5 w-3.5 mr-1.5" />
-                    Check Out — {sb.storageName || `Storage #${sb.id}`}
+                    {t("bkCheckoutAction", { name: sb.storageName || `Storage #${sb.id}` })}
                   </Button>
                 ))}
               </div>
@@ -1843,7 +1840,7 @@ export default function ChefBookingsView({
         <CardHeader className="pb-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <CardTitle className="text-xl font-semibold">My Bookings</CardTitle>
+              <CardTitle className="text-xl font-semibold">{t("bkMyBookings")}</CardTitle>
               <CardDescription>
                 {table.getFilteredRowModel().rows.length} of {currentViewData.length} booking{currentViewData.length !== 1 ? 's' : ''}
               </CardDescription>
@@ -1854,7 +1851,7 @@ export default function ChefBookingsView({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 type="text"
-                placeholder="Search bookings..."
+                placeholder={t("bkSearchPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 pr-9"
@@ -1879,15 +1876,15 @@ export default function ChefBookingsView({
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="upcoming" className="gap-2">
                 <CalendarDays className="h-4 w-4" />
-                Upcoming
+                {t("bkTabUpcoming")}
                 <Badge variant="count" className="ml-1">{upcomingBookings.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="past" className="gap-2">
-                Past
+                {t("bkTabPast")}
                 <Badge variant="count" className="ml-1">{pastBookings.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="all" className="gap-2">
-                All
+                {t("bkTabAll")}
                 <Badge variant="count" className="ml-1">{allBookings.length}</Badge>
               </TabsTrigger>
             </TabsList>
@@ -1908,7 +1905,7 @@ export default function ChefBookingsView({
                     statusFilter === filter && config.className
                   )}
                 >
-                  {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                  {t(filter === "all" ? "bkFilterAll" : filter === "pending" ? "bkFilterPending" : filter === "confirmed" ? "bkFilterConfirmed" : "bkFilterCancelled")}
                   <span className="ml-1.5 opacity-70">({statusCounts[filter]})</span>
                 </Button>
               )
@@ -1918,7 +1915,7 @@ export default function ChefBookingsView({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 ml-auto">
-                  Columns <ChevronDown className="ml-2 h-3 w-3" />
+                  {t("bkColumns")} <ChevronDown className="ml-2 h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -1932,7 +1929,14 @@ export default function ChefBookingsView({
                       checked={column.getIsVisible()}
                       onCheckedChange={(value) => column.toggleVisibility(!!value)}
                     >
-                      {column.id === 'kitchenName' ? 'Kitchen' : column.id === 'bookingDate' ? 'Date & Time' : column.id === 'totalPrice' ? 'Amount' : column.id === 'specialNotes' ? 'Notes' : column.id}
+                      {column.id === 'kitchenName' ? t("bkColKitchen") : 
+                       column.id === 'bookingDate' ? t("bkColDateTime") : 
+                       column.id === 'totalPrice' ? t("bkColAmount") : 
+                       column.id === 'specialNotes' ? t("bkColNotes") : 
+                       column.id === 'reference' ? t("bkColRef") :
+                       column.id === 'status' ? t("bkColStatus") :
+                       column.id === 'createdAt' ? t("bkColCreatedAt") :
+                       column.id}
                     </DropdownMenuCheckboxItem>
                   ))}
               </DropdownMenuContent>
@@ -1991,14 +1995,14 @@ export default function ChefBookingsView({
                         <Calendar className="h-8 w-8 text-muted-foreground" />
                         <p className="text-sm text-muted-foreground">
                           {viewType === "upcoming"
-                            ? "No upcoming bookings found"
+                            ? t("bkNoUpcoming")
                             : viewType === "past"
-                            ? "No past bookings to display"
-                            : "No bookings match your current filters"}
+                            ? t("bkNoPast")
+                            : t("bkNoMatch")}
                         </p>
                         {searchQuery && (
                           <Button variant="ghost" size="sm" onClick={() => setSearchQuery('')}>
-                            Clear search
+                            {t("bkClearSearch")}
                           </Button>
                         )}
                       </div>
@@ -2012,7 +2016,7 @@ export default function ChefBookingsView({
           {/* Pagination */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-sm text-muted-foreground order-2 sm:order-1">
-              Showing {table.getRowModel().rows.length} of {filteredData.length} results
+              {t("bkShowingResults", { shown: table.getRowModel().rows.length, total: filteredData.length })}
             </div>
             <div className="flex items-center gap-2 order-1 sm:order-2">
               <Button
@@ -2021,7 +2025,7 @@ export default function ChefBookingsView({
                 onClick={() => table.previousPage()}
                 disabled={!table.getCanPreviousPage()}
               >
-                Previous
+                {t("bkPrevPage")}
               </Button>
               <Button
                 variant="outline"
@@ -2029,7 +2033,7 @@ export default function ChefBookingsView({
                 onClick={() => table.nextPage()}
                 disabled={!table.getCanNextPage()}
               >
-                Next
+                {t("bkNextPage")}
               </Button>
             </div>
           </div>
@@ -2042,10 +2046,13 @@ export default function ChefBookingsView({
           <CardHeader>
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
               <Package className="h-5 w-5" />
-              My Storage Bookings
+              {t("bkMyStorageTitle")}
             </CardTitle>
             <CardDescription>
-              {storageTable.getFilteredRowModel().rows.length} of {storageBookings.length} storage booking{storageBookings.length !== 1 ? 's' : ''}
+              {t("bkStorageCount", {
+                shown: storageTable.getFilteredRowModel().rows.length,
+                total: storageBookings.length,
+              })}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -2084,7 +2091,7 @@ export default function ChefBookingsView({
                       <TableCell colSpan={storageColumns.length} className="h-24 text-center">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <Package className="h-8 w-8 text-muted-foreground" />
-                          <p className="text-sm text-muted-foreground">No storage bookings found</p>
+                          <p className="text-sm text-muted-foreground">{t("bkNoStorageFound")}</p>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -2097,7 +2104,7 @@ export default function ChefBookingsView({
             {storageBookings.length > 10 && (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div className="text-sm text-muted-foreground order-2 sm:order-1">
-                  Showing {storageTable.getRowModel().rows.length} of {storageBookings.length} results
+                  {t("bkShowingResults", { shown: storageTable.getRowModel().rows.length, total: storageBookings.length })}
                 </div>
                 <div className="flex items-center gap-2 order-1 sm:order-2">
                   <Button
@@ -2106,7 +2113,7 @@ export default function ChefBookingsView({
                     onClick={() => storageTable.previousPage()}
                     disabled={!storageTable.getCanPreviousPage()}
                   >
-                    Previous
+                    {t("bkPrevPage")}
                   </Button>
                   <Button
                     variant="outline"
@@ -2114,7 +2121,7 @@ export default function ChefBookingsView({
                     onClick={() => storageTable.nextPage()}
                     disabled={!storageTable.getCanNextPage()}
                   >
-                    Next
+                    {t("bkNextPage")}
                   </Button>
                 </div>
               </div>

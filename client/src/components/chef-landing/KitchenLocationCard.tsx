@@ -6,6 +6,9 @@ import { Building2, Calendar, ArrowRight } from "lucide-react";
 import { useLocation } from "wouter";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { useState } from "react";
+import { SmartImage } from "@/components/ui/smart-image";
+import { TruncatedText } from "@/components/common/TruncatedText";
+import { useTranslation } from "react-i18next";
 
 // Define interface matching the data structure in ChefLanding
 export interface KitchenLocation {
@@ -26,6 +29,7 @@ interface KitchenLocationCardProps {
 }
 
 export function KitchenLocationCard({ location, navigate }: KitchenLocationCardProps) {
+    const { t } = useTranslation("common");
     // Logic to determine which image URL to use
     const rawImageUrl = (location.mainImage || location.featuredKitchenImage || '').trim();
     const hasValidRawImage = rawImageUrl.length > 0;
@@ -54,7 +58,7 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
                 <div className="relative h-44 overflow-hidden">
                     {!showPlaceholder ? (
                         <>
-                            <img
+                            <SmartImage
                                 src={displayUrl}
                                 alt={location.name}
                                 className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
@@ -78,20 +82,20 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
                     {/* Kitchen count badge */}
                     {location.kitchenCount > 1 && (
                         <div className="absolute top-3 right-3 bg-white rounded-full px-3 py-1 shadow-md z-10">
-                            <span className="text-xs font-bold text-[#F51042]">{location.kitchenCount} Kitchens</span>
+                            <span className="text-xs font-bold text-[#F51042]">
+                                {t("kitchenCount", "{{count}} Kitchens", { count: location.kitchenCount })}
+                            </span>
                         </div>
                     )}
 
                     {/* Logo overlay */}
                     {location.logoUrl && (
                         <div className="absolute top-3 left-3 z-10">
-                            <img
+                            <SmartImage
                                 src={location.logoUrl}
-                                alt={`${location.name} logo`}
+                                alt={t("logoAlt", "{{name}} logo", { name: location.name })}
                                 className="h-10 w-auto object-contain bg-white rounded-lg p-1.5 shadow-md"
-                                onError={(e) => {
-                                    (e.target as HTMLImageElement).style.display = 'none';
-                                }}
+                                hideOnError
                             />
                         </div>
                     )}
@@ -99,13 +103,13 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
 
                 {/* Content */}
                 <div className="p-5">
-                    <h3 className="text-lg font-bold text-[#1A1A1A] mb-1 group-hover:text-[#F51042] transition-colors">
+                    <TruncatedText as="h3" className="text-lg font-bold text-[#1A1A1A] mb-1 group-hover:text-[#F51042] transition-colors">
                         {location.name}
-                    </h3>
+                    </TruncatedText>
                     {location.address && (
                         <div className="flex items-start gap-1.5 mb-2">
                             <span className="text-[#F51042] mt-0.5">📍</span>
-                            <p className="text-sm text-[#6B6B6B] leading-relaxed line-clamp-1">{location.address}</p>
+                            <TruncatedText as="p" className="text-sm text-[#6B6B6B] leading-relaxed line-clamp-1">{location.address}</TruncatedText>
                         </div>
                     )}
 
@@ -120,7 +124,7 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
                         onClick={() => navigate(`/kitchen-preview/${location.slug || location.id}`)}
                     >
                         <Calendar className="mr-1.5 h-4 w-4" />
-                        View Availability
+                        {t("viewAvailability", "View Availability")}
                         <ArrowRight className="ml-1.5 h-4 w-4 group-hover/btn:translate-x-0.5 transition-transform" />
                     </Button>
                 </div>

@@ -27,6 +27,7 @@ import {
   X
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface VideoPlayerProps {
   videoUrl: string;
@@ -73,6 +74,7 @@ function PlayerUI({
   showApplicationPrompt,
   onApplicationPromptClose,
 }: PlayerUIProps) {
+  const { t } = useTranslation('chef');
   // ── Vidstack reactive state (context from nearest <MediaPlayer>) ──
   const paused = useMediaState('paused');
   const currentTime = useMediaState('currentTime');
@@ -255,9 +257,9 @@ function PlayerUI({
         <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-10">
           <div className="text-center text-white p-6 max-w-sm">
             <AlertCircle className="h-12 w-12 mx-auto mb-3 text-destructive" />
-            <h3 className="font-semibold mb-1">Video Unavailable</h3>
+            <h3 className="font-semibold mb-1">{t("vpVideoUnavailable")}</h3>
             <p className="text-sm text-white/70 mb-4">
-              Failed to load video. Please check your connection and try again.
+              {t("vpVideoUnavailableBody")}
             </p>
             <Button
               variant="outline"
@@ -265,7 +267,7 @@ function PlayerUI({
               onClick={() => remote.play()}
               className="text-white border-white/30 hover:bg-white/10"
             >
-              Try Again
+              {t("vpTryAgain")}
             </Button>
           </div>
         </div>
@@ -277,7 +279,7 @@ function PlayerUI({
           <div className="bg-success/95 backdrop-blur-sm text-success-foreground px-4 py-2.5 rounded-lg flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
               <CheckCircle className="h-4 w-4 flex-shrink-0" />
-              <span className="text-sm font-medium">Video completed</span>
+              <span className="text-sm font-medium">{t("vpVideoCompleted")}</span>
             </div>
             <Button
               variant="ghost"
@@ -296,7 +298,7 @@ function PlayerUI({
         <div className="absolute top-3 left-3 z-10">
           <Badge variant="success" className="shadow-md">
             <CheckCircle className="h-3 w-3 mr-1" />
-            Completed
+            {t("vpCompletedBadge")}
           </Badge>
         </div>
       )}
@@ -310,22 +312,22 @@ function PlayerUI({
                 <CheckCircle className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <h3 className="font-semibold text-lg">Great start!</h3>
+                <h3 className="font-semibold text-lg">{t("vpGreatStartTitle")}</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Submit your application to unlock all 22 training videos and earn your certification.
+                  {t("vpGreatStartBody")}
                 </p>
               </div>
               <div className="flex flex-col gap-2">
                 <Button
                   onClick={() => window.location.href = '/dashboard?view=applications&action=new'}
                 >
-                  Submit Application
+                  {t("vpSubmitApplication")}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={onApplicationPromptClose}
                 >
-                  Continue Exploring
+                  {t("vpContinueExploring")}
                 </Button>
               </div>
             </div>
@@ -363,7 +365,7 @@ function PlayerUI({
             <div className="w-20 h-20 rounded-full bg-primary/90 flex items-center justify-center mx-auto shadow-xl transition-transform hover:scale-110">
               <Play className="h-9 w-9 text-primary-foreground ml-1" />
             </div>
-            <p className="text-white/80 text-sm font-medium">Click to play</p>
+            <p className="text-white/80 text-sm font-medium">{t("vpClickToPlay")}</p>
           </div>
         </div>
       )}
@@ -395,7 +397,7 @@ function PlayerUI({
                       {paused ? <Play className="h-4 w-4 ml-0.5" /> : <Pause className="h-4 w-4" />}
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="top"><p>{paused ? 'Play (Space)' : 'Pause (Space)'}</p></TooltipContent>
+                  <TooltipContent side="top"><p>{paused ? t('vpPlaySpace') : t('vpPauseSpace')}</p></TooltipContent>
                 </Tooltip>
 
                 <Tooltip>
@@ -422,7 +424,7 @@ function PlayerUI({
                       {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="top"><p>{muted ? 'Unmute (M)' : 'Mute (M)'}</p></TooltipContent>
+                  <TooltipContent side="top"><p>{muted ? t('vpUnmuteM') : t('vpMuteM')}</p></TooltipContent>
                 </Tooltip>
 
                 <Tooltip>
@@ -449,7 +451,7 @@ function PlayerUI({
                         {playbackRate}x
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="top"><p>Playback speed</p></TooltipContent>
+                    <TooltipContent side="top"><p>{t("vpPlaybackSpeed")}</p></TooltipContent>
                   </Tooltip>
                   {showSpeedMenu && (
                     <div className="absolute bottom-full right-0 mb-1 bg-popover border border-border rounded-md shadow-lg py-1 min-w-[80px]">
@@ -517,6 +519,7 @@ export default function VideoPlayer({
   showApplicationPrompt = false,
   onApplicationPromptClose
 }: VideoPlayerProps) {
+  const { t } = useTranslation('chef');
   const isStreamableUrl = videoUrl.includes('streamable.com/e/');
   const _playerRef = useRef<MediaPlayerInstance>(null);
 

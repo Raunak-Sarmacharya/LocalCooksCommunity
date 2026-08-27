@@ -1,11 +1,12 @@
 import { logger } from "@/lib/logger";
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { useOnboarding } from '@onboardjs/react';
-import { chefOnboardingSteps, CHEF_STEP_IDS, getStepsForPath } from "@/config/chef-onboarding-steps";
+import { chefOnboardingSteps, CHEF_STEP_IDS, getStepsForPath, markChefOnboardingStarted, clearChefOnboardingStarted } from "@/config/chef-onboarding-steps";
 
 // Step ID mapping for database storage
 const STEP_ID_MAP: Record<string, number> = {
@@ -35,6 +36,7 @@ interface ChefOnboardingContextType {
   handleBack: () => void;
   handleSkip: () => Promise<void>;
   goToStep: (stepId: string) => Promise<void>;
+  finishOnboarding: () => Promise<void>;
 
   // Path Selection
   selectedPaths: ChefPath[];
@@ -88,8 +90,9 @@ function ChefOnboardingLogic({
   isOpen: boolean; 
   setIsOpen: (val: boolean) => void;
 }) {
+  const { t } = useTranslation("chef");
   const { toast } = useToast();
-  const { user } = useFirebaseAuth();
+  const { user, refreshUserData } = useFirebaseAuth();
   const queryClient = useQueryClient();
 
   // Path selection state - persist to localStorage
@@ -131,11 +134,19 @@ function ChefOnboardingLogic({
     }
   }, [user?.uid]);
 
+  // Persist that this chef started the wizard so the dashboard can show
+  // Continue Setup after they leave via Back to Dashboard.
+  useEffect(() => {
+    markChefOnboardingStarted(user?.uid);
+  }, [user?.uid]);
+
   // Manual navigation flag to prevent auto-skip when user explicitly navigates
   const isManualNavigation = useRef(false);
 
   // Ref to track if we've already performed the initial auto-skip
   const hasPerformedInitialAutoSkip = useRef(false);
+  const hasMarkedWelcomeSeen = useRef(false);
+  const hasMarkedOnboardingComplete = useRef(false);
 
   // Track if data has loaded for auto-resume logic
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -150,14 +161,28 @@ function ChefOnboardingLogic({
 
   // OnboardJS hook
   const {
-    currentStep,
+    currentStep: hookCurrentStep,
     isCompleted,
     next,
     previous,
     skip: onboardSkip,
     state,
-    engine
+    engine,
+    goToStep: onboardGoToStep,
+    updateContext,
   } = useOnboarding();
+
+  const currentStep = hookCurrentStep ?? state?.currentStep ?? null;
+
+  // Keep OnboardJS flowData in sync so native next() routing stays path-aware
+  useEffect(() => {
+    if (selectedPaths.length === 0) return;
+    updateContext({ flowData: { selectedPaths } } as any).catch(() => {
+      // Non-fatal — handleNext still routes explicitly
+    });
+    // updateContext identity is not guaranteed stable across renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPaths]);
 
   // Fetch seller applications
   const { data: sellerApplications = [], isLoading: isLoadingApplications } = useQuery({
@@ -230,8 +255,9 @@ function ChefOnboardingLogic({
   // Users can complete onboarding regardless of whether they've done the actions.
   // This tracks what they've actually done for display purposes only.
   const stepStatus = useMemo((): Record<string, 'not_started' | 'in_progress' | 'done'> => {
+    const hasStartedFlow = selectedPaths.length > 0 || hasSellerApplication || hasKitchenApplications;
     return {
-      [CHEF_STEP_IDS.WELCOME]: 'done', // Always done once viewed
+      [CHEF_STEP_IDS.WELCOME]: hasStartedFlow ? 'done' : 'not_started',
       [CHEF_STEP_IDS.PATH_SELECTION]: selectedPaths.length > 0 ? 'done' : 'not_started',
       [CHEF_STEP_IDS.LOCALCOOKS_APPLICATION]: hasSellerApplication ? 'done' : 'not_started',
       [CHEF_STEP_IDS.FOOD_SAFETY_TRAINING]: hasCompletedTraining ? 'done' : 'not_started',
@@ -267,7 +293,7 @@ function ChefOnboardingLogic({
     const stepId = typeof currentStep.id === 'number' 
       ? NUMERIC_TO_STRING_MAP[currentStep.id] 
       : currentStep.id;
-    return visibleSteps.findIndex(s => s.id === stepId);
+    return Math.max(0, visibleSteps.findIndex(s => s.id === stepId));
   }, [currentStep, visibleSteps]);
 
   const currentStepData = currentStep?.payload || visibleSteps[0]?.payload;
@@ -278,13 +304,13 @@ function ChefOnboardingLogic({
       case 'welcome':
         return 'path-selection';
       case 'path-selection':
-        // Go to first selected path's step
+        // Go to first selected path's step — do not leave path-selection without a choice
         if (selectedPaths.includes('localcooks')) {
           return 'localcooks-application';
         } else if (selectedPaths.includes('kitchen')) {
           return 'browse-kitchens';
         }
-        return 'summary'; // Fallback if no path selected
+        return null;
       case 'localcooks-application':
         return 'food-safety-training';
       case 'food-safety-training':
@@ -307,41 +333,35 @@ function ChefOnboardingLogic({
   // Navigation handlers with dynamic path-aware navigation
   const handleNext = useCallback(async () => {
     try {
-      const currentStepId = currentStep?.id;
-      if (!currentStepId || !engine) {
-        await next();
+      const currentStepId = String(currentStep?.id || '');
+      if (currentStepId === 'path-selection' && selectedPaths.length === 0) {
+        toast({
+          title: t("onboardToastSelectPathTitle", "Select a path"),
+          description: t("onboardToastSelectPathDescription", "Please choose at least one option to continue."),
+        });
         return;
       }
 
-      // Get the dynamically determined next step
-      const nextStepId = getNextStepId(String(currentStepId));
-      
-      if (nextStepId) {
-        // Check if the next step is in our visible steps
-        const isNextStepVisible = visibleSteps.some(s => s.id === nextStepId);
-        if (isNextStepVisible) {
-          await engine.goToStep(nextStepId as any);
-        } else {
-          // Skip to the next visible step after the target
-          const nextVisibleStep = getNextStepId(nextStepId);
-          if (nextVisibleStep) {
-            await engine.goToStep(nextVisibleStep as any);
-          } else {
-            await next();
-          }
-        }
-      } else {
+      const nextStepId = getNextStepId(currentStepId);
+      if (nextStepId && visibleSteps.some(s => s.id === nextStepId)) {
+        await onboardGoToStep(nextStepId);
+        return;
+      }
+
+      // Do not call next() into a step that is hidden for the current path
+      // (that previously left new chefs on a blank "Step content loading..." screen)
+      if (!nextStepId) {
         await next();
       }
     } catch (error) {
       logger.error('Error advancing step:', error);
       toast({
-        title: "Error",
-        description: "Failed to proceed to next step",
+        title: t("onboardToastErrorTitle", "Error"),
+        description: t("onboardToastNextStepErrorDescription", "Failed to proceed to next step"),
         variant: "destructive",
       });
     }
-  }, [next, toast, currentStep, engine, getNextStepId, visibleSteps]);
+  }, [next, toast, currentStep, onboardGoToStep, getNextStepId, visibleSteps, selectedPaths]);
 
   const handleBack = useCallback(() => {
     previous();
@@ -356,11 +376,9 @@ function ChefOnboardingLogic({
   }, [onboardSkip]);
 
   const goToStep = useCallback(async (stepId: string) => {
-    if (engine) {
-      isManualNavigation.current = true; // Mark as manual navigation
-      await engine.goToStep(stepId as any);
-    }
-  }, [engine]);
+    isManualNavigation.current = true; // Mark as manual navigation
+    await onboardGoToStep(stepId);
+  }, [onboardGoToStep]);
 
   // Legacy step number support
   const currentStepNumber = currentStepIndex;
@@ -383,11 +401,28 @@ function ChefOnboardingLogic({
   // Mark chef onboarding as complete when user reaches completion step
   // This is a one-time action that grants full dashboard access
   const markOnboardingComplete = useCallback(async () => {
+    if (hasMarkedOnboardingComplete.current) return;
+    hasMarkedOnboardingComplete.current = true;
     try {
       const firebaseUser = auth.currentUser;
-      if (!firebaseUser) return;
+      if (!firebaseUser) {
+        hasMarkedOnboardingComplete.current = false;
+        return;
+      }
       
       const token = await firebaseUser.getIdToken();
+
+      // Keep users.chef_onboarding_completed in sync before leaving /chef-setup
+      queryClient.setQueriesData({ queryKey: ['/api/user/profile'] }, (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          chefOnboardingCompleted: true,
+          chef_onboarding_completed: true,
+          chefOnboardingPaths: selectedPaths,
+        };
+      });
+
       await fetch('/api/user/chef-onboarding-complete', {
         method: 'POST',
         headers: {
@@ -397,14 +432,16 @@ function ChefOnboardingLogic({
         body: JSON.stringify({ selectedPaths }),
       });
       
-      // Invalidate user profile to refresh onboarding status
+      await refreshUserData();
       queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+      clearChefOnboardingStarted(firebaseUser.uid);
       
       logger.info('[Chef Onboarding] Marked as complete');
     } catch (error) {
+      hasMarkedOnboardingComplete.current = false;
       logger.error('[Chef Onboarding] Failed to mark complete:', error);
     }
-  }, [selectedPaths, queryClient]);
+  }, [selectedPaths, queryClient, refreshUserData]);
 
   // Auto-mark complete when reaching completion step
   useEffect(() => {
@@ -413,6 +450,33 @@ function ChefOnboardingLogic({
       markOnboardingComplete();
     }
   }, [currentStep?.id, user, markOnboardingComplete]);
+
+  // Align with the existing welcome-screen flag so /auth doesn't re-show WelcomeScreen
+  // after terms → chef-setup (new chefs previously skipped the OnboardJS flow).
+  useEffect(() => {
+    if (!user || hasMarkedWelcomeSeen.current) return;
+    hasMarkedWelcomeSeen.current = true;
+    (async () => {
+      try {
+        const firebaseUser = auth.currentUser;
+        if (!firebaseUser) return;
+        const token = await firebaseUser.getIdToken();
+        await fetch('/api/user/seen-welcome', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        queryClient.setQueriesData({ queryKey: ['/api/user/profile'] }, (old: any) => {
+          if (!old) return old;
+          return { ...old, has_seen_welcome: true, hasSeenWelcome: true };
+        });
+      } catch (error) {
+        logger.warn('[Chef Onboarding] Failed to mark welcome as seen:', error);
+      }
+    })();
+  }, [user]);
 
   // [ENTERPRISE] Session Persistence & Auto-Resume Logic
   // Auto-skip to first incomplete required step when returning
@@ -462,9 +526,10 @@ function ChefOnboardingLogic({
     for (const stepId of stepOrder) {
       // If this step is not done, navigate to it
       if (!completedSteps[stepId]) {
+        if (!visibleSteps.some(s => s.id === stepId)) continue;
         logger.info(`[Chef Onboarding] Auto-resume: ${currentId} → ${stepId}`);
         hasPerformedInitialAutoSkip.current = true;
-        engine.goToStep(stepId as any);
+        onboardGoToStep(stepId);
         return;
       }
     }
@@ -476,7 +541,7 @@ function ChefOnboardingLogic({
       if (nextStep && nextStep.id) {
         logger.info(`[Chef Onboarding] Advancing from completed step to: ${nextStep.id}`);
         hasPerformedInitialAutoSkip.current = true;
-        engine.goToStep(nextStep.id as any);
+        onboardGoToStep(String(nextStep.id));
       }
     }
 
@@ -485,7 +550,7 @@ function ChefOnboardingLogic({
       hasPerformedInitialAutoSkip.current = true;
     }
 
-  }, [engine, dataLoaded, isLoading, currentStep?.id, completedSteps, selectedPaths, visibleSteps]);
+  }, [engine, onboardGoToStep, dataLoaded, isLoading, currentStep?.id, completedSteps, selectedPaths, visibleSteps]);
 
   const contextValue: ChefOnboardingContextType = {
     // OnboardJS State
@@ -498,6 +563,7 @@ function ChefOnboardingLogic({
     handleBack,
     handleSkip,
     goToStep,
+    finishOnboarding: markOnboardingComplete,
 
     // Path Selection
     selectedPaths,

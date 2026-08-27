@@ -1,0 +1,11 @@
+{
+  "footer": "LocalCooks · Сент-Джонс, Ньюфаундленд",
+  "welcomeSubject": "Ласкаво просимо до LocalCooks",
+  "welcomeBody": "Дякуємо, що приєдналися до LocalCooks. Ваш акаунт готовий.",
+  "bookingConfirmSubject": "Бронювання підтверджено",
+  "bookingConfirmBody": "Ваше бронювання кухні підтверджено.",
+  "passwordResetSubject": "Скиньте пароль LocalCooks",
+  "passwordResetBody": "Скористайтеся посиланням нижче, щоб скинути пароль. Воно незабаром закінчиться.",
+  "verifyEmailSubject": "Підтвердіть електронну пошту LocalCooks",
+  "verifyEmailBody": "Підтвердіть адресу електронної пошти, щоб завершити налаштування."
+}

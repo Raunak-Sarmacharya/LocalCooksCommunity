@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 /**
  * CheckoutStatusTracker
  * 
@@ -98,21 +99,21 @@ function StepIcon({ state }: { state: StepState }) {
 
   if (state === "completed") {
     return (
-      <div className={cn(base, "border-green-500 bg-green-50 text-green-600")}>
+      <div className={cn(base, "border-success/30 bg-success/10 text-success")}>
         <CheckCircle className="h-4 w-4" />
       </div>
     );
   }
   if (state === "active") {
     return (
-      <div className={cn(base, "border-blue-500 bg-blue-50 text-blue-600 ring-4 ring-blue-100")}>
+      <div className={cn(base, "border-foreground/20 bg-muted text-foreground ring-4 ring-muted")}>
         <Loader2 className="h-4 w-4 animate-spin" />
       </div>
     );
   }
   if (state === "error") {
     return (
-      <div className={cn(base, "border-amber-500 bg-amber-50 text-amber-600")}>
+      <div className={cn(base, "border-warning/30 bg-warning/10 text-warning")}>
         <AlertTriangle className="h-4 w-4" />
       </div>
     );
@@ -134,6 +135,12 @@ export function CheckoutStatusTracker({
   storageName,
   checkoutStatus: propCheckoutStatus,
 }: CheckoutStatusTrackerProps) {
+  const { t: tStrict } = useTranslation("chef");
+  const t = (key: string, defaultText?: string): string => {
+    const val = tStrict(key as any) as string;
+    return val !== key ? val : (defaultText || key);
+  };
+
   const { data, isLoading } = useQuery<CheckoutStatusData>({
     queryKey: ["/api/chef/storage-bookings", storageBookingId, "checkout-status"],
     queryFn: async () => {
@@ -152,14 +159,14 @@ export function CheckoutStatusTracker({
   // Build steps from status data
   const status = data?.checkoutStatus || propCheckoutStatus || "active";
 
-  const steps: Step[] = buildSteps(status, data);
+  const steps: Step[] = buildSteps(status, data, t);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-green-600" />
+            <ShieldCheck className="h-5 w-5 text-muted-foreground" />
             Checkout Status
           </SheetTitle>
           <SheetDescription>
@@ -184,9 +191,9 @@ export function CheckoutStatusTracker({
                         className={cn(
                           "w-0.5 flex-1 mt-2",
                           step.state === "completed"
-                            ? "bg-green-300"
+                            ? "bg-success/30"
                             : step.state === "active"
-                              ? "bg-blue-200"
+                              ? "bg-muted-foreground/20"
                               : "bg-muted-foreground/20"
                         )}
                       />
@@ -200,14 +207,14 @@ export function CheckoutStatusTracker({
                         className={cn(
                           "text-sm font-medium",
                           step.state === "upcoming" && "text-muted-foreground",
-                          step.state === "error" && "text-amber-700"
+                          step.state === "error" && "text-warning"
                         )}
                       >
                         {step.label}
                       </span>
                       {step.state === "active" && (
                         <Badge
-                          variant="info"
+                          variant="outline"
                           className="text-xs font-normal"
                         >
                           In Progress
@@ -251,7 +258,8 @@ export function CheckoutStatusTracker({
 
 function buildSteps(
   status: string,
-  data: CheckoutStatusData | undefined
+  data: CheckoutStatusData | undefined,
+  t: (key: string, defaultText?: string) => string
 ): Step[] {
   const steps: Step[] = [];
 
@@ -263,10 +271,10 @@ function buildSteps(
     status === "checkout_claim_filed";
 
   steps.push({
-    label: "Checkout Requested",
+    label: t("costCheckoutRequested", "Checkout Requested"),
     description: isRequested
-      ? "You submitted photos and requested checkout"
-      : "Submit photos of the empty storage unit",
+      ? t("costDescRequested", "You submitted photos and requested checkout")
+      : t("costDescSubmitPhotos", "Submit photos of the empty storage unit"),
     state: isRequested ? "completed" : "upcoming",
     timestamp: data?.checkoutRequestedAt,
     icon: <Camera className="h-4 w-4" />,
@@ -285,29 +293,24 @@ function buildSteps(
     const expired = data.isReviewExpired || isPast(deadlineDate);
     reviewDetail = (
       <Badge
-        variant="outline"
-        className={cn(
-          "text-xs font-normal",
-          expired
-            ? "bg-amber-50 text-amber-700 border-amber-200"
-            : "bg-blue-50 text-blue-700 border-blue-200"
-        )}
+        variant={expired ? "warning" : "outline"}
+        className="text-xs font-normal"
       >
         <Timer className="h-3 w-3 mr-1" />
         {expired
-          ? "Auto-clearing soon — no issues reported"
-          : `${formatDistanceToNow(deadlineDate, { addSuffix: false })} remaining`}
+          ? t("costReviewExpired", "Review period expired")
+          : `${t("costReviewDeadline", "Review deadline: ")}${format(deadlineDate, "MMM d, h:mm a")}`}
       </Badge>
     );
   }
 
   steps.push({
-    label: "Under Review",
+    label: t("costUnderReview", "Under Review"),
     description: isUnderReview
-      ? "The kitchen is reviewing the storage unit"
+      ? t("costDescManagerReviewing", "Kitchen manager is reviewing your checkout photos")
       : reviewDone
-        ? "Kitchen reviewed the storage unit"
-        : "Kitchen will review your photos and inspect the unit",
+        ? t("costDescManagerCompletedReview", "Manager completed review")
+        : t("costDescPendingReview", "Pending review after you submit photos"),
     state: isUnderReview ? "active" : reviewDone ? "completed" : "upcoming",
     icon: <Clock className="h-4 w-4" />,
     detail: reviewDetail,
@@ -316,8 +319,8 @@ function buildSteps(
   // Step 3: Outcome
   if (status === "completed") {
     steps.push({
-      label: "Storage Cleared",
-      description: "No issues found — your checkout is complete",
+      label: t("costStorageCleared", "Storage Cleared"),
+      description: t("costDescStorageUnitCleared", "Unit is marked as cleared and booking is completed"),
       state: "completed",
       timestamp: data?.checkoutApprovedAt,
       icon: <ShieldCheck className="h-4 w-4" />,
@@ -329,9 +332,8 @@ function buildSteps(
     });
   } else if (status === "checkout_claim_filed") {
     steps.push({
-      label: "Claim Filed",
-      description:
-        "The kitchen filed a damage/cleaning claim. Please review and respond in your dashboard.",
+      label: t("costClaimFiled", "Claim Filed"),
+      description: t("costDescClaimFiledAlert", "The manager filed a damage/cleaning claim"),
       state: "error",
       timestamp: data?.checkoutApprovedAt,
       icon: <FileWarning className="h-4 w-4" />,
@@ -347,8 +349,8 @@ function buildSteps(
     });
   } else {
     steps.push({
-      label: "Outcome",
-      description: "Cleared if no issues, or a claim may be filed",
+      label: t("costOutcome", "Outcome"),
+      description: t("costDescOutcomePending", "Cleared if no issues, or a claim may be filed"),
       state: "upcoming",
       icon: <ShieldCheck className="h-4 w-4" />,
     });

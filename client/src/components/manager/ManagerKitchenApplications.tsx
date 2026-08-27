@@ -345,24 +345,37 @@ export default function ManagerKitchenApplications({
             </div>
           )}
 
-          <DialogFooter className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowReviewDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleReject}
-              disabled={updateApplicationStatus.isPending}
-            >
-              {updateApplicationStatus.isPending ? "Processing..." : "Reject"}
-            </Button>
-            <Button
-              variant="success"
-              onClick={handleApprove}
-              disabled={updateApplicationStatus.isPending}
-            >
-              {updateApplicationStatus.isPending ? "Processing..." : "Approve"}
-            </Button>
+          <DialogFooter className="flex flex-col items-stretch sm:flex-row sm:items-center gap-2">
+            {selectedApplication?.current_tier === 1 ? (
+              <div className="flex flex-1 items-center justify-between">
+                <Badge variant="outline" className="bg-yellow-100 text-yellow-800">
+                  Awaiting Admin Approval
+                </Badge>
+                <Button variant="outline" onClick={() => setShowReviewDialog(false)}>
+                  Close
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setShowReviewDialog(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleReject}
+                  disabled={updateApplicationStatus.isPending}
+                >
+                  {updateApplicationStatus.isPending ? "Processing..." : "Reject"}
+                </Button>
+                <Button
+                  variant="success"
+                  onClick={handleApprove}
+                  disabled={updateApplicationStatus.isPending}
+                >
+                  {updateApplicationStatus.isPending ? "Processing..." : "Approve"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -28,6 +28,8 @@ import {
 } from "lucide-react";
 import React, { useState } from "react";
 import { Link } from "wouter";
+import { useTranslation } from "react-i18next";
+import { QuietNotice } from "@/components/chef/ui";
 
 // Helper component for authenticated document links
 function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
@@ -81,6 +83,7 @@ function DocumentUploadModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
+  const { t } = useTranslation("chef");
 
   const validateUrl = (url: string): boolean => {
     try {
@@ -101,12 +104,12 @@ function DocumentUploadModal({
     setErrors({});
 
     if (!selectedFile && !url.trim()) {
-      setErrors({ general: "Please select a file or provide a URL" });
+      setErrors({ general: t("duSelectFileOrUrl") });
       return;
     }
 
     if (url.trim() && !validateUrl(url.trim())) {
-      setErrors({ url: "Please enter a valid URL" });
+      setErrors({ url: t("duInvalidUrl") });
       return;
     }
 
@@ -124,23 +127,25 @@ function DocumentUploadModal({
       onClose();
 
       toast({
-        title: "Document updated successfully",
-        description: `Your ${documentType === 'foodSafety' ? 'Food Safety License' : 'Food Establishment Certificate'} has been updated.`,
+        title: t("duUpdatedToastTitle"),
+        description: t("duUpdatedToastDesc", {
+          docType: documentType === 'foodSafety' ? t("duFoodSafetyTitle") : t("duEstablishmentTitle"),
+        }),
       });
     } catch (error) {
-      setErrors({ general: "Failed to update document. Please try again." });
+      setErrors({ general: t("duUpdateFailed") });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const documentTitle = documentType === 'foodSafety'
-    ? 'Food Safety License'
-    : 'Food Establishment Certificate';
+    ? t('duFoodSafetyTitle')
+    : t('duEstablishmentTitle');
 
   const documentDescription = documentType === 'foodSafety'
-    ? 'Upload a clear photo or scan of your Food Safety License certificate.'
-    : 'Upload your Food Establishment Certificate (optional but recommended).';
+    ? t('duFoodSafetyDesc')
+    : t('duEstablishmentDesc');
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -158,17 +163,17 @@ function DocumentUploadModal({
         <div className="space-y-6">
           {/* Current Document Display */}
           {currentDocumentUrl && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm font-medium text-blue-800 mb-2">Current document:</p>
+            <div className="rounded-lg border px-4 py-3">
+              <p className="text-sm font-medium mb-2">{t("duCurrentDocument")}</p>
               <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-blue-600" />
+                <FileText className="h-4 w-4 text-muted-foreground" />
                 <a
                   href={currentDocumentUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 underline font-medium text-sm"
+                  className="text-sm font-medium text-primary hover:underline"
                 >
-                  View Document
+                  {t("duViewDocument")}
                 </a>
               </div>
             </div>
@@ -177,13 +182,13 @@ function DocumentUploadModal({
           {/* Upload Options */}
           <Tabs defaultValue="file" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="file">Upload File</TabsTrigger>
-              <TabsTrigger value="url">Provide URL</TabsTrigger>
+              <TabsTrigger value="file">{t("duTabUploadFile")}</TabsTrigger>
+              <TabsTrigger value="url">{t("duTabProvideUrl")}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="file" className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor={`file-${documentType}`}>Select Document</Label>
+                <Label htmlFor={`file-${documentType}`}>{t("duSelectDocument")}</Label>
                 <div className="relative">
                   <input
                     id={`file-${documentType}`}
@@ -196,7 +201,7 @@ function DocumentUploadModal({
                     <div className="flex items-center gap-3">
                       <FolderOpen className="h-5 w-5 text-gray-500" />
                       <span className="text-sm text-gray-700">
-                        {selectedFile ? selectedFile.name : "Choose file..."}
+                        {selectedFile ? selectedFile.name : t("duChooseFile")}
                       </span>
                     </div>
                     {selectedFile && (
@@ -208,7 +213,7 @@ function DocumentUploadModal({
                           e.stopPropagation();
                           setSelectedFile(null);
                         }}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        className="text-destructive hover:text-destructive hover:bg-muted"
                       >
                         <XCircle className="h-4 w-4" />
                       </Button>
@@ -216,14 +221,14 @@ function DocumentUploadModal({
                   </div>
                 </div>
                 <p className="text-xs text-gray-500">
-                  Supports PDF, JPG, PNG, WebP (max 4.5MB)
+                  {t("duFileFormats")}
                 </p>
               </div>
             </TabsContent>
 
             <TabsContent value="url" className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor={`url-${documentType}`}>Document URL</Label>
+                <Label htmlFor={`url-${documentType}`}>{t("duDocumentUrl")}</Label>
                 <Input
                   id={`url-${documentType}`}
                   type="url"
@@ -239,7 +244,7 @@ function DocumentUploadModal({
                   </p>
                 )}
                 <p className="text-xs text-gray-500">
-                  Link from Google Drive, Dropbox, OneDrive, etc. (ensure public access)
+                  {t("duUrlHint")}
                 </p>
               </div>
             </TabsContent>
@@ -247,9 +252,9 @@ function DocumentUploadModal({
 
           {/* Error Display */}
           {errors.general && (
-            <Alert className="border-red-200 bg-red-50">
-              <AlertTriangle className="h-4 w-4 text-red-600" />
-              <AlertDescription className="text-red-800">
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
                 {errors.general}
               </AlertDescription>
             </Alert>
@@ -258,7 +263,7 @@ function DocumentUploadModal({
           {/* Submit Button */}
           <div className="flex gap-3">
             <Button variant="outline" onClick={onClose} className="flex-1">
-              Cancel
+              {t("duCancel")}
             </Button>
             <Button
               onClick={handleSubmit}
@@ -268,12 +273,12 @@ function DocumentUploadModal({
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Uploading...
+                  {t("duUploading")}
                 </>
               ) : (
                 <>
                   <Upload className="mr-2 h-4 w-4" />
-                  Update
+                  {t("duUpdateBtn")}
                 </>
               )}
             </Button>
@@ -285,18 +290,18 @@ function DocumentUploadModal({
 }
 
 export function DocumentManagementModal({ open, onOpenChange }: DocumentManagementModalProps) {
+  const { t } = useTranslation("chef");
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl w-full max-h-screen overflow-y-auto p-0 sm:p-6 rounded-lg sm:rounded-2xl">
         <DialogHeader>
-          <DialogTitle>Manage Your Documents</DialogTitle>
+          <DialogTitle>{t("duManageTitle")}</DialogTitle>
           <DialogClose />
         </DialogHeader>
         <div className="p-4 sm:p-0">
-          <div className="mb-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded flex items-center gap-2">
-            <Info className="h-5 w-5 text-yellow-600" />
-            <span className="text-yellow-800 text-sm font-medium">Updating your documents will reset your verification status to <b>pending review</b>.</span>
-          </div>
+          <QuietNotice title={t("duStatusResetTitle")}>
+            {t("duStatusResetBody")}
+          </QuietNotice>
           <DocumentUpload forceShowForm />
         </div>
       </DialogContent>
@@ -307,6 +312,7 @@ export function DocumentManagementModal({ open, onOpenChange }: DocumentManageme
 export default function DocumentUpload({ openInModal = false, forceShowForm = false }: DocumentUploadProps) {
   const { verification, loading, createMutation, updateMutation, refetch, forceRefresh } = useDocumentVerification();
   const { toast } = useToast();
+  const { t } = useTranslation("chef");
 
   // Check if we're in production (Vercel)
   const isProduction = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production';
@@ -322,13 +328,13 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
     onSuccess: (response) => {
       toast({
-        title: "File uploaded successfully",
-        description: `${response.fileName} has been uploaded.`,
+        title: t("duFileUploadedTitle"),
+        description: t("duFileUploadedDesc", { name: response.fileName }),
       });
     },
     onError: (error) => {
       toast({
-        title: "Upload failed",
+        title: t("duUploadFailedTitle"),
         description: error,
         variant: "destructive",
       });
@@ -345,8 +351,8 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
   const handleDocumentSubmit = async (documentType: 'foodSafety' | 'establishment', data: { url?: string; file?: File }) => {
     if (!isApplicationActive()) {
       toast({
-        title: "Upload not allowed",
-        description: "Document uploads are not permitted for cancelled or rejected applications.",
+        title: t("duUploadNotAllowedTitle"),
+        description: t("duUploadNotAllowedDesc"),
         variant: "destructive",
       });
       return;
@@ -404,16 +410,16 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
 
   const getStatusBadge = (status: string): React.ReactNode => {
     const statusConfig = {
-      pending: { color: "bg-yellow-100 text-yellow-800", icon: Clock, text: "Pending Review" },
-      approved: { color: "bg-green-100 text-green-800", icon: CheckCircle, text: "Approved" },
-      rejected: { color: "bg-red-100 text-red-800", icon: XCircle, text: "Rejected" }
+      pending: { variant: "warning" as const, icon: Clock, text: t("duStatusPendingReview") },
+      approved: { variant: "success" as const, icon: CheckCircle, text: t("duStatusApproved") },
+      rejected: { variant: "destructive" as const, icon: XCircle, text: t("duStatusRejected") }
     };
 
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
     const Icon = config.icon;
 
     return (
-      <Badge className={`${config.color} border-transparent`}>
+      <Badge variant={config.variant}>
         <Icon className="w-3 h-3 mr-1" />
         {config.text}
       </Badge>
@@ -434,8 +440,8 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
 
   const handleUpdateSuccess = () => {
     toast({
-      title: "Documents updated successfully!",
-      description: "Your verification status has been reset to pending review.",
+      title: t("duDocsUpdatedTitle"),
+      description: t("duDocsUpdatedDesc"),
     });
     forceRefresh();
   };
@@ -461,25 +467,25 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
           <XCircle className="h-8 w-8 text-gray-600" />
         </div>
         <h3 className="text-xl font-semibold text-gray-900 mb-4">
-          {verification.status === 'cancelled' ? 'Application Cancelled' : 'Application Not Active'}
+          {verification.status === 'cancelled' ? t('duAppCancelledTitle') : t('duAppNotActiveTitle')}
         </h3>
         <p className="text-gray-600 mb-6 max-w-md mx-auto">
           {verification.status === 'cancelled'
-            ? 'This application has been cancelled. Document uploads are no longer available for this application.'
-            : 'Document uploads are only available for active applications.'}
+            ? t('duAppCancelledBody')
+            : t('duAppNotActiveBody')}
         </p>
         <div className="space-y-3">
           <Button asChild className="rounded-xl">
             <Link href="/dashboard?view=applications&action=new">
               <ChefHat className="mr-2 h-4 w-4" />
-              Submit New Application
+              {t("duSubmitNewApplication")}
             </Link>
           </Button>
           <div>
             <Button variant="outline" asChild className="rounded-xl">
               <Link href="/dashboard">
                 <FileText className="mr-2 h-4 w-4" />
-                Back to Dashboard
+                {t("duBackToDashboard")}
               </Link>
             </Button>
           </div>
@@ -499,26 +505,26 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <Card className="w-full max-w-2xl mx-auto">
+        <Card className="w-full max-w-2xl mx-auto shadow-none">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-green-800">
-              <CheckCircle className="h-6 w-6 text-green-600" />
-              Document Verification Complete
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle className="h-6 w-6 text-success" />
+              {t("duVerifiedTitle")}
             </CardTitle>
-            <CardDescription className="text-green-700">
-              All your documents have been verified and approved! 🎉
+            <CardDescription>
+              {t("duVerifiedDesc")}
             </CardDescription>
           </CardHeader>
 
           <CardContent className="space-y-6">
             {/* Document Status Cards */}
             <div className="grid gap-4">
-              <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center justify-between p-4 border rounded-lg">
                 <div className="flex items-center gap-3">
-                  <FileText className="h-5 w-5 text-green-600" />
+                  <FileText className="h-5 w-5 text-muted-foreground" />
                   <div>
-                    <p className="font-medium text-green-800">Food Safety License</p>
-                    <p className="text-sm text-green-600">
+                    <p className="font-medium">{t("duFoodSafetyTitle")}</p>
+                    <p className="text-sm text-muted-foreground">
                       {getFileDisplayName(verification.foodSafetyLicenseUrl)}
                     </p>
                   </div>
@@ -527,7 +533,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
                   {getStatusBadge(verification.foodSafetyLicenseStatus)}
                   <AuthenticatedDocumentLink 
                     url={verification.foodSafetyLicenseUrl}
-                    className="text-green-600 hover:text-green-800"
+                    className="text-muted-foreground hover:text-foreground"
                   >
                     <FileText className="h-4 w-4" />
                   </AuthenticatedDocumentLink>
@@ -535,12 +541,12 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
               </div>
 
               {verification.foodEstablishmentCertUrl && (
-                <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex items-center gap-3">
-                    <FileText className="h-5 w-5 text-green-600" />
+                    <FileText className="h-5 w-5 text-muted-foreground" />
                     <div>
-                      <p className="font-medium text-green-800">Food Establishment Certificate</p>
-                      <p className="text-sm text-green-600">
+                      <p className="font-medium">Food Establishment Certificate</p>
+                      <p className="text-sm text-muted-foreground">
                         {getFileDisplayName(verification.foodEstablishmentCertUrl)}
                       </p>
                     </div>
@@ -549,7 +555,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
                     {verification.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
                     <AuthenticatedDocumentLink 
                       url={verification.foodEstablishmentCertUrl}
-                      className="text-green-600 hover:text-green-800"
+                      className="text-muted-foreground hover:text-foreground"
                     >
                       <FileText className="h-4 w-4" />
                     </AuthenticatedDocumentLink>
@@ -560,41 +566,36 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
 
             {/* Admin Feedback */}
             {verification.documentsAdminFeedback && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="text-sm font-medium text-blue-800 mb-2">💬 Admin Comments</h4>
-                <p className="text-sm text-blue-700">{verification.documentsAdminFeedback}</p>
-              </div>
+              <QuietNotice title={t("duAdminComments")}>
+                {verification.documentsAdminFeedback}
+              </QuietNotice>
             )}
 
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-800 mb-3">🎉 What's Next?</h4>
-              <div className="space-y-2 text-sm text-gray-600">
-                <p>• Your profile is now marked as verified</p>
-                <p>• You can start accepting orders from customers</p>
-                <p>• Your verified status will be displayed to potential customers</p>
-                <p>• Keep your documents current and renew them as needed</p>
-              </div>
-            </div>
+            <QuietNotice title={t("duWhatsNext")}>
+              <ul className="list-disc pl-4 space-y-1 mt-1">
+                <li>{t("duNextProfileVerified")}</li>
+                <li>{t("duNextAcceptOrders")}</li>
+                <li>{t("duNextStatusDisplayed")}</li>
+                <li>{t("duNextKeepCurrent")}</li>
+              </ul>
+            </QuietNotice>
 
             <div className="flex flex-col sm:flex-row gap-3 pt-4">
               <Button asChild className="flex-1">
                 <Link href="/dashboard">
                   <Award className="h-4 w-4 mr-2" />
-                  Go to Dashboard
+                  {t("duGoToDashboard")}
                 </Link>
               </Button>
               <Button variant="outline" onClick={() => setModalOpen(true)} className="flex-1">
                 <Upload className="h-4 w-4 mr-2" />
-                Manage Documents
+                {t("duManageDocuments")}
               </Button>
             </div>
 
-            {/* Note about document updates */}
-            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-800">
-                <strong>Update Documents:</strong> You can update your verified documents anytime. New uploads will reset your verification status to "pending review" for security.
-              </p>
-            </div>
+            <QuietNotice title={t("duUpdateDocsTitle")}>
+              {t("duUpdateDocsBody")}
+            </QuietNotice>
           </CardContent>
 
           <DocumentManagementModal open={modalOpen} onOpenChange={setModalOpen} />
@@ -615,13 +616,12 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
 
         if (hasDocumentsPending) {
           return (
-            <Alert className="bg-amber-50 border-amber-200">
-              <Clock className="h-4 w-4 text-amber-600" />
-              <AlertDescription className="text-amber-800">
-                <strong className="text-amber-900">Documents Under Review!</strong>
-                <br />We're currently reviewing your submitted documents. You'll receive an email notification once the review is complete. Until then, you have full access to your dashboard.
+            <Alert>
+              <Clock className="h-4 w-4" />
+              <AlertDescription>
+                <strong>{t("duUnderReviewPrefix")}</strong>{t("duUnderReviewBody")}
                 <br /><br />
-                <span className="text-amber-700">You can still update or replace your documents below if needed.</span>
+                {t("duUnderReviewFooter")}
               </AlertDescription>
             </Alert>
           );
@@ -633,32 +633,31 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
         <Alert>
           <Info className="h-4 w-4" />
           <AlertDescription>
-            <strong>Update your documents:</strong> You can upload new files or provide new URLs to replace your current documents.
-            The status will reset to "Pending Review" when you submit new documents.
+            <strong>{t("duUpdateYourDocs")}</strong>{t("duUpdateYourDocsBody")}
           </AlertDescription>
         </Alert>
       )}
 
       {/* Document Management Section */}
       <div className="space-y-4">
-        <h3 className="text-lg font-medium text-gray-900">Required Documents</h3>
+        <h3 className="text-lg font-medium text-gray-900">{t("duRequiredDocuments")}</h3>
 
         {/* Food Safety License */}
         <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-              <FileText className="h-5 w-5 text-blue-600" />
+            <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center">
+              <FileText className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="flex-1">
-              <h4 className="font-medium text-gray-900">Food Safety License *</h4>
+              <h4 className="font-medium text-gray-900">{t("duFoodSafetyTitle")} *</h4>
               <div className="flex items-center gap-2 mt-1">
                 {verification?.foodSafetyLicenseUrl ? (
                   <>
-                    <span className="text-sm text-gray-600">Document uploaded</span>
+                    <span className="text-sm text-gray-600">{t("duDocumentUploaded")}</span>
                     {verification.foodSafetyLicenseStatus && getStatusBadge(verification.foodSafetyLicenseStatus)}
                   </>
                 ) : (
-                  <span className="text-sm text-gray-500">Not uploaded</span>
+                  <span className="text-sm text-gray-500">{t("duNotUploaded")}</span>
                 )}
               </div>
             </div>
@@ -679,12 +678,12 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
               {verification?.foodSafetyLicenseUrl ? (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Update
+                  {t("duUpdateBtn")}
                 </>
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-2" />
-                  Upload
+                  {t("duUploadBtn")}
                 </>
               )}
             </Button>
@@ -694,19 +693,19 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
         {/* Food Establishment Certificate */}
         <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-              <FileText className="h-5 w-5 text-green-600" />
+            <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center">
+              <FileText className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="flex-1">
-              <h4 className="font-medium text-gray-900">Food Establishment Certificate</h4>
+              <h4 className="font-medium text-gray-900">{t("duEstablishmentTitle")}</h4>
               <div className="flex items-center gap-2 mt-1">
                 {verification?.foodEstablishmentCertUrl ? (
                   <>
-                    <span className="text-sm text-gray-600">Document uploaded</span>
+                    <span className="text-sm text-gray-600">{t("duDocumentUploaded")}</span>
                     {verification.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
                   </>
                 ) : (
-                  <span className="text-sm text-gray-500">Not uploaded</span>
+                  <span className="text-sm text-gray-500">{t("duNotUploaded")}</span>
                 )}
               </div>
             </div>
@@ -729,12 +728,12 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
               {verification?.foodEstablishmentCertUrl ? (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Update
+                  {t("duUpdateBtn")}
                 </>
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-2" />
-                  Upload
+                  {t("duUploadBtn")}
                 </>
               )}
             </Button>
@@ -747,17 +746,17 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
         <Alert>
           <Award className="h-4 w-4" />
           <AlertDescription>
-            <strong>Admin Feedback:</strong> {verification.documentsAdminFeedback}
+            <strong>{t("duAdminFeedback")}</strong> {verification.documentsAdminFeedback}
           </AlertDescription>
         </Alert>
       )}
 
       {/* Upload Error Display */}
       {uploadError && (
-        <Alert className="border-red-200 bg-red-50">
-          <AlertTriangle className="h-4 w-4 text-red-600" />
-          <AlertDescription className="text-red-800">
-            <strong>Upload Error:</strong> {uploadError}
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>{t("duUploadError")}</strong> {uploadError}
           </AlertDescription>
         </Alert>
       )}

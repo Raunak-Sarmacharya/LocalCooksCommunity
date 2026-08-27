@@ -1,3 +1,5 @@
+import { CURRENT_POLICY_VERSION } from "../shared/policy-config";
+
 import { logger } from "./logger";
 import { User } from '@shared/schema';
 import { userService } from './domains/users/user.service';
@@ -21,6 +23,10 @@ interface CreateUserData {
   isVerified: boolean;
   hasSeenWelcome?: boolean;
   managerProfileData: Record<string, any>;
+  termsAccepted?: boolean;
+  termsAcceptedAt?: Date;
+  termsVersion?: string;
+
 }
 
 /**
@@ -109,15 +115,31 @@ export async function syncFirebaseUserToNeon(params: {
       isVerified: isUserVerified, // Google users are verified, email/password users need verification
       hasSeenWelcome: hasSeenWelcome, // Admins and managers skip welcome screen
       managerProfileData: {},
+      termsAccepted: true,
+      termsAcceptedAt: new Date(),
+      termsVersion: CURRENT_POLICY_VERSION,
+
     };
 
     logger.info(`➕ CREATING NEW USER with data:`, userData);
-    const newUser = await userService.createUser({
+    let newUser = await userService.createUser({
       ...userData,
       has_seen_welcome: hasSeenWelcome
     });
+
+    // createUser strips privileged flags (isChef/isManager). Set them after insert
+    // so newly registered chefs are actually chefs in Neon.
+    const flaggedUser = await userService.updateUser(newUser.id, {
+      isChef,
+      isManager,
+    });
+    if (flaggedUser) {
+      newUser = flaggedUser;
+    }
+
     logger.info(`✅ USER CREATED: ${newUser.id} (${newUser.username})`);
     logger.info(`   - is_verified in DB: ${(newUser as any).isVerified}`);
+    logger.info(`   - isChef in DB: ${(newUser as any).isChef}`);
     logger.info(`   - has_seen_welcome in DB: ${(newUser as any).has_seen_welcome} (admins/managers skip welcome screen)`);
 
     // Handle email notifications based on user type

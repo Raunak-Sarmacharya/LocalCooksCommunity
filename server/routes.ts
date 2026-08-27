@@ -345,19 +345,167 @@ export async function registerRoutes(app: Express): Promise<Server> {
         verificationUrl
       });
 
-      const emailSent = await sendEmail(emailContent, {
+      // Send email asynchronously to prevent blocking the client registration flow
+      // if the SMTP server is slow or hanging.
+      sendEmail(emailContent, {
         trackingId: `email_verify_${existingUser?.id || email}_${Date.now()}`
+      }).then(emailSent => {
+        if (!emailSent) {
+          logger.error(`❌ Failed to send verification email asynchronously to ${email}`);
+        }
+      }).catch(err => {
+        logger.error(`❌ Error in async sendEmail for ${email}:`, err);
       });
 
-      if (!emailSent) {
-        throw new Error('Failed to send verification email');
+      logger.info(`✅ Custom branded email verification queued for ${email} (role: ${userRole})`);
+      res.json({ success: true, message: "Verification email queued." });
+    } catch (error: any) {
+      logger.error("Error queueing verification email:", error);
+      res.status(500).json({ error: "Failed to queue verification email" });
+    }
+  });
+
+  // Send Magic Link Email (Firebase Backend Custom Email)
+  // Custom branded passwordless sign-in email with CTA button instead of raw Firebase template
+  app.post("/api/firebase/send-magic-link-email", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
       }
 
-      logger.info(`✅ Custom branded email verification sent to ${email} (role: ${userRole})`);
-      res.json({ success: true, message: "Verification email sent." });
+      // Initialize Firebase Admin
+      const { getAuth } = await import('firebase-admin/auth');
+      const { initializeFirebaseAdmin } = await import('./firebase-setup');
+
+      const firebaseApp = initializeFirebaseAdmin();
+      if (!firebaseApp) {
+        throw new Error('Firebase Admin not initialized');
+      }
+
+      // Lookup user in DB to determine role and get full name
+      const existingUser = await userService.getUserByUsername(email);
+      const userRole = existingUser ? (existingUser as any).role || 'chef' : 'chef';
+
+      // Determine the correct subdomain for the action code URL
+      // EmailAction handles cross-subdomain routing, but we set a sensible default here
+      const { getSubdomainUrl } = await import('./email');
+      const userType = userRole === 'manager' ? 'kitchen' : userRole === 'admin' ? 'admin' : 'chef';
+      const baseUrl = getSubdomainUrl(userType);
+
+      // The post-sign-in redirect path (role-based) — EmailAction may override with
+      // cross-subdomain redirect if the user's role doesn't match the current subdomain,
+      // but this provides a good default for the continueUrl
+      const postSignInPath = userRole === 'manager'
+        ? '/manager/dashboard'
+        : userRole === 'admin'
+          ? '/admin'
+          : '/dashboard';
+
+      // Action code settings: handleCodeInApp=true sends mode=signIn to /email-action
+      // (instead of Firebase's default auth handler URL), which we process in EmailAction.tsx
+      const actionCodeSettings = {
+        url: `${baseUrl}${postSignInPath}`,
+        handleCodeInApp: true,
+      };
+
+      // Generate the Firebase sign-in link (magic link) using Admin SDK
+      let signInUrl = await getAuth(firebaseApp).generateSignInWithEmailLink(email, actionCodeSettings);
+
+      // -------------------------------------------------------------------
+      // LOCAL DEVELOPMENT URL REWRITE
+      //
+      // Firebase Admin SDK uses the project-level Action URL (configured in
+      // Firebase Console) which is typically the production domain, even in
+      // local development. This causes magic links to open the PRODUCTION
+      // EmailAction page (which doesn't have our latest fixes) instead of
+      // the localhost dev server.
+      //
+      // Fix: When running locally, rewrite the scheme/host/port of the
+      // generated action URL to point to the correct localhost subdomain
+      // for the user's role, preserving all query params (mode, oobCode,
+      // apiKey, continueUrl, etc.) intact.
+      // -------------------------------------------------------------------
+      const isLocalDev = process.env.NODE_ENV === 'development' && !process.env.VERCEL_ENV;
+      if (isLocalDev) {
+        try {
+          const generatedUrl = new URL(signInUrl);
+          let targetOrigin: string;
+          try {
+            targetOrigin = getSubdomainUrl(userType); // e.g., 'http://chef.localhost:5001'
+            // Sanity-check origin is parseable (defense in depth against malformed helper output)
+            new URL(targetOrigin);
+          } catch (helperErr) {
+            logger.error('⚠️ getSubdomainUrl returned unusable value, falling back to BASE_URL:', helperErr);
+            targetOrigin = process.env.BASE_URL || 'http://localhost:5001';
+          }
+          const targetUrlObj = new URL(targetOrigin);
+
+          logger.info(`🔧 LOCAL DEV REWRITE CONTEXT:`, {
+            firebaseGeneratedOrigin: generatedUrl.origin,
+            targetOrigin,
+            parsedTargetScheme: targetUrlObj.protocol,
+            parsedTargetHost: targetUrlObj.hostname,
+            parsedTargetPort: targetUrlObj.port || '(default)',
+            generatedPathname: generatedUrl.pathname,
+            generatedQueryPreview: generatedUrl.search.length > 80 ? generatedUrl.search.slice(0, 80) + '...' : generatedUrl.search,
+          });
+
+          // Rewrite if origins differ (Firebase almost always returns production domain in local dev)
+          if (generatedUrl.origin !== targetUrlObj.origin) {
+            const path = generatedUrl.pathname; // e.g., '/email-action'
+            const query = generatedUrl.search; // e.g., '?apiKey=...&mode=signIn&...'
+            signInUrl = `${targetOrigin}${path}${query}`;
+            logger.info(`🔧 LOCAL DEV: Rewrote magic link ORIGIN ${generatedUrl.origin} → ${targetOrigin}`);
+            logger.info(`🔗 FINAL magic link URL (after rewrite): ${signInUrl}`);
+          } else {
+            logger.info('🔧 LOCAL DEV: Origins already match, no rewrite needed.');
+          }
+        } catch (rewriteError) {
+          logger.error('⚠️ Failed to rewrite magic link for local dev, USING ORIGINAL Firebase URL:', rewriteError instanceof Error ? rewriteError.message : String(rewriteError));
+          logger.info('🔗 ORIGINAL (unrewritten) magic link URL: ', signInUrl);
+        }
+      } else {
+        logger.info(`🔗 Generated magic link URL for ${email} (role: ${userRole}): ${signInUrl}`);
+      }
+
+      // Import email functions
+      const { sendEmail, generateMagicLinkEmail } = await import('./email');
+
+      // Determine display name for the email greeting
+      const rawFirstName = existingUser ? ((existingUser as any).firstName || (existingUser as any).first_name) : null;
+      const rawLastName = existingUser ? ((existingUser as any).lastName || (existingUser as any).last_name) : null;
+      const fullName = rawFirstName ? `${rawFirstName} ${rawLastName || ''}`.trim() : email.split('@')[0];
+
+      // Get locale from user if available
+      const userLocale = existingUser ? (existingUser as any).locale : null;
+
+      // Build the custom branded email with the magic link hidden in a CTA button
+      const emailContent = generateMagicLinkEmail({
+        fullName,
+        email,
+        signInUrl,
+        locale: userLocale,
+      });
+
+      // Send email asynchronously (non-blocking for the client)
+      sendEmail(emailContent, {
+        trackingId: `magic_link_${existingUser?.id || email}_${Date.now()}`
+      }).then(emailSent => {
+        if (!emailSent) {
+          logger.error(`❌ Failed to send magic link email asynchronously to ${email}`);
+        } else {
+          logger.info(`✅ Custom branded magic link email sent successfully to ${email}`);
+        }
+      }).catch(err => {
+        logger.error(`❌ Error in async sendEmail for magic link to ${email}:`, err);
+      });
+
+      logger.info(`✅ Custom branded magic link queued for ${email} (role: ${userRole})`);
+      res.json({ success: true, message: "Sign-in link queued." });
     } catch (error: any) {
-      logger.error("Error sending verification email:", error);
-      res.status(500).json({ error: "Failed to send verification email" });
+      logger.error("Error queueing magic link email:", error);
+      res.status(500).json({ error: "Failed to queue sign-in link" });
     }
   });
 

@@ -10,6 +10,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { LocationData } from "./types";
+import { SmartImage } from "@/components/ui/smart-image";
 
 // Re-export LocationData for backward compatibility
 export type { LocationData };
@@ -67,6 +68,7 @@ export default function LocationCard({
   onViewDetails,
 }: LocationCardProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const statusConfig = getStatusConfig(location.kitchenLicenseStatus);
   const StatusIcon = statusConfig.icon;
 
@@ -97,25 +99,21 @@ export default function LocationCard({
           <div className="flex items-start justify-between gap-3">
             {/* Logo/Icon */}
             <div className="flex-shrink-0">
-              {location.logoUrl ? (
-                <img
+              {location.logoUrl && !logoError ? (
+                <SmartImage
                   src={location.logoUrl}
                   alt={location.name}
                   className="w-14 h-14 rounded-lg object-cover border border-gray-200"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                    target.nextElementSibling?.classList.remove('hidden');
-                  }}
+                  onError={() => setLogoError(true)}
                 />
-              ) : null}
-              <div className={cn(
-                "w-14 h-14 rounded-lg flex items-center justify-center",
-                location.logoUrl && "hidden",
-                "bg-gradient-to-br from-[#FFE8DD] to-[#FFD4C4]"
-              )}>
-                <Building2 className="w-7 h-7 text-[#F51042]" />
-              </div>
+              ) : (
+                <div className={cn(
+                  "w-14 h-14 rounded-lg flex items-center justify-center",
+                  "bg-gradient-to-br from-[#FFE8DD] to-[#FFD4C4]"
+                )}>
+                  <Building2 className="w-7 h-7 text-[#F51042]" />
+                </div>
+              )}
             </div>
 
             {/* Status Badge */}

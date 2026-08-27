@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { AlertCircle, Check, Package, CalendarDays, ArrowRight, Clock } from "lucide-react";
 import { format, differenceInDays, startOfToday, isBefore, addDays, addWeeks, addMonths } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { getAuthHeaders } from "@/lib/api";
 import { useUnpaidPenaltiesCheck } from "@/hooks/use-unpaid-penalties";
@@ -47,6 +48,7 @@ export function StorageExtensionDialog({
   onSuccess: _onSuccess,
 }: StorageExtensionDialogProps) {
   const { toast } = useToast();
+  const { t } = useTranslation("chef");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -64,12 +66,12 @@ export function StorageExtensionDialog({
   const quickOptions = useMemo(() => {
     const baseDate = minDate;
     return [
-      { label: '1 Week', days: 7, date: addWeeks(baseDate, 1) },
-      { label: '2 Weeks', days: 14, date: addWeeks(baseDate, 2) },
-      { label: '1 Month', days: 30, date: addMonths(baseDate, 1) },
-      { label: '3 Months', days: 90, date: addMonths(baseDate, 3) },
+      { label: t('sx1Week'), days: 7, date: addWeeks(baseDate, 1) },
+      { label: t('sx2Weeks'), days: 14, date: addWeeks(baseDate, 2) },
+      { label: t('sx1Month'), days: 30, date: addMonths(baseDate, 1) },
+      { label: t('sx3Months'), days: 90, date: addMonths(baseDate, 3) },
     ].filter(opt => opt.days >= minDays);
-  }, [minDate, minDays]);
+  }, [minDate, minDays, t]);
 
   // Fetch extension preview from server to get accurate pricing with tax
   const { data: extensionPreview } = useQuery({
@@ -173,16 +175,16 @@ export function StorageExtensionDialog({
         window.location.href = data.sessionUrl;
       } else {
         toast({
-          title: "Error",
-          description: "Failed to get checkout URL",
+          title: t("sxErrorTitle"),
+          description: t("sxCheckoutUrlFailed"),
           variant: "destructive",
         });
       }
     },
     onError: (error: Error) => {
       toast({
-        title: "Extension Failed",
-        description: error.message || "Failed to create checkout session",
+        title: t("sxExtensionFailed"),
+        description: error.message || t("sxCheckoutSessionFailed"),
         variant: "destructive",
       });
     },
@@ -197,7 +199,7 @@ export function StorageExtensionDialog({
     if (penaltyData?.hasUnpaidPenalties) {
       const totalOwed = (penaltyData.totalOwedCents / 100).toFixed(2);
       toast({
-        title: "Extension Blocked - Unpaid Penalties",
+        title: t("sxBlockedTitle"),
         description: `You have ${penaltyData.totalCount} unpaid penalty(ies) totaling $${totalOwed}. Please resolve these before extending storage.`,
         variant: "destructive",
       });
@@ -215,8 +217,8 @@ export function StorageExtensionDialog({
   const handleDateSelect = (date: Date | undefined) => {
     if (date && isBefore(date, minDate)) {
       toast({
-        title: "Invalid Date",
-        description: "Selected date must be after the current end date",
+        title: t("sxInvalidDate"),
+        description: t("sxInvalidDateBody"),
         variant: "destructive",
       });
       return;
@@ -227,10 +229,10 @@ export function StorageExtensionDialog({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-lg p-0 flex flex-col">
-        <SheetHeader className="p-6 pb-4 border-b bg-gradient-to-r from-purple-50 to-blue-50">
+        <SheetHeader className="p-6 pb-4 border-b">
           <SheetTitle className="flex items-center gap-2 text-lg">
-            <Package className="h-5 w-5 text-purple-600" />
-            Extend Storage Booking
+            <Package className="h-5 w-5 text-muted-foreground" />
+            {t("sxDialogTitle")}
           </SheetTitle>
           <SheetDescription>
             {booking.storageName} at {booking.kitchenName}
@@ -241,25 +243,25 @@ export function StorageExtensionDialog({
 
         <div className="space-y-5">
           {/* Current Booking Timeline */}
-          <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4">
+          <div className="rounded-lg border p-4">
             <div className="flex items-center justify-between">
               <div className="text-center">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Current End Date</p>
-                <p className="text-lg font-bold text-gray-900">{format(currentEndDate, "MMM d, yyyy")}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">{t("sxCurrentEndDate")}</p>
+                <p className="text-lg font-bold">{format(currentEndDate, "MMM d, yyyy")}</p>
               </div>
-              <ArrowRight className="h-5 w-5 text-purple-400" />
+              <ArrowRight className="h-5 w-5 text-muted-foreground" />
               <div className="text-center">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">New End Date</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">{t("sxNewEndDate")}</p>
                 {selectedDate ? (
-                  <p className="text-lg font-bold text-purple-700">{format(selectedDate, "MMM d, yyyy")}</p>
+                  <p className="text-lg font-bold">{format(selectedDate, "MMM d, yyyy")}</p>
                 ) : (
-                  <p className="text-lg font-medium text-gray-400">Select below</p>
+                  <p className="text-lg font-medium text-muted-foreground">{t("sxSelectBelow")}</p>
                 )}
               </div>
             </div>
-            <div className="mt-3 pt-3 border-t border-purple-100 flex items-center justify-between text-sm">
-              <span className="text-gray-600">Daily Rate:</span>
-              <span className="font-bold text-purple-700 bg-purple-100 px-2 py-1 rounded">
+            <div className="mt-3 pt-3 border-t flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Daily Rate:</span>
+              <span className="font-bold px-2 py-1 rounded border bg-muted/50">
                 ${((booking.basePrice || 0) / 100).toFixed(2)}/day
               </span>
             </div>
@@ -267,18 +269,18 @@ export function StorageExtensionDialog({
 
           {/* Warning for expiring soon */}
           {differenceInDays(currentEndDate, today) <= 2 && differenceInDays(currentEndDate, today) >= 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
-              <Clock className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
-              <div className="text-sm text-amber-800">
+            <div className="rounded-lg border border-warning/30 p-3 flex items-start gap-2">
+              <Clock className="h-5 w-5 text-warning mt-0.5 flex-shrink-0" />
+              <div className="text-sm">
                 <p className="font-semibold">Expiring {differenceInDays(currentEndDate, today) === 0 ? 'Today' : `in ${differenceInDays(currentEndDate, today)} day${differenceInDays(currentEndDate, today) !== 1 ? 's' : ''}`}</p>
-                <p className="text-amber-700">Extend now to keep your storage.</p>
+                <p className="text-muted-foreground">Extend now to keep your storage.</p>
               </div>
             </div>
           )}
 
           {/* Quick Extension Options */}
           <div className="space-y-3">
-            <Label className="text-sm font-medium">Quick Extend</Label>
+            <Label className="text-sm font-medium">{t("sxQuickExtend")}</Label>
             <div className="grid grid-cols-2 gap-2">
               {quickOptions.map((option) => {
                 const isSelected = selectedDate?.getTime() === option.date.getTime();
@@ -289,20 +291,20 @@ export function StorageExtensionDialog({
                     onClick={() => setSelectedDate(option.date)}
                     className={`p-3 rounded-lg border-2 text-left transition-all ${
                       isSelected
-                        ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
-                        : 'border-gray-200 hover:border-purple-300 hover:bg-gray-50'
+                        ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                        : 'border-border hover:border-foreground/20 hover:bg-muted/50'
                     }`}
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className={`font-semibold ${isSelected ? 'text-purple-700' : 'text-gray-900'}`}>
+                        <p className={`font-semibold ${isSelected ? 'text-foreground' : 'text-foreground'}`}>
                           {option.label}
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-muted-foreground">
                           Until {format(option.date, "MMM d")}
                         </p>
                       </div>
-                      <p className={`font-bold ${isSelected ? 'text-purple-700' : 'text-gray-700'}`}>
+                      <p className={`font-bold ${isSelected ? 'text-foreground' : 'text-muted-foreground'}`}>
                         ${price.toFixed(0)}
                       </p>
                     </div>
@@ -316,7 +318,7 @@ export function StorageExtensionDialog({
           <div className="space-y-3">
             <button
               onClick={() => setShowCalendar(!showCalendar)}
-              className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1"
+              className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1"
             >
               <CalendarDays className="h-4 w-4" />
               {showCalendar ? 'Hide calendar' : 'Choose custom date'}
@@ -338,26 +340,26 @@ export function StorageExtensionDialog({
 
           {/* Extension Summary */}
           {extensionDetails && extensionDetails.valid && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-green-800 font-semibold mb-3">
-                <Check className="h-4 w-4" />
-                Extension Summary
+            <div className="rounded-lg border p-4">
+              <div className="flex items-center gap-2 font-semibold mb-3">
+                <Check className="h-4 w-4 text-success" />
+                {t("sxExtensionSummary")}
               </div>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-700">
+                  <span className="text-muted-foreground">
                     {extensionDetails.extensionDays} day{(extensionDetails.extensionDays ?? 0) > 1 ? 's' : ''} × ${((booking.basePrice || 0) / 100).toFixed(2)}/day
                   </span>
                   <span className="font-medium">${((extensionDetails.extensionBasePriceCents ?? 0) / 100).toFixed(2)}</span>
                 </div>
                 {(extensionDetails.extensionTaxCents ?? 0) > 0 && (
-                  <div className="flex justify-between text-gray-600">
-                    <span>Tax ({extensionDetails.taxRatePercent ?? 0}%)</span>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{t("sxTaxLabel", { rate: extensionDetails.taxRatePercent ?? 0 })}</span>
                     <span>${((extensionDetails.extensionTaxCents ?? 0) / 100).toFixed(2)}</span>
                   </div>
                 )}
-                <div className="flex justify-between pt-2 border-t border-green-200 font-bold text-green-900 text-base">
-                  <span>Total</span>
+                <div className="flex justify-between pt-2 border-t font-bold text-base">
+                  <span>{t("sxTotal")}</span>
                   <span>${((extensionDetails.extensionTotalPriceCents ?? 0) / 100).toFixed(2)} CAD</span>
                 </div>
               </div>
@@ -366,7 +368,7 @@ export function StorageExtensionDialog({
 
           {/* Error Message */}
           {extensionDetails && !extensionDetails.valid && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-800">
+            <div className="rounded-lg border border-destructive/30 p-3 flex items-center gap-2 text-destructive">
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
               <span className="text-sm">{extensionDetails.error}</span>
             </div>
@@ -374,7 +376,7 @@ export function StorageExtensionDialog({
         </div>
         </div>
 
-        <SheetFooter className="p-6 pt-4 border-t bg-gray-50 gap-2 sm:gap-0">
+        <SheetFooter className="p-6 pt-4 border-t bg-muted/30 gap-2 sm:gap-0">
           <Button
             variant="outline"
             onClick={() => {
@@ -384,7 +386,7 @@ export function StorageExtensionDialog({
             }}
             disabled={isProcessing}
           >
-            Cancel
+            {t("sxCancel")}
           </Button>
           <Button
             onClick={handleExtend}
@@ -392,11 +394,11 @@ export function StorageExtensionDialog({
             className="min-w-[160px]"
           >
             {isProcessing ? (
-              "Processing..."
+              t("sxProcessing")
             ) : extensionDetails?.valid ? (
-              `Pay $${((extensionDetails.extensionTotalPriceCents ?? 0) / 100).toFixed(2)} CAD`
+              t("sxPayAmount", { amount: ((extensionDetails.extensionTotalPriceCents ?? 0) / 100).toFixed(2) })
             ) : (
-              "Select Duration"
+              t("sxSelectDuration")
             )}
           </Button>
         </SheetFooter>

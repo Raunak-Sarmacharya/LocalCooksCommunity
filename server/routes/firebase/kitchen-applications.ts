@@ -1,7 +1,7 @@
 import { logger } from "../../logger";
 import { Router, Request, Response } from 'express';
 import { upload, uploadToBlob } from '../../fileUpload';
-import { requireFirebaseAuthWithUser, requireManager } from '../../firebase-auth-middleware';
+import { requireFirebaseAuthWithUser, requireManager, requireAdmin } from '../../firebase-auth-middleware';
 import { db } from '../../db';
 import { chefLocationAccess, insertChefKitchenApplicationSchema, updateApplicationTierSchema } from '@shared/schema';
 import { fromZodError } from 'zod-validation-error';
@@ -182,53 +182,79 @@ router.post('/firebase/chef/kitchen-applications',
             let phoneValue: string = '';
             const phoneInput = req.body.phone ? req.body.phone.trim() : '';
 
-            // Validate phone based on location requirements
+            // For TIER 2 submissions (manager review, documents uploaded), apply strict
+            // phone validation because the chef has had full access to the form UX to fix.
+            //
+            // For TIER 1 submissions (which can be auto-submitted from the registration
+            // modal after email verification), if the phone is required but invalid, DON'T
+            // hard-fail. Instead save what we have normalized to empty and let the chef
+            // fix it later from the application page. This ensures the user's Step 1 is
+            // still created (with all their submitted info) instead of being stuck on a
+            // validation error that's confusing.
+            const tierValue = parseInt((req.body.current_tier as string) || '1', 10);
+            const isTier1 = !tierValue || tierValue === 1;
+
             if (requirements.requirePhone) {
-                // Phone is required - must be provided and valid
                 if (!phoneInput || phoneInput === '') {
-                    return res.status(400).json({
-                        error: 'Validation error',
-                        message: 'Phone number is required for this location',
-                        details: [{
-                            code: 'too_small',
-                            minimum: 1,
-                            type: 'string',
-                            inclusive: true,
-                            exact: false,
-                            message: 'Phone number is required',
-                            path: ['phone']
-                        }]
-                    });
+                    if (isTier1) {
+                        phoneValue = ''; // Save empty, let chef fill later
+                    } else {
+                        return res.status(400).json({
+                            error: 'Validation error',
+                            message: 'Phone number is required for this location',
+                            details: [{
+                                code: 'too_small',
+                                minimum: 1,
+                                type: 'string',
+                                inclusive: true,
+                                exact: false,
+                                message: 'Phone number is required',
+                                path: ['phone']
+                            }]
+                        });
+                    }
+                } else {
+                    const { phoneNumberSchema } = await import('@shared/phone-validation');
+                    const phoneValidation = phoneNumberSchema.safeParse(phoneInput);
+                    if (phoneValidation.success) {
+                        phoneValue = phoneValidation.data;
+                    } else {
+                        if (isTier1) {
+                            // Tier 1: don't block submit. Save the raw input
+                            // (best-effort normalize) and chef can fix it later.
+                            const { normalizePhoneNumber } = await import('@shared/phone-validation');
+                            const normalized = normalizePhoneNumber(phoneInput);
+                            phoneValue = normalized || phoneInput;
+                        } else {
+                            const validationError = fromZodError(phoneValidation.error);
+                            return res.status(400).json({
+                                error: 'Validation error',
+                                message: validationError.message,
+                                details: validationError.details
+                            });
+                        }
+                    }
                 }
-                // Validate phone format using the required phone schema
-                const { phoneNumberSchema } = await import('@shared/phone-validation');
-                const phoneValidation = phoneNumberSchema.safeParse(phoneInput);
-                if (!phoneValidation.success) {
-                    const validationError = fromZodError(phoneValidation.error);
-                    return res.status(400).json({
-                        error: 'Validation error',
-                        message: validationError.message,
-                        details: validationError.details
-                    });
-                }
-                phoneValue = phoneValidation.data;
             } else {
                 // Phone is optional - validate format only if provided
                 if (phoneInput && phoneInput !== '') {
                     const { optionalPhoneNumberSchema } = await import('@shared/phone-validation');
                     const phoneValidation = optionalPhoneNumberSchema.safeParse(phoneInput);
-                    if (!phoneValidation.success) {
+                    if (phoneValidation.success) {
+                        phoneValue = phoneValidation.data || '';
+                    } else if (!isTier1) {
                         const validationError = fromZodError(phoneValidation.error);
                         return res.status(400).json({
                             error: 'Validation error',
                             message: validationError.message,
                             details: validationError.details
                         });
+                    } else {
+                        // Tier 1, optional field, invalid format: still save something
+                        const { normalizePhoneNumber } = await import('@shared/phone-validation');
+                        phoneValue = (normalizePhoneNumber(phoneInput) || phoneInput);
                     }
-                    // optionalPhoneNumberSchema returns null for empty, but we need string for DB
-                    phoneValue = phoneValidation.data || '';
                 }
-                // If phone not provided and not required, phoneValue remains empty string
             }
 
             // Parse businessDescription JSON to extract individual fields for validation
@@ -354,80 +380,45 @@ router.post('/firebase/chef/kitchen-applications',
                 });
             }
 
-            // Validate foodSafetyLicense (food handler cert)
-            if (requirements.requireFoodHandlerCert && (!req.body.foodSafetyLicense)) {
-                return res.status(400).json({
-                    error: 'Validation error',
-                    message: 'Food handler certificate is required for this location',
-                    details: [{
-                        code: 'custom',
-                        message: 'Food handler certificate is required',
-                        path: ['foodSafetyLicense']
-                    }]
-                });
+            // NOTE: File uploads (food handler certificate FILE) and expiry dates are
+            // Step 2 requirements, not Step 1. The registration flow auto-submits Step 1
+            // from pendingRegistrationData and has no file upload UX. It also does not
+            // collect usage frequency or session length, so these must not block Step 1
+            // either.
+
+            // Validate foodSafetyLicense (the RADIO answer, not the file upload).
+            // This can still be required for Step 1 since the registration modal asks
+            // for it as a yes/no/notSure select. If it's missing we just default.
+            let foodSafetyLicenseValue: "yes" | "no" | "notSure" = "notSure";
+            if (req.body.foodSafetyLicense === "yes" || req.body.foodSafetyLicense === "no") {
+                foodSafetyLicenseValue = req.body.foodSafetyLicense;
             }
 
-            // Validate foodHandlerCertExpiry
-            if (requirements.requireFoodHandlerExpiry && (!businessInfo.foodHandlerCertExpiry || businessInfo.foodHandlerCertExpiry.trim() === '') && (!req.body.foodSafetyLicenseExpiry || req.body.foodSafetyLicenseExpiry.trim() === '')) {
-                return res.status(400).json({
-                    error: 'Validation error',
-                    message: 'Food handler certificate expiry date is required for this location',
-                    details: [{
-                        code: 'too_small',
-                        minimum: 1,
-                        type: 'string',
-                        message: 'Food handler certificate expiry date is required',
-                        path: ['foodHandlerCertExpiry']
-                    }]
-                });
-            }
+            // Food Handler Certificate FILE UPLOAD + EXPIRY DATE — Step 2 only.
+            // (Previously enforced here for Step 1; moved to Tier 2 per user request.)
 
-            // Food establishment cert is now a Tier 2 requirement - not validated at initial application
-            let foodEstablishmentCertValue: "yes" | "no" | "notSure" = "no"; // Default to "no" if not required
+            // Food establishment cert is still a Tier 2 requirement - not validated at initial application
+            let foodEstablishmentCertValue: "yes" | "no" | "notSure" = "no";
             foodEstablishmentCertValue = req.body.foodEstablishmentCert || "no";
 
-            // Validate usageFrequency
-            if (requirements.requireUsageFrequency && (!businessInfo.usageFrequency || businessInfo.usageFrequency.trim() === '')) {
-                return res.status(400).json({
-                    error: 'Validation error',
-                    message: 'Usage frequency is required for this location',
-                    details: [{
-                        code: 'too_small',
-                        minimum: 1,
-                        type: 'string',
-                        message: 'Usage frequency is required',
-                        path: ['usageFrequency']
-                    }]
-                });
-            }
-
-            // Validate sessionDuration
-            if (requirements.requireSessionDuration && (!businessInfo.sessionDuration || businessInfo.sessionDuration.trim() === '')) {
-                return res.status(400).json({
-                    error: 'Validation error',
-                    message: 'Session duration is required for this location',
-                    details: [{
-                        code: 'too_small',
-                        minimum: 1,
-                        type: 'string',
-                        message: 'Session duration is required',
-                        path: ['sessionDuration']
-                    }]
-                });
-            }
+            // Usage Frequency + Session Length — optional for Step 1. The registration
+            // flow does not ask these questions; chefs set them when needed in Step 2
+            // or in profile. Not a blocker for auto-submit from pending data.
+            //
+            // (Validation removed for Tier 1 initial submission.)
 
             const formData: any = {
                 chefId: req.neonUser!.id,
                 locationId: locationId,
                 fullName: req.body.fullName || `${firstName} ${lastName}`.trim() || 'N/A',
-                shopName: req.body.shopName || 'Shop Not Named',       // Not collected in form — use default
-                shopAddress: req.body.shopAddress || 'Address Not Provided', // Not collected in form — use default
+                shopName: req.body.shopName || 'Shop Not Named',
+                shopAddress: req.body.shopAddress || 'Address Not Provided',
                 email: req.body.email || '',
-                phone: phoneValue, // Empty string if not required (database has notNull constraint)
+                phone: phoneValue,
                 kitchenPreference: req.body.kitchenPreference || "commercial",
                 businessDescription: req.body.businessDescription || undefined,
                 cookingExperience: req.body.cookingExperience || businessInfo.experience || undefined,
-                foodSafetyLicense: req.body.foodSafetyLicense || "no",
+                foodSafetyLicense: foodSafetyLicenseValue,
                 foodSafetyLicenseUrl: foodSafetyLicenseUrl || req.body.foodSafetyLicenseUrl || undefined,
                 foodSafetyLicenseExpiry: req.body.foodSafetyLicenseExpiry || businessInfo.foodHandlerCertExpiry || undefined,
                 foodEstablishmentCert: foodEstablishmentCertValue,
@@ -890,6 +881,71 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
 );
 
 // =============================================================================
+// 👨‍🍳 ADMIN KITCHEN APPLICATIONS
+// =============================================================================
+
+/**
+ * GET /api/firebase/admin/kitchen-applications
+ * Get all kitchen applications for admins
+ */
+router.get('/firebase/admin/kitchen-applications', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const applications = await chefApplicationService.getAllApplications();
+        res.json(applications);
+    } catch (error) {
+        logger.error('Error fetching admin kitchen applications:', error);
+        res.status(500).json({ error: 'Failed to fetch applications' });
+    }
+});
+
+/**
+ * PATCH /api/firebase/admin/kitchen-applications/:id/status
+ * Update application status (Admin)
+ */
+router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const user = req.neonUser!;
+        const applicationId = parseInt(req.params.id);
+
+        if (isNaN(applicationId)) {
+            return res.status(400).json({ error: 'Invalid application ID' });
+        }
+
+        const { status, feedback } = req.body;
+
+        if (!status || !['approved', 'rejected', 'inReview'].includes(status)) {
+            return res.status(400).json({ error: 'Status must be "approved", "rejected", or "inReview"' });
+        }
+
+        let updatedApplication = await chefApplicationService.updateApplicationStatus(
+            applicationId,
+            status,
+            feedback,
+            user.id
+        );
+
+        if (req.body.current_tier !== undefined && updatedApplication) {
+            const newTier = parseInt(req.body.current_tier);
+            const tierData = req.body.tier_data;
+            updatedApplication = await chefApplicationService.updateApplicationTier(
+                applicationId,
+                newTier,
+                tierData
+            ) || updatedApplication;
+        }
+
+        logger.info(`✅ Application ${applicationId} ${status} by Admin ${user.id}`);
+        res.json(updatedApplication);
+    } catch (error) {
+        logger.error('Error updating application status:', error);
+        if (error instanceof Error && error.message.includes('not found')) {
+            return res.status(404).json({ error: error.message });
+        }
+        res.status(500).json({ error: 'Failed to update application status' });
+    }
+});
+
+// =============================================================================
 // 👨‍🍳 MANAGER KITCHEN APPLICATIONS - Review Chef Applications
 // =============================================================================
 
@@ -966,6 +1022,11 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
         const location = await locationService.getLocationById(application.locationId);
         if (!location || location.managerId !== user.id) {
             return res.status(403).json({ error: 'Access denied to this application' });
+        }
+
+        // Only Global Admins can approve Step 1 (current_tier === 1)
+        if (application.current_tier === 1) {
+            return res.status(403).json({ error: 'Step 1 applications can only be approved by Global Admins.' });
         }
 
         // Update the status

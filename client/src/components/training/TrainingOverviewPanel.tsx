@@ -1,26 +1,25 @@
 import { logger } from "@/lib/logger";
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SKILLSPASS_OFFICIAL_CERT_URL } from '@/config/skillspass';
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { auth } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import {
-  ArrowRight,
-  Award,
   BookOpen,
-  CheckCircle,
   Download,
   ExternalLink,
-  FileText,
-  Lock,
-  Play
+  Play,
+  Shield,
+  type LucideIcon,
 } from 'lucide-react';
-import { useState } from 'react';
-import { Link } from 'wouter';
+import { useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { ChefPageHeader } from "@/components/chef/ui";
 import TrainingVideoPlayer from './TrainingVideoPlayer';
 
 type ViewMode = 'overview' | 'player';
@@ -31,33 +30,56 @@ interface TrainingOverviewPanelProps {
   onViewModeChange?: (mode: ViewMode) => void;
 }
 
+interface VideoProgressItem {
+  videoId?: string;
+  completed?: boolean;
+}
+
+const BASICS_VIDEO_COUNT = 14;
+const HYGIENE_VIDEO_COUNT = 8;
+const TOTAL_VIDEOS = BASICS_VIDEO_COUNT + HYGIENE_VIDEO_COUNT;
+
+const TRAINING_MODULES = [
+  {
+    id: 'basics',
+    videoIdPrefix: 'basics-',
+    titleKey: 'trModuleBasics',
+    videoCount: BASICS_VIDEO_COUNT,
+    descriptionKey: 'trModuleBasicsDesc',
+  },
+  {
+    id: 'hygiene',
+    videoIdPrefix: 'howto-',
+    titleKey: 'trModuleHygiene',
+    videoCount: HYGIENE_VIDEO_COUNT,
+    descriptionKey: 'trModuleHygieneDesc',
+  },
+] as const;
+
 export default function TrainingOverviewPanel({ className, viewMode: controlledViewMode, onViewModeChange }: TrainingOverviewPanelProps) {
+  const { t } = useTranslation('chef');
   const { user: firebaseUser } = useFirebaseAuth();
   const { showAlert } = useCustomAlerts();
   const [isDownloading, setIsDownloading] = useState(false);
   const [internalViewMode, setInternalViewMode] = useState<ViewMode>('overview');
 
-  // Support both controlled (from parent breadcrumbs) and uncontrolled usage
   const viewMode = controlledViewMode ?? internalViewMode;
   const setViewMode = onViewModeChange ?? setInternalViewMode;
-
   const user = firebaseUser;
 
-  // Query training access level and progress
-  // NOTE: All hooks must be called before any conditional returns
   const { data: trainingAccess, isLoading: isLoadingTrainingAccess } = useQuery({
     queryKey: ["training-access", user?.uid],
     queryFn: async () => {
       if (!user) return null;
-      
+
       try {
         const currentUser = auth.currentUser;
         if (!currentUser) {
           throw new Error("No authenticated Firebase user found");
         }
-        
+
         const token = await currentUser.getIdToken();
-        
+
         const response = await fetch(`/api/firebase/microlearning/progress/${user.uid}`, {
           method: "GET",
           headers: {
@@ -69,9 +91,8 @@ export default function TrainingOverviewPanel({ className, viewMode: controlledV
         if (!response.ok) {
           if (response.status === 404) {
             return {
-              accessLevel: 'limited',
-              hasApprovedApplication: false,
-              applicationInfo: { message: 'Submit application for full training access', canApply: true }
+              accessLevel: 'full',
+              progress: [],
             };
           }
           throw new Error(`Failed to fetch training access: ${response.status}`);
@@ -81,9 +102,8 @@ export default function TrainingOverviewPanel({ className, viewMode: controlledV
       } catch (error) {
         logger.error("Error fetching training access:", error);
         return {
-          accessLevel: 'limited',
-          hasApprovedApplication: false,
-          applicationInfo: { message: 'Error loading training access' }
+          accessLevel: 'full',
+          progress: [],
         };
       }
     },
@@ -92,20 +112,19 @@ export default function TrainingOverviewPanel({ className, viewMode: controlledV
     refetchOnWindowFocus: true,
   });
 
-  // Query completion status
   const { data: microlearningCompletion, isLoading: isLoadingCompletion } = useQuery({
     queryKey: ["microlearning-completion", user?.uid],
     queryFn: async () => {
       if (!user) return null;
-      
+
       try {
         const currentUser = auth.currentUser;
         if (!currentUser) {
           throw new Error("No authenticated Firebase user found");
         }
-        
+
         const token = await currentUser.getIdToken();
-        
+
         const response = await fetch(`/api/firebase/microlearning/completion/${user.uid}`, {
           method: "GET",
           headers: {
@@ -133,47 +152,36 @@ export default function TrainingOverviewPanel({ className, viewMode: controlledV
   });
 
   const isLoading = isLoadingTrainingAccess || isLoadingCompletion;
+  const isCompleted = Boolean(microlearningCompletion?.completion?.confirmed || microlearningCompletion?.confirmed);
+  const videoProgress: VideoProgressItem[] = trainingAccess?.progress || [];
+  const completedVideos = videoProgress.filter((item) => item.completed).length;
 
-  const safeTrainingAccess = trainingAccess || {
-    accessLevel: 'limited',
-    hasApprovedApplication: false,
-    applicationInfo: { message: 'Submit application for full training access', canApply: true }
-  };
-
-  const hasFullAccess = safeTrainingAccess?.accessLevel === 'full' || safeTrainingAccess?.hasApprovedApplication;
-  const isCompleted = microlearningCompletion?.completion?.confirmed || microlearningCompletion?.confirmed;
-
-  // Calculate progress from video progress data
-  const videoProgress = trainingAccess?.progress || [];
-  const completedVideos = videoProgress.filter((p: { completed?: boolean }) => p.completed).length;
-  const totalVideos = 22;
-  const progressPercentage = Math.round((completedVideos / totalVideos) * 100);
-
-  // If in player mode, render the video player (after all hooks)
   if (viewMode === 'player') {
     return (
-      <TrainingVideoPlayer 
+      <TrainingVideoPlayer
         className={className}
       />
     );
   }
 
+  const openPlayer = () => setViewMode('player');
+
   const downloadCertificate = async () => {
     try {
-      const firebaseUser = auth.currentUser;
-      if (!firebaseUser) {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
         showAlert({
-          title: "Authentication Required",
-          description: "Authentication required. Please log in again.",
+          title: t("trAuthRequiredTitle"),
+          description: t("trAuthRequiredBody"),
           type: "error"
         });
         return;
       }
 
       setIsDownloading(true);
-      const token = await firebaseUser.getIdToken();
+      const token = await currentUser.getIdToken();
 
-      const response = await fetch(`/api/firebase/microlearning/certificate/${firebaseUser.uid}`, {
+      const response = await fetch(`/api/firebase/microlearning/certificate/${currentUser.uid}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -190,22 +198,22 @@ export default function TrainingOverviewPanel({ className, viewMode: controlledV
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = url;
-      a.download = `LocalCooks-Certificate-${firebaseUser.displayName || firebaseUser.email || 'user'}.pdf`;
+      a.download = `LocalCooks-Certificate-${currentUser.displayName || currentUser.email || 'user'}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
       showAlert({
-        title: "Success",
-        description: "Certificate downloaded successfully!",
+        title: t("trCertSuccessTitle"),
+        description: t("trCertSuccessBody"),
         type: "success"
       });
     } catch (error) {
       logger.error('Error downloading certificate:', error);
       showAlert({
-        title: "Download Failed",
-        description: "Failed to download certificate. Please try again.",
+        title: t("trCertFailTitle"),
+        description: t("trCertFailBody"),
         type: "error"
       });
     } finally {
@@ -214,282 +222,151 @@ export default function TrainingOverviewPanel({ className, viewMode: controlledV
   };
 
   if (isLoading) {
-    return (
-      <div className={cn("space-y-6", className)}>
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-sm">
-            <BookOpen className="h-6 w-6 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight text-foreground">Training & Certification</h2>
-            <p className="text-muted-foreground mt-1">Loading your training progress...</p>
-          </div>
-        </div>
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent" />
-        </div>
-      </div>
-    );
+    return <TrainingOverviewSkeleton className={className} />;
   }
+
+  const videoCtaLabel = isCompleted
+    ? t('trReviewVideos')
+    : completedVideos > 0
+      ? t('trContinueVideos')
+      : t('trStartVideos');
 
   return (
     <div className={cn("space-y-6", className)}>
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-          <BookOpen className="h-5 w-5 text-primary" />
-        </div>
-        <div className="flex-1">
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Training & Certification</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Food safety knowledge and professional certification</p>
-        </div>
-        {isCompleted && (
-          <Badge variant="success">
-            <Award className="h-3 w-3 mr-1" />
-            Certified
-          </Badge>
-        )}
+      <ChefPageHeader
+        title={t("trPageTitle")}
+        description={t("trPageDesc")}
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <TrackCard
+          icon={Shield}
+          label={t("trOfficialLabel")}
+          title={t("trOfficialTitle")}
+          description={t("trOfficialDesc")}
+          meta={t("trOfficialMeta")}
+          action={
+            <Button asChild variant="outline" className="w-full">
+              <a href={SKILLSPASS_OFFICIAL_CERT_URL} target="_blank" rel="noopener noreferrer">
+                {t("trOfficialCta")}
+                <ExternalLink className="h-4 w-4" />
+                <span className="sr-only">(opens in a new tab)</span>
+              </a>
+            </Button>
+          }
+        />
+
+        <TrackCard
+          icon={BookOpen}
+          label={t("trLocalLabel")}
+          title={t("trLocalTitle")}
+          description={t("trLocalDesc", { count: TOTAL_VIDEOS })}
+          meta={isCompleted ? t('trMetaComplete') : completedVideos > 0 ? t('trMetaProgress', { done: completedVideos, total: TOTAL_VIDEOS }) : t('trMetaSelfPaced', { count: TOTAL_VIDEOS })}
+          action={
+            isCompleted ? (
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" onClick={downloadCertificate} disabled={isDownloading}>
+                  <Download className="h-4 w-4" />
+                  {isDownloading ? t('trDownloading') : t('trDownload')}
+                </Button>
+                <Button onClick={openPlayer}>
+                  {videoCtaLabel}
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={openPlayer} className="w-full">
+                <Play className="h-4 w-4" />
+                {videoCtaLabel}
+              </Button>
+            )
+          }
+        />
       </div>
 
-      {/* Progress summary (if any progress) */}
-      {completedVideos > 0 && (
-        <Card className="border-border/50">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Overall progress</span>
-              <span className="text-sm text-muted-foreground tabular-nums">{completedVideos}/{totalVideos} videos</span>
-            </div>
-            <Progress value={progressPercentage} className="h-2" />
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Modules overview */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Training Modules</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* Food Safety Basics */}
-            <div className="p-4 rounded-lg border border-border/50 bg-muted/20 space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium text-sm text-foreground">Food Safety Basics</h3>
-                {hasFullAccess ? (
-                  <Badge variant="outline" className="text-xs">14 videos</Badge>
-                ) : (
-                  <div className="flex gap-1.5">
-                    <Badge variant="outline" className="text-xs">1 free</Badge>
-                    <Badge variant="secondary" className="text-xs"><Lock className="h-2.5 w-2.5 mr-0.5" />13 locked</Badge>
-                  </div>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">HACCP principles, contamination prevention, and food handling fundamentals.</p>
-            </div>
-
-            {/* Safety & Hygiene */}
-            <div className="p-4 rounded-lg border border-border/50 bg-muted/20 space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium text-sm text-foreground">Safety &amp; Hygiene How-To&apos;s</h3>
-                {hasFullAccess ? (
-                  <Badge variant="outline" className="text-xs">8 videos</Badge>
-                ) : (
-                  <Badge variant="secondary" className="text-xs"><Lock className="h-2.5 w-2.5 mr-0.5" />8 locked</Badge>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">Practical demonstrations and industry best practices.</p>
-            </div>
+      <Card className="border-border/50 shadow-sm">
+        <CardContent className="p-5 pt-5">
+          <div className="flex items-baseline justify-between gap-3 mb-4">
+            <h3 className="font-semibold text-foreground">{t("trModulesHeading")}</h3>
+            <p className="text-sm text-muted-foreground tabular-nums">{t("trVideosCount", { count: TOTAL_VIDEOS })}</p>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {TRAINING_MODULES.map((module) => {
+              const completedInModule = videoProgress.filter(
+                (item) => item.completed && item.videoId?.startsWith(module.videoIdPrefix)
+              ).length;
+              const modulePercent = Math.round((completedInModule / module.videoCount) * 100);
 
-          {/* Feature tags */}
-          <div className="flex flex-wrap gap-2 pt-3 border-t border-border/50">
-            <Badge variant="outline" className="text-xs font-normal">HACCP-Based</Badge>
-            <Badge variant="outline" className="text-xs font-normal">Self-Paced</Badge>
-            <Badge variant="outline" className="text-xs font-normal">Industry Standard</Badge>
-            <Badge variant="outline" className="text-xs font-normal">Certificate Included</Badge>
+              return (
+                <div key={module.id} className="rounded-lg border border-border/50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <h4 className="font-medium text-sm text-foreground">{t(module.titleKey)}</h4>
+                    <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                      {completedInModule}/{module.videoCount}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                    {t(module.descriptionKey)}
+                  </p>
+                  <Progress value={modulePercent} className="h-1.5 bg-muted mt-3" />
+                </div>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
 
-      {/* Status cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        
-        {/* Completed: Certificate download */}
-        {isCompleted && (
-          <Card className="border-primary/30 bg-primary/5">
-            <CardContent className="p-5 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <Award className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm">Training Completed</h3>
-                  <p className="text-xs text-muted-foreground">You&apos;ve earned your Local Cooks certification</p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-background border border-border/50">
-                <div>
-                  <p className="text-sm font-medium">Local Cooks Certificate</p>
-                  <p className="text-xs text-muted-foreground">PDF download</p>
-                </div>
-                <Button size="sm" variant="outline" onClick={downloadCertificate} disabled={isDownloading}>
-                  <Download className="h-3.5 w-3.5 mr-1.5" />
-                  {isDownloading ? 'Downloading...' : 'Download'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Completed: Official certificate CTA */}
-        {isCompleted && (
-          <Card className="border-border/50">
-            <CardContent className="p-5 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
-                  <ExternalLink className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm">Official SkillsPass Certificate</h3>
-                  <p className="text-xs text-muted-foreground">Free, recognized by employers and health authorities</p>
-                </div>
-              </div>
-              <div className="space-y-2 text-xs text-muted-foreground">
-                <div className="flex items-center gap-2"><CheckCircle className="h-3 w-3 text-primary flex-shrink-0" />Recognized certification</div>
-                <div className="flex items-center gap-2"><CheckCircle className="h-3 w-3 text-primary flex-shrink-0" />100% free, no hidden costs</div>
-                <div className="flex items-center gap-2"><CheckCircle className="h-3 w-3 text-primary flex-shrink-0" />Lifetime digital access</div>
-              </div>
-              <Button
-                className="w-full"
-                variant="outline"
-                onClick={() => window.open('https://skillspassnl.com', '_blank', 'noopener,noreferrer')}
-              >
-                <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                Get Official Certificate
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Limited: Application required */}
-        {!hasFullAccess && safeTrainingAccess?.applicationInfo?.canApply && (
-          <Card className="border-warning/30 bg-warning/5">
-            <CardContent className="p-5 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-warning" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm">Application Required</h3>
-                  <p className="text-xs text-muted-foreground">{safeTrainingAccess.applicationInfo.message}</p>
-                </div>
-              </div>
-              <Button asChild className="w-full">
-                <Link href="/dashboard?view=applications&action=new">
-                  <FileText className="h-3.5 w-3.5 mr-1.5" />
-                  Submit Application
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Limited: Application pending */}
-        {!hasFullAccess && safeTrainingAccess?.applicationInfo?.message && !safeTrainingAccess?.applicationInfo?.canApply && (
-          <Card className="border-border/50">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm">Application Status</h3>
-                  <p className="text-xs text-muted-foreground">{safeTrainingAccess.applicationInfo.message}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Full access: Welcome + progress */}
-        {hasFullAccess && !isCompleted && (
-          <Card className="border-primary/30 bg-primary/5">
-            <CardContent className="p-5 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <CheckCircle className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm">Full Access Granted</h3>
-                  <p className="text-xs text-muted-foreground">Access all 22 training videos and earn your certification</p>
-                </div>
-              </div>
-              
-              {completedVideos > 0 && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Progress</span>
-                    <span className="font-medium tabular-nums">{completedVideos}/{totalVideos}</span>
-                  </div>
-                  <Progress value={progressPercentage} className="h-1.5" />
-                </div>
-              )}
-              
-              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />All 22 videos</div>
-                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />Progress tracking</div>
-                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />Both modules</div>
-                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />Certificate</div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Limited: Sample access info */}
-        {!hasFullAccess && (
-          <Card className="border-border/50">
-            <CardContent className="p-5 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
-                  <BookOpen className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm">Sample Access</h3>
-                  <p className="text-xs text-muted-foreground">Preview the first video, then apply for full access</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />22 training videos</div>
-                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />2 modules</div>
-                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />Certificate</div>
-                <div className="flex items-center gap-1.5"><CheckCircle className="h-3 w-3 text-primary" />Lifetime access</div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* Action button */}
-      <div className="text-center space-y-2">
-        <Button size="lg" onClick={() => setViewMode('player')} className="gap-2">
-          <Play className="h-4 w-4" />
-          {!hasFullAccess
-            ? 'Start with Sample Video'
-            : isCompleted
-            ? 'Review Training'
-            : completedVideos > 0
-            ? 'Continue Training'
-            : 'Start Training'}
-          <ArrowRight className="h-4 w-4" />
-        </Button>
-        <p className="text-xs text-muted-foreground">
-          {!hasFullAccess
-            ? 'Preview the introduction video, then apply for full access'
-            : isCompleted
-            ? 'Rewatch any video at your convenience'
-            : 'Pick up where you left off'}
+function TrackCard({
+  icon: Icon,
+  label,
+  title,
+  description,
+  meta,
+  action,
+}: {
+  icon: LucideIcon;
+  label: string;
+  title: string;
+  description: string;
+  meta: string;
+  action: ReactNode;
+}) {
+  return (
+    <Card className="border-border/50 shadow-sm h-full">
+      <CardContent className="p-5 pt-5 flex flex-col h-full">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center shrink-0">
+            <Icon className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-muted-foreground">{label}</p>
+            <h3 className="font-semibold text-foreground mt-0.5">{title}</h3>
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground mt-4 leading-relaxed flex-1">
+          {description}
         </p>
+        <p className="text-xs text-muted-foreground mt-4">{meta}</p>
+        <div className="mt-4">{action}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TrainingOverviewSkeleton({ className }: { className?: string }) {
+  return (
+    <div className={cn("space-y-6", className)}>
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="h-4 w-80 max-w-full" />
       </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Skeleton className="h-64 rounded-lg" />
+        <Skeleton className="h-64 rounded-lg" />
+      </div>
+      <Skeleton className="h-48 rounded-lg" />
     </div>
   );
 }

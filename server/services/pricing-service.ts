@@ -154,15 +154,15 @@ export async function getServiceFeeRate(): Promise<number> {
     const config = await getFeeConfig();
     return config.platformCommissionRate;
   } catch (error) {
-    logger.error('Error getting platform commission rate from fee config:', error);
+    logger.error('Error getting service fee rate from fee config:', error);
     return 0.05; // Default to 5% on error
   }
 }
 
 /**
- * Calculate platform service fee (commission)
+ * Calculate platform service fee
  * @param basePriceCents - Base price in cents
- * @param commissionRate - Commission rate as decimal (e.g., 0.05 for 5%). If not provided, will use default 0.05
+ * @param commissionRate - Service fee rate as decimal (e.g., 0.05 for 5%). If not provided, will use default 0.05
  * @returns Service fee in cents
  */
 export function calculatePlatformFee(basePriceCents: number, commissionRate: number = 0.05): number {

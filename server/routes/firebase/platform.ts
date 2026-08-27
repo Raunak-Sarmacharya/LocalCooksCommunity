@@ -40,7 +40,7 @@ router.get('/platform-settings/stripe-fees', async (req: Request, res: Response)
 });
 
 // 🔥 Public Platform Settings Endpoint (for chefs/managers to see service fee rate)
-// This now uses the centralized platform commission rate for consistency
+// This now uses the centralized service fee rate for consistency
 router.get('/platform-settings/service-fee-rate', async (req: Request, res: Response) => {
     try {
         const { getFeeConfig } = await import('../../services/stripe-checkout-fee-service');
@@ -52,7 +52,7 @@ router.get('/platform-settings/service-fee-rate', async (req: Request, res: Resp
             value: rate.toString(),
             rate: rate,
             percentage: (rate * 100).toFixed(2),
-            description: 'Platform service fee/commission rate as decimal. Admin configurable.',
+            description: 'Service fee rate as decimal. Admin configurable.',
         });
     } catch (error) {
         logger.error('Error getting service fee rate:', error);

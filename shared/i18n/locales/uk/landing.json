@@ -1,0 +1,78 @@
+{
+  "seoTitle": "Операційна система для місцевого харчового бізнесу в Сент-Джонсі, Ньюфаундленд",
+  "seoDescription": "Запускайте та розвивайте харчовий бізнес з LocalCooks. Оренда комерційних кухонь, відповідність вимогам, платежі та доставка — Сент-Джонс, Ньюфаундленд.",
+  "heroHeadline": "Готуйте локально. Масштабуйтесь професійно.",
+  "heroSubhead": "Бронюйте комерційні кухні, дотримуйтесь вимог і отримуйте оплату — одна платформа для харчового бізнесу Ньюфаундленду.",
+  "ctaChef": "Я кухар",
+  "ctaKitchen": "У мене є кухня",
+  "chefLandingTitle": "LocalCooks для кухарів",
+  "kitchenLandingTitle": "LocalCooks для кухонь",
+  "homemadeWithLove": "Зроблено з любов'ю",
+  "heroHeadlineUser": "Об'єднуємо спільноти через домашню їжу",
+  "heroHeadlineGuest": "Місцеві кухарі • Місцева компанія • Місцева спільнота",
+  "heroDescUser": "Керуйте своїми заявками кухаря та перетворіть свою кулінарну пристрасть на бізнес.",
+  "heroDescGuest": "Приєднуйтесь до Local Cooks як кухар, щоб ділитися своїми кулінарними навичками та об'єднувати спільноти за допомогою свіжої домашньої їжі.",
+  "benefitShowcase": "Покажіть свій талант",
+  "benefitNetwork": "Розширюйте свою мережу",
+  "benefitDelivery": "Ми забезпечуємо доставку",
+  "benefitPaid": "Отримуйте оплату щотижня",
+  "applyAsChef": "Подати заявку як кухар",
+  "ownAKitchen": "Власник кухні?",
+  "listYourKitchen": "Додати свою кухню",
+  "simpleProcess": "Простий процес",
+  "howItWorksTitle": "Як це працює",
+  "howItWorksDesc": "Приєднуйтесь до нашої платформи в три прості кроки та почніть ділитися своїми кулінарними витворами з гурманами у вашому районі.",
+  "everythingYouNeedToSucceed": "Все, що потрібно для успіху",
+  "platformProvidesAllTools": "Наша платформа надає всі інструменти та підтримку, необхідні для побудови успішного харчового бізнесу без накладних витрат традиційного ресторану.",
+  "focusOnCooking": "Зосередьтеся на приготуванні їжі, поки ми займаємося бізнесом",
+  "whyJoinUs": "Чому варто приєднатися",
+  "earlyBirdAdvantages": "Переваги раннього доступу",
+  "joinDuringTrial": "Приєднуйтесь під час випробувального терміну та отримайте ексклюзивні переваги, які не будуть доступні пізніше.",
+  "ourStory": "Наша історія",
+  "whoWeAre": "Хто ми",
+  "teamOfFoodEnthusiasts": "Команда ентузіастів їжі, які прагнуть підтримати місцевих кухарів",
+  "ourMission": "Наша місія",
+  "kitchenHoldsStories": "Ваша кухня зберігає історії, традиції та смаки, які заслуговують на те, щоб поділитися ними зі світом. Local Cooks долає розрив між вашими кулінарними талантами та гурманами, які прагнуть їх відкрити.",
+  "notJustPlatform": "Ми не просто платформа — ми рух, що дає пристрасним кухарям можливість перетворити свої автентичні рецепти на стабільний бізнес, по одній домашній страві за раз. Ми прагнемо підтримувати кулінарну спільноту Сент-Джонса, об'єднуючи талановитих домашніх кухарів із голодними клієнтами, які цінують автентичну домашню їжу.",
+  "chef": "Кухар",
+  "shareCulinarySkills": "Поділіться своїми кулінарними навичками зі спільнотою",
+  "pilotBenefits": {
+    "0": {
+      "text": "Reduced platform fees during trial phase",
+      "description": "Save on service fees while we grow together"
+    },
+    "1": {
+      "text": "Priority placement in our app",
+      "description": "Get more visibility with featured chef status"
+    },
+    "2": {
+      "text": "Free professional photography for your dishes",
+      "description": "High-quality images to showcase your food"
+    },
+    "3": {
+      "text": "Personalized marketing support",
+      "description": "Custom promotions to attract more customers"
+    }
+  },
+  "chefBenefits": {
+    "0": {
+      "title": "Financial Freedom",
+      "description": "Set your own prices and build a steady income stream without the overhead of a traditional restaurant"
+    },
+    "1": {
+      "title": "Flexible Schedule",
+      "description": "Work when you want – whether that's full-time, weekends only, or just a few days a month"
+    },
+    "2": {
+      "title": "Weekly Payments",
+      "description": "Get paid directly to your bank account every week – no long waiting periods"
+    },
+    "3": {
+      "title": "Simple Tools",
+      "description": "Easy-to-use platform to manage orders, update your menu, and track your earnings"
+    }
+  },
+  "benefitsForCooks": "Benefits for Cooks",
+  "benefitsForCooksDesc": "Unlock your culinary potential and build a sustainable cooking business with Local Cooks",
+  "chefDeliveringImageAlt": "Chef delivering food to customer at doorstep"
+}

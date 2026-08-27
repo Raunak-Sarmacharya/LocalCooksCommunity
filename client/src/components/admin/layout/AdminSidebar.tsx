@@ -39,6 +39,7 @@ import {
 export type AdminSection =
   | "overview"
   | "applications"
+  | "kitchen-applications-step1"
   | "kitchen-licenses"
   | "damage-claims"
   | "escalated-penalties"
@@ -48,6 +49,7 @@ export type AdminSection =
   | "manager-revenues"
   | "platform-overview"
   | "platform-settings"
+  | "platform-requirements"
   | "overstay-settings"
   | "damage-claim-settings"
   | "account-settings"
@@ -77,7 +79,8 @@ const NAV_GROUPS = [
   {
     label: "Applications",
     items: [
-      { id: "applications" as AdminSection, label: "Chef Applications", icon: Shield, badgeKey: "pendingReview" as const },
+      { id: "applications" as AdminSection, label: "Seller Applications", icon: Shield, badgeKey: "pendingReview" as const },
+      { id: "kitchen-applications-step1" as AdminSection, label: "Kitchen Applications (Step 1)", icon: Shield, badgeKey: "pendingKitchenApps" as const },
       { id: "kitchen-licenses" as AdminSection, label: "Kitchen Licenses", icon: FileText, badgeKey: "pendingLicenses" as const },
       { id: "damage-claims" as AdminSection, label: "Damage Claims", icon: AlertTriangle },
       { id: "escalated-penalties" as AdminSection, label: "Escalated", icon: AlertTriangle },
@@ -113,6 +116,7 @@ const NAV_GROUPS = [
     label: "Settings",
     items: [
       { id: "platform-settings" as AdminSection, label: "Platform Settings", icon: Settings },
+      { id: "platform-requirements" as AdminSection, label: "Platform Requirements", icon: Settings },
       { id: "security-settings" as AdminSection, label: "Security & Rate Limits", icon: Shield },
       { id: "overstay-settings" as AdminSection, label: "Storage & Overstay", icon: Clock },
       { id: "damage-claim-settings" as AdminSection, label: "Damage Claims", icon: AlertTriangle },

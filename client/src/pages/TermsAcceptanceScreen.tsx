@@ -19,6 +19,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, Redirect } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import TermsContent from "@/components/legal/TermsContent";
+import { getChefPostAuthPath } from "@/config/chef-onboarding-steps";
 import PrivacyContent from "@/components/legal/PrivacyContent";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -51,6 +52,7 @@ function TermsAcceptanceScreen() {
       if (redirectPath === '/dashboard') {
         if (user?.role === 'manager') redirectPath = '/manager/dashboard';
         else if (user?.role === 'admin') redirectPath = '/admin';
+        else redirectPath = getChefPostAuthPath(user);
       }
 
       setLocation(redirectPath);
@@ -159,6 +161,7 @@ function TermsAcceptanceScreen() {
           if (redirectPath === '/dashboard') {
             if (user?.role === 'manager') redirectPath = '/manager/dashboard';
             else if (user?.role === 'admin') redirectPath = '/admin';
+            else redirectPath = getChefPostAuthPath(user);
           }
 
           setLocation(redirectPath);

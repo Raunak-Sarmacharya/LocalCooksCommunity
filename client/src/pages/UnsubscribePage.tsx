@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, CheckCircle, Loader2, Mail } from 'lucide-react';
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
+import { SmartImage } from "@/components/ui/smart-image";
 
 const UnsubscribePage: React.FC = () => {
   const [, setLocation] = useLocation();
@@ -122,7 +123,7 @@ const UnsubscribePage: React.FC = () => {
       <Card className="w-full max-w-md mx-auto shadow-xl">
         <CardHeader className="text-center bg-gradient-to-r from-red-500 to-red-600 text-white rounded-t-lg">
           <div className="flex justify-center mb-4">
-            <img
+            <SmartImage
               src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png"
               alt="Local Cooks"
               className="h-16 w-auto"

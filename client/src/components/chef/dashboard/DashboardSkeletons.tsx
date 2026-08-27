@@ -1,66 +1,41 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-/** Overview tab skeleton - matches the stat cards + path cards layout */
+/** Overview tab skeleton - matches the stat cards + status panels layout */
 export function OverviewSkeleton() {
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      {/* Welcome header */}
       <div>
-        <Skeleton className="h-9 w-72 mb-2" />
-        <Skeleton className="h-5 w-96" />
+        <Skeleton className="mb-2 h-8 w-64" />
+        <Skeleton className="h-4 w-80" />
       </div>
 
-      {/* Onboarding progress */}
-      <Card className="border-border/50">
-        <CardContent className="p-5">
-          <div className="flex items-center justify-between mb-3">
-            <Skeleton className="h-4 w-28" />
-            <Skeleton className="h-4 w-20" />
-          </div>
-          <Skeleton className="h-2 w-full mb-4" />
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 rounded-lg" />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Quick Stats Grid */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <Card key={i} className="border-border/50">
-            <CardContent className="p-5 flex items-center gap-4">
-              <Skeleton className="w-12 h-12 rounded-xl" />
-              <div className="space-y-2 flex-1">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-4 w-28" />
-              </div>
+          <Card key={i} className="shadow-none">
+            <CardContent className="p-4 space-y-2">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-6 w-24" />
+              <Skeleton className="h-3 w-28" />
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Two Path Cards */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         {Array.from({ length: 2 }).map((_, i) => (
-          <Card key={i} className="border-border/50">
-            <div className="h-2 bg-muted" />
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-3">
-                <Skeleton className="w-12 h-12 rounded-xl" />
-                <div className="space-y-2">
-                  <Skeleton className="h-5 w-40" />
-                  <Skeleton className="h-4 w-56" />
-                </div>
-              </div>
+          <Card key={i} className="overflow-hidden shadow-none">
+            <CardContent className="p-3 pb-0">
+              <Skeleton className="h-40 w-full rounded-md sm:h-48" />
+            </CardContent>
+            <CardHeader className="pb-3">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-4 w-56" />
             </CardHeader>
-            <CardContent className="space-y-3">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-12 w-full rounded-lg" />
-              <Skeleton className="h-12 w-full rounded-lg" />
+            <CardContent className="space-y-3 pt-0">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
             </CardContent>
           </Card>
         ))}

@@ -48,6 +48,7 @@ interface AuthUser extends Partial<AuthUserLegacyFields> {
   termsAccepted?: boolean;
   termsAcceptedAt?: string | null;
   termsVersion?: string | null;
+  chefOnboardingCompleted?: boolean;
 }
 
 // Added for backward compatibility during refactoring
@@ -271,6 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 termsVersion: userData.termsVersion || userData.terms_version,
                 isManager: userData.isManager || userData.is_manager || false,
                 isPortalUser: userData.isPortalUser || userData.is_portal_user || false,
+                chefOnboardingCompleted: userData.chefOnboardingCompleted || userData.chef_onboarding_completed || false,
               };
               logger.info('🔥 BACKEND USER DATA:', {
                 role,
@@ -316,6 +318,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 logger.info('🧹 CLEANING UP VERIFICATION URL');
                 window.history.replaceState({}, document.title, window.location.pathname);
               }
+
+              // ENTERPRISE: Fetch fresh profile data after sync so user state gets all fields
+              try {
+                const token = await firebaseUser.getIdToken();
+                const freshResponse = await fetch('/api/user/profile', {
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                  }
+                });
+                if (freshResponse.ok) {
+                  const userData = await freshResponse.json();
+                  role = userData.role;
+                  applicationData = {
+                    application_type: userData.application_type,
+                    isChef: userData.isChef || userData.is_chef || false,
+                    is_verified: userData.is_verified,
+                    isVerified: userData.isVerified || userData.is_verified,
+                    has_seen_welcome: userData.has_seen_welcome,
+                    hasSeenWelcome: userData.hasSeenWelcome || userData.has_seen_welcome,
+                    termsAccepted: userData.termsAccepted || userData.terms_accepted,
+                    termsAcceptedAt: userData.termsAcceptedAt || userData.terms_accepted_at,
+                    termsVersion: userData.termsVersion || userData.terms_version,
+                    isManager: userData.isManager || userData.is_manager || false,
+                    isPortalUser: userData.isPortalUser || userData.is_portal_user || false,
+                    chefOnboardingCompleted: userData.chefOnboardingCompleted || userData.chef_onboarding_completed || false,
+                  };
+                  logger.info('🔥 RE-FETCHED BACKEND USER DATA AFTER SYNC');
+                }
+              } catch (e) {
+                logger.error('❌ FAILED TO RE-FETCH PROFILE AFTER SYNC', e);
+              }
             } else {
               logger.error('❌ USER SYNC FAILED - Will retry on next auth state change');
               setAuthPhase('error');
@@ -345,6 +379,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             termsAccepted: applicationData?.termsAccepted,
             termsAcceptedAt: applicationData?.termsAcceptedAt,
             termsVersion: applicationData?.termsVersion,
+            chefOnboardingCompleted: applicationData?.chefOnboardingCompleted,
           });
           
           // ENTERPRISE: Set auth phase to ready after successful user setup
@@ -535,12 +570,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       logger.info(`✅ Final detected role for registration: "${detectedRole || 'undefined'}"`);
 
-      // CRITICAL: Ensure role is set before syncing
+      // We don't throw an error if no role is detected from the URL path.
+      // The backend will determine the default role (usually "user").
       if (!detectedRole) {
-        logger.error(`❌ CRITICAL: No role detected during registration!`);
-        logger.error(`   - Current path: ${currentPath}`);
-        logger.error(`   - Full URL: ${currentUrl}`);
-        throw new Error('Role detection failed. Please register from the appropriate page (admin, manager, or chef).');
+        logger.warn(`⚠️ No role detected during registration! Falling back to backend default.`);
+        logger.warn(`   - Current path: ${currentPath}`);
+        logger.warn(`   - Full URL: ${currentUrl}`);
       }
 
       const syncSuccess = await syncUserWithBackend(updatedUser, detectedRole, true, password);
@@ -586,10 +621,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logger.warn('⚠️ Verification email was not sent - user will need to request resend');
       }
 
-      // CRITICAL: Sign out the user immediately after registration and sync
-      // They need to verify their email before they can log in
-      logger.info('📧 USER REGISTERED - Signing out to require email verification');
-      await signOut(auth);
+      // Removed: Sign out the user immediately after registration
+      // Keeping them logged in allows for a smoother UX when they verify their email.
+      // They are still unverified, so protected routes will still block them.
+      logger.info('📧 USER REGISTERED - Kept logged in (unverified) to allow seamless verification');
+
 
       // Reset states
       setPendingSync(false);
@@ -798,19 +834,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const actionCodeSettings = {
-    url: window.location.origin + "/auth",
-    handleCodeInApp: true,
-  };
-
   const sendEmailLink = async (email: string) => {
     setError(null);
     setLoading(true);
     try {
-      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+      // Try custom branded email endpoint first (uses server-side Firebase Admin + custom template)
+      logger.info(`📧 Sending custom magic link email to: ${email}`);
+      const customEmailResponse = await fetch('/api/firebase/send-magic-link-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+
+      if (customEmailResponse.ok) {
+        logger.info(`✅ Custom magic link email queued successfully for: ${email}`);
+        // Store email for sign-in confirmation when user clicks the link
+        // (EmailAction.tsx uses checkActionCode to get email, this is fallback)
+        window.localStorage.setItem('emailForSignIn', email);
+        return;
+      }
+
+      // Fallback: if custom endpoint fails, fall back to Firebase client-side method
+      logger.warn(`⚠️ Custom magic link endpoint failed (status: ${customEmailResponse.status}), falling back to Firebase default`);
+      const customError = await customEmailResponse.json().catch(() => null);
+
+      const actionCodeSettingsFallback = {
+        url: window.location.origin + "/auth",
+        handleCodeInApp: true,
+      };
+
+      await sendSignInLinkToEmail(auth, email, actionCodeSettingsFallback);
       window.localStorage.setItem('emailForSignIn', email);
+
+      if (customError?.error) {
+        logger.warn(`   - Custom endpoint error detail: ${customError.error}`);
+      }
     } catch (e: any) {
+      logger.error('❌ Error sending magic link email:', e);
       setError(e.message);
+      throw e;
     } finally {
       setLoading(false);
     }
@@ -1000,6 +1062,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           termsAccepted: userData.termsAccepted || userData.terms_accepted,
           termsAcceptedAt: userData.termsAcceptedAt || userData.terms_accepted_at,
           termsVersion: userData.termsVersion || userData.terms_version,
+          chefOnboardingCompleted: userData.chefOnboardingCompleted || userData.chef_onboarding_completed || false,
         };
 
         setUser(updatedUser);
@@ -1119,6 +1182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           termsAccepted: userData.termsAccepted || userData.terms_accepted,
           termsAcceptedAt: userData.termsAcceptedAt || userData.terms_accepted_at,
           termsVersion: userData.termsVersion || userData.terms_version,
+          chefOnboardingCompleted: userData.chefOnboardingCompleted || userData.chef_onboarding_completed || false,
         };
 
         setUser(updatedUser);

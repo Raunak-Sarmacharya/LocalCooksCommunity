@@ -3,7 +3,7 @@ import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import TidioController from "@/components/chat/TidioController";
+import CustomerSupportButton from "@/components/CustomerSupportButton";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,9 +19,12 @@ import {
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { KitchenLocationCard } from "@/components/chef-landing/KitchenLocationCard";
+import { TruncatedText } from "@/components/common/TruncatedText";
 import { motion, AnimatePresence, useScroll, useTransform, MotionValue } from "framer-motion";
 import useEmblaCarousel from "embla-carousel-react";
+import { SmartImage } from "@/components/ui/smart-image";
 import chefImage from "@/assets/chef-cooking.png";
 import logoWhite from "@assets/logo-white.png";
 
@@ -145,7 +148,7 @@ function ParallaxIcon({
           transform: 'translateZ(0)', // GPU acceleration
         }}
       >
-        <img
+        <SmartImage
           src={iconSrc}
           alt=""
           className="w-full h-full object-cover"
@@ -390,13 +393,24 @@ const localCooksNotifications = [
   { id: 2, amount: "$42.88", order: "#00197", type: "Pickup", headline: "Repeat customer!", subtext: "Mike ordered Butter Chicken again" },
   { id: 3, amount: "$78.33", order: "#00196", type: "Pickup", headline: "Pre-order confirmed", subtext: "Ready for pickup tomorrow 6PM" },
   { id: 4, amount: "$31.29", order: "#00195", type: "Delivery", headline: "$10 tip received!", subtext: "Thanks for the amazing food" },
-  { id: 5, amount: "$95.00", order: "#00193", type: "Delivery", headline: "5★ review posted!", subtext: '"Best homemade biryani ever!"' },
+  { id: 5, amount: "", order: "#00193", type: "Review", headline: "5★ review posted!", subtext: '"Best homemade biryani ever!"' },
   { id: 6, amount: "$54.25", order: "#00192", type: "Pickup", headline: "20 orders this week!", subtext: "You're trending in your area" },
   { id: 7, amount: "$123.75", order: "#00191", type: "Express", headline: "Express order!", subtext: "VIP customer — 30 min prep" },
 ];
 
 // Chaos Notification Feed Component
 function ChaosNotificationFeed() {
+  const { t } = useTranslation("chef");
+  const chaosNotifications = [
+    { id: 1, app: "Instagram", gradient: "from-[#833AB4] via-[#FD1D1D] to-[#F77737]", sender: "sarah_foodie", message: t("notifSarahMsg"), time: t("timeNow"), iconType: "instagram" },
+    { id: 2, app: "WhatsApp", gradient: "from-[#25D366] to-[#128C7E]", sender: "Mike Chen", message: t("notifMikeMsg"), time: t("timeNow"), iconType: "whatsapp" },
+    { id: 3, app: "Phone", gradient: "from-[#34C759] to-[#30D158]", sender: t("notifMissedCall"), message: "+1 (709) 555-0142", time: "2m", iconType: "phone" },
+    { id: 4, app: "Marketplace", gradient: "from-[#1877F2] to-[#0866FF]", sender: "FB Marketplace", message: t("notifMarketplaceMsg"), time: "3m", iconType: "marketplace" },
+    { id: 5, app: "WhatsApp", gradient: "from-[#25D366] to-[#128C7E]", sender: "Jennifer W", message: t("notifJenniferMsg"), time: "5m", iconType: "whatsapp" },
+    { id: 6, app: "Interac", gradient: "from-[#FFB800] to-[#FF8C00]", sender: "INTERAC e-Transfer", message: t("notifInteracMsg"), time: "8m", iconType: "interac" },
+    { id: 7, app: "Messenger", gradient: "from-[#00B2FF] to-[#006AFF]", sender: "David K", message: t("notifDavidMsg"), time: "12m", iconType: "messenger" },
+    { id: 8, app: "Instagram", gradient: "from-[#833AB4] via-[#FD1D1D] to-[#F77737]", sender: "foodie_lover", message: t("notifFoodieMsg"), time: "15m", iconType: "instagram" },
+  ];
   const [visibleNotifs, setVisibleNotifs] = useState<Array<{ uid: number; data: typeof chaosNotifications[0] }>>([]);
   const [counter, setCounter] = useState(0);
 
@@ -487,6 +501,7 @@ function ChaosNotificationFeed() {
 
 // Testimonial Carousel Component with Auto-Scroll
 function TestimonialCarouselSection() {
+  const { t } = useTranslation("chef");
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: true,
     align: "start",
@@ -512,37 +527,37 @@ function TestimonialCarouselSection() {
 
   const testimonials = [
     {
-      text: "Local Cooks has been a great partner for Sababa Cafe NL. Orders are handled smoothly, delivery is reliable, and the platform helps us share fresh, homemade Middle Eastern food with more customers across the city.",
+      text: t("testimonialDafna"),
       name: "Dafna",
       role: "Sababa Cafe NL",
-      color: "#fc7545", // Light Pink/Orange
+      color: "#fc7545",
       textColor: "#2C2C2C",
     },
     {
-      text: "Local Cooks has been great at taking any suggestions to the site and implementing them as best they can. The delivery driver always shows up in a timely manner and my customers love to have the delivery option when they are not able to make it in to the market.",
+      text: t("testimonialEmily"),
       name: "Emily",
       role: "The Waffle Lady",
-      color: "#06516D", // Royal Blue
+      color: "#06516D",
       textColor: "#ffffff",
     },
     {
-      text: "Many of our previous customers were unable to receive our sweets because we did not have a delivery system. The local cook delivery system has given us this opportunity at a low price. They don't just deliver, they also promote and support local chefs.",
+      text: t("testimonialKanij"),
       name: "Kanij",
       role: "Misti Mountain",
-      color: "#30524e", // Dark Teal/Green
+      color: "#30524e",
       textColor: "#ffffff",
     },
     {
-      text: "Local Cooks makes it easy for people in St. John’s to get our loaded fries and bold global flavours every Friday. Preorders and delivery run smoothly, and they actively promote Alu Bhaja so more customers can discover our food.",
+      text: t("testimonialFardin"),
       name: "Fardin",
       role: "Alu Bhaja",
-      color: "#ff8c42", // Orange
+      color: "#ff8c42",
       textColor: "#2C2C2C",
     },
   ];
 
   return (
-    <section id="testimonials" className="py-12 sm:py-16 md:py-20 lg:py-32 px-4 sm:px-6 bg-white relative overflow-visible">
+    <section id="testimonials" className="scroll-mt-24 py-12 sm:py-16 md:py-20 lg:py-32 px-4 sm:px-6 bg-white relative overflow-visible">
       <div className="container mx-auto max-w-7xl">
         <FadeInSection>
           <div className="text-center mb-12 md:mb-16">
@@ -553,11 +568,9 @@ function TestimonialCarouselSection() {
               transition={{ duration: 0.7, delay: 0.1 }}
               className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight"
             >
-              Some kind words from our{" "}
+              {t("someKindWords")} {" "}
               <span className="relative inline-block">
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
-                  chefs
-                </span>
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">{t("chefsWord")}</span>
                 <motion.svg
                   className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
                   viewBox="0 0 200 12"
@@ -677,6 +690,16 @@ function TestimonialCarouselSection() {
 
 // LocalCooks Notification Feed Component
 function LocalCooksNotificationFeed() {
+  const { t } = useTranslation("chef");
+  const localCooksNotifications = [
+    { id: 1, amount: "$112.50", order: "#00198", type: "Delivery", headline: t("notifChaChing"), subtext: t("notifOrderDowntown") },
+    { id: 2, amount: "$42.88", order: "#00197", type: "Pickup", headline: t("notifRepeatCustomer"), subtext: t("notifMikeOrderAgain") },
+    { id: 3, amount: "$78.33", order: "#00196", type: "Pickup", headline: t("notifPreorderConfirmed"), subtext: t("notifReadyPickupTomorrow") },
+    { id: 4, amount: "$31.29", order: "#00195", type: "Delivery", headline: t("notifTipReceived"), subtext: t("notifThanksFood") },
+    { id: 5, amount: "", order: "#00193", type: "Review", headline: t("notifReviewPosted"), subtext: t("notifBestBiryani") },
+    { id: 6, amount: "$54.25", order: "#00192", type: "Pickup", headline: t("notifTrendingWeek"), subtext: t("notifTrendingArea") },
+    { id: 7, amount: "$123.75", order: "#00191", type: "Express", headline: t("notifExpressOrder"), subtext: t("notifVipPrep") },
+  ];
   const [visibleNotifs, setVisibleNotifs] = useState<Array<{ uid: number; data: typeof localCooksNotifications[0] }>>([]);
   const [counter, setCounter] = useState(0);
 
@@ -732,9 +755,11 @@ function LocalCooksNotificationFeed() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-white">LocalCooks</span>
-                    <span className="text-[9px] text-white/70">now</span>
+                    <span className="text-[9px] text-white/70">{t("timeNow")}</span>
                   </div>
-                  <p className="text-[12px] font-bold text-white">{notif.data.headline} {notif.data.amount}</p>
+                  <p className="text-[12px] font-bold text-white">
+                    {notif.data.headline}{notif.data.amount ? ` ${notif.data.amount}` : ""}
+                  </p>
                   <p className="text-[10px] text-white/80">{notif.data.subtext}</p>
                 </div>
               </div>
@@ -750,7 +775,8 @@ function LocalCooksNotificationFeed() {
 // Source: https://github.com/Raunak-Sarmacharya/LCLanding
 // Modified: Fixed-width container locks word position, only cursor moves
 function TypewriterText() {
-  const words = ["Cooks", "Company", "Community"];
+  const { t } = useTranslation("chef");
+  const words = [t("twCooks"), t("twCompany"), t("twCommunity")];
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [currentText, setCurrentText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
@@ -840,7 +866,7 @@ function TypewriterText() {
         className="font-logo text-white whitespace-nowrap"
         style={{ fontFamily: "'Lobster', cursive" }}
       >
-        Local
+        {t("twLocal")}
       </span>
       <span
         className="relative ml-3 md:ml-4 inline-block whitespace-nowrap"
@@ -876,6 +902,7 @@ function TypewriterText() {
 export default function ChefLanding() {
   const { user } = useFirebaseAuth();
   const [, navigate] = useLocation();
+  const { t } = useTranslation("chef");
 
   // Fetch locations data (same endpoint structure as preview page uses)
   const { data: locations = [], isLoading: kitchensLoading } = useQuery({
@@ -961,36 +988,36 @@ export default function ChefLanding() {
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden">
       <SEOHead
-        title="For Chefs — Launch Your Food Business"
-        description="Turn your cooking talent into a scalable food business. Zero platform fees during trial, commercial kitchen access, compliance management, weekly payouts via Stripe. Join LocalCooks in St. John's, Newfoundland."
+        title={t("seoTitle")}
+        description={t("seoDescription")}
         canonicalUrl="/"
         keywords={[
-          "become a chef", "home chef St Johns", "food business Newfoundland",
-          "commercial kitchen rental", "chef platform Canada", "local chef near me",
-          "start food business NL", "home cook compliance", "kitchen booking",
-          "food delivery NL", "localcooks chef", "cook from home Newfoundland",
+          t("kwBecomeChef"), t("kwHomeChef"), t("kwFoodBizNL"),
+          t("kwKitchenRental"), t("kwChefPlatform"), t("kwLocalChef"),
+          t("kwStartFoodBiz"), t("kwHomeCookCompliance"), t("kwKitchenBooking"),
+          t("kwFoodDelivery"), t("kwLocalCooksChef"), t("kwCookFromHome")
         ]}
         showLocalBusiness
         breadcrumbs={[
           { name: "LocalCooks", url: "https://www.localcooks.ca/" },
-          { name: "For Chefs", url: "https://chef.localcooks.ca/" },
+          { name: t("breadcrumbForChefs"), url: "https://chef.localcooks.ca/" },
         ]}
         faq={[
-          { question: "How do I rent a commercial kitchen in St. John's?", answer: "Sign up on LocalCooks, browse available commercial kitchens in St. John's, compare amenities and pricing, then book your time slot. Our platform handles scheduling, compliance, and payments." },
-          { question: "What do I need to become a home-based chef in Newfoundland?", answer: "You need a valid food handler's certificate, appropriate business registration, and access to a compliant commercial kitchen. LocalCooks helps you manage all compliance requirements including document verification and kitchen certifications." },
-          { question: "How much does it cost to use LocalCooks?", answer: "Signing up is free. Kitchen rental rates vary by facility and time slot. LocalCooks provides transparent pricing with no hidden fees. You can compare kitchens and view all costs before booking." },
-          { question: "Can I list my commercial kitchen on LocalCooks?", answer: "Yes! Kitchen owners can list their commercial kitchen facilities on LocalCooks. Apply through our kitchen manager portal at kitchen.localcooks.ca to get started with listing your space." },
+          { question: t("faqQ1"), answer: t("faqA1") },
+          { question: t("faqQ2"), answer: t("faqA2") },
+          { question: t("faqQ3"), answer: t("faqA3") },
+          { question: t("faqQ4"), answer: t("faqA4") },
         ]}
         siteNavigation={[
-          { name: "Apply as Chef", description: "Join LocalCooks — get approved in 24 hours, keep 100% during trial", url: "https://chef.localcooks.ca/apply" },
-          { name: "Book a Kitchen", description: "Browse and book commercial kitchens in St. John's, Newfoundland", url: "https://chef.localcooks.ca/book-kitchen" },
-          { name: "Compare Kitchens", description: "Compare commercial kitchen facilities, amenities, and pricing", url: "https://chef.localcooks.ca/compare-kitchens" },
-          { name: "For Kitchen Owners", description: "Turn idle commercial kitchen hours into revenue with automated booking", url: "https://kitchen.localcooks.ca/" },
-          { name: "Order Food", description: "Order authentic homemade meals from local chefs in St. John's", url: "https://localcook.shop" },
-          { name: "Blog", description: "Stories about local chefs, food trends, and community updates", url: "https://www.localcooks.ca/blog" },
+          { name: t("navApplyChef"), description: t("navApplyDesc"), url: "https://chef.localcooks.ca/apply" },
+          { name: t("navBookKitchen"), description: t("navBookDesc"), url: "https://chef.localcooks.ca/book-kitchen" },
+          { name: t("navCompareKitchens"), description: t("navCompareDesc"), url: "https://chef.localcooks.ca/compare-kitchens" },
+          { name: t("navForKitchenOwners"), description: t("navOwnersDesc"), url: "https://kitchen.localcooks.ca/" },
+          { name: t("navOrderFood"), description: t("navOrderDesc"), url: "https://localcook.shop" },
+          { name: t("navBlog"), description: t("navBlogDesc"), url: "https://www.localcooks.ca/blog" },
         ]}
       />
-      <TidioController forceShow={true} />
+      <CustomerSupportButton />
       <Header />
 
       <main className="flex-grow">
@@ -1042,7 +1069,7 @@ export default function ChefLanding() {
               <div className="relative inline-flex items-center gap-2 bg-[#F51042] text-white px-4 py-2 rounded-full border border-[#F51042]/30">
                 <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
                 <HandCoins className="h-3.5 w-3.5 relative z-10" />
-                <span className="font-semibold text-xs tracking-wide relative z-10">Monetize Your Cooking</span>
+                <span className="font-semibold text-xs tracking-wide relative z-10">{t("monetizeYourCooking")}</span>
               </div>
             </motion.div>
 
@@ -1060,7 +1087,7 @@ export default function ChefLanding() {
                   <div className="relative inline-flex items-center gap-2 bg-[#F51042] text-white px-4 py-2 rounded-full shadow-xl shadow-[#F51042]/40 border border-[#F51042]/30">
                     <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
                     <HandCoins className="h-3.5 w-3.5 relative z-10" />
-                    <span className="font-semibold text-xs tracking-wide relative z-10">Monetize Your Cooking</span>
+                    <span className="font-semibold text-xs tracking-wide relative z-10">{t("monetizeYourCooking")}</span>
                   </div>
                 </motion.div>
 
@@ -1074,7 +1101,7 @@ export default function ChefLanding() {
                     LocalCooks
                   </h1>
                   <p className="font-mono text-[9px] sm:text-[10px] md:text-[11px] text-[#6B4A4F] uppercase tracking-[0.3em] sm:tracking-[0.4em] mb-6 sm:mb-8">
-                    For Chefs Who Dream Bigger
+                    {t("dreamBigger")}
                   </p>
                 </motion.div>
 
@@ -1086,11 +1113,11 @@ export default function ChefLanding() {
                   className="mb-8"
                 >
                   <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-[#2C2C2C] leading-[1.15] mb-4 sm:mb-6">
-                    Turn Your Kitchen
+                    {t("turnKitchen")}
                     <br />
                     <span className="relative inline-block">
                       <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
-                        Into a Business
+                        {t("intoBusiness")}
                       </span>
                       <motion.svg
                         className="absolute -bottom-2 left-0 w-full"
@@ -1114,10 +1141,10 @@ export default function ChefLanding() {
                   </h2>
                   <p className="text-sm md:text-base lg:text-lg text-[#6B6B6B] leading-relaxed max-w-lg">
                     <span className="block mb-3">
-                      Your passion deserves a platform that keeps up.
+                      {t("platformKeepsUp")}
                     </span>
                     <span className="block">
-                      We handle regulatory guidance, kitchen access, order management, payments, delivery logistics, and fuel your growth — so you can focus entirely on creating exceptional food.
+                      {t("weHandleRegulatory")}
                     </span>
                   </p>
                 </motion.div>
@@ -1135,7 +1162,7 @@ export default function ChefLanding() {
                     className="group relative bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 sm:py-4 md:py-7 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/30 hover:-translate-y-1 overflow-hidden flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
                   >
                     <span className="relative z-10 flex items-center justify-center truncate">
-                      <span className="truncate">Start Your Journey</span>
+                      <TruncatedText className="truncate">{t("startYourJourney")}</TruncatedText>
                       <ArrowRight className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
                     </span>
                     <motion.div
@@ -1153,8 +1180,8 @@ export default function ChefLanding() {
                     aria-label="Book a kitchen — scroll to kitchen listings"
                   >
                     <Building2 className="mr-1 sm:mr-1.5 h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 shrink-0 text-[#F51042] group-hover:scale-110 transition-transform" />
-                    <span className="truncate sm:hidden">Book Kitchen</span>
-                    <span className="hidden sm:inline truncate">Book a Kitchen</span>
+                    <TruncatedText className="truncate sm:hidden">{t("bookKitchenSmall")}</TruncatedText>
+                    <TruncatedText className="hidden sm:inline truncate">{t("bookAKitchen")}</TruncatedText>
                   </Button>
                 </motion.div>
 
@@ -1166,9 +1193,9 @@ export default function ChefLanding() {
                   className="flex flex-nowrap md:flex-wrap gap-x-2 md:gap-x-6 gap-y-3"
                 >
                   {[
-                    { icon: CheckCircle2, text: "Approved in 24 hours" },
-                    { icon: Shield, text: "No upfront costs" },
-                    { icon: HeartHandshake, text: "Dedicated support every step" }
+                    { icon: CheckCircle2, text: t("approved24h") },
+                    { icon: Shield, text: t("noUpfront") },
+                    { icon: HeartHandshake, text: t("dedicatedSupport") }
                   ].map((item, i) => (
                     <motion.span
                       key={i}
@@ -1199,10 +1226,12 @@ export default function ChefLanding() {
                   {/* Main Image Container */}
                   <div className="relative rounded-[2rem] overflow-visible shadow-2xl shadow-[#F51042]/10 w-full">
                     <div className="relative rounded-[2rem] overflow-hidden w-full">
-                      <img
+                      <SmartImage
                         src={chefImage}
-                        alt="Professional home chef cooking with passion"
+                        alt={t("altProfessionalChef")}
                         className="w-full h-auto object-cover aspect-[4/3]"
+                        loading="eager"
+                        fetchPriority="high"
                       />
 
                       {/* Gradient Overlay */}
@@ -1218,21 +1247,21 @@ export default function ChefLanding() {
                     >
                       <div className="flex items-center justify-between gap-2 lg:gap-4">
                         <div className="flex-1 min-w-0">
-                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">During Trial</p>
-                          <p className="text-sm lg:text-base font-bold text-slate-950 leading-tight mb-1 lg:mb-1.5">0% Platform Fee</p>
+                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">{t("duringTrialNormal")}</p>
+                          <p className="text-sm lg:text-base font-bold text-slate-950 leading-tight mb-1 lg:mb-1.5">{t("zeroPlatformFee")}</p>
                           <div className="flex items-center gap-2 lg:gap-4">
                             <div className="flex items-center gap-0.5 lg:gap-1">
                               <div className="w-0.5 h-0.5 lg:w-1 lg:h-1 rounded-full bg-slate-400"></div>
-                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">Zero barriers</span>
+                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">{t("zeroBarriers")}</span>
                             </div>
                             <div className="flex items-center gap-0.5 lg:gap-1">
                               <div className="w-0.5 h-0.5 lg:w-1 lg:h-1 rounded-full bg-slate-400"></div>
-                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">Zero waiting</span>
+                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">{t("zeroWaiting")}</span>
                             </div>
                           </div>
                         </div>
                         <div className="flex-shrink-0 text-right pl-2 lg:pl-4 border-l border-slate-200">
-                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">You Keep</p>
+                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">{t("youKeepNormal")}</p>
                           <p className="text-lg lg:text-xl font-bold text-[#F51042] leading-tight">100%</p>
                         </div>
                       </div>
@@ -1254,8 +1283,8 @@ export default function ChefLanding() {
                         <Heart className="h-3.5 w-3.5 lg:h-5 lg:w-5 text-white" />
                       </div>
                       <div>
-                        <p className="text-[8px] lg:text-[10px] font-medium text-slate-600 uppercase tracking-wide leading-tight">Built for Chefs</p>
-                        <p className="text-[10px] lg:text-xs font-bold text-slate-900 leading-tight">Powered by community</p>
+                        <p className="text-[8px] lg:text-[10px] font-medium text-slate-600 uppercase tracking-wide leading-tight">{t("builtForChefs")}</p>
+                        <p className="text-[10px] lg:text-xs font-bold text-slate-900 leading-tight">{t("poweredByCommunity")}</p>
                       </div>
                     </div>
                   </motion.div>
@@ -1272,7 +1301,7 @@ export default function ChefLanding() {
                       <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-slate-700 to-slate-800 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
                         <Zap className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
                       </div>
-                      <span className="text-[10px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Fast approval</span>
+                      <span className="text-[10px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("fastApproval")}</span>
                     </div>
                   </motion.div>
 
@@ -1287,7 +1316,7 @@ export default function ChefLanding() {
                       <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-slate-700 to-slate-800 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
                         <Rocket className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
                       </div>
-                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Join chefs who've already launched</span>
+                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("joinLaunched")}</span>
                     </div>
                   </motion.div>
 
@@ -1302,7 +1331,7 @@ export default function ChefLanding() {
                       <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
                         <Clock className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
                       </div>
-                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">More time cooking, less time managing</span>
+                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("moreTimeCooking")}</span>
                     </div>
                   </motion.div>
                 </motion.div>
@@ -1346,9 +1375,9 @@ export default function ChefLanding() {
                     transition={{ duration: 0.7, delay: 0.2 }}
                     viewport={{ once: true }}
                   >
-                    You didn't start cooking to spend your days{" "}
+                    {t("didntStartCooking")}{" "}
                     <span className="relative inline-block">
-                      <span className="relative z-10 text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">buried in admin work.</span>
+                      <span className="relative z-10 text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">{t("buriedInAdmin")}</span>
                       <motion.svg
                         className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
                         viewBox="0 0 300 12"
@@ -1386,8 +1415,8 @@ export default function ChefLanding() {
                     transition={{ duration: 0.6, delay: 0.5 }}
                     viewport={{ once: true }}
                   >
-                    Yet somehow, you're managing orders, responding to messages, and organizing pickups —{" "}
-                    <span className="text-[#1A1A1A] font-bold">all on your own.</span>
+                    {t("managingOrders")}{" "}
+                    <span className="text-[#1A1A1A] font-bold">{t("allOnYourOwn")}</span>
                   </motion.p>
 
                   {/* Sound familiar? - Call to action */}
@@ -1398,7 +1427,7 @@ export default function ChefLanding() {
                     transition={{ duration: 0.6, delay: 0.7 }}
                     viewport={{ once: true }}
                   >
-                    Sound familiar? Stop juggling. Start creating.
+                    {t("soundFamiliar")}
                   </motion.p>
                 </div>
               </div>
@@ -1444,8 +1473,8 @@ export default function ChefLanding() {
 
                   {/* Label */}
                   <div className="text-center mt-4">
-                    <p className="text-sm font-bold text-[#1A1A1A]">Scattered everywhere</p>
-                    <p className="text-xs text-[#64748B] mt-0.5">Fragmented tools. Disconnected workflows.</p>
+                    <p className="text-sm font-bold text-[#1A1A1A]">{t("scatteredEverywhere")}</p>
+                    <p className="text-xs text-[#64748B] mt-0.5">{t("fragmentedTools")}</p>
                   </div>
                 </div>
               </FadeInSection>
@@ -1489,8 +1518,8 @@ export default function ChefLanding() {
 
                   {/* Label */}
                   <div className="text-center mt-4">
-                    <p className="text-sm font-bold text-[#0D9488]">Powered by <span className="font-display text-sm text-[#F51042]">LocalCooks</span></p>
-                    <p className="text-xs text-[#64748B] mt-0.5">One unified platform. Seamless operations.</p>
+                    <p className="text-sm font-bold text-[#0D9488]">{t("poweredBy")} <span className="font-display text-sm text-[#F51042]">LocalCooks</span></p>
+                    <p className="text-xs text-[#64748B] mt-0.5">{t("unifiedPlatform")}</p>
                   </div>
                 </div>
               </FadeInSection>
@@ -1502,7 +1531,7 @@ export default function ChefLanding() {
             HOW IT WORKS - Clean, Balanced Design
             Color Theory: Coral red (#F51042) complemented by teal, amber/gold, soft coral
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="how-it-works" className="py-20 md:py-28 px-4 bg-white">
+        <section id="how-it-works" className="scroll-mt-24 py-20 md:py-28 px-4 bg-white">
           <div className="container mx-auto max-w-6xl">
             {/* Section Header */}
             <FadeInSection>
@@ -1514,11 +1543,9 @@ export default function ChefLanding() {
                   transition={{ duration: 0.7, delay: 0.1 }}
                   className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-4"
                 >
-                  Three Simple{" "}
+                  {t("threeSimple")} {" "}
                   <span className="relative inline-block">
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
-                      Steps
-                    </span>
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">{t("stepsWord")}</span>
                     <motion.svg
                       className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
                       viewBox="0 0 200 12"
@@ -1548,9 +1575,7 @@ export default function ChefLanding() {
                   viewport={{ once: true }}
                   transition={{ duration: 0.6, delay: 0.2 }}
                   className="text-[#6B6B6B] text-sm md:text-base lg:text-lg"
-                >
-                  Join passionate chefs earning real money doing what they love.
-                </motion.p>
+                >{t("joinPassionateChefs")}</motion.p>
               </div>
             </FadeInSection>
 
@@ -1570,15 +1595,13 @@ export default function ChefLanding() {
                       <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-gradient-to-br from-[#F51042] to-[#FF6B7A] flex items-center justify-center shadow-md shadow-[#F51042]/20 group-hover:scale-110 transition-transform duration-300">
                         <span className="text-white font-bold text-xs md:text-sm">1</span>
                       </div>
-                      <span className="font-mono text-xs md:text-[10px] uppercase tracking-[0.15em] text-[#F51042]/60">Step One</span>
+                      <span className="font-mono text-xs md:text-[10px] uppercase tracking-[0.15em] text-[#F51042]/60">{t("stepOne")}</span>
                     </div>
 
-                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">Apply</h3>
-                    <p className="text-xs md:text-sm font-medium text-[#F51042] mb-2 md:mb-3">Less than 5 minutes</p>
+                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("applyStep")}</h3>
+                    <p className="text-xs md:text-sm font-medium text-[#F51042] mb-2 md:mb-3">{t("lessThan5Min")}</p>
 
-                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">
-                      Tell us about your cooking. Where would you prepare meals—your home kitchen or a commercial kitchen? Answer a few quick questions about regulations and certifications. That's all we need to get started.
-                    </p>
+                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("applyDesc")}</p>
 
                     {/* Decorative accent */}
                     <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#F51042]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
@@ -1599,15 +1622,13 @@ export default function ChefLanding() {
                       <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-gradient-to-br from-[#0D9488] to-[#14B8A6] flex items-center justify-center shadow-md shadow-[#0D9488]/20 group-hover:scale-110 transition-transform duration-300">
                         <span className="text-white font-bold text-xs md:text-sm">2</span>
                       </div>
-                      <span className="font-mono text-xs md:text-[10px] uppercase tracking-[0.15em] text-[#0D9488]/60">Step Two</span>
+                      <span className="font-mono text-xs md:text-[10px] uppercase tracking-[0.15em] text-[#0D9488]/60">{t("stepTwo")}</span>
                     </div>
 
-                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">We Get You Live</h3>
-                    <p className="text-xs md:text-sm font-medium text-[#0D9488] mb-2 md:mb-3">Approved in 24 hours</p>
+                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("weGetYouLive")}</h3>
+                    <p className="text-xs md:text-sm font-medium text-[#0D9488] mb-2 md:mb-3">{t("approvedIn24h")}</p>
 
-                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">
-                      We review your application against regulatory standards and connect you with everything you need to launch. Documentation ready or not, we've got you covered.
-                    </p>
+                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("weGetYouLiveDesc")}</p>
 
                     {/* Decorative accent */}
                     <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#0D9488]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
@@ -1628,15 +1649,13 @@ export default function ChefLanding() {
                       <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#FBBF24] flex items-center justify-center shadow-md shadow-[#F59E0B]/20 group-hover:scale-110 transition-transform duration-300">
                         <span className="text-white font-bold text-xs md:text-sm">3</span>
                       </div>
-                      <span className="font-mono text-xs md:text-[10px] uppercase tracking-[0.15em] text-[#F59E0B]/60">Step Three</span>
+                      <span className="font-mono text-xs md:text-[10px] uppercase tracking-[0.15em] text-[#F59E0B]/60">{t("stepThree")}</span>
                     </div>
 
-                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">Build Your Menu & Sell</h3>
-                    <p className="text-xs md:text-sm font-medium text-[#F59E0B] mb-2 md:mb-3">Start earning today</p>
+                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("buildMenuSell")}</h3>
+                    <p className="text-xs md:text-sm font-medium text-[#F59E0B] mb-2 md:mb-3">{t("startEarningToday")}</p>
 
-                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">
-                      Create your menu, set your prices, start accepting orders. Payment deposits straight to your bank. Scale from one order to hundreds—it's all in your hands.
-                    </p>
+                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("buildMenuSellDesc")}</p>
 
                     {/* Decorative accent */}
                     <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#F59E0B]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
@@ -1650,18 +1669,18 @@ export default function ChefLanding() {
               <div className="mb-10 md:mb-12">
                 <div className="flex items-center gap-2 md:gap-3 mb-4 md:mb-6">
                   <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
-                  <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C]">What You Get</h3>
+                  <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C]">{t("whatYouGet")}</h3>
                   <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
                 </div>
 
                 <div className="grid grid-cols-3 sm:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">
                   {[
-                    { text: "Sell from home or a commercial kitchen — pick what works for you.", icon: Building2, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
-                    { text: "We handle the complexity — regulations, certifications, partnerships taken care of.", icon: Shield, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },
-                    { text: "Smart tools that grow with you — built for chefs, shaped by your needs, evolving constantly.", icon: Settings2, borderColor: "border-[#8B5CF6]/20", iconColor: "text-[#8B5CF6]" },
-                    { text: "You stay in control — your schedule, your recipes, your profit margins.", icon: Zap, borderColor: "border-[#F59E0B]/20", iconColor: "text-[#F59E0B]" },
-                    { text: "Money flows weekly — fast payouts, direct to your bank.", icon: CreditCard, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
-                    { text: "Real support behind you — actual people who want you to win.", icon: Heart, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },
+                    { text: t("wygSellFromHome"), icon: Building2, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
+                    { text: t("wygHandleComplexity"), icon: Shield, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },
+                    { text: t("wygSmartTools"), icon: Settings2, borderColor: "border-[#8B5CF6]/20", iconColor: "text-[#8B5CF6]" },
+                    { text: t("wygStayInControl"), icon: Zap, borderColor: "border-[#F59E0B]/20", iconColor: "text-[#F59E0B]" },
+                    { text: t("wygMoneyFlows"), icon: CreditCard, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
+                    { text: t("wygRealSupport"), icon: Heart, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },
                   ].map((item, i) => (
                     <motion.div
                       key={i}
@@ -1687,15 +1706,13 @@ export default function ChefLanding() {
             {/* CTA Section */}
             <FadeInSection>
               <div className="text-center">
-                <p className="text-sm md:text-base lg:text-lg font-semibold text-[#2C2C2C] mb-4 md:mb-6">Ready?</p>
+                <p className="text-sm md:text-base lg:text-lg font-semibold text-[#2C2C2C] mb-4 md:mb-6">{t("ready")}</p>
 
                 <Button
                   onClick={handleGetStarted}
                   className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-4 px-4 md:py-6 md:px-12 text-xs md:text-lg rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
                 >
-                  <span className="flex items-center justify-center">
-                    Start Your Application
-                    <ArrowRight className="ml-1.5 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5" />
+                  <span className="flex items-center justify-center">{t("startYourApp")}<ArrowRight className="ml-1.5 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5" />
                   </span>
                 </Button>
               </div>
@@ -1775,9 +1792,7 @@ export default function ChefLanding() {
                   className="mb-4"
                 >
                   <span className="inline-flex items-center gap-2 font-mono text-xs md:text-xs uppercase tracking-[0.3em] text-white/90 px-4 py-2 bg-white/15 backdrop-blur-md rounded-full border border-white/20">
-                    <Building2 className="h-3.5 w-3.5 md:h-4 md:w-4" />
-                    Kitchen Access
-                  </span>
+                    <Building2 className="h-3.5 w-3.5 md:h-4 md:w-4" />{t("kitchenAccess")}</span>
                 </motion.div>
 
                 <motion.h2
@@ -1787,9 +1802,9 @@ export default function ChefLanding() {
                   viewport={{ once: true }}
                   transition={{ duration: 0.7, delay: 0.1 }}
                 >
-                  No Kitchen?{" "}
+                  {t("noKitchen")} 
                   <span className="relative inline-block">
-                    <span className="relative z-10">No Problem.</span>
+                    <span className="relative z-10">{t("noProblem")}</span>
                     <motion.svg
                       className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
                       viewBox="0 0 300 12"
@@ -1819,9 +1834,7 @@ export default function ChefLanding() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.6, delay: 0.2 }}
-                >
-                  Access certified commercial kitchens by the hour. Start small, scale as you grow.
-                </motion.p>
+                >{t("accessCommercialKitchens")}</motion.p>
               </div>
             </FadeInSection>
 
@@ -1844,10 +1857,8 @@ export default function ChefLanding() {
                     <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center mx-auto mb-4">
                       <Building2 className="h-7 w-7 text-white" />
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2">Partner Kitchens Coming Soon</h3>
-                    <p className="text-sm text-white/80 leading-relaxed">
-                      We're onboarding certified commercial kitchens in St. John's. Check back soon for available spaces.
-                    </p>
+                    <h3 className="text-xl font-bold text-white mb-2">{t("partnerKitchensComingSoon")}</h3>
+                    <p className="text-sm text-white/80 leading-relaxed">{t("onboardingKitchens")}</p>
                   </div>
                 </div>
               </FadeInSection>
@@ -1863,9 +1874,7 @@ export default function ChefLanding() {
                     className="group inline-flex items-center justify-center bg-white/10 hover:bg-white text-white hover:text-[#F51042] border-2 border-white/40 hover:border-white font-semibold rounded-full px-6 sm:px-8 py-5 sm:py-6 text-sm sm:text-base transition-all duration-300 shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5"
                     onClick={() => navigate('/compare-kitchens')}
                   >
-                    <Calendar className="mr-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
-                    Browse All Kitchens
-                    <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
+                    <Calendar className="mr-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0" />{t("browseAllKitchens")}<ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
                   </Button>
                 </div>
               </FadeInSection>
@@ -1886,17 +1895,15 @@ export default function ChefLanding() {
                   <div className="flex items-start gap-4 mb-4">
                     <img
                       src={kitchenTableIcon}
-                      alt="Kitchen"
+                      alt={t("altKitchen")}
                       className="w-12 h-12 object-contain"
                     />
                     <div>
-                      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#6B6B6B] block mb-1">
-                        For Kitchen Owners
-                      </span>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#6B6B6B] block mb-1">{t("forKitchenOwners")}</span>
                       <h3 className="text-lg md:text-xl lg:text-2xl font-bold text-[#1A1A1A] leading-tight">
-                        Turn Downtime Into{" "}
+                        {t("turnDowntimeInto")}{" "}
                         <span className="relative inline-block">
-                          <span className="text-[#F51042]">Revenue</span>
+                          <span className="text-[#F51042]">{t("revenueBadge")}</span>
                           <motion.svg
                             className="absolute -bottom-0.5 left-0 w-full"
                             viewBox="0 0 300 12"
@@ -1922,9 +1929,7 @@ export default function ChefLanding() {
                     </div>
                   </div>
 
-                  <p className="text-sm text-[#6B6B6B] mb-4 max-w-xl">
-                    Don't let your kitchen sit empty. Rent your underutilized hours to vetted local chefs.
-                  </p>
+                  <p className="text-sm text-[#6B6B6B] mb-4 max-w-xl">{t("dontLetKitchenSitEmpty")}</p>
 
                   {/* Bento Grid - Award-Winning Card Design with Background Icons */}
                   <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-3">
@@ -1938,15 +1943,9 @@ export default function ChefLanding() {
                       <CreditCard className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
 
                       <div className="relative z-10">
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
-                          Reliable Income
-                        </span>
-                        <h4 className="text-base font-bold leading-tight mb-2">
-                          Weekly Revenue
-                        </h4>
-                        <p className="text-xs text-white/80 leading-relaxed">
-                          Forget chasing invoices. We process payments automatically and deposit them directly to your bank account every week. Predictable cash flow, zero administrative headaches.
-                        </p>
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("reliableIncome")}</span>
+                        <h4 className="text-base font-bold leading-tight mb-2">{t("weeklyRevenue")}</h4>
+                        <p className="text-xs text-white/80 leading-relaxed">{t("forgetChasingInvoices")}</p>
                       </div>
                     </motion.div>
 
@@ -1960,15 +1959,9 @@ export default function ChefLanding() {
                       <Shield className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
 
                       <div className="relative z-10">
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
-                          Zero Risk
-                        </span>
-                        <h4 className="text-base font-bold leading-tight mb-2">
-                          Total Compliance
-                        </h4>
-                        <p className="text-xs text-white/80 leading-relaxed">
-                          Every chef on our platform is verified and certified. We enforce provincial food safety standards so your license—and your reputation—are never at risk.
-                        </p>
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("zeroRisk")}</span>
+                        <h4 className="text-base font-bold leading-tight mb-2">{t("totalCompliance")}</h4>
+                        <p className="text-xs text-white/80 leading-relaxed">{t("everyChefVerified")}</p>
                       </div>
                     </motion.div>
 
@@ -1982,15 +1975,9 @@ export default function ChefLanding() {
                       <Calendar className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
 
                       <div className="relative z-10">
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
-                          Automated
-                        </span>
-                        <h4 className="text-base font-bold leading-tight mb-2">
-                          Booking Management
-                        </h4>
-                        <p className="text-xs text-white/80 leading-relaxed">
-                          Our automated booking engine handles the logistics. You set the available slots; our system fills them. Real-time syncing means no double-bookings, ever.
-                        </p>
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("automated")}</span>
+                        <h4 className="text-base font-bold leading-tight mb-2">{t("bookingManagement")}</h4>
+                        <p className="text-xs text-white/80 leading-relaxed">{t("automatedBookingEngine")}</p>
                       </div>
                     </motion.div>
 
@@ -2004,15 +1991,9 @@ export default function ChefLanding() {
                       <Zap className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
 
                       <div className="relative z-10">
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
-                          Your Control
-                        </span>
-                        <h4 className="text-base font-bold leading-tight mb-2">
-                          Your Rules
-                        </h4>
-                        <p className="text-xs text-white/80 leading-relaxed">
-                          Maintain complete operational sovereignty. You determine the hourly rate, the specific equipment access, and the house rules.
-                        </p>
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("yourControl")}</span>
+                        <h4 className="text-base font-bold leading-tight mb-2">{t("yourRules")}</h4>
+                        <p className="text-xs text-white/80 leading-relaxed">{t("maintainSovereignty")}</p>
                       </div>
                     </motion.div>
 
@@ -2026,15 +2007,9 @@ export default function ChefLanding() {
                       <Clock className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
 
                       <div className="relative z-10">
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
-                          Flexible
-                        </span>
-                        <h4 className="text-base font-bold leading-tight mb-2">
-                          Frictionless Flexibility
-                        </h4>
-                        <p className="text-xs text-white/80 leading-relaxed">
-                          No long-term contracts. No exclusivity clauses. Cancel or pause your listing instantly. You remain the owner; we just bring the revenue.
-                        </p>
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("flexible")}</span>
+                        <h4 className="text-base font-bold leading-tight mb-2">{t("frictionlessFlexibility")}</h4>
+                        <p className="text-xs text-white/80 leading-relaxed">{t("noLongTermContracts")}</p>
                       </div>
                     </motion.div>
                   </div>
@@ -2043,24 +2018,18 @@ export default function ChefLanding() {
                 {/* Bottom Lip with Buttons */}
                 <div className="bg-[#FAFAFA] border-t border-gray-100 px-4 md:px-6 py-4">
                   <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-                    <p className="text-sm text-[#6B6B6B] hidden sm:block">
-                      Join kitchen partners earning passive income
-                    </p>
+                    <p className="text-sm text-[#6B6B6B] hidden sm:block">{t("joinKitchenPartners")}</p>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <Button
                         onClick={() => window.location.href = 'mailto:admin@localcook.shop?subject=Kitchen Partnership Inquiry'}
                         className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold py-2.5 px-6 rounded-full text-sm transition-all duration-300 group"
-                      >
-                        Become a Partner
-                        <ArrowRight className="ml-1.5 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
+                      >{t("becomePartner")}<ArrowRight className="ml-1.5 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
                       </Button>
                       <Button
                         variant="outline"
                         onClick={() => window.location.href = 'https://kitchen.localcooks.ca'}
                         className="border border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] font-semibold py-2.5 px-6 rounded-full text-sm transition-all duration-300"
-                      >
-                        Learn More
-                      </Button>
+                      >{t("learnMore")}</Button>
                     </div>
                   </div>
                 </div>
@@ -2104,9 +2073,7 @@ export default function ChefLanding() {
           <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
               <div className="text-center mb-16">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-[#F51042]/10 rounded-full">
-                  Knowledge Base
-                </span>
+                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-[#F51042]/10 rounded-full">{t("knowledgeBase")}</span>
                 <motion.h2
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
@@ -2114,11 +2081,9 @@ export default function ChefLanding() {
                   transition={{ duration: 0.7, delay: 0.1 }}
                   className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-4"
                 >
-                  Everything You Need to{" "}
+                  {t("everythingYouNeedTo")}{" "}
                   <span className="relative inline-block">
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
-                      Get Started
-                    </span>
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">{t("getStarted")}</span>
                     <motion.svg
                       className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
                       viewBox="0 0 250 12"
@@ -2141,9 +2106,7 @@ export default function ChefLanding() {
                     </motion.svg>
                   </span>
                 </motion.h2>
-                <p className="text-[#6B6B6B] text-base md:text-lg max-w-2xl mx-auto leading-relaxed">
-                  From food safety certification to your first kitchen booking — our resource guide covers every step of launching your food business in Canada.
-                </p>
+                <p className="text-[#6B6B6B] text-base md:text-lg max-w-2xl mx-auto leading-relaxed">{t("resourceGuideDesc")}</p>
               </div>
             </FadeInSection>
 
@@ -2152,26 +2115,26 @@ export default function ChefLanding() {
                 {[
                   {
                     icon: Shield,
-                    title: "Regulatory Landscape",
-                    description: "Understand federal, provincial, and municipal food regulations that apply to your business.",
+                    title: t("kbRegulatoryTitle"),
+                    description: t("kbRegulatoryDesc"),
                     color: "bg-blue-50 text-blue-600",
                   },
                   {
                     icon: BadgeCheck,
-                    title: "Food Safety Certification",
-                    description: "Get certified for free through SkillsPass NL — your food handler training made simple.",
+                    title: t("kbFoodSafetyTitle"),
+                    description: t("kbFoodSafetyDesc"),
                     color: "bg-emerald-50 text-emerald-600",
                   },
                   {
                     icon: Building2,
-                    title: "Business Registration",
-                    description: "Register as sole proprietor or corporation. Home-based or commercial — we cover both paths.",
+                    title: t("kbBizRegTitle"),
+                    description: t("kbBizRegDesc"),
                     color: "bg-amber-50 text-amber-600",
                   },
                   {
                     icon: Scale,
-                    title: "Insurance & Licensing",
-                    description: "Liability coverage from $199/year with FLIP. Get your food establishment licence sorted.",
+                    title: t("kbInsuranceTitle"),
+                    description: t("kbInsuranceDesc"),
                     color: "bg-purple-50 text-purple-600",
                   },
                 ].map((item, i) => (
@@ -2195,9 +2158,7 @@ export default function ChefLanding() {
                     <Button
                       size="lg"
                       className="bg-[#F51042] hover:bg-[#D90935] text-white font-semibold py-6 px-10 text-base rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
-                    >
-                      Explore Full Resource Guide
-                      <ArrowRight className="ml-2 h-5 w-5" />
+                    >{t("exploreResourceGuide")}<ArrowRight className="ml-2 h-5 w-5" />
                     </Button>
                   </Link>
                   <span className="flex items-center gap-1.5 text-xs text-[#6B6B6B]">
@@ -2217,24 +2178,22 @@ export default function ChefLanding() {
           <div className="container mx-auto max-w-3xl">
             <FadeInSection>
               <div className="text-center mb-12">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-[#F51042]/10 rounded-full">
-                  Questions
-                </span>
-                <h2 className="font-display text-4xl md:text-5xl text-[#F51042]">FAQ</h2>
+                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-[#F51042]/10 rounded-full">{t("questions")}</span>
+                <h2 className="font-display text-4xl md:text-5xl text-[#F51042]">{t("faq")}</h2>
               </div>
             </FadeInSection>
 
             <FadeInSection delay={1}>
               <Accordion type="single" collapsible className="space-y-3">
                 {[
-                  { q: "How do I get paid and how much do I keep?", a: "You keep 100% of your earnings during the trial period—we only deduct Stripe's payment processing fee (2.9% + $0.30 per transaction). Payments hit your bank account every week via direct deposit. No waiting around. No complicated calculations. You cook, customers order, money arrives." },
-                  { q: "What does Local Cooks handle for me?", a: "You focus on what you do best—cooking. We handle everything else. We manage customer orders, process payments securely, coordinate delivery logistics, provide ongoing platform support, and guide you through food safety regulations and certification requirements. We also partner you with verified commercial kitchens if you need them—hourly rentals, no long-term commitments. Think of us as your business operations team. You run the kitchen. We run the rest." },
-                  { q: "How long does approval take?", a: "Most approvals happen within 24 hours. We review your food handler certification, verify your kitchen access, and get you live fast—so you can start earning as soon as possible. Your dedicated onboarding specialist will guide you through the process step-by-step and answer any questions along the way." },
-                  { q: "Do I need a commercial kitchen?", a: "No. You can cook from your licensed home kitchen or rent one of our partner commercial kitchens by the hour. Choose what works for you—no long-term commitments, no hidden fees. We'll guide you through the certification requirements for your setup and help you understand local food safety regulations so you launch with confidence." },
-                  { q: "What happens during the trial?", a: "Your trial is your risk-free window to test the platform without any pressure. You keep 100% of your sales (minus Stripe's processing fee only—zero platform fees). No contracts. No commitments. No strings attached. Use this time to build your menu, connect with your first customers, understand how the platform works, and see if it's the right fit for your culinary business. If it's not, walk away anytime with no penalties." },
-                  { q: "Can I do this part-time?", a: "Yes. Set your own hours, take orders when you want, and pause your availability anytime. Local Cooks works around your schedule—whether you're doing this full-time or alongside other work. Many of our chefs use Local Cooks as a side income stream or test their menu before going full-time. It's completely flexible." },
-                  { q: "Can I leave anytime?", a: "Yes. No contracts. No penalties. No minimum commitment. Pause your profile, take a break, or delete it entirely—your choice, anytime. Your culinary business is yours to control." },
-                  { q: "Can I set my own menu and prices?", a: "Completely. You have full control over your menu, pricing, and availability. Add dishes, remove dishes, adjust prices, update descriptions—all on your terms. Change things anytime based on what your customers love, what's in season, or what you feel like cooking." },
+                  { q: t("chefFaqQ1"), a: t("chefFaqA1") },
+                  { q: t("chefFaqQ2"), a: t("chefFaqA2") },
+                  { q: t("chefFaqQ3"), a: t("chefFaqA3") },
+                  { q: t("chefFaqQ4"), a: t("chefFaqA4") },
+                  { q: t("chefFaqQ5"), a: t("chefFaqA5") },
+                  { q: t("chefFaqQ6"), a: t("chefFaqA6") },
+                  { q: t("chefFaqQ7"), a: t("chefFaqA7") },
+                  { q: t("chefFaqQ8"), a: t("chefFaqA8") },
                 ].map((item, i) => (
                   <AccordionItem key={i} value={`item-${i}`} className="border border-gray-100 rounded-xl bg-white px-6 shadow-sm">
                     <AccordionTrigger className="text-left text-lg font-semibold text-[#2C2C2C] py-5 hover:no-underline hover:text-[#F51042]">
@@ -2275,11 +2234,9 @@ export default function ChefLanding() {
                   viewport={{ once: true }}
                   transition={{ duration: 0.7, delay: 0.1 }}
                   className="text-2xl md:text-3xl lg:text-4xl font-bold text-white leading-tight"
-                >
-                  From Passion to Profit.
-                  <br />
+                >{t("passionToProfit")}<br />
                   <span className="relative inline-block">
-                    <span className="text-white/95">On Your Terms.</span>
+                    <span className="text-white/95">{t("onYourTerms")}</span>
                     <motion.svg
                       className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
                       viewBox="0 0 300 12"
@@ -2305,24 +2262,24 @@ export default function ChefLanding() {
               </motion.div>
 
               {/* Subheading - Single line on desktop */}
-              <motion.p
+              <motion.div
                 className="text-base md:text-lg lg:text-xl text-white/90 mb-5 md:mb-6 max-w-4xl mx-auto leading-tight font-medium md:whitespace-nowrap md:overflow-hidden md:text-ellipsis"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.1 }}
               >
-                You've spent years perfecting your craft. You deserve to keep the rewards.
-              </motion.p>
+                <TruncatedText>{t("perfectingCraft")}</TruncatedText>
+              </motion.div>
 
               {/* Brand Statement - Single line on desktop */}
-              <motion.p
+              <motion.div
                 className="text-sm md:text-base lg:text-lg text-white/85 mb-6 md:mb-8 max-w-5xl mx-auto leading-tight md:whitespace-nowrap md:overflow-hidden md:text-ellipsis"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.2 }}
               >
-                LocalCooks is the platform built for passionate chefs—where your cooking becomes your income.
-              </motion.p>
+                <TruncatedText>{t("platformBuiltForChefs")}</TruncatedText>
+              </motion.div>
 
               {/* Three Truths Section - Centered */}
               <motion.div
@@ -2332,7 +2289,7 @@ export default function ChefLanding() {
                 transition={{ duration: 0.6, delay: 0.3 }}
               >
                 <p className="text-xs md:text-sm text-white/75 mb-4 font-medium tracking-wider uppercase">
-                  We built LocalCooks around three simple truths:
+                  {t("threeSimpleTruths")}
                 </p>
                 <div className="flex justify-center items-center">
                   <TypewriterText />
@@ -2349,13 +2306,9 @@ export default function ChefLanding() {
                   onClick={handleGetStarted}
                   size="lg"
                   className="bg-white text-[#F51042] hover:bg-gray-100 font-bold py-6 px-12 text-lg md:text-xl rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all"
-                >
-                  Join LocalCooks
-                  <ArrowRight className="ml-3 h-5 w-5 md:h-6 md:w-6" />
+                >{t("joinLocalCooks")}<ArrowRight className="ml-3 h-5 w-5 md:h-6 md:w-6" />
                 </Button>
-                <p className="text-white/70 mt-5 text-xs md:text-sm">
-                  Approved in 24 hours • Keep 100% during trial • No contracts
-                </p>
+                <p className="text-white/70 mt-5 text-xs md:text-sm">{t("approved24hGuarantees")}</p>
               </motion.div>
             </FadeInSection>
           </div>

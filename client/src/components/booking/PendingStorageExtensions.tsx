@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -48,13 +49,17 @@ interface PendingExtension {
   kitchenName: string;
 }
 
+// Permissive translator alias for data-driven column factories
+export type StorageTFunction = (key: string, options?: Record<string, unknown>) => string;
+
 // Column definitions for extension requests table
 const getExtensionColumns = (
-  syncMutation: ReturnType<typeof useMutation<any, Error, number>>
+  syncMutation: ReturnType<typeof useMutation<any, Error, number>>,
+  t: StorageTFunction
 ): ColumnDef<PendingExtension>[] => [
   {
     id: "reference",
-    header: "Ref",
+    header: () => t("sxColRef"),
     cell: ({ row }) => {
       const ref = row.original.referenceCode || row.original.storageBookingId || row.original.id;
       return (
@@ -73,7 +78,7 @@ const getExtensionColumns = (
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
       >
-        Storage
+        {t("sxColStorage")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
@@ -86,7 +91,7 @@ const getExtensionColumns = (
             <span className="font-medium text-sm">{extension.storageName}</span>
           </div>
           <div className="text-xs text-muted-foreground mt-0.5 ml-5">
-            at {extension.kitchenName}
+            {t("sxAtKitchen", { kitchen: extension.kitchenName })}
           </div>
         </div>
       );
@@ -94,19 +99,19 @@ const getExtensionColumns = (
   },
   {
     accessorKey: "extensionDays",
-    header: "Extension",
+    header: t("sxColExtension"),
     cell: ({ row }) => {
       const extension = row.original;
       return (
         <div className="flex items-center gap-2 text-sm">
-          <div className="bg-gray-100 rounded px-2 py-1">
-            <span className="text-gray-600 text-xs">Current: </span>
+          <div className="rounded border bg-muted/50 px-2 py-1">
+            <span className="text-muted-foreground text-xs">{t("sxCurrentLabel")}</span>
             <span className="font-medium text-xs">{format(new Date(extension.currentEndDate), "MMM d")}</span>
           </div>
-          <ChevronRight className="h-3 w-3 text-gray-400" />
-          <div className="bg-green-100 rounded px-2 py-1">
-            <span className="text-green-700 text-xs">New: </span>
-            <span className="font-medium text-green-800 text-xs">{format(new Date(extension.newEndDate), "MMM d")}</span>
+          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+          <div className="rounded border border-success/30 bg-success/10 px-2 py-1">
+            <span className="text-success text-xs">{t("sxNewLabel")}</span>
+            <span className="font-medium text-xs">{format(new Date(extension.newEndDate), "MMM d")}</span>
           </div>
         </div>
       );
@@ -114,20 +119,20 @@ const getExtensionColumns = (
   },
   {
     accessorKey: "extensionTotalPriceCents",
-    header: "Amount",
+    header: t("sxColAmount"),
     cell: ({ row }) => {
       const extension = row.original;
       return (
         <div className="text-sm">
           <div className="font-medium">${(extension.extensionTotalPriceCents / 100).toFixed(2)}</div>
-          <div className="text-xs text-muted-foreground">{extension.extensionDays} day{extension.extensionDays > 1 ? 's' : ''}</div>
+          <div className="text-xs text-muted-foreground">{t("sxDaysCount", { count: extension.extensionDays })}</div>
         </div>
       );
     },
   },
   {
     accessorKey: "status",
-    header: "Status",
+    header: t("sxColStatus"),
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
       const extension = row.original;
@@ -138,14 +143,14 @@ const getExtensionColumns = (
             return (
               <Badge variant="outline" className="text-muted-foreground">
                 <Clock className="h-3 w-3 mr-1" />
-                Awaiting Payment
+                {t("sxStatusAwaitingPayment")}
               </Badge>
             );
           case 'paid':
             return (
               <Badge variant="warning">
                 <Clock className="h-3 w-3 mr-1" />
-                Awaiting Approval
+                {t("sxStatusAwaitingApproval")}
               </Badge>
             );
           case 'approved':
@@ -153,21 +158,21 @@ const getExtensionColumns = (
             return (
               <Badge variant="success">
                 <Check className="h-3 w-3 mr-1" />
-                Approved
+                {t("sxStatusApproved")}
               </Badge>
             );
           case 'rejected':
             return (
               <Badge variant="outline" className="text-destructive border-destructive/30">
                 <X className="h-3 w-3 mr-1" />
-                Rejected
+                {t("sxStatusRejected")}
               </Badge>
             );
           case 'refunded':
             return (
-              <Badge variant="info">
+              <Badge variant="outline">
                 <Check className="h-3 w-3 mr-1" />
-                Refunded
+                {t("sxStatusRefunded")}
               </Badge>
             );
           default:
@@ -186,9 +191,9 @@ const getExtensionColumns = (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="flex items-center text-xs text-red-600 cursor-help">
+                  <div className="flex items-center text-xs text-destructive cursor-help">
                     <AlertCircle className="h-3 w-3 mr-1" />
-                    View reason
+                    {t("sxViewReason")}
                   </div>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
@@ -210,7 +215,7 @@ const getExtensionColumns = (
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
       >
-        Requested
+        {t("sxColRequested")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
@@ -240,7 +245,7 @@ const getExtensionColumns = (
           className="text-xs"
         >
           <RefreshCw className={`h-3 w-3 mr-1 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-          {syncMutation.isPending ? 'Checking...' : 'Sync'}
+          {syncMutation.isPending ? t("sxChecking") : t("sxSync")}
         </Button>
       );
     },
@@ -250,6 +255,8 @@ const getExtensionColumns = (
 export function PendingStorageExtensions() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t: tStrict } = useTranslation("chef");
+  const t = tStrict as unknown as StorageTFunction;
 
   const { data: extensions, isLoading } = useQuery({
     queryKey: ['/api/chef/storage-extensions/pending'],
@@ -284,25 +291,25 @@ export function PendingStorageExtensions() {
       
       if (data.status === 'paid') {
         toast({
-          title: "Status Updated",
-          description: "Your extension is now awaiting manager approval.",
+          title: t("sxStatusUpdatedTitle"),
+          description: t("sxStatusUpdatedDesc"),
         });
       } else if (data.status === 'expired') {
         toast({
-          title: "Session Expired",
-          description: "The payment session has expired. Please try again.",
+          title: t("sxSessionExpiredTitle"),
+          description: t("sxSessionExpiredDesc"),
           variant: "destructive",
         });
       } else {
         toast({
-          title: "Status Checked",
-          description: data.message || "No changes needed.",
+          title: t("sxStatusCheckedTitle"),
+          description: data.message || t("sxNoChangesNeeded"),
         });
       }
     },
     onError: (error: Error) => {
       toast({
-        title: "Sync Failed",
+        title: t("sxSyncFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -319,8 +326,8 @@ export function PendingStorageExtensions() {
 
   // Column definitions
   const columns = useMemo(
-    () => getExtensionColumns(syncMutation),
-    [syncMutation]
+    () => getExtensionColumns(syncMutation, t),
+    [syncMutation, t]
   );
 
   // TanStack Table instance
@@ -340,18 +347,18 @@ export function PendingStorageExtensions() {
   }
 
   return (
-    <Card className="mb-6 border-amber-200 bg-amber-50/50">
+    <Card className="mb-6">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Package className="h-5 w-5 text-amber-600" />
-          Storage Extension Requests
+          <Package className="h-5 w-5 text-muted-foreground" />
+          {t("sxTitle")}
         </CardTitle>
         <CardDescription>
-          {activeExtensions.length} pending extension request{activeExtensions.length !== 1 ? 's' : ''}
+          {t("sxPendingCount", { count: activeExtensions.length })}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border bg-white">
+        <div className="rounded-md border bg-background">
           <Table>
             <TableHeader>
               {table.getHeaderGroups().map((headerGroup) => (
@@ -373,7 +380,7 @@ export function PendingStorageExtensions() {
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
                     className={`hover:bg-muted/50 ${
-                      row.original.status === 'rejected' ? 'bg-red-50/50' : ''
+                      row.original.status === 'rejected' ? 'border-destructive/20 bg-destructive/5' : ''
                     }`}
                   >
                     {row.getVisibleCells().map((cell) => (
@@ -388,7 +395,7 @@ export function PendingStorageExtensions() {
                   <TableCell colSpan={columns.length} className="h-24 text-center">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <Package className="h-8 w-8 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">No extension requests</p>
+                      <p className="text-sm text-muted-foreground">{t("sxNoRequests")}</p>
                     </div>
                   </TableCell>
                 </TableRow>

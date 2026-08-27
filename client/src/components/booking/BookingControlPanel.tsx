@@ -13,6 +13,7 @@ import { ExpiringStorageNotification } from "./ExpiringStorageNotification";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { format, differenceInDays, startOfToday, isToday, isTomorrow, isThisWeek, startOfDay, parseISO, startOfWeek, addWeeks, isSameWeek } from "date-fns";
+import { useTranslation } from "react-i18next";
 
 interface Booking {
   id: number;
@@ -70,6 +71,7 @@ export default function BookingControlPanel({
   onCancelBooking,
   kitchens = [],
 }: BookingControlPanelProps) {
+  const { t, i18n } = useTranslation("chef");
   const [statusFilter, setStatusFilter] = useState<FilterType>("all");
   const [viewType, setViewType] = useState<ViewType>("upcoming");
   const [expandedBookings, setExpandedBookings] = useState<Set<number>>(new Set());
@@ -484,7 +486,7 @@ export default function BookingControlPanel({
       }
 
       logger.info('Fetching invoice from:', `/api/bookings/${bookingId}/invoice`);
-      const response = await fetch(`/api/bookings/${bookingId}/invoice`, {
+      const response = await fetch(`/api/bookings/${bookingId}/invoice?lng=${i18n.language}`, {
         credentials: 'include',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -616,7 +618,7 @@ export default function BookingControlPanel({
       {/* Header */}
       <div className="mb-6 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold text-gray-900">My Bookings</h2>
+          <h2 className="text-2xl font-bold text-gray-900">{t("bkMyBookings", "My Bookings")}</h2>
           <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full">
             <Filter className="h-4 w-4 text-blue-600" />
             <span className="text-sm font-semibold text-blue-700">{filteredBookings.length}</span>
@@ -629,7 +631,7 @@ export default function BookingControlPanel({
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
               type="text"
-              placeholder="Search by kitchen, location, date, or time..."
+              placeholder={t("bkSearchPlaceholder", "Search by kitchen, location, date, or time...")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 w-full"
@@ -646,9 +648,9 @@ export default function BookingControlPanel({
               onChange={(e) => setSortBy(e.target.value as "date" | "kitchen" | "status")}
               className="text-xs font-medium text-gray-700 bg-transparent border-none outline-none cursor-pointer"
             >
-              <option value="date">Sort by Date</option>
-              <option value="kitchen">Sort by Kitchen</option>
-              <option value="status">Sort by Status</option>
+              <option value="date">{t("bkSortByDate", "Sort by Date")}</option>
+              <option value="kitchen">{t("bkSortByKitchen", "Sort by Kitchen")}</option>
+              <option value="status">{t("bkSortByStatus", "Sort by Status")}</option>
             </select>
           </div>
           <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
@@ -658,9 +660,9 @@ export default function BookingControlPanel({
               onChange={(e) => setGroupBy(e.target.value as "date" | "kitchen" | "none")}
               className="text-xs font-medium text-gray-700 bg-transparent border-none outline-none cursor-pointer"
             >
-              <option value="date">Group by Date</option>
-              <option value="kitchen">Group by Kitchen</option>
-              <option value="none">No Grouping</option>
+              <option value="date">{t("bkGroupByDate", "Group by Date")}</option>
+              <option value="kitchen">{t("bkGroupByKitchen", "Group by Kitchen")}</option>
+              <option value="none">{t("bkNoGrouping", "No Grouping")}</option>
             </select>
           </div>
         </div>
@@ -669,13 +671,13 @@ export default function BookingControlPanel({
         <Tabs value={viewType} onValueChange={(v) => setViewType(v as ViewType)} className="w-full mb-4">
           <TabsList className="w-full">
             <TabsTrigger value="upcoming" className="flex-1 gap-2">
-              Upcoming <Badge variant="count" className="ml-1">{upcomingBookings.length}</Badge>
+              {t("bkTabUpcoming", "Upcoming")} <Badge variant="count" className="ml-1">{upcomingBookings.length}</Badge>
             </TabsTrigger>
             <TabsTrigger value="past" className="flex-1 gap-2">
-              Past <Badge variant="count" className="ml-1">{pastBookings.length}</Badge>
+              {t("bkTabPast", "Past")} <Badge variant="count" className="ml-1">{pastBookings.length}</Badge>
             </TabsTrigger>
             <TabsTrigger value="all" className="flex-1 gap-2">
-              All <Badge variant="count" className="ml-1">{allBookings.length}</Badge>
+              {t("bkTabAll", "All")} <Badge variant="count" className="ml-1">{allBookings.length}</Badge>
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -702,7 +704,7 @@ export default function BookingControlPanel({
                     : `${filterConfig.bg} ${filterConfig.text} hover:${filterConfig.activeBg} ${filterConfig.border}`
                 }`}
               >
-                {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                {t(filter === "all" ? "bkFilterAll" : filter === "pending" ? "bkFilterPending" : filter === "confirmed" ? "bkFilterConfirmed" : filter === "cancelled" ? "bkFilterCancelled" : "bkFilterCompleted", filter.charAt(0).toUpperCase() + filter.slice(1))}
               </button>
             );
           })}
@@ -713,7 +715,7 @@ export default function BookingControlPanel({
       {isLoading ? (
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="text-gray-500 mt-3 text-sm">Loading bookings...</p>
+          <p className="text-gray-500 mt-3 text-sm">{t("bkLoadingBookings", "Loading bookings...")}</p>
         </div>
       ) : (
         <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0">
@@ -723,13 +725,13 @@ export default function BookingControlPanel({
               <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500 font-medium mb-1">
                 {viewType === "upcoming"
-                  ? "No upcoming bookings"
+                  ? t("bkNoUpcomingBookings", "No upcoming bookings")
                   : viewType === "past"
-                  ? "No past bookings"
-                  : "No bookings found"}
+                  ? t("bkNoPastBookings", "No past bookings")
+                  : t("bkNoBookingsFound", "No bookings found")}
               </p>
               <p className="text-sm text-gray-400">
-                {statusFilter !== "all" && `No ${statusFilter} bookings`}
+                {statusFilter !== "all" && t("bkNoStatusBookings", `No ${statusFilter} bookings`)}
               </p>
             </div>
           ) : (

@@ -17,6 +17,7 @@ import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { SmartImage } from "@/components/ui/smart-image";
 
 // Enterprise-grade Kitchen Card Component
 interface KitchenCardProps {
@@ -44,14 +45,11 @@ function KitchenCard({ kitchen, locationId, isExpanded, onToggle }: KitchenCardP
                 {/* Kitchen Thumbnail */}
                 <div className="w-14 h-14 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700">
                   {imageUrl ? (
-                    <img
+                    <SmartImage
                       src={imageUrl}
                       alt={kitchen.name}
                       className="w-full h-full object-cover"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                      }}
+                      hideOnError
                     />
                   ) : (
                     <ChefHat className="w-6 h-6 text-slate-400" />

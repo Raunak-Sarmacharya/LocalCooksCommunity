@@ -1,4 +1,3 @@
-import { logger } from "@/lib/logger";
 /**
  * Issues & Refunds Component
  * 
@@ -9,93 +8,33 @@ import { logger } from "@/lib/logger";
 
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, FileText, Clock } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { FileText, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { auth } from "@/lib/firebase";
+import { useChefResolutionCenter } from "@/hooks/use-chef-resolution-center";
+import { useTranslation } from "react-i18next";
+import { ChefPageHeader } from "@/components/chef/ui";
 
 // Import existing components
 import { PendingDamageClaims } from "./PendingDamageClaims";
 import { OverstayPenaltiesTable } from "./OverstayPenaltiesTable";
 
-interface PendingPenalty {
-  overstayId: number;
-  isResolved?: boolean;
-}
-
-async function getAuthHeaders(): Promise<HeadersInit> {
-  try {
-    const currentUser = auth.currentUser;
-    if (currentUser) {
-      const token = await currentUser.getIdToken();
-      return {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      };
-    }
-  } catch (error) {
-    logger.error('Error getting Firebase token:', error);
-  }
-  return {
-    'Content-Type': 'application/json',
-  };
-}
-
 export function IssuesAndRefunds() {
   const [activeTab, setActiveTab] = useState<string>("damage-claims");
-
-  // Fetch damage claims count for badge
-  const { data: damageClaimsData } = useQuery({
-    queryKey: ['/api/chef/damage-claims'],
-    queryFn: async () => {
-      const response = await apiRequest('GET', '/api/chef/damage-claims');
-      return response.json();
-    },
-    refetchInterval: 30000,
-  });
-
-  // Fetch overstay penalties count for badge
-  const { data: penaltiesData } = useQuery<PendingPenalty[]>({
-    queryKey: ['/api/chef/overstay-penalties'],
-    queryFn: async () => {
-      const headers = await getAuthHeaders();
-      const response = await fetch('/api/chef/overstay-penalties', {
-        headers,
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to fetch penalties');
-      return response.json();
-    },
-    refetchInterval: 30000,
-  });
-
-  // Count pending items for badges
-  const pendingDamageClaims = damageClaimsData?.claims?.filter(
-    (c: { status: string }) => c.status === 'submitted'
-  )?.length || 0;
-  
-  const pendingPenalties = penaltiesData?.filter(
-    (p: PendingPenalty) => !p.isResolved
-  )?.length || 0;
-
-  const totalDamageClaims = damageClaimsData?.claims?.length || 0;
-  const totalPenalties = penaltiesData?.length || 0;
+  const {
+    pendingDamageClaims,
+    pendingPenalties,
+    totalDamageClaims,
+    totalPenalties,
+  } = useChefResolutionCenter();
+  const { t } = useTranslation("chef");
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
-          <AlertTriangle className="h-5 w-5 text-white" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Resolution Center</h1>
-          <p className="text-sm text-muted-foreground">
-            View damage claims and overstay penalties
-          </p>
-        </div>
-      </div>
+      <ChefPageHeader
+        title={t("resolutionCenterTitle", "Resolution center")}
+        description={t("resolutionCenterDesc", "Damage claims and overstay penalties that need a response.")}
+      />
 
       {/* Tabs for switching between damage claims and overstay penalties */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -105,7 +44,7 @@ export function IssuesAndRefunds() {
             className="flex items-center gap-2 rounded-lg data-[state=active]:bg-background"
           >
             <FileText className="h-4 w-4" />
-            <span>Damage Claims</span>
+            <span>{t("damageClaimsTab", "Damage Claims")}</span>
             {pendingDamageClaims > 0 && (
               <Badge variant="destructive" className="ml-1">
                 {pendingDamageClaims}
@@ -122,7 +61,7 @@ export function IssuesAndRefunds() {
             className="flex items-center gap-2 rounded-lg data-[state=active]:bg-background"
           >
             <Clock className="h-4 w-4" />
-            <span>Overstay Penalties</span>
+            <span>{t("overstayPenaltiesTab", "Overstay Penalties")}</span>
             {pendingPenalties > 0 && (
               <Badge variant="destructive" className="ml-1">
                 {pendingPenalties}

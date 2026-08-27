@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger";
  */
 
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -127,7 +128,7 @@ function getStatusBadge(penalty: OverstayPenalty) {
 }
 
 // Column definitions
-function getOverstayPenaltyColumns(
+function getOverstayPenaltyColumns(t: any, 
   onPay: (penalty: OverstayPenalty) => void,
   payingId: number | null
 ): ColumnDef<OverstayPenalty>[] {
@@ -141,7 +142,7 @@ function getOverstayPenaltyColumns(
     },
     {
       id: "reference",
-      header: "Ref",
+      header: t("rcColRef", "Ref"),
       cell: ({ row }) => {
         const ref = row.original.referenceCode || row.original.bookingId || row.original.id;
         return (
@@ -153,7 +154,7 @@ function getOverstayPenaltyColumns(
     },
     {
       accessorKey: "storageName",
-      header: "Storage",
+      header: t("rcColStorage", "Storage"),
       cell: ({ row }) => {
         const penalty = row.original;
         return (
@@ -172,7 +173,7 @@ function getOverstayPenaltyColumns(
     },
     {
       accessorKey: "storageType",
-      header: "Type",
+      header: t("rcColType", "Type"),
       cell: ({ row }) => {
         const type = row.getValue("storageType") as string;
         return (
@@ -191,14 +192,14 @@ function getOverstayPenaltyColumns(
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           className="h-8 -ml-3"
         >
-          Days Overdue
+          {t("rcColDaysOverdue", "Days Overdue")}
           <ArrowUpDown className="ml-2 h-3 w-3" />
         </Button>
       ),
       cell: ({ row }) => {
         const days = row.getValue("daysOverdue") as number;
         return (
-          <Badge variant={days > 7 ? "destructive" : "secondary"} className="text-xs">
+          <Badge variant={days > 7 ? "destructive" : "outline"} className="text-xs">
             {days} day{days !== 1 ? 's' : ''}
           </Badge>
         );
@@ -213,7 +214,7 @@ function getOverstayPenaltyColumns(
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           className="h-8 -ml-3"
         >
-          Booking Ended
+          {t("rcColBookingEnded", "Booking Ended")}
           <ArrowUpDown className="ml-2 h-3 w-3" />
         </Button>
       ),
@@ -235,7 +236,7 @@ function getOverstayPenaltyColumns(
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           className="h-8 justify-end w-full"
         >
-          Amount
+          {t("rcColAmount", "Amount")}
           <ArrowUpDown className="ml-2 h-3 w-3" />
         </Button>
       ),
@@ -261,7 +262,7 @@ function getOverstayPenaltyColumns(
     },
     {
       accessorKey: "status",
-      header: "Status",
+      header: t("rcColStatus", "Status"),
       cell: ({ row }) => getStatusBadge(row.original),
     },
     {
@@ -282,7 +283,6 @@ function getOverstayPenaltyColumns(
             size="sm"
             onClick={() => onPay(penalty)}
             disabled={payingId !== null}
-            className="bg-orange-600 hover:bg-orange-700"
           >
             <CreditCard className="h-4 w-4 mr-1" />
             {isThisPaying ? 'Processing...' : 'Pay Now'}
@@ -295,6 +295,7 @@ function getOverstayPenaltyColumns(
 
 // Main Component
 export function OverstayPenaltiesTable() {
+  const { t } = useTranslation("chef");
   const [viewType, setViewType] = useState<PenaltyViewType>("all");
   const [sorting, setSorting] = useState<SortingState>([{ id: "detectedAt", desc: true }]);
 
@@ -359,7 +360,7 @@ export function OverstayPenaltiesTable() {
 
   // Column definitions
   const columns = useMemo(
-    () => getOverstayPenaltyColumns(
+    () => getOverstayPenaltyColumns(t, 
       (penalty) => payMutation.mutate(penalty.overstayId),
       payingId
     ),
@@ -407,11 +408,14 @@ export function OverstayPenaltiesTable() {
     <div className="space-y-6">
       {/* Urgent Penalties Alert */}
       {pendingPenalties.length > 0 && (
-        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5" />
+        <div className="rounded-lg border border-destructive/30 p-4 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
           <div>
-            <h4 className="font-medium text-orange-800">Payment Required</h4>
-            <p className="text-sm text-orange-700">
+            <div className="flex items-center gap-2 mb-1">
+              <h4 className="font-medium text-sm">{t("rcPaymentRequiredTitle", "Payment Required")}</h4>
+              <Badge variant="destructive" className="text-xs">{t("rcPaymentRequiredAction", "Action needed")}</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
               You have {pendingPenalties.length} overstay penalty{pendingPenalties.length !== 1 ? 'ies' : 'y'} requiring payment.
               Please pay to maintain good standing.
             </p>
@@ -426,15 +430,15 @@ export function OverstayPenaltiesTable() {
             <div>
               <CardTitle className="text-xl font-semibold flex items-center gap-2">
                 <Clock className="h-5 w-5" />
-                Overstay Penalties
+                {t("rcOverstayPenaltiesTitle", "Overstay Penalties")}
               </CardTitle>
               <CardDescription>
-                {table.getFilteredRowModel().rows.length} of {penalties.length} penalty{penalties.length !== 1 ? 'ies' : 'y'}
+                {t("rcOfClaims", "{filtered} of {total} claims", { filtered: table.getFilteredRowModel().rows.length, total: penalties.length })}
               </CardDescription>
             </div>
             <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
+              {t("rcRefreshBtn", "Refresh")}
             </Button>
           </div>
         </CardHeader>
@@ -444,15 +448,15 @@ export function OverstayPenaltiesTable() {
           <Tabs value={viewType} onValueChange={(v) => setViewType(v as PenaltyViewType)} className="w-full">
             <TabsList className="w-full gap-1">
               <TabsTrigger value="all" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                All
+                {t("rcTabAll", "All")}
                 <Badge variant="count" className="ml-1">{penalties.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="pending" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                Pending
+                {t("rcTabPending", "Pending")}
                 <Badge variant="count" className="ml-1">{pendingPenalties.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="resolved" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                Resolved
+                {t("rcTabResolved", "Resolved")}
                 <Badge variant="count" className="ml-1">{resolvedPenalties.length}</Badge>
               </TabsTrigger>
             </TabsList>
@@ -482,8 +486,8 @@ export function OverstayPenaltiesTable() {
                       data-state={row.getIsSelected() && "selected"}
                       className={cn(
                         "hover:bg-muted/50",
-                        !row.original.isResolved && !row.original.isPaid && !row.original.chargeSucceededAt && "bg-orange-50/50",
-                        (row.original.isPaid || row.original.chargeSucceededAt) && "bg-green-50/30"
+                        !row.original.isResolved && !row.original.isPaid && !row.original.chargeSucceededAt && "bg-muted/30",
+                        (row.original.isPaid || row.original.chargeSucceededAt) && "bg-muted/20"
                       )}
                     >
                       {row.getVisibleCells().map((cell) => (
@@ -497,12 +501,12 @@ export function OverstayPenaltiesTable() {
                   <TableRow>
                     <TableCell colSpan={columns.length} className="h-48 text-center">
                       <div className="flex flex-col items-center justify-center gap-2">
-                        <CheckCircle className="h-8 w-8 text-green-500" />
-                        <p className="text-sm font-medium">No Overstay Penalties</p>
+                        <CheckCircle className="h-8 w-8 text-muted-foreground" />
+                        <p className="text-sm font-medium">{t("rcNoOverstayTitle", "No Overstay Penalties")}</p>
                         <p className="text-sm text-muted-foreground">
                           {viewType === "all" 
-                            ? "You don't have any overstay penalties."
-                            : `No ${viewType} penalties to display.`}
+                            ? t("rcNoOverstayDesc", "You don't have any overstay penalties.")
+                            : t("rcNoFilteredOverstayDesc", "No {viewType} penalties to display.", { viewType })}
                         </p>
                       </div>
                     </TableCell>

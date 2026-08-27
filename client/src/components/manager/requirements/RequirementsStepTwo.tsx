@@ -67,11 +67,11 @@ export function RequirementsStepTwo({
         <div className="relative">
           <div className="flex items-start gap-3">
             <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-emerald-600 dark:bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/30">
-              <span className="font-bold text-lg">2</span>
+              <FileCheck className="h-5 w-5" />
             </div>
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                Kitchen Coordination Phase
+                Kitchen Specific Requirements
               </h3>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
                 After you approve a chef's initial application, they'll need to provide these additional 
@@ -194,7 +194,7 @@ export function RequirementsStepTwo({
           <div className="flex items-center gap-2">
             <ClipboardList className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              Custom Questions for Step 2
+              Custom Questions for Kitchen Applications
             </h4>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">

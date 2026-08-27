@@ -1,0 +1,14 @@
+{
+  "invoice": "РАХУНОК",
+  "billTo": "Платник",
+  "bookingDetails": "Деталі бронювання",
+  "kitchen": "Кухня",
+  "payoutStatement": "ВИПЛАТА",
+  "payTo": "Отримувач",
+  "statementNumber": "Виписка №",
+  "sellerStatement": "Звіт продавця",
+  "executiveSummary": "Підсумок",
+  "certificateTitle": "Сертифікат про завершення",
+  "awardedTo": "Нагороджено",
+  "forCompleting": "За завершення"
+}

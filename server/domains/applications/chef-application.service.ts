@@ -154,7 +154,37 @@ export class ChefApplicationService {
     }
 
     /**
-     * Get all applications for a manager across their locations
+     * Get all kitchen applications (for Global Admins)
+     */
+    async getAllApplications() {
+        try {
+            return await db
+                .select({
+                    ...getTableColumns(chefKitchenApplications),
+                    chef: {
+                        id: users.id,
+                        username: users.username,
+                        role: users.role,
+                        createdAt: users.createdAt,
+                    },
+                    location: {
+                        id: locations.id,
+                        name: locations.name,
+                        address: locations.address
+                    }
+                })
+                .from(chefKitchenApplications)
+                .leftJoin(users, eq(chefKitchenApplications.chefId, users.id))
+                .leftJoin(locations, eq(chefKitchenApplications.locationId, locations.id))
+                .orderBy(desc(chefKitchenApplications.createdAt));
+        } catch (error) {
+            logger.error("[ChefApplicationService] Error fetching all applications:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get applications for a manager across their locations
      */
     async getApplicationsForManager(managerId: number) {
         try {

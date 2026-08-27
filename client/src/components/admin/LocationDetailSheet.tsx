@@ -34,6 +34,7 @@ import {
   XCircle,
   AlertCircle,
 } from "lucide-react";
+import { SmartImage } from "@/components/ui/smart-image";
 
 interface LocationDetailSheetProps {
   locationId: number | null;
@@ -521,12 +522,12 @@ function KitchenDetailCard({ kitchen }: { kitchen: any }) {
               <div className="flex gap-2 flex-wrap">
                 {kitchen.imageUrl && (
                   <a href={getR2ProxyUrl(kitchen.imageUrl)} target="_blank" rel="noopener noreferrer" className="block w-16 h-16 rounded-md overflow-hidden border">
-                    <img src={getR2ProxyUrl(kitchen.imageUrl)} alt="Kitchen" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <SmartImage src={getR2ProxyUrl(kitchen.imageUrl)} alt="Kitchen" className="w-full h-full object-cover" hideOnError />
                   </a>
                 )}
                 {kitchen.galleryImages?.map((url: string, i: number) => (
                   <a key={i} href={getR2ProxyUrl(url)} target="_blank" rel="noopener noreferrer" className="block w-16 h-16 rounded-md overflow-hidden border">
-                    <img src={getR2ProxyUrl(url)} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <SmartImage src={getR2ProxyUrl(url)} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" hideOnError />
                   </a>
                 ))}
               </div>

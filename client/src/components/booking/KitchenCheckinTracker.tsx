@@ -12,6 +12,7 @@
  */
 
 import { useState, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import {
   Camera,
   CheckCircle,
@@ -93,7 +94,7 @@ function StepIcon({ state }: { state: StepState }) {
 
   if (state === "completed") {
     return (
-      <div className={cn(base, "border-green-500 bg-green-50 text-green-600")}>
+      <div className={cn(base, "border-success/30 bg-success/10 text-success")}>
         <CheckCircle className="h-4 w-4" />
       </div>
     )
@@ -103,7 +104,7 @@ function StepIcon({ state }: { state: StepState }) {
       <div
         className={cn(
           base,
-          "border-blue-500 bg-blue-50 text-blue-600 ring-4 ring-blue-100"
+          "border-foreground/20 bg-muted text-foreground ring-4 ring-muted"
         )}
       >
         <Loader2 className="h-4 w-4 animate-spin" />
@@ -112,7 +113,7 @@ function StepIcon({ state }: { state: StepState }) {
   }
   if (state === "error") {
     return (
-      <div className={cn(base, "border-red-500 bg-red-50 text-red-600")}>
+      <div className={cn(base, "border-warning/30 bg-warning/10 text-warning")}>
         <AlertTriangle className="h-4 w-4" />
       </div>
     )
@@ -140,6 +141,12 @@ export function KitchenCheckinTracker({
   startTime,
   endTime,
 }: KitchenCheckinTrackerProps) {
+  const { t: tStrict } = useTranslation("chef");
+  const t = (key: string, defaultText?: string): string => {
+    const val = tStrict(key as any) as string;
+    return val !== key ? val : (defaultText || key);
+  };
+
   const {
     status: data,
     isLoading,
@@ -166,7 +173,7 @@ export function KitchenCheckinTracker({
   const checkinStatus: KitchenCheckinStatus =
     (data?.checkinStatus as KitchenCheckinStatus) || "not_checked_in"
 
-  const steps = buildSteps(checkinStatus, data)
+  const steps = buildSteps(checkinStatus, data, t)
 
   // All checklist items are required by design — chefs must check every one.
   const allCheckinItemsChecked = (checklist?.checkinItems || []).every(
@@ -186,13 +193,13 @@ export function KitchenCheckinTracker({
     if (!allCheckinPhotosUploaded) {
       toast.error(
         checkinPhotoReqs.length > 0
-          ? "Please upload a photo for each required item before checking in"
-          : "Please upload at least one photo of the kitchen condition",
+          ? t("kciErrUploadPhotos", "Please upload a photo for each required item before checking in")
+          : t("kciErrUploadOnePhoto", "Please upload at least one photo of the kitchen condition"),
       )
       return
     }
     if (!allCheckinItemsChecked) {
-      toast.error("Please complete all checklist items before checking in")
+      toast.error(t("kciErrCompleteChecklist", "Please complete all checklist items before checking in"))
       return
     }
     // Build checklist audit trail from checked items
@@ -222,7 +229,7 @@ export function KitchenCheckinTracker({
       toast.error(
         checkoutPhotoReqs.length > 0
           ? "Please upload a photo for each required item before requesting checkout"
-          : "Please upload at least one photo of the kitchen condition",
+          : t("kciErrUploadOnePhoto", "Please upload at least one photo of the kitchen condition"),
       )
       return
     }
@@ -262,11 +269,11 @@ export function KitchenCheckinTracker({
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <ChefHat className="h-5 w-5 text-orange-600" />
-            Kitchen Check-In
+            <ChefHat className="h-5 w-5 text-muted-foreground" />
+            {t("kciDialogTitle", "Kitchen Check-In")}
           </SheetTitle>
           <SheetDescription>
-            {kitchenName || "Kitchen"} {timeLabel && `— ${timeLabel}`}
+            {kitchenName || t("kitchenDefault", "Kitchen")} {timeLabel && `— ${timeLabel}`}
           </SheetDescription>
         </SheetHeader>
 
@@ -279,14 +286,14 @@ export function KitchenCheckinTracker({
             <>
               {/* No-Show Banner */}
               {checkinStatus === "no_show" && (
-                <div className="rounded-lg border bg-red-50 border-red-200 p-4 mb-6">
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 mb-6">
                   <div className="flex items-center gap-2">
-                    <XCircle className="h-5 w-5 text-red-600" />
+                    <XCircle className="h-5 w-5 text-destructive" />
                     <div>
-                      <p className="text-sm font-medium text-red-800">
+                      <p className="text-sm font-medium text-destructive">
                         No-Show Detected
                       </p>
-                      <p className="text-xs text-red-600 mt-0.5">
+                      <p className="text-xs text-muted-foreground mt-0.5">
                         You did not check in within the grace period. Contact
                         the kitchen manager if this is an error.
                       </p>
@@ -306,9 +313,9 @@ export function KitchenCheckinTracker({
                           className={cn(
                             "w-0.5 flex-1 mt-2",
                             step.state === "completed"
-                              ? "bg-green-300"
+                              ? "bg-success/30"
                               : step.state === "active"
-                                ? "bg-blue-200"
+                                ? "bg-muted-foreground/20"
                                 : "bg-muted-foreground/20"
                           )}
                         />
@@ -322,14 +329,14 @@ export function KitchenCheckinTracker({
                             "text-sm font-medium",
                             step.state === "upcoming" &&
                               "text-muted-foreground",
-                            step.state === "error" && "text-red-700"
+                            step.state === "error" && "text-warning"
                           )}
                         >
                           {step.label}
                         </span>
                         {step.state === "active" && (
                           <Badge
-                            variant="info"
+                            variant="outline"
                             className="text-xs font-normal"
                           >
                             In Progress
@@ -356,14 +363,14 @@ export function KitchenCheckinTracker({
 
               {/* Confirmed Checklist Audit (shown after check-in / checkout) */}
               {data?.checkinChecklistItems && Array.isArray(data.checkinChecklistItems) && data.checkinChecklistItems.length > 0 && (
-                <div className="rounded-lg border border-green-200 bg-green-50 p-3 mb-4">
-                  <p className="text-xs text-green-800 font-medium mb-2">Your Check-In Checklist</p>
+                <div className="rounded-lg border p-3 mb-4">
+                  <p className="text-xs font-medium mb-2">Your Check-In Checklist</p>
                   <div className="space-y-1">
                     {data.checkinChecklistItems.map((item: { id: string; label: string; checked: boolean }, index: number) => (
                       <div key={item.id} className="flex items-center gap-2">
                         <Checkbox checked={item.checked} disabled className="pointer-events-none" />
                         <span className="tabular-nums text-xs font-medium text-muted-foreground">{index + 1}.</span>
-                        <span className={cn("text-xs", item.checked ? "text-green-700" : "text-red-600 line-through")}>
+                        <span className={cn("text-xs", item.checked ? "text-foreground" : "text-destructive line-through")}>
                           {item.label}
                         </span>
                       </div>
@@ -372,14 +379,14 @@ export function KitchenCheckinTracker({
                 </div>
               )}
               {data?.checkoutChecklistItems && Array.isArray(data.checkoutChecklistItems) && data.checkoutChecklistItems.length > 0 && (
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 mb-4">
-                  <p className="text-xs text-blue-800 font-medium mb-2">Your Check-Out Checklist</p>
+                <div className="rounded-lg border p-3 mb-4">
+                  <p className="text-xs font-medium mb-2">Your Check-Out Checklist</p>
                   <div className="space-y-1">
                     {data.checkoutChecklistItems.map((item: { id: string; label: string; checked: boolean }, index: number) => (
                       <div key={item.id} className="flex items-center gap-2">
                         <Checkbox checked={item.checked} disabled className="pointer-events-none" />
                         <span className="tabular-nums text-xs font-medium text-muted-foreground">{index + 1}.</span>
-                        <span className={cn("text-xs", item.checked ? "text-blue-700" : "text-red-600 line-through")}>
+                        <span className={cn("text-xs", item.checked ? "text-foreground" : "text-destructive line-through")}>
                           {item.label}
                         </span>
                       </div>
@@ -404,9 +411,9 @@ export function KitchenCheckinTracker({
                 <div className="space-y-3">
                   {/* Manager Instructions */}
                   {checklist?.checkinInstructions && (
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                      <p className="text-xs text-blue-800 font-medium mb-1">Instructions from Manager</p>
-                      <p className="text-xs text-blue-700 whitespace-pre-line">{checklist.checkinInstructions}</p>
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs font-medium mb-1">Instructions from Manager</p>
+                      <p className="text-xs text-muted-foreground whitespace-pre-line">{checklist.checkinInstructions}</p>
                     </div>
                   )}
 
@@ -420,22 +427,22 @@ export function KitchenCheckinTracker({
                       (visibility === 'at_checkin' && canCheckin)
                     );
                     return (accessCode || checklist?.smartLockCheckinInstructions) ? (
-                      <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 space-y-2">
+                      <div className="rounded-lg border p-3 space-y-2">
                         <div className="flex items-center gap-1.5">
-                          <Lock className="size-3.5 text-violet-600" />
-                          <p className="text-xs text-violet-800 font-medium">Smart Lock Access</p>
+                          <Lock className="size-3.5 text-muted-foreground" />
+                          <p className="text-xs font-medium">Smart Lock Access</p>
                         </div>
                         {checklist?.smartLockCheckinInstructions && (
-                          <p className="text-xs text-violet-700 whitespace-pre-line">{checklist.smartLockCheckinInstructions}</p>
+                          <p className="text-xs text-muted-foreground whitespace-pre-line">{checklist.smartLockCheckinInstructions}</p>
                         )}
                         {showCode ? (
-                          <div className="flex items-center gap-2 p-2 rounded-md bg-violet-100 border border-violet-300">
-                            <span className="text-lg font-mono font-bold text-violet-900 tracking-[0.2em]">{accessCode}</span>
+                          <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50 border">
+                            <span className="text-lg font-mono font-bold tracking-[0.2em]">{accessCode}</span>
                           </div>
                         ) : accessCode && visibility === 'at_checkin' && !canCheckin ? (
-                          <p className="text-[11px] text-violet-600 italic">Access code will be shown when check-in window opens</p>
+                          <p className="text-[11px] text-muted-foreground italic">Access code will be shown when check-in window opens</p>
                         ) : accessCode && visibility === 'manual' ? (
-                          <p className="text-[11px] text-violet-600 italic">Contact your kitchen manager for the access code</p>
+                          <p className="text-[11px] text-muted-foreground italic">Contact your kitchen manager for the access code</p>
                         ) : null}
                       </div>
                     ) : null;
@@ -538,9 +545,9 @@ export function KitchenCheckinTracker({
                 <div className="space-y-3">
                   {/* Manager Checkout Instructions */}
                   {checklist?.checkoutInstructions && (
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                      <p className="text-xs text-blue-800 font-medium mb-1">Instructions from Manager</p>
-                      <p className="text-xs text-blue-700 whitespace-pre-line">{checklist.checkoutInstructions}</p>
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs font-medium mb-1">Instructions from Manager</p>
+                      <p className="text-xs text-muted-foreground whitespace-pre-line">{checklist.checkoutInstructions}</p>
                     </div>
                   )}
 
@@ -647,17 +654,17 @@ function WhatHappensNextInfo({ items }: { items: string[] }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
         aria-expanded={open}
       >
         <Info className="h-3.5 w-3.5" />
         <span>What happens next?</span>
       </button>
       {open && (
-        <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3 animate-in fade-in slide-in-from-top-1 duration-150">
+        <div className="mt-2 rounded-lg border p-3 animate-in fade-in slide-in-from-top-1 duration-150">
           <div className="flex items-start gap-2">
-            <Clock className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-            <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+            <Clock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
               {items.map((item, i) => (
                 <li key={i}>{item}</li>
               ))}
@@ -681,7 +688,8 @@ function buildSteps(
         checkoutApprovedAt?: string | null
         noShowDetectedAt?: string | null
       }
-    | undefined
+    | undefined,
+  t: (key: string, defaultText?: string) => string
 ): Step[] {
   const steps: Step[] = []
 
@@ -695,12 +703,12 @@ function buildSteps(
   const isNoShow = checkinStatus === "no_show"
 
   steps.push({
-    label: "Check In",
+    label: t("kciCheckIn", "Check In"),
     description: isCheckedIn
-      ? "You checked in to the kitchen"
+      ? t("kciDescCheckedIn", "You checked in to the kitchen")
       : isNoShow
-        ? "You did not check in — marked as no-show"
-        : "Arrive at the kitchen and check in",
+        ? t("kciDescNoShow", "You did not check in — marked as no-show")
+        : t("kciDescArrive", "Arrive at the kitchen and check in"),
     state: isCheckedIn ? "completed" : isNoShow ? "error" : "upcoming",
     timestamp: data?.checkedInAt,
     icon: <LogIn className="h-4 w-4" />,
@@ -709,9 +717,8 @@ function buildSteps(
   if (isNoShow) {
     // No-show: skip remaining steps
     steps.push({
-      label: "No-Show",
-      description:
-        "Booking was marked as no-show. Contact kitchen manager for assistance.",
+      label: t("kciNoShow", "No-Show"),
+      description: t("kciDescMarkedNoShow", "Booking was marked as no-show. Contact kitchen manager for assistance."),
       state: "error",
       timestamp: data?.noShowDetectedAt,
       icon: <XCircle className="h-4 w-4" />,
@@ -727,12 +734,12 @@ function buildSteps(
     checkinStatus === "checkout_claim_filed"
 
   steps.push({
-    label: "In Progress",
+    label: t("kciInProgress", "In Progress"),
     description: isCooking
-      ? "You're using the kitchen — check out when done"
+      ? t("kciDescUsing", "You're using the kitchen — check out when done")
       : cookingDone
-        ? "Kitchen session completed"
-        : "Use the kitchen during your booked time",
+        ? t("kciDescCompleted", "Kitchen session completed")
+        : t("kciDescUseBooked", "Use the kitchen during your booked time"),
     state: isCooking ? "active" : cookingDone ? "completed" : "upcoming",
     icon: <ChefHat className="h-4 w-4" />,
   })
@@ -744,12 +751,12 @@ function buildSteps(
     checkinStatus === "checkout_claim_filed"
 
   steps.push({
-    label: "Checkout Requested",
+    label: t("kciCheckoutRequested", "Checkout Requested"),
     description: isCheckoutRequested
-      ? "Waiting for manager to review and clear"
+      ? t("kciDescWaitingManager", "Waiting for manager to review and clear")
       : checkoutDone
-        ? "Manager reviewed your checkout"
-        : "Submit photos and request checkout when leaving",
+        ? t("kciDescManagerReviewed", "Manager reviewed your checkout")
+        : t("kciDescSubmitPhotos", "Submit photos and request checkout when leaving"),
     state: isCheckoutRequested
       ? "active"
       : checkoutDone
@@ -762,17 +769,16 @@ function buildSteps(
   // Step 4: Outcome
   if (checkinStatus === "checked_out") {
     steps.push({
-      label: "Cleared",
-      description: "No issues found — your session is complete",
+      label: t("kciCleared", "Cleared"),
+      description: t("kciClearedDesc", "No issues found — your session is complete"),
       state: "completed",
       timestamp: data?.checkoutApprovedAt,
       icon: <ShieldCheck className="h-4 w-4" />,
     })
   } else if (checkinStatus === "checkout_claim_filed") {
     steps.push({
-      label: "Claim Filed",
-      description:
-        "The manager filed a damage/cleaning claim. Check your dashboard.",
+      label: t("kciClaimFiled", "Claim Filed"),
+      description: t("kciDescManagerFiledClaim", "The manager filed a damage/cleaning claim. Check your dashboard."),
       state: "error",
       timestamp: data?.checkoutApprovedAt,
       icon: <FileWarning className="h-4 w-4" />,
@@ -785,8 +791,8 @@ function buildSteps(
     })
   } else {
     steps.push({
-      label: "Outcome",
-      description: "Cleared if no issues, or a claim may be filed",
+      label: t("kciOutcome", "Outcome"),
+      description: t("kciDescOutcomePending", "Completed without issue, or claim filed"),
       state: "upcoming",
       icon: <ShieldCheck className="h-4 w-4" />,
     })

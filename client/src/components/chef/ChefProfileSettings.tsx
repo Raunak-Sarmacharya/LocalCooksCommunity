@@ -20,8 +20,11 @@ import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { cn } from "@/lib/utils";
+import { ChefPageHeader } from "@/components/chef/ui";
+import { useTranslation } from "react-i18next";
 
 export default function ChefProfileSettings() {
+    const { t } = useTranslation("chef");
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const { user: firebaseUser } = useFirebaseAuth();
@@ -44,7 +47,7 @@ export default function ChefProfileSettings() {
         },
         onError: (error) => {
             toast({
-                title: 'Upload failed',
+                title: t("profileUploadFailedTitle", "Upload failed"),
                 description: error,
                 variant: 'destructive',
             });
@@ -136,13 +139,13 @@ export default function ChefProfileSettings() {
     const getApplicationStatusDisplay = (status: string | null) => {
         switch (status) {
             case 'approved':
-                return { label: 'Approved', color: 'bg-green-50 text-green-700 border-green-200' };
+                return { label: t("profileStatusApproved", "Approved"), variant: 'success' as const };
             case 'pending':
-                return { label: 'Pending', color: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+                return { label: t("profileStatusPending", "Pending"), variant: 'warning' as const };
             case 'rejected':
-                return { label: 'Rejected', color: 'bg-red-50 text-red-700 border-red-200' };
+                return { label: t("profileStatusRejected", "Rejected"), variant: 'destructive' as const };
             default:
-                return { label: 'Not Applied', color: 'bg-slate-50 text-slate-600 border-slate-200' };
+                return { label: t("profileStatusNotApplied", "Not Applied"), variant: 'outline' as const };
         }
     };
 
@@ -187,14 +190,14 @@ export default function ChefProfileSettings() {
             queryClient.invalidateQueries({ queryKey: ["/api/user/profile", firebaseUser?.uid] });
             setIsEditingProfile(false);
             toast({
-                title: "Profile updated",
-                description: "Your changes have been saved successfully.",
+                title: t("profileUpdatedTitle", "Profile updated"),
+                description: t("profileUpdatedDesc", "Your changes have been saved successfully."),
             });
         },
         onError: (error: Error) => {
             toast({
-                title: "Update failed",
-                description: error.message || "Failed to update profile",
+                title: t("profileUpdateFailedTitle", "Update failed"),
+                description: error.message || t("profileUpdateFailedDefaultDesc", "Failed to update profile"),
                 variant: "destructive",
             });
         },
@@ -237,7 +240,7 @@ export default function ChefProfileSettings() {
             <div className="flex items-center justify-center min-h-[400px]">
                 <div className="flex flex-col items-center gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground">Loading your profile...</p>
+                    <p className="text-sm text-muted-foreground">{t("profileLoadingProfile", "Loading your profile...")}</p>
                 </div>
             </div>
         );
@@ -247,28 +250,19 @@ export default function ChefProfileSettings() {
 
     return (
         <div className="space-y-8 max-w-4xl mx-auto pb-12">
-            {/* Page Header */}
-            <div>
-                <h1 className="text-2xl font-bold tracking-tight">Profile Settings</h1>
-                <p className="text-muted-foreground mt-1">
-                    Manage your account details and security preferences
-                </p>
-            </div>
+            <ChefPageHeader
+                title={t("profileTitle", "Profile Settings")}
+                description={t("profileDescription", "Manage your account details and security preferences")}
+            />
 
-            {/* Profile Hero Card */}
-            <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-primary via-primary/90 to-primary/80 p-8 text-white shadow-xl">
-                {/* Background Pattern */}
-                <div className="absolute inset-0 opacity-10">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full -translate-y-1/2 translate-x-1/2" />
-                    <div className="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full translate-y-1/2 -translate-x-1/2" />
-                </div>
-
-                <div className="relative flex flex-col sm:flex-row items-center sm:items-start gap-6">
+            {/* Profile header */}
+            <div className="rounded-lg border bg-card p-6 sm:p-8">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
                     {/* Avatar */}
                     <div className="relative group">
-                        <Avatar className="h-28 w-28 border-4 border-white/30 shadow-2xl">
+                        <Avatar className="h-28 w-28 border-2 border-border">
                             <AvatarImage src={avatarUrl || firebaseUser?.photoURL || undefined} alt={displayName} />
-                            <AvatarFallback className="bg-white/20 text-white text-2xl font-semibold">
+                            <AvatarFallback className="bg-muted text-foreground text-2xl font-semibold">
                                 {getInitials()}
                             </AvatarFallback>
                         </Avatar>
@@ -278,9 +272,9 @@ export default function ChefProfileSettings() {
                             className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                         >
                             {isUploading ? (
-                                <Loader2 className="h-6 w-6 animate-spin" />
+                                <Loader2 className="h-6 w-6 animate-spin text-white" />
                             ) : (
-                                <Camera className="h-6 w-6" />
+                                <Camera className="h-6 w-6 text-white" />
                             )}
                         </button>
                         <input
@@ -290,23 +284,21 @@ export default function ChefProfileSettings() {
                             onChange={handleAvatarChange}
                             className="hidden"
                         />
-                        {/* Online indicator */}
-                        <div className="absolute bottom-1 right-1 h-5 w-5 rounded-full bg-green-400 border-2 border-white" />
                     </div>
 
                     {/* Profile Info */}
                     <div className="flex-1 text-center sm:text-left">
-                        <h2 className="text-2xl font-bold">{displayName || 'Your Name'}</h2>
-                        <p className="text-white/80 mt-1">{email}</p>
+                        <h2 className="text-2xl font-bold">{displayName || t("profileYourName", "Your Name")}</h2>
+                        <p className="text-muted-foreground mt-1">{email}</p>
                         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
-                            <Badge className="bg-white/20 text-white border-0 hover:bg-white/30">
+                            <Badge variant="outline">
                                 <ChefHat className="h-3 w-3 mr-1" />
-                                Chef
+                                {t("profileChefBadge", "Chef")}
                             </Badge>
                             {user?.isVerified && (
-                                <Badge className="bg-white/20 text-white border-0 hover:bg-white/30">
+                                <Badge variant="success">
                                     <Shield className="h-3 w-3 mr-1" />
-                                    Verified
+                                    {t("profileVerifiedBadge", "Verified")}
                                 </Badge>
                             )}
                         </div>
@@ -314,13 +306,12 @@ export default function ChefProfileSettings() {
 
                     {/* Edit Button */}
                     <Button
-                        variant="secondary"
+                        variant="outline"
                         size="sm"
                         onClick={() => setIsEditingProfile(!isEditingProfile)}
-                        className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm"
                     >
                         <Edit3 className="h-4 w-4 mr-2" />
-                        {isEditingProfile ? 'Cancel' : 'Edit Profile'}
+                        {isEditingProfile ? t("profileCancel", "Cancel") : t("profileEditProfile", "Edit Profile")}
                     </Button>
                 </div>
             </div>
@@ -330,15 +321,15 @@ export default function ChefProfileSettings() {
                 {/* Personal Information - Takes 2 columns */}
                 <div className="lg:col-span-2 space-y-6">
                     {/* Personal Details Card */}
-                    <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
+                    <div className="rounded-lg border bg-card shadow-none overflow-hidden">
                         <div className="px-6 py-4 border-b bg-muted/30">
                             <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                                    <User className="h-5 w-5 text-primary" />
+                                <div className="h-10 w-10 rounded-lg border flex items-center justify-center">
+                                    <User className="h-5 w-5 text-muted-foreground" />
                                 </div>
                                 <div>
-                                    <h3 className="font-semibold">Personal Information</h3>
-                                    <p className="text-sm text-muted-foreground">Your public profile details</p>
+                                    <h3 className="font-semibold">{t("profilePersonalInformation", "Personal Information")}</h3>
+                                    <p className="text-sm text-muted-foreground">{t("profilePublicProfileDetails", "Your public profile details")}</p>
                                 </div>
                             </div>
                         </div>
@@ -347,13 +338,13 @@ export default function ChefProfileSettings() {
                             {/* Username */}
                             <div className="space-y-2">
                                 <Label htmlFor="username" className="text-sm font-medium">
-                                    Username
+                                    {t("profileUsername", "Username")}
                                 </Label>
                                 <Input
                                     id="username"
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value)}
-                                    placeholder="johndoe"
+                                    placeholder={t("profileUsernamePlaceholder", "johndoe")}
                                     disabled={!isEditingProfile}
                                     className={cn(
                                         "h-11 transition-colors",
@@ -365,13 +356,13 @@ export default function ChefProfileSettings() {
                             {/* Display Name */}
                             <div className="space-y-2">
                                 <Label htmlFor="displayName" className="text-sm font-medium">
-                                    Display Name
+                                    {t("profileDisplayName", "Display Name")}
                                 </Label>
                                 <Input
                                     id="displayName"
                                     value={displayName}
                                     onChange={(e) => setDisplayName(e.target.value)}
-                                    placeholder="John Doe"
+                                    placeholder={t("profileDisplayNamePlaceholder", "John Doe")}
                                     disabled={!isEditingProfile}
                                     className={cn(
                                         "h-11 transition-colors",
@@ -383,7 +374,7 @@ export default function ChefProfileSettings() {
                             {/* Email - Read only */}
                             <div className="space-y-2">
                                 <Label htmlFor="email" className="text-sm font-medium">
-                                    Email Address
+                                    {t("profileEmailAddress", "Email Address")}
                                 </Label>
                                 <div className="relative">
                                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -398,14 +389,14 @@ export default function ChefProfileSettings() {
                                 </div>
                                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                                     <Shield className="h-3 w-3" />
-                                    Email is linked to your authentication and cannot be changed here
+                                    {t("profileEmailLinkedNotice", "Email is linked to your authentication and cannot be changed here")}
                                 </p>
                             </div>
 
                             {/* Phone */}
                             <div className="space-y-2">
                                 <Label htmlFor="phone" className="text-sm font-medium">
-                                    Phone Number
+                                    {t("profilePhoneNumber", "Phone Number")}
                                 </Label>
                                 <div className="relative">
                                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -418,7 +409,7 @@ export default function ChefProfileSettings() {
                                             "h-11 pl-10 transition-colors",
                                             !isEditingProfile && "bg-muted"
                                         )}
-                                        placeholder="+1 (555) 000-0000"
+                                        placeholder={t("profilePhonePlaceholder", "+1 (555) 000-0000")}
                                         disabled={!isEditingProfile}
                                     />
                                 </div>
@@ -430,7 +421,7 @@ export default function ChefProfileSettings() {
                                     <StatusButton
                                         status={saveProfileAction.status}
                                         onClick={saveProfileAction.execute}
-                                        labels={{ idle: "Save Changes", loading: "Saving", success: "Saved" }}
+                                        labels={{ idle: t("profileSaveChanges", "Save Changes"), loading: t("profileSaving", "Saving"), success: t("profileSaved", "Saved") }}
                                     />
                                 </div>
                             )}
@@ -438,15 +429,15 @@ export default function ChefProfileSettings() {
                     </div>
 
                     {/* Security Card */}
-                    <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
+                    <div className="rounded-lg border bg-card shadow-none overflow-hidden">
                         <div className="px-6 py-4 border-b bg-muted/30">
                             <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 rounded-lg bg-amber-100 flex items-center justify-center">
-                                    <KeyRound className="h-5 w-5 text-amber-600" />
+                                <div className="h-10 w-10 rounded-lg border flex items-center justify-center">
+                                    <KeyRound className="h-5 w-5 text-muted-foreground" />
                                 </div>
                                 <div>
-                                    <h3 className="font-semibold">Security</h3>
-                                    <p className="text-sm text-muted-foreground">Manage your password and account security</p>
+                                    <h3 className="font-semibold">{t("pfSecurityTitle")}</h3>
+                                    <p className="text-sm text-muted-foreground">{t("pfSecurityDesc")}</p>
                                 </div>
                             </div>
                         </div>
@@ -460,35 +451,31 @@ export default function ChefProfileSettings() {
                 {/* Sidebar - Account Summary */}
                 <div className="space-y-6">
                     {/* Account Status Card */}
-                    <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
+                    <div className="rounded-lg border bg-card shadow-none overflow-hidden">
                         <div className="px-5 py-4 border-b bg-muted/30">
-                            <h3 className="font-semibold">Account Status</h3>
+                            <h3 className="font-semibold">{t("pfAccountStatus")}</h3>
                         </div>
                         <div className="p-5 space-y-4">
                             <div className="flex items-center justify-between">
-                                <span className="text-sm text-muted-foreground">Account Type</span>
-                                <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
-                                    Chef
-                                </Badge>
+                                <span className="text-sm text-muted-foreground">{t("pfAccountType")}</span>
+                                <Badge variant="outline">{t("pfRoleChef")}</Badge>
                             </div>
                             <Separator />
                             <div className="flex items-center justify-between">
-                                <span className="text-sm text-muted-foreground">Email Verified</span>
+                                <span className="text-sm text-muted-foreground">{t("pfEmailVerified")}</span>
                                 {user?.isVerified ? (
-                                    <div className="flex items-center gap-1 text-green-600">
-                                        <CheckCircle2 className="h-4 w-4" />
-                                        <span className="text-sm font-medium">Yes</span>
+                                    <div className="flex items-center gap-1 text-muted-foreground">
+                                        <CheckCircle2 className="h-4 w-4 text-success" />
+                                        <span className="text-sm font-medium">{t("pfYes")}</span>
                                     </div>
                                 ) : (
-                                    <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                                        Pending
-                                    </Badge>
+                                    <Badge variant="warning">{t("pfPending")}</Badge>
                                 )}
                             </div>
                             <Separator />
                             <div className="flex items-center justify-between">
-                                <span className="text-sm text-muted-foreground">Application</span>
-                                <Badge variant="outline" className={appStatus.color}>
+                                <span className="text-sm text-muted-foreground">{t("pfApplication")}</span>
+                                <Badge variant={appStatus.variant}>
                                     <ChefHat className="h-3 w-3 mr-1" />
                                     {appStatus.label}
                                 </Badge>
@@ -497,26 +484,26 @@ export default function ChefProfileSettings() {
                     </div>
 
                     {/* Quick Tips Card */}
-                    <div className="rounded-lg border border-primary/20 bg-primary/5 overflow-hidden">
+                    <div className="rounded-lg border overflow-hidden">
                         <div className="p-5">
                             <div className="flex items-center gap-2 mb-3">
-                                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                                    <Shield className="h-4 w-4 text-primary" />
+                                <div className="h-8 w-8 rounded-lg border flex items-center justify-center">
+                                    <Shield className="h-4 w-4 text-muted-foreground" />
                                 </div>
-                                <h3 className="font-semibold">Security Tips</h3>
+                                <h3 className="font-semibold">{t("pfSecurityTips")}</h3>
                             </div>
                             <ul className="space-y-2 text-sm text-muted-foreground">
                                 <li className="flex items-start gap-2">
-                                    <CheckCircle2 className="h-4 w-4 mt-0.5 text-primary flex-shrink-0" />
-                                    <span>Use a strong, unique password</span>
+                                    <CheckCircle2 className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                                    <span>{t("pfTipStrongPassword")}</span>
                                 </li>
                                 <li className="flex items-start gap-2">
-                                    <CheckCircle2 className="h-4 w-4 mt-0.5 text-primary flex-shrink-0" />
-                                    <span>Keep your email address up to date</span>
+                                    <CheckCircle2 className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                                    <span>{t("pfTipEmailCurrent")}</span>
                                 </li>
                                 <li className="flex items-start gap-2">
-                                    <CheckCircle2 className="h-4 w-4 mt-0.5 text-primary flex-shrink-0" />
-                                    <span>Review account activity regularly</span>
+                                    <CheckCircle2 className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                                    <span>{t("pfTipReviewActivity")}</span>
                                 </li>
                             </ul>
                         </div>

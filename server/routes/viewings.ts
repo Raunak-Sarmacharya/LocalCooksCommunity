@@ -267,8 +267,6 @@ async function calculateAvailableSlots(
  */
 router.get(
   "/calendar-availability/:locationId",
-  requireFirebaseAuthWithUser,
-  requireChef,
   async (req: Request, res: Response) => {
     try {
       const locationId = parseInt(req.params.locationId);
@@ -679,7 +677,6 @@ router.delete(
  */
 router.get(
   "/available-slots/:locationId",
-  requireFirebaseAuthWithUser,
   async (req: Request, res: Response) => {
     try {
       const locationId = parseInt(req.params.locationId);

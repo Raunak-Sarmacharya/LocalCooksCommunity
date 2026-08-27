@@ -2,13 +2,24 @@ import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
 import TermsContent from "@/components/legal/TermsContent";
+import TermsContent_fr from "@/components/legal/TermsContent_fr";
+import TermsContent_uk from "@/components/legal/TermsContent_uk";
 import { motion } from "framer-motion";
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
+import { useTranslation } from "react-i18next";
 
 export default function Terms() {
+  const { i18n } = useTranslation();
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
+
+  const renderContent = () => {
+    if (i18n.language.startsWith('fr')) return <TermsContent_fr />;
+    if (i18n.language.startsWith('uk')) return <TermsContent_uk />;
+    return <TermsContent />;
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">
@@ -34,7 +45,9 @@ export default function Terms() {
               LOCAL COOKS PLATFORM TERMS OF SERVICE
             </h1>
 
-            <TermsContent />
+            <Suspense fallback={<div>Loading terms of service...</div>}>
+              {renderContent()}
+            </Suspense>
           </div>
         </motion.div>
       </main>

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useApplicationStatus } from "@/hooks/use-application-status";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -5,6 +6,7 @@ import { motion } from "framer-motion";
 import { useLocation } from "wouter";
 
 export default function CTASection() {
+  const { t } = useTranslation("landing");
   const [, navigate] = useLocation();
   const { user } = useFirebaseAuth();
   const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
@@ -96,14 +98,12 @@ export default function CTASection() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
                     </svg>
                   </div>
-                  <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-brand-text mb-2 sm:mb-3 group-hover:text-brand-primary transition-colors duration-300">Chef</h3>
-                  <p className="text-brand-text text-sm sm:text-base md:text-lg mb-4 sm:mb-6 font-sans leading-relaxed px-2">Share your culinary skills with the community</p>
+                  <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-brand-text mb-2 sm:mb-3 group-hover:text-brand-primary transition-colors duration-300">{t("chef")}</h3>
+                  <p className="text-brand-text text-sm sm:text-base md:text-lg mb-4 sm:mb-6 font-sans leading-relaxed px-2">{t("shareCulinarySkills")}</p>
                   <Button
                     onClick={handleChefClick}
                     className="w-full bg-gradient-to-r from-brand-primary to-[#FF5470] hover:from-[#FF5470] hover:to-brand-primary text-white font-bold py-3 sm:py-4 px-6 sm:px-8 rounded-xl transition-all duration-300 shadow-xl hover:shadow-2xl hover:-translate-y-1 transform text-base sm:text-lg min-h-[48px]"
-                  >
-                    Apply as Chef
-                  </Button>
+                  >{t("applyAsChef")}</Button>
                 </div>
               </motion.div>
             </div>

@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { useTranslation } from "react-i18next";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
 import { Button } from "@/components/ui/button";
@@ -16,10 +17,12 @@ import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
 import SEOHead from "@/components/SEO/SEOHead";
+import { getChefPostAuthPath } from "@/config/chef-onboarding-steps";
 
 export default function EnhancedAuthPage() {
+  const { t } = useTranslation("auth");
   const [location, setLocation] = useLocation();
-  const { user, loading, logout, refreshUserData } = useFirebaseAuth();
+  const { user, loading, logout, refreshUserData, handleEmailLinkSignIn } = useFirebaseAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -79,6 +82,17 @@ export default function EnhancedAuthPage() {
     }
   };
 
+  // Handle email link sign-in on mount
+  useEffect(() => {
+    const handleEmailSignIn = async () => {
+      try {
+        await handleEmailLinkSignIn();
+      } catch (error) {
+        logger.error('Failed to handle email link sign-in:', error);
+      }
+    };
+    handleEmailSignIn();
+  }, [handleEmailLinkSignIn]);
 
 
   // Handle initial load detection
@@ -127,6 +141,7 @@ export default function EnhancedAuthPage() {
             
             setUserMeta(userData);
             hasUserMetaRef.current = true; // Mark that we successfully fetched userMeta
+
             
             // **CRITICAL WELCOME SCREEN LOGIC**
             // Show welcome screen if user is verified but hasn't seen welcome
@@ -217,7 +232,7 @@ export default function EnhancedAuthPage() {
         
         // Redirect based on role:
         // - Admins go to admin dashboard
-        // - Chefs go to chef-setup for onboarding wizard
+        // - Chefs go to chef-setup for the existing OnboardJS wizard
         // - Others go to dashboard
         const redirectPath = getRedirectPath();
         let targetPath = redirectPath !== '/' ? redirectPath : '/dashboard';
@@ -225,8 +240,10 @@ export default function EnhancedAuthPage() {
         if (redirectPath === '/' || redirectPath === '/dashboard') {
           if (userMeta?.role === 'admin') {
             targetPath = '/admin';
-          } else if (userMeta?.role === 'chef') {
-            targetPath = '/chef-setup';
+          } else if (userMeta?.role === 'manager') {
+            targetPath = '/manager/dashboard';
+          } else {
+            targetPath = getChefPostAuthPath(userMeta);
           }
         }
         logger.info(`🚀 WELCOME COMPLETE - REDIRECTING TO: ${targetPath}`);
@@ -236,12 +253,13 @@ export default function EnhancedAuthPage() {
         const errorText = await response.text();
         logger.error('⚠️ Error details:', errorText);
         
-        // Still redirect on API failure - chefs go to chef-setup
         let targetPath = '/dashboard';
         if (userMeta?.role === 'admin') {
           targetPath = '/admin';
-        } else if (userMeta?.role === 'chef') {
-          targetPath = '/chef-setup';
+        } else if (userMeta?.role === 'manager') {
+          targetPath = '/manager/dashboard';
+        } else {
+          targetPath = getChefPostAuthPath(userMeta);
         }
         logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
         setLocation(targetPath);
@@ -249,12 +267,13 @@ export default function EnhancedAuthPage() {
     } catch (error) {
       logger.error('❌ Error completing welcome screen:', error);
       
-      // Still redirect on error - chefs go to chef-setup
       let targetPath = '/dashboard';
       if (userMeta?.role === 'admin') {
         targetPath = '/admin';
-      } else if (userMeta?.role === 'chef') {
-        targetPath = '/chef-setup';
+      } else if (userMeta?.role === 'manager') {
+        targetPath = '/manager/dashboard';
+      } else {
+        targetPath = getChefPostAuthPath(userMeta);
       }
       logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
       setLocation(targetPath);
@@ -285,6 +304,8 @@ export default function EnhancedAuthPage() {
             targetPath = '/admin';
           } else if (userMeta?.role === 'manager') {
             targetPath = '/manager/dashboard';
+          } else {
+            targetPath = getChefPostAuthPath(userMeta);
           }
         }
 
@@ -325,8 +346,7 @@ export default function EnhancedAuthPage() {
         } else if (userMeta.role === 'manager') {
           targetPath = '/manager/dashboard';
         } else {
-          // Chef or default to dashboard
-          targetPath = '/dashboard';
+          targetPath = getChefPostAuthPath(userMeta);
         }
       }
       
@@ -387,8 +407,8 @@ export default function EnhancedAuthPage() {
   return (
     <>
       <SEOHead
-        title="Sign In or Register — Join LocalCooks"
-        description="Create your LocalCooks account or sign in to access commercial kitchen booking, manage your food business, and connect with the local food community in St. John's, Newfoundland."
+        title={t("seoAuthTitle", "Sign In or Register — Join LocalCooks")}
+        description={t("seoAuthDesc", "Create your LocalCooks account or sign in to access commercial kitchen booking, manage your food business, and connect with the local food community in St. John's, Newfoundland.")}
         canonicalUrl="/auth"
         breadcrumbs={[
           { name: "LocalCooks", url: "https://chef.localcooks.ca/" },
@@ -426,7 +446,7 @@ export default function EnhancedAuthPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4 }}
               >
-                {activeTab === "login" ? "Welcome back" : "Create your account"}
+                {activeTab === "login" ? t("welcomeBack", "Welcome back") : t("createYourAccount", "Create your account")}
               </motion.h1>
               <motion.p
                 className="text-gray-600 mt-2 leading-relaxed"
@@ -436,8 +456,8 @@ export default function EnhancedAuthPage() {
                 transition={{ duration: 0.4, delay: 0.1 }}
               >
                 {activeTab === "login"
-                  ? "Sign in to access your Local Cooks account and track your application status"
-                  : "Join Local Cooks and start your culinary journey with us"}
+                  ? t("loginSubtitle", "Sign in to access your Local Cooks account and track your application status")
+                  : t("registerSubtitle", "Join Local Cooks and start your culinary journey with us")}
               </motion.p>
             </motion.div>
 
@@ -458,13 +478,13 @@ export default function EnhancedAuthPage() {
                   <div className="flex-1">
                     {successMessageType === 'password-reset' ? (
                       <>
-                        <p className="text-sm font-medium text-green-800">Password reset successful!</p>
-                        <p className="text-xs text-green-600 mt-1">You can now sign in with your new password.</p>
+                        <p className="text-sm font-medium text-green-800">{t("passwordResetSuccessTitle", "Password reset successful!")}</p>
+                        <p className="text-xs text-green-600 mt-1">{t("passwordResetSuccessBody", "You can now sign in with your new password.")}</p>
                       </>
                     ) : (
                       <>
-                        <p className="text-sm font-medium text-green-800">Email verified successfully!</p>
-                        <p className="text-xs text-green-600 mt-1">Your account is now verified. Please sign in with your credentials to continue.</p>
+                        <p className="text-sm font-medium text-green-800">{t("emailVerifiedSuccessTitle", "Email verified successfully!")}</p>
+                        <p className="text-xs text-green-600 mt-1">{t("emailVerifiedSuccessBody", "Your account is now verified. Please sign in with your credentials to continue.")}</p>
                       </>
                     )}
                   </div>
@@ -485,11 +505,11 @@ export default function EnhancedAuthPage() {
               <TabsList className="grid w-full grid-cols-2 mb-6">
                 <TabsTrigger value="login" className="flex items-center gap-2">
                   <LogIn className="w-4 h-4" />
-                  Login
+                  {t("loginTab", "Login")}
                 </TabsTrigger>
                 <TabsTrigger value="register" className="flex items-center gap-2">
                   <UserPlus className="w-4 h-4" />
-                  Register
+                  {t("registerTab", "Register")}
                 </TabsTrigger>
               </TabsList>
 
@@ -516,13 +536,13 @@ export default function EnhancedAuthPage() {
               className="mt-8 text-center"
             >
               <p className="text-sm text-gray-500">
-                {activeTab === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
+                {activeTab === "login" ? t("noAccount", "Don't have an account?") : t("alreadyHaveAccount", "Already have an account?")}{" "}
                 <Button
                   variant="link"
                   className="text-blue-600 hover:text-blue-700 font-semibold p-0 h-auto"
                   onClick={() => setActiveTab(activeTab === "login" ? "register" : "login")}
                 >
-                  {activeTab === "login" ? "Register" : "Login"}
+                  {activeTab === "login" ? t("registerTab", "Register") : t("loginTab", "Login")}
                 </Button>
               </p>
             </motion.div>
@@ -561,7 +581,7 @@ export default function EnhancedAuthPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.5 }}
             >
-              Join <span className="font-logo">Local Cooks</span>
+              {t("heroJoinTitle", "Join")} <span className="font-logo">{t("heroJoinBrand", "Local Cooks")}</span>
             </motion.h2>
             <motion.p
               className="text-white/90 mb-8 text-lg leading-relaxed"
@@ -569,7 +589,7 @@ export default function EnhancedAuthPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.6 }}
             >
-              Apply to become a verified cook and start your culinary journey with us. Track your application status and get updates on your approval process.
+              {t("heroJoinDesc", "Apply to become a verified cook and start your culinary journey with us. Track your application status and get updates on your approval process.")}
             </motion.p>
             <motion.ul
               initial={{ opacity: 0 }}
@@ -578,9 +598,9 @@ export default function EnhancedAuthPage() {
               className="space-y-4"
             >
               {[
-                "Monitor your application progress",
-                "Receive updates on your status",
-                "Access exclusive cooking resources"
+                t("heroBullet1", "Monitor your application progress"),
+                t("heroBullet2", "Receive updates on your status"),
+                t("heroBullet3", "Access exclusive cooking resources")
               ].map((item, index) => (
                 <motion.li
                   key={index}

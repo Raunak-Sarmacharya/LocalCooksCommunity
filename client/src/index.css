@@ -12,6 +12,53 @@
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+
+  .image-shimmer {
+    background-color: hsl(20 28% 94%);
+    background-image:
+      radial-gradient(ellipse at 28% 35%, hsl(348 85% 59% / 0.08), transparent 52%),
+      linear-gradient(
+        105deg,
+        transparent 0%,
+        transparent 38%,
+        hsl(0 0% 100% / 0.72) 50%,
+        transparent 62%,
+        transparent 100%
+      );
+    background-size: 100% 100%, 220% 100%;
+    background-repeat: no-repeat;
+    animation: image-shimmer-sweep 1.35s ease-in-out infinite;
+  }
+
+  .dark .image-shimmer {
+    background-color: hsl(220 14% 16%);
+    background-image:
+      radial-gradient(ellipse at 28% 35%, hsl(348 85% 59% / 0.12), transparent 52%),
+      linear-gradient(
+        105deg,
+        transparent 0%,
+        transparent 38%,
+        hsl(0 0% 100% / 0.08) 50%,
+        transparent 62%,
+        transparent 100%
+      );
+  }
+}
+
+@keyframes image-shimmer-sweep {
+  0% {
+    background-position: 0 0, -80% 0;
+  }
+  100% {
+    background-position: 0 0, 180% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-shimmer {
+    animation: none;
+    background-image: radial-gradient(ellipse at 28% 35%, hsl(348 85% 59% / 0.08), transparent 52%);
+  }
 }
 
 :root {

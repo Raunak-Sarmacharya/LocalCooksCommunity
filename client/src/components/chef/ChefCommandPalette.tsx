@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   CommandDialog,
   CommandEmpty,
@@ -21,37 +23,44 @@ import {
   AlertTriangle,
   Store,
   MessageSquare,
+  DollarSign,
 } from "lucide-react";
+import { useChefSidebarHiddenItems } from "@/hooks/use-chef-sidebar-hidden-items";
 
 interface ChefCommandPaletteProps {
   onNavigate: (view: string) => void;
 }
 
 const navigationItems = [
-  { label: "Overview", value: "overview", icon: LayoutDashboard, group: "Navigation" },
-  { label: "My Application", value: "applications", icon: FileText, group: "Navigation" },
-  { label: "My Kitchens", value: "kitchen-applications", icon: Building, group: "Navigation" },
-  { label: "My Bookings", value: "bookings", icon: Calendar, group: "Navigation" },
-  { label: "Training", value: "training", icon: BookOpen, group: "Navigation" },
-  { label: "Messages", value: "messages", icon: MessageCircle, group: "Navigation" },
-  { label: "Discover Kitchens", value: "discover-kitchens", icon: Search, group: "Navigation" },
-  { label: "Support", value: "support", icon: Headphones, group: "Navigation" },
-  { label: "Feedback", value: "feedback", icon: MessageSquare, group: "Navigation" },
+  { labelKey: "shellOverview", value: "overview", icon: LayoutDashboard, group: "shellNavigation" },
+  { labelKey: "shellMyApplication", value: "applications", icon: FileText, group: "shellNavigation" },
+  { labelKey: "shellMyKitchens", value: "kitchen-applications", icon: Building, group: "shellNavigation" },
+  { labelKey: "shellMyBookings", value: "bookings", icon: Calendar, group: "shellNavigation" },
+  { labelKey: "shellMyEarnings", value: "seller-revenue", icon: DollarSign, group: "shellNavigation" },
+  { labelKey: "shellLinkedAccounts", value: "my-account", icon: Store, group: "shellNavigation" },
+  { labelKey: "shellTraining", value: "training", icon: BookOpen, group: "shellNavigation" },
+  { labelKey: "shellMessages", value: "messages", icon: MessageCircle, group: "shellNavigation" },
+  { labelKey: "shellDiscoverKitchens", value: "discover-kitchens", icon: Search, group: "shellNavigation" },
+  { labelKey: "shellSupport", value: "support", icon: Headphones, group: "shellNavigation" },
+  { labelKey: "shellFeedback", value: "feedback", icon: MessageSquare, group: "shellNavigation" },
 ];
 
 const financialItems = [
-  { label: "Transaction History", value: "transactions", icon: CreditCard, group: "Financial" },
-  { label: "Resolution Center", value: "damage-claims", icon: AlertTriangle, group: "Financial" },
+  { labelKey: "shellTransactions", value: "transactions", icon: CreditCard, group: "shellFinancial" },
+  { labelKey: "shellResolutionCenter", value: "issues-refunds", icon: AlertTriangle, group: "shellFinancial" },
 ];
 
 const quickActions = [
-  { label: "Apply to Sell on LocalCooks", value: "applications", icon: Store, group: "Quick Actions" },
-  { label: "Book a Kitchen Session", value: "discover-kitchens", icon: Calendar, group: "Quick Actions" },
-  { label: "Start Live Chat", value: "support", icon: MessageCircle, group: "Quick Actions" },
+  { labelKey: "shellApplyToSell", value: "applications", icon: Store, group: "shellQuickActions" },
+  { labelKey: "shellBookKitchenSession", value: "discover-kitchens", icon: Calendar, group: "shellQuickActions" },
+  { labelKey: "shellStartLiveChat", value: "support", icon: MessageCircle, group: "shellQuickActions" },
 ];
 
 export default function ChefCommandPalette({ onNavigate }: ChefCommandPaletteProps) {
   const [open, setOpen] = useState(false);
+  const { t } = useTranslation("chef");
+  const tr = t as unknown as TFunction;
+  const hiddenItems = useChefSidebarHiddenItems();
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -70,46 +79,49 @@ export default function ChefCommandPalette({ onNavigate }: ChefCommandPalettePro
     onNavigate(value);
   };
 
+  const visibleNav = navigationItems.filter((item) => !hiddenItems.includes(item.value));
+  const visibleFinancial = financialItems.filter((item) => !hiddenItems.includes(item.value));
+
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder="Search pages, actions..." />
+      <CommandInput placeholder={tr("shellSearchCommand" as never)} />
       <CommandList>
-        <CommandEmpty>No results found.</CommandEmpty>
-        <CommandGroup heading="Navigation">
-          {navigationItems.map((item) => (
+        <CommandEmpty>{tr("shellNoResults" as never)}</CommandEmpty>
+        <CommandGroup heading={tr("shellNavigation" as never)}>
+          {visibleNav.map((item) => (
             <CommandItem
               key={item.value}
-              value={item.label}
+              value={tr(item.labelKey as never)}
               onSelect={() => handleSelect(item.value)}
             >
               <item.icon className="mr-2 h-4 w-4 text-muted-foreground" />
-              <span>{item.label}</span>
+              <span>{tr(item.labelKey as never)}</span>
             </CommandItem>
           ))}
         </CommandGroup>
         <CommandSeparator />
-        <CommandGroup heading="Financial">
-          {financialItems.map((item) => (
+        <CommandGroup heading={tr("shellFinancial" as never)}>
+          {visibleFinancial.map((item) => (
             <CommandItem
               key={item.value}
-              value={item.label}
+              value={tr(item.labelKey as never)}
               onSelect={() => handleSelect(item.value)}
             >
               <item.icon className="mr-2 h-4 w-4 text-muted-foreground" />
-              <span>{item.label}</span>
+              <span>{tr(item.labelKey as never)}</span>
             </CommandItem>
           ))}
         </CommandGroup>
         <CommandSeparator />
-        <CommandGroup heading="Quick Actions">
+        <CommandGroup heading={tr("shellQuickActions" as never)}>
           {quickActions.map((item) => (
             <CommandItem
-              key={item.label}
-              value={item.label}
+              key={item.labelKey}
+              value={tr(item.labelKey as never)}
               onSelect={() => handleSelect(item.value)}
             >
               <item.icon className="mr-2 h-4 w-4 text-muted-foreground" />
-              <span>{item.label}</span>
+              <span>{tr(item.labelKey as never)}</span>
             </CommandItem>
           ))}
         </CommandGroup>

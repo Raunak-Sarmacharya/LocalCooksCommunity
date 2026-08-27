@@ -9,8 +9,10 @@ import EscalatedPenalties from "@/components/admin/EscalatedPenalties";
 import { AdminLayout } from "@/components/admin/layout/AdminLayout";
 import type { AdminSection } from "@/components/admin/layout/AdminSidebar";
 import { KitchenLicenseApprovalSection } from "@/components/admin/sections/KitchenLicenseApprovalSection";
+import { AdminKitchenApplicationsStep1Section } from "@/components/admin/sections/AdminKitchenApplicationsStep1Section";
 import { ApplicationProgressTracker } from "@/components/admin/ApplicationProgressTracker";
 import { PlatformSettingsSection } from "@/components/admin/sections/PlatformSettingsSection";
+import { PlatformRequirementsSection } from "@/components/admin/sections/PlatformRequirementsSection";
 import { ManagerRevenuesSection } from "@/components/admin/sections/ManagerRevenuesSection";
 import { PlatformOverviewSection } from "@/components/admin/sections/PlatformOverviewSection";
 import { AdminTransactionHistory } from "@/components/admin/sections/AdminTransactionHistory";
@@ -1148,6 +1150,9 @@ function AdminDashboard() {
           </div>
         );
 
+      case "kitchen-applications-step1":
+        return <AdminKitchenApplicationsStep1Section />;
+
       case "kitchen-licenses":
         return <KitchenLicenseApprovalSection />;
 
@@ -1214,6 +1219,9 @@ function AdminDashboard() {
 
       case "platform-settings":
         return <PlatformSettingsSection />;
+
+      case "platform-requirements":
+        return <PlatformRequirementsSection />;
 
       case "overstay-settings":
         return (

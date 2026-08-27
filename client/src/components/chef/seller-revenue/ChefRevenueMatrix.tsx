@@ -14,6 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 const MAX_WEEKLY_BARS = 12;
 
@@ -36,6 +37,7 @@ interface ChefRevenueMatrixProps {
 }
 
 export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
+  const { t, i18n } = useTranslation("chef");
   const [view, setView] = useState<"weekly" | "monthly">("monthly");
   // windowStart: index into formattedData where the visible 12-bar window begins
   const [windowStart, setWindowStart] = useState<number>(0);
@@ -74,8 +76,8 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
       const end = new Date(start);
       end.setDate(start.getDate() + 6);
 
-      const startMonth = start.toLocaleDateString("en-US", { month: "short" });
-      const endMonth = end.toLocaleDateString("en-US", { month: "short" });
+      const startMonth = start.toLocaleDateString(i18n.language, { month: "short" });
+      const endMonth = end.toLocaleDateString(i18n.language, { month: "short" });
       const startDay = start.getDate();
       const endDay = end.getDate();
 
@@ -84,11 +86,13 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
           ? `${startMonth} ${startDay}–${endDay}`
           : `${startMonth} ${startDay}–${endMonth} ${endDay}`;
 
-      const shortLabel = `Week ${weekNum}||${dateLabel}`;
-      const fullLabel =
-        startMonth === endMonth
-          ? `Week ${weekNum}: ${startMonth} ${startDay}–${endDay}, ${yearNum}`
-          : `Week ${weekNum}: ${startMonth} ${startDay}–${endMonth} ${endDay}, ${yearNum}`;
+      const shortLabel = `${t("revenueChartWeekShort", { weekNum, defaultValue: "Week {weekNum}" })}||${dateLabel}`;
+      const fullLabel = t("revenueChartWeekFull", {
+        weekNum,
+        dateRange: dateLabel,
+        year: yearNum,
+        defaultValue: "Week {weekNum}: {dateRange}, {year}",
+      });
 
       return { shortLabel, fullLabel };
     };
@@ -101,7 +105,7 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
         const [year, month] = item.period.split("-");
         if (year && month) {
           const date = new Date(parseInt(year), parseInt(month) - 1);
-          formattedPeriod = date.toLocaleString("en-US", { month: "short", year: "numeric" });
+          formattedPeriod = date.toLocaleString(i18n.language, { month: "short", year: "numeric" });
           tooltipLabel = formattedPeriod;
         }
       } else {
@@ -177,18 +181,18 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
   if (!data || (!data.weekly?.length && !data.monthly?.length)) return null;
 
   const chartConfig = {
-    gross_sales: { label: "Gross Sales", color: "hsl(var(--chart-1))" },
-    base_earnings: { label: "Base Earnings", color: "hsl(var(--chart-2))" },
-    tips: { label: "Tips", color: "hsl(var(--chart-3))" },
-    deductions: { label: "Stripe & Fees", color: "hsl(var(--destructive))" },
+    gross_sales: { label: t("revenueGrossSalesLabel", "Gross Sales"), color: "hsl(var(--chart-1))" },
+    base_earnings: { label: t("revenueBaseEarningsLabel", "Base Earnings"), color: "hsl(var(--chart-2))" },
+    tips: { label: t("revenueTipsLabel", "Tips"), color: "hsl(var(--chart-3))" },
+    deductions: { label: t("revenueDeductionsLabel", "Stripe & Fees"), color: "hsl(var(--destructive))" },
   };
 
   return (
     <Card className="mb-8 overflow-hidden border shadow-sm">
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 gap-4">
         <div>
-          <CardTitle className="text-xl font-bold">Revenue Metrics</CardTitle>
-          <CardDescription>Analyze your sales and earnings over time</CardDescription>
+          <CardTitle className="text-xl font-bold">{t("revenueMatrixTitle", "Revenue Metrics")}</CardTitle>
+          <CardDescription>{t("revenueMatrixDescription", "Analyze your sales and earnings over time")}</CardDescription>
         </div>
         <Tabs
           value={view}
@@ -196,8 +200,8 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
           className="w-full sm:w-[200px]"
         >
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="weekly">Weekly</TabsTrigger>
-            <TabsTrigger value="monthly">Monthly</TabsTrigger>
+            <TabsTrigger value="weekly">{t("revenueViewWeekly", "Weekly")}</TabsTrigger>
+            <TabsTrigger value="monthly">{t("revenueViewMonthly", "Monthly")}</TabsTrigger>
           </TabsList>
         </Tabs>
       </CardHeader>
@@ -215,7 +219,7 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
                   className="h-7 px-2 gap-1 text-xs"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
-                  Older
+                  {t("revenueOlder", "Older")}
                 </Button>
                 <span className="text-xs text-muted-foreground font-medium">
                   {rangeLabel}
@@ -227,7 +231,7 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
                   disabled={!canGoForward}
                   className="h-7 px-2 gap-1 text-xs"
                 >
-                  Newer
+                  {t("revenueNewer", "Newer")}
                   <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -347,19 +351,19 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
                     <Legend wrapperStyle={{ paddingTop: "20px" }} />
                     <Bar
                       dataKey="base_earnings"
-                      name="Base Earnings"
+                      name={t("revenueBaseEarningsLabel", "Base Earnings")}
                       stackId="revenue"
                       fill="var(--color-base_earnings)"
                     />
                     <Bar
                       dataKey="tips"
-                      name="Tips"
+                      name={t("revenueTipsLabel", "Tips")}
                       stackId="revenue"
                       fill="var(--color-tips)"
                     />
                     <Bar
                       dataKey="deductions"
-                      name="Stripe & Fees"
+                      name={t("revenueDeductionsLabel", "Stripe & Fees")}
                       stackId="revenue"
                       fill="url(#deductions-pattern)"
                       stroke="var(--color-deductions)"
@@ -404,7 +408,7 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
           </>
         ) : (
           <div className="h-[250px] flex items-center justify-center text-muted-foreground border border-dashed rounded-lg">
-            No data available for this view
+            {t("revenueChartNoData", "No data available for this view")}
           </div>
         )}
       </CardContent>

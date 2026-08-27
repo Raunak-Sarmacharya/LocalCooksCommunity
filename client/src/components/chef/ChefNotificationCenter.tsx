@@ -16,6 +16,8 @@ import { logger } from "@/lib/logger";
  */
 
 import { useState, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -145,11 +147,10 @@ function getNotificationIcon(type: string) {
 function getPriorityColor(priority: string) {
   switch (priority) {
     case "urgent":
-      return "bg-red-500";
+      return "bg-destructive";
     case "high":
-      return "bg-orange-500";
+      return "bg-warning";
     case "normal":
-      return "bg-blue-500";
     case "low":
     default:
       return "bg-muted-foreground/30";
@@ -180,7 +181,7 @@ function NotificationItemSkeleton() {
 
 function NotificationListSkeleton() {
   return (
-    <div className="divide-y divide-gray-100">
+    <div className="divide-y divide-border">
       {Array.from({ length: 5 }).map((_, i) => (
         <NotificationItemSkeleton key={i} />
       ))}
@@ -190,14 +191,15 @@ function NotificationListSkeleton() {
 
 // Error state component
 function ErrorNotificationState({ onRetry }: { onRetry: () => void }) {
+  const { t } = useTranslation("chef");
   return (
     <div className="flex flex-col items-center justify-center h-60 px-6 text-center">
-      <div className="text-red-300 mb-4">
+      <div className="text-muted-foreground mb-4">
         <AlertTriangle className="h-12 w-12" />
       </div>
-      <h4 className="text-sm font-medium text-foreground">Failed to load notifications</h4>
+      <h4 className="text-sm font-medium text-foreground">{t("notifErrorTitle", "Failed to load notifications")}</h4>
       <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">
-        There was an error loading your notifications. Please try again.
+        {t("notifErrorDescription", "There was an error loading your notifications. Please try again.")}
       </p>
       <Button 
         variant="outline" 
@@ -206,7 +208,7 @@ function ErrorNotificationState({ onRetry }: { onRetry: () => void }) {
         onClick={onRetry}
       >
         <RefreshCw className="h-4 w-4 mr-2" />
-        Try Again
+        {t("notifTryAgain", "Try Again")}
       </Button>
     </div>
   );
@@ -214,26 +216,27 @@ function ErrorNotificationState({ onRetry }: { onRetry: () => void }) {
 
 // Empty state component
 function EmptyNotificationState({ filter }: { filter: FilterType }) {
+  const { t } = useTranslation("chef");
   const messages: Record<FilterType, { icon: React.ReactNode; title: string; description: string }> = {
     all: {
       icon: <BellOff className="h-12 w-12" />,
-      title: "No notifications yet",
-      description: "When you receive notifications, they'll appear here."
+      title: t("notifEmptyAllTitle", "No notifications yet"),
+      description: t("notifEmptyAllDescription", "When you receive notifications, they'll appear here.")
     },
     unread: {
       icon: <CheckCheck className="h-12 w-12" />,
-      title: "All caught up!",
-      description: "You have no unread notifications."
+      title: t("notifEmptyUnreadTitle", "All caught up!"),
+      description: t("notifEmptyUnreadDescription", "You have no unread notifications.")
     },
     read: {
       icon: <Check className="h-12 w-12" />,
-      title: "No read notifications",
-      description: "Notifications you've read will appear here."
+      title: t("notifEmptyReadTitle", "No read notifications"),
+      description: t("notifEmptyReadDescription", "Notifications you've read will appear here.")
     },
     archived: {
       icon: <Archive className="h-12 w-12" />,
-      title: "No archived notifications",
-      description: "Archived notifications will appear here."
+      title: t("notifEmptyArchivedTitle", "No archived notifications"),
+      description: t("notifEmptyArchivedDescription", "Archived notifications will appear here.")
     }
   };
 
@@ -249,7 +252,7 @@ function EmptyNotificationState({ filter }: { filter: FilterType }) {
 }
 
 // Group notifications by date
-function groupNotificationsByDate(notifications: Notification[]) {
+function groupNotificationsByDate(notifications: Notification[], t: TFunction<"chef">) {
   const groups: { label: string; notifications: Notification[] }[] = [];
   const today: Notification[] = [];
   const yesterday: Notification[] = [];
@@ -269,10 +272,10 @@ function groupNotificationsByDate(notifications: Notification[]) {
     }
   });
 
-  if (today.length > 0) groups.push({ label: "Today", notifications: today });
-  if (yesterday.length > 0) groups.push({ label: "Yesterday", notifications: yesterday });
-  if (thisWeek.length > 0) groups.push({ label: "This Week", notifications: thisWeek });
-  if (older.length > 0) groups.push({ label: "Older", notifications: older });
+  if (today.length > 0) groups.push({ label: t("notifGroupToday", "Today"), notifications: today });
+  if (yesterday.length > 0) groups.push({ label: t("notifGroupYesterday", "Yesterday"), notifications: yesterday });
+  if (thisWeek.length > 0) groups.push({ label: t("notifGroupThisWeek", "This Week"), notifications: thisWeek });
+  if (older.length > 0) groups.push({ label: t("notifGroupOlder", "Older"), notifications: older });
 
   return groups;
 }
@@ -289,6 +292,7 @@ function NotificationItem({
   onArchive: (id: number) => void;
   onDelete: (id: number) => void;
 }) {
+  const { t } = useTranslation("chef");
   // Handle keyboard navigation
   const handleKeyDown = async (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -308,14 +312,14 @@ function NotificationItem({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: -20 }}
       role="article"
-      aria-label={`${notification.is_read ? '' : 'Unread: '}${notification.title}`}
+      aria-label={`${notification.is_read ? '' : t("notifUnreadPrefix", "Unread: ")}${notification.title}`}
       aria-describedby={`notification-${notification.id}-message`}
       tabIndex={0}
       onKeyDown={handleKeyDown}
       className={cn(
         "group relative p-3 border-b border-border hover:bg-muted/50 transition-colors cursor-pointer",
         "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset",
-        !notification.is_read && "bg-blue-50/50"
+        !notification.is_read && "bg-muted/50"
       )}
       onClick={async () => {
         if (!notification.is_read) {
@@ -336,7 +340,7 @@ function NotificationItem({
         {/* Icon */}
         <div className={cn(
           "flex-shrink-0 p-2 rounded-full",
-          notification.is_read ? "bg-muted text-muted-foreground" : "bg-blue-100 text-blue-600"
+          notification.is_read ? "bg-muted text-muted-foreground" : "bg-muted text-foreground"
         )}>
           {getNotificationIcon(notification.type)}
         </div>
@@ -366,7 +370,7 @@ function NotificationItem({
             <Button
               variant="link"
               size="sm"
-              className="h-auto p-0 mt-1 text-blue-600"
+              className="h-auto p-0 mt-1"
               onClick={(e) => {
                 e.stopPropagation();
                 if (!notification.is_read) {
@@ -388,7 +392,7 @@ function NotificationItem({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">{t("notifActionsLabel", "Actions")}</span>
                 <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
                 </svg>
@@ -398,12 +402,12 @@ function NotificationItem({
               {!notification.is_read && (
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMarkRead(notification.id); }}>
                   <Check className="h-4 w-4 mr-2" />
-                  Mark as read
+                  {t("notifMarkAsRead", "Mark as read")}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onArchive(notification.id); }}>
                 <Archive className="h-4 w-4 mr-2" />
-                Archive
+                {t("notifArchive", "Archive")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem 
@@ -411,7 +415,7 @@ function NotificationItem({
                 className="text-red-600"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
-                Delete
+                {t("notifDelete", "Delete")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -423,6 +427,7 @@ function NotificationItem({
 
 // Main ChefNotificationCenter component
 export default function ChefNotificationCenter() {
+  const { t } = useTranslation("chef");
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState<FilterType>("all");
@@ -508,7 +513,7 @@ export default function ChefNotificationCenter() {
       if (context?.previousUnreadCount) {
         queryClient.setQueryData(["/api/chef/notifications/unread-count"], context.previousUnreadCount);
       }
-      toast.error("Failed to mark notification as read");
+      toast.error(t("notifToastMarkReadError", "Failed to mark notification as read"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications"] });
@@ -553,10 +558,10 @@ export default function ChefNotificationCenter() {
       if (context?.previousUnreadCount) {
         queryClient.setQueryData(["/api/chef/notifications/unread-count"], context.previousUnreadCount);
       }
-      toast.error("Failed to mark all as read");
+      toast.error(t("notifToastMarkAllReadError", "Failed to mark all as read"));
     },
     onSuccess: () => {
-      toast.success("All notifications marked as read");
+      toast.success(t("notifToastMarkAllReadSuccess", "All notifications marked as read"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications"] });
@@ -610,10 +615,10 @@ export default function ChefNotificationCenter() {
       if (context?.previousUnreadCount) {
         queryClient.setQueryData(["/api/chef/notifications/unread-count"], context.previousUnreadCount);
       }
-      toast.error("Failed to archive notification");
+      toast.error(t("notifToastArchiveError", "Failed to archive notification"));
     },
     onSuccess: () => {
-      toast.success("Notification archived");
+      toast.success(t("notifToastArchiveSuccess", "Notification archived"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications"] });
@@ -664,10 +669,10 @@ export default function ChefNotificationCenter() {
       if (context?.previousUnreadCount) {
         queryClient.setQueryData(["/api/chef/notifications/unread-count"], context.previousUnreadCount);
       }
-      toast.error("Failed to delete notification");
+      toast.error(t("notifToastDeleteError", "Failed to delete notification"));
     },
     onSuccess: () => {
-      toast.success("Notification deleted");
+      toast.success(t("notifToastDeleteSuccess", "Notification deleted"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications"] });
@@ -693,7 +698,7 @@ export default function ChefNotificationCenter() {
 
   const unreadCount = unreadData?.count || 0;
   const notifications = notificationsData?.notifications || [];
-  const groupedNotifications = groupNotificationsByDate(notifications);
+  const groupedNotifications = groupNotificationsByDate(notifications, t);
 
   // Keyboard shortcut to open notifications (Ctrl/Cmd + Shift + N)
   useEffect(() => {
@@ -721,8 +726,10 @@ export default function ChefNotificationCenter() {
           variant="ghost"
           size="icon"
           className="relative group"
-          aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
-          title="Notifications (Ctrl+Shift+N)"
+          aria-label={unreadCount > 0 
+            ? t("notifBellAriaLabelUnread", { count: unreadCount, defaultValue: "Notifications ({count} unread)" })
+            : t("notifBellAriaLabel", "Notifications")}
+          title={t("notifBellTitle", "Notifications (Ctrl+Shift+N)")}
         >
           <Bell className={cn(
             "h-5 w-5 transition-transform",
@@ -730,7 +737,8 @@ export default function ChefNotificationCenter() {
           )} />
           {unreadCount > 0 && (
             <Badge 
-              className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs bg-red-500 hover:bg-red-500 animate-in fade-in zoom-in duration-200"
+              variant="destructive"
+              className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs animate-in fade-in zoom-in duration-200"
             >
               {unreadCount > 99 ? "99+" : unreadCount}
             </Badge>
@@ -743,17 +751,17 @@ export default function ChefNotificationCenter() {
         align="end"
         sideOffset={8}
         role="dialog"
-        aria-label="Notifications panel"
+        aria-label={t("notifPanelAriaLabel", "Notifications panel")}
         aria-describedby="notifications-description"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <div>
-            <h2 id="notifications-heading" className="font-semibold text-lg">Notifications</h2>
+            <h2 id="notifications-heading" className="font-semibold text-lg">{t("notifPanelHeading", "Notifications")}</h2>
             <p id="notifications-description" className="sr-only">
               {unreadCount > 0 
-                ? `You have ${unreadCount} unread notification${unreadCount !== 1 ? 's' : ''}`
-                : 'No unread notifications'}
+                ? t("notifSrDescriptionCount", { count: unreadCount, defaultValue: "{count, plural, one {You have # unread notification} other {You have # unread notifications}}" })
+                : t("notifSrDescriptionEmpty", "No unread notifications")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -763,7 +771,7 @@ export default function ChefNotificationCenter() {
               className="h-8 w-8"
               onClick={() => refetch()}
               disabled={isLoading}
-              aria-label={isLoading ? "Refreshing notifications" : "Refresh notifications"}
+              aria-label={isLoading ? t("notifRefreshingLabel", "Refreshing notifications") : t("notifRefreshLabel", "Refresh notifications")}
             >
               <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} aria-hidden="true" />
             </Button>
@@ -774,32 +782,32 @@ export default function ChefNotificationCenter() {
                 className="h-8 text-xs"
                 onClick={() => markAllReadMutation.mutate()}
                 disabled={markAllReadMutation.isPending}
-                aria-label={`Mark all ${unreadCount} notifications as read`}
+                aria-label={t("notifMarkAllAriaLabel", { count: unreadCount, defaultValue: "{count, plural, one {Mark all # notification as read} other {Mark all # notifications as read}}" })}
               >
                 <CheckCheck className="h-4 w-4 mr-1" aria-hidden="true" />
-                Mark all read
+                {t("notifMarkAllReadButton", "Mark all read")}
               </Button>
             )}
           </div>
         </div>
 
         {/* Filter tabs */}
-        <div className="px-4 py-2 border-b bg-muted/50" role="navigation" aria-label="Notification filters">
+        <div className="px-4 py-2 border-b bg-muted/50" role="navigation" aria-label={t("notifFiltersAriaLabel", "Notification filters")}>
           <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
-            <TabsList className="w-full gap-1" aria-label="Filter notifications by status">
-              <TabsTrigger value="all" className="flex-1 text-xs px-2 py-1.5">All</TabsTrigger>
-              <TabsTrigger value="unread" className="flex-1 text-xs px-2 py-1.5">Unread</TabsTrigger>
-              <TabsTrigger value="read" className="flex-1 text-xs px-2 py-1.5">Read</TabsTrigger>
+            <TabsList className="w-full gap-1" aria-label={t("notifFilterTabsAriaLabel", "Filter notifications by status")}>
+              <TabsTrigger value="all" className="flex-1 text-xs px-2 py-1.5">{t("notifFilterAll", "All")}</TabsTrigger>
+              <TabsTrigger value="unread" className="flex-1 text-xs px-2 py-1.5">{t("notifFilterUnread", "Unread")}</TabsTrigger>
+              <TabsTrigger value="read" className="flex-1 text-xs px-2 py-1.5">{t("notifFilterRead", "Read")}</TabsTrigger>
               <TabsTrigger value="archived" className="flex-1 text-xs px-2 py-1.5">
-                <span className="hidden sm:inline">Archived</span>
-                <span className="sm:hidden">Arch</span>
+                <span className="hidden sm:inline">{t("notifFilterArchived", "Archived")}</span>
+                <span className="sm:hidden">{t("notifFilterArchivedShort", "Arch")}</span>
               </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
 
         {/* Notification list */}
-        <ScrollArea className="h-[400px]" role="feed" aria-label="Notifications list" aria-busy={isLoading}>
+        <ScrollArea className="h-[400px]" role="feed" aria-label={t("notifListAriaLabel", "Notifications list")} aria-busy={isLoading}>
           {isLoading ? (
             <NotificationListSkeleton />
           ) : notificationsError || unreadError ? (
@@ -835,7 +843,7 @@ export default function ChefNotificationCenter() {
         {notifications.length > 0 && (
           <div className="p-3 border-t bg-muted/50 text-center">
             <Button variant="link" size="sm" className="text-xs text-muted-foreground">
-              View all notifications
+              {t("notifViewAllButton", "View all notifications")}
             </Button>
           </div>
         )}

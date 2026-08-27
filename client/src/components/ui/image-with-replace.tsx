@@ -7,6 +7,7 @@ import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
 import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase';
 import { getR2ProxyUrl } from '@/utils/r2-url-helper';
+import { SmartImage } from "@/components/ui/smart-image";
 
 interface ImageWithReplaceProps {
   imageUrl: string | null | undefined;
@@ -170,12 +171,10 @@ export function ImageWithReplace({
       {imageUrl ? (
         <div className="relative group">
           <div className={cn('relative overflow-hidden rounded-lg border border-gray-200 bg-gray-100', aspectRatioClass, className)}>
-            {isLoading || !imageSrc ? (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-                <Loader2 className="h-8 w-8 text-gray-400 animate-spin" />
-              </div>
+            {!imageSrc ? (
+              <div className="absolute inset-0 image-shimmer" aria-hidden="true" />
             ) : (
-              <img
+              <SmartImage
                 src={imageSrc}
                 alt={alt}
                 className={cn('w-full h-full object-cover', !aspectRatio && className)}

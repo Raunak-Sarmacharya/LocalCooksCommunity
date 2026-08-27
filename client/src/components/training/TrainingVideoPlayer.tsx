@@ -5,22 +5,25 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from '@/hooks/use-auth';
+import { useTranslation } from 'react-i18next';
 import { auth } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
+import { SKILLSPASS_OFFICIAL_CERT_URL } from '@/config/skillspass';
 import {
   Award,
   CheckCircle,
   ChevronLeft,
   ChevronRight,
   Download,
+  ExternalLink,
   FileText,
   Lock,
   Play,
   Shield
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import VideoPlayer from '@/components/microlearning/VideoPlayer';
 
@@ -50,11 +53,13 @@ interface TrainingVideoPlayerProps {
 }
 
 // Module 1: Food Safety Basics (14 videos)
-const foodSafetyBasicsVideos: VideoData[] = [
+type VidT = (key: string) => string
+
+const getFoodSafetyBasicsVideos = (t: VidT): VideoData[] => [
   {
     id: 'basics-cross-contamination',
-    title: 'An Introduction',
-    description: 'Most of the food poisoning problems we see in our kitchens are caused by food. But it is easy to win the fight against food poisoning and other diseases and to serve food and drinks from the kitchen without food safety problems. Want to know how to win? Watch the videos in this course!',
+    title: t('vidBasics1Title'),
+    description: t('vidBasics1Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/1.%20Food%20Safety%20Understanding%20Food%20Safety.mp4',
     source: 'CFIA',
@@ -63,8 +68,8 @@ const foodSafetyBasicsVideos: VideoData[] = [
   },
   {
     id: 'basics-allergen-awareness',
-    title: 'Basic Conditions of HACCP',
-    description: 'The practice of HACCP has its analysis and critical control points and gives you seven principles that helps you keeping your food safe.',
+    title: t('vidBasics2Title'),
+    description: t('vidBasics2Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/2.%20Food%20Safety%20Basic%20Conditions%20of%20HACCP.mp4',
     source: 'CFIA',
@@ -73,8 +78,8 @@ const foodSafetyBasicsVideos: VideoData[] = [
   },
   {
     id: 'basics-cooking-temps',
-    title: 'Reducing Complexity',
-    description: 'Learn how to simplify the food processes in your kitchen.',
+    title: t('vidBasics3Title'),
+    description: t('vidBasics3Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/3.%20Food%20Safety%20Reducing%20Complexity.mp4',
     source: 'Health Canada',
@@ -83,8 +88,8 @@ const foodSafetyBasicsVideos: VideoData[] = [
   },
   {
     id: 'basics-temperature-danger',
-    title: 'Personal Hygiene',
-    description: 'It is very important that all employees follow the rules of personal hygiene. Learn how you can avoid bad bacteria coming into your kitchen.',
+    title: t('vidBasics4Title'),
+    description: t('vidBasics4Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/4.%20Food%20Safety%20Personal%20Hygiene.mp4',
     source: 'Health Canada',
@@ -93,8 +98,8 @@ const foodSafetyBasicsVideos: VideoData[] = [
   },
   {
     id: 'basics-personal-hygiene',
-    title: 'Deliveries',
-    description: 'Let\'s start thinking about delivery of goods to your kitchen. An important part of food safety is choosing a good supplier.',
+    title: t('vidBasics5Title'),
+    description: t('vidBasics5Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/5.%20Food%20Safety%20Deliveries.mp4',
     source: 'Health Canada',
@@ -103,8 +108,8 @@ const foodSafetyBasicsVideos: VideoData[] = [
   },
   {
     id: 'basics-food-storage',
-    title: 'Storage',
-    description: 'Food safety also includes storage, because each product requires their own way of storaging.',
+    title: t('vidBasics6Title'),
+    description: t('vidBasics6Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/6.%20Food%20Safety%20Storage.mp4',
     source: 'Health Canada',
@@ -113,8 +118,8 @@ const foodSafetyBasicsVideos: VideoData[] = [
   },
   {
     id: 'basics-illness-reporting',
-    title: 'Preparation',
-    description: 'It is time to wash your hands! Preparation time is important for food safety.',
+    title: t('vidBasics7Title'),
+    description: t('vidBasics7Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/7.%20Food%20Safety%20Preparation.mp4',
     source: 'NL Health',
@@ -123,8 +128,8 @@ const foodSafetyBasicsVideos: VideoData[] = [
   },
   {
     id: 'basics-food-safety-plan',
-    title: 'Regeneration',
-    description: 'Sometimes you need to prepare food before the customer is ordering. Learn what steps we must take to keep this food safe.',
+    title: t('vidBasics8Title'),
+    description: t('vidBasics8Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/8.%20Food%20Safety%20Regeneration.mp4',
     source: 'CFIA',
@@ -133,8 +138,8 @@ const foodSafetyBasicsVideos: VideoData[] = [
   },
   {
     id: 'basics-pest-control',
-    title: 'To Start',
-    description: 'The care we followed in the preparation process must continue. Are you ready to start?',
+    title: t('vidBasics9Title'),
+    description: t('vidBasics9Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/9.%20Food%20Safety%20To%20start.mp4',
     source: 'NL Health',
@@ -143,8 +148,8 @@ const foodSafetyBasicsVideos: VideoData[] = [
   },
   {
     id: 'basics-chemical-safety',
-    title: 'After Service',
-    description: 'After the service is finished we still need to take care of food safety practices.',
+    title: t('vidBasics10Title'),
+    description: t('vidBasics10Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/10.%20Food%20Safety%20After%20Service.mp4',
     source: 'CFIA',
@@ -153,8 +158,8 @@ const foodSafetyBasicsVideos: VideoData[] = [
   },
   {
     id: 'basics-fifo',
-    title: 'Waste Removal',
-    description: 'There is always a lot of waste we have after a service. This waste contains a lot of bacteria.',
+    title: t('vidBasics11Title'),
+    description: t('vidBasics11Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/11.%20Food%20Safety%20Waste%20Removal.mp4',
     source: 'Health Canada',
@@ -163,8 +168,8 @@ const foodSafetyBasicsVideos: VideoData[] = [
   },
   {
     id: 'basics-receiving',
-    title: 'Cleaning and Maintenance',
-    description: 'Following the steps in this video is very important and helps you to keep your kitchen clean.',
+    title: t('vidBasics12Title'),
+    description: t('vidBasics12Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/12.%20Food%20Safety%20Cleaning%20and%20Maintenance.mp4',
     source: 'Health Canada',
@@ -173,8 +178,8 @@ const foodSafetyBasicsVideos: VideoData[] = [
   },
   {
     id: 'basics-cooling-reheating',
-    title: 'Weekly Log Sheets',
-    description: 'Every thing we see is very important and needs to be recorded. Make sure HACCP is in place.',
+    title: t('vidBasics13Title'),
+    description: t('vidBasics13Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/13.%20Food%20Safety%20Weekly%20Log%20Sheets.mp4',
     source: 'Health Canada',
@@ -183,8 +188,8 @@ const foodSafetyBasicsVideos: VideoData[] = [
   },
   {
     id: 'basics-thawing',
-    title: 'Wrap Up',
-    description: 'We are almost at the end, well done!',
+    title: t('vidBasics14Title'),
+    description: t('vidBasics14Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/14.%20Food%20Safety%20Wrap%20up.mp4',
     source: 'Health Canada',
@@ -194,11 +199,11 @@ const foodSafetyBasicsVideos: VideoData[] = [
 ];
 
 // Module 2: Safety and Hygiene How-To's (8 videos)
-const safetyHygieneVideos: VideoData[] = [
+const getSafetyHygieneVideos = (t: VidT): VideoData[] => [
   {
     id: 'howto-handwashing',
-    title: 'How to Wash Your Hands',
-    description: 'In this video, we will take you through the steps to correctly and thoroughly wash your hands.',
+    title: t('vidHygiene1Title'),
+    description: t('vidHygiene1Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/1.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Wash%20Your%20Hands.mp4',
     source: 'Health Canada',
@@ -207,8 +212,8 @@ const safetyHygieneVideos: VideoData[] = [
   },
   {
     id: 'howto-sanitizing',
-    title: 'How to clean a food preparation station',
-    description: 'Discover the best ways to disinfect, degrease and more to boost health and safety in the kitchen.',
+    title: t('vidHygiene2Title'),
+    description: t('vidHygiene2Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/2.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20a%20Food%20Preparation%20Su.mp4',
     source: 'NL Health',
@@ -217,8 +222,8 @@ const safetyHygieneVideos: VideoData[] = [
   },
   {
     id: 'howto-thermometer',
-    title: 'How to clean kitchen utensils',
-    description: 'They\'re the tools of a professional chef\'s trade so keeping them safe and ready for use is vital.',
+    title: t('vidHygiene3Title'),
+    description: t('vidHygiene3Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/3.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20a%20Culinary%20Utensil.mp4',
     source: 'Health Canada',
@@ -227,8 +232,8 @@ const safetyHygieneVideos: VideoData[] = [
   },
   {
     id: 'howto-cleaning-schedule',
-    title: 'How to clean a stove',
-    description: 'This expert checklist will provide brilliant results and easier kitchen management.',
+    title: t('vidHygiene4Title'),
+    description: t('vidHygiene4Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/4.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20a%20Stove.mp4',
     source: 'NL Health',
@@ -237,8 +242,8 @@ const safetyHygieneVideos: VideoData[] = [
   },
   {
     id: 'howto-equipment-cleaning',
-    title: 'How to clean a kitchen floor',
-    description: 'Try these straightforward cleaning tips. Discover the equipment you\'ll need.',
+    title: t('vidHygiene5Title'),
+    description: t('vidHygiene5Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/5.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20a%20Kitchen%20Floor.mp4',
     source: 'CFIA',
@@ -247,8 +252,8 @@ const safetyHygieneVideos: VideoData[] = [
   },
   {
     id: 'howto-uniform-care',
-    title: 'How to clean a restaurant floor',
-    description: 'Help create a fresh, welcoming front of house with simple skills.',
+    title: t('vidHygiene6Title'),
+    description: t('vidHygiene6Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/6.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20a%20Restaurant%20Floor.mp4',
     source: 'NL Health',
@@ -257,8 +262,8 @@ const safetyHygieneVideos: VideoData[] = [
   },
   {
     id: 'howto-wound-care',
-    title: 'How to clean tables and chairs',
-    description: 'Want to know the best techniques for cleaning up after customers?',
+    title: t('vidHygiene7Title'),
+    description: t('vidHygiene7Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/7.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20Tables%20and%20Chairs.mp4',
     source: 'Health Canada',
@@ -267,8 +272,8 @@ const safetyHygieneVideos: VideoData[] = [
   },
   {
     id: 'howto-inspection-prep',
-    title: 'How to clean a washroom',
-    description: 'Take responsibility for the cleanliness of even the smallest room in your restaurant.',
+    title: t('vidHygiene8Title'),
+    description: t('vidHygiene8Desc'),
     duration: '',
     url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/8.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20a%20Washroom.mp4',
     source: 'NL Health',
@@ -277,11 +282,12 @@ const safetyHygieneVideos: VideoData[] = [
   }
 ];
 
-const videos: VideoData[] = [...foodSafetyBasicsVideos, ...safetyHygieneVideos];
+
 
 export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerProps) {
   const { showAlert } = useCustomAlerts();
   const { user: firebaseUser } = useFirebaseAuth();
+  const { t } = useTranslation('chef');
   const queryClient = useQueryClient();
   const user = firebaseUser;
   
@@ -296,9 +302,15 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [completionConfirmed, setCompletionConfirmed] = useState(false);
-  const [accessLevel, setAccessLevel] = useState<'full' | 'limited'>('limited');
+  const [accessLevel, setAccessLevel] = useState<'full' | 'limited'>('full');
   const [applicationInfo, setApplicationInfo] = useState<{ canApply?: boolean; message?: string } | null>(null);
   const [showApplicationPrompt, setShowApplicationPrompt] = useState(false);
+
+  // Locale-aware video catalog — rebuilt when the language changes.
+  const videos = useMemo(
+    () => [...getFoodSafetyBasicsVideos(t as unknown as VidT), ...getSafetyHygieneVideos(t as unknown as VidT)],
+    [t]
+  );
 
   const currentModuleVideos = videos.filter(video => video.module === currentModule);
   const currentVideo = currentModuleVideos[currentVideoIndex];
@@ -342,14 +354,14 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
           if (p.completed) completedVideoIdsRef.current.add(p.videoId);
         });
         setCompletionConfirmed(data.confirmed || data.completionConfirmed || false);
-        setAccessLevel(data.accessLevel || (user.role === 'admin' ? 'full' : 'limited'));
+        setAccessLevel('full');
         setApplicationInfo(data.applicationInfo || null);
-      } else if (user.role === 'admin') {
+      } else {
         setAccessLevel('full');
       }
     } catch (error) {
       logger.error('Failed to load progress:', error);
-      if (user?.role === 'admin') setAccessLevel('full');
+      setAccessLevel('full');
     } finally {
       setIsLoading(false);
     }
@@ -431,7 +443,7 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        showAlert({ title: "Authentication Error", description: "Please refresh and try again.", type: "error" });
+        showAlert({ title: t("trAuthErrorTitle"), description: t("trAuthErrorBody"), type: "error" });
         return;
       }
       const token = await currentUser.getIdToken();
@@ -445,14 +457,14 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
         setCompletionConfirmed(true);
         queryClient.invalidateQueries({ queryKey: ["microlearning-completion"] });
         queryClient.invalidateQueries({ queryKey: ["training-access"] });
-        showAlert({ title: "Congratulations!", description: "You have completed your food safety training and earned your certificate.", type: "success" });
+        showAlert({ title: t("trCompleteToastTitle"), description: t("trCompleteToastBody"), type: "success" });
       } else {
         const errorData = await response.json().catch(() => ({}));
-        showAlert({ title: "Error", description: errorData.message || 'Failed to confirm completion.', type: "error" });
+        showAlert({ title: t("errorTitle"), description: errorData.message || t("trConfirmFailBody"), type: "error" });
       }
     } catch (error) {
       logger.error('Failed to confirm completion:', error);
-      showAlert({ title: "Network Error", description: "Please check your connection and try again.", type: "error" });
+      showAlert({ title: t("trNetworkErrorTitle"), description: t("trNetworkErrorBody"), type: "error" });
     } finally {
       setIsSubmitting(false);
     }
@@ -476,7 +488,7 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
     } else if (accessLevel === 'limited') {
       setShowApplicationPrompt(true);
     } else if (accessLevel === 'full') {
-      showAlert({ title: "Video Locked", description: "Complete the previous video to unlock this one.", type: "warning" });
+      showAlert({ title: t("trVideoLockedTitle"), description: t("trVideoLockedBody"), type: "warning" });
     }
   };
 
@@ -496,7 +508,7 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
       <div className={cn("flex items-center justify-center py-16", className)}>
         <div className="text-center space-y-3">
           <div className="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent mx-auto" />
-          <p className="text-sm text-muted-foreground">Loading training...</p>
+          <p className="text-sm text-muted-foreground">{t("trPlayerLoading")}</p>
         </div>
       </div>
     );
@@ -510,17 +522,17 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
           {/* Overall progress pill */}
           <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-full px-3 py-1.5">
             <span className="font-medium text-foreground">{totalCompleted}/{videos.length}</span>
-            videos completed
+            {t("trVideosCompleted")}
           </div>
 
           {completionConfirmed ? (
-            <Badge variant="success"><Award className="h-3 w-3 mr-1" />Certified</Badge>
+            <Badge variant="success"><Award className="h-3 w-3 mr-1" />{t("trBadgeTrainingComplete")}</Badge>
           ) : accessLevel === 'full' ? (
-            <Badge variant="success"><CheckCircle className="h-3 w-3 mr-1" />Full Access</Badge>
+            <Badge variant="success"><CheckCircle className="h-3 w-3 mr-1" />{t("trBadgeFullAccess")}</Badge>
           ) : user?.role === 'admin' ? (
-            <Badge variant="outline"><Shield className="h-3 w-3 mr-1" />Admin</Badge>
+            <Badge variant="outline"><Shield className="h-3 w-3 mr-1" />{t("trBadgeAdmin")}</Badge>
           ) : (
-            <Badge variant="secondary"><Lock className="h-3 w-3 mr-1" />Sample</Badge>
+            <Badge variant="secondary"><Lock className="h-3 w-3 mr-1" />{t("trBadgeSample")}</Badge>
           )}
         </div>
       </div>
@@ -535,23 +547,23 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
                   <Award className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-sm">All videos completed</h3>
-                  <p className="text-xs text-muted-foreground">Confirm to generate your certificate</p>
+                  <h3 className="font-semibold text-sm">{t("trAllCompletedTitle")}</h3>
+                  <p className="text-xs text-muted-foreground">{t("trAllCompletedBody")}</p>
                 </div>
               </div>
               <Button onClick={confirmCompletion} disabled={isSubmitting} size="sm">
-                {isSubmitting ? 'Confirming...' : 'Confirm & Certify'}
+                {isSubmitting ? t('trDownloading') : t('trConfirmCompletion')}
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Main layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      {/* Main layout — right column height is locked to the left column (ends at SkillsPass notice) */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         
         {/* Video player — main area */}
-        <div className="lg:col-span-8 space-y-3">
+        <div className="flex flex-col gap-3 lg:col-span-8">
           {/* Player */}
           {currentVideo?.url ? (
             <VideoPlayer
@@ -588,7 +600,7 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <Badge variant="outline" className="text-xs">HACCP</Badge>
                   {accessLevel === 'limited' && currentVideoIndex === 0 && (
-                    <Badge variant="secondary" className="text-xs">Preview</Badge>
+                    <Badge variant="secondary" className="text-xs">{t("trPreviewBadge")}</Badge>
                   )}
                 </div>
               </div>
@@ -603,7 +615,7 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
                   className="gap-1"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
-                  Previous
+                  {t("vpPrevious")}
                 </Button>
 
                 <span className="text-xs text-muted-foreground tabular-nums">
@@ -614,21 +626,21 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
                   applicationInfo?.canApply ? (
                     <Button asChild size="sm" className="gap-1">
                       <Link href="/dashboard?view=applications&action=new">
-                        Apply for Full Access
+                        {t("vpApplyForFullAccess")}
                         <ChevronRight className="h-3.5 w-3.5" />
                       </Link>
                     </Button>
                   ) : (
                     <Button asChild size="sm" variant="outline" className="gap-1">
                       <Link href="/dashboard">
-                        Check Status
+                        {t("vpCheckStatus")}
                         <ChevronRight className="h-3.5 w-3.5" />
                       </Link>
                     </Button>
                   )
                 ) : isLastInModule ? (
                   <Button size="sm" variant="outline" disabled className="gap-1">
-                    Module Complete
+                    {t("vpModuleComplete")}
                     <CheckCircle className="h-3.5 w-3.5" />
                   </Button>
                 ) : (
@@ -638,20 +650,39 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
                     disabled={!canGoNext}
                     className="gap-1"
                   >
-                    {!currentVideoCompleted && accessLevel === 'full' ? 'Watch to Unlock' : 'Next Video'}
+                    {!currentVideoCompleted && accessLevel === 'full' ? t("vpWatchToUnlock") : t("vpNextVideo")}
                     <ChevronRight className="h-3.5 w-3.5" />
                   </Button>
                 )}
               </div>
             </CardContent>
           </Card>
+
+          <Card className="border-warning/40 bg-warning/5">
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-medium leading-snug">
+                {t("vpNotOfficialCert")}
+              </p>
+              <Button asChild size="sm" variant="outline" className="shrink-0">
+                <a
+                  href={SKILLSPASS_OFFICIAL_CERT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                  {t("trSkillsPassCert")}
+                </a>
+              </Button>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Sidebar */}
-        <div className="lg:col-span-4 space-y-3">
+        {/* Sidebar — fills left column height so the queue ends with the notice */}
+        <div className="relative lg:col-span-4">
+          <div className="flex min-h-0 flex-col gap-3 overflow-hidden lg:absolute lg:inset-0">
           
           {/* Module selector */}
-          <Card className="border-border/50">
+          <Card className="shrink-0 border-border/50">
             <CardContent className="p-3 space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -663,9 +694,9 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
                       : 'border-border hover:border-primary/30 text-muted-foreground'
                   )}
                 >
-                  <div className="font-medium mb-0.5">Basics</div>
+                  <div className="font-medium mb-0.5">{t("trTabBasics")}</div>
                   <div className="text-muted-foreground">
-                    {userProgress.filter(p => p.completed && foodSafetyBasicsVideos.some(v => v.id === p.videoId)).length}/14
+                    {userProgress.filter(p => p.completed && videos.some(v => v.id === p.videoId && v.module === 'basics')).length}/14
                   </div>
                 </button>
 
@@ -688,9 +719,9 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
                   {accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin' && (
                     <Lock className="h-3 w-3 absolute top-2 right-2 text-muted-foreground" />
                   )}
-                  <div className="font-medium mb-0.5">How-To&apos;s</div>
+                  <div className="font-medium mb-0.5">{t("trTabHowTos")}</div>
                   <div className="text-muted-foreground">
-                    {userProgress.filter(p => p.completed && safetyHygieneVideos.some(v => v.id === p.videoId)).length}/8
+                    {userProgress.filter(p => p.completed && videos.some(v => v.id === p.videoId && v.module === 'hygiene')).length}/8
                   </div>
                 </button>
               </div>
@@ -698,7 +729,7 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
               {/* Module progress bar */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Module progress</span>
+                  <span className="text-muted-foreground">{t("trModuleProgress")}</span>
                   <span className="font-medium tabular-nums">{Math.round(moduleProgress)}%</span>
                 </div>
                 <Progress value={moduleProgress} className="h-1.5" />
@@ -708,16 +739,16 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
 
           {/* Status cards */}
           {accessLevel === 'limited' && applicationInfo?.canApply && (
-            <Card className="border-warning/30 bg-warning/5">
+            <Card className="shrink-0 border-warning/30 bg-warning/5">
               <CardContent className="p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <FileText className="h-4 w-4 text-warning" />
-                  <span className="text-xs font-medium">Application required for full access</span>
+                  <span className="text-xs font-medium">{t("trAppRequiredTitle")}</span>
                 </div>
                 <Button asChild size="sm" className="w-full" variant="outline">
                   <Link href="/dashboard?view=applications&action=new">
                     <FileText className="h-3.5 w-3.5 mr-1.5" />
-                    Submit Application
+                    {t("trSubmitApplication")}
                   </Link>
                 </Button>
               </CardContent>
@@ -725,11 +756,11 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
           )}
 
           {completionConfirmed && (
-            <Card className="border-primary/30 bg-primary/5">
+            <Card className="shrink-0 border-primary/30 bg-primary/5">
               <CardContent className="p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <Award className="h-4 w-4 text-primary" />
-                  <span className="text-xs font-medium">Training Completed</span>
+                  <span className="text-xs font-medium">{t("trTrainingCompletedCard")}</span>
                 </div>
                 <Button
                   size="sm"
@@ -760,20 +791,20 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
                   }}
                 >
                   <Download className="h-3.5 w-3.5 mr-1.5" />
-                  Download Certificate
+                  {t("trDownloadCert")}
                 </Button>
               </CardContent>
             </Card>
           )}
 
           {/* Video list */}
-          <Card className="border-border/50 overflow-hidden">
-            <div className="px-3 py-2 border-b border-border/50 bg-muted/30">
+          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/50">
+            <div className="shrink-0 border-b border-border/50 bg-muted/30 px-3 py-2">
               <span className="text-xs font-medium text-foreground">
-                {currentModule === 'basics' ? 'Food Safety Basics' : "Safety & Hygiene How-To's"}
+                {currentModule === 'basics' ? t("trModuleBasics") : t("trModuleHygiene")}
               </span>
             </div>
-            <div className="overflow-y-auto max-h-[420px]">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="p-1.5 space-y-0.5">
                 {currentModuleVideos.map((video, index) => {
                   const vProgress = getVideoProgress(video.id);
@@ -826,14 +857,15 @@ export default function TrainingVideoPlayer({ className }: TrainingVideoPlayerPr
             </div>
 
             {/* Overall progress footer */}
-            <div className="px-3 py-2 border-t border-border/50 bg-muted/30">
+            <div className="shrink-0 border-t border-border/50 bg-muted/30 px-3 py-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Overall</span>
-                <span className="font-medium tabular-nums">{totalCompleted}/{videos.length} completed</span>
+                <span className="text-muted-foreground">{t("trOverall")}</span>
+                <span className="font-medium tabular-nums">{t("trCompletedCount", { done: totalCompleted, total: videos.length })}</span>
               </div>
               <Progress value={overallProgress} className="h-1 mt-1.5" />
             </div>
           </Card>
+        </div>
         </div>
       </div>
     </div>

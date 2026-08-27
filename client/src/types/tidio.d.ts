@@ -1,7 +1,7 @@
 // Tidio Chat Widget Type Definitions
-// Global type declarations for Tidio Chat API
+// https://developers.tidio.com/docs/widget-other-methods
 
-export interface TidioChatApi {
+interface TidioChatApi {
   open: () => void;
   close: () => void;
   show: () => void;
@@ -12,7 +12,7 @@ export interface TidioChatApi {
   off: (event: TidioEvent, callback: () => void) => void;
 }
 
-export type TidioEvent = 
+type TidioEvent =
   | "ready"
   | "open"
   | "close"
@@ -21,13 +21,14 @@ export type TidioEvent =
   | "messageFromVisitor"
   | "messageFromOperator";
 
-declare global {
-  interface Window {
-    tidioChatApi?: TidioChatApi;
-    tidioIdentify?: {
-      distinct_id?: string;
-      email?: string;
-      name?: string;
-    };
-  }
+interface Window {
+  tidioChatApi?: TidioChatApi;
+}
+
+interface Document {
+  tidioIdentify?: {
+    distinct_id?: string;
+    email?: string;
+    name?: string;
+  };
 }

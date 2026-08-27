@@ -1,5 +1,6 @@
 import { logger } from "@/lib/logger";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
@@ -50,6 +51,7 @@ import {
   CreditCard,
   ArrowLeft,
 } from "lucide-react";
+import { SmartImage } from "@/components/ui/smart-image";
 
 interface KitchenBookingSheetProps {
   open: boolean;
@@ -64,13 +66,11 @@ function EquipmentImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
 
   return (
     <div className="flex-shrink-0">
-      <img
+      <SmartImage
         src={proxyUrl}
         alt={alt}
         className="w-16 h-16 object-cover rounded-lg border border-border"
-        onError={(e) => {
-          e.currentTarget.style.display = 'none';
-        }}
+        hideOnError
       />
     </div>
   );
@@ -106,6 +106,8 @@ function getCalendarDays(year: number, month: number) {
   return days;
 }
 
+const DAY_SHORT_KEYS = ["daySun", "dayMon", "dayTue", "dayWed", "dayThu", "dayFri", "daySat"] as const;
+
 export default function KitchenBookingSheet({
   open,
   onOpenChange,
@@ -113,6 +115,7 @@ export default function KitchenBookingSheet({
   locationName,
   locationAddress,
 }: KitchenBookingSheetProps) {
+  const { t, i18n } = useTranslation(["booking", "kitchen"]);
   const { kitchens, createBooking, isLoadingKitchens } = useKitchenBookings();
   const { toast } = useToast();
 
@@ -219,15 +222,19 @@ export default function KitchenBookingSheet({
     return Math.round((combinedSubtotal * taxRatePercent) / 100);
   }, [combinedSubtotal, selectedKitchen?.taxRatePercent]);
 
-  const platformCommission = useMemo(() => {
+  const serviceFee = useMemo(() => {
     if (combinedSubtotal <= 0) return 0;
-    return Math.round(combinedSubtotal * 0.07); // 7% platform commission
+    return Math.round(combinedSubtotal * 0.07); // 7% service fee
   }, [combinedSubtotal]);
 
-  const grandTotal = useMemo(() => combinedSubtotal + tax + platformCommission, [combinedSubtotal, tax, platformCommission]);
+  const grandTotal = useMemo(() => combinedSubtotal + tax + serviceFee, [combinedSubtotal, tax, serviceFee]);
 
-  const monthNames = ["January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"];
+  const monthNames = useMemo(
+    () => Array.from({ length: 12 }, (_, m) =>
+      new Intl.DateTimeFormat(i18n.language, { month: "long" }).format(new Date(2000, m, 1))
+    ),
+    [i18n.language]
+  );
 
   const toLocalDateString = (d: Date) => {
     const y = d.getFullYear();
@@ -450,8 +457,8 @@ export default function KitchenBookingSheet({
 
       if (slots.length === 0) {
         toast({
-          title: "Kitchen closed",
-          description: "This date has no operating hours set.",
+          title: t("toastKitchenClosedTitle", "Kitchen closed"),
+          description: t("toastKitchenClosedDesc", "This date has no operating hours set."),
           variant: "destructive",
         });
       }
@@ -459,8 +466,8 @@ export default function KitchenBookingSheet({
       logger.error("Error loading slots:", error);
       setAllSlots([]);
       toast({
-        title: "Error",
-        description: "Failed to load time slots. Please try again.",
+        title: t("toastGenericErrorTitle", "Error"),
+        description: t("toastLoadSlotsFailedDesc", "Failed to load time slots. Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -588,8 +595,8 @@ export default function KitchenBookingSheet({
   const handleSlotClick = (slot: { time: string; available: number; capacity: number; isFullyBooked: boolean }) => {
     if (slot.isFullyBooked) {
       toast({
-        title: "Slot Fully Booked",
-        description: "This time slot is already at maximum capacity.",
+        title: t("toastSlotFullyBookedTitle", "Slot Fully Booked"),
+        description: t("toastSlotFullyBookedDesc", "This time slot is already at maximum capacity."),
         variant: "destructive",
       });
       return;
@@ -625,8 +632,8 @@ export default function KitchenBookingSheet({
         // Check if we can fit within the daily limit
         if (slotsToSelect.length > maxSlotsPerChef) {
           toast({
-            title: "Cannot meet minimum",
-            description: `This kitchen requires ${minHours} consecutive hours, but the daily limit is ${maxSlotsPerChef} hours.`,
+            title: t("toastCannotMeetMinTitle", "Cannot meet minimum"),
+            description: t("toastCannotMeetMinDesc", { minHours, maxSlots: maxSlotsPerChef, defaultValue: `This kitchen requires ${minHours} consecutive hours, but the daily limit is ${maxSlotsPerChef} hours.` }),
             variant: "destructive",
           });
           return prev;
@@ -634,16 +641,16 @@ export default function KitchenBookingSheet({
 
         if (slotsToSelect.length < minHours) {
           toast({
-            title: "Not enough available slots",
-            description: `This kitchen requires a minimum of ${minHours} consecutive hours. Only ${slotsToSelect.length} available from this time.`,
+            title: t("toastNotEnoughSlotsTitle", "Not enough available slots"),
+            description: t("toastNotEnoughSlotsDesc", { minHours, available: slotsToSelect.length, defaultValue: `This kitchen requires a minimum of ${minHours} consecutive hours. Only ${slotsToSelect.length} available from this time.` }),
             variant: "destructive",
           });
           return prev;
         }
 
         toast({
-          title: `${minHours} hours auto-selected`,
-          description: `This kitchen has a ${minHours}-hour minimum booking. ${minHours} consecutive slots have been selected.`,
+          title: t("toastAutoSelectedTitle", { minHours, defaultValue: `${minHours} hours auto-selected` }),
+          description: t("toastAutoSelectedDesc", { minHours, defaultValue: `This kitchen has a ${minHours}-hour minimum booking. ${minHours} consecutive slots have been selected.` }),
         });
 
         return slotsToSelect.sort();
@@ -654,8 +661,8 @@ export default function KitchenBookingSheet({
         return [...prev, slot.time].sort();
       } else {
         toast({
-          title: "Limit reached",
-          description: `You can select up to ${maxSlotsPerChef} hour slot${maxSlotsPerChef > 1 ? 's' : ''} for this day.`,
+          title: t("toastLimitReachedTitle", "Limit reached"),
+          description: t("toastLimitReachedDesc", { count: maxSlotsPerChef, defaultValue: `You can select up to ${maxSlotsPerChef} hour slot${maxSlotsPerChef > 1 ? 's' : ''} for this day.` }),
           variant: "destructive",
         });
         return prev;
@@ -699,7 +706,7 @@ export default function KitchenBookingSheet({
   };
 
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString(i18n.language, {
       weekday: 'short',
       month: 'short',
       day: 'numeric'
@@ -715,11 +722,11 @@ export default function KitchenBookingSheet({
 
   // Step configuration
   const steps = [
-    { key: 'kitchen', label: 'Kitchen' },
-    { key: 'addons', label: 'Add-ons' },
-    { key: 'calendar', label: 'Date' },
-    { key: 'slots', label: 'Time' },
-    { key: 'confirm', label: 'Confirm' },
+    { key: 'kitchen', label: t("sheetStepKitchen", "Kitchen") },
+    { key: 'addons', label: t("sheetStepAddons", "Add-ons") },
+    { key: 'calendar', label: t("sheetStepDate", "Date") },
+    { key: 'slots', label: t("sheetStepTime", "Time") },
+    { key: 'confirm', label: t("sheetStepConfirm", "Confirm") },
   ] as const;
 
   const stepOrder = ['kitchen', 'addons', 'calendar', 'slots', 'confirm'];
@@ -745,8 +752,8 @@ export default function KitchenBookingSheet({
     const minHours = kitchenPricing?.minimumBookingHours ?? 0;
     if (minHours > 0 && selectedSlots.length < minHours) {
       toast({
-        title: "Minimum Booking Required",
-        description: `This kitchen requires a minimum of ${minHours} hour${minHours > 1 ? 's' : ''} per booking. You have selected ${selectedSlots.length}.`,
+        title: t("toastMinBookingRequiredTitle", "Minimum Booking Required"),
+        description: t("toastMinBookingRequiredDesc", { minHours, selected: selectedSlots.length, defaultValue: `This kitchen requires a minimum of ${minHours} hour${minHours > 1 ? 's' : ''} per booking. You have selected ${selectedSlots.length}.` }),
         variant: "destructive",
       });
       return;
@@ -756,8 +763,8 @@ export default function KitchenBookingSheet({
     if (penaltyData?.hasUnpaidPenalties) {
       const totalOwed = (penaltyData.totalOwedCents / 100).toFixed(2);
       toast({
-        title: "Booking Blocked - Unpaid Penalties",
-        description: `You have ${penaltyData.totalCount} unpaid penalty(ies) totaling $${totalOwed}. Please resolve these before making new bookings.`,
+        title: t("toastUnpaidPenaltiesTitle", "Booking Blocked - Unpaid Penalties"),
+        description: t("toastUnpaidPenaltiesDesc", { count: penaltyData.totalCount, amount: `$${totalOwed}`, defaultValue: `You have ${penaltyData.totalCount} unpaid penalty(ies) totaling $${totalOwed}. Please resolve these before making new bookings.` }),
         variant: "destructive",
       });
       return;
@@ -837,8 +844,8 @@ export default function KitchenBookingSheet({
       }
     } catch (error: any) {
       toast({
-        title: "Checkout Failed",
-        description: error.message || "Failed to start checkout. Please try again.",
+        title: t("toastCheckoutFailedTitle", "Checkout Failed"),
+        description: error.message || t("toastCheckoutFailedDefaultDesc", "Failed to start checkout. Please try again."),
         variant: "destructive",
       });
       setIsRedirectingToCheckout(false);
@@ -854,8 +861,8 @@ export default function KitchenBookingSheet({
     const minHours = kitchenPricing?.minimumBookingHours ?? 0;
     if (minHours > 0 && selectedSlots.length < minHours) {
       toast({
-        title: "Minimum Booking Required",
-        description: `This kitchen requires a minimum of ${minHours} hour${minHours > 1 ? 's' : ''} per booking. You have selected ${selectedSlots.length}.`,
+        title: t("toastMinBookingRequiredTitle", "Minimum Booking Required"),
+        description: t("toastMinBookingRequiredDesc", { minHours, selected: selectedSlots.length, defaultValue: `This kitchen requires a minimum of ${minHours} hour${minHours > 1 ? 's' : ''} per booking. You have selected ${selectedSlots.length}.` }),
         variant: "destructive",
       });
       return;
@@ -865,8 +872,8 @@ export default function KitchenBookingSheet({
     if (penaltyData?.hasUnpaidPenalties) {
       const totalOwed = (penaltyData.totalOwedCents / 100).toFixed(2);
       toast({
-        title: "Booking Blocked - Unpaid Penalties",
-        description: `You have ${penaltyData.totalCount} unpaid penalty(ies) totaling $${totalOwed}. Please resolve these before making new bookings.`,
+        title: t("toastUnpaidPenaltiesTitle", "Booking Blocked - Unpaid Penalties"),
+        description: t("toastUnpaidPenaltiesDesc", { count: penaltyData.totalCount, amount: `$${totalOwed}`, defaultValue: `You have ${penaltyData.totalCount} unpaid penalty(ies) totaling $${totalOwed}. Please resolve these before making new bookings.` }),
         variant: "destructive",
       });
       return;
@@ -915,16 +922,16 @@ export default function KitchenBookingSheet({
       {
         onSuccess: () => {
           toast({
-            title: "Booking Created!",
-            description: `Your ${selectedSlots.length} hour kitchen booking has been submitted successfully.`,
+            title: t("toastBookingCreatedTitle", "Booking Created!"),
+            description: t("toastBookingCreatedDesc", { count: selectedSlots.length, defaultValue: `Your ${selectedSlots.length} hour kitchen booking has been submitted successfully.` }),
           });
           setIsProcessingBooking(false);
           onOpenChange(false); // Close the sheet
         },
         onError: (error: any) => {
           toast({
-            title: "Booking Failed",
-            description: error.message || "Failed to create booking. Please try again.",
+            title: t("toastBookingFailedTitle", "Booking Failed"),
+            description: error.message || t("toastBookingFailedDefaultDesc", "Failed to create booking. Please try again."),
             variant: "destructive",
           });
           setIsProcessingBooking(false);
@@ -941,7 +948,7 @@ export default function KitchenBookingSheet({
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">Loading kitchens...</p>
+            <p className="text-sm text-muted-foreground">{t("sheetLoadingKitchens", "Loading kitchens...")}</p>
           </div>
         </div>
       );
@@ -955,7 +962,7 @@ export default function KitchenBookingSheet({
             <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
               <Building className="h-6 w-6 text-muted-foreground" />
             </div>
-            <p className="text-sm font-medium text-muted-foreground">No kitchens available at this location</p>
+            <p className="text-sm font-medium text-muted-foreground">{t("sheetNoKitchensAtLocation", "No kitchens available at this location")}</p>
           </div>
         </div>
       );
@@ -966,8 +973,8 @@ export default function KitchenBookingSheet({
       return (
         <div className="flex-1 flex flex-col">
           <div className="mb-4">
-            <h3 className="text-base font-medium text-foreground">Select a Kitchen</h3>
-            <p className="text-sm text-muted-foreground mt-1">Choose which kitchen space you'd like to book</p>
+            <h3 className="text-base font-medium text-foreground">{t("sheetSelectKitchenTitle", "Select a Kitchen")}</h3>
+            <p className="text-sm text-muted-foreground mt-1">{t("sheetSelectKitchenDesc", "Choose which kitchen space you'd like to book")}</p>
           </div>
           <div className="space-y-2">
             {locationKitchens.map((kitchen: any) => (
@@ -1007,14 +1014,14 @@ export default function KitchenBookingSheet({
               {/* Equipment Section */}
               {equipmentListings.all.length > 0 && (
                 <div>
-                  <h3 className="text-sm font-medium text-foreground mb-3">Equipment</h3>
+                  <h3 className="text-sm font-medium text-foreground mb-3">{t("sheetEquipmentTitle", "Equipment")}</h3>
                   
                   {equipmentListings.included.length > 0 && (
                     <div className="mb-3">
-                      <p className="text-xs font-medium text-green-600 mb-2">Included</p>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">{t("sheetIncludedLabel", "Included")}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {equipmentListings.included.map((eq: any) => (
-                          <span key={eq.id} className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 rounded text-xs font-medium">
+                          <span key={eq.id} className="inline-flex items-center gap-1 px-2 py-1 border rounded text-xs font-medium text-muted-foreground">
                             <Check className="h-3 w-3" />
                             {eq.equipmentType}
                           </span>
@@ -1025,7 +1032,7 @@ export default function KitchenBookingSheet({
                   
                   {equipmentListings.rental.length > 0 && (
                     <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-2">Optional Rentals</p>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">{t("sheetOptionalRentalsLabel", "Optional Rentals")}</p>
                       <div className="grid grid-cols-2 gap-2">
                         {equipmentListings.rental.map((eq: any) => {
                           const isSelected = selectedEquipmentIds.includes(eq.id);
@@ -1045,7 +1052,7 @@ export default function KitchenBookingSheet({
                                 <span className="text-sm font-medium">{eq.equipmentType}</span>
                                 <span className="text-sm font-semibold text-primary">{formatCurrency(eq.sessionRate || 0)}</span>
                               </div>
-                              <p className="text-xs text-muted-foreground mt-0.5">per session</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{t("sheetPerSession", "per session")}</p>
                             </button>
                           );
                         })}
@@ -1070,8 +1077,8 @@ export default function KitchenBookingSheet({
                             <Package className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-foreground">Need storage space?</p>
-                            <p className="text-xs text-muted-foreground">Reserve refrigerator or dry storage for your ingredients</p>
+                            <p className="text-sm font-medium text-foreground">{t("sheetNeedStorageTitle", "Need storage space?")}</p>
+                            <p className="text-xs text-muted-foreground">{t("sheetNeedStorageDesc", "Reserve refrigerator or dry storage for your ingredients")}</p>
                           </div>
                         </div>
                         <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
@@ -1080,7 +1087,7 @@ export default function KitchenBookingSheet({
                   ) : (
                     <div>
                       <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-medium text-foreground">Storage Options</h3>
+                        <h3 className="text-sm font-medium text-foreground">{t("sheetStorageOptionsTitle", "Storage Options")}</h3>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -1090,7 +1097,7 @@ export default function KitchenBookingSheet({
                             setSelectedStorage([]);
                           }}
                         >
-                          Cancel
+                          {t("sheetCancelButton", "Cancel")}
                         </Button>
                       </div>
                       <StorageSelection
@@ -1108,7 +1115,7 @@ export default function KitchenBookingSheet({
                 <div className="flex-1 flex items-center justify-center text-center py-8">
                   <div>
                     <Package className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">No add-ons available for this kitchen</p>
+                    <p className="text-sm text-muted-foreground">{t("sheetNoAddonsAvailable", "No add-ons available for this kitchen")}</p>
                   </div>
                 </div>
               )}
@@ -1125,14 +1132,14 @@ export default function KitchenBookingSheet({
           {/* Header with month navigation - compact on mobile */}
           <div className="flex-shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div className="flex-1 min-w-0">
-              <h3 className="text-base font-semibold text-foreground">Select Date</h3>
+              <h3 className="text-base font-semibold text-foreground">{t("sheetSelectDateTitle", "Select Date")}</h3>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {isLoadingAvailability ? (
                   <span className="flex items-center gap-1.5">
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    Loading availability...
+                    {t("sheetLoadingAvailability", "Loading availability...")}
                   </span>
-                ) : 'Tap a green date to continue'}
+                ) : t("sheetTapDateToContinue", "Tap an available date to continue")}
               </p>
             </div>
             <div className="flex items-center justify-center gap-1 bg-muted/50 rounded-lg p-1 flex-shrink-0">
@@ -1161,16 +1168,16 @@ export default function KitchenBookingSheet({
           {/* Legend - horizontal scrollable on mobile, compact design */}
           <div className="flex-shrink-0 flex items-center gap-3 sm:gap-5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
             <div className="flex items-center gap-1.5 flex-shrink-0">
-              <div className="w-4 h-4 rounded-md bg-gradient-to-br from-emerald-400 to-green-500 shadow-sm shadow-green-500/30" />
-              <span className="text-xs font-medium text-foreground">Available</span>
+              <div className="w-4 h-4 rounded-md border border-border bg-background" />
+              <span className="text-xs font-medium text-foreground">{t("sheetLegendAvailable", "Available")}</span>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
-              <div className="w-4 h-4 rounded-md bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600" />
-              <span className="text-xs font-medium text-muted-foreground">Closed</span>
+              <div className="w-4 h-4 rounded-md bg-muted border border-border" />
+              <span className="text-xs font-medium text-muted-foreground">{t("sheetLegendClosed", "Closed")}</span>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
               <div className="w-4 h-4 rounded-md bg-primary ring-2 ring-primary/30 ring-offset-1" />
-              <span className="text-xs font-medium text-foreground">Selected</span>
+              <span className="text-xs font-medium text-foreground">{t("sheetLegendSelected", "Selected")}</span>
             </div>
           </div>
 
@@ -1179,15 +1186,18 @@ export default function KitchenBookingSheet({
               the same layout, so the grid never glitches into existence one
               cell at a time. */}
           <div className="flex-1 min-h-0 overflow-y-auto">
-            <div className="bg-gradient-to-b from-muted/40 to-muted/20 rounded-xl p-2 sm:p-3 border border-border/50">
+            <div className="bg-muted/30 rounded-xl p-2 sm:p-3 border border-border/50">
               {/* Day headers - abbreviated on mobile */}
               <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-1.5">
-                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => (
-                  <div key={idx} className="text-center text-xs sm:text-xs font-bold text-muted-foreground/70 uppercase tracking-wide py-1">
-                    <span className="sm:hidden">{day}</span>
-                    <span className="hidden sm:inline">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][idx]}</span>
-                  </div>
-                ))}
+                {DAY_SHORT_KEYS.map((dayKey, idx) => {
+                  const dayLabel = t(dayKey, { ns: "kitchen" });
+                  return (
+                    <div key={idx} className="text-center text-xs sm:text-xs font-bold text-muted-foreground/70 uppercase tracking-wide py-1">
+                      <span className="sm:hidden">{dayLabel.charAt(0)}</span>
+                      <span className="hidden sm:inline">{dayLabel}</span>
+                    </div>
+                  );
+                })}
               </div>
 
               {isLoadingAvailability ? (
@@ -1196,7 +1206,7 @@ export default function KitchenBookingSheet({
                 <div
                   className="grid grid-cols-7 gap-0.5 sm:gap-1"
                   role="status"
-                  aria-label="Loading kitchen availability"
+                  aria-label={t("sheetLoadingAvailabilityAria", "Loading kitchen availability")}
                   aria-live="polite"
                 >
                   {Array.from({ length: 42 }).map((_, idx) => (
@@ -1205,7 +1215,7 @@ export default function KitchenBookingSheet({
                       className="h-8 sm:h-9 rounded-lg bg-muted/70"
                     />
                   ))}
-                  <span className="sr-only">Loading kitchen availability…</span>
+                  <span className="sr-only">{t("sheetLoadingAvailabilitySr", "Loading kitchen availability…")}</span>
                 </div>
               ) : (
                 /* Calendar days - compact responsive grid */
@@ -1235,14 +1245,14 @@ export default function KitchenBookingSheet({
                           isSelected && "bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-2 ring-primary/30 ring-offset-1 ring-offset-background scale-105 z-10",
 
                           // Today indicator (not selected) - with available styling
-                          !isSelected && isTodayDate && hasAvailability && "bg-gradient-to-br from-emerald-400 to-green-500 text-white shadow-md shadow-green-500/30 ring-2 ring-green-400/50 ring-offset-1",
-                          !isSelected && isTodayDate && !hasAvailability && !isPastDate && "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 ring-1 ring-slate-400",
+                          !isSelected && isTodayDate && hasAvailability && "border-2 border-primary bg-primary/5 text-foreground ring-1 ring-primary/20",
+                          !isSelected && isTodayDate && !hasAvailability && !isPastDate && "bg-muted text-muted-foreground border border-border",
 
-                          // Available dates - vibrant green gradient with hover
-                          !isSelected && !isTodayDate && isCurrent && hasAvailability && "bg-gradient-to-br from-emerald-50 to-green-100 dark:from-emerald-900/40 dark:to-green-800/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700 hover:from-emerald-100 hover:to-green-200 dark:hover:from-emerald-800/50 dark:hover:to-green-700/50 hover:shadow-md hover:shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98]",
+                          // Available dates
+                          !isSelected && !isTodayDate && isCurrent && hasAvailability && "border border-border bg-background text-foreground hover:bg-muted/50 hover:border-foreground/20",
 
                           // Unavailable/closed dates - clearly disabled look
-                          !isSelected && !isTodayDate && isCurrent && isUnavailable && "bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200/50 dark:border-slate-700/50",
+                          !isSelected && !isTodayDate && isCurrent && isUnavailable && "bg-muted/50 text-muted-foreground cursor-not-allowed border border-border/50",
 
                           // Not current month - very faded
                           !isCurrent && "text-slate-300 dark:text-slate-700 cursor-default",
@@ -1274,7 +1284,7 @@ export default function KitchenBookingSheet({
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                      {selectedDate.toLocaleDateString(i18n.language, { weekday: 'long', month: 'short', day: 'numeric' })}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {isLoadingSlots ? 'Loading time slots...' : `${allSlots.length} time slot${allSlots.length !== 1 ? 's' : ''} available`}
@@ -1291,7 +1301,7 @@ export default function KitchenBookingSheet({
                   }}
                 >
                   <X className="h-3 w-3 mr-1" />
-                  Clear
+                  {t("sheetClearButton", "Clear")}
                 </Button>
               </div>
             </div>
@@ -1306,13 +1316,13 @@ export default function KitchenBookingSheet({
         <div className="flex-1 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-base font-medium text-foreground">Select Time</h3>
+              <h3 className="text-base font-medium text-foreground">{t("sheetSelectTimeTitle", "Select Time")}</h3>
               <p className="text-sm text-muted-foreground mt-0.5">
                 {formatDate(selectedDate)}
                 {kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 0
-                  ? ` • Min ${kitchenPricing.minimumBookingHours}hr`
+                  ? ` • ${t("sheetMinHourBadge", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Min ${kitchenPricing.minimumBookingHours}hr` })}`
                   : ''}
-                {` • Max ${maxSlotsPerChef} hours`}
+                {` • ${t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}`}
               </p>
             </div>
             <Button 
@@ -1325,7 +1335,7 @@ export default function KitchenBookingSheet({
                 setSelectedSlots([]);
               }}
             >
-              Change date
+              {t("sheetChangeDate", "Change date")}
             </Button>
           </div>
           
@@ -1336,7 +1346,7 @@ export default function KitchenBookingSheet({
             <div
               className="flex-1 overflow-y-auto"
               role="status"
-              aria-label="Loading available time slots"
+              aria-label={t("sheetLoadingSlotsAria", "Loading available time slots")}
               aria-live="polite"
             >
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -1349,24 +1359,24 @@ export default function KitchenBookingSheet({
               </div>
               <div className="mt-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                <span>Loading time slots…</span>
+                <span>{t("sheetLoadingSlotsText", "Loading time slots…")}</span>
               </div>
-              <span className="sr-only">Loading available time slots…</span>
+              <span className="sr-only">{t("sheetLoadingSlotsAria", "Loading available time slots")}…</span>
             </div>
           ) : allSlots.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-center">
               <div>
                 <Clock className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No available hours on this day</p>
+                <p className="text-sm text-muted-foreground">{t("sheetNoAvailableHours", "No available hours on this day")}</p>
               </div>
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto">
               {kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 1 && selectedSlots.length === 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-3 flex items-start gap-2">
-                  <Clock className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-amber-800">
-                    <strong>Minimum {kitchenPricing.minimumBookingHours}-hour booking.</strong> Selecting a time slot will automatically reserve {kitchenPricing.minimumBookingHours} consecutive hours.
+                <div className="rounded-lg border p-2.5 mb-3 flex items-start gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-muted-foreground">
+                    <strong>{t("sheetMinBookingNoticeBold", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Minimum ${kitchenPricing.minimumBookingHours}-hour booking.` })}</strong> {t("sheetMinBookingNoticeDetail", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Selecting a time slot will automatically reserve ${kitchenPricing.minimumBookingHours} consecutive hours.` })}
                   </p>
                 </div>
               )}
@@ -1396,7 +1406,7 @@ export default function KitchenBookingSheet({
                           "block text-[10px] sm:text-xs mt-0.5",
                           isSelected ? "text-primary-foreground/80" : "text-muted-foreground"
                         )}>
-                          {slot.available} left
+                          {t("sheetSlotsLeft", { count: slot.available, defaultValue: `${slot.available} left` })}
                         </span>
                       )}
                     </button>
@@ -1428,23 +1438,23 @@ export default function KitchenBookingSheet({
                 </div>
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <div className="p-2 bg-background rounded">
-                    <p className="text-xs text-muted-foreground">Date</p>
+                    <p className="text-xs text-muted-foreground">{t("sheetDateLabel", "Date")}</p>
                     <p className="text-sm font-medium">{formatDate(selectedDate)}</p>
                   </div>
                   <div className="p-2 bg-background rounded">
-                    <p className="text-xs text-muted-foreground">Duration</p>
-                    <p className="text-sm font-medium">{selectedSlots.length} hour{selectedSlots.length > 1 ? 's' : ''}</p>
+                    <p className="text-xs text-muted-foreground">{t("sheetDurationLabel", "Duration")}</p>
+                    <p className="text-sm font-medium">{t("sheetHoursCount", { count: selectedSlots.length, defaultValue: `${selectedSlots.length} hour${selectedSlots.length > 1 ? 's' : ''}` })}</p>
                   </div>
                 </div>
               </div>
 
               {/* Time Slots */}
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-xs text-muted-foreground mb-1">Booking Time</p>
-                <p className="text-base font-semibold text-green-800">{getBookingTimeRange()}</p>
+              <div className="p-3 border rounded-lg">
+                <p className="text-xs text-muted-foreground mb-1">{t("sheetBookingTimeLabel", "Booking Time")}</p>
+                <p className="text-base font-semibold">{getBookingTimeRange()}</p>
                 <div className="flex flex-wrap gap-1.5 mt-2">
-                  {[...selectedSlots].sort().map((slot, idx) => (
-                    <span key={slot} className="px-2 py-0.5 bg-white border border-green-300 rounded text-xs font-medium text-green-800">
+                  {[...selectedSlots].sort().map((slot) => (
+                    <span key={slot} className="px-2 py-0.5 border rounded text-xs font-medium text-muted-foreground">
                       {formatSlotRange(slot)}
                     </span>
                   ))}
@@ -1455,7 +1465,7 @@ export default function KitchenBookingSheet({
               <div className="p-3 bg-muted/30 border rounded-lg">
                 <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                   <DollarSign className="h-4 w-4 text-primary" />
-                  Booking Summary
+                  {t("sheetBookingSummaryTitle", "Booking Summary")}
                 </h4>
                 
                 <div className="space-y-2 text-sm">
@@ -1463,9 +1473,9 @@ export default function KitchenBookingSheet({
                   {kitchenPricing?.hourlyRate && estimatedPrice && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">
-                        Kitchen ({estimatedPrice.durationHours}hr × {formatCurrency(kitchenPricing.hourlyRate)})
+                        {t("sheetKitchenLineLabel", { hours: estimatedPrice.durationHours, rate: formatCurrency(kitchenPricing.hourlyRate), defaultValue: `Kitchen (${estimatedPrice.durationHours}hr × ${formatCurrency(kitchenPricing.hourlyRate)})` })}
                         {estimatedPrice.durationHours > selectedSlots.length && (
-                          <span className="text-xs text-amber-600 ml-1">(min {estimatedPrice.durationHours}hr)</span>
+                          <span className="text-xs text-muted-foreground ml-1">{t("sheetMinAppliedSuffix", { hours: estimatedPrice.durationHours, defaultValue: `(min ${estimatedPrice.durationHours}hr)` })}</span>
                         )}
                       </span>
                       <span className="font-medium">{formatCurrency(estimatedPrice.basePrice)}</span>
@@ -1476,7 +1486,7 @@ export default function KitchenBookingSheet({
                   {equipmentPricing.items.length > 0 && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">
-                        Equipment ({equipmentPricing.items.length} item{equipmentPricing.items.length > 1 ? 's' : ''})
+                        {t("sheetEquipmentLineLabel", { count: equipmentPricing.items.length, defaultValue: `Equipment (${equipmentPricing.items.length} item${equipmentPricing.items.length > 1 ? 's' : ''})` })}
                       </span>
                       <span className="font-medium">{formatCurrency(equipmentPricing.subtotal)}</span>
                     </div>
@@ -1486,7 +1496,7 @@ export default function KitchenBookingSheet({
                   {storagePricing.items.length > 0 && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">
-                        Storage ({storagePricing.items.length} reservation{storagePricing.items.length > 1 ? 's' : ''})
+                        {t("sheetStorageLineLabel", { count: storagePricing.items.length, defaultValue: `Storage (${storagePricing.items.length} reservation${storagePricing.items.length > 1 ? 's' : ''})` })}
                       </span>
                       <span className="font-medium">{formatCurrency(storagePricing.subtotal)}</span>
                     </div>
@@ -1495,22 +1505,22 @@ export default function KitchenBookingSheet({
                   {/* Tax */}
                   {tax > 0 && (
                     <div className="flex justify-between pt-2 border-t">
-                      <span className="text-muted-foreground">Tax</span>
+                      <span className="text-muted-foreground">{t("sheetTaxLabel", "Tax")}</span>
                       <span className="font-medium">{formatCurrency(tax)}</span>
                     </div>
                   )}
                   
-                  {/* Platform Commission */}
-                  {platformCommission > 0 && (
+                  {/* Service Fee */}
+                  {serviceFee > 0 && (
                     <div className="flex justify-between pt-2 border-t">
-                      <span className="text-muted-foreground">Platform Commission (7%)</span>
-                      <span className="font-medium">{formatCurrency(platformCommission)}</span>
+                      <span className="text-muted-foreground">{t("sheetServiceFeeLabel", { percent: 7, defaultValue: "Service Fee (7%)" })}</span>
+                      <span className="font-medium">{formatCurrency(serviceFee)}</span>
                     </div>
                   )}
                   
                   {/* Total */}
                   <div className="flex justify-between pt-2 border-t">
-                    <span className="font-semibold">Total</span>
+                    <span className="font-semibold">{t("sheetTotalLabel", "Total")}</span>
                     <span className="text-lg font-bold text-primary">{formatCurrency(grandTotal)} {kitchenPricing?.currency || 'CAD'}</span>
                   </div>
                 </div>
@@ -1518,13 +1528,13 @@ export default function KitchenBookingSheet({
 
               {/* Notes */}
               <div>
-                <label className="block text-sm font-medium mb-2">Special Notes (Optional)</label>
+                <label className="block text-sm font-medium mb-2">{t("sheetSpecialNotesLabel", "Special Notes (Optional)")}</label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={2}
                   maxLength={500}
-                  placeholder="Any special requirements..."
+                  placeholder={t("sheetSpecialNotesPlaceholder", "Any special requirements...")}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary resize-none"
                 />
               </div>
@@ -1555,7 +1565,7 @@ export default function KitchenBookingSheet({
       const effectiveHours = estimatedPrice.durationHours;
       const minApplied = effectiveHours > selectedSlots.length;
       items.push({
-        label: `${effectiveHours} hour${effectiveHours > 1 ? 's' : ''} kitchen time${minApplied ? ` (min ${effectiveHours}hr)` : ''}`,
+        label: t("sheetKitchenTimeItem", { count: effectiveHours, defaultValue: `${effectiveHours} hour${effectiveHours > 1 ? 's' : ''} kitchen time` }) + (minApplied ? t("sheetMinAppliedSuffix", { hours: effectiveHours, defaultValue: ` (min ${effectiveHours}hr)` }) : ''),
         value: estimatedPrice.basePrice
       });
     }
@@ -1563,7 +1573,7 @@ export default function KitchenBookingSheet({
     // Equipment
     if (selectedEquipmentIds.length > 0) {
       items.push({
-        label: `${selectedEquipmentIds.length} equipment rental${selectedEquipmentIds.length > 1 ? 's' : ''}`,
+        label: t("sheetEquipmentRentalsItem", { count: selectedEquipmentIds.length, defaultValue: `${selectedEquipmentIds.length} equipment rental${selectedEquipmentIds.length > 1 ? 's' : ''}` }),
         value: equipmentPricing.subtotal
       });
     }
@@ -1571,7 +1581,7 @@ export default function KitchenBookingSheet({
     // Storage
     if (selectedStorage.length > 0) {
       items.push({
-        label: `${selectedStorage.length} storage reservation${selectedStorage.length > 1 ? 's' : ''}`,
+        label: t("sheetStorageReservationsItem", { count: selectedStorage.length, defaultValue: `${selectedStorage.length} storage reservation${selectedStorage.length > 1 ? 's' : ''}` }),
         value: storagePricing.subtotal
       });
     }
@@ -1579,7 +1589,7 @@ export default function KitchenBookingSheet({
     return (
       <div className="border-t pt-3 mb-3">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Order Summary</span>
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("sheetOrderSummaryLabel", "Order Summary")}</span>
         </div>
         <div className="space-y-1.5">
           {items.map((item, idx) => (
@@ -1590,19 +1600,19 @@ export default function KitchenBookingSheet({
           ))}
           {tax > 0 && (
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Tax</span>
+              <span className="text-muted-foreground">{t("sheetTaxLabel", "Tax")}</span>
               <span className="font-medium">{formatCurrency(tax)}</span>
             </div>
           )}
-          {platformCommission > 0 && (
+          {serviceFee > 0 && (
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Platform Commission (7%)</span>
-              <span className="font-medium">{formatCurrency(platformCommission)}</span>
+              <span className="text-muted-foreground">{t("sheetServiceFeeLabel", { percent: 7, defaultValue: "Service Fee (7%)" })}</span>
+              <span className="font-medium">{formatCurrency(serviceFee)}</span>
             </div>
           )}
         </div>
         <div className="flex items-center justify-between pt-2 mt-2 border-t">
-          <span className="text-sm font-semibold">Total</span>
+          <span className="text-sm font-semibold">{t("sheetTotalLabel", "Total")}</span>
           <span className="text-lg font-semibold text-primary">{formatCurrency(grandTotal)} {kitchenPricing?.currency || 'CAD'}</span>
         </div>
       </div>
@@ -1616,7 +1626,7 @@ export default function KitchenBookingSheet({
         <>
           {renderRunningTotal()}
           <Button className="w-full" onClick={() => setCurrentStep('calendar')}>
-            Continue
+            {t("sheetContinueButton", "Continue")}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </>
@@ -1634,7 +1644,7 @@ export default function KitchenBookingSheet({
             onClick={() => setCurrentStep('slots')}
             disabled={!selectedDate}
           >
-            {selectedDate ? 'Select Time Slots' : 'Select a date to continue'}
+            {selectedDate ? t("sheetSelectTimeSlotsButton", "Select Time Slots") : t("sheetSelectDateToContinueButton", "Select a date to continue")}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </>
@@ -1650,7 +1660,7 @@ export default function KitchenBookingSheet({
             onClick={() => setCurrentStep('confirm')}
             disabled={selectedSlots.length === 0}
           >
-            {selectedSlots.length > 0 ? 'Review & Confirm' : 'Select time slots to continue'}
+            {selectedSlots.length > 0 ? t("sheetReviewAndConfirmButton", "Review & Confirm") : t("sheetSelectTimeSlotsToContinueButton", "Select time slots to continue")}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </>
@@ -1666,8 +1676,8 @@ export default function KitchenBookingSheet({
             onClick={() => setCurrentStep('slots')}
           >
             <ArrowLeft className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" />
-            <span className="hidden sm:inline">Back</span>
-            <span className="sm:hidden">Back</span>
+            <span className="hidden sm:inline">{t("sheetBackButton", "Back")}</span>
+            <span className="sm:hidden">{t("sheetBackButton", "Back")}</span>
           </Button>
           <Button 
             className="flex-1 min-h-[44px]" 
@@ -1677,17 +1687,17 @@ export default function KitchenBookingSheet({
             {createBooking.isPending || isRedirectingToCheckout || isProcessingBooking ? (
               <>
                 <Loader2 className="mr-1.5 sm:mr-2 h-4 w-4 animate-spin flex-shrink-0" />
-                <span className="truncate">{isRedirectingToCheckout ? 'Redirecting...' : 'Booking...'}</span>
+                <span className="truncate">{isRedirectingToCheckout ? t("sheetRedirectingButton", "Redirecting...") : t("sheetBookingEllipsisButton", "Booking...")}</span>
               </>
             ) : grandTotal > 0 ? (
               <>
                 <CreditCard className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" />
-                <span className="truncate">Checkout</span>
+                <span className="truncate">{t("sheetCheckoutButton", "Checkout")}</span>
               </>
             ) : (
               <>
                 <Check className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" />
-                <span className="truncate">Confirm Booking</span>
+                <span className="truncate">{t("sheetConfirmBookingButton", "Confirm Booking")}</span>
               </>
             )}
           </Button>
@@ -1723,7 +1733,7 @@ export default function KitchenBookingSheet({
                         setSelectedSlots([]);
                       }}
                     >
-                      Change
+                      {t("sheetChangeKitchen", "Change")}
                     </button>
                   )}
                 </div>
@@ -1737,7 +1747,7 @@ export default function KitchenBookingSheet({
             {selectedKitchen && kitchenPricing?.hourlyRate && (
               <div className="text-right">
                 <p className="text-lg font-semibold text-primary">{formatCurrency(kitchenPricing.hourlyRate)}</p>
-                <p className="text-xs text-muted-foreground">/hour</p>
+                <p className="text-xs text-muted-foreground">{t("sheetPerHour", "/hour")}</p>
               </div>
             )}
           </div>

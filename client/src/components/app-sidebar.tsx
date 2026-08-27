@@ -58,6 +58,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/ui/logo"
+import { SmartImage } from "@/components/ui/smart-image";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 
 // Navigation item types
 interface NavItem {
@@ -355,6 +357,9 @@ export function AppSidebar({
             </SidebarContent>
             <SidebarFooter>
                 <SidebarMenu>
+                    <SidebarMenuItem className="px-2 py-1 group-data-[collapsible=icon]:hidden">
+                        <LanguageSwitcher className="w-full justify-start h-10 border-border bg-background" />
+                    </SidebarMenuItem>
                     <SidebarMenuItem>
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -364,7 +369,7 @@ export function AppSidebar({
                                 >
                                     <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                                         {selectedLocation?.logoUrl ? (
-                                            <img src={selectedLocation.logoUrl} alt={selectedLocation.name} className="size-8 rounded-lg object-cover" />
+                                            <SmartImage src={selectedLocation.logoUrl} alt={selectedLocation.name} className="size-8 rounded-lg object-cover" />
                                         ) : (
                                             <MapPin className="size-4" />
                                         )}
@@ -395,7 +400,7 @@ export function AppSidebar({
                                         >
                                             <div className="flex size-6 items-center justify-center rounded-sm border">
                                                 {loc.logoUrl ? (
-                                                    <img src={loc.logoUrl} alt={loc.name} className="size-6 rounded-sm object-cover" />
+                                                    <SmartImage src={loc.logoUrl} alt={loc.name} className="size-6 rounded-sm object-cover" />
                                                 ) : (
                                                     <MapPin className="size-4 shrink-0" />
                                                 )}

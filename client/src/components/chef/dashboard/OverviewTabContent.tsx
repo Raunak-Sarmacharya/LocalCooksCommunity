@@ -1,3 +1,8 @@
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -9,36 +14,36 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { Link } from "wouter";
 import { formatDate, formatTime } from "@/lib/formatters";
 import {
-  BookOpen,
-  Building,
-  Calendar,
-  Clock,
-  FileText,
-  Shield,
-  Store,
   ArrowRight,
-  Utensils,
-  TrendingUp,
-  MessageCircle,
-  DollarSign,
-  Link2,
   ExternalLink,
   Loader2,
 } from "lucide-react";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
-import { useShopStatus, useStripeDashboardLink } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
+import {
+  openChefShopHome,
+  useShopStatus,
+  useStripeDashboardLink,
+} from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
 import { useToast } from "@/hooks/use-toast";
-import type { 
-  AnyApplication, 
-  KitchenApplicationWithLocation, 
+import {
+  applicationStatusVariant,
+  documentToneFromLabel,
+  getKitchenDisplayStatus,
+  toneToBadgeVariant,
+  type StatusTone,
+} from "@/components/chef/applications/status";
+import type {
+  AnyApplication,
+  KitchenApplicationWithLocation,
   KitchenSummary,
-  MicrolearningCompletion,
   EnrichedBooking,
-  StatusVariant
+  StatusVariant,
 } from "./types";
+import { KitchenPathEmptyCard, SellerPathEmptyCard } from "./GetStartedPathCards";
+import { TruncatedText } from "@/components/common/TruncatedText";
+import { requestDiscoverKitchensWalkthrough } from "@/components/kitchen-application/DiscoverKitchensButtonTour";
 
 interface OverviewTabContentProps {
   user: {
@@ -47,17 +52,130 @@ interface OverviewTabContentProps {
   applications: AnyApplication[];
   kitchenApplications: KitchenApplicationWithLocation[];
   kitchenSummary: KitchenSummary;
-  microlearningCompletion: MicrolearningCompletion | null | undefined;
+  trainingStatusLabel?: string;
   enrichedBookings: EnrichedBooking[];
   getMostRecentApplication: () => AnyApplication | null;
   getApplicationStatus: () => string | null;
   getDocumentStatus: () => string;
-  getStatusVariant: (status: string) => StatusVariant;
   onSetActiveTab: (tab: string) => void;
-  onSetApplicationViewMode: (mode: 'list' | 'form' | 'documents') => void;
-  onBookSessionClick: () => void;
+  onSetApplicationViewMode: (mode: "list" | "form" | "documents") => void;
   isSellerApplicationFullyApproved?: boolean;
   isShopCreated?: boolean;
+}
+
+function StatusDot({ tone, className }: { tone: StatusTone; className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "inline-block h-1.5 w-1.5 shrink-0 rounded-full",
+        tone === "success" && "bg-success",
+        tone === "warning" && "bg-warning",
+        tone === "danger" && "bg-destructive",
+        tone === "progress" && "bg-foreground/35",
+        tone === "neutral" && "bg-muted-foreground/30",
+        className
+      )}
+    />
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  tone,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone: StatusTone;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onClick} className="w-full text-left">
+      <Card className="h-full shadow-none transition-colors hover:bg-muted/40">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <StatusDot tone={tone} />
+          </div>
+          <TruncatedText as="p" className="mt-2 truncate text-lg font-semibold tracking-tight">{value}</TruncatedText>
+          {hint ? (
+            <TruncatedText as="p" className="mt-0.5 truncate text-xs text-muted-foreground">{hint}</TruncatedText>
+          ) : (
+            <p className="mt-0.5 min-h-4 text-xs">&nbsp;</p>
+          )}
+        </CardContent>
+      </Card>
+    </button>
+  );
+}
+
+function MetaRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: StatusTone;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
+        {tone ? <StatusDot tone={tone} /> : null}
+        <TruncatedText className="truncate">{value}</TruncatedText>
+      </span>
+    </div>
+  );
+}
+
+function trainingTone(label: string): StatusTone {
+  // Compare against canonical keys, not translated labels —
+  // translated labels change with the active language.
+  if (
+    label === "Completed" ||
+    label === "trainingCompleted"
+  ) return "success";
+  if (
+    label === "In Progress" ||
+    label === "In progress" ||
+    label === "trainingInProgress"
+  ) return "progress";
+  return "neutral";
+}
+
+function sellerTone(status: string | null): StatusTone {
+  if (!status) return "neutral";
+  const normalized = status.toLowerCase();
+  if (normalized.includes("approved") || normalized.includes("approuvée") || normalized.includes("схвалено")) return "success";
+  if (normalized.includes("rejected") || normalized.includes("refusée") || normalized.includes("відхилено")) return "danger";
+  if (
+    normalized.includes("review") ||
+    normalized.includes("révision") ||
+    normalized.includes("розгляді") ||
+    normalized.includes("pending") ||
+    normalized.includes("attente") ||
+    normalized.includes("очікує") ||
+    normalized.includes("started") ||
+    normalized.includes("commencé") ||
+    normalized.includes("розпочато") ||
+    normalized.includes("старті")
+  ) {
+    return "progress";
+  }
+  return "neutral";
+}
+
+function kitchenSummaryTone(summary: KitchenSummary): StatusTone {
+  if (summary.variant === "success") return "success";
+  if (summary.variant === "warning") return "warning";
+  if (summary.variant === "destructive") return "danger";
+  if (summary.variant === "secondary") return "progress";
+  return "neutral";
 }
 
 export default function OverviewTabContent({
@@ -65,22 +183,178 @@ export default function OverviewTabContent({
   applications,
   kitchenApplications,
   kitchenSummary,
-  microlearningCompletion,
+  trainingStatusLabel = "Not Started",
   enrichedBookings,
   getMostRecentApplication,
   getApplicationStatus,
   getDocumentStatus,
-  getStatusVariant,
   onSetActiveTab,
   onSetApplicationViewMode,
-  onBookSessionClick,
   isSellerApplicationFullyApproved,
   isShopCreated,
 }: OverviewTabContentProps) {
-  
+  const { t, i18n } = useTranslation("chef");
+  const tr = t as unknown as import("i18next").TFunction;
   const { data: shopStatus } = useShopStatus();
   const dashboardLinkMutation = useStripeDashboardLink();
   const { toast } = useToast();
+
+  const { user: authUser } = useFirebaseAuth();
+  const { data: viewings = [] } = useQuery({
+    queryKey: ["/api/viewings", "chef", authUser?.uid],
+    queryFn: async () => {
+      if (!authUser) return [];
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        const res = await fetch("/api/viewings/chef", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Failed to fetch viewings");
+        return res.json();
+      } catch (error) {
+        console.error(error);
+        return [];
+      }
+    },
+    enabled: !!authUser?.uid,
+  });
+
+
+  const latestApp = getMostRecentApplication();
+  const sellerStatus = getApplicationStatus();
+  const documentStatus = getDocumentStatus();
+  const firstName = user?.displayName?.split(" ")[0];
+  const showSellerAccount = Boolean(isSellerApplicationFullyApproved && isShopCreated);
+
+  const kitchenDisplays = useMemo(
+    () => kitchenApplications.map((app) => ({ app, display: getKitchenDisplayStatus(app, t) })),
+    [kitchenApplications, t]
+  );
+
+  const upcomingBookings = useMemo(() => {
+    return (enrichedBookings || [])
+      .filter((booking) => booking.status === "pending" || booking.status === "confirmed")
+      .sort((a, b) => {
+        const priority = a.status === "pending" ? 0 : 1;
+        const other = b.status === "pending" ? 0 : 1;
+        if (priority !== other) return priority - other;
+        return (
+          (a.bookingDate || "").localeCompare(b.bookingDate || "") ||
+          (a.startTime || "").localeCompare(b.startTime || "")
+        );
+      });
+  }, [enrichedBookings]);
+
+  const nextBooking = upcomingBookings[0];
+
+  const kitchenHint = useMemo(() => {
+    const actionNeeded = kitchenDisplays.filter((item) => item.display.tone === "warning").length;
+    const inReview = kitchenDisplays.filter((item) => item.display.tone === "progress").length;
+    if (actionNeeded > 0) {
+      return actionNeeded === 1 ? t("ovKitchenNeedsYouOne") : t("ovKitchenNeedsYou", { count: actionNeeded });
+    }
+    if (inReview > 0) {
+      return inReview === 1 ? t("ovWaitingReviewOne") : t("ovWaitingReview", { count: inReview });
+    }
+    return kitchenApplications.length > 0 ? t("ovOpenKitchenAccess") : t("ovBrowseKitchensHint");
+  }, [kitchenDisplays, kitchenApplications.length, t]);
+
+  const bookingsHint = nextBooking
+    ? `${formatBookingWhen(nextBooking, t, i18n.language)}${nextBooking.startTime ? ` · ${formatTime(nextBooking.startTime)}` : ""}`
+    : enrichedBookings?.length
+      ? t("ovNoUpcomingSessions")
+      : t("ovNoSessionsBooked");
+
+  const attentionItems = useMemo(() => {
+    const items: Array<{
+      id: string;
+      title: string;
+      description: string;
+      cta: string;
+      onClick: () => void;
+    }> = [];
+
+    const docTone = documentToneFromLabel(documentStatus);
+    if (latestApp && docTone === "danger") {
+      items.push({
+        id: "docs-rejected",
+        title: t("ovDocsRejectedTitle"),
+        description: t("ovDocsRejectedDesc"),
+        cta: t("ovUpdateCta"),
+        onClick: () => {
+          onSetApplicationViewMode("documents");
+          onSetActiveTab("applications");
+        },
+      });
+    } else if (latestApp && docTone === "warning") {
+      items.push({
+        id: "docs-needed",
+        title: t("ovDocsNeededTitle"),
+        description: documentStatus,
+        cta: t("ovUploadCta"),
+        onClick: () => {
+          onSetApplicationViewMode("documents");
+          onSetActiveTab("applications");
+        },
+      });
+    }
+
+    kitchenDisplays
+      .filter((item) => item.display.actionKind === "complete-step")
+      .slice(0, 2)
+      .forEach(({ app, display }) => {
+        items.push({
+          id: `kitchen-step-${app.id}`,
+          title: display.stepCaption,
+          description: app.location?.name || t("ovKitchenFallback"),
+          cta: display.actionLabel || t("ovContinueCta"),
+          onClick: () => onSetActiveTab("kitchen-applications"),
+        });
+      });
+
+    if (showSellerAccount && shopStatus && !shopStatus.linked) {
+      items.push({
+        id: "stripe",
+        title: t("ovLinkStripeTitle"),
+        description: t("ovLinkStripeDesc"),
+        cta: t("ovLinkCta"),
+        onClick: () => onSetActiveTab("my-account"),
+      });
+    }
+
+    return items
+      .filter((item) => item.id !== "training" && !/train/i.test(item.title))
+      .slice(0, 3);
+  }, [
+    latestApp,
+    documentStatus,
+    kitchenDisplays,
+    showSellerAccount,
+    shopStatus,
+    onSetActiveTab,
+    onSetApplicationViewMode,
+    t,
+  ]);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return t("ovGoodMorning");
+    if (hour < 17) return t("ovGoodAfternoon");
+    return t("ovGoodEvening");
+  };
+
+  const subtitle = useMemo(() => {
+    if (attentionItems.length > 0) {
+      return attentionItems[0].title;
+    }
+    if (upcomingBookings.length > 0) {
+      return t("ovSubtitleUpcoming", { count: upcomingBookings.length });
+    }
+    if (!applications.length && kitchenApplications.length === 0) {
+      return t("ovSubtitleStart");
+    }
+    return t("ovSubtitleAllSet");
+  }, [attentionItems, upcomingBookings.length, applications.length, kitchenApplications.length, t]);
 
   const handleOpenDashboard = async () => {
     try {
@@ -88,619 +362,448 @@ export default function OverviewTabContent({
       if (result.url) {
         window.open(result.url, "_blank", "noopener,noreferrer");
       }
-    } catch (err) {
+    } catch {
       toast({
-        title: "Error",
-        description: "Failed to fetch Stripe dashboard link. Please try again.",
+        title: t("errorTitle"),
+        description: t("ovStripeLinkFailed"),
         variant: "destructive",
       });
     }
   };
 
-  // Helper to get kitchen app status for the overview cards
-  const getKitchenAppStatus = (app: KitchenApplicationWithLocation) => {
-    if (app.status === 'inReview') {
-      return { label: 'In Review', variant: 'secondary' as const, color: 'bg-amber-500' };
-    }
-    if (app.status === 'rejected') {
-      return { label: 'Rejected', variant: 'destructive' as const, color: 'bg-red-500' };
-    }
-    if (app.status === 'approved') {
-      const tier = app.current_tier ?? 1;
-      if (tier >= 3) {
-        return { label: 'Ready to Book', variant: 'success' as const, color: 'bg-green-600' };
-      }
-      if (tier === 2 && app.tier2_completed_at) {
-        return { label: 'Step 2 Review', variant: 'secondary' as const, color: 'bg-orange-500' };
-      }
-      if (tier === 2 && !app.tier2_completed_at) {
-        return { label: 'Step 2 Pending', variant: 'secondary' as const, color: 'bg-blue-500' };
-      }
-      return { label: 'Step 1 Approved', variant: 'success' as const, color: 'bg-blue-600' };
-    }
-    return { label: 'Unknown', variant: 'outline' as const, color: 'bg-muted-foreground/40' };
-  };
-
-  // Dynamic greeting based on time of day
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  };
-
-  // Dynamic subtitle based on chef state
-  const getSubtitle = () => {
-    const pendingKitchens = kitchenApplications.filter(a => a.status === 'inReview').length;
-    const activeBookings = enrichedBookings?.length || 0;
-    const hasApp = applications?.length > 0;
-    const appStatus = getApplicationStatus();
-
-    if (!hasApp && kitchenApplications.length === 0) {
-      return 'Get started by applying to sell or booking a commercial kitchen.';
-    }
-    if (appStatus === 'In Review' || pendingKitchens > 0) {
-      const parts: string[] = [];
-      if (appStatus === 'In Review') parts.push('your seller application is under review');
-      if (pendingKitchens > 0) parts.push(`${pendingKitchens} kitchen application${pendingKitchens > 1 ? 's' : ''} pending`);
-      return `Heads up \u2014 ${parts.join(' and ')}.`;
-    }
-    if (activeBookings > 0) {
-      return `You have ${activeBookings} active booking${activeBookings > 1 ? 's' : ''}. Here\u2019s your dashboard.`;
-    }
-    return 'Here\u2019s an overview of your LocalCooks journey.';
-  };
+  const openShop = () => openChefShopHome();
 
   return (
     <div className="space-y-8">
-      {/* Welcome Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            {getGreeting()}{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            {getSubtitle()}
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          {getGreeting()}
+          {firstName ? `, ${firstName}` : ""}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
       </div>
 
-      {/* Quick Stats Grid */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-border/50 shadow-sm overflow-hidden transition-all hover:shadow-md">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
-              <Store className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Seller Status</p>
-              <p className="text-sm font-bold text-foreground">{getApplicationStatus() || "Not Started"}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 shadow-sm overflow-hidden transition-all hover:shadow-md">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-              <Building className="h-6 w-6 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Kitchen Access</p>
-              <p className="text-sm font-bold text-foreground">{kitchenSummary.label}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 shadow-sm overflow-hidden transition-all hover:shadow-md">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center border border-green-500/20">
-              <BookOpen className="h-6 w-6 text-green-600" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Training</p>
-              <p className="text-sm font-bold text-foreground">{microlearningCompletion?.confirmed ? "Completed" : "In Progress"}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 shadow-sm overflow-hidden transition-all hover:shadow-md">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-              <Calendar className="h-6 w-6 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bookings</p>
-              <p className="text-sm font-bold text-foreground">{enrichedBookings?.length || 0} Active</p>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard
+          label={t("ovStatSeller")}
+          value={sellerStatus || t("ovNotStarted")}
+          hint={latestApp ? t("ovDocumentsHint", { status: documentStatus }) : t("ovApplyToSellHint")}
+          tone={sellerTone(sellerStatus)}
+          onClick={() => onSetActiveTab("applications")}
+        />
+        <StatCard
+          label={t("ovStatKitchens")}
+          value={kitchenSummary.label}
+          hint={kitchenHint}
+          tone={kitchenSummaryTone(kitchenSummary)}
+          onClick={() =>
+            onSetActiveTab(
+              kitchenApplications.length > 0 ? "kitchen-applications" : "discover-kitchens"
+            )
+          }
+        />
+        <StatCard
+          label={t("ovStatKitchenTours", "Kitchen Tours")}
+          value={viewings.length > 0 ? viewings.length.toString() : t("ovNone", "None")}
+          hint={viewings.length > 0 ? t("ovViewingsScheduled", "Tours scheduled") : t("ovNoViewings", "No tours scheduled")}
+          tone={viewings.length > 0 ? "success" : "neutral"}
+          onClick={() => onSetActiveTab("viewings")}
+        />
+        <StatCard
+          label={t("ovStatBookings")}
+          value={
+            upcomingBookings.length
+              ? t("ovBookingsUpcoming", { count: upcomingBookings.length })
+              : enrichedBookings?.length
+                ? t("ovBookingsTotal", { count: enrichedBookings.length })
+                : t("ovNone")
+          }
+          hint={bookingsHint}
+          tone={
+            upcomingBookings.some((booking) => booking.status === "pending")
+              ? "warning"
+              : upcomingBookings.length
+                ? "success"
+                : "neutral"
+          }
+          onClick={() => onSetActiveTab("bookings")}
+        />
       </div>
 
-      {/* Three Path Cards - Sell, Kitchens & Seller Account */}
-      <div className={cn("grid gap-6", (isSellerApplicationFullyApproved && isShopCreated) ? "lg:grid-cols-3" : "lg:grid-cols-2")}>
-        {/* Sell on LocalCooks Path */}
-        <Card className="border-border/50 shadow-sm overflow-hidden group hover:shadow-lg transition-all">
-          <div className="h-2 bg-gradient-to-r from-primary to-primary/60" />
-          <CardHeader className="pb-4">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
-                  <Store className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <CardTitle className="text-xl">Sell on LocalCooks</CardTitle>
-                  <CardDescription>Become a verified seller on our platform</CardDescription>
-                </div>
-              </div>
-              {applications?.length > 0 && (
-                <Badge variant={getStatusVariant(getMostRecentApplication()?.status || "")} className="text-xs">
-                  {formatApplicationStatus(getMostRecentApplication()?.status || "")}
-                </Badge>
-              )}
-            </div>
+      {attentionItems.length > 0 && (
+        <Card className="shadow-none">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">{t("ovNeedsAttention")}</CardTitle>
+            <CardDescription>{t("ovNeedsAttentionDesc")}</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Join our marketplace and sell your homemade food to customers in your area. We handle delivery, payments, and customer support.
-            </p>
-            
-            {applications?.length > 0 ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/50">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Application #{getMostRecentApplication()?.id}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    {getMostRecentApplication()?.createdAt ? new Date(getMostRecentApplication()!.createdAt).toLocaleDateString() : ''}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/50">
-                  <div className="flex items-center gap-2">
-                    <Shield className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Documents</span>
-                  </div>
-                  <Badge variant="outline" className="text-xs">{getDocumentStatus()}</Badge>
-                </div>
-              </div>
-            ) : (
-              <div className="p-4 bg-primary/5 rounded-lg border border-primary/10 text-center">
-                <Utensils className="h-8 w-8 text-primary mx-auto mb-2" />
-                <p className="text-sm font-medium">Ready to start selling?</p>
-                <p className="text-xs text-muted-foreground">Apply now to become a LocalCooks seller</p>
-              </div>
-            )}
-          </CardContent>
-          <CardFooter className="bg-muted/5 border-t border-border/30 pt-4">
-            {applications?.length > 0 ? (
-              <Button 
-                variant="outline" 
-                className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
-                onClick={() => onSetActiveTab("applications")}
-              >
-                View Application Details
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            ) : (
-              <Button 
-                className="w-full"
-                onClick={() => {
-                  onSetApplicationViewMode('form');
-                  onSetActiveTab('applications');
-                }}
-              >
-                Apply to Sell
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            )}
-          </CardFooter>
-        </Card>
-
-        {/* Kitchen Access Path */}
-        <Card className="border-border/50 shadow-sm overflow-hidden group hover:shadow-lg transition-all">
-          <div className="h-2 bg-gradient-to-r from-blue-600 to-blue-400" />
-          <CardHeader className="pb-4">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-                  <Building className="h-6 w-6 text-blue-600" />
-                </div>
-                <div>
-                  <CardTitle className="text-xl">Kitchen Access</CardTitle>
-                  <CardDescription>Book commercial kitchen spaces</CardDescription>
-                </div>
-              </div>
-              {kitchenApplications.length > 0 && (
-                <Badge variant={kitchenSummary.variant} className="text-xs">
-                  {kitchenSummary.label}
-                </Badge>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Access our network of commercial kitchens. Apply to kitchens, get approved, and book time slots to prepare your food.
-            </p>
-            
-            {kitchenApplications.length > 0 ? (
-              <div className="space-y-3">
-                {kitchenApplications.slice(0, 2).map((app) => {
-                  const status = getKitchenAppStatus(app);
-                  return (
-                    <div key={app.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/50">
-                      <div className="flex items-center gap-2">
-                        <Building className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium truncate max-w-[150px]">{app.location?.name || 'Kitchen'}</span>
-                      </div>
-                      <Badge 
-                        variant={status.variant} 
-                        className={cn("text-xs", status.color, "text-white hover:" + status.color)}
-                      >
-                        {status.label}
-                      </Badge>
+          <CardContent className="pt-0">
+            <ul className="divide-y">
+              {attentionItems.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={item.onClick}
+                    className="flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-muted/40"
+                  >
+                    <StatusDot tone="warning" className="mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{item.title}</p>
+                      <TruncatedText as="p" className="truncate text-xs text-muted-foreground">{item.description}</TruncatedText>
                     </div>
-                  );
-                })}
-                {kitchenApplications.length > 2 && (
-                  <p className="text-xs text-muted-foreground text-center">
-                    +{kitchenApplications.length - 2} more kitchens
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="p-4 bg-blue-500/5 rounded-lg border border-blue-500/10 text-center">
-                <Building className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-                <p className="text-sm font-medium">Need a commercial kitchen?</p>
-                <p className="text-xs text-muted-foreground">Explore our partner kitchens</p>
-              </div>
-            )}
+                    <span className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground">
+                      {item.cta}
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           </CardContent>
-          <CardFooter className="bg-muted/5 border-t border-border/30 pt-4 gap-2">
-            {kitchenApplications.length > 0 ? (
-              <>
-                <Button 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={() => onSetActiveTab("kitchen-applications")}
-                >
-                  My Kitchens
-                </Button>
-                <Button 
-                  variant="outline"
-                  className="flex-1 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
-                  onClick={() => onSetActiveTab("discover-kitchens")}
-                >
-                  Discover More
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </>
-            ) : (
-              <Button 
-                variant="secondary"
-                className="w-full"
-                onClick={() => onSetActiveTab("discover-kitchens")}
-              >
-                Explore Kitchens
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            )}
-          </CardFooter>
         </Card>
+      )}
 
-        {/* Seller Account / Earnings Path */}
-        {isSellerApplicationFullyApproved && isShopCreated && (
-          <Card className="border-border/50 shadow-sm overflow-hidden group hover:shadow-lg transition-all">
-            <div className="h-2 bg-gradient-to-r from-emerald-600 to-emerald-400" />
-            <CardHeader className="pb-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-                    <DollarSign className="h-6 w-6 text-emerald-600" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-xl">Seller Account</CardTitle>
-                    <CardDescription>Manage your store and earnings</CardDescription>
-                  </div>
+      <div
+        className={cn(
+          "grid items-stretch gap-4",
+          showSellerAccount ? "lg:grid-cols-3" : "lg:grid-cols-2"
+        )}
+      >
+        {showSellerAccount && (
+          <Card className="flex h-full flex-col shadow-none">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">{t("ovSellerAccountTitle")}</CardTitle>
+                  <CardDescription className="mt-1">
+                    {t("ovSellerAccountDesc")}
+                  </CardDescription>
                 </div>
-                {shopStatus?.linked && (
-                  <Badge variant="success" className="text-xs">
-                    Connected
+                {shopStatus?.linked ? (
+                  <Badge variant="success" className="shrink-0 font-medium">
+                    {t("ovConnected")}
+                  </Badge>
+                ) : (
+                  <Badge variant="warning" className="shrink-0 font-medium">
+                    {t("ovPayoutsOff")}
                   </Badge>
                 )}
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Track your food order revenue, view payouts, and manage your Stripe connection for automatic bank transfers.
-              </p>
-              
-              {shopStatus?.linked ? (
-                <div className="space-y-3">
-                  <div className="p-4 bg-emerald-500/5 rounded-lg border border-emerald-500/10 text-center">
-                    <Store className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
-                    <p className="text-sm font-medium">Your store is active</p>
-                    <p className="text-xs text-muted-foreground">Manage your menu and orders in the seller dashboard</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-4 bg-muted/30 rounded-lg border border-border/50 text-center">
-                  <Link2 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm font-medium">Not Connected</p>
-                  <p className="text-xs text-muted-foreground">Link your account to view earnings</p>
-                </div>
-              )}
+            <CardContent className="flex-1 pt-0">
+              <div className="divide-y border-y">
+                <MetaRow
+                  label={t("ovShopRow")}
+                  value={shopStatus?.phpShopId ? t("ovReady") : t("ovPending")}
+                  tone={shopStatus?.phpShopId ? "success" : "progress"}
+                />
+                <MetaRow
+                  label={t("ovStripeRow")}
+                  value={shopStatus?.phpShopStripeAccountId ? t("ovConnected") : t("ovNotConnected")}
+                  tone={shopStatus?.phpShopStripeAccountId ? "success" : "warning"}
+                />
+                <MetaRow
+                  label={t("ovPayoutsRow")}
+                  value={shopStatus?.linked ? t("ovOn") : t("ovOff")}
+                  tone={shopStatus?.linked ? "success" : "warning"}
+                />
+              </div>
             </CardContent>
-            <CardFooter className="bg-muted/5 border-t border-border/30 pt-4 gap-2">
+            <CardFooter className="mt-auto flex-row justify-end gap-2">
               {shopStatus?.linked ? (
                 <>
-                  <Button 
-                    variant="outline"
-                    className="flex-1 px-0 text-xs sm:text-sm"
-                    onClick={() => {
-                      const isProd = window.location.hostname === "chef.localcooks.ca";
-                      const url = isProd
-                        ? "https://shop.localcook.shop/app/shop/home.php"
-                        : "https://stagingwebapp.localcook.shop/app/shop/home.php";
-                      window.open(url, "_blank", "noopener,noreferrer");
-                    }}
-                  >
-                    Manage Shop
-                    <ExternalLink className="ml-1.5 h-3 w-3 sm:h-4 sm:w-4" />
+                  <Button variant="outline" size="sm" onClick={openShop}>
+                    {t("ovShopBtn")}
+                    <ExternalLink />
                   </Button>
-                  <Button 
-                    className="flex-1 px-0 text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-colors gap-1"
-                    onClick={handleOpenDashboard} 
-                    disabled={dashboardLinkMutation.isPending} 
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleOpenDashboard}
+                    disabled={dashboardLinkMutation.isPending}
                   >
-                    {dashboardLinkMutation.isPending ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" /> : <ExternalLink className="h-3 w-3 sm:h-4 sm:w-4" />}
-                    Stripe
+                    {t("ovStripeBtn")}
+                    {dashboardLinkMutation.isPending ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <ExternalLink />
+                    )}
                   </Button>
                 </>
               ) : (
-                <Button 
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => onSetActiveTab("seller-revenue")}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onSetActiveTab("my-account")}
                 >
-                  Link Account
-                  <ArrowRight className="ml-2 h-4 w-4" />
+                  {t("ovOpenAccounts")}
+                  <ArrowRight />
                 </Button>
               )}
             </CardFooter>
           </Card>
         )}
-      </div>
 
-      {/* Upcoming Bookings */}
-      {enrichedBookings?.length > 0 && (
-        <div className="grid gap-6">
-          {(() => {
-            const statusBadgeConfig: Record<string, { label: string; dotColor: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" }> = {
-              confirmed: { label: 'Confirmed', dotColor: 'bg-green-500', variant: 'success' },
-              pending: { label: 'Awaiting Approval', dotColor: 'bg-amber-500', variant: 'secondary' },
-              completed: { label: 'Completed', dotColor: 'bg-blue-500', variant: 'default' },
-              cancelled: { label: 'Cancelled', dotColor: 'bg-red-400', variant: 'destructive' },
-            };
-
-            // Sort: pending first, then confirmed, then by booking date ascending
-            const sortedBookings = [...enrichedBookings].sort((a, b) => {
-              const priority: Record<string, number> = { pending: 0, confirmed: 1, completed: 2, cancelled: 3 };
-              const pa = priority[a.status] ?? 4;
-              const pb = priority[b.status] ?? 4;
-              if (pa !== pb) return pa - pb;
-              const dateA = a.bookingDate || '';
-              const dateB = b.bookingDate || '';
-              return dateA.localeCompare(dateB) || (a.startTime || '').localeCompare(b.startTime || '');
-            });
-
-            const displayBookings = sortedBookings.slice(0, 4);
-
-            // Status summary counts
-            const statusCounts: Record<string, number> = {};
-            enrichedBookings.forEach((b) => {
-              const s = b.status || 'unknown';
-              statusCounts[s] = (statusCounts[s] || 0) + 1;
-            });
-
-            return (
-              <Card className="border-border/50 shadow-sm overflow-hidden">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-                        <Calendar className="h-5 w-5 text-amber-600" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-lg">Your Bookings</CardTitle>
-                        <CardDescription>{enrichedBookings.length} total</CardDescription>
-                      </div>
-                    </div>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => onSetActiveTab("bookings")}
-                    >
-                      View all
-                      <ArrowRight className="ml-1 h-3 w-3" />
-                    </Button>
-                  </div>
-                  {/* Inline status summary — Linear-style dot + count row */}
-                  <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border/40">
-                    {Object.entries(statusCounts).map(([status, count]) => {
-                      const config = statusBadgeConfig[status] || { label: status, dotColor: 'bg-muted-foreground' };
-                      return (
-                        <div key={status} className="flex items-center gap-1.5">
-                          <span className={cn("h-2 w-2 rounded-full", config.dotColor)} />
-                          <span className="text-xs text-muted-foreground">
-                            {count} {config.label}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="space-y-1">
-                    {displayBookings.map((booking, idx) => {
-                      const config = statusBadgeConfig[booking.status] || { label: booking.status, dotColor: 'bg-muted-foreground', variant: 'outline' as const };
-                      const bookingDateObj = booking.bookingDate ? new Date(booking.bookingDate + 'T00:00:00') : null;
-                      const today = new Date();
-                      const tomorrow = new Date(Date.now() + 86400000);
-                      const isToday = bookingDateObj ? today.toDateString() === bookingDateObj.toDateString() : false;
-                      const isTomorrow = bookingDateObj ? tomorrow.toDateString() === bookingDateObj.toDateString() : false;
-                      
-                      const dateLabel = !bookingDateObj ? '—' : isToday ? 'Today' : isTomorrow ? 'Tomorrow' : formatDate(booking.bookingDate, 'short');
-                      const timeLabel = booking.startTime && booking.endTime ? `${formatTime(booking.startTime)} – ${formatTime(booking.endTime)}` : '';
-
-                      return (
-                        <div 
-                          key={booking.id}
-                          className={cn(
-                            "flex items-center gap-3 p-3 rounded-lg transition-colors hover:bg-muted/50 cursor-pointer",
-                            idx < displayBookings.length - 1 && "border-b border-border/30"
-                          )}
-                          onClick={() => onSetActiveTab("bookings")}
-                        >
-                          {/* Date block */}
-                          <div className="flex-shrink-0 w-12 text-center">
-                            <p className={cn(
-                              "text-xs font-semibold uppercase tracking-wide",
-                              isToday ? "text-primary" : "text-muted-foreground"
-                            )}>
-                              {dateLabel}
-                            </p>
-                            {booking.startTime && (
-                              <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
-                                {formatTime(booking.startTime)}
-                              </p>
-                            )}
-                          </div>
-                          {/* Vertical accent line */}
-                          <div className={cn("w-0.5 h-10 rounded-full flex-shrink-0", config.dotColor)} />
-                          {/* Booking details */}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground truncate">
-                              {booking.kitchenName || booking.locationName || 'Kitchen Session'}
-                            </p>
-                            <p className="text-xs text-muted-foreground truncate">{timeLabel}</p>
-                          </div>
-                          {/* Status badge */}
-                          <Badge variant={config.variant} className="text-[10px] flex-shrink-0">
-                            {config.label}
-                          </Badge>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {enrichedBookings.length > 4 && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full mt-3 text-xs"
-                      onClick={() => onSetActiveTab("bookings")}
-                    >
-                      +{enrichedBookings.length - 4} more booking{enrichedBookings.length - 4 !== 1 ? 's' : ''}
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })()}
-
-        </div>
-      )}
-
-      {/* Quick Actions / Next Steps */}
-      <Card className="border-border/50 shadow-sm">
-        <CardHeader className="pb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-              <TrendingUp className="h-5 w-5 text-amber-600" />
-            </div>
-            <div>
-              <CardTitle className="text-lg">Recommended Next Steps</CardTitle>
-              <CardDescription>Continue your journey with LocalCooks</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {!microlearningCompletion?.confirmed && (
-              <Button 
-                variant="outline" 
-                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
-                asChild
+        {latestApp ? (
+          <Card className="flex h-full flex-col shadow-none">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">{t("ovSellerAppTitle")}</CardTitle>
+                  <CardDescription className="mt-1">
+                    {t("ovSellerAppDesc")}
+                  </CardDescription>
+                </div>
+                <Badge variant={applicationStatusVariant(latestApp.status)} className="shrink-0 font-medium">
+                  {formatApplicationStatus(latestApp.status, t)}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 pt-0">
+              <div className="divide-y border-y">
+                <MetaRow label={t("ovRowApplication")} value={`#${latestApp.id}`} />
+                <MetaRow
+                  label={t("ovRowSubmitted")}
+                  value={
+                    latestApp.createdAt
+                      ? new Date(latestApp.createdAt).toLocaleDateString(i18n.language)
+                      : "—"
+                  }
+                />
+                <MetaRow
+                  label={t("ovRowDocuments")}
+                  value={documentStatus}
+                  tone={documentToneFromLabel(documentStatus)}
+                />
+              </div>
+            </CardContent>
+            <CardFooter className="mt-auto flex-row justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onSetActiveTab("applications")}
               >
-                <Link href="/microlearning/overview">
-                  <BookOpen className="h-5 w-5 text-green-600" />
-                  <div className="text-left">
-                    <p className="font-medium text-sm">Complete Training</p>
-                    <p className="text-xs text-muted-foreground">Food safety certification</p>
-                  </div>
-                </Link>
+                {t("ovViewApplication")}
+                <ArrowRight />
               </Button>
-            )}
-            
-            {applications?.length === 0 && (
-              <Button 
-                variant="outline" 
-                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
+            </CardFooter>
+          </Card>
+        ) : (
+          <SellerPathEmptyCard
+            loading="eager"
+            compact={Boolean(showSellerAccount || kitchenApplications.length > 0)}
+            onApply={() => {
+              onSetApplicationViewMode("form");
+              onSetActiveTab("applications");
+            }}
+          />
+        )}
+
+        {kitchenApplications.length > 0 ? (
+          <Card className="flex h-full flex-col shadow-none">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">{t("ovKitchenAccessTitle")}</CardTitle>
+                  <CardDescription className="mt-1">
+                    {t("ovKitchenAccessDesc")}
+                  </CardDescription>
+                </div>
+                <Badge variant={kitchenSummary.variant} className="shrink-0 font-medium">
+                  {kitchenSummary.label}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 pt-0">
+              <div className="divide-y border-y">
+                {kitchenDisplays.slice(0, 3).map(({ app, display }) => (
+                  <div key={app.id} className="flex items-center justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <TruncatedText as="p" className="truncate text-sm font-medium">
+                        {app.location?.name || t("ovKitchenFallback")}
+                      </TruncatedText>
+                      <TruncatedText as="p" className="truncate text-xs text-muted-foreground">{display.stepCaption}</TruncatedText>
+                    </div>
+                    <Badge variant={toneToBadgeVariant(display.tone)} className="shrink-0 font-medium">
+                      {display.label}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+            <CardFooter className="mt-auto flex-row justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onSetActiveTab("kitchen-applications")}
+              >
+                {t("ovMyKitchensBtn")}
+              </Button>
+              <Button
+                size="sm"
                 onClick={() => {
-                  onSetApplicationViewMode('form');
-                  onSetActiveTab('applications');
+                  requestDiscoverKitchensWalkthrough();
+                  onSetActiveTab("discover-kitchens");
                 }}
               >
-                <Store className="h-5 w-5 text-primary" />
-                <div className="text-left">
-                  <p className="font-medium text-sm">Apply to Sell</p>
-                  <p className="text-xs text-muted-foreground">Start your seller journey</p>
-                </div>
+                {t("ovExploreKitchensBtn")}
+                <ArrowRight />
               </Button>
-            )}
+            </CardFooter>
+          </Card>
+        ) : (
+          <KitchenPathEmptyCard
+            loading="eager"
+            compact={Boolean(showSellerAccount || latestApp)}
+            onExplore={() => {
+              requestDiscoverKitchensWalkthrough();
+              onSetActiveTab("discover-kitchens");
+            }}
+          />
+        )}
+      </div>
 
-            {kitchenApplications.length === 0 && (
-              <Button 
-                variant="outline" 
-                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
-                onClick={() => onSetActiveTab("discover-kitchens")}
-              >
-                <Building className="h-5 w-5 text-blue-600" />
-                <div className="text-left">
-                  <p className="font-medium text-sm">Find a Kitchen</p>
-                  <p className="text-xs text-muted-foreground">Browse commercial spaces</p>
-                </div>
-              </Button>
-            )}
-
-            {enrichedBookings?.length === 0 && kitchenApplications.some(a => a.status === 'approved') && (
-              <Button 
-                variant="outline" 
-                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
-                onClick={onBookSessionClick}
-              >
-                <Calendar className="h-5 w-5 text-amber-600" />
-                <div className="text-left">
-                  <p className="font-medium text-sm">Book a Session</p>
-                  <p className="text-xs text-muted-foreground">Schedule kitchen time</p>
-                </div>
-              </Button>
-            )}
-
-            <Button 
-              variant="outline" 
-              className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
-              onClick={() => onSetActiveTab("messages")}
-            >
-              <MessageCircle className="h-5 w-5 text-purple-600" />
-              <div className="text-left">
-                <p className="font-medium text-sm">Messages</p>
-                <p className="text-xs text-muted-foreground">Chat with managers</p>
-              </div>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {enrichedBookings?.length > 0 && (
+        <UpcomingBookings
+          bookings={enrichedBookings}
+          locale={i18n.language}
+          onViewAll={() => onSetActiveTab("bookings")}
+        />
+      )}
     </div>
+  );
+}
+
+function formatBookingWhen(
+  booking: EnrichedBooking,
+  t: import("i18next").TFunction<"chef", undefined>,
+  locale?: string
+): string {
+  const bookingDateObj = booking.bookingDate
+    ? new Date(booking.bookingDate + "T00:00:00")
+    : null;
+  if (!bookingDateObj) return t("ovScheduled");
+
+  const today = new Date();
+  const tomorrow = new Date(Date.now() + 86400000);
+  if (today.toDateString() === bookingDateObj.toDateString()) return t("ovToday");
+  if (tomorrow.toDateString() === bookingDateObj.toDateString()) return t("ovTomorrow");
+  return formatDate(booking.bookingDate, "short", undefined, locale);
+}
+
+const bookingStatusConfig: Record<
+  string,
+  { labelKey: string; fallback: string; variant: StatusVariant; tone: StatusTone }
+> = {
+  confirmed: { labelKey: "ovBookingConfirmed", fallback: "Confirmed", variant: "success", tone: "success" },
+  pending: { labelKey: "ovBookingPending", fallback: "Awaiting approval", variant: "warning", tone: "warning" },
+  completed: { labelKey: "ovBookingCompleted", fallback: "Completed", variant: "outline", tone: "neutral" },
+  cancelled: { labelKey: "ovBookingCancelled", fallback: "Cancelled", variant: "outline", tone: "neutral" },
+};
+
+function UpcomingBookings({
+  bookings,
+  onViewAll,
+  locale,
+}: {
+  bookings: EnrichedBooking[];
+  onViewAll: () => void;
+  locale?: string;
+}) {
+  const { t } = useTranslation("chef");
+
+  const sortedBookings = [...bookings].sort((a, b) => {
+    const priority: Record<string, number> = {
+      pending: 0,
+      confirmed: 1,
+      completed: 2,
+      cancelled: 3,
+    };
+    const pa = priority[a.status] ?? 4;
+    const pb = priority[b.status] ?? 4;
+    if (pa !== pb) return pa - pb;
+    return (
+      (a.bookingDate || "").localeCompare(b.bookingDate || "") ||
+      (a.startTime || "").localeCompare(b.startTime || "")
+    );
+  });
+
+  const displayBookings = sortedBookings.slice(0, 4);
+  const pendingCount = bookings.filter((booking) => booking.status === "pending").length;
+  const confirmedCount = bookings.filter((booking) => booking.status === "confirmed").length;
+
+  const descriptionParts = [
+    pendingCount ? t("ovAwaitingApproval", { count: pendingCount }) : null,
+    confirmedCount ? t("ovConfirmed", { count: confirmedCount }) : null,
+  ].filter(Boolean);
+
+  return (
+    <Card className="shadow-none">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-base">{t("ovBookingsTitle")}</CardTitle>
+            <CardDescription>
+              {descriptionParts.length > 0 ? descriptionParts.join(" · ") : t("ovRecentSessions")}
+            </CardDescription>
+          </div>
+          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={onViewAll}>
+            {t("ovViewAllBtn")}
+            <ArrowRight />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="divide-y border-t">
+          {displayBookings.map((booking) => {
+            const config = bookingStatusConfig[booking.status] || {
+              labelKey: booking.status,
+              fallback: booking.status,
+              variant: "outline" as const,
+              tone: "neutral" as const,
+            };
+            const timeLabel =
+              booking.startTime && booking.endTime
+                ? `${formatTime(booking.startTime)} – ${formatTime(booking.endTime)}`
+                : "";
+
+            return (
+              <button
+                key={booking.id}
+                type="button"
+                className="flex w-full items-center gap-4 py-3 text-left transition-colors hover:bg-muted/40"
+                onClick={onViewAll}
+              >
+                <div className="w-[4.5rem] shrink-0">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {formatBookingWhen(booking, t, locale)}
+                  </p>
+                  {booking.startTime && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {formatTime(booking.startTime)}
+                    </p>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <TruncatedText as="p" className="truncate text-sm font-medium">
+                    {booking.kitchenName || booking.locationName || t("ovKitchenSession")}
+                  </TruncatedText>
+                  {timeLabel && (
+                    <TruncatedText as="p" className="truncate text-xs text-muted-foreground">{timeLabel}</TruncatedText>
+                  )}
+                </div>
+                <Badge variant={config.variant} className="shrink-0 font-medium">
+                  {t(config.labelKey as never, { defaultValue: config.fallback })}
+                </Badge>
+              </button>
+            );
+          })}
+        </div>
+        {bookings.length > 4 && (
+          <Button variant="outline" size="sm" className="mt-3 w-full" onClick={onViewAll}>
+            {t("ovMore", { count: bookings.length - 4 })}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }

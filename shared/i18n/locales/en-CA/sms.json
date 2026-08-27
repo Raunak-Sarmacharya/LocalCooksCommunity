@@ -1,0 +1,5 @@
+{
+  "bookingConfirm": "LocalCooks: Your booking on {{date}} is confirmed.",
+  "bookingCancel": "LocalCooks: Your booking on {{date}} was cancelled.",
+  "managerNewBooking": "LocalCooks: New booking request for {{date}}."
+}

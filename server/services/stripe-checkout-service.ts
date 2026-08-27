@@ -200,12 +200,12 @@ export async function createPendingCheckoutSession(
         });
       }
 
-      // Platform Commission line item (only if > 0)
+      // Service fee line item (only if > 0)
       if (lineItemBreakdown.platformCommissionCents && lineItemBreakdown.platformCommissionCents > 0) {
         lineItems.push({
           price_data: {
             currency: currency.toLowerCase(),
-            product_data: { name: lineItemBreakdown.platformCommissionLabel || 'Platform Commission' },
+            product_data: { name: lineItemBreakdown.platformCommissionLabel || 'Service Fee' },
             unit_amount: lineItemBreakdown.platformCommissionCents,
           },
           quantity: 1,

@@ -181,6 +181,26 @@ export function sanitizeErrorForClient(error: unknown, fallbackMessage: string):
 // MIDDLEWARE REGISTRATION
 // ===================================
 
+// Tidio widget CSP origins from Tidio's official policy.
+// https://developers.tidio.com/docs/widget-security-policy
+const TIDIO_CSP = {
+  scriptSrc: ["https://code.tidio.co", "https://widget-v4.tidiochat.com"],
+  fontSrc: ["https://code.tidio.co", "https://*.tidio.co", "https://*.tidiochat.com"],
+  connectSrc: [
+    "https://code.tidio.co",
+    "https://*.tidio.co",
+    "https://sentry-new.tidio.co",
+    "https://socket.tidio.co",
+    "wss://socket.tidio.co",
+    "https://uploads.tidio.com",
+    "https://widget-v4.tidiochat.com",
+    "wss://*.tidiochat.com",
+    "wss://*.tidio.co",
+  ],
+  frameSrc: ["https://code.tidio.co", "https://widget-v4.tidiochat.com"],
+  mediaSrc: ["https://code.tidio.co", "https://widget-v4.tidiochat.com"],
+} as const;
+
 export function registerSecurityMiddleware(app: Express): void {
   const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 
@@ -194,8 +214,7 @@ export function registerSecurityMiddleware(app: Express): void {
           "'unsafe-inline'",  // Required for Vite HMR in dev
           "'unsafe-eval'",    // Required for Vite HMR in dev
           "https://js.stripe.com",
-          "https://code.tidio.co",
-          "https://widget-v4.tidiochat.com",
+          ...TIDIO_CSP.scriptSrc,
           "https://maps.googleapis.com",
           "https://apis.google.com",
           "https://accounts.google.com",
@@ -203,7 +222,7 @@ export function registerSecurityMiddleware(app: Express): void {
           ...(isProduction ? [] : ["http://localhost:*"]),
         ],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:", "https://*.tidio.co", "https://*.tidiochat.com", "https://frontend-cdn.perplexity.ai"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:", ...TIDIO_CSP.fontSrc, "https://frontend-cdn.perplexity.ai"],
         imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
         workerSrc: ["'self'", "blob:"],
         connectSrc: [
@@ -212,11 +231,7 @@ export function registerSecurityMiddleware(app: Express): void {
           "https://*.firebaseio.com",
           "https://*.googleapis.com",
           "https://*.cloudfunctions.net",
-          "https://code.tidio.co",
-          "https://*.tidio.co",
-          "https://widget-v4.tidiochat.com",
-          "wss://*.tidiochat.com",
-          "wss://*.tidio.co",
+          ...TIDIO_CSP.connectSrc,
           "https://files.localcooks.ca",
           "https://*.ingest.us.sentry.io",
           ...(isProduction ? ["https://*.localcooks.ca"] : ["http://localhost:*", "ws://localhost:*"]),
@@ -225,7 +240,7 @@ export function registerSecurityMiddleware(app: Express): void {
           "'self'",
           "https://js.stripe.com",
           "https://hooks.stripe.com",
-          "https://widget-v4.tidiochat.com",
+          ...TIDIO_CSP.frameSrc,
           "https://accounts.google.com",
           "https://*.firebaseapp.com",
           "https://maps.google.com",
@@ -235,6 +250,7 @@ export function registerSecurityMiddleware(app: Express): void {
           "'self'",
           "https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev",
           "blob:",
+          ...TIDIO_CSP.mediaSrc,
         ],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],

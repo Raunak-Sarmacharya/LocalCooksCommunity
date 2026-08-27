@@ -2,14 +2,16 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useApplicationForm } from "./ApplicationFormContext";
+import { useTranslation } from "react-i18next";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 
 import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowRight, Mail, Phone, User } from "lucide-react";
+import { ArrowRight, ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 // Phone validation helper (matches server-side validation)
 const phoneNumberSchema = z.string()
@@ -51,15 +53,16 @@ const phoneNumberSchema = z.string()
   );
 
 // Create a schema for just the personal info fields - matching main schema validation
-const personalInfoSchema = z.object({
-  fullName: z.string().min(2, "Full name is required"),
-  email: z.string().email("Please enter a valid email address"),
+const createPersonalInfoSchema = (t: (key: string) => string) => z.object({
+  fullName: z.string().min(2, t("sellerApp_fullNameRequired")),
+  email: z.string().email(t("sellerApp_emailInvalid")),
   phone: phoneNumberSchema,
 });
 
-type PersonalInfoFormData = z.infer<typeof personalInfoSchema>;
+type PersonalInfoFormData = z.infer<ReturnType<typeof createPersonalInfoSchema>>;
 
 export default function PersonalInfoForm() {
+  const { t } = useTranslation("chef");
   const { formData, updateFormData, goToNextStep } = useApplicationForm();
   const { user } = useFirebaseAuth();
   
@@ -72,8 +75,10 @@ export default function PersonalInfoForm() {
     return existing.startsWith("+1") ? existing : "+1 ";
   });
   
+  const schema = createPersonalInfoSchema((key: string) => t(key as any));
+  
   const form = useForm<PersonalInfoFormData>({
-    resolver: zodResolver(personalInfoSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       fullName: formData.fullName || user?.displayName || "",
       email: userEmail,
@@ -93,7 +98,7 @@ export default function PersonalInfoForm() {
 
   // Update form value when phoneValue changes
   useEffect(() => {
-    form.setValue("phone", phoneValue);
+    form.setValue("phone", phoneValue, { shouldValidate: true, shouldDirty: true });
   }, [phoneValue, form]);
 
   // Function to handle phone input with fixed +1 prefix and exactly 10 digits
@@ -133,9 +138,6 @@ export default function PersonalInfoForm() {
         setPhoneValue("+1 " + digitsOnly);
       }
     }
-    
-    // Trigger validation
-    form.trigger("phone");
   };
 
   // Handle cursor position to prevent editing the "+1 " prefix
@@ -250,126 +252,77 @@ export default function PersonalInfoForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-        {/* Welcome Banner */}
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center mx-auto mb-4">
-            <User className="h-8 w-8 text-white" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Let's get to know you!</h2>
-          <p className="text-gray-600 max-w-md mx-auto">We're excited to learn about you and help you join our community of talented chefs.</p>
-        </div>
-
-        <div className="space-y-6">
-          {/* Full Name Field */}
-          <div className="group">
-            <Label htmlFor="fullName" className="text-gray-800 font-semibold flex items-center gap-2 mb-3">
-              <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
-                <User className="h-3 w-3 text-primary" />
-              </div>
-              Full Name*
-            </Label>
-            <div className="relative">
-              <Input
-                id="fullName"
-                placeholder="Enter your full name"
-                {...form.register("fullName")}
-                className="pl-12 h-12 text-base border-2 border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200 rounded-xl"
-              />
-              <User className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-primary transition-colors" />
-            </div>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Label htmlFor="fullName">{t("sellerApp_fullName")}</Label>
+            <Input
+              id="fullName"
+              placeholder={t("sellerApp_fullNamePlaceholder")}
+              {...form.register("fullName")}
+              className="mt-2"
+            />
             {form.formState.errors.fullName && (
-              <p className="text-primary text-sm mt-2 flex items-center gap-1">
-                <span className="w-1 h-1 bg-primary rounded-full"></span>
-                {form.formState.errors.fullName.message}
-              </p>
+              <p className="mt-1.5 text-sm text-destructive">{form.formState.errors.fullName.message}</p>
             )}
           </div>
-          
-          {/* Email Field - Auto-populated from account but editable */}
-          <div className="group">
-            <Label htmlFor="email" className="text-gray-800 font-semibold flex items-center gap-2 mb-3">
-              <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
-                <Mail className="h-3 w-3 text-primary" />
-              </div>
-              Email Address*
-            </Label>
-            <div className="relative">
-              <Input
-                id="email"
-                type="email"
-                placeholder="your.email@example.com"
-                {...form.register("email")}
-                defaultValue={userEmail}
-                className="pl-12 h-12 text-base border-2 border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200 rounded-xl"
-              />
-              <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-primary transition-colors" />
-            </div>
+
+          <div>
+            <Label htmlFor="email">{t("sellerApp_email")}</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder={t("sellerApp_emailPlaceholder")}
+              {...form.register("email")}
+              defaultValue={userEmail}
+              className="mt-2"
+            />
             {form.formState.errors.email && (
-              <p className="text-primary text-sm mt-2 flex items-center gap-1">
-                <span className="w-1 h-1 bg-primary rounded-full"></span>
-                {form.formState.errors.email.message}
-              </p>
+              <p className="mt-1.5 text-sm text-destructive">{form.formState.errors.email.message}</p>
             )}
-            <p className="text-xs text-gray-500 mt-2">
-              Pre-filled from your account, but you can change it if needed
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {t("sellerApp_emailPrefilled")}
             </p>
           </div>
-          
-          {/* Phone Field */}
-          <div className="group">
-            <Label htmlFor="phone" className="text-gray-800 font-semibold flex items-center gap-2 mb-3">
-              <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
-                <Phone className="h-3 w-3 text-primary" />
-              </div>
-              Phone Number*
-            </Label>
-            <div className="relative">
-              <Input
-                id="phone"
-                type="tel"
-                placeholder="+1 (555) 123-4567"
-                value={phoneValue}
-                onInput={handlePhoneInput}
-                onClick={handlePhoneClick}
-                onKeyDown={handlePhoneKeyDown}
-                className="pl-12 h-12 text-base border-2 border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200 rounded-xl"
-              />
-              <Phone className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-primary transition-colors" />
-            </div>
+
+          <div>
+            <Label htmlFor="phone">{t("sellerApp_phone")}</Label>
+            <Input
+              id="phone"
+              type="tel"
+              placeholder="+1 (555) 123-4567"
+              value={phoneValue}
+              onInput={handlePhoneInput}
+              onClick={handlePhoneClick}
+              onKeyDown={handlePhoneKeyDown}
+              className="mt-2"
+            />
             {form.formState.errors.phone && (
-              <p className="text-primary text-sm mt-2 flex items-center gap-1">
-                <span className="w-1 h-1 bg-primary rounded-full"></span>
-                {form.formState.errors.phone.message}
-              </p>
+              <p className="mt-1.5 text-sm text-destructive">{form.formState.errors.phone.message}</p>
             )}
-            <div className="flex justify-between items-center mt-1">
-              <p className="text-xs text-gray-500">
-                phone number: Must be 10 digits
-              </p>
-              <p className={`text-xs font-medium ${getCurrentDigitCount() === 10 ? 'text-green-600' : 'text-gray-400'}`}>
-                {getCurrentDigitCount()}/10 digits
+            <div className="mt-1.5 flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">{t("sellerApp_phoneDigits")}</p>
+              <p className={cn("text-xs", getCurrentDigitCount() === 10 ? "text-success" : "text-muted-foreground")}>
+                {getCurrentDigitCount()}/10
               </p>
             </div>
           </div>
         </div>
-        
-        {/* Submit Button */}
-        <div className="pt-6">
-          <Button 
-            type="submit"
-            className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-white font-semibold py-4 px-8 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 flex items-center justify-center gap-3 text-base"
-          >
-            Continue to Kitchen Preferences
-            <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform duration-200" />
-          </Button>
-        </div>
 
-        {/* Privacy Note */}
-        <div className="text-center pt-4">
-          <p className="text-sm text-gray-500">
-            🔒 Your information is secure and will only be used for application processing
-          </p>
+        <div className="flex justify-between items-center pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled
+            className="border-gray-200 text-gray-400"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            {t("sellerApp_back")}
+          </Button>
+          <Button type="submit">
+            {t("sellerApp_continue")}
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
         </div>
       </form>
     </Form>

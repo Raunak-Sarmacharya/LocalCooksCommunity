@@ -1,0 +1,78 @@
+{
+  "seoTitle": "Le système d'exploitation des entreprises alimentaires locales à St. John's, T.-N.-L.",
+  "seoDescription": "Lancez et développez votre entreprise alimentaire avec LocalCooks. Réservation de cuisines commerciales, conformité, paiements et livraison — à St. John's, Terre-Neuve.",
+  "heroHeadline": "Cuisinez localement. Grandissez professionnellement.",
+  "heroSubhead": "Réservez des cuisines commerciales, restez conformes et soyez payés — une plateforme pour les entreprises alimentaires de Terre-Neuve.",
+  "ctaChef": "Je suis chef",
+  "ctaKitchen": "J'ai une cuisine",
+  "chefLandingTitle": "LocalCooks pour les chefs",
+  "kitchenLandingTitle": "LocalCooks pour les cuisines",
+  "homemadeWithLove": "Fait maison avec amour",
+  "heroHeadlineUser": "Rassembler les communautés grâce aux repas faits maison",
+  "heroHeadlineGuest": "Cuisiniers locaux • Entreprise locale • Communauté locale",
+  "heroDescUser": "Gérez vos candidatures de chef et transformez votre passion culinaire en entreprise.",
+  "heroDescGuest": "Rejoignez Local Cooks en tant que chef pour partager vos talents culinaires et connecter les communautés avec des repas frais et faits maison.",
+  "benefitShowcase": "Mettez en valeur votre talent",
+  "benefitNetwork": "Développez votre réseau",
+  "benefitDelivery": "Nous gérons la livraison",
+  "benefitPaid": "Soyez payé chaque semaine",
+  "applyAsChef": "Postuler comme Chef",
+  "ownAKitchen": "Vous avez une cuisine?",
+  "listYourKitchen": "Listez votre cuisine",
+  "simpleProcess": "Processus simple",
+  "howItWorksTitle": "Comment ça marche",
+  "howItWorksDesc": "Rejoignez notre plateforme en trois étapes simples et commencez à partager vos créations culinaires avec les gourmands de votre région.",
+  "everythingYouNeedToSucceed": "Tout ce dont vous avez besoin pour réussir",
+  "platformProvidesAllTools": "Notre plateforme fournit tous les outils et le soutien dont vous avez besoin pour bâtir une entreprise alimentaire prospère sans les frais généraux d'un restaurant traditionnel.",
+  "focusOnCooking": "Concentrez-vous sur la cuisine pendant que nous gérons le côté affaires",
+  "whyJoinUs": "Pourquoi nous rejoindre",
+  "earlyBirdAdvantages": "Avantages des premiers inscrits",
+  "joinDuringTrial": "Rejoignez-nous pendant notre phase d'essai et obtenez des avantages exclusifs qui ne seront plus disponibles plus tard.",
+  "ourStory": "Notre histoire",
+  "whoWeAre": "Qui nous sommes",
+  "teamOfFoodEnthusiasts": "Une équipe de passionnés de cuisine déterminée à autonomiser les cuisiniers locaux",
+  "ourMission": "Notre mission",
+  "kitchenHoldsStories": "Votre cuisine recèle des histoires, des traditions et des saveurs qui méritent d'être partagées avec le monde. Local Cooks comble le fossé entre vos dons culinaires et les gourmands impatients de les découvrir.",
+  "notJustPlatform": "Nous ne sommes pas seulement une plateforme — nous sommes un mouvement qui donne aux cuisiniers passionnés les moyens de transformer leurs recettes authentiques en entreprises durables, un plat fait maison à la fois. Nous sommes déterminés à soutenir la communauté culinaire de St. John's en connectant les talentueux cuisiniers amateurs avec des clients affamés qui apprécient les plats authentiques et faits maison.",
+  "chef": "Chef",
+  "shareCulinarySkills": "Partagez vos talents culinaires avec la communauté",
+  "pilotBenefits": {
+    "0": {
+      "text": "Reduced platform fees during trial phase",
+      "description": "Save on service fees while we grow together"
+    },
+    "1": {
+      "text": "Priority placement in our app",
+      "description": "Get more visibility with featured chef status"
+    },
+    "2": {
+      "text": "Free professional photography for your dishes",
+      "description": "High-quality images to showcase your food"
+    },
+    "3": {
+      "text": "Personalized marketing support",
+      "description": "Custom promotions to attract more customers"
+    }
+  },
+  "chefBenefits": {
+    "0": {
+      "title": "Financial Freedom",
+      "description": "Set your own prices and build a steady income stream without the overhead of a traditional restaurant"
+    },
+    "1": {
+      "title": "Flexible Schedule",
+      "description": "Work when you want – whether that's full-time, weekends only, or just a few days a month"
+    },
+    "2": {
+      "title": "Weekly Payments",
+      "description": "Get paid directly to your bank account every week – no long waiting periods"
+    },
+    "3": {
+      "title": "Simple Tools",
+      "description": "Easy-to-use platform to manage orders, update your menu, and track your earnings"
+    }
+  },
+  "benefitsForCooks": "Benefits for Cooks",
+  "benefitsForCooksDesc": "Unlock your culinary potential and build a sustainable cooking business with Local Cooks",
+  "chefDeliveringImageAlt": "Chef delivering food to customer at doorstep"
+}

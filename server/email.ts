@@ -3,6 +3,7 @@ import { stripCountryCode } from "./phone-utils";
 import nodemailer from 'nodemailer';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
+import { tEmail } from "./i18n/outbound";
 
 // Dynamic import for timezone-utils to handle Vercel serverless path resolution
 // Use a cached function that falls back to a local implementation if import fails
@@ -1779,6 +1780,94 @@ The Local Cooks Team
   };
 };
 
+// Generate magic link (passwordless sign-in) email with unified design
+// Role determines the correct subdomain for the link target (though EmailAction handles cross-subdomain redirects)
+export const generateMagicLinkEmail = (
+  userData: {
+    fullName: string;
+    email: string;
+    signInUrl: string;
+    /** Recipient preferred locale (BCP 47). Defaults to en-CA. */
+    locale?: string | null;
+  }
+): EmailContent => {
+  const firstName = userData.fullName.split(' ')[0];
+  const locale = userData.locale;
+  const subject = locale && locale.startsWith('fr')
+    ? 'Votre lien de connexion - Local Cooks'
+    : locale && locale.startsWith('uk')
+      ? 'Ваше посилання для входу - Local Cooks'
+      : 'Your Sign-In Link - Local Cooks';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">Here&#8217;s your secure sign-in link for Local Cooks. Click the button below to access your account instantly — no password needed.</p>
+      <p class="message" style="margin-bottom: 20px;">For your security, this link will expire in <strong>10 minutes</strong> and can only be used once.</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Passwordless Sign-In</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${userData.signInUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Sign In to My Account</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 24px 0 0 0;"><strong>Didn&#8217;t request this?</strong> If you didn&#8217;t try to sign in, you can safely ignore this email. Your account remains secure.</p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const text = `
+Hi ${firstName},
+
+Here's your secure sign-in link for Local Cooks. Use the link below to sign in instantly — no password needed.
+
+Sign in: ${userData.signInUrl}
+
+For your security, this link will expire in 10 minutes and can only be used once.
+
+If you didn't request this, you can safely ignore this email. Your account remains secure.
+
+Best,
+The Local Cooks Team
+
+© ${new Date().getFullYear()} Local Cooks
+  `.trim();
+
+  return {
+    to: userData.email,
+    subject,
+    text,
+    html,
+    headers: {
+      'X-Priority': '1',
+      'X-MSMail-Priority': 'High',
+      'Importance': 'High',
+      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
+  };
+};
+
 // Generate welcome email with unified design
 // Role parameter determines the dashboard URL subdomain:
 // - 'manager' -> kitchen.localcooks.ca
@@ -1789,6 +1878,8 @@ export const generateWelcomeEmail = (
     fullName: string;
     email: string;
     role?: 'chef' | 'manager' | 'admin';
+    /** Recipient preferred locale (BCP 47). Defaults to en-CA. */
+    locale?: string | null;
   }
 ): EmailContent => {
   // Map role to userType for getDashboardUrl
@@ -1799,6 +1890,8 @@ export const generateWelcomeEmail = (
   const dashboardUrl = getDashboardUrl(userType);
   const firstName = userData.fullName.split(' ')[0];
   const isManager = userData.role === 'manager';
+  const locale = userData.locale;
+  const subject = tEmail(locale, "welcomeSubject");
 
   // Role-specific content
   const bullet1 = isManager
@@ -1912,7 +2005,7 @@ The Local Cooks Team
 
   return {
     to: userData.email,
-    subject: 'Welcome to Local Cooks',
+    subject,
     text,
     html
   };
@@ -1931,20 +2024,78 @@ The Local Cooks Team
 //   'main'    → localcooks.ca
 export const getSubdomainUrl = (userType: 'chef' | 'kitchen' | 'admin' | 'main' = 'main'): string => {
   const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
-  
+
   // Detect environment
   const isLocalDev = process.env.NODE_ENV === 'development' && !process.env.VERCEL_ENV;
-  
+
   // Supabase is used for pre-prod (dev), Neon is used for prod
   const dbUrl = process.env.DATABASE_URL || '';
   const isPreProd = dbUrl.includes('supabase') || process.env.VERCEL_ENV === 'preview';
 
-  // In development, use localhost (with subdomain prefix if available)
+  // In development, use localhost with role-based subdomains (chef.localhost, kitchen.localhost, etc.)
   if (isLocalDev) {
     const devBase = process.env.BASE_URL || 'http://localhost:5001';
-    // If BASE_URL is a localhost URL, use it as-is (subdomain routing handled by client)
+    // If BASE_URL is a localhost URL, preserve port and apply role-based subdomain prefix
     if (devBase.includes('localhost') || devBase.includes('127.0.0.1')) {
-      return devBase;
+      try {
+        const devUrl = new URL(devBase);
+        const host = devUrl.hostname; // e.g., 'localhost', 'chef.localhost'
+        const port = devUrl.port; // e.g., '5001'
+        const scheme = devUrl.protocol; // e.g., 'http:'
+
+        // If main type, just return base URL without role subdomain prefix
+        if (userType === 'main') {
+          const portStr = port ? `:${port}` : '';
+          if (host === '127.0.0.1') {
+            return `${scheme}//127.0.0.1${portStr}`;
+          }
+          // Strip any known role subdomain prefix from host, keep bare localhost
+          const knownPrefixes: string[] = ['chef', 'kitchen', 'admin'];
+          const parts = host.split('.');
+          const bareMain = (parts.length >= 2 && parts[parts.length - 1] === 'localhost' && knownPrefixes.includes(parts[0]))
+            ? parts.slice(1).join('.')
+            : host;
+          return `${scheme}//${bareMain}${portStr}`;
+        }
+
+        // For role types, enforce role-based subdomain
+        const portStr = port ? `:${port}` : '';
+
+        // Known role subdomain prefixes that might already be applied to host
+        const knownPrefixes: string[] = ['chef', 'kitchen', 'admin'];
+        const parts = host.split('.');
+
+        // Strip any existing KNOWN role subdomain prefix from host
+        // e.g., 'chef.localhost' → 'localhost'   (strips chef.)
+        // e.g., 'kitchen.chef.localhost' → 'chef.localhost' would be wrong but unlikely
+        // Only strip a prefix if:
+        //   - hostname ends with '.localhost' or is localhost
+        //   - the leftmost label is exactly one of chef/kitchen/admin
+        let bareHost = host;
+        if (parts.length >= 2 && parts[parts.length - 1] === 'localhost') {
+          // This is a *.localhost hostname — check if first label is known role prefix
+          if (knownPrefixes.includes(parts[0])) {
+            bareHost = parts.slice(1).join('.');
+          }
+        }
+        // else: bareHost remains as-is (e.g., '127.0.0.1' stays '127.0.0.1')
+
+        if (bareHost === '127.0.0.1') {
+          // Can't do subdomains on 127.0.0.1, just use the base
+          return `${scheme}//127.0.0.1${portStr}`;
+        }
+
+        const finalUrl = `${scheme}//${userType}.${bareHost}${portStr}`;
+        logger.info(`🔧 getSubdomainUrl(${userType}) local dev: baseHost=${host} → bareHost=${bareHost} → final=${finalUrl}`);
+        return finalUrl;
+      } catch (e) {
+        // Fallback if URL parsing fails
+        logger.error('⚠️ getSubdomainUrl URL parse failed, falling back to raw BASE_URL:', {
+          baseUrl: devBase,
+          error: e instanceof Error ? e.message : String(e)
+        });
+        return devBase;
+      }
     }
     // If BASE_URL is a real domain in dev mode, fall through to production logic
   }

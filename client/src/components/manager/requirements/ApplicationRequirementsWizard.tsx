@@ -26,7 +26,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { auth } from '@/lib/firebase';
 
-import { RequirementsStepOne } from './RequirementsStepOne';
+
 import { RequirementsStepTwo } from './RequirementsStepTwo';
 import { LocationRequirements, WizardStep, WIZARD_STEPS } from './types';
 
@@ -58,7 +58,6 @@ interface ApplicationRequirementsWizardProps {
 }
 
 const STEP_ICONS: Record<WizardStep, React.ReactNode> = {
-  step1: <ClipboardList className="h-5 w-5" />,
   step2: <Settings2 className="h-5 w-5" />,
 };
 
@@ -80,7 +79,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
   onSaveSuccess,
   compact = false,
   hideNavigation = false,
-  initialStep = 'step1',
+  initialStep = 'step2',
   onStepChange,
   activeStepOverride,
   autoSaveOnStepChange = false,
@@ -138,7 +137,6 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
       // Mark steps as completed if they have been configured
       const completed = new Set<WizardStep>();
       if (data.id && data.id > 0) {
-        completed.add('step1');
         completed.add('step2');
       }
       setCompletedSteps(completed);
@@ -312,12 +310,13 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
 
       {/* Step Navigation - Notion-style Tabs */}
       <Tabs value={activeStep} onValueChange={(value) => goToStep(value as WizardStep)} className="w-full">
-        <TabsList className="w-full p-1 bg-slate-100/60 dark:bg-slate-800/40 rounded-lg border border-slate-200/50 dark:border-slate-700/50 gap-1">
-          {WIZARD_STEPS.map((step, index) => {
+        {WIZARD_STEPS.length > 1 && (
+          <TabsList className="w-full p-1 bg-slate-100/60 dark:bg-slate-800/40 rounded-lg border border-slate-200/50 dark:border-slate-700/50 gap-1">
+            {WIZARD_STEPS.map((step, index) => {
             const isActive = step.id === activeStep;
             const isCompleted = completedSteps.has(step.id);
             const stepNumber = index + 1;
-            const showStepNumber = step.id === 'step1' || step.id === 'step2';
+            const showStepNumber = false;
             
             return (
               <TabsTrigger
@@ -369,7 +368,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
                         isActive ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400'
                       )}
                     >
-                      {step.id === 'step1' ? 'Initial Application' : 'Kitchen Coordination'}
+                      {step.title}
                     </span>
                   </div>
                   <span
@@ -378,8 +377,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
                       isActive ? 'text-slate-500 dark:text-slate-400' : 'text-slate-400 dark:text-slate-500'
                     )}
                   >
-                    {step.id === 'step1' && 'What chefs submit first'}
-                    {step.id === 'step2' && 'After initial approval'}
+                    {step.description}
                   </span>
                 </div>
 
@@ -390,7 +388,8 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
               </TabsTrigger>
             );
           })}
-        </TabsList>
+          </TabsList>
+        )}
       </Tabs>
 
       {/* Unsaved Changes Banner */}
@@ -422,13 +421,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
 
       {/* Step Content */}
       <div className="min-h-[400px]">
-        {activeStep === 'step1' && (
-          <RequirementsStepOne
-            requirements={requirements}
-            onRequirementsChange={handleRequirementsChange}
-            onUnsavedChange={handleUnsavedChange}
-          />
-        )}
+
         {activeStep === 'step2' && (
           <RequirementsStepTwo
             requirements={requirements}
@@ -440,16 +433,18 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
 
       {/* Navigation Footer */}
       {!hideNavigation && (
-        <div className="flex items-center justify-between pt-6 border-t border-slate-200 dark:border-slate-700">
-          <Button
-            onClick={goToPrevStep}
-            disabled={isFirstStep}
-            variant="outline"
-            className="gap-2"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Previous
-          </Button>
+        <div className={cn("flex items-center pt-6 border-t border-slate-200 dark:border-slate-700", WIZARD_STEPS.length > 1 ? "justify-between" : "justify-end")}>
+          {WIZARD_STEPS.length > 1 && (
+            <Button
+              onClick={goToPrevStep}
+              disabled={isFirstStep}
+              variant="outline"
+              className="gap-2"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </Button>
+          )}
 
           <div className="flex items-center gap-3">
             <StatusButton

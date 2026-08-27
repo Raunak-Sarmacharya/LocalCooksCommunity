@@ -2233,6 +2233,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
 
 // Generate invoice PDF for a booking
 router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Response) => {
+        const locale = (req.query.lng as string) || "en-CA";
     try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -2352,8 +2353,7 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
             location,
             storageBookingsForInvoice,
             equipmentBookings,
-            paymentIntentId
-        );
+            paymentIntentId, { viewer: 'chef', locale });
 
         // Set headers for PDF download
         res.setHeader('Content-Type', 'application/pdf');
@@ -3512,7 +3512,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                 taxCents,
                 taxLabel,
                 platformCommissionCents: feeCalculation.platformCommissionInCents,
-                platformCommissionLabel: 'Platform Commission',
+                platformCommissionLabel: 'Service Fee',
             },
         });
 

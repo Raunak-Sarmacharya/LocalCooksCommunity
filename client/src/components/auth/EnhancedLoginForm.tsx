@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -17,15 +18,23 @@ import EmailVerificationScreen from "./EmailVerificationScreen";
 import LoadingOverlay from "./LoadingOverlay";
 
 const loginSchema = z.object({
-  email: z.string().min(1, "Email or username is required"),
-  password: z.string().min(1, "Password is required"),
+  email: z.string().email("Please enter a valid email address"),
 });
+
+function useLoginSchema() {
+  const { t } = useTranslation("auth");
+  return z.object({
+    email: z.string().email(t("emailRequired", "Please enter a valid email address")),
+  });
+}
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
 interface EnhancedLoginFormProps {
   onSuccess?: () => void;
+  onSwitchToRegister?: () => void;
   setHasAttemptedLogin?: (v: boolean) => void;
+  showVerificationSuccess?: boolean;
 }
 
 type AuthState = 'idle' | 'loading' | 'success' | 'error' | 'email-verification';
@@ -47,11 +56,17 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 }
 };
 
-export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: EnhancedLoginFormProps) {
+export default function EnhancedLoginForm({ 
+  onSuccess, 
+  onSwitchToRegister,
+  setHasAttemptedLogin, 
+  showVerificationSuccess = false 
+}: EnhancedLoginFormProps) {
+  const { t } = useTranslation("auth");
+  const loginSchema = useLoginSchema();
   const { login, signInWithGoogle, loading, error, resendEmailVerification } = useFirebaseAuth();
   const [formError, setFormError] = useState<string | null>(null);
   const [authState, setAuthState] = useState<AuthState>('idle');
-  const [googleAuthState, setGoogleAuthState] = useState<AuthState>('idle');
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [showEmailVerification, setShowEmailVerification] = useState(false);
   const [emailForVerification, setEmailForVerification] = useState<string>('');
@@ -61,7 +76,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: "" },
   });
 
   // SECURITY FIX: Removed email existence check to prevent enumeration attacks
@@ -71,195 +86,35 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
     setUserExists(null);
   };
 
+  const { sendEmailLink } = useFirebaseAuth();
+
   const handleSubmit = async (data: LoginFormData) => {
     setHasAttemptedLogin?.(true);
     setFormError(null);
     setAuthState('loading');
 
-    const loginIdentifier = data.email.trim();
-    const isEmailFormat = loginIdentifier.includes('@');
+    const email = data.email.trim();
 
-    // If it's not an email format (likely a username), try migration login first
-    if (!isEmailFormat) {
-      logger.info('🔄 Username detected, trying migration login for old manager...');
-      
-      try {
-        const migrateResponse = await fetch('/api/manager-migrate-login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            username: loginIdentifier,
-            password: data.password
-          })
-        });
-
-        if (migrateResponse.ok) {
-          const migrateData = await migrateResponse.json();
-          
-          if (migrateData.customToken) {
-            // Sign in with custom token
-            const userCredential = await signInWithCustomToken(auth, migrateData.customToken);
-            logger.info('✅ Migration login successful');
-            
-            // Force token refresh to ensure it's available immediately
-            if (userCredential.user) {
-              await userCredential.user.getIdToken(true);
-              
-              // Trigger user sync with backend to ensure data is available
-              // The migration endpoint already linked Firebase UID to Neon user,
-              // but we need to ensure the frontend knows about it
-              try {
-                const token = await userCredential.user.getIdToken();
-                const syncResponse = await fetch('/api/user/profile', {
-                  headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                  }
-                });
-                
-                if (syncResponse.ok) {
-                  logger.info('✅ User profile synced after migration login');
-                } else {
-                  logger.warn('⚠️ User profile sync returned non-OK status:', syncResponse.status);
-                }
-              } catch (syncError) {
-                logger.error('❌ Error syncing user profile after migration:', syncError);
-                // Don't fail the login if sync fails - the middleware will handle it
-              }
-            }
-            
-            setAuthState('success');
-            // Wait a bit longer for auth state to fully update before redirecting
-            setTimeout(() => {
-              if (onSuccess) onSuccess();
-            }, 2000);
-            return;
-          }
-        } else {
-          // Migration login failed - try Firebase as fallback if it's an email
-          const errorData = await migrateResponse.json().catch(() => ({}));
-          logger.info('Migration login failed:', errorData);
-        }
-      } catch (migrateError) {
-        logger.info('Migration login error, trying Firebase as fallback:', migrateError);
-      }
-    }
-
-    // Try Firebase login (for email-based accounts or as fallback)
     try {
-      // Only try Firebase if it looks like an email, otherwise skip
-      if (isEmailFormat) {
-        await login(loginIdentifier, data.password);
-        // Only set success if we reach this point without errors
-        setAuthState('success');
-        
-        setTimeout(() => {
-          if (onSuccess) onSuccess();
-        }, 1000);
-      } else {
-        // Username format and migration failed - show error
-        setAuthState('error');
-        showAlert({
-          title: "Sign In Failed",
-          description: "Incorrect username or password. Please check your credentials and try again.",
-          type: "error"
-        });
-        setTimeout(() => setAuthState('idle'), 2000);
-      }
-
+      await sendEmailLink(email);
+      setAuthState('success');
+      showAlert({
+        title: t("magicLinkSentTitle", "Magic Link Sent!"),
+        description: t("magicLinkSentDesc", "We've sent a sign-in link to your email. Please check your inbox and click the link to sign in."),
+        type: "success"
+      });
+      setTimeout(() => setAuthState('idle'), 4000);
     } catch (e: any) {
-      // If Firebase login fails, try migration login for old managers (if we haven't already)
-      if (isEmailFormat && (e.message.includes('invalid-credential') || e.message.includes('wrong-password') || e.message.includes('user-not-found'))) {
-        logger.info('🔄 Firebase login failed, trying migration login for old manager...');
-        
-        try {
-          // Try migration login (for old managers with username/password in Neon DB)
-          // First try the email as username, then try without @ if it's an email
-          const usernameAttempts = [loginIdentifier];
-          if (loginIdentifier.includes('@')) {
-            // Try the part before @ as username
-            usernameAttempts.push(loginIdentifier.split('@')[0]);
-          }
-          
-          for (const usernameAttempt of usernameAttempts) {
-            const migrateResponse = await fetch('/api/manager-migrate-login', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                username: usernameAttempt,
-                password: data.password
-              })
-            });
-
-            if (migrateResponse.ok) {
-              const migrateData = await migrateResponse.json();
-              
-              if (migrateData.customToken) {
-                // Sign in with custom token
-                const userCredential = await signInWithCustomToken(auth, migrateData.customToken);
-                logger.info('✅ Migration login successful');
-                
-                // Force token refresh and sync user data
-                if (userCredential.user) {
-                  await userCredential.user.getIdToken(true);
-                  
-                  // Trigger user sync with backend
-                  try {
-                    const token = await userCredential.user.getIdToken();
-                    const syncResponse = await fetch('/api/user/profile', {
-                      headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                      }
-                    });
-                    
-                    if (syncResponse.ok) {
-                      logger.info('✅ User profile synced after migration login');
-                    }
-                  } catch (syncError) {
-                    logger.error('❌ Error syncing user profile after migration:', syncError);
-                  }
-                }
-                
-                setAuthState('success');
-                setTimeout(() => {
-                  if (onSuccess) onSuccess();
-                }, 1000);
-                return;
-              }
-            }
-          }
-        } catch (migrateError) {
-          logger.info('Migration login also failed, continuing with Firebase error handling');
-        }
-      }
-      
-      // Other Firebase errors (not credential-related)
       setShowLoadingOverlay(false);
       setAuthState('error');
       
-      // Handle different Firebase error types with user-friendly messages via custom alerts
-      const errorTitle = "Sign In Failed";
-      let errorMessage = "";
+      const errorTitle = t("signInFailedTitle", "Sign In Failed");
+      let errorMessage = t("errSignInGeneric", "Unable to send magic link at this time. Please try again later.");
       
       if (e.message.includes('too-many-requests')) {
-        errorMessage = "Too many failed attempts. Please wait a few minutes before trying again.";
-      } else if (e.message.includes('verify your email')) {
-        setEmailForVerification(loginIdentifier);
-        setShowEmailVerification(true);
-        return; // Early return to avoid showing alert
+        errorMessage = t("errTooManyAttempts", "Too many attempts. Please wait a few minutes before trying again.");
       } else if (e.message.includes('network-request-failed')) {
-        errorMessage = "Network error. Please check your connection and try again.";
-      } else if (e.message.includes('user-disabled')) {
-        errorMessage = "This account has been disabled. Please contact support.";
-      } else if (e.message.includes('invalid-credential') || e.message.includes('wrong-password') || e.message.includes('user-not-found')) {
-        errorMessage = "Incorrect email/username or password. Please check your credentials and try again.";
-      } else {
-        errorMessage = "Unable to sign in at this time. Please try again later.";
+        errorMessage = t("errNetworkFailed", "Network error. Please check your connection and try again.");
       }
       
       showAlert({
@@ -275,7 +130,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
   const handleGoogleSignIn = async () => {
     setHasAttemptedLogin?.(true);
     setFormError(null);
-    setGoogleAuthState('loading');
+    setAuthState('loading');
     setShowLoadingOverlay(true);
 
     try {
@@ -284,7 +139,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
         new Promise(resolve => setTimeout(resolve, 800))
       ]);
 
-      setGoogleAuthState('success');
+      setAuthState('success');
       setShowLoadingOverlay(false);
       
       setTimeout(() => {
@@ -293,7 +148,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
 
     } catch (e: any) {
       setShowLoadingOverlay(false);
-      setGoogleAuthState('error');
+      setAuthState('error');
       
       // Handle Google sign-in errors with user-friendly messages via custom alerts
       const errorTitle = "Google Sign In Failed";
@@ -318,14 +173,15 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
       });
       
       setTimeout(() => {
-        setGoogleAuthState('idle');
+        setAuthState('idle');
       }, 2000);
     }
   };
 
+
   const handleResendVerification = async () => {
     try {
-      await resendEmailVerification(emailForVerification, form.getValues().password);
+      await resendEmailVerification(emailForVerification, "");
     } catch (err) {
       logger.error('Failed to resend verification from form:', err);
       throw err;
@@ -340,21 +196,12 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
   };
 
   const getButtonText = () => {
-    if (userExists === true) {
-      return {
-        default: "Welcome back!",
-        loading: "Signing you in...",
-        success: "Welcome back!",
-        error: "Try again"
-      };
-    } else {
-      return {
-        default: "Sign In",
-        loading: "Signing you in...",
-        success: "Signed in!",
-        error: "Try again"
-      };
-    }
+    return {
+      default: t("btnSendMagicLink", "Send Magic Link"),
+      loading: t("btnSendingLink", "Sending..."),
+      success: t("btnLinkSent", "Link Sent!"),
+      error: t("btnTryAgain", "Try again")
+    };
   };
 
   if (showEmailVerification) {
@@ -362,6 +209,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
       <EmailVerificationScreen
         email={emailForVerification}
         onResend={handleResendVerification}
+        mode="magic-link"
         onGoBack={() => {
           setShowEmailVerification(false);
           setAuthState('idle');
@@ -374,24 +222,25 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
     <>
       <LoadingOverlay 
         isVisible={showLoadingOverlay}
-        message={googleAuthState === 'loading' ? "Signing you in..." : (userExists === true ? "Welcome back!" : "Signed in!")}
-        submessage={googleAuthState === 'loading' ? "Please wait while we verify your credentials securely." : "Redirecting to your dashboard..."}
-        type={googleAuthState === 'success' ? 'success' : 'loading'}
+        message={authState === 'loading' ? t("btnSigningYouIn", "Signing you in...") : (userExists === true ? t("btnWelcomeBack", "Welcome back!") : t("btnSignedIn", "Signed in!"))}
+        submessage={authState === 'loading' ? t("overlayVerifyCredentials", "Please wait while we verify your credentials securely.") : t("overlayRedirectingDashboard", "Redirecting to your dashboard...")}
+        type={authState === 'success' ? 'success' : 'loading'}
       />
 
       <motion.div
-        className="w-full max-w-md mx-auto"
+        className="w-full max-w-md mx-auto mt-4"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
       >
+        {/* Google Sign In Button */}
         <motion.div variants={itemVariants} className="mb-6">
           <AnimatedButton
-            state={googleAuthState === 'loading' ? 'loading' : 'idle'}
+            state={authState === 'loading' ? 'loading' : 'idle'}
             loadingText="Signing in with Google..."
             onClick={handleGoogleSignIn}
             variant="google"
-            disabled={googleAuthState === 'loading'}
+            disabled={authState === 'loading'}
           >
             <div className="flex items-center gap-3">
               <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -405,6 +254,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
           </AnimatedButton>
         </motion.div>
 
+        {/* Divider */}
         <motion.div variants={itemVariants} className="flex items-center my-6">
           <div className="flex-1 h-px bg-gray-200" />
           <span className="mx-3 text-gray-400 text-xs uppercase tracking-wider">or</span>
@@ -412,11 +262,29 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
         </motion.div>
 
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
+          {showVerificationSuccess && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-xl bg-green-50 border border-green-200 p-4 flex items-start gap-3 mb-4"
+            >
+              <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center mt-0.5">
+                <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-green-800">Email verified successfully!</p>
+                <p className="text-xs text-green-600 mt-1">Please log in to access your dashboard.</p>
+              </div>
+            </motion.div>
+          )}
+
           {/* Error messages now handled by custom alert dialogs */}
 
           <motion.div variants={itemVariants}>
             <AnimatedInput
-              label="Email Address or Username"
+              label={t("emailOrUsername", "Email Address or Username")}
               type="text"
               icon={<Mail className="w-4 h-4" />}
               validationState={
@@ -447,38 +315,18 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
                   className="mt-2 text-xs"
                 >
                   {isCheckingUser ? (
-                    <span className="text-gray-500">Checking account...</span>
+                    <span className="text-gray-500">{t("statusCheckingAccount", "Checking account...")}</span>
                   ) : userExists === true ? (
-                    <span className="text-green-600">✓ Account found - welcome back!</span>
+                    <span className="text-green-600">{t("statusAccountFound", "✓ Account found - welcome back!")}</span>
                   ) : userExists === false ? (
-                    <span className="text-amber-600">⚠ No account found - you may need to register first</span>
+                    <span className="text-amber-600">{t("statusNoAccountFound", "⚠ No account found - you may need to register first")}</span>
                   ) : null}
                 </motion.div>
               )}
             </AnimatePresence>
           </motion.div>
 
-          <motion.div variants={itemVariants}>
-            <AnimatedInput
-              label="Password"
-              type="password"
-              icon={<Lock className="w-4 h-4" />}
-              showPasswordToggle
-              validationState={
-                form.formState.errors.password ? 'invalid' : 
-                form.watch('password') && !form.formState.errors.password ? 'valid' : 'idle'
-              }
-              error={form.formState.errors.password?.message}
-              {...form.register('password', {
-                onChange: () => {
-                  // Reset state when user starts typing in password
-                  if (authState === 'error') {
-                    setAuthState('idle');
-                  }
-                }
-              })}
-            />
-          </motion.div>
+
 
           <motion.div variants={itemVariants}>
             <AnimatedButton
@@ -493,26 +341,19 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
             </AnimatedButton>
           </motion.div>
 
-          <motion.div variants={itemVariants} className="text-center">
-            <Button
-              type="button"
-              variant="link"
-              onClick={() => {
-                // Detect role from current subdomain so the correct forgot-password endpoint is called
-                const hostname = window.location.hostname.toLowerCase();
-                let roleParam = '';
-                if (hostname.includes('kitchen') || hostname.startsWith('kitchen.')) {
-                  roleParam = '?role=manager';
-                } else if (hostname.includes('admin') || hostname.startsWith('admin.')) {
-                  roleParam = '?role=admin';
-                }
-                window.location.href = `/forgot-password${roleParam}`;
-              }}
-              className="text-sm text-blue-600 hover:text-blue-700"
-            >
-              Forgot your password?
-            </Button>
-          </motion.div>
+
+          {onSwitchToRegister && (
+            <motion.div variants={itemVariants} className="mt-6 text-center text-sm">
+              <span className="text-gray-500">{t("dontHaveAnAccount", "Don't have an account?")}</span>{' '}
+              <button
+                type="button"
+                onClick={onSwitchToRegister}
+                className="text-[#F51042] hover:underline font-medium"
+              >
+                {t("signUpLink", "Sign up")}
+              </button>
+            </motion.div>
+          )}
         </form>
       </motion.div>
     </>

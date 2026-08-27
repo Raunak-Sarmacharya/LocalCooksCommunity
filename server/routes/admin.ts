@@ -2171,8 +2171,8 @@ router.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
             documentation: {
                 stripePercentageFee: "Stripe's processing fee percentage for display estimates (e.g., 0.029 for 2.9%). Actual fee deducted from transfer is read from Stripe at capture time.",
                 stripeFlatFeeCents: "Stripe's flat fee per transaction in cents for display estimates (e.g., 30 for $0.30).",
-                platformCommissionRate: "Platform's commission rate (e.g., 0.05 for 5%). Deducted from manager's transfer along with the actual Stripe fee.",
-                minimumApplicationFeeCents: "Minimum platform commission floor in cents to ensure profitability.",
+                platformCommissionRate: "Service fee rate (e.g., 0.05 for 5%). Deducted from manager's transfer along with the actual Stripe fee.",
+                minimumApplicationFeeCents: "Minimum service fee floor in cents to ensure profitability.",
             },
         });
     } catch (error) {
@@ -2238,7 +2238,7 @@ router.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
             updates.push({
                 key: 'platform_commission_rate',
                 value: rate.toString(),
-                description: 'Platform commission rate as decimal (e.g., 0.05 for 5%)',
+                description: 'Service fee rate as decimal (e.g., 0.05 for 5%)',
             });
         }
 
@@ -4157,4 +4157,44 @@ router.post("/email-logs/:id/retry", requireFirebaseAuthWithUser, requireAdmin, 
     }
 });
 
+// temporary file to hold the patch
+
+router.get("/settings/:key", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { key } = req.params;
+        const [setting] = await db.select().from(platformSettings).where(eq(platformSettings.key, key));
+        
+        if (!setting) {
+            return res.json({});
+        }
+
+        return res.json(JSON.parse(setting.value));
+    } catch (error) {
+        logger.error(`Error fetching platform setting ${req.params.key}:`, error);
+        res.status(500).json({ error: "Failed to fetch setting" });
+    }
+});
+
+router.patch("/settings/:key", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { key } = req.params;
+        const value = JSON.stringify(req.body);
+
+        const [setting] = await db.select().from(platformSettings).where(eq(platformSettings.key, key));
+
+        if (setting) {
+            await db.update(platformSettings)
+                .set({ value, updatedBy: req.neonUser!.id, updatedAt: new Date() })
+                .where(eq(platformSettings.key, key));
+        } else {
+            await db.insert(platformSettings)
+                .values({ key, value, updatedBy: req.neonUser!.id });
+        }
+
+        return res.json({ success: true });
+    } catch (error) {
+        logger.error(`Error updating platform setting ${req.params.key}:`, error);
+        res.status(500).json({ error: "Failed to update setting" });
+    }
+});
 export default router;

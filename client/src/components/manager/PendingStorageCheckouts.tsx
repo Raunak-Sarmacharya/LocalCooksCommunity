@@ -80,6 +80,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow, isPast } from "date-fns";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { SmartImage } from "@/components/ui/smart-image";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1024,7 +1025,7 @@ export function PendingStorageCheckouts() {
           {selectedCheckout && selectedCheckout.checkoutPhotoUrls.length > 0 && (
             <div className="space-y-4 mt-4">
               <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
-                <img
+                <SmartImage
                   src={getR2ProxyUrl(selectedCheckout.checkoutPhotoUrls[selectedPhotoIndex])}
                   alt={`Photo ${selectedPhotoIndex + 1}`}
                   className="w-full h-full object-contain"
@@ -1041,7 +1042,7 @@ export function PendingStorageCheckouts() {
                         index === selectedPhotoIndex ? "border-primary" : "border-transparent"
                       )}
                     >
-                      <img
+                      <SmartImage
                         src={getR2ProxyUrl(url)}
                         alt={`Thumbnail ${index + 1}`}
                         className="w-full h-full object-cover"

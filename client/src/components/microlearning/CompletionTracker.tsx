@@ -50,16 +50,15 @@ export default function CompletionTracker({
   const { showAlert } = useCustomAlerts();
 
   return (
-    <div className={cn("bg-white rounded-2xl border shadow-sm", className)}>
-      {/* Header with Your Progress UI Style */}
+    <div className={cn("bg-card rounded-lg border shadow-none", className)}>
       <div className="p-4 sm:p-6 border-b">
         <div className="flex items-center gap-3 mb-4 lg:mb-6">
-          <div className="w-8 h-8 lg:w-10 lg:h-10 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
-            <TrendingUp className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />
+          <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg border flex items-center justify-center flex-shrink-0">
+            <TrendingUp className="h-4 w-4 lg:h-5 lg:w-5 text-muted-foreground" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="font-semibold text-gray-900">Your Progress</h3>
-            <p className="text-sm text-gray-600">Complete all videos to earn your food safety certification</p>
+            <h3 className="font-semibold text-foreground">Your Progress</h3>
+            <p className="text-sm text-muted-foreground">Complete all videos to earn your food safety certification</p>
           </div>
           {allCompleted && (
             <Badge variant="success" className="self-start">
@@ -69,29 +68,23 @@ export default function CompletionTracker({
           )}
         </div>
 
-        {/* Overall Progress with Your Progress UI Style */}
         <div className="space-y-3 lg:space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-xl lg:text-2xl font-bold text-primary">{Math.round(overallProgress)}%</span>
-            <span className="text-xs lg:text-sm text-gray-600">{completedCount} of {totalCount} complete</span>
+            <span className="text-xl lg:text-2xl font-bold text-foreground">{Math.round(overallProgress)}%</span>
+            <span className="text-xs lg:text-sm text-muted-foreground">{completedCount} of {totalCount} complete</span>
           </div>
           
-          <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+          <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
             <motion.div
-              className="bg-gradient-to-r from-primary to-blue-600 h-2 rounded-full"
+              className="bg-foreground/70 h-2 rounded-full"
               initial={{ width: 0 }}
               animate={{ width: `${overallProgress}%` }}
               transition={{ duration: 1, ease: "easeOut" }}
             />
           </div>
-          
-          <div className="flex flex-wrap justify-between gap-2 text-xs text-gray-500">
-            <span className="whitespace-nowrap">{Math.round(overallProgress)}% complete</span>
-          </div>
         </div>
       </div>
 
-      {/* Clickable Video List */}
       {showDetailed && (
         <div className="p-4 sm:p-6">
           <div className="space-y-3">
@@ -99,14 +92,12 @@ export default function CompletionTracker({
               const isCurrent = currentVideoId === video.id;
               const isClickable = !!onVideoClick;
               
-              // Access control logic - enforce sequential completion
               let canAccess = false;
               let isAccessLocked = false;
               
               if (completionConfirmed || userRole === 'admin') {
                 canAccess = true;
               } else if (accessLevel === 'full') {
-                // For full access, require sequential completion
                 if (index === 0) {
                   canAccess = true;
                 } else {
@@ -115,7 +106,6 @@ export default function CompletionTracker({
                   canAccess = previousCompleted;
                 }
               } else {
-                // Limited access only gets first video
                 canAccess = index === 0;
               }
               
@@ -128,7 +118,6 @@ export default function CompletionTracker({
                     if (isClickable && canAccess) {
                       onVideoClick?.(video.id, index);
                     } else if (isClickable && accessLevel === 'limited') {
-                      // Will be handled by the parent component
                       onVideoClick?.(video.id, index);
                     } else if (isClickable && accessLevel === 'full' && !canAccess) {
                       showAlert({
@@ -141,103 +130,73 @@ export default function CompletionTracker({
                   }}
                   className={cn(
                     "flex items-start p-3 rounded-lg border transition-all duration-200",
-                    video.completed 
-                      ? "bg-green-50 border-green-200" 
-                      : video.progress > 0 
-                        ? "bg-blue-50 border-blue-200"
-                        : isAccessLocked
-                          ? "bg-gray-50/50 border-gray-200 opacity-60"
-                          : "bg-gray-50 border-gray-200",
-                    isCurrent && !isAccessLocked && "ring-2 ring-primary/20 border-primary/30",
-                    isClickable && canAccess && "cursor-pointer hover:shadow-sm hover:scale-[1.02]",
+                    video.completed && "border-success/30",
+                    video.progress > 0 && !video.completed && "border-border",
+                    isAccessLocked && "opacity-60",
+                    isCurrent && !isAccessLocked && "ring-1 ring-foreground/10 border-foreground/20",
+                    isClickable && canAccess && "cursor-pointer hover:bg-muted/30",
                     isClickable && isAccessLocked && accessLevel === 'limited' && "cursor-pointer hover:opacity-80"
                   )}
                 >
-                  {/* Video Number & Status Icon */}
                   <div className="flex items-center gap-3 flex-shrink-0 mr-3">
                     <div 
-                                              className={cn(
-                        "w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-medium transition-colors",
-                        video.completed 
-                          ? "bg-green-500 text-white"
-                          : video.progress > 0
-                            ? "bg-blue-500 text-white"
-                            : isCurrent && !isAccessLocked
-                              ? "bg-primary text-white"
-                              : isAccessLocked && accessLevel === 'full'
-                                ? "bg-orange-400 text-white"
-                              : isAccessLocked
-                                ? "bg-gray-300 text-gray-500"
-                                : "bg-gray-300 text-gray-600"
+                      className={cn(
+                        "w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-medium border",
+                        video.completed && "bg-success text-success-foreground border-success",
+                        video.progress > 0 && !video.completed && "border-border text-foreground",
+                        isCurrent && !isAccessLocked && "border-foreground/30 text-foreground",
+                        isAccessLocked && "border-border text-muted-foreground"
                       )}
                     >
                       {index + 1}
                     </div>
                     {video.completed ? (
-                      <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0" />
-                    ) : isAccessLocked && accessLevel === 'full' ? (
-                      <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-orange-500 flex-shrink-0" />
+                      <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-success flex-shrink-0" />
                     ) : isAccessLocked ? (
-                      <Lock className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 flex-shrink-0" />
+                      <Lock className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground flex-shrink-0" />
                     ) : video.progress > 0 ? (
-                      <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-blue-500 flex-shrink-0" />
+                      <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground flex-shrink-0" />
                     ) : (
-                      <Circle className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 flex-shrink-0" />
+                      <Circle className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground flex-shrink-0" />
                     )}
                   </div>
 
-                  {/* Video Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0 sm:justify-between">
                       <h4 className={cn(
                         "font-medium text-sm break-words leading-tight",
-                        video.completed ? "text-green-900" : 
-                        isCurrent && !isAccessLocked ? "text-primary" : 
-                        isAccessLocked ? "text-gray-500" : "text-gray-900"
+                        isAccessLocked ? "text-muted-foreground" : "text-foreground"
                       )}>
                         {video.title}
                       </h4>
-                      <span className={cn(
-                        "text-xs whitespace-nowrap flex-shrink-0",
-                        isAccessLocked ? "text-gray-400" : "text-gray-500"
-                      )}>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
                         {video.duration}
                       </span>
                     </div>
                     
-                    {/* Progress Bar for Individual Video */}
                     {video.progress > 0 && !video.completed && !isAccessLocked && (
                       <div className="mt-2">
                         <Progress value={video.progress} className="h-1.5" />
-                        <span className="text-xs text-gray-500 mt-1 block">
+                        <span className="text-xs text-muted-foreground mt-1 block">
                           {Math.round(video.progress)}% watched
                         </span>
                       </div>
                     )}
 
-                    {/* Completion Info */}
                     {video.completed && video.completedAt && (
-                      <p className="text-xs text-green-600 mt-1 break-words">
+                      <p className="text-xs text-muted-foreground mt-1 break-words">
                         Completed on {new Date(video.completedAt).toLocaleDateString()}
                       </p>
                     )}
 
-                    {/* In Progress Info */}
-                    {video.progress > 0 && !video.completed && video.startedAt && !isAccessLocked && (
-                      <p className="text-xs text-blue-600 mt-1 break-words">
-                        Started on {new Date(video.startedAt).toLocaleDateString()}
-                      </p>
-                    )}
-
-                    {/* Access Locked Info */}
                     {isAccessLocked && accessLevel === 'limited' && (
-                      <p className="text-xs text-gray-500 mt-1 break-words">
+                      <p className="text-xs text-muted-foreground mt-1 break-words">
                         Complete application to access
                       </p>
                     )}
                     
                     {isAccessLocked && accessLevel === 'full' && index > 0 && (
-                      <p className="text-xs text-gray-500 mt-1 break-words">
+                      <p className="text-xs text-muted-foreground mt-1 break-words">
                         Complete previous video first
                       </p>
                     )}
@@ -249,18 +208,17 @@ export default function CompletionTracker({
         </div>
       )}
 
-      {/* Completion Message */}
       {allCompleted && (
         <div className="px-4 sm:px-6 pb-4 sm:pb-6">
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="rounded-lg border p-4">
             <div className="flex items-start gap-3">
-              <Award className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+              <Award className="h-5 w-5 text-success flex-shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <h4 className="font-medium text-green-900 break-words">
+                <h4 className="font-medium text-foreground break-words">
                   Congratulations! Training Complete
                 </h4>
-                <p className="text-sm text-green-700 mt-1 break-words leading-relaxed">
-                  Congratulations! You have completed all food safety training videos. You can now proceed and download your completion certificate.
+                <p className="text-sm text-muted-foreground mt-1 break-words leading-relaxed">
+                  You have completed all food safety training videos. You can now proceed and download your completion certificate.
                 </p>
               </div>
             </div>
@@ -269,4 +227,4 @@ export default function CompletionTracker({
       )}
     </div>
   );
-} 
+}

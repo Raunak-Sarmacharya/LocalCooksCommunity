@@ -7,209 +7,191 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import {
-  Store,
-  Calendar,
-  ChevronDown,
-  CheckCircle,
-  Clock,
-  XCircle,
-  AlertCircle,
-  FileText,
-} from "lucide-react";
+import { ChevronDown, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
 import { Application } from "@shared/schema";
+import {
+  applicationStatusVariant,
+  documentToneFromLabel,
+  toneToBadgeVariant,
+} from "./status";
+import type { StatusVariant } from "@/components/chef/dashboard/types";
 
 interface SellerApplicationCardProps {
   application: Application;
-  onCancelApplication: (type: 'chef', id: number) => void;
+  onCancelApplication: (type: "chef", id: number) => void;
   onManageDocuments: () => void;
-  getStatusVariant: (status: string) => "default" | "secondary" | "destructive" | "outline";
+  getStatusVariant: (status: string) => StatusVariant;
+}
+
+function docBadge(status: string | null | undefined, uploaded: boolean) {
+  if (!uploaded) {
+    return { variant: "outline" as const, label: "Not uploaded" };
+  }
+  const tone = documentToneFromLabel(status || "pending");
+  return {
+    variant: toneToBadgeVariant(tone),
+    label: status ? status.charAt(0).toUpperCase() + status.slice(1) : "Pending",
+  };
 }
 
 export default function SellerApplicationCard({
   application: app,
   onCancelApplication,
   onManageDocuments,
-  getStatusVariant,
 }: SellerApplicationCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Helper function for document status badge
-  const getDocStatusBadge = (status: string | undefined) => {
-    if (!status || status === 'N/A') return { variant: 'outline' as const, className: 'bg-muted text-muted-foreground' };
-    if (status === 'approved') return { variant: 'success' as const, className: '' };
-    if (status === 'pending') return { variant: 'secondary' as const, className: 'bg-amber-100 text-amber-800 border-amber-200' };
-    if (status === 'rejected') return { variant: 'destructive' as const, className: 'bg-red-100 text-red-800 border-red-200' };
-    return { variant: 'outline' as const, className: '' };
-  };
+  const foodSafetyStatus =
+    "foodSafetyLicenseStatus" in app ? (app as Application).foodSafetyLicenseStatus : undefined;
+  const establishmentStatus =
+    "foodEstablishmentCertStatus" in app
+      ? (app as Application).foodEstablishmentCertStatus
+      : undefined;
+  const foodSafetyUrl =
+    "foodSafetyLicenseUrl" in app ? (app as Application).foodSafetyLicenseUrl : undefined;
+  const establishmentUrl =
+    "foodEstablishmentCertUrl" in app
+      ? (app as Application).foodEstablishmentCertUrl
+      : undefined;
 
-  const foodSafetyStatus = ('foodSafetyLicenseStatus' in app ? (app as any).foodSafetyLicenseStatus : undefined);
-  const establishmentStatus = ('foodEstablishmentCertStatus' in app ? (app as any).foodEstablishmentCertStatus : undefined);
-  const foodSafetyUrl = ('foodSafetyLicenseUrl' in app ? (app as any).foodSafetyLicenseUrl : undefined);
-  const establishmentUrl = ('foodEstablishmentCertUrl' in app ? (app as any).foodEstablishmentCertUrl : undefined);
+  const foodSafety = docBadge(foodSafetyStatus, Boolean(foodSafetyUrl));
+  const establishment = docBadge(establishmentStatus, Boolean(establishmentUrl));
+
+  const docsNeedAction =
+    foodSafety.variant === "destructive" ||
+    foodSafety.variant === "warning" ||
+    establishment.variant === "destructive" ||
+    establishment.variant === "warning" ||
+    !foodSafetyUrl;
+
+  const docsSummary = !foodSafetyUrl
+    ? "Documents needed"
+    : foodSafety.variant === "destructive" || establishment.variant === "destructive"
+      ? "Documents rejected"
+      : foodSafety.variant === "success" &&
+          (establishment.variant === "success" || !establishmentUrl)
+        ? "Documents verified"
+        : "Documents in review";
+
+  const statusMessage =
+    app.status === "approved"
+      ? "Approved. Finish document verification if anything is still outstanding, then you can start selling."
+      : app.status === "inReview"
+        ? "Our team is reviewing this application. You’ll be notified when there’s a decision."
+        : app.status === "rejected"
+          ? "This application was not approved. Review any feedback, then submit a new one if you want to try again."
+          : app.status === "cancelled"
+            ? "This application was cancelled."
+            : "";
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-      <Card className="overflow-hidden border-border/50 shadow-sm transition-all hover:shadow-md">
-        <div className={cn(
-          "h-1 w-full",
-          app.status === 'approved' ? "bg-green-500" :
-          app.status === 'inReview' ? "bg-amber-500" :
-          app.status === 'rejected' ? "bg-red-500" :
-          "bg-muted-foreground/40"
-        )} />
-        
-        {/* Collapsed Header - Always Visible */}
+      <Card className="overflow-hidden shadow-none">
         <CollapsibleTrigger asChild>
-          <div className="p-4 cursor-pointer hover:bg-muted/30 transition-colors">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className={cn(
-                  "w-10 h-10 rounded-xl flex items-center justify-center",
-                  app.status === 'approved' ? "bg-green-100" :
-                  app.status === 'inReview' ? "bg-amber-100" :
-                  app.status === 'rejected' ? "bg-red-100" :
-                  "bg-muted"
-                )}>
-                  <Store className={cn(
-                    "h-5 w-5",
-                    app.status === 'approved' ? "text-green-600" :
-                    app.status === 'inReview' ? "text-amber-600" :
-                    app.status === 'rejected' ? "text-red-600" :
-                    "text-muted-foreground"
-                  )} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-semibold text-foreground">Seller Application #{app.id}</p>
-                    <Badge variant={getStatusVariant(app.status)} className="text-xs uppercase tracking-wider font-bold">
-                      {formatApplicationStatus(app.status)}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
-                    <Calendar className="h-3 w-3" />
-                    Submitted {new Date(app.createdAt || "").toLocaleDateString()}
-                  </p>
-                </div>
+          <button
+            type="button"
+            className="flex w-full items-center gap-4 p-4 text-left transition-colors hover:bg-muted/40"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium">Seller application #{app.id}</p>
+                <Badge variant={applicationStatusVariant(app.status)} className="font-medium">
+                  {formatApplicationStatus(app.status)}
+                </Badge>
               </div>
-              <div className="flex items-center gap-2">
-                {app.status !== 'approved' && app.status !== 'cancelled' && (
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCancelApplication('chef', app.id);
-                    }}
-                  >
-                    <XCircle className="h-4 w-4" />
-                  </Button>
-                )}
-                <ChevronDown className={cn(
-                  "h-5 w-5 text-muted-foreground transition-transform duration-200",
-                  isExpanded && "rotate-180"
-                )} />
-              </div>
-            </div>
-          </div>
-        </CollapsibleTrigger>
-
-        {/* Expanded Content */}
-        <CollapsibleContent>
-          <div className="px-4 pb-4 space-y-4 border-t border-border/50 pt-4">
-            {/* Status Description */}
-            <div className={cn(
-              "flex items-start gap-3 p-3 rounded-lg border",
-              app.status === 'approved' ? "bg-green-50 border-green-200" :
-              app.status === 'inReview' ? "bg-amber-50 border-amber-200" :
-              app.status === 'rejected' ? "bg-red-50 border-red-200" :
-              "bg-muted/50 border-border"
-            )}>
-              {app.status === 'approved' ? <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" /> :
-               app.status === 'inReview' ? <Clock className="h-4 w-4 text-amber-600 mt-0.5" /> :
-               app.status === 'rejected' ? <XCircle className="h-4 w-4 text-red-600 mt-0.5" /> :
-               <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5" />}
-              <p className="text-sm text-muted-foreground">
-                {app.status === 'approved' ? 'Your seller application has been approved. Complete document verification to start selling.' :
-                 app.status === 'inReview' ? 'Our team is reviewing your application. You will be notified once a decision is made.' :
-                 app.status === 'rejected' ? 'Your application was not approved. Please review the feedback and submit a new application.' :
-                 app.status === 'cancelled' ? 'This application has been cancelled.' : ''}
+              <p className="mt-1 text-sm text-muted-foreground">
+                Submitted {new Date(app.createdAt || "").toLocaleDateString()}
+                <span className="mx-1.5 text-border">·</span>
+                {docsSummary}
               </p>
             </div>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+                isExpanded && "rotate-180"
+              )}
+            />
+          </button>
+        </CollapsibleTrigger>
 
-            {/* Submitted Information */}
-            <div className="space-y-2">
-              <p className="text-xs font-bold uppercase text-muted-foreground tracking-wider">Submitted Information</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="p-2 bg-muted/30 rounded-lg">
-                  <p className="text-xs text-muted-foreground uppercase">Full Name</p>
-                  <p className="text-sm font-medium truncate">{app.fullName || 'N/A'}</p>
+        <CollapsibleContent>
+          <div className="space-y-5 border-t px-4 pb-4 pt-4">
+            {statusMessage && (
+              <p className="text-sm text-muted-foreground">{statusMessage}</p>
+            )}
+
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Submitted information
+              </p>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-4">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Full name</dt>
+                  <dd className="truncate text-sm font-medium">{app.fullName || "N/A"}</dd>
                 </div>
-                <div className="p-2 bg-muted/30 rounded-lg">
-                  <p className="text-xs text-muted-foreground uppercase">Email</p>
-                  <p className="text-sm font-medium truncate">{app.email || 'N/A'}</p>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Email</dt>
+                  <dd className="truncate text-sm font-medium">{app.email || "N/A"}</dd>
                 </div>
-                <div className="p-2 bg-muted/30 rounded-lg">
-                  <p className="text-xs text-muted-foreground uppercase">Phone</p>
-                  <p className="text-sm font-medium">{app.phone || 'N/A'}</p>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Phone</dt>
+                  <dd className="text-sm font-medium">{app.phone || "N/A"}</dd>
                 </div>
-                <div className="p-2 bg-muted/30 rounded-lg">
-                  <p className="text-xs text-muted-foreground uppercase">Kitchen Pref</p>
-                  <p className="text-sm font-medium capitalize">{app.kitchenPreference || 'N/A'}</p>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Kitchen preference</dt>
+                  <dd className="text-sm font-medium capitalize">{app.kitchenPreference || "N/A"}</dd>
                 </div>
-              </div>
+              </dl>
             </div>
 
-            {/* Document Verification */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase text-muted-foreground tracking-wider">Documents</p>
-                {app.status !== 'cancelled' && app.status !== 'rejected' && (
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Documents
+                </p>
+                {app.status !== "cancelled" && app.status !== "rejected" && (
                   <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onManageDocuments}>
-                    <FileText className="h-3 w-3 mr-1" />
-                    Manage
+                    <FileText className="h-3 w-3" />
+                    {docsNeedAction ? "Update" : "Manage"}
                   </Button>
                 )}
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-card">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-blue-600" />
-                    <span className="text-sm">Food Safety License</span>
-                  </div>
-                  {foodSafetyUrl ? (
-                    <Badge variant={getDocStatusBadge(foodSafetyStatus).variant} className={cn("text-xs", getDocStatusBadge(foodSafetyStatus).className)}>
-                      {foodSafetyStatus || 'Pending'}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="bg-muted">Not Uploaded</Badge>
-                  )}
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5">
+                  <span className="text-sm">Food Safety License</span>
+                  <Badge variant={foodSafety.variant} className="font-medium">
+                    {foodSafety.label}
+                  </Badge>
                 </div>
-                <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-card">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-green-600" />
-                    <span className="text-sm">Establishment Cert</span>
-                  </div>
-                  {establishmentUrl ? (
-                    <Badge variant={getDocStatusBadge(establishmentStatus).variant} className={cn("text-xs", getDocStatusBadge(establishmentStatus).className)}>
-                      {establishmentStatus || 'Pending'}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="bg-muted">Not Uploaded</Badge>
-                  )}
+                <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5">
+                  <span className="text-sm">Establishment Cert</span>
+                  <Badge variant={establishment.variant} className="font-medium">
+                    {establishment.label}
+                  </Badge>
                 </div>
               </div>
             </div>
 
-            {/* Feedback */}
             {app.feedback && (
-              <div className="p-3 bg-primary/5 rounded-lg border border-primary/10">
-                <p className="text-xs font-bold text-foreground mb-1">Reviewer Feedback</p>
-                <p className="text-sm text-muted-foreground italic">{app.feedback}</p>
+              <div>
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Reviewer feedback
+                </p>
+                <p className="text-sm text-muted-foreground">{app.feedback}</p>
               </div>
+            )}
+
+            {app.status !== "approved" && app.status !== "cancelled" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => onCancelApplication("chef", app.id)}
+              >
+                Cancel application
+              </Button>
             )}
           </div>
         </CollapsibleContent>

@@ -6,6 +6,7 @@
  */
 
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -19,6 +20,7 @@ import {
 } from "@tanstack/react-table";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { TruncatedText } from "@/components/common/TruncatedText";
 import {
   Card,
   CardContent,
@@ -149,7 +151,7 @@ function formatCurrency(cents: number): string {
 function getStatusBadge(status: string) {
   const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning"; label: string }> = {
     submitted: { variant: "warning", label: "Awaiting Your Response" },
-    chef_accepted: { variant: "secondary", label: "You Accepted" },
+    chef_accepted: { variant: "success", label: "You Accepted" },
     chef_disputed: { variant: "destructive", label: "You Disputed" },
     under_review: { variant: "warning", label: "Under Admin Review" },
     approved: { variant: "success", label: "Approved" },
@@ -252,10 +254,10 @@ function ResponseDialog({
 
         {/* Escalated — Payment Required Banner */}
         {isEscalated && (
-          <Alert className="border-red-500 bg-red-50">
-            <AlertTriangle className="h-4 w-4 text-red-600" />
-            <AlertTitle className="text-red-800">Payment Required</AlertTitle>
-            <AlertDescription className="text-red-700">
+          <Alert className="border-destructive">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <AlertTitle>Payment Required</AlertTitle>
+            <AlertDescription>
               <p className="mb-3">
                 We were unable to automatically charge your saved payment method for this damage claim.
                 Please pay {formatCurrency(claim.finalAmountCents || claim.claimedAmountCents)} to resolve this claim.
@@ -292,15 +294,15 @@ function ResponseDialog({
 
         {/* Resolved Status Banner */}
         {isResolved && !isEscalated && (
-          <Alert className={claim.status === 'charge_succeeded' ? 'border-green-500 bg-green-50' : 'border-border bg-muted/50'}>
-            <CheckCircle className={`h-4 w-4 ${claim.status === 'charge_succeeded' ? 'text-green-600' : 'text-muted-foreground'}`} />
-            <AlertTitle className={claim.status === 'charge_succeeded' ? 'text-green-800' : 'text-foreground'}>
+          <Alert className={claim.status === 'charge_succeeded' ? 'border-success/30' : 'border-border'}>
+            <CheckCircle className={`h-4 w-4 ${claim.status === 'charge_succeeded' ? 'text-success' : 'text-muted-foreground'}`} />
+            <AlertTitle>
               {claim.status === 'charge_succeeded' ? 'Payment Completed' : 
                claim.status === 'rejected' ? 'Claim Rejected' :
                claim.status === 'expired' ? 'Claim Expired' :
                claim.status === 'charge_failed' ? 'Payment Failed' : 'Claim Resolved'}
             </AlertTitle>
-            <AlertDescription className={claim.status === 'charge_succeeded' ? 'text-green-700' : 'text-muted-foreground'}>
+            <AlertDescription className="text-muted-foreground">
               {claim.status === 'charge_succeeded' 
                 ? `Your card was charged ${formatCurrency(claim.finalAmountCents || claim.claimedAmountCents)} for this damage claim.`
                 : claim.status === 'rejected'
@@ -353,13 +355,13 @@ function ResponseDialog({
               <h4 className="text-sm font-semibold text-muted-foreground">Damaged Equipment ({claim.damagedItems.length})</h4>
               <div className="space-y-1">
                 {claim.damagedItems.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-sm p-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-800">
+                  <div key={idx} className="flex items-center justify-between text-sm p-2 rounded border bg-muted/30">
                     <div className="flex items-center gap-2">
-                      <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                      <AlertTriangle className="h-3.5 w-3.5 text-warning flex-shrink-0" />
                       <span className="font-medium capitalize">{item.equipmentType}</span>
                       {item.brand && <span className="text-muted-foreground">({item.brand})</span>}
                     </div>
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="outline" className="text-xs">
                       {item.equipmentBookingId ? 'Rented' : 'Included'}
                     </Badge>
                   </div>
@@ -403,10 +405,10 @@ function ResponseDialog({
 
           {/* Auto-Charge Warning - only show if can respond */}
           {canRespond && (
-            <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950">
-              <CreditCard className="h-4 w-4 text-amber-600" />
-              <AlertTitle className="text-amber-800 dark:text-amber-200">Payment Method on File</AlertTitle>
-              <AlertDescription className="text-amber-700 dark:text-amber-300">
+            <Alert className="border-warning/30">
+              <CreditCard className="h-4 w-4 text-warning" />
+              <AlertTitle>Payment Method on File</AlertTitle>
+              <AlertDescription className="text-muted-foreground">
                 If you accept this claim, your card from the original booking will be <strong>automatically charged</strong> for {formatCurrency(claim.claimedAmountCents)}.
                 If you dispute and an admin approves the claim, your card will also be charged automatically.
               </AlertDescription>
@@ -507,7 +509,7 @@ interface DamageClaimColumnsProps {
   downloadingInvoiceId: number | null;
 }
 
-const getDamageClaimColumns = ({
+const getDamageClaimColumns = (t: any, {
   onRespond,
   onDownloadInvoice,
   downloadingInvoiceId,
@@ -520,7 +522,7 @@ const getDamageClaimColumns = ({
   },
   {
     id: "reference",
-    header: "Ref",
+    header: t("rcColRef", "Ref"),
     cell: ({ row }) => {
       const ref = row.original.referenceCode || row.original.kitchenBookingId || row.original.id;
       return (
@@ -539,7 +541,7 @@ const getDamageClaimColumns = ({
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
       >
-        Claim
+        {t("rcColClaim", "Claim")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
@@ -547,10 +549,10 @@ const getDamageClaimColumns = ({
       const claim = row.original;
       return (
         <div className="flex flex-col max-w-[250px]">
-          <span className="font-medium text-sm truncate">{claim.claimTitle}</span>
+          <TruncatedText className="font-medium text-sm truncate">{claim.claimTitle}</TruncatedText>
           <div className="flex items-center text-xs text-muted-foreground mt-0.5">
             <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
-            <span className="truncate">{claim.locationName || 'Unknown Location'}</span>
+            <TruncatedText className="truncate">{claim.locationName || 'Unknown Location'}</TruncatedText>
           </div>
         </div>
       );
@@ -558,7 +560,7 @@ const getDamageClaimColumns = ({
   },
   {
     accessorKey: "status",
-    header: "Status",
+    header: t("rcColStatus", "Status"),
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
       const claim = row.original;
@@ -573,12 +575,12 @@ const getDamageClaimColumns = ({
         <div className="flex flex-col gap-1">
           {getStatusBadge(status)}
           {status === 'submitted' && !isExpired && hoursRemaining <= 24 && (
-            <span className="text-xs text-red-600 font-medium">
+            <span className="text-xs text-destructive font-medium">
               {hoursRemaining}h left
             </span>
           )}
           {status === 'submitted' && isExpired && (
-            <span className="text-xs text-red-600">Expired</span>
+            <span className="text-xs text-destructive">Expired</span>
           )}
         </div>
       );
@@ -593,7 +595,7 @@ const getDamageClaimColumns = ({
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 justify-end w-full"
       >
-        Amount
+        {t("rcColAmount", "Amount")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
@@ -619,7 +621,7 @@ const getDamageClaimColumns = ({
   },
   {
     accessorKey: "bookingType",
-    header: "Type",
+    header: t("rcColType", "Type"),
     cell: ({ row }) => {
       const type = row.getValue("bookingType") as string;
       return (
@@ -638,7 +640,7 @@ const getDamageClaimColumns = ({
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
       >
-        Damage Date
+        {t("rcColDamageDate", "Damage Date")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
@@ -652,7 +654,7 @@ const getDamageClaimColumns = ({
   },
   {
     accessorKey: "evidence",
-    header: "Evidence",
+    header: t("rcColEvidence", "Evidence"),
     cell: ({ row }) => {
       const evidence = row.original.evidence;
       if (!evidence || evidence.length === 0) {
@@ -732,6 +734,7 @@ const getDamageClaimColumns = ({
 
 // Main Component
 export function PendingDamageClaims() {
+  const { t } = useTranslation("chef");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedClaim, setSelectedClaim] = useState<DamageClaim | null>(null);
@@ -806,7 +809,7 @@ export function PendingDamageClaims() {
 
   // Column definitions
   const columns = useMemo(
-    () => getDamageClaimColumns({
+    () => getDamageClaimColumns(t, {
       onRespond: setSelectedClaim,
       onDownloadInvoice: handleDownloadInvoice,
       downloadingInvoiceId,
@@ -872,7 +875,7 @@ export function PendingDamageClaims() {
             <div>
               <CardTitle className="text-xl font-semibold flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5" />
-                Damage Claims
+                {t("rcDamageClaimsTitle", "Damage Claims")}
               </CardTitle>
               <CardDescription>
                 {table.getFilteredRowModel().rows.length} of {claims.length} claim{claims.length !== 1 ? 's' : ''}
@@ -880,7 +883,7 @@ export function PendingDamageClaims() {
             </div>
             <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
+              {t("rcRefreshBtn", "Refresh")}
             </Button>
           </div>
         </CardHeader>
@@ -890,22 +893,22 @@ export function PendingDamageClaims() {
           <Tabs value={viewType} onValueChange={(v) => setViewType(v as ClaimViewType)} className="w-full">
             <TabsList className="w-full gap-1">
               <TabsTrigger value="all" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                All
+                {t("rcTabAll", "All")}
                 <Badge variant="count" className="ml-1">{claims.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="pending" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                <span className="hidden sm:inline">Pending</span>
-                <span className="sm:hidden">Pend</span>
+                <span className="hidden sm:inline">{t("rcTabPending", "Pending")}</span>
+                <span className="sm:hidden">{t("rcTabPendingShort", "Pend")}</span>
                 <Badge variant="count" className="ml-1">{pendingClaims.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="in_progress" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                <span className="hidden sm:inline">In Progress</span>
-                <span className="sm:hidden">Active</span>
+                <span className="hidden sm:inline">{t("rcTabInProgress", "In Progress")}</span>
+                <span className="sm:hidden">{t("rcTabInProgressShort", "Active")}</span>
                 <Badge variant="count" className="ml-1">{inProgressClaims.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="resolved" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                <span className="hidden sm:inline">Resolved</span>
-                <span className="sm:hidden">Done</span>
+                <span className="hidden sm:inline">{t("rcTabResolved", "Resolved")}</span>
+                <span className="sm:hidden">{t("rcTabResolvedShort", "Done")}</span>
                 <Badge variant="count" className="ml-1">{resolvedClaims.length}</Badge>
               </TabsTrigger>
             </TabsList>
@@ -935,8 +938,8 @@ export function PendingDamageClaims() {
                       data-state={row.getIsSelected() && "selected"}
                       className={cn(
                         "hover:bg-muted/50",
-                        row.original.status === "submitted" && "bg-orange-50/50",
-                        row.original.status === "charge_succeeded" && "bg-green-50/30"
+                        row.original.status === "submitted" && "bg-muted/30",
+                        row.original.status === "charge_succeeded" && "bg-muted/20"
                       )}
                     >
                       {row.getVisibleCells().map((cell) => (
@@ -950,12 +953,12 @@ export function PendingDamageClaims() {
                   <TableRow>
                     <TableCell colSpan={columns.length} className="h-48 text-center">
                       <div className="flex flex-col items-center justify-center gap-2">
-                        <CheckCircle className="h-8 w-8 text-green-500" />
-                        <p className="text-sm font-medium">No Damage Claims</p>
+                        <CheckCircle className="h-8 w-8 text-muted-foreground" />
+                        <p className="text-sm font-medium">{t("rcNoDamageClaimsTitle", "No Damage Claims")}</p>
                         <p className="text-sm text-muted-foreground">
                           {viewType === "all" 
-                            ? "You don't have any damage claims filed against you."
-                            : `No ${viewType.replace('_', ' ')} claims to display.`}
+                            ? t("rcNoDamageClaimsDesc", "You don't have any damage claims filed against you.")
+                            : t("rcNoFilteredClaimsDesc", "No {viewType} claims to display.", { viewType: viewType.replace('_', ' ') })}
                         </p>
                       </div>
                     </TableCell>

@@ -14,6 +14,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation, Trans } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, LogIn, Camera } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -64,6 +65,8 @@ export function StorageCheckinDialog({
 }: StorageCheckinDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { t: tStrict } = useTranslation("chef");
+  const t = tStrict as unknown as (key: string, options?: Record<string, unknown>) => string;
   const [checkinNotes, setCheckinNotes] = useState("");
   // Photos keyed by requirement id (or __generic__ for fallback)
   const [uploadedPhotos, setUploadedPhotos] = useState<Record<string, string[]>>(
@@ -93,19 +96,19 @@ export function StorageCheckinDialog({
   const handleSubmitCheckin = async () => {
     if (!allPhotosUploaded) {
       toast({
-        title: "Photos required",
+        title: t("ciPhotosRequired"),
         description:
           storageCheckinPhotoReqs.length > 0
-            ? "Please upload a photo for each required item"
-            : "Please upload at least one photo documenting the move-in condition",
+            ? t("ciPhotoEachItem")
+            : t("ciPhotoAtLeastOne"),
         variant: "destructive",
       });
       return;
     }
     if (!allItemsChecked) {
       toast({
-        title: "Checklist incomplete",
-        description: "Please complete all checklist items",
+        title: t("ciChecklistIncomplete"),
+        description: t("ciChecklistBody"),
         variant: "destructive",
       });
       return;
@@ -115,7 +118,7 @@ export function StorageCheckinDialog({
     try {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Not authenticated");
+        throw new Error(t("bkNotAuthenticated"));
       }
 
       // Build checklist audit trail from checked items
@@ -151,14 +154,13 @@ export function StorageCheckinDialog({
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(
-          errorData.error || "Failed to complete check-in",
+          errorData.error || t("ciFailedBody"),
         );
       }
 
       toast({
-        title: "Check-in completed",
-        description:
-          "Your move-in inspection is recorded. This establishes the baseline for any future claim.",
+        title: t("ciCompletedToast"),
+        description: t("ciCompletedDesc"),
       });
 
       // Invalidate queries to refresh data (covers both chef + manager views)
@@ -174,9 +176,9 @@ export function StorageCheckinDialog({
       onSuccess?.();
     } catch (error) {
       toast({
-        title: "Check-in failed",
+        title: t("ciFailedToast"),
         description:
-          error instanceof Error ? error.message : "Failed to submit check-in",
+          error instanceof Error ? error.message : t("ciFailedBody"),
         variant: "destructive",
       });
     } finally {
@@ -189,12 +191,11 @@ export function StorageCheckinDialog({
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <LogIn className="h-5 w-5 text-emerald-600" />
-            Storage Check-In
+            <LogIn className="h-5 w-5 text-muted-foreground" />
+            {t("ciDialogTitle")}
           </SheetTitle>
           <SheetDescription>
-            Document the move-in condition of your storage unit. These photos
-            become the baseline for any damage claim at checkout.
+            {t("ciDialogDesc")}
           </SheetDescription>
         </SheetHeader>
 
@@ -202,10 +203,10 @@ export function StorageCheckinDialog({
           {/* Storage Info */}
           <div className="bg-muted/50 rounded-lg p-3">
             <div className="text-sm font-medium">
-              {storageBooking.storageName || "Storage Unit"}
+              {storageBooking.storageName || t("sxDefaultUnitName")}
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              Start Date: {new Date(storageBooking.startDate).toLocaleDateString()}
+              {t("ciStartDate")} {new Date(storageBooking.startDate).toLocaleDateString()}
             </div>
             {storageBooking.storageType && (
               <Badge variant="outline" className="mt-2 text-xs">
@@ -216,12 +217,11 @@ export function StorageCheckinDialog({
 
           {/* Already submitted status */}
           {isAlreadySubmitted && (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+            <div className="rounded-lg border p-3">
               <div className="flex items-start gap-2">
-                <LogIn className="h-4 w-4 text-emerald-600 mt-0.5" />
-                <div className="text-xs text-emerald-800">
-                  <strong>Check-in completed.</strong> Your move-in baseline
-                  is recorded.
+                <LogIn className="h-4 w-4 text-muted-foreground mt-0.5" />
+                <div className="text-xs text-muted-foreground">
+                  <strong className="text-foreground">{t("ciAlreadyDone")}</strong>{t("ciAlreadyDoneBody")}
                 </div>
               </div>
             </div>
@@ -231,11 +231,11 @@ export function StorageCheckinDialog({
             <>
               {/* Manager Instructions */}
               {checklist?.storageCheckinInstructions && (
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                  <p className="text-xs text-blue-800 font-medium mb-1">
-                    Instructions from Manager
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs font-medium mb-1">
+                    {t("ciManagerInstructions")}
                   </p>
-                  <p className="text-xs text-blue-700 whitespace-pre-line">
+                  <p className="text-xs text-muted-foreground whitespace-pre-line">
                     {checklist.storageCheckinInstructions}
                   </p>
                 </div>
@@ -245,7 +245,7 @@ export function StorageCheckinDialog({
               {storageCheckinItems.length > 0 && (
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">
-                    Check-In Checklist
+                    {t("ciChecklistLabel")}
                   </Label>
                   {storageCheckinItems.map((item: ChecklistItem, index: number) => (
                     <label
@@ -289,16 +289,16 @@ export function StorageCheckinDialog({
                 photos={uploadedPhotos}
                 onPhotosChange={setUploadedPhotos}
                 uploadFolder="checkin-photos"
-                genericInstruction="Upload photos documenting the move-in condition of the storage unit. These establish the baseline for any damage claim at checkout."
+                genericInstruction={t("ciGenericInstruction")}
                 disabled={isSubmitting}
               />
 
               {/* Notes Section */}
               <div className="space-y-2">
-                <Label htmlFor="checkin-notes">Notes (optional)</Label>
+                <Label htmlFor="checkin-notes">{t("ciNotesLabel")}</Label>
                 <Textarea
                   id="checkin-notes"
-                  placeholder="Note any pre-existing wear or concerns for the manager..."
+                  placeholder={t("ciNotesPlaceholder")}
                   value={checkinNotes}
                   onChange={(e) => setCheckinNotes(e.target.value)}
                   rows={2}
@@ -306,18 +306,21 @@ export function StorageCheckinDialog({
               </div>
 
               {/* Info Box */}
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+              <div className="rounded-lg border p-3">
                 <div className="flex items-start gap-2">
-                  <Camera className="h-4 w-4 text-emerald-600 mt-0.5" />
-                  <div className="text-xs text-emerald-800">
-                    <strong>Why this matters</strong>
+                  <Camera className="h-4 w-4 text-muted-foreground mt-0.5" />
+                  <div className="text-xs text-muted-foreground">
+                    <strong className="text-foreground">{t("ciWhyMatters")}</strong>
                     <ul className="mt-1 space-y-1 list-disc list-inside">
-                      <li>Your photos are the baseline for any future claim</li>
+                      <li>{t("ciWhyBaseline")}</li>
                       <li>
-                        Auto-linked as <em>photo_before</em> evidence if
-                        damage is claimed at checkout
+                        <Trans
+                          i18nKey="ciWhyAutoLinked"
+                          ns="chef"
+                          components={{ em: <em /> }}
+                        />
                       </li>
-                      <li>Protects you from being charged for prior damage</li>
+                      <li>{t("ciWhyProtects")}</li>
                     </ul>
                   </div>
                 </div>
@@ -328,7 +331,7 @@ export function StorageCheckinDialog({
 
         <SheetFooter className="mt-6">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {isAlreadySubmitted ? "Close" : "Cancel"}
+            {isAlreadySubmitted ? t("ciClose") : t("bkCommonCancel")}
           </Button>
           {!isAlreadySubmitted && (
             <Button
@@ -338,12 +341,12 @@ export function StorageCheckinDialog({
               {isSubmitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Submitting...
+                  {t("ciSubmitting")}
                 </>
               ) : (
                 <>
                   <LogIn className="h-4 w-4 mr-2" />
-                  Complete Check-In
+                  {t("ciCompleteBtn")}
                 </>
               )}
             </Button>

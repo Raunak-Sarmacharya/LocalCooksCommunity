@@ -2,6 +2,20 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
 import { logger } from "@/lib/logger";
 
+// ─── Shop URLs ──────────────────────────────────────────────────────────────
+
+export function getChefShopHomeUrl(): string {
+  const isProd =
+    typeof window !== "undefined" && window.location.hostname === "chef.localcooks.ca";
+  return isProd
+    ? "https://shop.localcook.shop/app/shop/home.php"
+    : "https://stagingwebapp.localcook.shop/app/shop/home.php";
+}
+
+export function openChefShopHome(): void {
+  window.open(getChefShopHomeUrl(), "_blank", "noopener,noreferrer");
+}
+
 // ─── Auth Helper ────────────────────────────────────────────────────────────
 
 async function getAuthHeaders(): Promise<HeadersInit> {

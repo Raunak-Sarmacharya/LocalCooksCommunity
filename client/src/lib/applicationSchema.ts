@@ -55,14 +55,22 @@ export function getStatusBadgeColor(status: string): string {
   }
 }
 
-// Helper function to format application status for display
-export function formatApplicationStatus(status: string): string {
+// Helper function to format application status for display.
+// Pass a translator (i18next `t` bound to "chef") for localized labels;
+// omit it for canonical English (backward compatible).
+export function formatApplicationStatus(
+  status: string,
+  t?: import("i18next").TFunction<"chef", undefined>
+): string {
+  const tr = (key: string, fallback: string): string =>
+    t ? (t(key, { defaultValue: fallback }) as string) : fallback;
+
   switch (status) {
-    case "new": return "Getting Started";
-    case "inReview": return "In Review";
-    case "approved": return "Approved";
-    case "rejected": return "Rejected";
-    case "cancelled": return "Cancelled";
+    case "new": return tr("appStatusNew", "Getting Started");
+    case "inReview": return tr("appStatusInReview", "In Review");
+    case "approved": return tr("appStatusApproved", "Approved");
+    case "rejected": return tr("appStatusRejected", "Rejected");
+    case "cancelled": return tr("appStatusCancelled", "Cancelled");
     default: return status;
   }
 }

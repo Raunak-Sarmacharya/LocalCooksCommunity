@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { useTranslation } from "react-i18next";
 import { useState, useRef, useEffect } from 'react';
 import { X, Loader2, Info, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -74,6 +75,7 @@ export default function ChatPanel({
     url: string;
   }>>([]);
 
+  const { t } = useTranslation("chef");
   const {
     messages,
     isLoading,
@@ -139,13 +141,13 @@ export default function ChatPanel({
 
   // ... helpers getPartnerName/getPartnerLabel kept same ...
   const getPartnerName = () => {
-    if (isManager) return chefName || "Chef";
-    return managerName || "Manager";
+    if (isManager) return chefName || t("chatChef");
+    return managerName || t("chatManager");
   };
 
   const getPartnerLabel = () => {
-    if (isManager) return "Chef";
-    return "Manager";
+    if (isManager) return t("chatChef");
+    return t("chatManager");
   }
 
   // ... renderHeader kept same ...
@@ -165,7 +167,7 @@ export default function ChatPanel({
         {error && (
           <div className="flex items-center text-destructive text-sm mr-2">
             <Info className="h-4 w-4 mr-1" />
-            <span>Connection error</span>
+            <span>{t("chatConnectionError")}</span>
           </div>
         )}
         {onClose && (
@@ -188,8 +190,8 @@ export default function ChatPanel({
           <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
             <Info className="h-6 w-6 text-muted-foreground/50" />
           </div>
-          <p>No messages yet.</p>
-          <p className="text-xs mt-1 text-muted-foreground/70">Start the conversation by saying hello!</p>
+          <p>{t("chatNoMessages")}</p>
+          <p className="text-xs mt-1 text-muted-foreground/70">{t("chatStartConversation")}</p>
         </div>
       );
     }
@@ -209,8 +211,8 @@ export default function ChatPanel({
 
           const isMe = message.senderId === currentUserId;
           let senderName = "User";
-          if (message.senderRole === 'chef') senderName = chefName || "Chef";
-          if (message.senderRole === 'manager') senderName = managerName || "Manager";
+          if (message.senderRole === 'chef') senderName = chefName || t("chatChef");
+          if (message.senderRole === 'manager') senderName = managerName || t("chatManager");
 
           const timestamp = message.createdAt instanceof Date
             ? message.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -289,7 +291,7 @@ export default function ChatPanel({
           onSend={onSend}
           isLoading={isSending}
           className="border-0 shadow-none bg-background pb-6"
-          placeholder={`Message ${getPartnerName()}...`}
+          placeholder={t("chatMessagePlaceholder", { name: getPartnerName() })}
         />
       </div>
     </div>

@@ -71,6 +71,7 @@ import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload"
 import { getR2ProxyUrl } from "@/utils/r2-url-helper"
+import { SmartImage } from "@/components/ui/smart-image";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -890,7 +891,7 @@ export function TodaysKitchenBookings() {
                                       rel="noopener noreferrer"
                                       className="block"
                                     >
-                                      <img
+                                      <SmartImage
                                         src={proxied}
                                         alt={`Check-in photo ${i + 1}`}
                                         className="w-full h-20 object-cover rounded-md border hover:opacity-80 transition-opacity"
@@ -944,7 +945,7 @@ export function TodaysKitchenBookings() {
                                       rel="noopener noreferrer"
                                       className="block"
                                     >
-                                      <img
+                                      <SmartImage
                                         src={proxied}
                                         alt={`Check-out photo ${i + 1}`}
                                         className="w-full h-20 object-cover rounded-md border hover:opacity-80 transition-opacity"
@@ -1156,7 +1157,7 @@ export function TodaysKitchenBookings() {
                         <div className="grid grid-cols-3 gap-2">
                           {evidencePhotos.map((url, i) => (
                             <div key={i} className="relative group">
-                              <img
+                              <SmartImage
                                 src={getR2ProxyUrl(url)}
                                 alt={`Evidence photo ${i + 1}`}
                                 className="w-full h-20 object-cover rounded-lg border"

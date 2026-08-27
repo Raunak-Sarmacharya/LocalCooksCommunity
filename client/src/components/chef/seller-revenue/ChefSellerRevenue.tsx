@@ -6,6 +6,10 @@
  */
 
 import { useState, useMemo, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
+
+type ChefTFunction = TFunction<"chef", undefined>;
 import {
   ColumnDef,
   flexRender,
@@ -82,7 +86,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import Logo from "@/components/ui/logo";
 import locoLogo from "@/assets/LoCoLogo.svg";
 import { SiUber } from "react-icons/si";
 import { formatNumber } from "@/lib/formatters";
@@ -93,6 +96,7 @@ import {
   useSellerOrders,
   useStripeDashboardLink,
   useSellerRetention,
+  openChefShopHome,
 } from "./hooks/useSellerRevenue";
 import type { SellerOrder } from "./hooks/useSellerRevenue";
 import { ChefRevenueMatrix } from "./ChefRevenueMatrix";
@@ -101,6 +105,8 @@ import { auth } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { ChefPageHeader, QuietNotice, StatTile } from "@/components/chef/ui";
+import { TruncatedText } from "@/components/common/TruncatedText";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -180,10 +186,10 @@ function parsePhpDateToDate(phpDateStr: string): Date | null {
   }
 }
 
-function fmtDate(phpDateStr: string): string {
+function fmtDate(phpDateStr: string, language: string = "en-US"): string {
   const d = parsePhpDateToDate(phpDateStr);
   if (!d) return "N/A";
-  return d.toLocaleDateString("en-US", {
+  return d.toLocaleDateString(language, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -191,10 +197,10 @@ function fmtDate(phpDateStr: string): string {
   });
 }
 
-function fmtDateTime(phpDateStr: string): string {
+function fmtDateTime(phpDateStr: string, language: string = "en-US"): string {
   const d = parsePhpDateToDate(phpDateStr);
   if (!d) return "N/A";
-  return d.toLocaleDateString("en-US", {
+  return d.toLocaleDateString(language, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -205,10 +211,10 @@ function fmtDateTime(phpDateStr: string): string {
   });
 }
 
-function fmtTime(phpDateStr: string): string {
+function fmtTime(phpDateStr: string, language: string = "en-US"): string {
   const d = parsePhpDateToDate(phpDateStr);
   if (!d) return "";
-  return d.toLocaleTimeString("en-US", {
+  return d.toLocaleTimeString(language, {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -216,23 +222,23 @@ function fmtTime(phpDateStr: string): string {
   });
 }
 
-function getPayoutBadge(status: "due" | "paid") {
+function getPayoutBadge(status: "due" | "paid", t: (key: string, defaultValue: string) => string) {
   if (status === "paid") {
-    return <Badge variant="success">Paid</Badge>;
+    return <Badge variant="success">{t("revenuePaidBadge", "Paid")}</Badge>;
   }
-  return <Badge variant="warning">Due</Badge>;
+  return <Badge variant="warning">{t("revenueDueBadge", "Due")}</Badge>;
 }
 
-function getDeliveryLabel(method: string, provider: string): string {
-  if (method === "pickup") return "Pickup";
-  if (provider === "uber_direct") return "Uber Direct";
-  return "In-House Delivery";
+function getDeliveryLabel(method: string, provider: string, t: (key: string, defaultValue: string) => string): string {
+  if (method === "pickup") return t("revenueDeliveryPickup", "Pickup");
+  if (provider === "uber_direct") return t("revenueDeliveryUberDirect", "Uber Direct");
+  return t("revenueDeliveryInHouse", "In-House Delivery");
 }
 
-function getDeliveryIcon(method: string, provider: string) {
+function getDeliveryIcon(method: string, provider: string, t: (key: string, defaultValue: string) => string) {
   if (method === "pickup") return <PickupOrderIcon className="h-4 w-4 text-black" />;
   if (provider === "uber_direct") return <SiUber className="h-5 w-5" />;
-  return <img src={locoLogo} alt="Local Cooks" className="h-5 w-5 object-contain" />;
+  return <img src={locoLogo} alt={t("revenueLocalCooksAlt", "Local Cooks")} className="h-5 w-5 object-contain" />;
 }
 
 interface OrderItem {
@@ -280,7 +286,7 @@ function OrderItemsList({ itemsStr }: { itemsStr: string | null | undefined }) {
         <div key={idx} className="flex items-center justify-between gap-3 text-sm">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="w-1.5 h-1.5 rounded-full bg-primary/60 flex-shrink-0" />
-            <span className="truncate">{item.name}</span>
+            <TruncatedText className="truncate">{item.name}</TruncatedText>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground flex-shrink-0">
             {item.qty > 0 && <span className="font-medium">×{item.qty}</span>}
@@ -296,16 +302,16 @@ function OrderItemsList({ itemsStr }: { itemsStr: string | null | undefined }) {
 // CSV EXPORT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function exportOrdersCSV(orders: SellerOrder[]) {
+function exportOrdersCSV(orders: SellerOrder[], t: (key: string, defaultValue: string) => string, language: string = "en-US") {
   const headers = [
-    "Order ID", "Type", "Date", "Customer", "Items",
-    "Shop Charge", "Tax Collected", "Discount", "Stripe Fee", "Tip (Chef)",
-    "Your Earnings", "Payout Status", "Delivery Method",
+    t("revenueCsvHeaderOrderId", "Order ID"), t("revenueCsvHeaderType", "Type"), t("revenueCsvHeaderDate", "Date"), t("revenueCsvHeaderCustomer", "Customer"), t("revenueCsvHeaderItems", "Items"),
+    t("revenueCsvHeaderShopCharge", "Shop Charge"), t("revenueCsvHeaderTaxCollected", "Tax Collected"), t("revenueCsvHeaderDiscount", "Discount"), t("revenueCsvHeaderStripeFee", "Stripe Fee"), t("revenueCsvHeaderTipChef", "Tip (Chef)"),
+    t("revenueCsvHeaderYourEarnings", "Your Earnings"), t("revenueCsvHeaderPayoutStatus", "Payout Status"), t("revenueCsvHeaderDeliveryMethod", "Delivery Method"),
   ];
   const rows = orders.map((o) => [
     o.id,
-    o.type === "pre_order" ? "Pre-Order" : "Order",
-    fmtDateTime(o.order_time),
+    o.type === "pre_order" ? t("revenueOrderTypePreOrder", "Pre-Order") : t("revenueOrderTypeOrder", "Order"),
+    fmtDateTime(o.order_time, language),
     o.customer_name,
     `"${parseOrderItems(o.items_description).map(item => `${item.qty}x ${item.name} @ $${item.price.toFixed(2)}`).join('\n')}"`,
     fmtDollars(o.shopcharge),
@@ -315,7 +321,7 @@ function exportOrdersCSV(orders: SellerOrder[]) {
     fmtDollars(o.tip_chef),
     fmtDollars(o.chef_earnings),
     o.payout_status,
-    getDeliveryLabel(o.order_method, o.delivery_provider),
+    getDeliveryLabel(o.order_method, o.delivery_provider, t),
   ]);
   const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -334,6 +340,7 @@ function exportOrdersCSV(orders: SellerOrder[]) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function LinkSellerAccountBanner() {
+  const { t } = useTranslation("chef");
   const { data: shopStatus, isLoading: statusLoading } = useShopStatus();
   const linkShopMutation = useLinkShop();
   const [manualEmail, setManualEmail] = useState("");
@@ -352,14 +359,14 @@ function LinkSellerAccountBanner() {
   if (shopStatus?.linked) return null;
 
   return (
-    <Card className="border-dashed border-2 border-orange-200 bg-orange-50/50">
+    <Card className="border-dashed border-2 shadow-none">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
-          <Link2 className="h-5 w-5 text-orange-600" />
-          <CardTitle className="text-lg">Link Your Seller Account</CardTitle>
+          <Link2 className="h-5 w-5 text-muted-foreground" />
+          <CardTitle className="text-lg">{t("revenueLinkAccountTitle", "Link Your Seller Account")}</CardTitle>
         </div>
         <CardDescription>
-          Connect your LocalCooks seller account to view your food order revenue here.
+          {t("revenueLinkAccountDescription", "Connect your LocalCooks seller account to view your food order revenue here.")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -373,7 +380,7 @@ function LinkSellerAccountBanner() {
           ) : (
             <Store className="h-4 w-4 mr-2" />
           )}
-          Auto-Link by Email
+          {t("revenueAutoLinkByEmail", "Auto-Link by Email")}
         </Button>
 
         {linkShopMutation.isError && (
@@ -384,7 +391,7 @@ function LinkSellerAccountBanner() {
             </p>
             {!showManualInput && (
               <Button variant="outline" size="sm" onClick={() => setShowManualInput(true)}>
-                Enter seller email manually
+                {t("revenueEnterSellerEmailManually", "Enter seller email manually")}
               </Button>
             )}
           </div>
@@ -393,7 +400,7 @@ function LinkSellerAccountBanner() {
         {showManualInput && (
           <div className="flex gap-2">
             <Input
-              placeholder="Enter your seller account email"
+              placeholder={t("revenueSellerEmailPlaceholder", "Enter your seller account email")}
               value={manualEmail}
               onChange={(e) => setManualEmail(e.target.value)}
               className="max-w-sm"
@@ -402,15 +409,15 @@ function LinkSellerAccountBanner() {
               onClick={() => { if (manualEmail.trim()) linkShopMutation.mutate({ email: manualEmail.trim() }); }}
               disabled={linkShopMutation.isPending || !manualEmail.trim()}
             >
-              {linkShopMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Link"}
+              {linkShopMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : t("revenueLink", "Link")}
             </Button>
           </div>
         )}
 
         {linkShopMutation.isSuccess && (
-          <p className="text-sm text-green-600 flex items-center gap-1">
-            <CheckCircle2 className="h-4 w-4" />
-            Successfully linked to {linkShopMutation.data.shop.sname}!
+          <p className="text-sm text-muted-foreground flex items-center gap-1">
+            <CheckCircle2 className="h-4 w-4 text-success" />
+            {t("revenueSuccessfullyLinked", { shopName: linkShopMutation.data.shop.sname, defaultValue: "Successfully linked to {shopName}!" })}
           </p>
         )}
       </CardContent>
@@ -423,6 +430,7 @@ function LinkSellerAccountBanner() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function EarningsSummaryCards({ period }: { period: string }) {
+  const { t } = useTranslation("chef");
   const dateFilters = useMemo(() => getDateFiltersForPeriod(period), [period]);
   const { data, isLoading, isError } = useEarningsSummary({ period, startDate: dateFilters.startDate });
 
@@ -451,7 +459,7 @@ function EarningsSummaryCards({ period }: { period: string }) {
     return (
       <Card className="border-destructive/50 bg-destructive/5">
         <CardContent className="py-6 text-center text-sm text-destructive">
-          Failed to load earnings data. Please try again.
+          {t("revenueFailedToLoadEarnings", "Failed to load earnings data. Please try again.")}
         </CardContent>
       </Card>
     );
@@ -460,41 +468,32 @@ function EarningsSummaryCards({ period }: { period: string }) {
   const { earnings, by_delivery_method } = data;
   const summaryCards = [
     {
-      label: "Total Earnings",
-      value: earnings.total_earnings,
-      subtitle: `${formatNumber(earnings.total_orders + earnings.total_pre_orders)} orders (Includes Tips)`,
-      count: earnings.total_orders + earnings.total_pre_orders,
-      icon: <DollarSign className="h-5 w-5 text-blue-600" />,
-      color: "text-blue-700",
-      bg: "bg-blue-100",
-      tooltip: "Your total revenue generated across all payment statuses (Due + Paid). This amount already includes all tips, and is exactly equal to the sum of your Pickup, In-House Delivery, and Uber Direct earnings.",
+      label: t("revenueTotalEarnings", "Total Earnings"),
+      value: fmtDollars(earnings.total_earnings),
+      hint: t("revenueOrdersIncludesTips", { count: earnings.total_orders + earnings.total_pre_orders, defaultValue: "{count, plural, one {# order (includes tips)} other {# orders (includes tips)}}" }),
+      tone: "neutral" as const,
+      tooltip: t("revenueTotalEarningsTooltip", "Your total revenue generated across all payment statuses (Due + Paid). This amount already includes all tips, and is exactly equal to the sum of your Pickup, In-House Delivery, and Uber Direct earnings."),
     },
     {
-      label: "Due Earnings",
-      value: earnings.total_due,
-      count: data.by_payment_status.due.count,
-      icon: <Clock className="h-5 w-5 text-orange-600" />,
-      color: "text-orange-700",
-      bg: "bg-orange-100",
-      tooltip: "Funds currently being processed by Stripe or held in your pending balance. These will be automatically paid out to your connected bank account according to your Stripe payout schedule (usually 2-7 rolling days).",
+      label: t("revenueDueEarnings", "Due Earnings"),
+      value: fmtDollars(earnings.total_due),
+      hint: t("revenueOrdersCount", { count: data.by_payment_status.due.count, defaultValue: "{count, plural, one {# order} other {# orders}}" }),
+      tone: "warning" as const,
+      tooltip: t("revenueDueEarningsTooltip", "Funds currently being processed by Stripe or held in your pending balance. These will be automatically paid out to your connected bank account according to your Stripe payout schedule (usually 2-7 rolling days)."),
     },
     {
-      label: "Paid Earnings",
-      value: earnings.total_paid,
-      count: data.by_payment_status.paid.count,
-      icon: <CheckCircle2 className="h-5 w-5 text-green-600" />,
-      color: "text-green-700",
-      bg: "bg-green-100",
-      tooltip: "Funds that have been successfully deposited into your connected bank account by Stripe. It may take 1-2 business days for your bank to reflect the transfer.",
+      label: t("revenuePaidEarnings", "Paid Earnings"),
+      value: fmtDollars(earnings.total_paid),
+      hint: t("revenueOrdersCount", { count: data.by_payment_status.paid.count, defaultValue: "{count, plural, one {# order} other {# orders}}" }),
+      tone: "success" as const,
+      tooltip: t("revenuePaidEarningsTooltip", "Funds that have been successfully deposited into your connected bank account by Stripe. It may take 1-2 business days for your bank to reflect the transfer."),
     },
     {
-      label: "Tips (Included in Total)",
-      value: earnings.total_tips,
-      subtitle: `${((earnings.total_tips / (earnings.total_earnings || 1)) * 100).toFixed(1)}% tip rate`,
-      icon: <TrendingUp className="h-5 w-5 text-purple-600" />,
-      color: "text-purple-700",
-      bg: "bg-purple-100",
-      tooltip: "Total tips provided by your customers. Note: These tips are already included in your Total Earnings figure.",
+      label: t("revenueTipsIncludedInTotal", "Tips (included in total)"),
+      value: fmtDollars(earnings.total_tips),
+      hint: t("revenueTipRate", { rate: ((earnings.total_tips / (earnings.total_earnings || 1)) * 100).toFixed(1), defaultValue: "{rate}% tip rate" }),
+      tone: "neutral" as const,
+      tooltip: t("revenueTipsTooltip", "Total tips provided by your customers. Note: These tips are already included in your Total Earnings figure."),
     },
   ];
 
@@ -502,81 +501,45 @@ function EarningsSummaryCards({ period }: { period: string }) {
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {summaryCards.map((card) => (
-          <Card key={card.label}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5 h-5">
-                {card.label}
-                {card.tooltip && (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button type="button" className="inline-flex items-center justify-center p-0 m-0 border-none bg-transparent outline-none ring-0">
-                        <Info className="h-4 w-4 text-muted-foreground/70 hover:text-muted-foreground cursor-help" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent side="top" className="w-[280px] p-3 shadow-md">
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        {card.tooltip}
-                      </p>
-                    </PopoverContent>
-                  </Popover>
-                )}
-              </CardTitle>
-              <div className={cn("w-9 h-9 rounded-md flex items-center justify-center shrink-0", card.bg)}>
-                {card.icon}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{fmtDollars(card.value)}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {card.subtitle || `${formatNumber(card.count ?? 0)} orders`}
-              </p>
-            </CardContent>
-          </Card>
+          <StatTile
+            key={card.label}
+            label={card.label}
+            value={card.value}
+            hint={card.hint}
+            tone={card.tone}
+            tooltip={card.tooltip}
+          />
         ))}
       </div>
 
       <div className="pt-2">
-        <h3 className="text-sm font-medium text-muted-foreground mb-3 px-1">Earnings by Delivery Method</h3>
+        <h3 className="text-sm font-medium text-muted-foreground mb-3 px-1">{t("revenueByDeliveryMethod", "Earnings by Delivery Method")}</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {([
           { 
             key: "pickup" as const, 
-            label: "Pickup", 
-            icon: <PickupOrderIcon className="h-6 w-6 text-emerald-600" />,
-            bgIcon: <PickupOrderIcon className="h-20 w-20 text-emerald-600" />,
-            color: "text-emerald-700",
-            bg: "bg-emerald-100",
+            label: t("revenueDeliveryPickup", "Pickup"), 
+            icon: <PickupOrderIcon className="h-5 w-5 text-muted-foreground" />,
             data: by_delivery_method.pickup,
-            tooltip: "Revenue from orders picked up directly by the customer from your location. This is one of the three components that sum up to your Total Earnings."
+            tooltip: t("revenuePickupTooltip", "Revenue from orders picked up directly by the customer from your location. This is one of the three components that sum up to your Total Earnings.")
           },
           { 
             key: "inhouse" as const, 
-            label: "In-House Delivery", 
-            icon: <img src={locoLogo} alt="Local Cooks" className="h-6 w-6 object-contain" />,
-            bgIcon: <img src={locoLogo} alt="Local Cooks" className="h-20 w-20 object-contain grayscale" />,
-            color: "text-blue-700",
-            bg: "bg-blue-100",
+            label: t("revenueDeliveryInHouse", "In-House Delivery"), 
+            icon: <img src={locoLogo} alt={t("revenueLocalCooksAlt", "Local Cooks")} className="h-5 w-5 object-contain opacity-70" />,
             data: by_delivery_method.inhouse,
-            tooltip: "Revenue from orders delivered by Local Cooks delivery partners. This is one of the three components that sum up to your Total Earnings."
+            tooltip: t("revenueInHouseTooltip", "Revenue from orders delivered by Local Cooks delivery partners. This is one of the three components that sum up to your Total Earnings.")
           },
           { 
             key: "uber_direct" as const, 
-            label: "Uber Direct", 
-            icon: <SiUber className="h-6 w-6 text-slate-800 dark:text-slate-200" />,
-            bgIcon: <SiUber className="h-20 w-20 text-slate-800 dark:text-slate-200" />,
-            color: "text-slate-800 dark:text-slate-100",
-            bg: "bg-slate-100 dark:bg-slate-800",
+            label: t("revenueDeliveryUberDirect", "Uber Direct"), 
+            icon: <SiUber className="h-5 w-5 text-muted-foreground" />,
             data: by_delivery_method.uber_direct,
-            tooltip: "Revenue from orders delivered via the Uber Direct integration. This is one of the three components that sum up to your Total Earnings."
+            tooltip: t("revenueUberDirectTooltip", "Revenue from orders delivered via the Uber Direct integration. This is one of the three components that sum up to your Total Earnings.")
           },
         ]).map((item) => (
-          <Card key={item.key} className="relative overflow-hidden group border-muted shadow-sm">
-            {/* Subtle background icon for that premium feel */}
-            <div className="absolute right-2 bottom-2 opacity-5 group-hover:opacity-10 group-hover:scale-110 origin-bottom-right transition-all duration-500 pointer-events-none flex items-center justify-center">
-              {item.bgIcon}
-            </div>
-            
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
+          <Card key={item.key} className="shadow-none">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5 h-5">
                 {item.label}
                 {item.tooltip && (
@@ -586,7 +549,7 @@ function EarningsSummaryCards({ period }: { period: string }) {
                         <Info className="h-4 w-4 text-muted-foreground/70 hover:text-muted-foreground cursor-help" />
                       </button>
                     </PopoverTrigger>
-                    <PopoverContent side="top" className="w-[280px] p-3 shadow-md">
+                    <PopoverContent side="top" className="w-[280px] p-3">
                       <p className="text-xs leading-relaxed text-muted-foreground">
                         {item.tooltip}
                       </p>
@@ -594,14 +557,14 @@ function EarningsSummaryCards({ period }: { period: string }) {
                   </Popover>
                 )}
               </CardTitle>
-              <div className={cn("w-10 h-10 rounded-md flex items-center justify-center shrink-0 shadow-sm", item.bg)}>
+              <div className="flex h-9 w-9 items-center justify-center rounded-md border shrink-0">
                 {item.icon}
               </div>
             </CardHeader>
-            <CardContent className="relative z-10">
+            <CardContent>
               <div className="text-2xl font-bold">{fmtDollars(item.data.earnings)}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                {formatNumber(item.data.count)} orders
+                {t("revenueOrdersCount", { count: item.data.count, defaultValue: "{count, plural, one {# order} other {# orders}}" })}
               </p>
             </CardContent>
           </Card>
@@ -626,19 +589,20 @@ function OrderDetailSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const [isDownloading, setIsDownloading] = useState(false);
+  const { t, i18n } = useTranslation("chef");
   const { toast } = useToast();
 
   if (!order) return null;
 
   const revenueItems = [
-    { label: "Shop Charge (Food Total)", value: order.shopcharge, icon: <Receipt className="h-4 w-4" /> },
-    { label: "Tax Collected", value: order.commission, icon: <Receipt className="h-4 w-4" /> },
-    { label: "Tip (Chef)", value: order.tip_chef, icon: <TrendingUp className="h-4 w-4" />, highlight: true },
-  ].filter(item => item.value > 0 || item.label === "Shop Charge (Food Total)" || item.label === "Tax Collected");
+    { label: t("revDetailShopCharge", "Shop Charge (Food Total)"), value: order.shopcharge, icon: <Receipt className="h-4 w-4" /> },
+    { label: t("revDetailTaxCollected", "Tax Collected"), value: order.commission, icon: <Receipt className="h-4 w-4" /> },
+    { label: t("revTipChef", "Tip (Chef)"), value: order.tip_chef, icon: <TrendingUp className="h-4 w-4" />, highlight: true },
+  ].filter(item => item.value > 0 || item.label === t("revDetailShopCharge", "Shop Charge (Food Total)") || item.label === t("revDetailTaxCollected", "Tax Collected"));
 
   const deductions = [
-    { label: "Discount Applied", value: order.discount_amt },
-    { label: "Stripe Processing Fee", value: order.stripe_fee },
+    { label: t("revDetailDiscountApplied", "Discount Applied"), value: order.discount_amt },
+    { label: t("revDetailStripeFee", "Stripe Processing Fee"), value: order.stripe_fee },
   ];
 
   return (
@@ -647,10 +611,10 @@ function OrderDetailSheet({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Receipt className="h-5 w-5" />
-            {order.type === "pre_order" ? "Pre-Order" : "Order"} #{order.id}
+            {order.type === "pre_order" ? t("revPreOrder", "Pre-Order") : t("revOrder", "Order")} #{order.id}
           </SheetTitle>
           <SheetDescription>
-            Full financial breakdown for this order
+            {t("revOrderDetailsSubtitle", "Full financial breakdown for this order")}
           </SheetDescription>
         </SheetHeader>
 
@@ -660,35 +624,35 @@ function OrderDetailSheet({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm">
                 <User className="h-4 w-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Customer</span>
+                <span className="text-muted-foreground">{t("revDetailCustomer", "Customer")}</span>
               </div>
               <span className="font-medium text-sm">{order.customer_name}</span>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Order Date</span>
+                <span className="text-muted-foreground">{t("revDetailOrderDate", "Order Date")}</span>
               </div>
-              <span className="font-medium text-sm">{fmtDateTime(order.order_time)}</span>
+              <span className="font-medium text-sm">{fmtDateTime(order.order_time, i18n.language)}</span>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm">
-                {getDeliveryIcon(order.order_method, order.delivery_provider)}
-                <span className="text-muted-foreground">Delivery</span>
+                {getDeliveryIcon(order.order_method, order.delivery_provider, t)}
+                <span className="text-muted-foreground">{t("revDetailDelivery", "Delivery")}</span>
               </div>
               <span className="font-medium text-sm">
-                {getDeliveryLabel(order.order_method, order.delivery_provider)}
+                {getDeliveryLabel(order.order_method, order.delivery_provider, t)}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm">
                 <Hash className="h-4 w-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Payout Status</span>
+                <span className="text-muted-foreground">{t("revDetailPayoutStatus", "Payout Status")}</span>
               </div>
-              {getPayoutBadge(order.payout_status)}
+              {getPayoutBadge(order.payout_status, t)}
             </div>
             <div className="pt-1">
-              <p className="text-xs text-muted-foreground mb-2">Items Ordered</p>
+              <p className="text-xs text-muted-foreground mb-2">{t("revDetailItemsOrdered", "Items Ordered")}</p>
               <div className="bg-muted/50 rounded-md px-3 py-2">
                 <OrderItemsList itemsStr={order.items_description} />
               </div>
@@ -701,7 +665,7 @@ function OrderDetailSheet({
           <div>
             <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
               <DollarSign className="h-4 w-4" />
-              Revenue Breakdown
+              {t("revDetailRevenueBreakdown", "Revenue Breakdown")}
             </h4>
             <div className="space-y-2">
               {revenueItems.map((item) => (
@@ -709,14 +673,14 @@ function OrderDetailSheet({
                   key={item.label}
                   className={cn(
                     "flex items-center justify-between py-1.5 px-2 rounded-md text-sm",
-                    item.highlight && item.value > 0 && "bg-purple-50/70"
+                    item.highlight && item.value > 0 && "bg-muted/50"
                   )}
                 >
                   <div className="flex items-center gap-2 text-muted-foreground">
                     {item.icon}
                     {item.label}
                   </div>
-                  <span className={cn("font-medium", item.highlight && item.value > 0 && "text-purple-700")}>
+                  <span className="font-medium">
                     {fmtDollars(item.value)}
                   </span>
                 </div>
@@ -728,7 +692,7 @@ function OrderDetailSheet({
           <div>
             <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
               <Minus className="h-4 w-4" />
-              Deductions
+              {t("revDetailDeductions", "Deductions")}
             </h4>
             <div className="space-y-2">
               {deductions.map((item) => (
@@ -745,12 +709,12 @@ function OrderDetailSheet({
           <Separator />
 
           {/* Net Earnings */}
-          <div className="flex items-center justify-between py-3 px-3 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex items-center justify-between py-3 px-3 border rounded-lg bg-muted/30">
             <div>
-              <p className="text-sm font-semibold text-green-800">Your Earnings</p>
-              <p className="text-xs text-green-600">After all fees and deductions</p>
+              <p className="text-sm font-semibold">{t("revDetailYourEarnings", "Your Earnings")}</p>
+              <p className="text-xs text-muted-foreground">{t("revDetailAfterFees", "After all fees and deductions")}</p>
             </div>
-            <p className="text-2xl font-bold text-green-700">{fmtDollars(order.chef_earnings)}</p>
+            <p className="text-2xl font-bold">{fmtDollars(order.chef_earnings)}</p>
           </div>
 
           <div className="pt-2">
@@ -792,8 +756,8 @@ function OrderDetailSheet({
                   window.URL.revokeObjectURL(url);
                 } catch (error) {
                   toast({
-                    title: "Download Failed",
-                    description: error instanceof Error ? error.message : "Could not download invoice",
+                    title: t("trCertFailTitle"),
+                    description: error instanceof Error ? error.message : t("revInvoiceCouldNotDownload"),
                     variant: "destructive"
                   });
                 } finally {
@@ -806,7 +770,7 @@ function OrderDetailSheet({
               ) : (
                 <Download className="mr-2 h-4 w-4" />
               )}
-              {isDownloading ? "Downloading..." : "Download Invoice PDF"}
+              {isDownloading ? t("revDownloading", "Downloading...") : t("revDetailDownloadInvoice", "Download Invoice PDF")}
             </Button>
           </div>
         </div>
@@ -819,11 +783,11 @@ function OrderDetailSheet({
 // ORDER TABLE COLUMNS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef<SellerOrder>[] {
+function getOrderColumns(onSelectOrder: (order: SellerOrder) => void, t: ChefTFunction, language: string = "en-US"): ColumnDef<SellerOrder>[] {
   return [
     {
       id: "reference",
-      header: "Ref",
+      header: t("revColRef", "Ref"),
       cell: ({ row }) => {
         const ref = row.original.id; // Usually orders only have an ID or order_id
         return (
@@ -842,7 +806,7 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           className="h-8 -ml-3"
         >
-          Date
+          {t("revColDate", "Date")}
           <ArrowUpDown className="ml-2 h-3 w-3" />
         </Button>
       ),
@@ -852,9 +816,9 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
           <div className="space-y-0.5">
             <div className="flex items-center gap-1 text-sm font-medium">
               <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-              {fmtDate(o.order_time)}
+              {fmtDate(o.order_time, language)}
             </div>
-            <div className="text-xs text-muted-foreground">{fmtTime(o.order_time)}</div>
+            <div className="text-xs text-muted-foreground">{fmtTime(o.order_time, language)}</div>
           </div>
         );
       },
@@ -866,18 +830,18 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
     },
     {
       accessorKey: "id",
-      header: "Order",
+      header: t("revColOrder", "Order"),
       cell: ({ row }) => {
         const o = row.original;
         return (
           <div className="flex items-center gap-2">
-            {getDeliveryIcon(o.order_method, o.delivery_provider)}
+            {getDeliveryIcon(o.order_method, o.delivery_provider, t)}
             <div>
               <span className="text-sm font-medium">
-                {o.type === "pre_order" ? "Pre" : ""} #{o.id}
+                {o.type === "pre_order" ? t("revColPre", "Pre") : ""} #{o.id}
               </span>
               <p className="text-xs text-muted-foreground">
-                {getDeliveryLabel(o.order_method, o.delivery_provider)}
+                {getDeliveryLabel(o.order_method, o.delivery_provider, t)}
               </p>
             </div>
           </div>
@@ -886,7 +850,7 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
     },
     {
       accessorKey: "customer_name",
-      header: "Customer",
+      header: t("revColCustomer", "Customer"),
       cell: ({ row }) => {
         const o = row.original;
         return (
@@ -901,7 +865,7 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
     },
     {
       accessorKey: "commission",
-      header: () => <div className="text-right w-full pr-2">Tax</div>,
+      header: () => <div className="text-right w-full pr-2">{t("revColTax", "Tax")}</div>,
       cell: ({ row }) => (
         <div className="text-right pr-2">
           {fmtDollars(row.original.commission)}
@@ -917,7 +881,7 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           className="h-8 justify-end w-full"
         >
-          Your Earnings
+          {t("revColEarnings")}
           <ArrowUpDown className="ml-2 h-3 w-3" />
         </Button>
       ),
@@ -925,9 +889,9 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
         const o = row.original;
         return (
           <div className="text-right">
-            <div className="text-sm font-semibold text-green-700">{fmtDollars(o.chef_earnings)}</div>
+            <div className="text-sm font-semibold">{fmtDollars(o.chef_earnings)}</div>
             {o.tip_chef > 0 && (
-              <div className="text-xs text-purple-600">+{fmtDollars(o.tip_chef)} tip</div>
+              <div className="text-xs text-muted-foreground">+{fmtDollars(o.tip_chef)} {t("revColTip", "tip")}</div>
             )}
           </div>
         );
@@ -935,8 +899,8 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
     },
     {
       accessorKey: "payout_status",
-      header: "Status",
-      cell: ({ row }) => getPayoutBadge(row.original.payout_status),
+      header: t("revColStatus", "Status"),
+      cell: ({ row }) => getPayoutBadge(row.original.payout_status, t),
     },
     {
       id: "actions",
@@ -948,7 +912,7 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
           className="h-7 text-xs"
           onClick={() => onSelectOrder(row.original)}
         >
-          Details
+          {t("revActionDetails")}
         </Button>
       ),
     },
@@ -960,6 +924,7 @@ function getOrderColumns(onSelectOrder: (order: SellerOrder) => void): ColumnDef
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: string | number }) {
+  const { t } = useTranslation("chef");
   const dateFilters = useMemo(() => getDateFiltersForPeriod(period), [period]);
   
   const { data, isLoading: ordersLoading } = useSellerOrders({
@@ -1012,7 +977,7 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
       const d = parsePhpDateToDate(o.order_time);
       if (d) {
         const hour = d.getHours();
-        const timeWindow = hour < 12 ? 'Morning (6am-12pm)' : hour < 17 ? 'Afternoon (12pm-5pm)' : 'Evening (5pm+)';
+        const timeWindow = hour < 12 ? t('revMorningWindow') : hour < 17 ? t('revAfternoonWindow') : t('revEveningWindow');
         hourCounts[timeWindow] = (hourCounts[timeWindow] || 0) + 1;
       }
 
@@ -1083,13 +1048,13 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
   if (!analytics) return null;
 
   return (
-    <Card className="mb-6 overflow-hidden">
-      <CardHeader className="pb-4 bg-muted/10 border-b">
+    <Card className="mb-6 overflow-hidden shadow-none">
+      <CardHeader className="pb-4 border-b">
         <CardTitle className="text-xl font-semibold flex items-center gap-2">
-          <TrendingUp className="h-5 w-5 text-blue-600" />
-          Business Insights
+          <TrendingUp className="h-5 w-5 text-muted-foreground" />
+          {t("revInsightsTitle")}
         </CardTitle>
-        <CardDescription>Comprehensive analytics for your performance and customers</CardDescription>
+        <CardDescription>{t("revInsightsDesc")}</CardDescription>
       </CardHeader>
       <CardContent className="p-0">
         <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x">
@@ -1097,35 +1062,35 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
           {/* Business Analytics Column */}
           <div className="p-6 lg:col-span-2 space-y-6">
             <h3 className="text-base font-semibold flex items-center gap-2">
-              <Store className="h-4 w-4 text-indigo-600" />
-              Sales & Engagement
+              <Store className="h-4 w-4 text-muted-foreground" />
+              {t("revSalesEngagement")}
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
-                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4"><DollarSign className="h-3.5 w-3.5"/>Average Order</p>
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4"><DollarSign className="h-3.5 w-3.5"/>{t("revAvgOrder")}</p>
                 <p className="text-xl font-bold">{fmtDollars(analytics.aov)}</p>
               </div>
               <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
                 <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4">
                   <Users className="h-3.5 w-3.5"/>
-                  <span>Retention Rate</span>
+                  <span>{t("revRetentionRate")}</span>
                   <Popover>
                     <PopoverTrigger asChild>
                       <button type="button" className="inline-flex items-center justify-center p-0 m-0 h-4 w-4 border-none bg-transparent outline-none ring-0">
                         <Info className="h-3.5 w-3.5 text-muted-foreground/70 hover:text-muted-foreground cursor-help" />
                       </button>
                     </PopoverTrigger>
-                    <PopoverContent side="top" className="w-[280px] p-3 shadow-md">
+                    <PopoverContent side="top" className="w-[280px] p-3">
                       <p className="text-xs leading-relaxed text-muted-foreground">
-                        The percentage of your past customers who returned to make another purchase during this period.
+                        {t("revRetentionTooltip")}
                       </p>
                       <a 
                         href="https://www.bdc.ca/en/articles-tools/entrepreneur-toolkit/templates-business-guides/glossary/customer-retention-rate" 
                         target="_blank" 
                         rel="noreferrer"
-                        className="text-xs text-blue-600 hover:underline mt-2 inline-block font-medium"
+                        className="text-xs text-foreground underline underline-offset-2 mt-2 inline-block font-medium"
                       >
-                        Learn more about Retention Rate (BDC)
+                        {t("revRetentionLearnMore")}
                       </a>
                     </PopoverContent>
                   </Popover>
@@ -1133,11 +1098,11 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
                 <p className="text-xl font-bold">{analytics.returningPct.toFixed(1)}%</p>
               </div>
               <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
-                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4"><ShoppingBag className="h-3.5 w-3.5"/>Items/Order</p>
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4"><ShoppingBag className="h-3.5 w-3.5"/>{t("revItemsPerOrder")}</p>
                 <p className="text-xl font-bold">{analytics.itemsPerOrder.toFixed(1)}</p>
               </div>
               <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
-                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4"><Calendar className="h-3.5 w-3.5"/>Pre-Orders</p>
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4"><Calendar className="h-3.5 w-3.5"/>{t("revPreOrders")}</p>
                 <p className="text-xl font-bold">{((analytics.preOrderCount / analytics.totalOrders) * 100).toFixed(0)}%</p>
               </div>
             </div>
@@ -1145,11 +1110,11 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
               {analytics.topItems.length > 0 && (
                 <div className="space-y-3">
-                  <h4 className="text-sm font-medium flex items-center gap-2"><Star className="h-4 w-4 text-amber-500"/>Top Selling Items</h4>
+                  <h4 className="text-sm font-medium flex items-center gap-2"><Star className="h-4 w-4 text-muted-foreground"/>{t("revTopSellingItems")}</h4>
                   <div className="space-y-2">
                     {analytics.topItems.slice(0, 4).map((item, i) => (
                       <div key={i} className="flex justify-between items-center text-sm p-2 bg-muted/30 rounded-md hover:bg-muted/50 transition-colors">
-                        <span className="font-medium truncate pr-2" title={item.name}>{item.name}</span>
+                        <TruncatedText className="font-medium truncate pr-2">{item.name}</TruncatedText>
                         <div className="text-right flex-shrink-0">
                           <span className="font-bold">{item.qty}x</span>
                         </div>
@@ -1160,12 +1125,12 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
               )}
               
               <div className="space-y-3">
-                <h4 className="text-sm font-medium flex items-center gap-2"><Clock className="h-4 w-4 text-blue-500"/>Peak Hours</h4>
+                <h4 className="text-sm font-medium flex items-center gap-2"><Clock className="h-4 w-4 text-muted-foreground"/>{t("revPeakHours")}</h4>
                 <div className="space-y-2">
                   {analytics.peakHours.map((ph, i) => (
                     <div key={i} className="flex justify-between items-center text-sm p-2 bg-muted/30 rounded-md hover:bg-muted/50 transition-colors">
                       <span>{ph.window}</span>
-                      <span className="font-medium">{ph.count} orders</span>
+                      <span className="font-medium">{t("revPeakOrders", { count: ph.count })}</span>
                     </div>
                   ))}
                 </div>
@@ -1174,31 +1139,31 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
           </div>
 
           {/* Top Customers Column */}
-          <div className="p-6 lg:col-span-1 bg-muted/5">
+          <div className="p-6 lg:col-span-1 border-t lg:border-t-0">
             <h3 className="text-base font-semibold flex items-center gap-2 mb-6">
-              <Users className="h-4 w-4 text-emerald-600" />
-              Top Customers
+              <Users className="h-4 w-4 text-muted-foreground" />
+              {t("revTopCustomers")}
             </h3>
             
             {analytics.topCustomers.length === 0 ? (
               <div className="text-center text-muted-foreground py-8 text-sm">
-                No customer data available
+                {t("revNoCustomerData")}
               </div>
             ) : (
               <div className="space-y-3">
                 {analytics.topCustomers.map((customer, i) => (
-                  <div key={i} className="flex items-center justify-between p-2.5 bg-background rounded-lg border shadow-sm">
+                  <div key={i} className="flex items-center justify-between p-2.5 bg-background rounded-lg border">
                     <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                      <div className="h-8 w-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center font-bold text-xs shrink-0">
                         {customer.name.substring(0, 2).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold leading-none truncate">{customer.name}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{customer.count} order{customer.count > 1 ? 's' : ''}</p>
+                        <TruncatedText as="p" className="text-sm font-semibold leading-none truncate">{customer.name}</TruncatedText>
+                        <p className="text-xs text-muted-foreground mt-1">{t("revOrdersCountShort", { count: customer.count })}</p>
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-sm font-bold text-green-700">{fmtDollars(customer.revenue)}</p>
+                      <p className="text-sm font-bold">{fmtDollars(customer.revenue)}</p>
                     </div>
                   </div>
                 ))}
@@ -1206,20 +1171,20 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
             )}
             
             <div className="mt-6 pt-6 border-t">
-              <h4 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider flex items-center gap-1.5"><Truck className="h-3.5 w-3.5"/>Fulfillment Split</h4>
+              <h4 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider flex items-center gap-1.5"><Truck className="h-3.5 w-3.5"/>{t("revFulfillmentSplit")}</h4>
               <div className="flex items-center gap-0.5">
                 <div 
-                  className="h-2 bg-emerald-500 rounded-l-full" 
+                  className="h-2 bg-foreground/70 rounded-l-full" 
                   style={{ width: `${Math.max((analytics.pickupCount / analytics.totalOrders) * 100, 2)}%` }}
                 />
                 <div 
-                  className="h-2 bg-blue-500 rounded-r-full" 
+                  className="h-2 bg-muted-foreground/40 rounded-r-full" 
                   style={{ width: `${Math.max((analytics.deliveryCount / analytics.totalOrders) * 100, 2)}%` }}
                 />
               </div>
-              <div className="flex justify-between mt-2 text-xs font-medium">
-                <span className="text-emerald-700">{((analytics.pickupCount / analytics.totalOrders) * 100).toFixed(0)}% Pickup</span>
-                <span className="text-blue-700">{((analytics.deliveryCount / analytics.totalOrders) * 100).toFixed(0)}% Delivery</span>
+              <div className="flex justify-between mt-2 text-xs font-medium text-muted-foreground">
+                <span>{t("revPickupPct", { pct: ((analytics.pickupCount / analytics.totalOrders) * 100).toFixed(0) })}</span>
+                <span>{t("revDeliveryPct", { pct: ((analytics.deliveryCount / analytics.totalOrders) * 100).toFixed(0) })}</span>
               </div>
             </div>
           </div>
@@ -1234,6 +1199,7 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
+  const { t, i18n } = useTranslation("chef");
   const { toast } = useToast();
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
@@ -1310,25 +1276,25 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="w-full sm:w-auto">
           <Download className="h-4 w-4 mr-1.5" />
-          Export Report
+          {t("revExportReport")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Export Seller Report</DialogTitle>
+          <DialogTitle>{t("revExportDialogTitle")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="flex flex-col gap-2">
-            <span className="text-sm font-medium">Quick Presets</span>
+            <span className="text-sm font-medium">{t("revQuickPresets")}</span>
             <div className="flex gap-2 flex-wrap">
-              <Button variant="outline" size="sm" onClick={() => handlePreset(7)}>Last 7 Days</Button>
-              <Button variant="outline" size="sm" onClick={() => handlePreset(30)}>Last 30 Days</Button>
-              <Button variant="outline" size="sm" onClick={handleMonthlyPreset}>Last Month</Button>
+              <Button variant="outline" size="sm" onClick={() => handlePreset(7)}>{t("revLast7Days")}</Button>
+              <Button variant="outline" size="sm" onClick={() => handlePreset(30)}>{t("revLast30Days")}</Button>
+              <Button variant="outline" size="sm" onClick={handleMonthlyPreset}>{t("revLastMonth")}</Button>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Start Date</label>
+              <label className="text-sm font-medium">{t("revStartDate")}</label>
               <input 
                 type="date" 
                 value={startDate} 
@@ -1348,14 +1314,14 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
           </div>
           <div className="flex flex-col gap-2 mt-4 pt-4 border-t">
             <Button onClick={() => downloadSecureReport('pdf')} disabled={isDownloading || !startDate || !endDate} className="w-full justify-start">
-              <FileText className="mr-2 h-4 w-4 text-red-500" />
+              <FileText className="mr-2 h-4 w-4 text-muted-foreground" />
               Download Statement (PDF)
             </Button>
             <Button onClick={() => downloadSecureReport('csv')} variant="outline" disabled={isDownloading || !startDate || !endDate} className="w-full justify-start">
-              <FileSpreadsheet className="mr-2 h-4 w-4 text-green-600" />
+              <FileSpreadsheet className="mr-2 h-4 w-4 text-muted-foreground" />
               Download Data (CSV)
             </Button>
-            <Button onClick={() => { setOpen(false); exportOrdersCSV(orders); }} variant="outline" disabled={orders.length === 0} className="w-full justify-start mt-2 border-dashed">
+            <Button onClick={() => { setOpen(false); exportOrdersCSV(orders, t, i18n.language); }} variant="outline" disabled={orders.length === 0} className="w-full justify-start mt-2 border-dashed">
               <Download className="mr-2 h-4 w-4" />
               Export Current Table View (CSV)
             </Button>
@@ -1367,6 +1333,7 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
 }
 
 function SellerOrderHistory({ period }: { period: string }) {
+  const { t, i18n } = useTranslation("chef");
   const [payoutFilter, setPayoutFilter] = useState<"all" | "due" | "paid">("all");
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1407,8 +1374,8 @@ function SellerOrderHistory({ period }: { period: string }) {
       getOrderColumns((order) => {
         setSelectedOrder(order);
         setSheetOpen(true);
-      }),
-    []
+      }, t, i18n.language),
+    [t, i18n.language]
   );
 
   const table = useReactTable({
@@ -1423,16 +1390,16 @@ function SellerOrderHistory({ period }: { period: string }) {
 
   return (
     <>
-      <Card>
+      <Card className="shadow-none">
         <CardHeader className="pb-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <CardTitle className="text-xl font-semibold flex items-center gap-2">
                 <Receipt className="h-5 w-5" />
-                Order History
+                {t("revOrderHistory")}
               </CardTitle>
               <CardDescription>
-                {filteredOrders.length} of {orders.length} order{orders.length !== 1 ? "s" : ""}
+                {t("revOrdersCount", { shown: filteredOrders.length, total: orders.length })}
               </CardDescription>
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
@@ -1440,7 +1407,7 @@ function SellerOrderHistory({ period }: { period: string }) {
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="text"
-                  placeholder="Search orders..."
+                  placeholder={t("revSearchOrders")}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 pr-8 w-full sm:w-[180px] lg:w-[220px]"
@@ -1459,7 +1426,7 @@ function SellerOrderHistory({ period }: { period: string }) {
               <ExportReportModal orders={orders} />
               <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading} className="w-full sm:w-auto">
                 <RefreshCw className={cn("h-4 w-4 mr-1.5", isLoading && "animate-spin")} />
-                Refresh
+                {t("revRefresh")}
               </Button>
             </div>
           </div>
@@ -1473,15 +1440,15 @@ function SellerOrderHistory({ period }: { period: string }) {
           >
             <TabsList className="w-full gap-1">
               <TabsTrigger value="all" className="flex-1 text-xs sm:text-sm">
-                All
+                {t("revFilterAll")}
                 <Badge variant="count" className="ml-1.5">{orders.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="due" className="flex-1 text-xs sm:text-sm">
-                Due
+                {t("revFilterDue")}
                 <Badge variant="count" className="ml-1.5">{dueOrders.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="paid" className="flex-1 text-xs sm:text-sm">
-                Paid
+                {t("revFilterPaid")}
                 <Badge variant="count" className="ml-1.5">{paidOrders.length}</Badge>
               </TabsTrigger>
             </TabsList>
@@ -1503,9 +1470,9 @@ function SellerOrderHistory({ period }: { period: string }) {
           ) : isError ? (
             <div className="py-12 text-center">
               <AlertCircle className="h-8 w-8 mx-auto mb-2 text-destructive" />
-              <p className="text-sm text-destructive">Failed to load orders.</p>
+              <p className="text-sm text-destructive">{t("revLoadFailed")}</p>
               <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>
-                <RefreshCw className="h-4 w-4 mr-2" /> Retry
+                <RefreshCw className="h-4 w-4 mr-2" /> {t("revRetry")}
               </Button>
             </div>
           ) : (
@@ -1530,11 +1497,7 @@ function SellerOrderHistory({ period }: { period: string }) {
                       table.getRowModel().rows.map((row) => (
                         <TableRow
                           key={row.id}
-                          className={cn(
-                            "hover:bg-muted/50 cursor-pointer",
-                            row.original.payout_status === "paid" && "bg-green-50/30",
-                            row.original.payout_status === "due" && "bg-orange-50/20"
-                          )}
+                          className="hover:bg-muted/50 cursor-pointer"
                           onClick={() => {
                             setSelectedOrder(row.original);
                             setSheetOpen(true);
@@ -1552,13 +1515,13 @@ function SellerOrderHistory({ period }: { period: string }) {
                         <TableCell colSpan={columns.length} className="h-48 text-center">
                           <div className="flex flex-col items-center justify-center gap-2">
                             <Receipt className="h-8 w-8 text-muted-foreground" />
-                            <p className="text-sm font-medium">No Orders</p>
+                            <p className="text-sm font-medium">{t("revNoOrders")}</p>
                             <p className="text-sm text-muted-foreground">
                               {searchQuery
-                                ? "No orders match your search."
+                                ? t("revNoOrdersMatch")
                                 : payoutFilter !== "all"
-                                  ? `No ${payoutFilter} orders to display.`
-                                  : "No orders found."}
+                                  ? t("revNoStatusOrders", { status: payoutFilter === "due" ? t("revFilterDue") : t("revFilterPaid") })
+                                  : t("revNoOrdersFound")}
                             </p>
                           </div>
                         </TableCell>
@@ -1598,6 +1561,7 @@ function SellerOrderHistory({ period }: { period: string }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function StripeDashboardButton({ className }: { className?: string }) {
+  const { t } = useTranslation("chef");
   const { data: shopStatus } = useShopStatus();
   const dashboardLinkMutation = useStripeDashboardLink();
 
@@ -1615,7 +1579,7 @@ function StripeDashboardButton({ className }: { className?: string }) {
   return (
     <Button variant="outline" onClick={handleOpenDashboard} disabled={dashboardLinkMutation.isPending} className={cn("gap-2", className)}>
       {dashboardLinkMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
-      View Stripe Dashboard
+      {t("revViewStripeDashboard")}
     </Button>
   );
 }
@@ -1625,18 +1589,11 @@ function StripeDashboardButton({ className }: { className?: string }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function PhpSellerDashboardButton({ className }: { className?: string }) {
-  const handleOpenDashboard = () => {
-    const isProd = window.location.hostname === "chef.localcooks.ca";
-    const url = isProd
-      ? "https://shop.localcook.shop/app/shop/home.php"
-      : "https://stagingwebapp.localcook.shop/app/shop/home.php";
-    window.open(url, "_blank", "noopener,noreferrer");
-  };
-
+  const { t } = useTranslation("chef");
   return (
-    <Button onClick={handleOpenDashboard} className={cn("gap-2 bg-blue-600 hover:bg-blue-700 text-white", className)}>
+    <Button variant="outline" onClick={openChefShopHome} className={cn("gap-2", className)}>
       <Store className="h-4 w-4" />
-      Seller Account
+      {t("revSellerAccount")}
     </Button>
   );
 }
@@ -1646,6 +1603,7 @@ function PhpSellerDashboardButton({ className }: { className?: string }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function ChefSellerRevenue() {
+  const { t } = useTranslation("chef");
   const { user } = useFirebaseAuth();
   const { data: shopStatus, isLoading: statusLoading } = useShopStatus();
   const [period, setPeriod] = useState("all");
@@ -1677,51 +1635,34 @@ export default function ChefSellerRevenue() {
 
       {shopStatus?.linked && (
         <>
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
-                <DollarSign className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">My Earnings</h1>
-                <p className="text-sm text-muted-foreground">
-                  Your food order earnings from LocalCooks
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-              <Tabs value={period} onValueChange={setPeriod} className="w-full sm:w-auto">
-                <TabsList className="h-8 w-full sm:w-auto">
-                  <TabsTrigger value="all" className="text-xs px-3 h-7 flex-1 sm:flex-none">All Time</TabsTrigger>
-                  <TabsTrigger value="month" className="text-xs px-3 h-7 flex-1 sm:flex-none">30 Days</TabsTrigger>
-                  <TabsTrigger value="week" className="text-xs px-3 h-7 flex-1 sm:flex-none">7 Days</TabsTrigger>
-                  <TabsTrigger value="today" className="text-xs px-3 h-7 flex-1 sm:flex-none">Today</TabsTrigger>
-                </TabsList>
-              </Tabs>
-              <PhpSellerDashboardButton className="w-full sm:w-auto" />
-              <StripeDashboardButton className="w-full sm:w-auto" />
-            </div>
-          </div>
+          <ChefPageHeader
+            title={t("revPageTitle")}
+            description={t("revPageDesc")}
+            actions={
+              <>
+                <Tabs value={period} onValueChange={setPeriod} className="w-full sm:w-auto">
+                  <TabsList className="h-8 w-full sm:w-auto">
+                    <TabsTrigger value="all" className="text-xs px-3 h-7 flex-1 sm:flex-none">{t("revTabAllTime")}</TabsTrigger>
+                    <TabsTrigger value="month" className="text-xs px-3 h-7 flex-1 sm:flex-none">{t("revTab30Days")}</TabsTrigger>
+                    <TabsTrigger value="week" className="text-xs px-3 h-7 flex-1 sm:flex-none">{t("revTab7Days")}</TabsTrigger>
+                    <TabsTrigger value="today" className="text-xs px-3 h-7 flex-1 sm:flex-none">{t("revTabToday")}</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                <PhpSellerDashboardButton className="w-full sm:w-auto" />
+                <StripeDashboardButton className="w-full sm:w-auto" />
+              </>
+            }
+          />
 
           {!shopStatus?.phpShopStripeAccountId && (
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50/70 border border-amber-200/50 text-sm text-amber-700">
-              <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-              <p>
-                Your seller account doesn&apos;t have Stripe connected yet. Set up Stripe on your
-                LocalCooks seller account to receive payouts and access your Stripe dashboard here.
-                Your order revenue data is still available below.
-              </p>
-            </div>
+            <QuietNotice title={t("revStripeNotConnected")}>
+              {t("revStripeNotConnectedBody")}
+            </QuietNotice>
           )}
 
-          <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50/70 border border-blue-200/50 text-sm text-blue-700">
-            <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            <p>
-              This shows revenue from your LocalCooks food orders.{shopStatus?.phpShopStripeAccountId ? <> For detailed payout history and bank transfers,
-              click <strong>View Stripe Dashboard</strong> above.</> : <> Connect Stripe on your seller account to access payout details.</>}
-            </p>
-          </div>
+          <QuietNotice>
+            {t("revRevenueNotice")}{shopStatus?.phpShopStripeAccountId ? <span dangerouslySetInnerHTML={{ __html: t("revRevenueNoticeStripe") }} /> : <span dangerouslySetInnerHTML={{ __html: t("revRevenueNoticeConnect") }} />}
+          </QuietNotice>
 
           <EarningsSummaryCards period={period} />
           <ChefRevenueMatrix data={allTimeSummary?.matrix} period={period} />

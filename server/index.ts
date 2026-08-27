@@ -11,6 +11,8 @@ import { log, serveStatic, setupVite } from "./vite.js";
 import { registerSecurityMiddleware } from "./security.js";
 import { pinoInstance } from "./logger.js";
 import pinoHttp from 'pino-http';
+import { localeMiddleware } from "./i18n/middleware.js";
+import { ensureServerI18n } from "./i18n/index.js";
 
 const app = express();
 // Set environment explicitly to match NODE_ENV
@@ -27,6 +29,10 @@ app.use(express.urlencoded({ limit: '12mb', extended: true }));
 
 // Security middleware: Helmet (CSP, headers), CORS, Rate Limiting
 registerSecurityMiddleware(app);
+
+// Locale negotiation → req.locale (cookie / Accept-Language / later user)
+app.use(localeMiddleware);
+void ensureServerI18n();
 
 // Initialize Firebase Admin SDK
 initializeFirebaseAdmin();

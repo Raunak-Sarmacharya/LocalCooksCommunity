@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { ChefHat, CreditCard, ShoppingBag, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import chefCookingImage from "../../assets/chef-cooking.png";
 import foodDeliveryImage from "../../assets/food-delivery.png";
 import GradientHero from "@/components/ui/GradientHero";
@@ -14,6 +15,7 @@ export default function HeroSection() {
   const [, navigate] = useLocation();
   const { user } = useFirebaseAuth();
   const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
+  const { t } = useTranslation("landing");
 
   // Typewriter effect state
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
@@ -68,6 +70,24 @@ export default function HeroSection() {
     return getButtonText("Start Your Application");
   };
 
+  // Kitchen-owner audience link (sibling subdomain, derived from current origin)
+  const kitchenLandingUrl = (() => {
+    try {
+      const url = new URL(window.location.origin);
+      let labels = url.hostname.split('.');
+      // Strip a leading "www" so www.localcooks.ca maps to kitchen.localcooks.ca
+      if (labels[0] === 'www') labels = labels.slice(1);
+      const isLocalhost = labels[labels.length - 1] === 'localhost';
+      const baseLabelCount = isLocalhost ? 1 : 2; // "localhost" vs "localcooks.ca"
+      const apex = labels.length > baseLabelCount ? labels.slice(1).join('.') : labels.join('.');
+      // Keep the port for local dev (e.g. localhost:5001 → kitchen.localhost:5001)
+      const port = url.port ? `:${url.port}` : '';
+      return `${url.protocol}//kitchen.${apex}${port}`;
+    } catch {
+      return 'https://kitchen.localcooks.ca';
+    }
+  })();
+
   return (
     <GradientHero variant="cream" className="pt-20 sm:pt-24 md:pt-28 lg:pt-36 pb-8 sm:pb-12 md:pb-16 lg:pb-20 px-4 sm:px-6 relative overflow-hidden">
       {/* Enhanced background decorative elements */}
@@ -94,7 +114,7 @@ export default function HeroSection() {
               LocalCooks
             </h1>
             <p className="font-mono text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] text-charcoal-light uppercase tracking-[0.3em] sm:tracking-[0.4em] md:tracking-[0.5em] mb-4 sm:mb-6 md:mb-8 font-medium px-2">
-              Homemade with Love
+              {t("homemadeWithLove")}
             </p>
           </motion.div>
 
@@ -105,7 +125,7 @@ export default function HeroSection() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
           >
-            {user ? "Bringing Communities Together Through Homemade Meals" : "Local Cooks • Local Company • Local Community"}
+            {user ? t("heroHeadlineUser") : t("heroHeadlineGuest")}
           </motion.h2>
 
           {/* Description with better spacing */}
@@ -115,7 +135,7 @@ export default function HeroSection() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
           >
-            {user ? "Manage your chef applications and transform your culinary passion into a business." : "Join Local Cooks as a chef to share your culinary skills and connect communities with fresh, homemade meals."}
+            {user ? t("heroDescUser") : t("heroDescGuest")}
           </motion.p>
 
           {/* Benefits Grid with enhanced design */}
@@ -133,7 +153,7 @@ export default function HeroSection() {
               <div className="p-3 md:p-4 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
                 <ChefHat className="h-6 w-6 md:h-7 md:w-7 text-green-600" />
               </div>
-              <span className="text-xs md:text-sm font-semibold text-brand-text">Showcase your talent</span>
+              <span className="text-xs md:text-sm font-semibold text-brand-text">{t("benefitShowcase")}</span>
             </motion.div>
             <motion.div
               className="flex flex-col items-center gap-3 text-center group cursor-pointer"
@@ -143,7 +163,7 @@ export default function HeroSection() {
               <div className="p-3 md:p-4 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
                 <Users className="h-6 w-6 md:h-7 md:w-7 text-blue-600" />
               </div>
-              <span className="text-xs md:text-sm font-semibold text-brand-text">Expand your network</span>
+              <span className="text-xs md:text-sm font-semibold text-brand-text">{t("benefitNetwork")}</span>
             </motion.div>
             <motion.div
               className="flex flex-col items-center gap-3 text-center group cursor-pointer"
@@ -153,7 +173,7 @@ export default function HeroSection() {
               <div className="p-3 md:p-4 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
                 <ShoppingBag className="h-6 w-6 md:h-7 md:w-7 text-yellow-600" />
               </div>
-              <span className="text-xs md:text-sm font-semibold text-brand-text">We handle delivery</span>
+              <span className="text-xs md:text-sm font-semibold text-brand-text">{t("benefitDelivery")}</span>
             </motion.div>
             <motion.div
               className="flex flex-col items-center gap-3 text-center group cursor-pointer"
@@ -163,7 +183,7 @@ export default function HeroSection() {
               <div className="p-3 md:p-4 bg-gradient-to-br from-purple-100 to-purple-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
                 <CreditCard className="h-6 w-6 md:h-7 md:w-7 text-purple-600" />
               </div>
-              <span className="text-xs md:text-sm font-semibold text-brand-text">Get paid weekly</span>
+              <span className="text-xs md:text-sm font-semibold text-brand-text">{t("benefitPaid")}</span>
             </motion.div>
           </motion.div>
 
@@ -175,14 +195,25 @@ export default function HeroSection() {
             className="flex justify-center"
           >
             {!user ? (
-              // Guest users - show only chef option
-              <Button
-                onClick={handleChefClick}
-                size="lg"
-                className="w-full sm:w-auto bg-gradient-to-r from-brand-primary to-[#FF5470] hover:from-[#FF5470] hover:to-brand-primary text-white font-bold py-4 sm:py-5 md:py-7 px-8 sm:px-10 md:px-16 text-base sm:text-lg md:text-xl rounded-xl transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-1 transform min-h-[48px] sm:min-h-[56px]"
-              >
-                Apply as Chef
-              </Button>
+              // Guest users - primary chef CTA + secondary kitchen-owner path
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 w-full">
+                <Button
+                  onClick={handleChefClick}
+                  size="lg"
+                  className="w-full sm:w-auto bg-gradient-to-r from-brand-primary to-[#FF5470] hover:from-[#FF5470] hover:to-brand-primary text-white font-bold py-4 sm:py-5 md:py-7 px-8 sm:px-10 md:px-16 text-base sm:text-lg md:text-xl rounded-xl transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-1 transform min-h-[48px] sm:min-h-[56px]"
+                >
+                  {t("applyAsChef")}
+                </Button>
+                <a
+                  href={kitchenLandingUrl}
+                  className="group flex items-center gap-2 text-sm md:text-base font-medium text-brand-text/80 hover:text-brand-primary transition-colors duration-200 py-2 px-2"
+                >
+                  {t("ownAKitchen")}
+                  <span className="underline decoration-brand-primary/40 underline-offset-4 group-hover:decoration-brand-primary">
+                    {t("listYourKitchen")}
+                  </span>
+                </a>
+              </div>
             ) : (
               // Logged-in users - show personalized button
               <Button
@@ -191,7 +222,7 @@ export default function HeroSection() {
                 size="lg"
                 className="w-full sm:w-auto bg-gradient-to-r from-brand-primary to-[#FF5470] hover:from-[#FF5470] hover:to-brand-primary text-white font-bold py-4 sm:py-5 md:py-7 px-8 sm:px-10 md:px-16 text-base sm:text-lg md:text-xl rounded-xl transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-1 transform disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] sm:min-h-[56px]"
               >
-                {isLoading ? "Loading..." : getPrimaryButtonText()}
+                {isLoading ? t("loading", { ns: "common" }) : getPrimaryButtonText()}
               </Button>
             )}
           </motion.div>

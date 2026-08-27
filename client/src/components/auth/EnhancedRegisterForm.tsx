@@ -1,30 +1,54 @@
 import { logger } from "@/lib/logger";
+import { useTranslation } from "react-i18next";
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 // Removed sendEmailVerification from firebase/auth
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
-import { Lock, Mail, User } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import AnimatedButton from "./AnimatedButton";
 import AnimatedInput from "./AnimatedInput";
 import EmailVerificationScreen from "./EmailVerificationScreen";
+import TermsAcceptanceInline from "./TermsAcceptanceInline";
 import LoadingOverlay from "./LoadingOverlay";
+import { ArrowLeft, ArrowRight, Lock, Mail, Phone, User } from "lucide-react";
+import { phoneNumberSchema } from "@shared/phone-validation";
 
 const registerSchema = z.object({
   displayName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
-  password: z.string()
-    .min(8, "Password must be at least 8 characters")
-    .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
-    .regex(/[a-z]/, "Password must contain at least one lowercase letter")
-    .regex(/\d/, "Password must contain at least one number"),
+  phone: phoneNumberSchema,
+  shopName: z.string().optional(),
+  shopAddress: z.string().optional(),
+  kitchenPreference: z.enum(["commercial", "home", "notSure"]),
+  foodSafetyLicense: z.enum(["yes", "no", "notSure"]),
+  foodEstablishmentCert: z.enum(["yes", "no", "notSure"]),
+  businessType: z.string().optional(),
+  experience: z.string().optional(),
+  businessDescription: z.string().optional(),
 });
 
-type RegisterFormData = z.infer<typeof registerSchema>;
+function useRegisterSchema() {
+  const { t } = useTranslation("auth");
+  return z.object({
+    displayName: z.string().min(2, t("nameMin", "Name must be at least 2 characters")),
+    email: z.string().email(t("emailInvalid", "Please enter a valid email address")),
+    phone: phoneNumberSchema,
+    shopName: z.string().optional(),
+    shopAddress: z.string().optional(),
+    kitchenPreference: z.enum(["commercial", "home", "notSure"], { required_error: t("requiredField", "This field is required") }),
+    foodSafetyLicense: z.enum(["yes", "no", "notSure"], { required_error: t("requiredField", "This field is required") }),
+    foodEstablishmentCert: z.enum(["yes", "no", "notSure"], { required_error: t("requiredField", "This field is required") }),
+    businessType: z.string().optional(),
+    experience: z.string().optional(),
+    businessDescription: z.string().optional(),
+  });
+}
+
+type RegisterFormData = z.infer<ReturnType<typeof useRegisterSchema>>;
 
 interface EnhancedRegisterFormProps {
   onSuccess?: () => void;
@@ -32,6 +56,8 @@ interface EnhancedRegisterFormProps {
   onRegistrationStart?: () => void; // Called when registration starts, parent shows loading overlay
   onRegistrationComplete?: (email: string) => void; // Called when registration succeeds, parent handles verification screen
   onRegistrationError?: () => void; // Called when registration fails, parent hides loading overlay
+  onSwitchToLogin?: () => void; // Switch to login tab
+  forceApplying?: boolean;
 }
 
 type AuthState = 'idle' | 'loading' | 'success' | 'error' | 'email-verification';
@@ -53,19 +79,49 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 }
 };
 
-export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError }: EnhancedRegisterFormProps) {
-  const { signup, signInWithGoogle, loading, error } = useFirebaseAuth();
+export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying }: EnhancedRegisterFormProps) {
+  const { t } = useTranslation("auth");
+  const registerSchema = useRegisterSchema();
+  const { signup, signInWithGoogle, loading, error, updateUserVerification } = useFirebaseAuth();
   const [authState, setAuthState] = useState<AuthState>('idle');
   const [formError, setFormError] = useState<string | null>(null);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
-  const [emailForVerification, setEmailForVerification] = useState("");
   const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const [emailForVerification, setEmailForVerification] = useState("");
+  const [step, setStep] = useState(1);
+  const [isApplying, setIsApplying] = useState(!!forceApplying);
+
+  // Sync isApplying if forceApplying prop changes
+  useEffect(() => {
+    if (forceApplying !== undefined) {
+      setIsApplying(forceApplying);
+    }
+  }, [forceApplying]);
   const { showAlert } = useCustomAlerts();
 
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { displayName: "", email: "", password: "" },
+    defaultValues: { 
+      displayName: "", 
+      email: "", 
+      phone: "",
+      shopName: "", 
+      shopAddress: "",
+      businessType: "",
+      experience: "",
+      businessDescription: "",
+      kitchenPreference: "commercial",
+      foodSafetyLicense: "notSure",
+      foodEstablishmentCert: "notSure"
+    },
   });
+
+  const handleNextStep = async () => {
+    const isStep1Valid = await form.trigger(['displayName', 'email', 'phone']);
+    if (isStep1Valid) {
+      setStep(2);
+    }
+  };
 
   const handleSubmit = async (data: RegisterFormData) => {
     setHasAttemptedLogin?.(true);
@@ -81,28 +137,47 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     }
 
     try {
-      // SECURITY FIX: Removed email existence check to prevent enumeration attacks
-      // Users should attempt registration directly, and Firebase will handle duplicate detection
-      logger.info(`🔒 Proceeding with registration for: ${data.email} (security: no pre-check)`);
+      logger.info(`✅ Proceeding with Magic Link registration: ${data.email}`);
 
-      // Step 2: Proceed with Firebase registration
-      logger.info(`✅ Proceeding with Firebase registration: ${data.email}`);
+      // Convert empty strings to undefined to satisfy Zod optional validations
+      const cleanData = {
+        fullName: data.displayName,
+        email: data.email,
+        phone: data.phone,
+        shopName: data.shopName || undefined,
+        shopAddress: data.shopAddress || undefined,
+        businessType: data.businessType || undefined,
+        experience: data.experience || undefined,
+        businessDescription: data.businessDescription || undefined,
+        kitchenPreference: data.kitchenPreference,
+        foodSafetyLicense: data.foodSafetyLicense,
+        foodEstablishmentCert: data.foodEstablishmentCert
+      };
+
+      if (isApplying) {
+        // Store application data in localStorage to submit after sign in
+        window.localStorage.setItem('pendingRegistrationData', JSON.stringify(cleanData));
+      }
+
+      logger.info(`✅ Proceeding with registration: ${data.email}`);
+
+      // Auto-generate a secure password since we are doing passwordless signup
+      // Format: UUID without dashes + one capital letter + one special char to satisfy any rules
+      const randomBase = crypto.randomUUID().replace(/-/g, '');
+      const generatedPassword = `A1!${randomBase}`.slice(0, 16);
+      logger.info('🔐 Auto-generated secure password for passwordless flow');
 
       await Promise.all([
-        signup(data.email, data.password, data.displayName),
+        signup(data.email, generatedPassword, data.displayName),
         new Promise(resolve => setTimeout(resolve, 1200)) // Minimum loading time for UX
       ]);
 
-      // Firebase verification email is sent automatically by useFirebaseAuth.signup()
       logger.info('✅ Registration successful - Firebase email verification handled automatically');
 
-      // Step 3: Show email verification screen
-      logger.info('✅ Registration successful, showing verification screen');
+      // Step 3: Show email verification screen / success message
       setAuthState('success');
       setShowLoadingOverlay(false);
 
-      // If parent provides onRegistrationComplete callback, use it (parent handles verification screen)
-      // Otherwise, use local state (backward compatibility)
       if (onRegistrationComplete) {
         onRegistrationComplete(data.email);
       } else {
@@ -120,21 +195,15 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       setAuthState('error');
 
       // Handle Firebase-specific errors with user-friendly messages via custom alerts
-      const errorTitle = "Registration Failed";
+      const errorTitle = t("registrationFailedTitle", "Registration Failed");
       let errorMessage = "";
 
-      if (e.message.includes('EMAIL_EXISTS') || e.message.includes('email-already-in-use')) {
-        errorMessage = 'This email is already registered. Please try signing in instead.';
-      } else if (e.message.includes('weak-password')) {
-        errorMessage = 'Password is too weak. Please choose a stronger password with at least 8 characters.';
-      } else if (e.message.includes('invalid-email')) {
-        errorMessage = 'Please enter a valid email address.';
-      } else if (e.message.includes('operation-not-allowed')) {
-        errorMessage = 'Email registration is currently disabled. Please contact support.';
+      if (e.message.includes('too-many-requests')) {
+        errorMessage = t("errTooManyAttempts", "Too many attempts. Please wait a few minutes before trying again.");
       } else if (e.message.includes('network-request-failed')) {
-        errorMessage = 'Network error. Please check your connection and try again.';
+        errorMessage = t("errNetworkFailed", "Network error. Please check your connection and try again.");
       } else {
-        errorMessage = 'Registration failed. Please try again later.';
+        errorMessage = t("errRegisterGeneric", "Registration failed. Please try again later.");
       }
 
       showAlert({
@@ -161,6 +230,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
       // Wait for sync to complete - poll for user profile to be available
       let attempts = 0;
+      let needsTerms = false;
       const maxAttempts = 20; // 10 seconds max (20 * 500ms)
 
       while (attempts < maxAttempts) {
@@ -180,6 +250,10 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
             });
 
             if (response.ok) {
+              const userData = await response.json();
+              if (userData && userData.termsAccepted === false) {
+                needsTerms = true;
+              }
               // User profile is available, sync is complete
               logger.info('✅ User profile available, registration complete');
               break;
@@ -211,8 +285,13 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       // 1. Set hasAttemptedLogin to true
       // 2. Refresh user data via React Query
       // 3. The useEffect will detect the authenticated manager and redirect
-      logger.info('🎯 Google registration complete - calling onSuccess to trigger parent redirect');
-      if (onSuccess) onSuccess();
+      if (needsTerms) {
+        logger.info('🎯 Google registration needs terms acceptance - showing terms screen');
+        if (onSuccess) onSuccess();
+      } else {
+        logger.info('🎯 Google registration complete - calling onSuccess to trigger parent redirect');
+        if (onSuccess) onSuccess();
+      }
 
     } catch (e: any) {
       setShowLoadingOverlay(false);
@@ -241,6 +320,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       });
     }
   };
+
 
   const handleResendVerification = async () => {
     try {
@@ -297,17 +377,42 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         onGoBack={() => {
           setShowEmailVerification(false);
           setAuthState('idle');
+          if (onSwitchToLogin) {
+            onSwitchToLogin();
+          }
+        }}
+        onCheckVerified={async () => {
+          // If the user clicks "I have verified my email", reload their state to check
+          try {
+            await updateUserVerification();
+            const currentUser = auth.currentUser;
+            if (currentUser && currentUser.emailVerified) {
+              if (onSuccess) onSuccess();
+              setShowEmailVerification(false);
+              return;
+            } else if (currentUser) {
+              showAlert({
+                title: "Not verified yet",
+                description: "We haven't detected your verification yet. Please click the link in your email, or wait a few seconds and try again.",
+                type: "warning"
+              });
+              return;
+            }
+          } catch (err) {
+            logger.error("Error checking verification status:", err);
+          }
         }}
       />
     );
   }
 
+
   return (
     <>
       <LoadingOverlay
         isVisible={showLoadingOverlay}
-        message={authState === 'loading' ? "Creating your account..." : "Account created!"}
-        submessage={authState === 'loading' ? "Please wait while we set up your account securely." : "Check your email to verify your account."}
+        message={authState === 'loading' ? t("overlayCreatingAccount", "Creating your account...") : t("overlayAccountCreated", "Account created!")}
+        submessage={authState === 'loading' ? t("overlaySettingUpAccount", "Please wait while we set up your account securely.") : t("overlayCheckEmailVerify", "Check your email to verify your account.")}
         type={authState === 'success' ? 'success' : 'loading'}
       />
 
@@ -347,84 +452,228 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
         {/* Form */}
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
-          {/* Error messages now handled by custom alert dialogs */}
-
-          {/* Name Field */}
-          <motion.div variants={itemVariants}>
-            <AnimatedInput
-              label="Full Name"
-              type="text"
-              icon={<User className="w-4 h-4" />}
-              validationState={getFieldValidationState('displayName')}
-              error={form.formState.errors.displayName?.message}
-              {...form.register('displayName', {
-                onChange: () => {
-                  // Reset state when user starts typing
-                  if (authState === 'error') {
-                    setAuthState('idle');
-                  }
-                }
-              })}
-            />
-          </motion.div>
-
-          {/* Email Field */}
-          <motion.div variants={itemVariants}>
-            <AnimatedInput
-              label="Email Address"
-              type="email"
-              icon={<Mail className="w-4 h-4" />}
-              validationState={getFieldValidationState('email')}
-              error={form.formState.errors.email?.message}
-              {...form.register('email', {
-                onChange: () => {
-                  // Reset state when user starts typing
-                  if (authState === 'error') {
-                    setAuthState('idle');
-                  }
-                }
-              })}
-            />
-          </motion.div>
-
-          {/* Password Field */}
-          <motion.div variants={itemVariants}>
-            <AnimatedInput
-              label="Password"
-              type="password"
-              icon={<Lock className="w-4 h-4" />}
-              showPasswordToggle
-              validationState={getFieldValidationState('password')}
-              error={form.formState.errors.password?.message}
-              {...form.register('password', {
-                onChange: () => {
-                  // Reset state when user starts typing
-                  if (authState === 'error') {
-                    setAuthState('idle');
-                  }
-                }
-              })}
-            />
-          </motion.div>
-
-          {/* Submit Button */}
-          <motion.div variants={itemVariants}>
-            <AnimatedButton
-              type="submit"
-              state={getButtonState()}
-              loadingText="Creating your account..."
-              successText="Account created!"
-              errorText="Try again"
-              disabled={authState === 'loading'}
+          {step === 1 && (
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="space-y-5"
             >
-              Create Account
-            </AnimatedButton>
-          </motion.div>
+              <div className="mb-2 text-sm text-gray-500 font-medium">{isApplying ? "Step 1 of 2: Basic Info" : "Basic Info"}</div>
+              {/* Name Field */}
+              <AnimatedInput
+                label={t("fullNameLabel", "Full Name")}
+                type="text"
+                icon={<User className="w-4 h-4" />}
+                validationState={getFieldValidationState('displayName')}
+                error={form.formState.errors.displayName?.message}
+                {...form.register('displayName', {
+                  onChange: () => {
+                    if (authState === 'error') setAuthState('idle');
+                  }
+                })}
+              />
+
+              {/* Email Field */}
+              <AnimatedInput
+                label={t("emailAddressLabel", "Email Address")}
+                type="email"
+                icon={<Mail className="w-4 h-4" />}
+                validationState={getFieldValidationState('email')}
+                error={form.formState.errors.email?.message}
+                {...form.register('email', {
+                  onChange: () => {
+                    if (authState === 'error') setAuthState('idle');
+                  }
+                })}
+              />
+              
+              {/* Phone Field */}
+              <AnimatedInput
+                label={t("phoneNumberLabel", "Phone Number")}
+                type="tel"
+                icon={<Phone className="w-4 h-4" />}
+                validationState={getFieldValidationState('phone')}
+                error={form.formState.errors.phone?.message}
+                {...form.register('phone', {
+                  onChange: () => {
+                    if (authState === 'error') setAuthState('idle');
+                  }
+                })}
+              />
+
+              <div className="flex items-center space-x-2 my-4">
+                <input
+                  type="checkbox"
+                  id="isApplying"
+                  checked={isApplying}
+                  onChange={(e) => setIsApplying(e.target.checked)}
+                  className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+                />
+                <label htmlFor="isApplying" className="text-sm font-medium text-gray-700 cursor-pointer select-none">
+                  I'm ready to apply for a kitchen
+                </label>
+              </div>
+
+              {/* Next / Submit Button */}
+              {isApplying ? (
+                <AnimatedButton
+                  type="button"
+                  onClick={handleNextStep}
+                  state="idle"
+                >
+                  <div className="flex items-center gap-2">
+                    {t("btnNext", "Next")} <ArrowRight className="w-4 h-4" />
+                  </div>
+                </AnimatedButton>
+              ) : (
+                <AnimatedButton
+                  type="submit"
+                  state={getButtonState()}
+                  loadingText={t("btnCreatingAccount", "Creating account...")}
+                  successText={t("btnAccountCreated", "Account created!")}
+                  errorText={t("btnTryAgain", "Try again")}
+                  disabled={authState === 'loading'}
+                >
+                  {t("btnCreateAccount", "Create Account")}
+                </AnimatedButton>
+              )}
+            </motion.div>
+          )}
+
+          {step === 2 && (
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-5"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <button type="button" onClick={() => setStep(1)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <div className="text-sm text-gray-500 font-medium">Step 2 of 2: Application Info</div>
+              </div>
+              
+              <AnimatedInput
+                label={t("shopNameLabel", "Shop Name (Optional)")}
+                type="text"
+                validationState={getFieldValidationState('shopName')}
+                error={form.formState.errors.shopName?.message}
+                {...form.register('shopName')}
+              />
+
+              <AnimatedInput
+                label={t("shopAddressLabel", "Shop Address (Optional)")}
+                type="text"
+                validationState={getFieldValidationState('shopAddress')}
+                error={form.formState.errors.shopAddress?.message}
+                {...form.register('shopAddress')}
+              />
+
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Type of Food Business (Optional)</label>
+                <select 
+                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
+                  {...form.register('businessType')}
+                >
+                  <option value="">-- Select your business type --</option>
+                  <option value="catering">Catering</option>
+                  <option value="bakery">Bakery / Desserts</option>
+                  <option value="meal-prep">Meal Prep / Delivery</option>
+                  <option value="specialty">Specialty Artisan Foods</option>
+                  <option value="pasta">Fresh Pasta</option>
+                  <option value="sauce">Sauces / Condiments</option>
+                  <option value="prepared">Prepared Foods for Retail</option>
+                  <option value="other">Other / Not Sure</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Years of Experience (Optional)</label>
+                <select 
+                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
+                  {...form.register('experience')}
+                >
+                  <option value="">-- Select experience level --</option>
+                  <option value="0-2">Just Starting (0-2 years)</option>
+                  <option value="2-5">Growing (2-5 years)</option>
+                  <option value="5-10">Established (5-10 years)</option>
+                  <option value="10+">Expert (10+ years)</option>
+                </select>
+              </div>
+
+              <AnimatedInput
+                label="Tell Us About Your Business (Optional)"
+                type="text"
+                validationState={getFieldValidationState('businessDescription')}
+                error={form.formState.errors.businessDescription?.message}
+                {...form.register('businessDescription')}
+              />
+
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Do you have a Food Safety License?</label>
+                <select 
+                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
+                  {...form.register('foodSafetyLicense')}
+                >
+                  <option value="notSure">Not sure</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+                {form.formState.errors.foodSafetyLicense && (
+                  <p className="text-sm text-red-500 mt-1">{form.formState.errors.foodSafetyLicense.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Do you have a Food Establishment Certificate?</label>
+                <select 
+                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
+                  {...form.register('foodEstablishmentCert')}
+                >
+                  <option value="notSure">Not sure</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+                {form.formState.errors.foodEstablishmentCert && (
+                  <p className="text-sm text-red-500 mt-1">{form.formState.errors.foodEstablishmentCert.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Kitchen Preference</label>
+                <select 
+                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
+                  {...form.register('kitchenPreference')}
+                >
+                  <option value="notSure">Not sure</option>
+                  <option value="commercial">Commercial Kitchen</option>
+                  <option value="home">Home Kitchen</option>
+                </select>
+                {form.formState.errors.kitchenPreference && (
+                  <p className="text-sm text-red-500 mt-1">{form.formState.errors.kitchenPreference.message}</p>
+                )}
+              </div>
+
+              {/* Submit Button */}
+              <AnimatedButton
+                type="submit"
+                state={getButtonState()}
+                loadingText={t("btnCreatingAccount", "Creating account...")}
+                successText={t("btnAccountCreated", "Account created!")}
+                errorText={t("btnTryAgain", "Try again")}
+                disabled={authState === 'loading'}
+              >
+                {t("btnCreateAccount", "Create Account")}
+              </AnimatedButton>
+            </motion.div>
+          )}
 
           {/* Terms and Privacy */}
           <motion.div variants={itemVariants} className="text-center">
             <p className="text-xs text-gray-500 leading-relaxed">
-              By creating an account, you agree to our{' '}
+              {t("termsAgreementPrefix", "By creating an account, you agree to our")}{' '}
               <motion.a
                 href="/terms"
                 target="_blank"
@@ -433,9 +682,9 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
-                Terms & Conditions
+                {t("termsLink", "Terms & Conditions")}
               </motion.a>
-              {' '}and{' '}
+              {' '}{t("termsAndSeparator", "and")}{' '}
               <motion.a
                 href="/privacy"
                 target="_blank"
@@ -444,10 +693,23 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
-                Privacy Policy
+                {t("privacyLink", "Privacy Policy")}
               </motion.a>
             </p>
           </motion.div>
+          
+          {onSwitchToLogin && (
+            <motion.div variants={itemVariants} className="mt-6 text-center text-sm">
+              <span className="text-gray-500">{t("alreadyHaveAccount", "Already have an account?")}</span>{' '}
+              <button
+                type="button"
+                onClick={onSwitchToLogin}
+                className="text-[#F51042] hover:underline font-medium"
+              >
+                {t("loginLink", "Log in")}
+              </button>
+            </motion.div>
+          )}
         </form>
       </motion.div>
     </>

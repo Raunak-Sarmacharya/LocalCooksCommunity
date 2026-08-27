@@ -20,7 +20,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { LogOut, User as UserIcon, ChevronDown, Command } from "lucide-react";
+import { LogOut, User as UserIcon, ChevronDown, Command, Languages } from "lucide-react";
 import { CommandMenu } from "@/components/command-menu";
 import { Button } from "@/components/ui/button";
 import NotificationCenter from "@/components/manager/NotificationCenter";
@@ -108,7 +108,7 @@ export default function DashboardLayout({
                         
                         {/* Notification Center */}
                         <NotificationCenter locationId={selectedLocation?.id} />
-                        
+
                         <DropdownMenu modal={false}>
                             <DropdownMenuTrigger asChild>
                                 <div className="flex items-center gap-2 cursor-pointer hover:bg-accent/50 p-1.5 rounded-lg transition-colors group">

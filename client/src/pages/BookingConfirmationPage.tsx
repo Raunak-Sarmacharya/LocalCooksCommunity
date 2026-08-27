@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { useQuery } from "@tanstack/react-query";
+import { SmartImage } from "@/components/ui/smart-image";
 
 export default function BookingConfirmationPage() {
   const [location, setLocation] = useLocation();
@@ -656,13 +657,11 @@ export default function BookingConfirmationPage() {
                                       {/* Equipment Image */}
                                       {equipment?.photos && equipment.photos.length > 0 && (
                                         <div className="flex-shrink-0">
-                                          <img
+                                          <SmartImage
                                             src={equipment.photos[0]}
                                             alt={item.name}
                                             className="w-12 h-12 object-cover rounded border border-gray-200"
-                                            onError={(e) => {
-                                              e.currentTarget.style.display = 'none';
-                                            }}
+                                            hideOnError
                                           />
                                         </div>
                                       )}
@@ -701,13 +700,11 @@ export default function BookingConfirmationPage() {
                                     {/* Storage Image */}
                                     {item.listing.photos && item.listing.photos.length > 0 && (
                                       <div className="flex-shrink-0">
-                                        <img
+                                        <SmartImage
                                           src={item.listing.photos[0]}
                                           alt={item.listing.name}
                                           className="w-12 h-12 object-cover rounded border border-gray-200"
-                                          onError={(e) => {
-                                            e.currentTarget.style.display = 'none';
-                                          }}
+                                          hideOnError
                                         />
                                       </div>
                                     )}

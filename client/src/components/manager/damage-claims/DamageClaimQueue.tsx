@@ -97,6 +97,7 @@ import {
 } from "@/components/ui/select";
 import { DamageClaimDetailSheet } from "./DamageClaimDetailSheet";
 import { cn } from "@/lib/utils";
+import { SmartImage } from "@/components/ui/smart-image";
 
 // Types
 interface DamageEvidence {
@@ -857,7 +858,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                   {pendingEvidence.map((ev) => (
                     <div key={ev.id} className="flex items-center gap-2 p-2 border rounded-md bg-muted/30">
                       {ev.preview ? (
-                        <img src={ev.preview} alt="" className="w-10 h-10 object-cover rounded" />
+                        <SmartImage src={ev.preview} alt="" className="w-10 h-10 object-cover rounded" />
                       ) : (
                         <FileText className="w-10 h-10 p-2 text-muted-foreground" />
                       )}

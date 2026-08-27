@@ -9,12 +9,10 @@ import {
     BookOpen,
     MessageCircle,
     Search,
-    LifeBuoy,
     AlertTriangle,
     ChefHat,
-    CreditCard,
     DollarSign,
-    Eye,
+    Store,
 } from "lucide-react"
 
 import {
@@ -35,111 +33,57 @@ import { cn } from "@/lib/utils"
 import Logo from "@/components/ui/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFirebaseAuth } from "@/hooks/use-auth"
+import { useTranslation } from "react-i18next"
+import type { TFunction } from "i18next"
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher"
+
+function sectionHasHeader(title: string | undefined, itemCount: number) {
+    return Boolean(title) && itemCount > 1
+}
 
 // Type definition for navigation items
 interface NavItem {
     id: string
-    label: string
+    labelKey: string
     icon: React.ComponentType<{ className?: string }>
     path?: string
     badge?: number
 }
 
-interface NavGroup {
-    title: string
+interface NavSection {
+    titleKey?: string
     items: NavItem[]
 }
 
-// Navigation structure for chef portal - organized by purpose
-const navGroups: NavGroup[] = [
+const navSections: NavSection[] = [
     {
-        title: "Dashboard",
         items: [
-            {
-                id: "overview",
-                label: "Overview",
-                icon: LayoutDashboard,
-            },
+            { id: "overview", labelKey: "shellOverview", icon: LayoutDashboard },
+            { id: "applications", labelKey: "shellMyApplication", icon: FileText },
+            { id: "training", labelKey: "shellTraining", icon: BookOpen },
         ],
     },
     {
-        title: "Sell on LocalCooks",
+        titleKey: "shellSelling",
         items: [
-            {
-                id: "applications",
-                label: "My Application",
-                icon: FileText,
-            },
-            {
-                id: "seller-revenue",
-                label: "My Earnings",
-                icon: DollarSign,
-            },
-            {
-                id: "training",
-                label: "Training",
-                icon: BookOpen,
-            },
+            { id: "seller-revenue", labelKey: "shellMyEarnings", icon: DollarSign },
+            { id: "my-account", labelKey: "shellLinkedAccounts", icon: Store },
         ],
     },
     {
-        title: "Kitchen Access",
+        titleKey: "shellKitchens",
         items: [
-            {
-                id: "kitchen-applications",
-                label: "My Kitchens",
-                icon: Building2,
-            },
-            {
-                id: "discover-kitchens",
-                label: "Discover Kitchens",
-                icon: Search,
-            },
-            {
-                id: "viewings",
-                label: "Kitchen Tours",
-                icon: Eye,
-            },
-            {
-                id: "bookings",
-                label: "My Bookings",
-                icon: Calendar,
-            },
+            { id: "kitchen-applications", labelKey: "shellMyKitchens", icon: Building2 },
+            { id: "discover-kitchens", labelKey: "shellDiscoverKitchens", icon: Search },
+            { id: "bookings", labelKey: "shellMyBookings", icon: Calendar },
         ],
     },
     {
-        title: "Communication",
+        titleKey: "shellInbox",
         items: [
-            {
-                id: "messages",
-                label: "Messages",
-                icon: MessageCircle,
-                badge: 0,
-            },
+            { id: "messages", labelKey: "shellMessages", icon: MessageCircle, badge: 0 },
+            { id: "issues-refunds", labelKey: "shellResolutionCenter", icon: AlertTriangle },
         ],
-    },
-    {
-        title: "Account",
-        items: [
-            {
-                id: "transactions",
-                label: "My Transactions",
-                icon: CreditCard,
-            },
-            {
-                id: "issues-refunds",
-                label: "Resolution Center",
-                icon: AlertTriangle,
-            },
-        ],
-    },
-]
-
-const navSecondary = [
-    {
-        id: "support",
-        label: "Support",
-        icon: LifeBuoy,
     },
 ]
 
@@ -158,6 +102,8 @@ export function ChefSidebar({
     ...props
 }: ChefSidebarProps) {
     const { user } = useFirebaseAuth()
+    const { t } = useTranslation("chef")
+    const tr = t as unknown as TFunction
     const { isMobile, setOpenMobile } = useSidebar()
 
     // Get user initials for avatar fallback
@@ -175,6 +121,60 @@ export function ChefSidebar({
         if (isMobile) {
             setOpenMobile(false)
         }
+    }
+
+    const { ungroupedItems, groupedSections } = React.useMemo(() => {
+        const prepared = navSections
+            .map((section) => ({
+                ...section,
+                visibleItems: section.items.filter((item) => !hiddenItems.includes(item.id)),
+            }))
+            .filter((section) => section.visibleItems.length > 0)
+
+        return {
+            ungroupedItems: prepared
+                .filter((section) => !sectionHasHeader(section.titleKey, section.visibleItems.length))
+                .flatMap((section) => section.visibleItems),
+            groupedSections: prepared.filter((section) =>
+                sectionHasHeader(section.titleKey, section.visibleItems.length)
+            ),
+        }
+    }, [hiddenItems])
+
+    const renderNavItem = (item: NavItem) => {
+        const isActive = activeView === item.id
+        const badge = item.id === "messages" ? messageBadgeCount : undefined
+        const label = tr(item.labelKey as never)
+
+        return (
+            <SidebarMenuItem key={item.id}>
+                <SidebarMenuButton
+                    isActive={isActive}
+                    onClick={() => {
+                        if (item.path) {
+                            if (isMobile) {
+                                setOpenMobile(false)
+                            }
+                            window.location.href = item.path
+                        } else {
+                            handleViewChange(item.id)
+                        }
+                    }}
+                    tooltip={label}
+                    className={cn(
+                        isActive && "text-sidebar-primary-foreground font-medium"
+                    )}
+                >
+                    {item.icon && <item.icon />}
+                    <span>{label}</span>
+                    {badge !== undefined && badge > 0 && (
+                        <SidebarMenuBadge className="bg-destructive text-destructive-foreground">
+                            {badge}
+                        </SidebarMenuBadge>
+                    )}
+                </SidebarMenuButton>
+            </SidebarMenuItem>
+        )
     }
 
     return (
@@ -195,7 +195,7 @@ export function ChefSidebar({
                                     LocalCooks
                                 </span>
                                 <span className="truncate text-xs font-medium text-muted-foreground uppercase tracking-wider leading-none">
-                                    for chefs
+                                    {t("shellForChefs")}
                                 </span>
                             </div>
                         </SidebarMenuButton>
@@ -204,77 +204,37 @@ export function ChefSidebar({
             </SidebarHeader>
 
             {/* Main Navigation Content */}
-            <SidebarContent>
-                {navGroups.map((group) => (
-                    <SidebarGroup key={group.title}>
-                        <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
-                        <SidebarMenu>
-                            {group.items.filter((item) => !hiddenItems.includes(item.id)).map((item) => {
-                                const isActive = activeView === item.id
-                                const badge = item.id === "messages" ? messageBadgeCount : undefined
-
-                                return (
-                                    <SidebarMenuItem key={item.id}>
-                                        <SidebarMenuButton
-                                            isActive={isActive}
-                                            onClick={() => {
-                                                if (item.path) {
-                                                    // External navigation (like discover kitchens)
-                                                    if (isMobile) {
-                                                        setOpenMobile(false)
-                                                    }
-                                                    window.location.href = item.path
-                                                } else {
-                                                    handleViewChange(item.id)
-                                                }
-                                            }}
-                                            tooltip={item.label}
-                                            className={cn(
-                                                isActive && "text-sidebar-primary-foreground font-medium"
-                                            )}
-                                        >
-                                            {item.icon && <item.icon />}
-                                            <span>{item.label}</span>
-                                            {badge !== undefined && badge > 0 && (
-                                                <SidebarMenuBadge className="bg-destructive text-destructive-foreground">
-                                                    {badge}
-                                                </SidebarMenuBadge>
-                                            )}
-                                        </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                )
-                            })}
+            <SidebarContent className="gap-0">
+                {ungroupedItems.length > 0 && (
+                    <SidebarGroup className="px-2 py-1">
+                        <SidebarMenu className="gap-0.5">
+                            {ungroupedItems.map(renderNavItem)}
+                        </SidebarMenu>
+                    </SidebarGroup>
+                )}
+                {groupedSections.map((section) => (
+                    <SidebarGroup key={section.titleKey} className="px-2 py-3">
+                        <SidebarGroupLabel className="h-7 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            {tr(section.titleKey as never)}
+                        </SidebarGroupLabel>
+                        <SidebarMenu className="gap-0.5">
+                            {section.visibleItems.map(renderNavItem)}
                         </SidebarMenu>
                     </SidebarGroup>
                 ))}
-
-                {/* Secondary Navigation */}
-                <SidebarGroup className="mt-auto">
-                    <SidebarGroupLabel>Help</SidebarGroupLabel>
-                    <SidebarMenu>
-                        {navSecondary.map((item) => (
-                            <SidebarMenuItem key={item.id}>
-                                <SidebarMenuButton
-                                    onClick={() => handleViewChange(item.id)}
-                                    tooltip={item.label}
-                                >
-                                    {item.icon && <item.icon />}
-                                    <span>{item.label}</span>
-                                </SidebarMenuButton>
-                            </SidebarMenuItem>
-                        ))}
-                    </SidebarMenu>
-                </SidebarGroup>
             </SidebarContent>
 
             {/* Footer with User Avatar */}
             <SidebarFooter>
                 <SidebarMenu>
+                    <SidebarMenuItem className="px-2 pb-2 group-data-[collapsible=icon]:hidden">
+                        <LanguageSwitcher className="w-full justify-start h-9 border-border bg-background shadow-sm" />
+                    </SidebarMenuItem>
                     <SidebarMenuItem>
                         <SidebarMenuButton
                             size="lg"
                             onClick={() => handleViewChange("profile")}
-                            tooltip="Profile"
+                            tooltip={t("shellProfile")}
                             className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                         >
                             <Avatar className="h-8 w-8 rounded-lg">

@@ -46,6 +46,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { format } from "date-fns";
+import { TruncatedText } from "@/components/common/TruncatedText";
 
 // ============================================================================
 // Types
@@ -370,8 +371,8 @@ export default function EscalatedPenalties() {
                         })()}
                       </TableCell>
                       <TableCell>{getOverstayStatusBadge(o.status)}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
-                        {o.chargeFailureReason || "Unknown"}
+                      <TableCell className="text-xs text-muted-foreground max-w-[200px]">
+                        <TruncatedText className="truncate">{o.chargeFailureReason || "Unknown"}</TruncatedText>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {format(new Date(o.detectedAt), "MMM d, yyyy")}
@@ -418,8 +419,8 @@ export default function EscalatedPenalties() {
                     {claims.map((c) => (
                       <TableRow key={c.id}>
                         <TableCell className="font-mono text-xs">{c.id}</TableCell>
-                        <TableCell className="font-medium text-sm max-w-[200px] truncate">
-                          {c.claimTitle}
+                        <TableCell className="font-medium text-sm max-w-[200px]">
+                          <TruncatedText className="truncate">{c.claimTitle}</TruncatedText>
                         </TableCell>
                         <TableCell className="text-sm">{c.locationName}</TableCell>
                         <TableCell>
@@ -441,8 +442,8 @@ export default function EscalatedPenalties() {
                           {formatCurrency(c.finalAmountCents || c.claimedAmountCents)}
                         </TableCell>
                         <TableCell>{getClaimStatusBadge(c.status)}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
-                          {c.chargeFailureReason || "Unknown"}
+                        <TableCell className="text-xs text-muted-foreground max-w-[200px]">
+                          <TruncatedText className="truncate">{c.chargeFailureReason || "Unknown"}</TruncatedText>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {format(new Date(c.createdAt), "MMM d, yyyy")}

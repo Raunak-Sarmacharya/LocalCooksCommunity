@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle, Loader2, Shield } from "lucide-react";
 
@@ -118,11 +119,11 @@ export default function LoadingOverlay({
     );
   };
 
-  return (
+  return typeof document !== 'undefined' ? createPortal(
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-sm"
           variants={overlayVariants}
           initial="hidden"
           animate="visible"
@@ -171,6 +172,7 @@ export default function LoadingOverlay({
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
-  );
+    </AnimatePresence>,
+    document.body
+  ) : null;
 } 

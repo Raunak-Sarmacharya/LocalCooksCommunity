@@ -1,0 +1,14 @@
+{
+  "invoice": "INVOICE",
+  "billTo": "Bill To",
+  "bookingDetails": "Booking Details",
+  "kitchen": "Kitchen",
+  "payoutStatement": "PAYOUT STATEMENT",
+  "payTo": "Pay To",
+  "statementNumber": "Statement #",
+  "sellerStatement": "Seller Statement",
+  "executiveSummary": "Executive Summary",
+  "certificateTitle": "Certificate of Completion",
+  "awardedTo": "Awarded to",
+  "forCompleting": "For completing"
+}

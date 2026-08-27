@@ -20,10 +20,12 @@ import {
   Play,
   Shield,
   TrendingUp,
-  XCircle
+  ExternalLink,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
+import { SKILLSPASS_OFFICIAL_CERT_URL } from '@/config/skillspass';
+import { QuietNotice } from '@/components/chef/ui';
 import VideoPlayer from './VideoPlayer';
 
 interface VideoData {
@@ -302,7 +304,7 @@ export default function MicrolearningModule({
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [completionConfirmed, setCompletionConfirmed] = useState(false);
-  const [accessLevel, setAccessLevel] = useState<'full' | 'limited'>('limited');
+  const [accessLevel, setAccessLevel] = useState<'full' | 'limited'>('full');
   const [hasApprovedApplication, setHasApprovedApplication] = useState(false);
   const [applicationInfo, setApplicationInfo] = useState<any>(null);
   const [showApplicationPrompt, setShowApplicationPrompt] = useState(false);
@@ -372,26 +374,16 @@ export default function MicrolearningModule({
         
         setUserProgress(filteredProgress);
         setCompletionConfirmed(data.confirmed || data.completionConfirmed || false);
-        setAccessLevel(data.accessLevel || (user.role === 'admin' ? 'full' : 'limited'));
+        setAccessLevel(data.accessLevel || 'full');
         setHasApprovedApplication(data.hasApprovedApplication || (user.role === 'admin'));
         setApplicationInfo(data.applicationInfo || null);
       } else {
         logger.error('Failed to load progress:', response.status, response.statusText);
-        // For admins, provide default full access even if API fails
-        if (user.role === 'admin') {
-          setAccessLevel('full');
-          setHasApprovedApplication(true);
-          setApplicationInfo({ message: 'Admin has full access to all training' });
-        }
+        setAccessLevel('full');
       }
     } catch (error) {
       logger.error('Failed to load progress:', error);
-      // For admins, provide default full access even if API fails
-      if (user?.role === 'admin') {
-        setAccessLevel('full');
-        setHasApprovedApplication(true);
-        setApplicationInfo({ message: 'Admin has full access to all training' });
-      }
+      setAccessLevel('full');
     } finally {
       setIsLoading(false);
     }
@@ -659,40 +651,34 @@ export default function MicrolearningModule({
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-emerald-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           className="text-center space-y-4"
         >
-          <div className="w-16 h-16 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-2xl flex items-center justify-center mx-auto">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-            >
-              <Play className="h-8 w-8 text-white" />
-            </motion.div>
+          <div className="w-16 h-16 rounded-lg border flex items-center justify-center mx-auto">
+            <Play className="h-8 w-8 text-muted-foreground animate-pulse" />
           </div>
-          <h3 className="text-xl font-semibold text-slate-800">Loading Your Training</h3>
-          <p className="text-slate-600">Preparing your personalized learning experience...</p>
+          <h3 className="text-xl font-semibold text-foreground">Loading Your Training</h3>
+          <p className="text-muted-foreground">Preparing your personalized learning experience...</p>
         </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-emerald-50">
-      {/* Modern Header with Course Info */}
+    <div className="min-h-screen bg-background">
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-40"
+        className="bg-background border-b border-border sticky top-0 z-40"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-xl flex items-center justify-center">
-                <BookOpen className="h-5 w-5 text-white" />
+              <div className="w-10 h-10 rounded-lg border flex items-center justify-center">
+                <BookOpen className="h-5 w-5 text-muted-foreground" />
               </div>
               <div>
                 <h1 className="text-lg font-semibold text-slate-900">Food Safety Training</h1>
@@ -736,15 +722,9 @@ export default function MicrolearningModule({
                   <div className="text-sm font-semibold text-slate-900">{Math.round(moduleProgress)}%</div>
                   <div className="text-xs text-slate-600">Module Progress</div>
                 </div>
-                <div className="w-16 h-2 bg-slate-200 rounded-full overflow-hidden">
+                <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
                   <motion.div
-                    className={`h-full rounded-full ${
-                      completionConfirmed 
-                        ? 'bg-gradient-to-r from-green-500 to-emerald-500'
-                        : accessLevel === 'full'
-                        ? 'bg-gradient-to-r from-emerald-500 to-blue-500'
-                        : 'bg-gradient-to-r from-yellow-500 to-orange-500'
-                    }`}
+                    className="h-full rounded-full bg-foreground/70"
                     initial={{ width: 0 }}
                     animate={{ width: `${moduleProgress}%` }}
                     transition={{ duration: 0.8, ease: "easeOut" }}
@@ -765,53 +745,46 @@ export default function MicrolearningModule({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200 mb-6"
+            className="bg-card rounded-lg p-6 shadow-none border border-border mb-6"
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-xl flex items-center justify-center">
-                <Award className="h-5 w-5 text-white" />
+              <div className="w-10 h-10 rounded-lg border flex items-center justify-center">
+                <Award className="h-5 w-5 text-muted-foreground" />
               </div>
               <div>
-                <h3 className="font-semibold text-slate-900">Training Complete! 🎉</h3>
-                <p className="text-sm text-slate-600">Ready for certification</p>
+                <h3 className="font-semibold text-foreground">Training Complete</h3>
+                <p className="text-sm text-muted-foreground">Ready for certification</p>
               </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div className="p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50">
+              <div className="p-4 rounded-lg border">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                  <h4 className="font-semibold text-slate-900">Food Safety Basics</h4>
+                  <h4 className="font-semibold text-foreground">Food Safety Basics</h4>
+                  <Badge variant="success">Complete</Badge>
                 </div>
-                <p className="text-sm text-slate-600">14 training videos</p>
-                <div className="mt-2 text-xs text-emerald-600 font-medium">
-                  ✓ Complete
-                </div>
+                <p className="text-sm text-muted-foreground">14 training videos</p>
               </div>
               
-              <div className="p-4 rounded-xl border-2 border-blue-200 bg-blue-50">
+              <div className="p-4 rounded-lg border">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-3 h-3 rounded-full bg-blue-500" />
-                  <h4 className="font-semibold text-slate-900">Safety & Hygiene How-To's</h4>
+                  <h4 className="font-semibold text-foreground">Safety & Hygiene How-To's</h4>
+                  <Badge variant="success">Complete</Badge>
                 </div>
-                <p className="text-sm text-slate-600">8 training videos</p>
-                <div className="mt-2 text-xs text-blue-600 font-medium">
-                  ✓ Complete
-                </div>
+                <p className="text-sm text-muted-foreground">8 training videos</p>
               </div>
             </div>
 
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
-              <p className="text-emerald-800 text-sm">
-                Congratulations! You've completed all 22 training videos. 
-                Click below to confirm your completion and generate your official certificate.
-              </p>
-            </div>
+            <QuietNotice className="mb-4">
+              Congratulations! You've completed all 22 training videos.
+              Confirm below to save your LocalCooks completion certificate.
+              This is not an official food handler certificate — register with SkillsPass NL for that.
+            </QuietNotice>
             
             <Button 
               onClick={confirmCompletion}
               disabled={isSubmitting}
-              className="w-full bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600 text-white"
+              className="w-full"
             >
               {isSubmitting ? (
                 <>
@@ -827,9 +800,19 @@ export default function MicrolearningModule({
               ) : (
                 <>
                   <Award className="h-4 w-4 mr-2" />
-                  Confirm Completion & Generate Certificate
+                  Confirm Completion
                 </>
               )}
+            </Button>
+            <Button asChild variant="outline" className="w-full mt-3">
+              <a
+                href={SKILLSPASS_OFFICIAL_CERT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Get official SkillsPass certificate
+              </a>
             </Button>
           </motion.div>
         )}
@@ -844,12 +827,11 @@ export default function MicrolearningModule({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-white rounded-3xl overflow-hidden shadow-xl border border-slate-200"
+              className="bg-card rounded-lg overflow-hidden shadow-none border border-border"
             >
-              {/* Video Header */}
-              <div className="p-6 bg-gradient-to-r from-slate-50 to-blue-50 border-b border-slate-200">
+              <div className="p-6 border-b border-border">
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-2xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                  <div className="w-12 h-12 rounded-lg border flex items-center justify-center font-semibold text-lg flex-shrink-0 text-muted-foreground">
                     {currentVideoIndex + 1}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -899,7 +881,7 @@ export default function MicrolearningModule({
               </div>
 
               {/* Video Controls */}
-              <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200">
+              <div className="p-4 sm:p-6 bg-muted/30 border-t border-border">
                 {/* Mobile-first responsive layout */}
                 <div className="space-y-4 sm:space-y-0">
                   {/* Progress indicator - full width on mobile */}
@@ -936,7 +918,7 @@ export default function MicrolearningModule({
 
                     if (isLimitedAccess && applicationInfo?.canApply) {
                       return (
-                        <Button asChild className="bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600">
+                        <Button asChild>
                           <Link href="/dashboard?view=applications&action=new">
                             Submit Application
                             <ArrowRight className="h-4 w-4 ml-2" />
@@ -947,7 +929,7 @@ export default function MicrolearningModule({
 
                     if (isLimitedAccess && !applicationInfo?.canApply) {
                       return (
-                        <Button asChild className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600">
+                        <Button asChild>
                           <Link href="/dashboard">
                             Check Status
                             <ArrowRight className="h-4 w-4 ml-2" />
@@ -992,7 +974,7 @@ export default function MicrolearningModule({
                           }
                         }}
                         disabled={isLastVideo || (!canAccessNext && accessLevel !== 'full')}
-                        className={`flex items-center gap-1.5 px-3 sm:px-4 ${canAccessNext && !isLastVideo ? "bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600" : ""}`}
+                        className="flex items-center gap-1.5 px-3 sm:px-4"
                         variant={canAccessNext && !isLastVideo ? "default" : "outline"}
                       >
                         {isLastVideo ? (
@@ -1010,7 +992,7 @@ export default function MicrolearningModule({
                         ) : !canAccessNext ? (
                           <>
                             <span className="hidden xs:inline">Locked</span>
-                            <span className="xs:hidden">🔒</span>
+                            <span className="xs:hidden">Locked</span>
                             <Lock className="h-4 w-4 hidden xs:inline" />
                           </>
                         ) : (
@@ -1033,24 +1015,24 @@ export default function MicrolearningModule({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200"
+              className="bg-card rounded-lg p-6 shadow-none border border-border"
             >
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Training Modules</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Training Modules</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <button
                   onClick={() => setCurrentModule('basics')}
-                  className={`p-4 rounded-xl border-2 transition-all ${
+                  className={`p-4 rounded-lg border transition-all text-left ${
                     currentModule === 'basics'
-                      ? 'border-emerald-500 bg-emerald-50'
-                      : 'border-slate-200 hover:border-slate-300'
+                      ? 'border-foreground/30 ring-1 ring-foreground/10'
+                      : 'border-border hover:border-foreground/20'
                   }`}
                 >
-                  <div className="text-left">
+                  <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <div className={`w-3 h-3 rounded-full ${currentModule === 'basics' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                      <h4 className="font-semibold text-slate-900">Food Safety Basics</h4>
+                      <h4 className="font-semibold text-foreground">Food Safety Basics</h4>
+                      {currentModule === 'basics' && <Badge variant="outline">Active</Badge>}
                     </div>
-                    <p className="text-sm text-slate-600">14 essential training videos</p>
+                    <p className="text-sm text-muted-foreground">14 essential training videos</p>
                     <div className="mt-2 text-xs text-slate-500">
                       {userProgress.filter(p => p.completed && foodSafetyBasicsVideos.some(v => v.id === p.videoId)).length} of 14 completed
                     </div>
@@ -1067,31 +1049,23 @@ export default function MicrolearningModule({
                       setShowApplicationPrompt(true);
                     }
                   }}
-                  className={`p-4 rounded-xl border-2 transition-all relative ${
+                  className={`p-4 rounded-lg border transition-all relative text-left ${
                     currentModule === 'hygiene'
-                      ? 'border-blue-500 bg-blue-50'
+                      ? 'border-foreground/30 ring-1 ring-foreground/10'
                       : accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin'
-                      ? 'border-slate-200 hover:border-yellow-300 opacity-75'
-                      : 'border-slate-200 hover:border-slate-300'
+                      ? 'border-border opacity-75'
+                      : 'border-border hover:border-foreground/20'
                   }`}
                 >
-                  {/* Lock indicator for limited access users */}
                   {accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin' && (
                     <div className="absolute top-2 right-2">
-                      <div className="w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
-                        <Lock className="h-3 w-3 text-white" />
-                      </div>
+                      <Lock className="h-4 w-4 text-muted-foreground" />
                     </div>
                   )}
                   
-                  <div className="text-left">
+                  <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <div className={`w-3 h-3 rounded-full ${currentModule === 'hygiene' ? 'bg-blue-500' : 'bg-slate-300'}`} />
-                      <h4 className={`font-semibold ${
-                        accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin' 
-                          ? 'text-slate-600' 
-                          : 'text-slate-900'
-                      }`}>
+                      <h4 className="font-semibold text-foreground">
                         Safety & Hygiene How-To's
                       </h4>
                       {accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin' && (
@@ -1099,12 +1073,11 @@ export default function MicrolearningModule({
                           Locked
                         </Badge>
                       )}
+                      {currentModule === 'hygiene' && (
+                        <Badge variant="outline">Active</Badge>
+                      )}
                     </div>
-                    <p className={`text-sm ${
-                      accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin' 
-                        ? 'text-slate-500' 
-                        : 'text-slate-600'
-                    }`}>
+                    <p className="text-sm text-muted-foreground">
                       8 practical demonstration videos
                     </p>
                     <div className={`mt-2 text-xs ${
@@ -1130,26 +1103,26 @@ export default function MicrolearningModule({
             <div className="space-y-6">
               
               {/* Progress Overview */}
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200">
+              <div className="bg-card rounded-lg p-6 shadow-none border border-border">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-xl flex items-center justify-center">
-                    <TrendingUp className="h-5 w-5 text-white" />
+                  <div className="w-10 h-10 rounded-lg border flex items-center justify-center">
+                    <TrendingUp className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-slate-900">Your Progress</h3>
-                    <p className="text-sm text-slate-600">Module completion status</p>
+                    <h3 className="font-semibold text-foreground">Your Progress</h3>
+                    <p className="text-sm text-muted-foreground">Module completion status</p>
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <div className="text-center">
-                    <div className="text-3xl font-bold text-emerald-600 mb-1">{Math.round(moduleProgress)}%</div>
-                    <div className="text-sm text-slate-600">Current Module</div>
+                    <div className="text-3xl font-bold text-foreground mb-1">{Math.round(moduleProgress)}%</div>
+                    <div className="text-sm text-muted-foreground">Current Module</div>
                   </div>
                   
-                  <div className="w-full bg-slate-200 rounded-full h-2">
+                  <div className="w-full bg-muted rounded-full h-2">
                     <motion.div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-blue-500 rounded-full"
+                      className="h-full bg-foreground/70 rounded-full"
                       initial={{ width: 0 }}
                       animate={{ width: `${moduleProgress}%` }}
                       transition={{ duration: 0.8, ease: "easeOut" }}
@@ -1176,10 +1149,10 @@ export default function MicrolearningModule({
               {accessLevel === 'limited' && applicationInfo?.canApply && (
                 <div className="space-y-4">
                   {/* Detailed Application Status Card */}
-                  <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200">
+                  <div className="bg-card rounded-lg p-6 shadow-none border border-border">
                     <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 bg-yellow-500 rounded-xl flex items-center justify-center">
-                        <FileText className="h-5 w-5 text-white" />
+                      <div className="w-10 h-10 rounded-lg border flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-muted-foreground" />
                       </div>
                       <div>
                         <h3 className="font-semibold text-slate-900">Application Required</h3>
@@ -1188,61 +1161,22 @@ export default function MicrolearningModule({
                     </div>
                     
                     {applicationInfo?.message && (
-                      <div className={`rounded-xl p-4 mb-4 ${
+                      <QuietNotice className="mb-4" title={
                         applicationInfo.hasPending 
-                          ? 'bg-blue-50 border border-blue-200' 
+                          ? 'Application Under Review' 
                           : applicationInfo.hasRejected 
-                          ? 'bg-red-50 border border-red-200'
+                          ? 'Application Not Approved'
                           : applicationInfo.hasCancelled
-                          ? 'bg-gray-50 border border-gray-200'
-                          : 'bg-yellow-50 border border-yellow-200'
-                      }`}>
-                        <div className="flex items-center gap-2 mb-2">
-                          {applicationInfo.hasPending && <Clock className="h-4 w-4 text-blue-600" />}
-                          {applicationInfo.hasRejected && <XCircle className="h-4 w-4 text-red-600" />}
-                          {applicationInfo.hasCancelled && <XCircle className="h-4 w-4 text-gray-600" />}
-                          {!applicationInfo.hasPending && !applicationInfo.hasRejected && !applicationInfo.hasCancelled && (
-                            <FileText className="h-4 w-4 text-yellow-600" />
-                          )}
-                          <span className={`font-medium text-sm ${
-                            applicationInfo.hasPending 
-                              ? 'text-blue-800' 
-                              : applicationInfo.hasRejected 
-                              ? 'text-red-800'
-                              : applicationInfo.hasCancelled
-                              ? 'text-gray-800'
-                              : 'text-yellow-800'
-                          }`}>
-                            {applicationInfo.hasPending 
-                              ? 'Application Under Review' 
-                              : applicationInfo.hasRejected 
-                              ? 'Application Not Approved'
-                              : applicationInfo.hasCancelled
-                              ? 'Application Cancelled'
-                              : 'Application Required'}
-                          </span>
-                        </div>
-                        <p className={`text-sm ${
-                          applicationInfo.hasPending 
-                            ? 'text-blue-800' 
-                            : applicationInfo.hasRejected 
-                            ? 'text-red-800'
-                            : applicationInfo.hasCancelled
-                            ? 'text-gray-800'
-                            : 'text-yellow-800'
-                        }`}>
-                          {applicationInfo.message}
-                        </p>
-                      </div>
+                          ? 'Application Cancelled'
+                          : 'Application Required'
+                      }>
+                        {applicationInfo.message}
+                      </QuietNotice>
                     )}
                     
                     <Button 
                       asChild
-                      className={`w-full font-semibold ${
-                        applicationInfo.hasRejected || applicationInfo.hasCancelled
-                          ? 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600'
-                          : 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600'
-                      } text-white`}
+                      className="w-full"
                     >
                       <Link href="/dashboard?view=applications&action=new">
                         <FileText className="h-4 w-4 mr-2" />
@@ -1259,10 +1193,10 @@ export default function MicrolearningModule({
 
               {/* Limited Access - Application Status (for users with active applications) */}
               {accessLevel === 'limited' && !applicationInfo?.canApply && applicationInfo?.message && (
-                <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200">
+                <div className="bg-card rounded-lg p-6 shadow-none border border-border">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center">
-                      <Clock className="h-5 w-5 text-white" />
+                    <div className="w-10 h-10 rounded-lg border flex items-center justify-center">
+                      <Clock className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
                       <h3 className="font-semibold text-slate-900">Application Status</h3>
@@ -1270,25 +1204,13 @@ export default function MicrolearningModule({
                     </div>
                   </div>
                   
-                  <div className={`rounded-xl p-4 mb-4 ${
-                    applicationInfo.hasPending 
-                      ? 'bg-blue-50 border border-blue-200' 
-                      : 'bg-slate-50 border border-slate-200'
-                  }`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Clock className="h-4 w-4 text-blue-600" />
-                      <span className="font-medium text-sm text-blue-800">
-                        {applicationInfo.hasPending ? 'Application Under Review' : 'Application Submitted'}
-                      </span>
-                    </div>
-                    <p className="text-sm text-blue-800">
-                      {applicationInfo.message}
-                    </p>
-                  </div>
+                  <QuietNotice className="mb-4" title={applicationInfo.hasPending ? 'Application Under Review' : 'Application Submitted'}>
+                    {applicationInfo.message}
+                  </QuietNotice>
                   
                   <Button 
                     asChild
-                    className="w-full font-semibold bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white"
+                    className="w-full"
                   >
                     <Link href="/dashboard">
                       <FileText className="h-4 w-4 mr-2" />
@@ -1300,41 +1222,25 @@ export default function MicrolearningModule({
 
               {/* Full Access Status for Approved Users */}
               {accessLevel === 'full' && !completionConfirmed && !allVideosCompleted && (
-                <div className="bg-white rounded-2xl p-6 shadow-lg border border-emerald-200">
+                <div className="bg-card rounded-lg p-6 shadow-none border border-border">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center">
-                      <CheckCircle className="h-5 w-5 text-white" />
+                    <div className="w-10 h-10 rounded-lg border flex items-center justify-center">
+                      <CheckCircle className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-emerald-900">Full Access Granted!</h3>
-                      <p className="text-sm text-emerald-700">All videos unlocked</p>
+                      <h3 className="font-semibold text-foreground">Full Access Granted</h3>
+                      <p className="text-sm text-muted-foreground">All videos unlocked</p>
                     </div>
                   </div>
                   
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-                    <h4 className="font-medium text-emerald-900 mb-3 flex items-center gap-2">
-                      <span className="text-green-600">🔓</span>
-                      Your Access Includes:
-                    </h4>
-                    <div className="space-y-2.5">
-                      <div className="flex items-center gap-3 text-emerald-700">
-                        <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                        <span className="text-sm">Complete 22-video curriculum</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-emerald-700">
-                        <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                        <span className="text-sm">Both training modules</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-emerald-700">
-                        <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                        <span className="text-sm">Progress tracking & analytics</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-emerald-700">
-                        <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                        <span className="text-sm">Official completion certificate</span>
-                      </div>
-                    </div>
-                  </div>
+                  <QuietNotice title="Your access includes">
+                    <ul className="space-y-2 mt-1">
+                      <li>Complete 22-video curriculum</li>
+                      <li>Both training modules</li>
+                      <li>Progress tracking</li>
+                      <li>Local Cooks completion certificate</li>
+                    </ul>
+                  </QuietNotice>
                 </div>
               )}
 
@@ -1342,25 +1248,24 @@ export default function MicrolearningModule({
 
               {/* Completion Status for Completed Users */}
               {completionConfirmed && (
-                <div className="bg-white rounded-2xl p-6 shadow-lg border border-green-200">
+                <div className="bg-card rounded-lg p-6 shadow-none border border-border">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center">
-                      <Award className="h-5 w-5 text-white" />
+                    <div className="w-10 h-10 rounded-lg border flex items-center justify-center">
+                      <Award className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-green-900">Training Completed! 🎉</h3>
-                      <p className="text-sm text-green-700">You can rewatch any video</p>
+                      <h3 className="font-semibold text-foreground">Training Completed</h3>
+                      <p className="text-sm text-muted-foreground">You can rewatch any video</p>
                     </div>
+                    <Badge variant="success">Complete</Badge>
                   </div>
                   
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                    <p className="text-green-800 text-sm mb-3">
-                      Congratulations! You've earned your Local Cooks certification. 
-                      Feel free to rewatch any training content.
-                    </p>
+                  <QuietNotice className="mb-3">
+                    Congratulations! You've finished LocalCooks training.
+                    This completion certificate is not an official food handler certificate.
+                  </QuietNotice>
                     <Button 
                       size="sm"
-                      className="bg-green-600 hover:bg-green-700 text-white"
                       onClick={async () => {
                         try {
                           const currentUser = auth.currentUser;
@@ -1387,17 +1292,25 @@ export default function MicrolearningModule({
                       }}
                     >
                       <Download className="h-4 w-4 mr-2" />
-                      Download Certificate
+                      Download completion certificate
                     </Button>
-                  </div>
+                    <Button asChild size="sm" variant="outline" className="mt-2 w-full">
+                      <a
+                        href={SKILLSPASS_OFFICIAL_CERT_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Get official SkillsPass certificate
+                      </a>
+                    </Button>
                 </div>
               )}
 
-              {/* Compact Video List */}
-              <div className="bg-white rounded-2xl shadow-lg border border-slate-200 max-h-96 overflow-hidden">
-                <div className="p-4 border-b border-slate-200">
-                  <h3 className="font-semibold text-slate-900">Module Videos</h3>
-                  <p className="text-sm text-slate-600">{currentModuleVideos.length} videos in this module</p>
+              <div className="bg-card rounded-lg shadow-none border border-border max-h-96 overflow-hidden">
+                <div className="p-4 border-b border-border">
+                  <h3 className="font-semibold text-foreground">Module Videos</h3>
+                  <p className="text-sm text-muted-foreground">{currentModuleVideos.length} videos in this module</p>
                 </div>
                 
                 <div className="overflow-y-auto max-h-80">
@@ -1442,27 +1355,31 @@ export default function MicrolearningModule({
                               handleVideoClick(video.id, index); // Will trigger application prompt
                             }
                           }}
-                          className={`w-full p-3 rounded-xl text-left transition-all ${
+                          className={`w-full p-3 rounded-lg text-left transition-all border ${
                             isCurrent
-                              ? 'bg-gradient-to-r from-emerald-50 to-blue-50 border-2 border-emerald-200'
+                              ? 'border-foreground/30 bg-muted/50'
                               : canAccess
-                              ? 'hover:bg-slate-50 border border-transparent hover:border-slate-200'
-                              : accessLevel === 'full'
-                              ? 'hover:bg-orange-50 border border-orange-200 cursor-pointer'
-                              : 'opacity-60 cursor-pointer border border-slate-100 hover:opacity-80'
+                              ? 'border-transparent hover:border-border hover:bg-muted/30'
+                              : 'border-transparent opacity-60 cursor-pointer'
                           }`}
                         >
                           <div className="flex items-center gap-3">
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium border ${
                               isCompleted
-                                ? 'bg-green-500 text-white'
+                                ? 'bg-success text-success-foreground border-success'
                                 : isCurrent
-                                ? 'bg-gradient-to-r from-emerald-500 to-blue-500 text-white'
+                                ? 'border-foreground/30 text-foreground'
                                 : canAccess
-                                ? 'bg-slate-300 text-slate-700'
-                                : 'bg-slate-200 text-slate-400'
+                                ? 'border-border text-muted-foreground'
+                                : 'border-border text-muted-foreground/50'
                             }`}>
-                              {isCompleted ? '✓' : !canAccess ? '🔒' : index + 1}
+                              {isCompleted ? (
+                                <CheckCircle className="h-3.5 w-3.5" />
+                              ) : !canAccess ? (
+                                <Lock className="h-3.5 w-3.5" />
+                              ) : (
+                                index + 1
+                              )}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="text-sm font-medium truncate">{video.title}</div>

@@ -1,7 +1,8 @@
+import { useTranslation } from "react-i18next";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
-import TidioController from "@/components/chat/TidioController";
+import CustomerSupportButton from "@/components/CustomerSupportButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -15,6 +16,7 @@ import {
 import { Link, useLocation } from "wouter";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { motion, useScroll, useTransform, MotionValue } from "framer-motion";
+import { SmartImage } from "@/components/ui/smart-image";
 import emptyKitchenImage from "@assets/emptykitchen.png";
 import DashboardIcon from "../../../attached_assets/Dashboard.svg";
 import BookingIcon from "../../../attached_assets/Booking_k.svg";
@@ -230,6 +232,7 @@ function ScrollLinkedRevenueIcons() {
 }
 // Typewriter component for kitchen types
 function KitchenTypewriter() {
+  const { t } = useTranslation("kitchen");
   const words = ["Revenue", "Freedom", "Impact"];
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [currentText, setCurrentText] = useState("");
@@ -303,9 +306,7 @@ function KitchenTypewriter() {
         {longestWord}
       </span>
       
-      <span className="font-logo text-white whitespace-nowrap" style={{ fontFamily: "'Lobster', cursive" }}>
-        Real
-      </span>
+      <span className="font-logo text-white whitespace-nowrap" style={{ fontFamily: "'Lobster', cursive" }}>{t("real")}</span>
       <span 
         className="relative ml-3 md:ml-4 inline-block whitespace-nowrap"
         style={{ 
@@ -336,6 +337,7 @@ function KitchenTypewriter() {
 }
 
 export default function KitchenLanding() {
+  const { t } = useTranslation("kitchen");
   const [, setLocation] = useLocation();
 
   const revenueSectionRef = useRef<HTMLDivElement | null>(null);
@@ -362,14 +364,15 @@ export default function KitchenLanding() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
+  // Route new kitchen partners into the real onboarding entry point instead of a mailto dead-end.
   const handleListKitchen = () => {
-    window.location.href = 'mailto:admin@localcook.shop?subject=Kitchen Partnership - List My Kitchen';
+    setLocation('/manager/login');
   };
 
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden">
       <SEOHead
-        title="For Kitchen Owners — Turn Idle Hours Into Revenue"
+        title={t("seoKitchenTitle")}
         description="List your commercial kitchen on LocalCooks and earn revenue from idle hours. Automated booking, Stripe payouts, compliance management, and damage protection. Serving St. John's, Newfoundland."
         canonicalUrl="/"
         keywords={[
@@ -381,24 +384,24 @@ export default function KitchenLanding() {
         showLocalBusiness
         breadcrumbs={[
           { name: "LocalCooks", url: "https://www.localcooks.ca/" },
-          { name: "For Kitchen Owners", url: "https://kitchen.localcooks.ca/" },
+          { name: t("breadcrumbKitchenOwners"), url: "https://kitchen.localcooks.ca/" },
         ]}
         faq={[
-          { question: "What types of kitchens can I list on LocalCooks?", answer: "We welcome any inspected, commercial-grade kitchen space — restaurants with downtime, church kitchens, commissary spaces, or dedicated facilities. If your kitchen has a valid operating permit and commercial-grade equipment, it's a perfect fit." },
-          { question: "How much can I earn by listing my kitchen?", answer: "Earnings vary based on your kitchen's size, equipment, and availability. You set your own hourly or daily rates. Many partners generate significant monthly revenue from their idle hours. Weekly payouts via Stripe." },
-          { question: "Do I control who uses my kitchen?", answer: "Absolutely. You review every chef's profile, proposed concept, and rental history before accepting any booking. You always have final say over who cooks in your space." },
-          { question: "How does scheduling work?", answer: "Your business always comes first. Block out the days and hours you need, and list only your available time slots. Our booking system prevents conflicts automatically." },
+          { question: t("kitchenFaqQ1"), answer: t("kitchenFaqA1") },
+          { question: t("kitchenFaqQ2"), answer: t("kitchenFaqA2") },
+          { question: t("kitchenFaqQ3"), answer: t("kitchenFaqA3") },
+          { question: t("kitchenFaqQ4"), answer: t("kitchenFaqA4") },
         ]}
         siteNavigation={[
-          { name: "List Your Kitchen", description: "Turn idle commercial kitchen hours into revenue with automated booking", url: "https://kitchen.localcooks.ca/" },
-          { name: "For Chefs", description: "Launch your food business with commercial kitchen access and compliance support", url: "https://chef.localcooks.ca/" },
-          { name: "Book a Kitchen", description: "Browse and book commercial kitchens in St. John's, Newfoundland", url: "https://chef.localcooks.ca/book-kitchen" },
-          { name: "Order Food", description: "Order authentic homemade meals from local chefs in St. John's", url: "https://localcook.shop/" },
-          { name: "Blog", description: "Stories about local chefs, food trends, and community updates", url: "https://www.localcooks.ca/blog" },
-          { name: "Contact", description: "Get in touch with LocalCooks for questions or partnerships", url: "https://www.localcooks.ca/contact" },
+          { name: t("kitchenNavList"), description: t("kitchenNavListDesc"), url: "https://kitchen.localcooks.ca/" },
+          { name: t("kitchenNavChefs"), description: t("kitchenNavChefsDesc"), url: "https://chef.localcooks.ca/" },
+          { name: t("kitchenNavBook"), description: t("kitchenNavBookDesc"), url: "https://chef.localcooks.ca/book-kitchen" },
+          { name: t("kitchenNavOrder"), description: t("kitchenNavOrderDesc"), url: "https://localcook.shop/" },
+          { name: t("kitchenNavBlog"), description: t("kitchenNavBlogDesc"), url: "https://www.localcooks.ca/blog" },
+          { name: t("kitchenNavContact"), description: t("kitchenNavContactDesc"), url: "https://www.localcooks.ca/contact" },
         ]}
       />
-      <TidioController forceShow={true} />
+      <CustomerSupportButton />
       <Header />
       
       <main className="flex-grow">
@@ -440,7 +443,7 @@ export default function KitchenLanding() {
               <div className="relative inline-flex items-center gap-2 bg-gradient-to-r from-[#F51042] to-rose-500 text-white px-4 py-2 rounded-full border border-[#F51042]/30">
                 <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
                 <HandCoins className="h-3.5 w-3.5 relative z-10" />
-                <span className="font-semibold text-xs tracking-wide relative z-10">Turn Idle Hours Into Income</span>
+                <span className="font-semibold text-xs tracking-wide relative z-10">{t("turnIdleHoursIntoIncome")}</span>
               </div>
             </motion.div>
 
@@ -458,7 +461,7 @@ export default function KitchenLanding() {
                   <div className="relative inline-flex items-center gap-2 bg-gradient-to-r from-[#F51042] to-rose-500 text-white px-4 py-2 rounded-full shadow-xl shadow-[#F51042]/40 border border-[#F51042]/30">
                     <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
                     <HandCoins className="h-3.5 w-3.5 relative z-10" />
-                    <span className="font-semibold text-xs tracking-wide relative z-10">Turn Idle Hours Into Income</span>
+                    <span className="font-semibold text-xs tracking-wide relative z-10">{t("turnIdleHoursIntoIncome")}</span>
                   </div>
                 </motion.div>
 
@@ -471,9 +474,7 @@ export default function KitchenLanding() {
                   <h1 className="font-logo text-[3.5rem] md:text-[5rem] lg:text-[6rem] text-[#F51042] leading-none mb-4 md:mb-5 tracking-tight">
                     LocalCooks
                   </h1>
-                  <p className="font-mono text-[10px] md:text-[11px] text-[#4A6A5F] uppercase tracking-[0.4em] mb-8">
-                    For Kitchen Owners Who Dream Bigger
-                  </p>
+                  <p className="font-mono text-[10px] md:text-[11px] text-[#4A6A5F] uppercase tracking-[0.4em] mb-8">{t("forKitchenOwnersDreamBigger")}</p>
                 </motion.div>
 
                 {/* Main Headline with Loss Aversion Psychology */}
@@ -483,13 +484,9 @@ export default function KitchenLanding() {
                   transition={{ duration: 0.7, delay: 0.5 }}
                   className="mb-8"
                 >
-                  <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#2C2C2C] leading-[1.15] mb-6">
-                    Stop Leaving Money
-                    <br />
+                  <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#2C2C2C] leading-[1.15] mb-6">{t("stopLeavingMoney")}<br />
                     <span className="relative inline-block">
-                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">
-                        On the Table.
-                      </span>
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">{t("onTheTable")}</span>
                       <motion.svg 
                         className="absolute -bottom-2 left-0 w-full" 
                         viewBox="0 0 250 12" 
@@ -511,9 +508,7 @@ export default function KitchenLanding() {
                     </span>
                   </h2>
                   <p className="text-sm md:text-base lg:text-lg text-[#6B6B6B] leading-relaxed max-w-lg">
-                    <span className="block mb-3 font-semibold text-[#2C2C2C]">
-                      Your kitchen has untapped earning potential.
-                    </span>
+                    <span className="block mb-3 font-semibold text-[#2C2C2C]">{t("untappedEarningPotential")}</span>
                     <span className="block">
                       Rent your underutilized hours, storage, and equipment to verified local chefs. 
                       Generate $500+ /month passively while supporting the growing local food community.
@@ -533,9 +528,7 @@ export default function KitchenLanding() {
                     size="lg"
                     className="group relative bg-gradient-to-r from-[#F51042] to-rose-500 hover:from-rose-500 hover:to-[#F51042] text-white font-bold py-3 sm:py-4 md:py-7 px-4 sm:px-6 md:px-12 text-xs sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/40 hover:-translate-y-1 overflow-hidden flex-1 min-h-[44px] sm:min-h-[48px]"
                   >
-                    <span className="relative z-10 flex items-center justify-center">
-                      List Your Kitchen Now
-                      <ArrowRight className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 group-hover:translate-x-1 transition-transform" />
+                    <span className="relative z-10 flex items-center justify-center">{t("getStarted")}<ArrowRight className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 group-hover:translate-x-1 transition-transform" />
                     </span>
                   </Button>
                   <Button
@@ -543,9 +536,7 @@ export default function KitchenLanding() {
                     size="lg"
                     className="border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-rose-50 font-semibold py-3 sm:py-4 md:py-7 px-4 sm:px-6 md:px-10 text-xs sm:text-sm md:text-lg rounded-full transition-all duration-300 flex-1 min-h-[44px] sm:min-h-[48px]"
                     onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
-                  >
-                    See How It Works
-                  </Button>
+                  >{t("seeHowItWorks")}</Button>
                 </motion.div>
 
                 {/* Trust Indicators */}
@@ -556,9 +547,9 @@ export default function KitchenLanding() {
                   className="flex flex-nowrap md:flex-wrap gap-x-2 md:gap-x-6 gap-y-3"
                 >
                   {[
-                    { icon: CheckCircle2, text: "0% Platform Fee During Trial" },
-                    { icon: Shield, text: "Verified Renters Only" },
-                    { icon: HeartHandshake, text: "Full Insurance Coverage" }
+                    { icon: CheckCircle2, text: t("zeroPlatformFeeTrial") },
+                    { icon: Shield, text: t("verifiedRentersOnly") },
+                    { icon: HeartHandshake, text: t("fullInsuranceCoverage") }
                   ].map((item, i) => (
                     <motion.span 
                       key={i}
@@ -589,10 +580,12 @@ export default function KitchenLanding() {
                   {/* Main Image Container */}
                   <div className="relative rounded-[2rem] overflow-visible shadow-2xl shadow-rose-400/20 w-full">
                     <div className="relative rounded-[2rem] overflow-hidden w-full">
-                      <img 
+                      <SmartImage 
                         src={emptyKitchenImage} 
-                        alt="Professional commercial kitchen ready for rental" 
+                        alt={t("altKitchenRental")} 
                         className="w-full h-auto object-cover aspect-[4/3]"
+                        loading="eager"
+                        fetchPriority="high"
                       />
                       
                       {/* Gradient Overlay */}
@@ -608,21 +601,21 @@ export default function KitchenLanding() {
                     >
                       <div className="flex items-center justify-between gap-2 lg:gap-4">
                         <div className="flex-1 min-w-0">
-                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">During Trial</p>
-                          <p className="text-sm lg:text-base font-bold text-slate-950 leading-tight mb-1 lg:mb-1.5">0% Platform Fee</p>
+                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">{t("duringTrial")}</p>
+                          <p className="text-sm lg:text-base font-bold text-slate-950 leading-tight mb-1 lg:mb-1.5">{t("zeroPlatformFee")}</p>
                           <div className="flex items-center gap-2 lg:gap-4">
                             <div className="flex items-center gap-0.5 lg:gap-1">
                               <div className="w-0.5 h-0.5 lg:w-1 lg:h-1 rounded-full bg-[#F51042]"></div>
-                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">100% yours</span>
+                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">{t("hundredYours")}</span>
                             </div>
                             <div className="flex items-center gap-0.5 lg:gap-1">
                               <div className="w-0.5 h-0.5 lg:w-1 lg:h-1 rounded-full bg-[#F51042]"></div>
-                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">Zero risk</span>
+                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">{t("zeroRisk")}</span>
                             </div>
                           </div>
                         </div>
                         <div className="flex-shrink-0 text-right pl-2 lg:pl-4 border-l border-slate-200">
-                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">You Keep</p>
+                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">{t("youKeep")}</p>
                           <p className="text-lg lg:text-xl font-bold text-[#F51042] leading-tight">100%</p>
                         </div>
                       </div>
@@ -643,13 +636,13 @@ export default function KitchenLanding() {
                       <div className="w-8 h-8 lg:w-11 lg:h-11 bg-gradient-to-br from-[#F51042] to-rose-500 rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg shadow-[#F51042]/30 flex-shrink-0">
                         <img
                           src={EarnIcon}
-                          alt="Earn while you're away"
+                          alt={t("altEarnAway")}
                           className="h-6 w-6 lg:h-8 lg:w-8 object-contain"
                         />
                       </div>
                       <div>
-                        <p className="text-[8px] lg:text-[10px] font-medium text-slate-600 uppercase tracking-wide leading-tight">Earn While You're Away</p>
-                        <p className="text-[10px] lg:text-xs font-bold text-slate-900 leading-tight">$500+ per month</p>
+                        <p className="text-[8px] lg:text-[10px] font-medium text-slate-600 uppercase tracking-wide leading-tight">{t("earnWhileAway")}</p>
+                        <p className="text-[10px] lg:text-xs font-bold text-slate-900 leading-tight">{t("fiveHundredPlusPerMonth")}</p>
                       </div>
                     </div>
                   </motion.div>
@@ -666,11 +659,11 @@ export default function KitchenLanding() {
                       <div className="w-5 h-5 lg:w-7 lg:h-7 bg-gradient-to-br from-violet-500 to-purple-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
                         <img
                           src={BookingIcon}
-                          alt="Automated booking system"
+                          alt={t("altAutoBooking")}
                           className="h-4 w-4 lg:h-5 lg:w-5 object-contain"
                         />
                       </div>
-                      <span className="text-[10px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Automated booking system</span>
+                      <span className="text-[10px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("automatedBooking")}</span>
                     </div>
                   </motion.div>
 
@@ -685,11 +678,11 @@ export default function KitchenLanding() {
                       <div className="w-5 h-5 lg:w-7 lg:h-7 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
                         <img
                           src={VerifiedIcon}
-                          alt="Verified chefs"
+                          alt={t("altVerifiedChefs")}
                           className="h-4 w-4 lg:h-5 lg:w-5 object-contain"
                         />
                       </div>
-                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Every renter verified & insured</span>
+                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("everyRenterVerified")}</span>
                     </div>
                   </motion.div>
 
@@ -704,11 +697,11 @@ export default function KitchenLanding() {
                       <div className="w-6 h-6 lg:w-8 lg:h-8 bg-gradient-to-br from-amber-500 to-orange-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
                         <img
                           src={WeeklyDepositIcon}
-                          alt="Weekly direct deposits"
+                          alt={t("altWeeklyDeposits")}
                           className="h-5 w-5 lg:h-6 lg:w-6 object-contain"
                         />
                       </div>
-                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Weekly direct deposits</span>
+                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("weeklyDeposits")}</span>
                     </div>
                   </motion.div>
 
@@ -723,11 +716,11 @@ export default function KitchenLanding() {
                       <div className="w-5 h-5 lg:w-7 lg:h-7 bg-gradient-to-br from-rose-500 to-pink-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
                         <img
                           src={RulesIcon}
-                          alt="Your rules and schedule"
+                          alt={t("altRulesSchedule")}
                           className="h-4 w-4 lg:h-5 lg:w-5 object-contain"
                         />
                       </div>
-                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Your rules, your rates, your schedule</span>
+                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("yourRulesRates")}</span>
                     </div>
                   </motion.div>
 
@@ -742,11 +735,11 @@ export default function KitchenLanding() {
                       <div className="w-6 h-6 lg:w-8 lg:h-8 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
                         <img
                           src={HoursEquipmentIcon}
-                          alt="Hours, storage, and equipment"
+                          alt={t("altHoursStorage")}
                           className="h-5 w-5 lg:h-6 lg:w-6 object-contain"
                         />
                       </div>
-                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Hours + Storage + Equipment</span>
+                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("hoursStorageEquip")}</span>
                     </div>
                   </motion.div>
                 </motion.div>
@@ -758,15 +751,13 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             THE PROBLEM - Lost Revenue Section with Floating Icons
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="lost-revenue" className="relative py-20 md:py-28 px-4 bg-gradient-to-b from-rose-50/40 via-white to-white overflow-hidden">
+        <section id="lost-revenue" className="relative scroll-mt-24 py-20 md:py-28 px-4 bg-gradient-to-b from-rose-50/40 via-white to-white overflow-hidden">
           <ScrollLinkedRevenueIcons />
           
           <div className="container mx-auto max-w-4xl relative z-10">
             <FadeInSection>
               <div className="text-center">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-rose-100 rounded-full">
-                  The Opportunity You're Missing
-                </span>
+                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-rose-100 rounded-full">{t("opportunityMissing")}</span>
                 
                 <motion.h2
                   initial={{ opacity: 0, y: 30 }}
@@ -777,9 +768,7 @@ export default function KitchenLanding() {
                 >
                   Every empty hour is{" "}
                   <span className="relative inline-block">
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-red-500 to-rose-600">
-                      money walking out the door.
-                    </span>
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-red-500 to-rose-600">{t("moneyWalkingOut")}</span>
                     <motion.svg 
                       className="absolute -bottom-1 md:-bottom-2 left-0 w-full" 
                       viewBox="0 0 400 12" 
@@ -812,27 +801,21 @@ export default function KitchenLanding() {
                 >
                   <p className="text-sm md:text-base lg:text-lg text-[#6B6B6B] leading-relaxed mb-8">
                     That cold storage sitting quiet overnight?{" "}
-                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">
-                      Lost revenue.
-                    </span>
+                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">{t("lostRevenue")}</span>
                     <br />
                     Equipment collecting dust?{" "}
-                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">
-                      Depreciating assets.
-                    </span>
+                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">{t("depreciatingAssets")}</span>
                     <br />
                     Empty afternoon shifts?{" "}
-                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">
-                      Missed income.
-                    </span>
+                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">{t("missedIncome")}</span>
                   </p>
                   
                   {/* Stats Grid */}
                   <div className="grid grid-cols-3 gap-4 md:gap-8 mt-12">
                     {[
-                      { stat: "40%", label: "Average Kitchen Utilization", subtext: "(Before LocalCooks)" },
-                      { stat: "$500+", label: "Monthly Lost Revenue", subtext: "From idle hours alone" },
-                      { stat: "85%", label: "Avg. Utilization After", subtext: "(With LocalCooks)" },
+                      { stat: "40%", label: t("avgUtilization"), subtext: t("beforeLocalCooks") },
+                      { stat: "$500+", label: t("monthlyLostRevenue"), subtext: t("fromIdleHoursAlone") },
+                      { stat: "85%", label: t("avgUtilizationAfter"), subtext: t("withLocalCooks") },
                     ].map((item, i) => (
                       <motion.div
                         key={i}
@@ -882,9 +865,7 @@ export default function KitchenLanding() {
                       className="inline-flex items-center gap-2 bg-rose-50 border border-rose-200/60 rounded-full px-4 py-2 mb-6"
                     >
                       <div className="w-2 h-2 rounded-full bg-[#F51042] animate-pulse" />
-                      <span className="font-mono text-xs uppercase tracking-[0.2em] text-[#F51042] font-medium">
-                        Revenue Streams
-                      </span>
+                      <span className="font-mono text-xs uppercase tracking-[0.2em] text-[#F51042] font-medium">{t("revenueStreams")}</span>
                     </motion.div>
                     
                     <motion.h2
@@ -893,13 +874,9 @@ export default function KitchenLanding() {
                       viewport={{ once: true }}
                       transition={{ duration: 0.7, delay: 0.1 }}
                       className="text-3xl md:text-4xl lg:text-5xl font-bold text-slate-900 leading-tight mb-4"
-                    >
-                      Multiple Revenue Streams.
-                      <br />
+                    >{t("multipleRevenueStreams")}<br />
                       <span className="relative inline-block mt-2">
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">
-                          One Dashboard.
-                        </span>
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">{t("oneDashboard")}</span>
                         <motion.svg 
                           className="absolute -bottom-2 left-0 w-full" 
                           viewBox="0 0 280 12" 
@@ -936,9 +913,7 @@ export default function KitchenLanding() {
                       viewport={{ once: true }}
                       transition={{ duration: 0.6, delay: 0.2 }}
                       className="text-sm md:text-base lg:text-lg text-slate-600 leading-relaxed"
-                    >
-                      Maximize every dollar of kitchen potential with diverse, flexible earning opportunities.
-                    </motion.p>
+                    >{t("maximizeEveryDollar")}</motion.p>
                   </div>
 
                   {/* Dashboard Illustration */}
@@ -952,9 +927,9 @@ export default function KitchenLanding() {
                   >
                     <div className="relative">
                     <div className="absolute -inset-10 bg-gradient-to-br from-[#F51042]/20 via-rose-400/15 to-rose-300/20 rounded-full blur-3xl" />
-                      <img
+                      <SmartImage
                         src={DashboardIcon}
-                        alt="LocalCooks revenue dashboard"
+                        alt={t("altRevenueDashboard")}
                         className="relative w-64 lg:w-80 h-auto object-contain drop-shadow-[0_18px_40px_rgba(15,118,110,0.25)]"
                       />
                     </div>
@@ -987,19 +962,13 @@ export default function KitchenLanding() {
                     
                     {/* Content */}
                     <div className="relative">
-                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-[#F51042] transition-colors duration-300">
-                        Hourly Kitchen Rentals
-                      </h3>
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-[#F51042] transition-colors duration-300">{t("hourlyRentals")}</h3>
                       
                       <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-4 py-1.5 mb-5">
-                        <span className="text-xs md:text-sm font-semibold text-[#F51042]">
-                          Typical range: $30–$80/hour
-                        </span>
+                        <span className="text-xs md:text-sm font-semibold text-[#F51042]">{t("typicalRangeHourly")}</span>
                       </div>
                       
-                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">
-                        Fill your calendar with chefs, bakers, and caterers who book flexible blocks of time. Hourly rentals are the fastest, easiest way to turn quiet hours into predictable income—without changing how you already operate.
-                      </p>
+                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">{t("fillYourCalendar")}</p>
                     </div>
                   </div>
                 </motion.div>
@@ -1026,19 +995,13 @@ export default function KitchenLanding() {
                     
                     {/* Content */}
                     <div className="relative">
-                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-violet-700 transition-colors duration-300">
-                        Storage That Pays
-                      </h3>
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-violet-700 transition-colors duration-300">{t("storageThatPays")}</h3>
                       
                       <div className="inline-flex items-center gap-2 bg-violet-50 rounded-full px-4 py-1.5 mb-5">
-                        <span className="text-xs md:text-sm font-semibold text-violet-700">
-                          Typical range: $100–$300/month
-                        </span>
+                        <span className="text-xs md:text-sm font-semibold text-violet-700">{t("typicalRangeStorage")}</span>
                       </div>
                       
-                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">
-                        Monetize every shelf, fridge, and freezer door. Offer dry, cold, or freezer storage as add-ons or standalone plans so food businesses can scale production, while your underused storage becomes a steady monthly revenue line.
-                      </p>
+                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">{t("monetizeEveryShelf")}</p>
                     </div>
                   </div>
                 </motion.div>
@@ -1065,19 +1028,13 @@ export default function KitchenLanding() {
                     
                     {/* Content */}
                     <div className="relative">
-                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-amber-700 transition-colors duration-300">
-                        Equipment Rental
-                      </h3>
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-amber-700 transition-colors duration-300">{t("equipmentRental")}</h3>
                       
                       <div className="inline-flex items-center gap-2 bg-amber-50 rounded-full px-4 py-1.5 mb-5">
-                        <span className="text-xs md:text-sm font-semibold text-amber-700">
-                          Typical add-ons: $5–$15/booking
-                        </span>
+                        <span className="text-xs md:text-sm font-semibold text-amber-700">{t("typicalAddonsEquip")}</span>
                       </div>
                       
-                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">
-                        Your blast chillers, commercial mixers, and specialty tools are assets—not just overhead. Bundle them into kitchen bookings or charge per use so every piece of gear helps pay for itself faster.
-                      </p>
+                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">{t("blastChillersAssets")}</p>
                     </div>
                   </div>
                 </motion.div>
@@ -1104,19 +1061,13 @@ export default function KitchenLanding() {
                     
                     {/* Content */}
                     <div className="relative">
-                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3">
-                        Custom Programs & Premium Uses
-                      </h3>
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3">{t("customPrograms")}</h3>
                       
                       <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-4 py-1.5 mb-5 border border-rose-100">
-                        <span className="text-xs md:text-sm font-medium text-[#F51042]">
-                          From monthly memberships to events and pop-ups – fully tailored
-                        </span>
+                        <span className="text-xs md:text-sm font-medium text-[#F51042]">{t("monthlyMemberships")}</span>
                       </div>
                       
-                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">
-                        When your space has more potential than a simple hourly rate, we help you tap into it. Offer fixed monthly memberships for serious food businesses, premium-priced workshops and events, or bespoke packages for pop-ups and catering teams. If you can imagine the use case, we can help you price it, structure it, and get it booked.
-                      </p>
+                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">{t("whenYourSpaceHasMore")}</p>
                     </div>
                   </div>
                 </motion.div>
@@ -1146,7 +1097,7 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             HOW IT WORKS - From Idle Space to Active Revenue
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="how-it-works" className="py-20 md:py-28 px-4 bg-[#F51042] text-white relative overflow-hidden">
+        <section id="how-it-works" className="scroll-mt-24 py-20 md:py-28 px-4 bg-[#F51042] text-white relative overflow-hidden">
           {/* Background decorations */}
           <div className="absolute inset-0 opacity-10">
             <div className="absolute top-20 left-20 w-96 h-96 bg-white rounded-full blur-3xl" />
@@ -1156,13 +1107,11 @@ export default function KitchenLanding() {
           <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
               <div className="text-center mb-12 md:mb-16">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-white/80 mb-4 px-4 py-2 bg-white/10 rounded-full">
-                  List Your Kitchen Today
-                </span>
+                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-white/80 mb-4 px-4 py-2 bg-white/10 rounded-full">{t("listKitchenToday")}</span>
                 <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-4">
                   From Idle Space to Active Revenue in{" "}
                   <span className="relative inline-block">
-                    <span className="text-white">3 Steps.</span>
+                    <span className="text-white">{t("threeSteps")}</span>
                     <motion.svg 
                       className="absolute -bottom-2 left-0 w-full" 
                       viewBox="0 0 400 12" 
@@ -1185,9 +1134,7 @@ export default function KitchenLanding() {
                     </motion.svg>
                   </span>
                 </h2>
-                <p className="text-sm md:text-base lg:text-lg text-white/80 max-w-3xl mx-auto leading-relaxed">
-                  We've stripped away the complexity of commercial leasing. No contracts to chase, no insurance headaches, no admin burden—just a simple platform that works for you.
-                </p>
+                <p className="text-sm md:text-base lg:text-lg text-white/80 max-w-3xl mx-auto leading-relaxed">{t("strippedAwayComplexity")}</p>
               </div>
             </FadeInSection>
 
@@ -1203,10 +1150,8 @@ export default function KitchenLanding() {
                   <div className="flex items-center gap-3 mb-4">
                     <span className="text-4xl font-black text-white/40">01</span>
                   </div>
-                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">List in 15 Minutes.<br/ > Get Your Kitchen Live in 24 hrs.</h3>
-                  <p className="text-white/80 leading-relaxed text-xs md:text-sm">
-                    Upload photos, set your rules, and block out your hours. Our team reviews everything — kitchen details, documents, compliance — to ensure you’re ready for chefs. Once approved, your listing goes live fast so you can start accepting bookings confidently.
-                  </p>
+                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">{t("listIn15Mins")}<br/ >{t("getLiveIn24h")}</h3>
+                  <p className="text-white/80 leading-relaxed text-xs md:text-sm">{t("uploadPhotosRules")}</p>
                 </motion.div>
               </FadeInSection>
 
@@ -1220,14 +1165,10 @@ export default function KitchenLanding() {
                   <div className="flex items-center gap-3 mb-4">
                     <span className="text-4xl font-black text-white/40">02</span>
                   </div>
-                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">Approve Verified Chefs.<br /> Platform Does the Rest.</h3>
+                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">{t("approveVerifiedChefs")}<br />{t("platformDoesTheRest")}</h3>
                   <div className="space-y-3 text-white/80 leading-relaxed">
-                    <p className="text-xs md:text-sm">
-                      Qualified chefs request to book your kitchen. Every renter is pre-screened with certification, registration, and insurance.
-                    </p>
-                    <p className="text-xs md:text-sm">
-                      Browse their profiles, approve the ones that fit your schedule, and you’re set.
-                    </p>
+                    <p className="text-xs md:text-sm">{t("qualifiedChefsRequest")}</p>
+                    <p className="text-xs md:text-sm">{t("browseProfilesApprove")}</p>
                   </div>
                 </motion.div>
               </FadeInSection>
@@ -1242,11 +1183,8 @@ export default function KitchenLanding() {
                   <div className="flex items-center gap-3 mb-4">
                     <span className="text-4xl font-black text-white/40">03</span>
                   </div>
-                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">  Earn on Autopilot.<br />
-                  Weekly Payouts, Zero Admin.</h3>
-                  <p className="text-white/80 leading-relaxed text-xs md:text-sm">
-                  Chefs book, arrive verified, and cook — while the platform manages confirmations, reminders, and payments. Your revenue lands in your account weekly with a clear dashboard tracking every booking. No spreadsheets, no chasing, no hassle.
-                  </p>
+                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">{t("earnOnAutopilot")}<br />{t("weeklyPayoutsZeroAdmin")}</h3>
+                  <p className="text-white/80 leading-relaxed text-xs md:text-sm">{t("chefsBookArrive")}</p>
                 </motion.div>
               </FadeInSection>
             </div>
@@ -1275,7 +1213,7 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             EVERYTHING YOU NEED SECTION - Premium Standalone Design
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="everything-included" className="relative py-24 md:py-32 px-4 bg-white overflow-hidden">
+        <section id="everything-included" className="relative scroll-mt-24 py-24 md:py-32 px-4 bg-white overflow-hidden">
           {/* Sophisticated background elements */}
           <div className="absolute inset-0 pointer-events-none">
             {/* Gradient mesh background */}
@@ -1310,9 +1248,7 @@ export default function KitchenLanding() {
                           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#F51042]" />
                         </span>
                       </div>
-                      <span className="font-semibold text-sm tracking-wide text-[#F51042]">
-                        Everything Included in Your Partnership
-                      </span>
+                      <span className="font-semibold text-sm tracking-wide text-[#F51042]">{t("everythingIncluded")}</span>
                     </div>
                   </div>
                 </motion.div>
@@ -1326,11 +1262,9 @@ export default function KitchenLanding() {
                   className="relative"
                 >
                   <h2 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold text-slate-900 leading-[1.1] mb-6">
-                    <span className="block">Everything You Need to</span>
+                    <span className="block">{t("everythingYouNeedTo")}</span>
                     <span className="relative inline-block mt-2">
-                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">
-                        Host with Confidence
-                      </span>
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">{t("hostWithConfidence")}</span>
                       {/* Animated underline */}
                       <motion.div 
                         className="absolute -bottom-2 left-0 right-0 h-1 md:h-1.5 bg-gradient-to-r from-[#F51042] via-rose-400 to-[#F51042] rounded-full"
@@ -1349,10 +1283,8 @@ export default function KitchenLanding() {
                   viewport={{ once: true }}
                   transition={{ duration: 0.6, delay: 0.2 }}
                   className="text-sm md:text-base lg:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed mt-6"
-                >
-                  Smart automation. Pre-verified professionals. Ironclad protection.
-                  <br className="hidden md:block" />
-                  <span className="font-medium text-slate-700">Your business, simplified.</span>
+                >{t("smartAutomation")}<br className="hidden md:block" />
+                  <span className="font-medium text-slate-700">{t("businessSimplified")}</span>
                 </motion.p>
               </div>
             </FadeInSection>
@@ -1382,8 +1314,8 @@ export default function KitchenLanding() {
                         </div>
                       </div>
                       <div>
-                        <h3 className="text-xl md:text-2xl font-bold text-slate-900">Automated Platform</h3>
-                        <p className="text-sm text-slate-500 font-medium">Set it once, earn forever</p>
+                        <h3 className="text-xl md:text-2xl font-bold text-slate-900">{t("automatedPlatform")}</h3>
+                        <p className="text-sm text-slate-500 font-medium">{t("setItOnce")}</p>
                       </div>
                     </div>
                     
@@ -1392,26 +1324,26 @@ export default function KitchenLanding() {
                       {[
                         {
                           icon: Calendar,
-                          title: "Smart Scheduling & Calendar Sync",
-                          description: "Your available hours sync automatically. Chefs book in real-time. No double bookings. No manual updates.",
+                          title: t("featSmartScheduling"),
+                          description: t("featSmartSchedulingDesc"),
                           gradient: "from-violet-500 to-purple-600"
                         },
                         {
                           icon: MessageCircle,
-                          title: "Automated Reminders & Communications",
-                          description: "Booking confirmations, 48 & 24-hour reminders, direct messaging—all handled. You stay informed without chasing anyone.",
+                          title: t("featReminders"),
+                          description: t("featRemindersDesc"),
                           gradient: "from-blue-500 to-indigo-600"
                         },
                         {
                           icon: CreditCard,
-                          title: "Weekly Payouts, Zero Chasing",
-                          description: "Revenue deposits directly to your bank weekly. Transparent dashboard shows every dollar earned. No invoices to send.",
+                          title: t("featWeeklyPayouts"),
+                          description: t("featWeeklyPayoutsDesc"),
                           gradient: "from-[#F51042] to-rose-500"
                         },
                         {
                           icon: Settings,
-                          title: "Custom Solutions for Custom Needs",
-                          description: "Monthly memberships, equipment add-ons, workshops, events—we customize the platform to fit exactly how you monetize.",
+                          title: t("featCustomSolutions"),
+                          description: t("featCustomSolutionsDesc"),
                           gradient: "from-amber-500 to-orange-600"
                         }
                       ].map((feature, i) => (
@@ -1470,8 +1402,8 @@ export default function KitchenLanding() {
                         </div>
                       </div>
                       <div>
-                        <h3 className="text-xl md:text-2xl font-bold text-slate-900">Verified & Protected</h3>
-                        <p className="text-sm text-slate-500 font-medium">Sleep soundly, every rental</p>
+                        <h3 className="text-xl md:text-2xl font-bold text-slate-900">{t("verifiedProtected")}</h3>
+                        <p className="text-sm text-slate-500 font-medium">{t("sleepSoundly")}</p>
                       </div>
                     </div>
                     
@@ -1480,26 +1412,26 @@ export default function KitchenLanding() {
                       {[
                         {
                           icon: BadgeCheck,
-                          title: "Pre-Verified Professionals",
-                          description: "Every renter arrives with food handler certification, business registration, and liability coverage already confirmed.",
+                          title: t("featPreVerified"),
+                          description: t("featPreVerifiedDesc"),
                           gradient: "from-blue-500 to-cyan-600"
                         },
                         {
                           icon: Eye,
-                          title: "Full Transparency Before Every Booking",
-                          description: "See all credentials before you approve—certs, licenses, coverage. Approve or decline in seconds. You're in complete control.",
+                          title: t("featFullTransparency"),
+                          description: t("featFullTransparencyDesc"),
                           gradient: "from-rose-500 to-[#F51042]"
                         },
                         {
                           icon: Lock,
-                          title: "Coverage Confirmed, Risk Managed",
-                          description: "Appropriate coverage is verified and documented upfront. You're never wondering if protection is in place.",
+                          title: t("featCoverageConfirmed"),
+                          description: t("featCoverageConfirmedDesc"),
                           gradient: "from-rose-500 to-pink-600"
                         },
                         {
                           icon: HeartHandshake,
-                          title: "24/7 Local Support",
-                          description: "Real humans handle questions, disputes, or emergencies. We've got your back so you never manage issues alone.",
+                          title: t("featLocalSupport"),
+                          description: t("featLocalSupportDesc"),
                           gradient: "from-violet-500 to-purple-600"
                         }
                       ].map((feature, i) => (
@@ -1557,12 +1489,8 @@ export default function KitchenLanding() {
                     
                     <div className="relative flex flex-col md:flex-row items-center justify-between gap-6">
                       <div className="text-center md:text-left">
-                        <h3 className="text-xl md:text-2xl lg:text-3xl font-bold text-white mb-2">
-                          Ready to turn idle hours into income?
-                        </h3>
-                        <p className="text-white/80 text-sm md:text-base">
-                          Join kitchen owners earning $500+ /month • 0% platform fee during trial
-                        </p>
+                        <h3 className="text-xl md:text-2xl lg:text-3xl font-bold text-white mb-2">{t("readyToTurnIdle")}</h3>
+                        <p className="text-white/80 text-sm md:text-base">{t("joinKitchenOwners")}</p>
                       </div>
                       <Button
                         onClick={() => window.location.href = 'mailto:admin@localcook.shop?subject=Kitchen Partnership - List My Kitchen'}
@@ -1603,9 +1531,7 @@ export default function KitchenLanding() {
                 >
                   Run Your Kitchen{" "}
                   <span className="relative inline-block">
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-red-500 to-rose-600">
-                      With Confidence
-                    </span>
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-red-500 to-rose-600">{t("withConfidence")}</span>
                     <motion.svg
                       className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
                       viewBox="0 0 350 12"
@@ -1628,9 +1554,7 @@ export default function KitchenLanding() {
                     </motion.svg>
                   </span>
                 </motion.h2>
-                <p className="text-[#6B6B6B] text-base md:text-lg max-w-2xl mx-auto leading-relaxed">
-                  From licensing and insurance to risk assessment and pricing — our comprehensive guide covers everything you need to operate a shared commercial kitchen.
-                </p>
+                <p className="text-[#6B6B6B] text-base md:text-lg max-w-2xl mx-auto leading-relaxed">{t("fromLicensingToRisk")}</p>
               </div>
             </FadeInSection>
 
@@ -1639,26 +1563,26 @@ export default function KitchenLanding() {
                 {[
                   {
                     icon: Scale,
-                    title: "Legal Foundation",
-                    description: "Food establishment licences, municipal permits, and compliance requirements for your facility.",
+                    title: t("kbLegalTitle"),
+                    description: t("kbLegalDesc"),
                     color: "bg-blue-50 text-blue-600",
                   },
                   {
                     icon: Shield,
-                    title: "Insurance & Liability",
-                    description: "CGL coverage, tenant insurance requirements, and risk transfer strategies for shared spaces.",
+                    title: t("kbInsuranceTitle"),
+                    description: t("kbInsuranceDesc"),
                     color: "bg-emerald-50 text-emerald-600",
                   },
                   {
                     icon: ClipboardCheck,
-                    title: "Risk Assessment",
-                    description: "HACCP-based safety plans, sanitation protocols, and operational checklists for your kitchen.",
+                    title: t("kbRiskTitle"),
+                    description: t("kbRiskDesc"),
                     color: "bg-amber-50 text-amber-600",
                   },
                   {
                     icon: DollarSign,
-                    title: "Pricing & Operations",
-                    description: "Set competitive rates, manage bookings, and optimize occupancy to maximize your revenue.",
+                    title: t("kbPricingTitle"),
+                    description: t("kbPricingDesc"),
                     color: "bg-purple-50 text-purple-600",
                   },
                 ].map((item, i) => (
@@ -1683,7 +1607,7 @@ export default function KitchenLanding() {
                       size="lg"
                       className="bg-[#F51042] hover:bg-[#D90935] text-white font-semibold py-6 px-10 text-base rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
                     >
-                      Explore Full Resource Guide
+                      {t("exploreResourceGuide")}
                       <ArrowRight className="ml-2 h-5 w-5" />
                     </Button>
                   </Link>
@@ -1700,52 +1624,28 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             FAQ SECTION
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="faq" className="py-12 sm:py-16 md:py-20 lg:py-28 px-4 sm:px-6 bg-gray-50">
+        <section id="faq" className="scroll-mt-24 py-12 sm:py-16 md:py-20 lg:py-28 px-4 sm:px-6 bg-gray-50">
           <div className="container mx-auto max-w-3xl">
             <FadeInSection>
               <div className="text-center mb-12">
                 <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-rose-100 rounded-full">
                   Questions
                 </span>
-                <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#1A1A1A]">FAQ</h2>
+                <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#1A1A1A]">{t("faqWord")}</h2>
               </div>
             </FadeInSection>
 
             <FadeInSection delay={1}>
               <Accordion type="single" collapsible className="space-y-3">
                 {[
-                  { 
-                    q: "What types of kitchens are you looking for?", 
-                    a: "We welcome a wide variety of inspected, commercial-grade kitchen spaces. Whether you run a bustling restaurant with downtime in the mornings, a church with a certified community kitchen, or a dedicated commissary space, your facility is likely a perfect fit. If your kitchen has a valid operating permit and commercial-grade equipment, local chefs are looking for a space just like yours." 
-                  },
-                  { 
-                    q: "How much can I earn by listing my kitchen?", 
-                    a: "Earnings vary based on your kitchen’s size, equipment, and availability, but many of our partners generate significant monthly revenue simply by monetizing their \"dark hours.\" You set your own hourly or daily rates. To help you stay competitive, we can recommend pricing based on similar kitchens in your local area. You keep the majority of the listing fee, turning your overhead costs into a new income stream." 
-                  },
-                  { 
-                    q: "Do I have control over who uses my space?", 
-                    a: "Absolutely. You always have final say over who cooks in your kitchen. When a chef requests to book your space, you can review their profile, their proposed concept, and their rental history before accepting. We believe in building partnerships, not just transactions, so we ensure you only host professionals you feel comfortable with." 
-                  },
-                  { 
-                    q: "How does scheduling work with my existing business?", 
-                    a: "Your business always comes first. Our platform allows you to block out the exact days and hours you need for your own operations. You simply list the \"white space\"—the early mornings, late nights, or closed days when your kitchen sits empty. Our booking system prevents conflicts, ensuring your team never walks in to find a surprise guest." 
-                  },
-                  { 
-                    q: "What happens if equipment is damaged?", 
-                    a: "We take the safety of your assets seriously. All chefs on the Local Cooks platform are required to carry valid liability insurance and provide a security deposit before their first booking. We also verify their identity and business registration. In the rare event of an accident, our support team is here to help facilitate a resolution and ensure you are fairly compensated." 
-                  },
-                  { 
-                    q: "Will my kitchen be left clean?", 
-                    a: "Yes. We enforce a strict \"leave it better than you found it\" policy. Every chef is required to complete a cleaning checklist—verified by photos—at the end of their shift. If a chef fails to meet these standards, they are subject to cleaning fees and removal from the platform. We know that arriving to a clean kitchen is non-negotiable for your business." 
-                  },
-                  { 
-                    q: "What about health inspections and compliance?", 
-                    a: "We operate with full transparency regarding local health regulations. Since your kitchen is already a permitted facility, \"guest chefs\" generally operate under your existing framework or apply for their own temporary permits depending on the scope of their work. We help ensure all paperwork is in order before a chef ever lights a burner, keeping your facility compliant and your mind at ease." 
-                  },
-                  { 
-                    q: "How and when do I get paid?", 
-                    a: "We handle all the billing so you don’t have to chase invoices. Chefs pay upfront through our secure platform when they book your space. We transfer your earnings directly to your bank account on a consistent schedule (typically weekly or bi-weekly), providing you with a simple dashboard to track your revenue and bookings in real time." 
-                  },
+                  { q: t("kFaqQ1"), a: t("kFaqA1") },
+                  { q: t("kFaqQ2"), a: t("kFaqA2") },
+                  { q: t("kFaqQ3"), a: t("kFaqA3") },
+                  { q: t("kFaqQ4"), a: t("kFaqA4") },
+                  { q: t("kFaqQ5"), a: t("kFaqA5") },
+                  { q: t("kFaqQ6"), a: t("kFaqA6") },
+                  { q: t("kFaqQ7"), a: t("kFaqA7") },
+                  { q: t("kFaqQ8"), a: t("kFaqA8") },
                 ].map((item, i) => (
                   <AccordionItem key={i} value={`item-${i}`} className="border border-gray-200 rounded-xl bg-white px-6 shadow-sm">
                     <AccordionTrigger className="text-left text-lg font-semibold text-[#2C2C2C] py-5 hover:no-underline hover:text-[#F51042]">

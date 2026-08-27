@@ -7,7 +7,7 @@ import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import type { WizardStep } from "@/components/manager/requirements/types";
 
-const WIZARD_STEP_ORDER: WizardStep[] = ['step1', 'step2'];
+const WIZARD_STEP_ORDER: WizardStep[] = ['step2'];
 
 export default function ApplicationRequirementsStep() {
   const {
@@ -21,7 +21,7 @@ export default function ApplicationRequirementsStep() {
   } = useManagerOnboarding();
 
   // Track the current wizard tab
-  const [currentWizardStep, setCurrentWizardStep] = useState<WizardStep>('step1');
+  const [currentWizardStep, setCurrentWizardStep] = useState<WizardStep>('step2');
   const [isSaving, setIsSaving] = useState(false);
   const wizardRef = useRef<ApplicationRequirementsWizardHandle>(null);
   const topRef = useRef<HTMLDivElement>(null);

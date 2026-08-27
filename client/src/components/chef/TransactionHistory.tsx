@@ -7,6 +7,7 @@
  */
 
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 // date-fns format removed — using toLocaleDateString with timeZone for timezone-aware display
 import {
@@ -46,8 +47,6 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  CheckCircle,
-  CreditCard,
   RefreshCw,
   Building2,
   Package,
@@ -62,6 +61,7 @@ import {
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
+import { ChefPageHeader, StatTile } from "@/components/chef/ui";
 
 // Types
 interface Transaction {
@@ -101,39 +101,39 @@ function formatCurrency(cents: number): string {
   }).format(cents / 100);
 }
 
-function getStatusBadge(status: string, refundAmount: number) {
+function getStatusBadge(status: string, refundAmount: number, t: any) {
   if (status === 'refunded' || (status === 'partially_refunded' && refundAmount > 0)) {
     return (
       <Badge variant="info">
-        {status === 'partially_refunded' ? 'Partial Refund' : 'Refunded'}
+        {status === 'partially_refunded' ? t("billingPartialRefund", "Partial Refund") : t("billingRefunded", "Refunded")}
       </Badge>
     );
   }
   if (status === 'succeeded') {
     return (
       <Badge variant="success">
-        Completed
+        {t("billingCompleted", "Completed")}
       </Badge>
     );
   }
   if (status === 'pending' || status === 'processing') {
     return (
       <Badge variant="warning">
-        {status === 'processing' ? 'Processing' : 'Pending'}
+        {status === 'processing' ? t("billingProcessing", "Processing") : t("billingPending", "Pending")}
       </Badge>
     );
   }
   if (status === 'canceled') {
     return (
       <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
-        No Charge
+        {t("billingNoCharge", "No Charge")}
       </Badge>
     );
   }
   if (status === 'failed') {
     return (
       <Badge variant="outline" className="text-destructive border-destructive/30">
-        Failed
+        {t("billingFailed", "Failed")}
       </Badge>
     );
   }
@@ -142,45 +142,45 @@ function getStatusBadge(status: string, refundAmount: number) {
 
 function getBookingTypeIcon(type: string) {
   switch (type) {
-    case 'kitchen':
-      return <ChefHat className="h-4 w-4 text-orange-600" />;
-    case 'storage':
-      return <Package className="h-4 w-4 text-purple-600" />;
-    case 'equipment':
-      return <Building2 className="h-4 w-4 text-blue-600" />;
+    case "kitchen":
+      return <ChefHat className="h-4 w-4 text-muted-foreground" />;
+    case "storage":
+      return <Package className="h-4 w-4 text-muted-foreground" />;
+    case "equipment":
+      return <Building2 className="h-4 w-4 text-muted-foreground" />;
     default:
       return <Receipt className="h-4 w-4 text-muted-foreground" />;
   }
 }
 
-function getBookingTypeLabel(type: string, metadata: Record<string, unknown> | null): string {
+function getBookingTypeLabel(type: string, metadata: Record<string, unknown> | null, t: any): string {
   // Check metadata for specific transaction types
   if (metadata) {
-    if (metadata.damage_claim_id) return 'Damage Claim';
-    if (metadata.overstay_id) return 'Overstay Penalty';
-    if (metadata.storage_extension_id) return 'Storage Extension';
+    if (metadata.damage_claim_id) return t("billingDamageClaim", "Damage Claim");
+    if (metadata.overstay_id) return t("billingOverstayPenaltyType", "Overstay Penalty");
+    if (metadata.storage_extension_id) return t("billingStorageExtension", "Storage Extension");
   }
   
   switch (type) {
     case 'kitchen':
-      return 'Kitchen Booking';
+      return t("billingKitchenBooking", "Kitchen Booking");
     case 'storage':
-      return 'Storage Booking';
+      return t("billingStorageBooking", "Storage Booking");
     case 'equipment':
-      return 'Equipment Rental';
+      return t("billingEquipmentRental", "Equipment Rental");
     case 'bundle':
-      return 'Bundle Booking';
+      return t("billingBundleBooking", "Bundle Booking");
     default:
       return type;
   }
 }
 
 // Column definitions
-function getTransactionColumns(): ColumnDef<Transaction>[] {
+function getTransactionColumns(t: any, language: string): ColumnDef<Transaction>[] {
   return [
     {
       id: "reference",
-      header: "Ref",
+      header: t("billingRefColumn", { defaultValue: "Ref" }),
       cell: ({ row }) => {
         const ref = row.original.referenceCode || row.original.bookingId;
         return (
@@ -199,7 +199,7 @@ function getTransactionColumns(): ColumnDef<Transaction>[] {
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           className="h-8 -ml-3"
         >
-          Date
+          {t("billingDateColumn", { defaultValue: "Date" })}
           <ArrowUpDown className="ml-2 h-3 w-3" />
         </Button>
       ),
@@ -210,10 +210,10 @@ function getTransactionColumns(): ColumnDef<Transaction>[] {
           <div className="space-y-1">
             <div className="flex items-center gap-1 text-sm font-medium">
               <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-              {new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/St_Johns' })}
+              {new Date(date).toLocaleDateString(language, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/St_Johns' })}
             </div>
             <div className="text-xs text-muted-foreground">
-              {new Date(date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/St_Johns' })}
+              {new Date(date).toLocaleTimeString(language, { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/St_Johns' })}
             </div>
           </div>
         );
@@ -221,10 +221,10 @@ function getTransactionColumns(): ColumnDef<Transaction>[] {
     },
     {
       accessorKey: "bookingType",
-      header: "Type",
+      header: t("billingTypeColumn", { defaultValue: "Type" }),
       cell: ({ row }) => {
         const tx = row.original;
-        const label = getBookingTypeLabel(tx.bookingType, tx.metadata);
+        const label = getBookingTypeLabel(tx.bookingType, tx.metadata, t);
         return (
           <div className="flex items-center gap-2">
             {getBookingTypeIcon(tx.bookingType)}
@@ -235,13 +235,13 @@ function getTransactionColumns(): ColumnDef<Transaction>[] {
     },
     {
       accessorKey: "itemName",
-      header: "Details",
+      header: t("billingDetailsColumn", { defaultValue: "Details" }),
       cell: ({ row }) => {
         const tx = row.original;
         return (
           <div className="space-y-1">
             <div className="text-sm font-medium">
-              {tx.itemName || 'N/A'}
+              {tx.itemName || t("billingNotAvailable", { defaultValue: "N/A" })}
             </div>
             {tx.locationName && (
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -262,7 +262,7 @@ function getTransactionColumns(): ColumnDef<Transaction>[] {
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           className="h-8 justify-end w-full"
         >
-          Amount
+          {t("billingAmountColumn", { defaultValue: "Amount" })}
           <ArrowUpDown className="ml-2 h-3 w-3" />
         </Button>
       ),
@@ -274,7 +274,7 @@ function getTransactionColumns(): ColumnDef<Transaction>[] {
         if (isVoidedAuth) {
           return (
             <div className="text-right">
-              <div className="font-medium text-sm text-muted-foreground">No Charge</div>
+              <div className="font-medium text-sm text-muted-foreground">{t("billingNoCharge", { defaultValue: "No Charge" })}</div>
               {tx.amount > 0 && (
                 <div className="text-xs text-muted-foreground/50 line-through">
                   {formatCurrency(tx.amount)}
@@ -291,8 +291,8 @@ function getTransactionColumns(): ColumnDef<Transaction>[] {
               {formatCurrency(tx.amount)}
             </div>
             {hasRefund && (
-              <div className="text-xs text-purple-600">
-                -{formatCurrency(tx.refundAmount)} refunded
+              <div className="text-xs text-muted-foreground">
+                {t("billingRefundedAmount", { amount: formatCurrency(tx.refundAmount), defaultValue: "-{amount} refunded" })}
               </div>
             )}
           </div>
@@ -301,10 +301,10 @@ function getTransactionColumns(): ColumnDef<Transaction>[] {
     },
     {
       accessorKey: "status",
-      header: "Status",
+      header: t("billingStatusColumn", { defaultValue: "Status" }),
       cell: ({ row }) => {
         const tx = row.original;
-        return getStatusBadge(tx.status, tx.refundAmount);
+        return getStatusBadge(tx.status, tx.refundAmount, t);
       },
     },
   ];
@@ -312,6 +312,7 @@ function getTransactionColumns(): ColumnDef<Transaction>[] {
 
 // Main Component
 export function TransactionHistory() {
+  const { t, i18n } = useTranslation("chef");
   const [viewType, setViewType] = useState<TransactionViewType>("all");
   const [bookingTypeFilter, setBookingTypeFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -391,7 +392,7 @@ export function TransactionHistory() {
   }, [transactions]);
 
   // Column definitions
-  const columns = useMemo(() => getTransactionColumns(), []);
+  const columns = useMemo(() => getTransactionColumns(t, i18n.language), [t, i18n.language]);
 
   // TanStack Table instance
   const table = useReactTable({
@@ -424,10 +425,10 @@ export function TransactionHistory() {
     return (
       <Card className="border-destructive">
         <CardContent className="pt-6">
-          <p className="text-destructive">Error loading transactions: {(error as Error).message}</p>
+          <p className="text-destructive">{t("billingErrorLoadingTransactions", { message: (error as Error).message, defaultValue: "Error loading transactions: {message}" })}</p>
           <Button onClick={() => refetch()} className="mt-4">
             <RefreshCw className="w-4 h-4 mr-2" />
-            Retry
+            {t("billingRetry", "Retry")}
           </Button>
         </CardContent>
       </Card>
@@ -437,74 +438,41 @@ export function TransactionHistory() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
-          <CreditCard className="h-5 w-5 text-white" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Transaction History</h1>
-          <p className="text-sm text-muted-foreground">
-            View all your payments and refunds
-          </p>
-        </div>
-      </div>
+      <ChefPageHeader
+        title={t("billingTransactionHistoryTitle", "Transaction history")}
+        description={t("billingTransactionHistoryDesc", "Kitchen, storage, and other payments.")}
+      />
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Paid</p>
-                <p className="text-xl font-bold text-green-700">{formatCurrency(totals.totalPaid)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                <RefreshCw className="h-5 w-5 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Refunded</p>
-                <p className="text-xl font-bold text-purple-700">{formatCurrency(totals.totalRefunded)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                <DollarSign className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Net Total</p>
-                <p className="text-xl font-bold text-blue-700">{formatCurrency(totals.netTotal)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <StatTile
+          label={t("billingTotalPaid", "Total paid")}
+          value={formatCurrency(totals.totalPaid)}
+          tone="success"
+        />
+        <StatTile
+          label={t("billingRefunded", "Refunded")}
+          value={formatCurrency(totals.totalRefunded)}
+          tone="neutral"
+        />
+        <StatTile
+          label={t("billingNet", "Net")}
+          value={formatCurrency(totals.netTotal)}
+          tone="progress"
+        />
       </div>
 
       {/* Main Card with Table */}
-      <Card>
+      <Card className="shadow-none">
         <CardHeader className="pb-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <CardTitle className="text-xl font-semibold flex items-center gap-2">
                 <Receipt className="h-5 w-5" />
-                Transactions
+                {t("billingTransactionsTitle", "Transactions")}
               </CardTitle>
               <CardDescription>
-                {table.getFilteredRowModel().rows.length} of {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
+                {t("billingTransactionCountSummary", { filtered: table.getFilteredRowModel().rows.length, count: transactions.length, defaultValue: "{filtered} of {count, plural, one {# transaction} other {# transactions}}" })}
               </CardDescription>
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
@@ -513,7 +481,7 @@ export function TransactionHistory() {
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="text"
-                  placeholder="Search by ref code, ID..."
+                  placeholder={t("billingSearchPlaceholder", "Search by ref code, ID...")}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 pr-8 w-full sm:w-[180px] lg:w-[220px]"
@@ -531,18 +499,18 @@ export function TransactionHistory() {
               </div>
               <Select value={bookingTypeFilter} onValueChange={setBookingTypeFilter}>
                 <SelectTrigger className="w-full sm:w-[160px]">
-                  <SelectValue placeholder="All Types" />
+                  <SelectValue placeholder={t("billingAllTypes", "All Types")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="kitchen">Kitchen Bookings</SelectItem>
-                  <SelectItem value="storage">Storage</SelectItem>
-                  <SelectItem value="equipment">Equipment</SelectItem>
+                  <SelectItem value="all">{t("billingAllTypes", "All Types")}</SelectItem>
+                  <SelectItem value="kitchen">{t("billingKitchenBookingsOption", "Kitchen Bookings")}</SelectItem>
+                  <SelectItem value="storage">{t("billingStorageOption", "Storage")}</SelectItem>
+                  <SelectItem value="equipment">{t("billingEquipmentOption", "Equipment")}</SelectItem>
                 </SelectContent>
               </Select>
               <Button variant="outline" onClick={() => refetch()} disabled={isLoading} className="w-full sm:w-auto">
                 <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                Refresh
+                {t("billingRefresh", "Refresh")}
               </Button>
             </div>
           </div>
@@ -553,27 +521,27 @@ export function TransactionHistory() {
           <Tabs value={viewType} onValueChange={(v) => setViewType(v as TransactionViewType)} className="w-full">
             <TabsList className="w-full gap-1">
               <TabsTrigger value="all" className="flex-1 min-w-[70px] text-xs sm:text-sm px-2 py-1.5">
-                All
+                {t("billingTabAll", "All")}
                 <Badge variant="count" className="ml-1">{transactions.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="succeeded" className="flex-1 min-w-[70px] text-xs sm:text-sm px-2 py-1.5">
-                <span className="hidden sm:inline">Completed</span>
-                <span className="sm:hidden">Done</span>
+                <span className="hidden sm:inline">{t("billingCompleted", "Completed")}</span>
+                <span className="sm:hidden">{t("billingTabDone", "Done")}</span>
                 <Badge variant="count" className="ml-1">{succeededTx.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="refunded" className="flex-1 min-w-[70px] text-xs sm:text-sm px-2 py-1.5">
-                <span className="hidden sm:inline">Refunded</span>
-                <span className="sm:hidden">Refund</span>
+                <span className="hidden sm:inline">{t("billingRefunded", "Refunded")}</span>
+                <span className="sm:hidden">{t("billingTabRefund", "Refund")}</span>
                 <Badge variant="count" className="ml-1">{refundedTx.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="pending" className="flex-1 min-w-[70px] text-xs sm:text-sm px-2 py-1.5">
-                Pending
+                {t("billingPending", "Pending")}
                 <Badge variant="count" className="ml-1">{pendingTx.length}</Badge>
               </TabsTrigger>
               {canceledTx.length > 0 && (
                 <TabsTrigger value="canceled" className="flex-1 min-w-[70px] text-xs sm:text-sm px-2 py-1.5">
-                  <span className="hidden sm:inline">No Charge</span>
-                  <span className="sm:hidden">Void</span>
+                  <span className="hidden sm:inline">{t("billingNoCharge", "No Charge")}</span>
+                  <span className="sm:hidden">{t("billingTabVoid", "Void")}</span>
                   <Badge variant="count" className="ml-1">{canceledTx.length}</Badge>
                 </TabsTrigger>
               )}
@@ -604,9 +572,9 @@ export function TransactionHistory() {
                       data-state={row.getIsSelected() && "selected"}
                       className={cn(
                         "hover:bg-muted/50",
-                        row.original.status === "succeeded" && row.original.refundAmount === 0 && "bg-green-50/30",
-                        (row.original.status === "refunded" || row.original.refundAmount > 0) && "bg-purple-50/30",
-                        (row.original.status === "pending" || row.original.status === "processing") && "bg-yellow-50/30",
+                        row.original.status === "succeeded" && row.original.refundAmount === 0 && "bg-muted/30",
+                        (row.original.status === "refunded" || row.original.refundAmount > 0) && "bg-muted/20",
+                        (row.original.status === "pending" || row.original.status === "processing") && "bg-muted/30",
                         row.original.status === "canceled" && "bg-muted/40"
                       )}
                     >
@@ -622,11 +590,11 @@ export function TransactionHistory() {
                     <TableCell colSpan={columns.length} className="h-48 text-center">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Receipt className="h-8 w-8 text-muted-foreground" />
-                        <p className="text-sm font-medium">No Transactions</p>
+                        <p className="text-sm font-medium">{t("billingNoTransactionsTitle", "No Transactions")}</p>
                         <p className="text-sm text-muted-foreground">
                           {viewType === "all" 
-                            ? "You haven't made any payments yet."
-                            : `No ${viewType} transactions to display.`}
+                            ? t("billingNoTransactionsAllDesc", "You haven't made any payments yet.")
+                            : t("billingNoTransactionsFilteredDesc", { viewType, defaultValue: "No {viewType} transactions to display." })}
                         </p>
                       </div>
                     </TableCell>

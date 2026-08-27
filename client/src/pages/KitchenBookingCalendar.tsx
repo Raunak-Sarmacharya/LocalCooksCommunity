@@ -15,6 +15,7 @@ import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-a
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SmartImage } from "@/components/ui/smart-image";
 
 // Component for equipment image with R2 proxy URL
 function EquipmentImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
@@ -22,14 +23,11 @@ function EquipmentImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
 
   return (
     <div className="flex-shrink-0">
-      <img
+      <SmartImage
         src={proxyUrl}
         alt={alt}
         className="w-20 h-20 object-cover rounded-lg border border-gray-200"
-        onError={(e) => {
-          logger.error('Equipment image failed to load:', imageUrl);
-          e.currentTarget.style.display = 'none';
-        }}
+        hideOnError
       />
     </div>
   );
@@ -647,6 +645,66 @@ export default function KitchenBookingCalendar() {
       await fetchKitchenAddons(kitchen.id, authHeader);
     }
   };
+
+  // On mount, or when filteredKitchens is loaded, check for saved intent
+  useEffect(() => {
+    if (!isLoadingKitchens && filteredKitchens.length > 0 && !selectedKitchen) {
+      let intentKitchenId: number | null = null;
+      let intentDateRange: any = null;
+      let intentKey: string | null = null;
+
+      try {
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key && key.startsWith('kitchen_dates_')) {
+            const val = sessionStorage.getItem(key);
+            if (val) {
+              const parsed = JSON.parse(val);
+              if (parsed.from) {
+                if (key !== 'kitchen_dates_generic') {
+                  intentKitchenId = parseInt(key.replace('kitchen_dates_', ''));
+                }
+                intentDateRange = parsed;
+                intentKey = key;
+                break;
+              }
+            }
+          }
+        }
+      } catch(e) {}
+
+      if (intentKitchenId && intentDateRange) {
+        const kitchenToSelect = filteredKitchens.find((k: any) => k.id === intentKitchenId);
+        if (kitchenToSelect) {
+          handleKitchenSelect(kitchenToSelect).then(() => {
+            const date = new Date(intentDateRange.from);
+            if (date >= new Date(new Date().setHours(0, 0, 0, 0))) {
+              setSelectedDate(date);
+              toast({
+                title: "Dates Restored",
+                description: "Your previously selected dates have been restored. You can now complete your booking!",
+              });
+            }
+          });
+          if (intentKey) sessionStorage.removeItem(intentKey);
+        }
+      } else if (filteredKitchens.length === 1 && !selectedKitchen) {
+         handleKitchenSelect(filteredKitchens[0]).then(() => {
+           if (intentDateRange) {
+             const date = new Date(intentDateRange.from);
+             if (date >= new Date(new Date().setHours(0, 0, 0, 0))) {
+               setSelectedDate(date);
+               toast({
+                 title: "Dates Restored",
+                 description: "Your previously selected dates have been restored. You can now complete your booking!",
+               });
+             }
+             if (intentKey) sessionStorage.removeItem(intentKey);
+           }
+         });
+      }
+    }
+  }, [isLoadingKitchens, filteredKitchens, selectedKitchen]);
 
   const handleDateClick = (date: Date) => {
     if (date < new Date(new Date().setHours(0, 0, 0, 0))) return; // Prevent past dates

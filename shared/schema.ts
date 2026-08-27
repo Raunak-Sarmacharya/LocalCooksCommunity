@@ -98,6 +98,8 @@ export const users = pgTable("users", {
   stripeConnectOnboardingStatus: text("stripe_connect_onboarding_status").default("not_started").notNull(), // Status: 'not_started', 'in_progress', 'complete', 'failed'
   // Stripe Customer ID for off-session payments (penalties, recurring charges)
   stripeCustomerId: text("stripe_customer_id").unique(),
+  // Preferred UI / outbound communication locale (BCP 47: en-CA | fr-CA | uk)
+  preferredLocale: text("preferred_locale"),
   // PHP shop linkage (for chef seller revenue - cross-platform)
   phpShopId: integer("php_shop_id"),                          // MySQL shop.sid
   phpShopStripeAccountId: text("php_shop_stripe_account_id"), // shop.stripe_shop_id (Stripe Connect on PHP platform)
@@ -134,6 +136,11 @@ export const applications = pgTable("applications", {
   lat: text("lat"),
   slong: text("slong"),
 
+  // Additional Business Info
+  businessType: text("business_type"),
+  experience: text("experience"),
+  businessDescription: text("business_description"),
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -141,14 +148,17 @@ export const applications = pgTable("applications", {
 // Define the Zod schema for inserting an application
 export const insertApplicationSchema = createInsertSchema(applications, {
   fullName: z.string().min(2, "Name must be at least 2 characters"),
-  shopName: z.string().min(2, "Shop name must be at least 2 characters").optional(),
-  shopAddress: z.string().min(5, "Shop address must be at least 5 characters").optional(),
+  shopName: z.preprocess((val) => val === '' ? undefined : val, z.string().min(2, "Shop name must be at least 2 characters").optional()),
+  shopAddress: z.preprocess((val) => val === '' ? undefined : val, z.string().min(5, "Shop address must be at least 5 characters").optional()),
   email: z.string().email("Please enter a valid email address"),
   phone: phoneNumberSchema, // Uses shared phone validation
   foodSafetyLicense: z.enum(["yes", "no", "notSure"]),
   foodEstablishmentCert: z.enum(["yes", "no", "notSure"]),
   kitchenPreference: z.enum(["commercial", "home", "notSure"]),
-  feedback: z.string().optional(),
+  businessType: z.preprocess((val) => val === '' ? undefined : val, z.string().optional()),
+  experience: z.preprocess((val) => val === '' ? undefined : val, z.string().optional()),
+  businessDescription: z.preprocess((val) => val === '' ? undefined : val, z.string().optional()),
+  feedback: z.preprocess((val) => val === '' ? undefined : val, z.string().optional()),
   userId: z.number().optional(),
   // Document fields are optional during initial application submission
   foodSafetyLicenseUrl: z.string().optional(),
@@ -484,7 +494,7 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   stripePaymentMethodId: text("stripe_payment_method_id"), // Saved payment method for damage claims
   stripeCustomerId: text("stripe_customer_id"), // Denormalized for quick access
   damageDeposit: numeric("damage_deposit").default("0"), // Damage deposit amount (in cents)
-  serviceFee: numeric("service_fee").default("0"), // Platform commission (in cents)
+  serviceFee: numeric("service_fee").default("0"), // Service fee (in cents)
   currency: text("currency").default("CAD").notNull(), // Currency code
   // Chef cancellation request tracking
   cancellationRequestedAt: timestamp("cancellation_requested_at"),
@@ -1250,7 +1260,7 @@ export const storageBookings = pgTable("storage_bookings", {
   pricingModel: storagePricingModelEnum("pricing_model").notNull(), // Always 'daily' now
   paymentStatus: paymentStatusEnum("payment_status").default("pending"),
   paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (shared across bundled items in same kitchen booking)
-  serviceFee: numeric("service_fee").default("0"), // Platform commission in cents
+  serviceFee: numeric("service_fee").default("0"), // Service fee in cents
   currency: text("currency").default("CAD").notNull(),
   // Stripe fields for off-session penalty charging
   stripePaymentMethodId: text("stripe_payment_method_id"), // Saved payment method for penalties
@@ -1411,7 +1421,7 @@ export const equipmentBookings = pgTable("equipment_bookings", {
   damageDeposit: numeric("damage_deposit").default("0"), // In cents (only for rental)
   paymentStatus: paymentStatusEnum("payment_status").default("pending"), // Reuse enum
   paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (shared across bundled items in same kitchen booking)
-  serviceFee: numeric("service_fee").default("0"), // Platform commission in cents
+  serviceFee: numeric("service_fee").default("0"), // Service fee in cents
   currency: text("currency").default("CAD").notNull(),
   // NOTE: No delivery/pickup fields - equipment stays in kitchen
   createdAt: timestamp("created_at").defaultNow().notNull(),

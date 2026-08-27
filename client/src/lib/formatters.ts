@@ -1,22 +1,32 @@
 /**
  * Shared Formatters Library
- * 
+ *
  * Centralized formatting utilities used across the application.
  * All currency amounts are stored in cents in the database.
+ * Delegates locale-aware formatting to @shared/i18n (default en-CA).
  */
+
+import {
+  formatCurrency as sharedFormatCurrency,
+  formatDate as sharedFormatDate,
+  formatNumber as sharedFormatNumber,
+  formatRelativeTime as sharedFormatRelativeTime,
+  DEFAULT_LOCALE,
+  DEFAULT_TIMEZONE,
+} from "@shared/i18n";
 
 /**
  * Format amount in cents to currency string
  * @param amountInCents - Amount in cents (e.g., 1000 = $10.00)
  * @param currency - Currency code (default: CAD)
+ * @param locale - BCP 47 locale (default: en-CA)
  */
-export function formatCurrency(amountInCents: number, currency: string = 'CAD'): string {
-    return new Intl.NumberFormat('en-CA', {
-        style: 'currency',
-        currency,
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    }).format(amountInCents / 100);
+export function formatCurrency(
+  amountInCents: number,
+  currency: string = "CAD",
+  locale: string = DEFAULT_LOCALE
+): string {
+  return sharedFormatCurrency(amountInCents, { currency, locale });
 }
 
 /**
@@ -48,17 +58,14 @@ export function formatPrice(amountInCents: number | null | undefined): string {
 export function formatDate(
     dateStr: string | Date,
     format: 'short' | 'long' | 'full' = 'short',
-    timezone: string = 'America/St_Johns'
+    timezone: string = DEFAULT_TIMEZONE,
+    locale: string = DEFAULT_LOCALE
 ): string {
-    const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
-
-    const formatOptions: Record<string, Intl.DateTimeFormatOptions> = {
-        short: { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone },
-        long: { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone },
-        full: { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: timezone },
-    };
-
-    return date.toLocaleDateString('en-US', formatOptions[format]);
+    return sharedFormatDate(dateStr, {
+      style: format,
+      timeZone: timezone,
+      locale,
+    });
 }
 
 
@@ -67,21 +74,39 @@ export function formatDate(
  * @param dateStr - ISO date string
  * @param timezone - IANA timezone (defaults to Newfoundland for consistent display)
  */
-export function formatChartDate(dateStr: string, timezone: string = 'America/St_Johns'): string {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: timezone });
+export function formatChartDate(
+  dateStr: string,
+  timezone: string = DEFAULT_TIMEZONE,
+  locale: string = DEFAULT_LOCALE
+): string {
+  return new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    timeZone: timezone,
+  }).format(new Date(dateStr));
 }
 
 /**
- * Format time string (HH:MM) to 12-hour format
+ * Format time string (HH:MM) using the active locale.
+ * 12-hour with AM/PM for en-CA; 24-hour for fr-CA/uk (via Intl).
  * @param time - Time string in HH:MM format
  */
-export function formatTime(time: string): string {
+export function formatTime(time: string, locale: string = DEFAULT_LOCALE): string {
     const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
+    if (!hours || Number.isNaN(parseInt(hours))) return time;
+    const date = new Date();
+    date.setHours(parseInt(hours), parseInt(minutes) || 0, 0, 0);
+    try {
+        return new Intl.DateTimeFormat(locale, {
+            hour: 'numeric',
+            minute: '2-digit',
+        }).format(date);
+    } catch {
+        const hour = parseInt(hours);
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        const displayHour = hour % 12 || 12;
+        return `${displayHour}:${minutes} ${ampm}`;
+    }
 }
 
 /**
@@ -109,26 +134,22 @@ export function generateInvoiceNumber(bookingId: number, date?: Date): string {
  * Format relative time (e.g., "2 days ago")
  * @param dateStr - ISO date string
  */
-export function formatRelativeTime(dateStr: string): string {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
-    return `${Math.floor(diffDays / 365)} years ago`;
+export function formatRelativeTime(
+  dateStr: string,
+  locale: string = DEFAULT_LOCALE
+): string {
+  return sharedFormatRelativeTime(dateStr, { locale });
 }
 
 /**
  * Format number with thousands separator
  * @param value - Number to format
  */
-export function formatNumber(value: number): string {
-    return new Intl.NumberFormat('en-CA').format(value);
+export function formatNumber(
+  value: number,
+  locale: string = DEFAULT_LOCALE
+): string {
+  return sharedFormatNumber(value, { locale });
 }
 
 /**

@@ -1,5 +1,13 @@
-
 import { Helmet } from "react-helmet-async";
+import { useTranslation } from "react-i18next";
+import {
+  DEFAULT_LOCALE,
+  SUPPORTED_LOCALES,
+  getOgLocale,
+  isAppLocale,
+  withLocalePrefix,
+  type AppLocale,
+} from "@shared/i18n";
 import {
   type SEOHeadProps,
   defaults,
@@ -14,11 +22,8 @@ import {
 
 /**
  * SEO Configuration for LocalCooks Community Platform
- * Enterprise-grade meta tags for local business SEO
- * Mirrors LCLanding architecture, adapted for multi-subdomain app
- *
- * This component MUST be used on every public-facing page to inject
- * correct per-subdomain canonical URLs, structured data, and meta tags.
+ * Enterprise-grade meta tags for local business SEO.
+ * Locale-aware: lang, og:locale, hreflang alternates, inLanguage.
  */
 
 export default function SEOHead({
@@ -28,7 +33,7 @@ export default function SEOHead({
   image = defaults.image,
   imageAlt = defaults.imageAlt,
   type = "website",
-  ogType, // Optional override/alias for type
+  ogType,
   noIndex = false,
   keywords,
   publishedTime,
@@ -42,42 +47,50 @@ export default function SEOHead({
   faq,
   siteNavigation,
 }: SEOHeadProps) {
-  const baseUrl = getSubdomainBaseUrl();
-  
-  const pageTitle = title
-    ? `${title} | LocalCooks`
-    : defaults.title;
+  const { i18n } = useTranslation();
+  const locale: AppLocale = isAppLocale(i18n.resolvedLanguage)
+    ? i18n.resolvedLanguage
+    : isAppLocale(i18n.language)
+      ? i18n.language
+      : DEFAULT_LOCALE;
 
-  const fullCanonicalUrl = canonicalUrl
-    ? `${baseUrl}${canonicalUrl.startsWith("/") ? "" : "/"}${canonicalUrl}`
-    : baseUrl;
+  const baseUrl = getSubdomainBaseUrl();
+
+  const pageTitle = title ? `${title} | LocalCooks` : defaults.title;
+
+  const pathForAlternates = canonicalUrl
+    ? canonicalUrl.startsWith("/")
+      ? canonicalUrl
+      : `/${canonicalUrl}`
+    : "/";
+
+  const localizedPath = withLocalePrefix(pathForAlternates, locale);
+  const fullCanonicalUrl = `${baseUrl}${localizedPath}`;
 
   const fullImageUrl = image.startsWith("http")
     ? image
     : `${baseUrl}${image.startsWith("/") ? "" : "/"}${image}`;
 
-  // Prioritize ogType if provided, otherwise fallback to type
   const actualOgType = ogType || type;
 
-  // Generate subdomain-aware WebSite schema
   const websiteSchemaData = createWebsiteSchema(baseUrl);
 
-  // Generate WebPage schema for this page
-  const webPageSchemaData = createWebPageSchema({
-    url: fullCanonicalUrl,
-    name: pageTitle,
-    description,
-  });
+  const webPageSchemaData = {
+    ...createWebPageSchema({
+      url: fullCanonicalUrl,
+      name: pageTitle,
+      description,
+    }),
+    inLanguage: locale,
+  };
 
   return (
     <Helmet prioritizeSeoTags>
-      {/* Basic Meta Tags */}
-      <html lang="en-CA" />
+      <html lang={locale} />
       <title>{pageTitle}</title>
       <meta name="description" content={description} />
       <link rel="canonical" href={fullCanonicalUrl} />
 
-      {/* Robots */}
       {noIndex ? (
         <meta name="robots" content="noindex, nofollow" />
       ) : (
@@ -87,13 +100,11 @@ export default function SEOHead({
         />
       )}
 
-      {/* Geo Tags for Local SEO */}
       <meta name="geo.region" content="CA-NL" />
       <meta name="geo.placename" content="St. John's, Newfoundland" />
       <meta name="geo.position" content="47.5615;-52.7126" />
       <meta name="ICBM" content="47.5615, -52.7126" />
 
-      {/* Keywords for Local Discovery */}
       {keywords && keywords.length > 0 ? (
         <meta name="keywords" content={keywords.join(", ")} />
       ) : (
@@ -103,7 +114,6 @@ export default function SEOHead({
         />
       )}
 
-      {/* Open Graph Tags */}
       <meta property="og:type" content={actualOgType} />
       <meta property="og:site_name" content={defaults.siteName} />
       <meta property="og:title" content={pageTitle} />
@@ -113,9 +123,15 @@ export default function SEOHead({
       <meta property="og:image:alt" content={imageAlt} />
       <meta property="og:image:width" content="1200" />
       <meta property="og:image:height" content="630" />
-      <meta property="og:locale" content={defaults.locale} />
+      <meta property="og:locale" content={getOgLocale(locale)} />
+      {SUPPORTED_LOCALES.filter((l) => l !== locale).map((alt) => (
+        <meta
+          key={alt}
+          property="og:locale:alternate"
+          content={getOgLocale(alt)}
+        />
+      ))}
 
-      {/* Article-specific OG Tags */}
       {actualOgType === "article" && publishedTime && (
         <meta property="article:published_time" content={publishedTime} />
       )}
@@ -134,7 +150,6 @@ export default function SEOHead({
           <meta key={i} property="article:tag" content={tag} />
         ))}
 
-      {/* Twitter Card Tags */}
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:site" content={defaults.twitterHandle} />
       <meta name="twitter:title" content={pageTitle} />
@@ -142,51 +157,54 @@ export default function SEOHead({
       <meta name="twitter:image" content={fullImageUrl} />
       <meta name="twitter:image:alt" content={imageAlt} />
 
-      {/* Hreflang for Language/Region targeting */}
-      <link rel="alternate" hrefLang="en-CA" href={fullCanonicalUrl} />
-      <link rel="alternate" hrefLang="x-default" href={fullCanonicalUrl} />
+      {SUPPORTED_LOCALES.map((alt) => (
+        <link
+          key={alt}
+          rel="alternate"
+          hrefLang={alt}
+          href={`${baseUrl}${withLocalePrefix(pathForAlternates, alt)}`}
+        />
+      ))}
+      <link
+        rel="alternate"
+        hrefLang="x-default"
+        href={`${baseUrl}${withLocalePrefix(pathForAlternates, DEFAULT_LOCALE)}`}
+      />
 
-      {/* Mobile & Theme */}
       <meta name="theme-color" content="#f51042" />
       <meta name="apple-mobile-web-app-title" content="LocalCooks" />
       <meta name="application-name" content="LocalCooks" />
 
-      {/* Structured Data - WebSite Schema (subdomain-aware, always include) */}
       <script type="application/ld+json">
         {JSON.stringify(websiteSchemaData)}
       </script>
 
-      {/* Structured Data - WebPage Schema (per-page) */}
       <script type="application/ld+json">
         {JSON.stringify(webPageSchemaData)}
       </script>
 
-      {/* Structured Data - LocalBusiness Schema (for homepage and relevant pages) */}
       {showLocalBusiness && (
         <script type="application/ld+json">
           {JSON.stringify(createLocalBusinessSchema(rating))}
         </script>
       )}
 
-      {/* Structured Data - SiteNavigationElement (for Google sitelinks — @graph format) */}
       {siteNavigation && siteNavigation.length > 0 && (
         <script type="application/ld+json">
           {JSON.stringify(createSiteNavigationSchema(siteNavigation))}
         </script>
       )}
 
-      {/* Structured Data - Breadcrumb (for sub-pages) */}
       {breadcrumbs && breadcrumbs.length > 0 && (
         <script type="application/ld+json">
           {JSON.stringify(createBreadcrumbSchema(breadcrumbs))}
         </script>
       )}
-      
-      {/* Structured Data - FAQPage Schema */}
+
       {faq && faq.length > 0 && (
-         <script type="application/ld+json">
-           {JSON.stringify(createFAQSchema(faq))}
-         </script>
+        <script type="application/ld+json">
+          {JSON.stringify(createFAQSchema(faq))}
+        </script>
       )}
     </Helmet>
   );

@@ -1,0 +1,11 @@
+{
+  "footer": "LocalCooks · St. John's, Newfoundland",
+  "welcomeSubject": "Welcome to LocalCooks",
+  "welcomeBody": "Thanks for joining LocalCooks. Your account is ready.",
+  "bookingConfirmSubject": "Booking confirmed",
+  "bookingConfirmBody": "Your kitchen booking is confirmed.",
+  "passwordResetSubject": "Reset your LocalCooks password",
+  "passwordResetBody": "Use the link below to reset your password. It expires soon.",
+  "verifyEmailSubject": "Verify your LocalCooks email",
+  "verifyEmailBody": "Confirm your email address to finish setting up your account."
+}

@@ -107,6 +107,7 @@ export class MemStorage implements IStorage {
       phpShopId: null,
       phpShopStripeAccountId: null,
       phpShopLinkedAt: null,
+      preferredLocale: null,
       createdAt: new Date(),
     };
     this.users.set(adminUser.id, adminUser);
@@ -194,6 +195,7 @@ export class MemStorage implements IStorage {
       phpShopId: null,
       phpShopStripeAccountId: null,
       phpShopLinkedAt: null,
+      preferredLocale: (insertUser as any).preferredLocale || null,
       createdAt: new Date(),
     };
 
@@ -230,6 +232,9 @@ export class MemStorage implements IStorage {
       foodSafetyLicense: insertApplication.foodSafetyLicense,
       foodEstablishmentCert: insertApplication.foodEstablishmentCert,
       kitchenPreference: insertApplication.kitchenPreference,
+      businessType: insertApplication.businessType || null,
+      businessDescription: insertApplication.businessDescription || null,
+      experience: insertApplication.experience || null,
       feedback: insertApplication.feedback || null,
       status: "inReview",
 

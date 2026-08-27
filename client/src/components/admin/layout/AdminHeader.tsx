@@ -20,7 +20,8 @@ interface AdminHeaderProps {
 
 const SECTION_META: Record<AdminSection, { category: string; title: string }> = {
   overview: { category: "Dashboard", title: "Overview" },
-  applications: { category: "Applications", title: "Chef Applications" },
+  applications: { category: "Applications", title: "Seller Applications" },
+  "kitchen-applications-step1": { category: "Applications", title: "Kitchen Applications (Step 1)" },
   "kitchen-licenses": { category: "Applications", title: "Kitchen Licenses" },
   "damage-claims": { category: "Applications", title: "Damage Claims" },
   "escalated-penalties": { category: "Applications", title: "Escalated Penalties" },
@@ -30,6 +31,7 @@ const SECTION_META: Record<AdminSection, { category: string; title: string }> = 
   "manager-revenues": { category: "Revenue", title: "Manager Revenues" },
   "platform-overview": { category: "Revenue", title: "Platform Overview" },
   "platform-settings": { category: "Settings", title: "Platform Settings" },
+  "platform-requirements": { category: "Settings", title: "Platform Requirements" },
   "overstay-settings": { category: "Settings", title: "Storage & Overstay" },
   "damage-claim-settings": { category: "Settings", title: "Damage Claims" },
   "account-settings": { category: "Settings", title: "Account Settings" },
@@ -43,7 +45,7 @@ const SECTION_META: Record<AdminSection, { category: string; title: string }> = 
 };
 
 export function AdminHeader({ activeSection, onRefresh, isRefreshing, onSearchClick }: AdminHeaderProps) {
-  const meta = SECTION_META[activeSection];
+  const meta = SECTION_META[activeSection] || { category: "Settings", title: "Unknown Section" };
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
